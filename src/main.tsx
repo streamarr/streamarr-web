@@ -5,12 +5,14 @@ import { MantineProvider } from '@mantine/core'
 import { createRouter, RouterProvider } from '@tanstack/react-router'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { AuthProvider } from './auth/AuthProvider'
 import { postCsrfTokenToServiceWorker } from './auth/csrf'
-import { apolloClient } from './graphql/client'
+import { createApolloClient } from './graphql/client'
 import { routeTree } from './routeTree.gen'
 import { decideRegistration } from './sw/registration'
 
 const router = createRouter({ routeTree })
+const apolloClient = createApolloClient((route) => router.navigate({ to: route }))
 
 declare module '@tanstack/react-router' {
   interface Register {
@@ -32,7 +34,9 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <MantineProvider defaultColorScheme="dark">
       <ApolloProvider client={apolloClient}>
-        <RouterProvider router={router} />
+        <AuthProvider>
+          <RouterProvider router={router} />
+        </AuthProvider>
       </ApolloProvider>
     </MantineProvider>
   </StrictMode>,
