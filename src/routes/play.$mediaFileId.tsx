@@ -1,5 +1,5 @@
-import { Text, Title } from '@mantine/core'
 import { createFileRoute } from '@tanstack/react-router'
+import { Player } from '../streaming/Player'
 
 export const Route = createFileRoute('/play/$mediaFileId')({
   component: Play,
@@ -7,10 +7,5 @@ export const Route = createFileRoute('/play/$mediaFileId')({
 
 function Play() {
   const { mediaFileId } = Route.useParams()
-  return (
-    <>
-      <Title order={2}>Playback</Title>
-      <Text c="dimmed">hls.js player for media file {mediaFileId} lands here.</Text>
-    </>
-  )
+  return <Player mediaFileId={mediaFileId} />
 }

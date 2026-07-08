@@ -1,15 +1,11 @@
-import { Text, Title } from '@mantine/core'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { Picker } from '../identity/Picker'
 
 export const Route = createFileRoute('/select')({
   component: Select,
 })
 
 function Select() {
-  return (
-    <>
-      <Title order={2}>Who's watching?</Title>
-      <Text c="dimmed">Household and profile picker over the me query lands here.</Text>
-    </>
-  )
+  const navigate = useNavigate()
+  return <Picker onProfileSelected={() => navigate({ to: '/' })} />
 }
