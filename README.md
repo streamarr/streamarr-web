@@ -1,7 +1,6 @@
 # streamarr-web
 
 Browser client for [streamarr-server](https://github.com/streamarr/streamarr-server): a CSR-only React SPA (no SSR).
-Authentication and session security follow server ADRs 0015/0016 — httpOnly cookies plus a service worker that owns silent token renewal.
 
 ## Development
 
