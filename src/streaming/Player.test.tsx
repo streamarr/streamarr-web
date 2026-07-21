@@ -25,7 +25,7 @@ vi.mock('hls.js', () => ({
   },
 }))
 
-const STREAM_URL = '/api/stream/abcd/master.m3u8?t=playback-token'
+const STREAM_URL = '/api/stream/abcd/multivariant.m3u8?t=playback-token'
 const SESSION = { id: 'sess-1', streamUrl: STREAM_URL, transcodeMode: 'REMUX' }
 
 describe('Player', () => {
