@@ -17,7 +17,7 @@ describe('decideIntercept', () => {
     // The refresh call is the worker's own; intercepting it would recurse.
     expect(decideIntercept(`${ORIGIN}/api/auth/refresh`, ORIGIN)).toBe('pass-through')
     // Playback URLs carry their own token; hls.js requests must not be touched.
-    expect(decideIntercept(`${ORIGIN}/api/stream/abc/master.m3u8`, ORIGIN)).toBe('pass-through')
+    expect(decideIntercept(`${ORIGIN}/api/stream/abc/multivariant.m3u8`, ORIGIN)).toBe('pass-through')
     expect(decideIntercept(`${ORIGIN}/api/stream/abc/segment-0001.m4s?t=x`, ORIGIN)).toBe(
       'pass-through',
     )
