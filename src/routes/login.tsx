@@ -1,18 +1,10 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import type { AuthTokens } from '../auth/api'
 import { LoginForm } from '../auth/LoginForm'
-
-// Only a known internal destination may be resumed after signing in. Echoing an arbitrary
-// redirect target back into a navigation is how open-redirect bugs get in.
-const RESUMABLE = '/link'
-
-interface LoginSearch {
-  redirect?: typeof RESUMABLE
-  code?: string
-}
+import { RESUMABLE, type ResumeSearch } from '../auth/resume'
 
 export const Route = createFileRoute('/login')({
-  validateSearch: (search: Record<string, unknown>): LoginSearch => ({
+  validateSearch: (search: Record<string, unknown>): ResumeSearch => ({
     redirect: search.redirect === RESUMABLE ? RESUMABLE : undefined,
     code: typeof search.code === 'string' ? search.code : undefined,
   }),
