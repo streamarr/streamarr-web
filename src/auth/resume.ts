@@ -7,3 +7,8 @@ export interface ResumeSearch {
   redirect?: typeof RESUMABLE
   code?: string
 }
+
+/** What to hand /login so it can send a bounced visitor back — nothing, from anywhere else. */
+export function resumeSearchFor(pathname: string): ResumeSearch {
+  return pathname === RESUMABLE ? { redirect: RESUMABLE } : {}
+}
