@@ -2,23 +2,15 @@ import '@mantine/core/styles.css'
 
 import { ApolloProvider } from '@apollo/client/react'
 import { MantineProvider } from '@mantine/core'
-import { createRouter, RouterProvider } from '@tanstack/react-router'
+import { RouterProvider } from '@tanstack/react-router'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { AuthProvider } from './auth/AuthProvider'
 import { postCsrfTokenToServiceWorker } from './auth/csrf'
-import { createApolloClient } from './graphql/client'
-import { routeTree } from './routeTree.gen'
+import { createAppRouter } from './router'
 import { decideRegistration } from './sw/registration'
 
-const router = createRouter({ routeTree })
-const apolloClient = createApolloClient((route) => router.navigate({ to: route }))
-
-declare module '@tanstack/react-router' {
-  interface Register {
-    router: typeof router
-  }
-}
+const { router, apolloClient } = createAppRouter()
 
 if ('serviceWorker' in navigator) {
   const { scriptUrl, options } = decideRegistration(import.meta.env.DEV)
