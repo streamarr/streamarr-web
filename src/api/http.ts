@@ -8,6 +8,8 @@ export class AuthApiError extends Error {
   constructor(
     readonly status: number,
     readonly code: string | null,
+    /** Seconds from a 429's Retry-After, so a throttled page can say how long, not just "later". */
+    readonly retryAfterSeconds: number | null = null,
   ) {
     super(`Auth request failed (${status}${code ? `: ${code}` : ''})`)
     this.name = 'AuthApiError'
@@ -62,7 +64,21 @@ async function throwIfError(response: Response): Promise<void> {
   if (response.ok) {
     return
   }
-  throw new AuthApiError(response.status, await readErrorCode(response))
+  throw new AuthApiError(
+    response.status,
+    await readErrorCode(response),
+    readRetryAfterSeconds(response),
+  )
+}
+
+function readRetryAfterSeconds(response: Response): number | null {
+  const header = response.headers.get('Retry-After')
+  if (!header) {
+    return null
+  }
+  // Only the delta-seconds form is contracted; an HTTP-date would parse as NaN.
+  const seconds = Number(header)
+  return Number.isFinite(seconds) && seconds >= 0 ? seconds : null
 }
 
 async function readErrorCode(response: Response): Promise<string | null> {

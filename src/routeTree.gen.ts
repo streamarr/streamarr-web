@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as SelectRouteImport } from './routes/select'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as LinkRouteImport } from './routes/link'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as PlayMediaFileIdRouteImport } from './routes/play.$mediaFileId'
 
@@ -30,6 +31,11 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LinkRoute = LinkRouteImport.update({
+  id: '/link',
+  path: '/link',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -43,6 +49,7 @@ const PlayMediaFileIdRoute = PlayMediaFileIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/link': typeof LinkRoute
   '/login': typeof LoginRoute
   '/select': typeof SelectRoute
   '/setup': typeof SetupRoute
@@ -50,6 +57,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/link': typeof LinkRoute
   '/login': typeof LoginRoute
   '/select': typeof SelectRoute
   '/setup': typeof SetupRoute
@@ -58,6 +66,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/link': typeof LinkRoute
   '/login': typeof LoginRoute
   '/select': typeof SelectRoute
   '/setup': typeof SetupRoute
@@ -65,14 +74,23 @@ export interface FileRoutesById {
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/select' | '/setup' | '/play/$mediaFileId'
+  fullPaths:
+    '/' | '/link' | '/login' | '/select' | '/setup' | '/play/$mediaFileId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/select' | '/setup' | '/play/$mediaFileId'
-  id: '__root__' | '/' | '/login' | '/select' | '/setup' | '/play/$mediaFileId'
+  to: '/' | '/link' | '/login' | '/select' | '/setup' | '/play/$mediaFileId'
+  id:
+    | '__root__'
+    | '/'
+    | '/link'
+    | '/login'
+    | '/select'
+    | '/setup'
+    | '/play/$mediaFileId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  LinkRoute: typeof LinkRoute
   LoginRoute: typeof LoginRoute
   SelectRoute: typeof SelectRoute
   SetupRoute: typeof SetupRoute
@@ -102,6 +120,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/link': {
+      id: '/link'
+      path: '/link'
+      fullPath: '/link'
+      preLoaderRoute: typeof LinkRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -121,6 +146,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  LinkRoute: LinkRoute,
   LoginRoute: LoginRoute,
   SelectRoute: SelectRoute,
   SetupRoute: SetupRoute,
