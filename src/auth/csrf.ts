@@ -1,9 +1,11 @@
-// The XSRF-TOKEN cookie is deliberately script-readable (CookieCsrfTokenRepository
-// withHttpOnlyFalse on the server); the page reads it and hands it to the service worker,
-// which attaches it to its own refresh POSTs.
+// The CSRF cookie is deliberately script-readable; the page reads it and hands it to the service
+// worker, which attaches it to its own refresh POSTs. Secure deployments use the host-bound name.
+// The unprefixed name is accepted only for the server's explicitly insecure development mode.
 
 export function readCsrfCookie(): string | null {
-  const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)
+  const match =
+    document.cookie.match(/(?:^|;\s*)__Host-XSRF-TOKEN=([^;]+)/) ??
+    document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)
   if (!match) {
     return null
   }
