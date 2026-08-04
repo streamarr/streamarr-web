@@ -9,12 +9,12 @@ import {
 import { useState } from 'react'
 import { AuthApiError, type AuthTokens } from './api'
 import { useAuth } from './AuthProvider'
+import { CSRF_REJECTION_CODE, CSRF_REJECTION_MESSAGE } from './csrf'
 
 const MESSAGES: Record<string, string> = {
   INVALID_CREDENTIALS: 'Incorrect email or password.',
   TOO_MANY_ATTEMPTS: 'Too many attempts. Wait a few minutes and try again.',
-  CSRF_TOKEN_REQUIRED:
-    'Your session security check failed. Reload the page and try again.',
+  [CSRF_REJECTION_CODE]: CSRF_REJECTION_MESSAGE,
 }
 const FALLBACK_MESSAGE = 'Sign in failed. Please try again.'
 

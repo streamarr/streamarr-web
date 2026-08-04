@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { readCsrfCookie } from './csrf'
+import { isCsrfRejection, readCsrfCookie } from './csrf'
 
 function setDocumentCookies(cookies: string): void {
   Object.defineProperty(document, 'cookie', {
@@ -41,5 +41,19 @@ describe('csrf cookie reader', () => {
     setDocumentCookies('__Host-XSRF-TOKEN=%not-encoded')
 
     expect(readCsrfCookie()).toBeNull()
+  })
+})
+
+describe('csrf rejection classifier', () => {
+  it('shouldRecognizeCsrfRejectionWhenStatusAndCodeMatch', () => {
+    expect(isCsrfRejection(403, 'CSRF_TOKEN_REQUIRED')).toBe(true)
+  })
+
+  it('shouldNotRecognizeCsrfRejectionWhenCodeDiffers', () => {
+    expect(isCsrfRejection(403, 'FORBIDDEN')).toBe(false)
+  })
+
+  it('shouldNotRecognizeCsrfRejectionWhenStatusDiffers', () => {
+    expect(isCsrfRejection(401, 'CSRF_TOKEN_REQUIRED')).toBe(false)
   })
 })

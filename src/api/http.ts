@@ -1,4 +1,4 @@
-import { csrfHeaders } from '../auth/csrf'
+import { csrfHeaders, isCsrfRejection } from '../auth/csrf'
 
 // Same-origin by construction (Vite dev proxy in development, reverse proxy in production), so
 // no CORS. Cookies are the carrier; nothing here ever touches a token value.
@@ -36,6 +36,8 @@ export async function request(
   url: string,
   init: RequestInit,
 ): Promise<Response> {
+  // A CSRF rejection may send this request twice. Callers must therefore supply a replayable body;
+  // postJson serializes its body to a string, which is safe to reuse.
   const unsafe = !SAFE_METHODS.has(init.method?.toUpperCase() ?? 'GET')
   const send = () => {
     const headers = new Headers(init.headers)
@@ -49,11 +51,7 @@ export async function request(
   }
 
   let response = await send()
-  if (
-    unsafe &&
-    response.status === 403 &&
-    (await readErrorCode(response)) === 'CSRF_TOKEN_REQUIRED'
-  ) {
+  if (unsafe && isCsrfRejection(response.status, await readErrorCode(response))) {
     response = await send()
   }
   await throwIfError(response)

@@ -1,5 +1,6 @@
 import { Alert, Center, Loader, Stack, Text, Title } from '@mantine/core'
 import { createFileRoute } from '@tanstack/react-router'
+import { CSRF_REJECTION_MESSAGE, isCsrfRejection } from '../auth/csrf'
 import { extractAuthContext } from '../graphql/errorRouting'
 import { useMe } from '../identity/useMe'
 
@@ -22,11 +23,9 @@ function Home() {
 
   if (error || !data) {
     const context = extractAuthContext(error)
-    const message =
-      context.networkStatus === 403 &&
-      context.networkCode === 'CSRF_TOKEN_REQUIRED'
-        ? 'Your session security check failed. Reload the page and try again.'
-        : "Couldn't load your library. Try again."
+    const message = isCsrfRejection(context.networkStatus, context.networkCode)
+      ? CSRF_REJECTION_MESSAGE
+      : "Couldn't load your library. Try again."
     return (
       <Alert color="red" role="alert">
         {message}
