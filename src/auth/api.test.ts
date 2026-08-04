@@ -1,7 +1,7 @@
 import { HttpResponse, http } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { server } from '../test/server'
-import { AuthApiError, getSetupStatus, login, logout, selectProfile } from './api'
+import { AuthApiError, getSetupStatus, login, logout, selectProfile, setup } from './api'
 
 const TOKENS = { accessTokenExpiresAt: '2026-07-08T12:10:00Z', scope: 'profile' }
 
@@ -42,6 +42,42 @@ describe('auth api', () => {
     await expect(login({ email: 'a@b.com', password: 'wrong' })).rejects.toBeInstanceOf(
       AuthApiError,
     )
+  })
+
+  it('shouldAttachCsrfHeaderOnLogin', async () => {
+    document.cookie = 'XSRF-TOKEN=csrf-login'
+    let header: string | null = null
+    server.use(
+      http.post('/api/auth/login', ({ request }) => {
+        header = request.headers.get('X-XSRF-TOKEN')
+        return HttpResponse.json(TOKENS)
+      }),
+    )
+
+    await login({ email: 'a@b.com', password: 'pw' })
+
+    expect(header).toBe('csrf-login')
+  })
+
+  it('shouldAttachCsrfHeaderOnSetup', async () => {
+    document.cookie = 'XSRF-TOKEN=csrf-setup'
+    let header: string | null = null
+    server.use(
+      http.post('/api/auth/setup', ({ request }) => {
+        header = request.headers.get('X-XSRF-TOKEN')
+        return HttpResponse.json(TOKENS, { status: 201 })
+      }),
+    )
+
+    await setup({
+      email: 'admin@example.com',
+      displayName: 'Admin',
+      password: 'pw',
+      householdName: 'Home',
+      profileName: 'Owner',
+    })
+
+    expect(header).toBe('csrf-setup')
   })
 
   it('shouldAttachCsrfHeaderOnAuthenticatedSelect', async () => {

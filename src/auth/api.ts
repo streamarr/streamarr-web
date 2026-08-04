@@ -33,12 +33,16 @@ export function getSetupStatus(): Promise<ServerStatus> {
   return getJson<ServerStatus>('/api/auth/status')
 }
 
+// Signing in is itself a cookie-mode request: a stale streamarr_access or streamarr_refresh
+// cookie from a dead session still rides along, and the server's CSRF matcher covers any unsafe
+// request carrying one. Without the echo, the one action that would replace the stale cookie is
+// the one action refused.
 export function login(input: LoginInput): Promise<AuthTokens> {
-  return postJson('/api/auth/login', { ...input, cookieMode: true })
+  return postJson('/api/auth/login', { ...input, cookieMode: true }, { csrf: true })
 }
 
 export function setup(input: SetupInput): Promise<AuthTokens> {
-  return postJson('/api/auth/setup', { ...input, cookieMode: true })
+  return postJson('/api/auth/setup', { ...input, cookieMode: true }, { csrf: true })
 }
 
 export function selectHousehold(householdId: string): Promise<AuthTokens> {

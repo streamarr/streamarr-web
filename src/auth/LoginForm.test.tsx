@@ -24,6 +24,26 @@ describe('LoginForm', () => {
     await waitFor(() => expect(onAuthenticated).toHaveBeenCalledWith(TOKENS))
   })
 
+  it('shouldSignInWhenAStaleAuthCookieMakesTheServerDemandCsrf', async () => {
+    document.cookie = 'XSRF-TOKEN=csrf-abc'
+    // A stale streamarr_access cookie rides along on the login POST, so the server's CSRF
+    // matcher covers it and refuses the request unless the token cookie is echoed back —
+    // and signing in is the very act that would have replaced the stale cookie.
+    server.use(
+      http.post('/api/auth/login', ({ request }) =>
+        request.headers.get('X-XSRF-TOKEN')
+          ? HttpResponse.json(TOKENS)
+          : HttpResponse.json({ code: 'FORBIDDEN' }, { status: 403 }),
+      ),
+    )
+    const onAuthenticated = vi.fn()
+    const { user } = renderWithProviders(<LoginForm onAuthenticated={onAuthenticated} />)
+
+    await fillAndSubmit(user)
+
+    await waitFor(() => expect(onAuthenticated).toHaveBeenCalledWith(TOKENS))
+  })
+
   it('shouldShowMessageAndNotAuthenticateOnInvalidCredentials', async () => {
     server.use(
       http.post('/api/auth/login', () =>
