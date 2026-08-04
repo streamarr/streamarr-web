@@ -3,6 +3,8 @@ import { csrfHeaders } from '../auth/csrf'
 // Same-origin by construction (Vite dev proxy in development, reverse proxy in production), so
 // no CORS. Cookies are the carrier; nothing here ever touches a token value.
 
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS', 'TRACE'])
+
 /** Carries the server's machine-readable error code so callers can route (e.g. TOO_MANY_ATTEMPTS). */
 export class AuthApiError extends Error {
   constructor(
@@ -16,16 +18,11 @@ export class AuthApiError extends Error {
   }
 }
 
-export async function postJson<T>(
-  url: string,
-  body: unknown,
-  opts: { csrf?: boolean } = {},
-): Promise<T> {
+export async function postJson<T>(url: string, body: unknown): Promise<T> {
   const response = await request(url, {
     method: 'POST',
     body: JSON.stringify(body),
     headers: { 'Content-Type': 'application/json' },
-    csrf: opts.csrf,
   })
   return (await parse(response)) as T
 }
@@ -37,23 +34,38 @@ export async function getJson<T>(url: string): Promise<T> {
 
 export async function request(
   url: string,
-  init: RequestInit & { csrf?: boolean },
+  init: RequestInit,
 ): Promise<Response> {
-  const headers = new Headers(init.headers)
-  if (init.csrf) {
-    // Cookie-authenticated POSTs require the CSRF token echoed from the script-readable cookie.
-    for (const [name, value] of Object.entries(csrfHeaders())) {
-      headers.set(name, value)
+  const unsafe = !SAFE_METHODS.has(init.method?.toUpperCase() ?? 'GET')
+  const send = () => {
+    const headers = new Headers(init.headers)
+    if (unsafe) {
+      // Cookie-authenticated requests echo the current script-readable CSRF cookie.
+      for (const [name, value] of Object.entries(csrfHeaders())) {
+        headers.set(name, value)
+      }
     }
+    return fetch(url, { ...init, headers, credentials: 'same-origin' })
   }
-  const response = await fetch(url, { ...init, headers, credentials: 'same-origin' })
+
+  let response = await send()
+  if (
+    unsafe &&
+    response.status === 403 &&
+    (await readErrorCode(response)) === 'CSRF_TOKEN_REQUIRED'
+  ) {
+    response = await send()
+  }
   await throwIfError(response)
   return response
 }
 
 async function parse(response: Response): Promise<unknown> {
   await throwIfError(response)
-  if (response.status === 204 || response.headers.get('Content-Length') === '0') {
+  if (
+    response.status === 204 ||
+    response.headers.get('Content-Length') === '0'
+  ) {
     return undefined
   }
   return response.json()

@@ -20,17 +20,18 @@ export interface PairingDecisionResult {
 }
 
 /** The user code rides in the body, never a path segment, so it stays out of access logs. */
-export function lookupPairingRequest(userCode: string): Promise<PairingRequest> {
-  return postJson('/api/auth/device/authorizations/lookup', { userCode }, { csrf: true })
+export function lookupPairingRequest(
+  userCode: string,
+): Promise<PairingRequest> {
+  return postJson('/api/auth/device/authorizations/lookup', { userCode })
 }
 
 export function decidePairingRequest(
   userCode: string,
   decision: PairingDecision,
 ): Promise<PairingDecisionResult> {
-  return postJson(
-    '/api/auth/device/authorizations/decision',
-    { userCode, decision },
-    { csrf: true },
-  )
+  return postJson('/api/auth/device/authorizations/decision', {
+    userCode,
+    decision,
+  })
 }

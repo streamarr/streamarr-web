@@ -2,7 +2,13 @@
 // Thin event-listener adapter over the pure functions in decisions.ts. Registered with
 // { type: 'module' }. Best-effort by design: on any internal failure the network response
 // flows through unchanged and the page's error handling takes over.
-import { decideIntercept, isExpiredTokenResponse, SingleFlight } from './decisions'
+import { CSRF_HEADER } from '../auth/csrf'
+import {
+  decideIntercept,
+  isExpiredTokenResponse,
+  rememberCsrfToken,
+  SingleFlight,
+} from './decisions'
 
 declare const self: ServiceWorkerGlobalScope
 
@@ -23,7 +29,11 @@ self.addEventListener('activate', (event) => {
 // The page posts the script-readable XSRF-TOKEN cookie and access-token expiry here —
 // the worker cannot read httpOnly cookies, and expiry only travels in response bodies.
 self.addEventListener('message', (event) => {
-  const data = event.data as { type?: string; token?: string; expiresAt?: string } | null
+  const data = event.data as {
+    type?: string
+    token?: string
+    expiresAt?: string
+  } | null
   if (data?.type === 'csrf' && typeof data.token === 'string') {
     csrfToken = data.token
   }
@@ -33,9 +43,15 @@ self.addEventListener('message', (event) => {
 })
 
 self.addEventListener('fetch', (event) => {
-  if (decideIntercept(event.request.url, self.location.origin) !== 'intercept') {
+  if (
+    decideIntercept(event.request.url, self.location.origin) !== 'intercept'
+  ) {
     return
   }
+  csrfToken = rememberCsrfToken(
+    csrfToken,
+    event.request.headers.get(CSRF_HEADER),
+  )
   event.respondWith(fetchWithRefresh(event.request))
 })
 
@@ -69,7 +85,7 @@ async function isExpired(response: Response): Promise<boolean> {
 }
 
 async function postRefresh(): Promise<boolean> {
-  const headers: HeadersInit = csrfToken ? { 'X-XSRF-TOKEN': csrfToken } : {}
+  const headers: HeadersInit = csrfToken ? { [CSRF_HEADER]: csrfToken } : {}
   const response = await fetch('/api/auth/refresh', {
     method: 'POST',
     headers,

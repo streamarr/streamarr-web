@@ -9,12 +9,18 @@ export type InterceptDecision = 'intercept' | 'pass-through'
  * (recursion) and /api/stream/** (playback URLs carry their own ?t= token; hls.js requests
  * must pass through untouched).
  */
-export function decideIntercept(requestUrl: string | URL, pageOrigin: string): InterceptDecision {
+export function decideIntercept(
+  requestUrl: string | URL,
+  pageOrigin: string,
+): InterceptDecision {
   const url = new URL(requestUrl, pageOrigin)
   if (url.origin !== pageOrigin) {
     return 'pass-through'
   }
-  if (url.pathname === '/api/auth/refresh' || url.pathname.startsWith('/api/stream/')) {
+  if (
+    url.pathname === '/api/auth/refresh' ||
+    url.pathname.startsWith('/api/stream/')
+  ) {
     return 'pass-through'
   }
   if (url.pathname === '/graphql' || url.pathname.startsWith('/api/')) {
@@ -29,6 +35,14 @@ export function isExpiredTokenResponse(status: number, body: unknown): boolean {
     return false
   }
   return (body as { code?: unknown }).code === 'EXPIRED_TOKEN'
+}
+
+/** Prefer a token echoed by the page, allowing a restarted worker to rebuild its volatile cache. */
+export function rememberCsrfToken(
+  cachedToken: string | null,
+  requestToken: string | null,
+): string | null {
+  return requestToken?.trim() ? requestToken : cachedToken
 }
 
 /**

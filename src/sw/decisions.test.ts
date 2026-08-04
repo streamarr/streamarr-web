@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
-import { decideIntercept, isExpiredTokenResponse, SingleFlight } from './decisions'
+import {
+  decideIntercept,
+  isExpiredTokenResponse,
+  rememberCsrfToken,
+  SingleFlight,
+} from './decisions'
 
 const ORIGIN = 'https://streamarr.example'
 
@@ -9,23 +14,35 @@ describe('decideIntercept', () => {
   })
 
   it('shouldInterceptApiFetches', () => {
-    expect(decideIntercept(`${ORIGIN}/api/auth/select-profile`, ORIGIN)).toBe('intercept')
-    expect(decideIntercept(`${ORIGIN}/api/images/123`, ORIGIN)).toBe('intercept')
+    expect(decideIntercept(`${ORIGIN}/api/auth/select-profile`, ORIGIN)).toBe(
+      'intercept',
+    )
+    expect(decideIntercept(`${ORIGIN}/api/images/123`, ORIGIN)).toBe(
+      'intercept',
+    )
   })
 
   it('shouldPassThroughStreamAndRefreshFetches', () => {
     // The refresh call is the worker's own; intercepting it would recurse.
-    expect(decideIntercept(`${ORIGIN}/api/auth/refresh`, ORIGIN)).toBe('pass-through')
-    // Playback URLs carry their own token; hls.js requests must not be touched.
-    expect(decideIntercept(`${ORIGIN}/api/stream/abc/multivariant.m3u8`, ORIGIN)).toBe('pass-through')
-    expect(decideIntercept(`${ORIGIN}/api/stream/abc/segment-0001.m4s?t=x`, ORIGIN)).toBe(
+    expect(decideIntercept(`${ORIGIN}/api/auth/refresh`, ORIGIN)).toBe(
       'pass-through',
     )
+    // Playback URLs carry their own token; hls.js requests must not be touched.
+    expect(
+      decideIntercept(`${ORIGIN}/api/stream/abc/multivariant.m3u8`, ORIGIN),
+    ).toBe('pass-through')
+    expect(
+      decideIntercept(`${ORIGIN}/api/stream/abc/segment-0001.m4s?t=x`, ORIGIN),
+    ).toBe('pass-through')
   })
 
   it('shouldPassThroughCrossOriginAndAppShellFetches', () => {
-    expect(decideIntercept('https://other.example/graphql', ORIGIN)).toBe('pass-through')
-    expect(decideIntercept(`${ORIGIN}/assets/app.js`, ORIGIN)).toBe('pass-through')
+    expect(decideIntercept('https://other.example/graphql', ORIGIN)).toBe(
+      'pass-through',
+    )
+    expect(decideIntercept(`${ORIGIN}/assets/app.js`, ORIGIN)).toBe(
+      'pass-through',
+    )
     expect(decideIntercept(`${ORIGIN}/`, ORIGIN)).toBe('pass-through')
   })
 })
@@ -45,6 +62,17 @@ describe('isExpiredTokenResponse', () => {
   })
 })
 
+describe('rememberCsrfToken', () => {
+  it('shouldLearnTokenFromInterceptedPageRequestAfterWorkerRestart', () => {
+    expect(rememberCsrfToken(null, 'csrf-from-page')).toBe('csrf-from-page')
+  })
+
+  it('shouldKeepCachedTokenWhenRequestDoesNotCarryOne', () => {
+    expect(rememberCsrfToken('cached-token', null)).toBe('cached-token')
+    expect(rememberCsrfToken('cached-token', '   ')).toBe('cached-token')
+  })
+})
+
 describe('SingleFlight', () => {
   it('shouldQueueAndReplayWhileSingleRefreshInFlight', async () => {
     // One SW instance serves every tab, so a module-scoped in-flight promise IS the
@@ -58,7 +86,11 @@ describe('SingleFlight', () => {
         }),
     )
 
-    const results = Promise.all([flight.run(refresh), flight.run(refresh), flight.run(refresh)])
+    const results = Promise.all([
+      flight.run(refresh),
+      flight.run(refresh),
+      flight.run(refresh),
+    ])
     release()
 
     expect(await results).toEqual([true, true, true])

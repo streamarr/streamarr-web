@@ -1,14 +1,31 @@
 import { HttpResponse, http } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { server } from '../test/server'
-import { AuthApiError, getSetupStatus, login, logout, selectProfile, setup } from './api'
+import {
+  AuthApiError,
+  getSetupStatus,
+  login,
+  logout,
+  selectProfile,
+  setup,
+} from './api'
 
-const TOKENS = { accessTokenExpiresAt: '2026-07-08T12:10:00Z', scope: 'profile' }
+const TOKENS = {
+  accessTokenExpiresAt: '2026-07-08T12:10:00Z',
+  scope: 'profile',
+}
 
 describe('auth api', () => {
+  afterEach(() => {
+    document.cookie = '__Host-XSRF-TOKEN=; Max-Age=0; Secure; Path=/'
+    document.cookie = 'XSRF-TOKEN=; Max-Age=0; Path=/'
+  })
+
   it('shouldReportSetupStatus', async () => {
     server.use(
-      http.get('/api/auth/status', () => HttpResponse.json({ setupComplete: true })),
+      http.get('/api/auth/status', () =>
+        HttpResponse.json({ setupComplete: true }),
+      ),
     )
     await expect(getSetupStatus()).resolves.toEqual({ setupComplete: true })
   })
@@ -22,10 +39,18 @@ describe('auth api', () => {
       }),
     )
 
-    const result = await login({ email: 'a@b.com', password: 'pw', deviceName: 'web' })
+    const result = await login({
+      email: 'a@b.com',
+      password: 'pw',
+      deviceName: 'web',
+    })
 
     expect(result).toEqual(TOKENS)
-    expect(sentBody).toMatchObject({ email: 'a@b.com', password: 'pw', cookieMode: true })
+    expect(sentBody).toMatchObject({
+      email: 'a@b.com',
+      password: 'pw',
+      cookieMode: true,
+    })
   })
 
   it('shouldThrowTypedErrorWithCodeOnRejectedLogin', async () => {
@@ -35,17 +60,19 @@ describe('auth api', () => {
       ),
     )
 
-    await expect(login({ email: 'a@b.com', password: 'wrong' })).rejects.toMatchObject({
+    await expect(
+      login({ email: 'a@b.com', password: 'wrong' }),
+    ).rejects.toMatchObject({
       status: 401,
       code: 'INVALID_CREDENTIALS',
     })
-    await expect(login({ email: 'a@b.com', password: 'wrong' })).rejects.toBeInstanceOf(
-      AuthApiError,
-    )
+    await expect(
+      login({ email: 'a@b.com', password: 'wrong' }),
+    ).rejects.toBeInstanceOf(AuthApiError)
   })
 
   it('shouldAttachCsrfHeaderOnLogin', async () => {
-    document.cookie = 'XSRF-TOKEN=csrf-login'
+    document.cookie = '__Host-XSRF-TOKEN=csrf-login; Secure; Path=/'
     let header: string | null = null
     server.use(
       http.post('/api/auth/login', ({ request }) => {
@@ -95,8 +122,17 @@ describe('auth api', () => {
     expect(header).toBe('csrf-abc')
   })
 
-  it('shouldResolveLogoutWithoutBody', async () => {
-    server.use(http.post('/api/auth/logout', () => new HttpResponse(null, { status: 204 })))
+  it('shouldAttachCsrfHeaderAndResolveLogoutWithoutBody', async () => {
+    document.cookie = '__Host-XSRF-TOKEN=csrf-logout; Secure; Path=/'
+    let header: string | null = null
+    server.use(
+      http.post('/api/auth/logout', ({ request }) => {
+        header = request.headers.get('X-XSRF-TOKEN')
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+
     await expect(logout()).resolves.toBeUndefined()
+    expect(header).toBe('csrf-logout')
   })
 })

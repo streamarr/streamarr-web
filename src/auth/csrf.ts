@@ -1,6 +1,7 @@
 // The CSRF cookie is deliberately script-readable; the page reads it and hands it to the service
 // worker, which attaches it to its own refresh POSTs. Secure deployments use the host-bound name.
-// The unprefixed name is accepted only for the server's explicitly insecure development mode.
+// The unprefixed name is accepted only for the server's explicitly insecure development mode. The
+// wire-contract counterpart is AuthCookies in streamarr-server.
 
 export function readCsrfCookie(): string | null {
   const match =
@@ -9,15 +10,19 @@ export function readCsrfCookie(): string | null {
   if (!match) {
     return null
   }
-  return decodeURIComponent(match[1])
+  try {
+    return decodeURIComponent(match[1])
+  } catch {
+    return null
+  }
 }
 
-const CSRF_HEADER = 'X-XSRF-TOKEN'
+export const CSRF_HEADER = 'X-XSRF-TOKEN'
 
 /**
  * The double-submit echo every cookie-mode unsafe request carries — read per request, since the
- * token changes when the session rotates. Empty until the server has issued a token: there is
- * nothing to echo yet.
+ * server may replace the cookie. Empty until the server has issued a token: there is nothing to
+ * echo yet.
  */
 export function csrfHeaders(): Record<string, string> {
   const token = readCsrfCookie()
@@ -32,5 +37,8 @@ export function postCsrfTokenToServiceWorker(): void {
 }
 
 export function scheduleTokenRenewal(expiresAt: string): void {
-  navigator.serviceWorker?.controller?.postMessage({ type: 'schedule-renewal', expiresAt })
+  navigator.serviceWorker?.controller?.postMessage({
+    type: 'schedule-renewal',
+    expiresAt,
+  })
 }

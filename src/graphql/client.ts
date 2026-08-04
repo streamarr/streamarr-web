@@ -7,15 +7,29 @@ import { decideAuthRoute, extractAuthContext } from './errorRouting'
 
 export type AuthRoute = '/login' | '/select'
 
+const CSRF_RETRY_ATTEMPTED = 'csrfRetryAttempted'
+
 // No auth link: cookies and the service worker own the session, and the only header the client
 // adds is the CSRF echo — a POST carrying the auth cookies is exactly what the server's CSRF
 // matcher covers, so every operation must send it. The error link routes the two error classes
 // the SW can't resolve — AUTHENTICATION_REQUIRED/INVALID_TOKEN → /login, and
 // PROFILE_REQUIRED/HOUSEHOLD_REQUIRED → /select. EXPIRED_TOKEN 401s rarely reach here (the SW
 // refreshes and replays them) and never redirect.
-export function createApolloClient(onAuthRoute: (route: AuthRoute) => void): ApolloClient {
-  const errorLink = onError(({ error }) => {
-    const route = decideAuthRoute(extractAuthContext(error))
+export function createApolloClient(
+  onAuthRoute: (route: AuthRoute) => void,
+): ApolloClient {
+  const errorLink = onError(({ error, operation, forward }) => {
+    const context = extractAuthContext(error)
+    if (
+      context.networkStatus === 403 &&
+      context.networkCode === 'CSRF_TOKEN_REQUIRED' &&
+      operation.getContext()[CSRF_RETRY_ATTEMPTED] !== true
+    ) {
+      operation.setContext({ [CSRF_RETRY_ATTEMPTED]: true })
+      return forward(operation)
+    }
+
+    const route = decideAuthRoute(context)
     if (route) {
       onAuthRoute(route)
     }
@@ -25,7 +39,10 @@ export function createApolloClient(onAuthRoute: (route: AuthRoute) => void): Apo
     headers: { ...prevContext.headers, ...csrfHeaders() },
   }))
 
-  const httpLink = new HttpLink({ uri: '/graphql', credentials: 'same-origin' })
+  const httpLink = new HttpLink({
+    uri: '/graphql',
+    credentials: 'same-origin',
+  })
 
   return new ApolloClient({
     link: from([errorLink, csrfLink, httpLink]),
