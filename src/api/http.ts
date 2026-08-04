@@ -1,4 +1,4 @@
-import { readCsrfCookie } from '../auth/csrf'
+import { csrfHeaders } from '../auth/csrf'
 
 // Same-origin by construction (Vite dev proxy in development, reverse proxy in production), so
 // no CORS. Cookies are the carrier; nothing here ever touches a token value.
@@ -42,9 +42,8 @@ export async function request(
   const headers = new Headers(init.headers)
   if (init.csrf) {
     // Cookie-authenticated POSTs require the CSRF token echoed from the script-readable cookie.
-    const token = readCsrfCookie()
-    if (token) {
-      headers.set('X-XSRF-TOKEN', token)
+    for (const [name, value] of Object.entries(csrfHeaders())) {
+      headers.set(name, value)
     }
   }
   const response = await fetch(url, { ...init, headers, credentials: 'same-origin' })
