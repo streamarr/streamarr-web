@@ -34,6 +34,26 @@ describe('apollo client', () => {
     expect(header).toBeNull()
   })
 
+  it('shouldNotRouteAuthErrorsForOperationsThatOptOut', async () => {
+    // The session probe asks "am I signed in?" — a 401 is an answer, not an eviction, so the
+    // asking operation may opt out of the error link's navigation.
+    server.use(
+      http.post('/graphql', () =>
+        HttpResponse.json({ code: 'AUTHENTICATION_REQUIRED' }, { status: 401 }),
+      ),
+    )
+    const onAuthRoute = vi.fn()
+    const client = createApolloClient(onAuthRoute)
+
+    await client
+      .query({ query: ME_QUERY, context: { skipAuthRouting: true } })
+      .catch(() => {
+        // The 401 still rejects the query; only the navigation is suppressed.
+      })
+
+    expect(onAuthRoute).not.toHaveBeenCalled()
+  })
+
   it('shouldAttachCsrfHeaderMatchingTheCookieOnEveryOperation', async () => {
     document.cookie = '__Host-XSRF-TOKEN=csrf-graphql; Secure; Path=/'
     const headers: (string | null)[] = []

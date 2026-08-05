@@ -15,11 +15,11 @@ const CSRF_RETRY_ATTEMPTED = 'csrfRetryAttempted'
 // the SW can't resolve — AUTHENTICATION_REQUIRED/INVALID_TOKEN → /login, and
 // PROFILE_REQUIRED/HOUSEHOLD_REQUIRED → /select. A CSRF rejection retries once; forward() resumes
 // at the downstream CSRF link, which re-reads the re-minted cookie before the HTTP link sends the
-// operation. EXPIRED_TOKEN 401s rarely reach here (the SW refreshes and replays them) and never
-// redirect.
-export function createApolloClient(
-  onAuthRoute: (route: AuthRoute) => void,
-): ApolloClient {
+// operation. The session probe opts out of routing only: its 401 is an answer to "am I signed
+// in?", not an eviction, and the guard that asked owns the navigation — but it still benefits from
+// the CSRF retry like any other operation. EXPIRED_TOKEN 401s rarely reach here (the SW refreshes
+// and replays them) and never redirect.
+export function createApolloClient(onAuthRoute: (route: AuthRoute) => void): ApolloClient {
   const errorLink = onError(({ error, operation, forward }) => {
     const context = extractAuthContext(error)
     if (
@@ -28,6 +28,10 @@ export function createApolloClient(
     ) {
       operation.setContext({ [CSRF_RETRY_ATTEMPTED]: true })
       return forward(operation)
+    }
+
+    if (operation.getContext().skipAuthRouting) {
+      return
     }
 
     const route = decideAuthRoute(context)
