@@ -1,8 +1,5 @@
-import { Alert, Center, Loader } from '@mantine/core'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { decideAuthRoute, extractAuthContext } from '../../graphql/errorRouting'
-import { useMe } from '../../identity/useMe'
 import { LinkDevice } from '../../pairing/LinkDevice'
 
 interface LinkSearch {
@@ -15,10 +12,12 @@ export const Route = createFileRoute('/_authenticated/link')({
   component: Link,
 })
 
+// Approving a device is an account action; the _authenticated layout has already made the
+// server vouch for the session before this renders. A session that dies while the code is being
+// typed is the lookup's 401 to answer, and it must still carry the typed code back.
 function Link() {
   const { code } = Route.useSearch()
   const navigate = useNavigate()
-  const { data, loading, error } = useMe()
   // Read once: the effect below removes it from the URL, and re-reading would clear the field.
   const [initialCode] = useState(code ?? '')
 
@@ -30,26 +29,6 @@ function Link() {
       window.history.replaceState(null, '', '/link')
     }
   }, [code])
-
-  // Approving a device is an account action, so the form is for signed-in visitors only. The
-  // page cannot read the httpOnly session cookies — and its own auth state is empty after a
-  // reload — so the server decides, by answering me. A 401 there is routed to /login by the
-  // Apollo error link, carrying the way back; a session that dies later is LinkDevice's 401.
-  if (loading || isAlreadyBouncing(error)) {
-    return (
-      <Center h={200}>
-        <Loader role="status" aria-label="Checking your account" />
-      </Center>
-    )
-  }
-
-  if (!data) {
-    return (
-      <Alert color="red" role="alert">
-        Couldn't confirm you're signed in. Reload the page to try again.
-      </Alert>
-    )
-  }
 
   return (
     <LinkDevice
@@ -64,9 +43,4 @@ function Link() {
       }
     />
   )
-}
-
-/** An error the Apollo error link already turned into a redirect: reporting it would race it. */
-function isAlreadyBouncing(error: unknown): boolean {
-  return !!error && decideAuthRoute(extractAuthContext(error)) !== null
 }
