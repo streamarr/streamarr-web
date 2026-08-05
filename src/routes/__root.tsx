@@ -1,7 +1,12 @@
 import { AppShell, Title } from '@mantine/core'
-import { createRootRoute, Link, Outlet } from '@tanstack/react-router'
+import { createRootRouteWithContext, Link, Outlet } from '@tanstack/react-router'
+import type { SessionStore } from '../auth/session'
 
-export const Route = createRootRoute({
+interface RouterContext {
+  session: SessionStore
+}
+
+export const Route = createRootRouteWithContext<RouterContext>()({
   component: RootLayout,
 })
 

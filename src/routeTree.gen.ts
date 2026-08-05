@@ -10,20 +10,16 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SetupRouteImport } from './routes/setup'
-import { Route as SelectRouteImport } from './routes/select'
 import { Route as LoginRouteImport } from './routes/login'
-import { Route as LinkRouteImport } from './routes/link'
-import { Route as IndexRouteImport } from './routes/index'
-import { Route as PlayMediaFileIdRouteImport } from './routes/play.$mediaFileId'
+import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
+import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
+import { Route as AuthenticatedSelectRouteImport } from './routes/_authenticated/select'
+import { Route as AuthenticatedLinkRouteImport } from './routes/_authenticated/link'
+import { Route as AuthenticatedPlayMediaFileIdRouteImport } from './routes/_authenticated/play.$mediaFileId'
 
 const SetupRoute = SetupRouteImport.update({
   id: '/setup',
   path: '/setup',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SelectRoute = SelectRouteImport.update({
-  id: '/select',
-  path: '/select',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -31,70 +27,79 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
-const LinkRoute = LinkRouteImport.update({
-  id: '/link',
-  path: '/link',
+const AuthenticatedRoute = AuthenticatedRouteImport.update({
+  id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
+const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AuthenticatedRoute,
 } as any)
-const PlayMediaFileIdRoute = PlayMediaFileIdRouteImport.update({
-  id: '/play/$mediaFileId',
-  path: '/play/$mediaFileId',
-  getParentRoute: () => rootRouteImport,
+const AuthenticatedSelectRoute = AuthenticatedSelectRouteImport.update({
+  id: '/select',
+  path: '/select',
+  getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedLinkRoute = AuthenticatedLinkRouteImport.update({
+  id: '/link',
+  path: '/link',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedPlayMediaFileIdRoute =
+  AuthenticatedPlayMediaFileIdRouteImport.update({
+    id: '/play/$mediaFileId',
+    path: '/play/$mediaFileId',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
-  '/link': typeof LinkRoute
+  '/': typeof AuthenticatedIndexRoute
   '/login': typeof LoginRoute
-  '/select': typeof SelectRoute
   '/setup': typeof SetupRoute
-  '/play/$mediaFileId': typeof PlayMediaFileIdRoute
+  '/link': typeof AuthenticatedLinkRoute
+  '/select': typeof AuthenticatedSelectRoute
+  '/play/$mediaFileId': typeof AuthenticatedPlayMediaFileIdRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
-  '/link': typeof LinkRoute
   '/login': typeof LoginRoute
-  '/select': typeof SelectRoute
   '/setup': typeof SetupRoute
-  '/play/$mediaFileId': typeof PlayMediaFileIdRoute
+  '/link': typeof AuthenticatedLinkRoute
+  '/select': typeof AuthenticatedSelectRoute
+  '/': typeof AuthenticatedIndexRoute
+  '/play/$mediaFileId': typeof AuthenticatedPlayMediaFileIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
-  '/link': typeof LinkRoute
+  '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/login': typeof LoginRoute
-  '/select': typeof SelectRoute
   '/setup': typeof SetupRoute
-  '/play/$mediaFileId': typeof PlayMediaFileIdRoute
+  '/_authenticated/link': typeof AuthenticatedLinkRoute
+  '/_authenticated/select': typeof AuthenticatedSelectRoute
+  '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/play/$mediaFileId': typeof AuthenticatedPlayMediaFileIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/link' | '/login' | '/select' | '/setup' | '/play/$mediaFileId'
+    '/' | '/login' | '/setup' | '/link' | '/select' | '/play/$mediaFileId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/link' | '/login' | '/select' | '/setup' | '/play/$mediaFileId'
+  to: '/login' | '/setup' | '/link' | '/select' | '/' | '/play/$mediaFileId'
   id:
     | '__root__'
-    | '/'
-    | '/link'
+    | '/_authenticated'
     | '/login'
-    | '/select'
     | '/setup'
-    | '/play/$mediaFileId'
+    | '/_authenticated/link'
+    | '/_authenticated/select'
+    | '/_authenticated/'
+    | '/_authenticated/play/$mediaFileId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
-  LinkRoute: typeof LinkRoute
+  AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   LoginRoute: typeof LoginRoute
-  SelectRoute: typeof SelectRoute
   SetupRoute: typeof SetupRoute
-  PlayMediaFileIdRoute: typeof PlayMediaFileIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -106,13 +111,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SetupRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/select': {
-      id: '/select'
-      path: '/select'
-      fullPath: '/select'
-      preLoaderRoute: typeof SelectRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -120,37 +118,66 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/link': {
-      id: '/link'
-      path: '/link'
-      fullPath: '/link'
-      preLoaderRoute: typeof LinkRouteImport
+    '/_authenticated': {
+      id: '/_authenticated'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthenticatedRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
+    '/_authenticated/': {
+      id: '/_authenticated/'
       path: '/'
       fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AuthenticatedIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
     }
-    '/play/$mediaFileId': {
-      id: '/play/$mediaFileId'
+    '/_authenticated/select': {
+      id: '/_authenticated/select'
+      path: '/select'
+      fullPath: '/select'
+      preLoaderRoute: typeof AuthenticatedSelectRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/link': {
+      id: '/_authenticated/link'
+      path: '/link'
+      fullPath: '/link'
+      preLoaderRoute: typeof AuthenticatedLinkRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/play/$mediaFileId': {
+      id: '/_authenticated/play/$mediaFileId'
       path: '/play/$mediaFileId'
       fullPath: '/play/$mediaFileId'
-      preLoaderRoute: typeof PlayMediaFileIdRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AuthenticatedPlayMediaFileIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
     }
   }
 }
 
+interface AuthenticatedRouteChildren {
+  AuthenticatedLinkRoute: typeof AuthenticatedLinkRoute
+  AuthenticatedSelectRoute: typeof AuthenticatedSelectRoute
+  AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedPlayMediaFileIdRoute: typeof AuthenticatedPlayMediaFileIdRoute
+}
+
+const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
+  AuthenticatedLinkRoute: AuthenticatedLinkRoute,
+  AuthenticatedSelectRoute: AuthenticatedSelectRoute,
+  AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+  AuthenticatedPlayMediaFileIdRoute: AuthenticatedPlayMediaFileIdRoute,
+}
+
+const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
+  AuthenticatedRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
-  LinkRoute: LinkRoute,
+  AuthenticatedRoute: AuthenticatedRouteWithChildren,
   LoginRoute: LoginRoute,
-  SelectRoute: SelectRoute,
   SetupRoute: SetupRoute,
-  PlayMediaFileIdRoute: PlayMediaFileIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

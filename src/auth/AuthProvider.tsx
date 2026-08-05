@@ -10,6 +10,7 @@ import {
   type SetupInput,
 } from './api'
 import { postCsrfTokenToServiceWorker, scheduleTokenRenewal } from './csrf'
+import type { SessionStore } from './session'
 
 export interface Session {
   scope: string
@@ -27,17 +28,28 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+export function AuthProvider({
+  sessionStore,
+  children,
+}: {
+  sessionStore: SessionStore
+  children: ReactNode
+}) {
   const [session, setSession] = useState<Session | null>(null)
 
-  // Every credential-issuing response updates session state and hands the worker the fresh
-  // expiry (to schedule proactive renewal) and CSRF token — the worker can read neither cookie.
-  const adopt = useCallback((tokens: AuthTokens): AuthTokens => {
-    setSession({ scope: tokens.scope, accessTokenExpiresAt: tokens.accessTokenExpiresAt })
-    scheduleTokenRenewal(tokens.accessTokenExpiresAt)
-    postCsrfTokenToServiceWorker()
-    return tokens
-  }, [])
+  // Every credential-issuing response updates session state, tells the store the server now
+  // vouches for the visitor (so route guards agree), and hands the worker the fresh expiry (to
+  // schedule proactive renewal) and CSRF token — the worker can read neither cookie.
+  const adopt = useCallback(
+    (tokens: AuthTokens): AuthTokens => {
+      sessionStore.markAuthenticated()
+      setSession({ scope: tokens.scope, accessTokenExpiresAt: tokens.accessTokenExpiresAt })
+      scheduleTokenRenewal(tokens.accessTokenExpiresAt)
+      postCsrfTokenToServiceWorker()
+      return tokens
+    },
+    [sessionStore],
+  )
 
   const login = useCallback((input: LoginInput) => apiLogin(input).then(adopt), [adopt])
   const setup = useCallback((input: SetupInput) => apiSetup(input).then(adopt), [adopt])
@@ -47,8 +59,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
   const selectProfile = useCallback((id: string) => apiSelectProfile(id).then(adopt), [adopt])
   const logout = useCallback(
-    () => apiLogout().then(() => setSession(null)),
-    [],
+    () =>
+      apiLogout().then(() => {
+        sessionStore.markAnonymous()
+        setSession(null)
+      }),
+    [sessionStore],
   )
 
   const value = useMemo(

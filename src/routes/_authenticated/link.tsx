@@ -1,15 +1,15 @@
 import { Alert, Center, Loader } from '@mantine/core'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { decideAuthRoute, extractAuthContext } from '../graphql/errorRouting'
-import { useMe } from '../identity/useMe'
-import { LinkDevice } from '../pairing/LinkDevice'
+import { decideAuthRoute, extractAuthContext } from '../../graphql/errorRouting'
+import { useMe } from '../../identity/useMe'
+import { LinkDevice } from '../../pairing/LinkDevice'
 
 interface LinkSearch {
   code?: string
 }
 
-export const Route = createFileRoute('/link')({
+export const Route = createFileRoute('/_authenticated/link')({
   validateSearch: (search: Record<string, unknown>): LinkSearch =>
     typeof search.code === 'string' ? { code: search.code } : {},
   component: Link,
@@ -57,7 +57,9 @@ function Link() {
       onUnauthenticated={(pendingCode) =>
         navigate({
           to: '/login',
-          search: { redirect: '/link', code: pendingCode || undefined },
+          search: {
+            redirect: pendingCode ? `/link?code=${encodeURIComponent(pendingCode)}` : '/link',
+          },
         })
       }
     />

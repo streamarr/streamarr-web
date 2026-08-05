@@ -1,10 +1,10 @@
 import { Alert, Center, Loader, Stack, Text, Title } from '@mantine/core'
 import { createFileRoute } from '@tanstack/react-router'
-import { CSRF_REJECTION_MESSAGE, isCsrfRejection } from '../auth/csrf'
-import { extractAuthContext } from '../graphql/errorRouting'
-import { useMe } from '../identity/useMe'
+import { CSRF_REJECTION_MESSAGE, isCsrfRejection } from '../../auth/csrf'
+import { extractAuthContext } from '../../graphql/errorRouting'
+import { useMe } from '../../identity/useMe'
 
-export const Route = createFileRoute('/')({
+export const Route = createFileRoute('/_authenticated/')({
   component: Home,
 })
 

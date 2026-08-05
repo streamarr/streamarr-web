@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { Player } from '../streaming/Player'
+import { Player } from '../../streaming/Player'
 
-export const Route = createFileRoute('/play/$mediaFileId')({
+export const Route = createFileRoute('/_authenticated/play/$mediaFileId')({
   component: Play,
 })
 

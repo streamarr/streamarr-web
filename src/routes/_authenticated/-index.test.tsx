@@ -1,8 +1,8 @@
 import { screen } from '@testing-library/react'
 import { HttpResponse, http } from 'msw'
 import { describe, expect, it } from 'vitest'
-import { renderAppAt } from '../test/render'
-import { server } from '../test/server'
+import { renderAppAt } from '../../test/render'
+import { server } from '../../test/server'
 
 describe('/', () => {
   it('shouldExplainRecoveryWhenCsrfRetryCannotLoadTheSession', async () => {

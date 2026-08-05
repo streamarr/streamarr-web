@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { Picker } from '../identity/Picker'
+import { Picker } from '../../identity/Picker'
 
-export const Route = createFileRoute('/select')({
+export const Route = createFileRoute('/_authenticated/select')({
   component: Select,
 })
 

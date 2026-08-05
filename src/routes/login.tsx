@@ -1,26 +1,27 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
 import type { AuthTokens } from '../auth/api'
 import { LoginForm } from '../auth/LoginForm'
-import { RESUMABLE, type ResumeSearch } from '../auth/resume'
+import { type ResumeSearch, sanitizeResumeTarget } from '../auth/resume'
 
 export const Route = createFileRoute('/login')({
   validateSearch: (search: Record<string, unknown>): ResumeSearch => ({
-    redirect: search.redirect === RESUMABLE ? RESUMABLE : undefined,
-    code: typeof search.code === 'string' ? search.code : undefined,
+    redirect: sanitizeResumeTarget(search.redirect),
   }),
   component: Login,
 })
 
 function Login() {
+  const router = useRouter()
   const navigate = useNavigate()
-  const { redirect, code } = Route.useSearch()
+  const { redirect } = Route.useSearch()
 
-  // A profile-scoped token means auto-selection already landed a profile — go straight to the
-  // library. Anything less means the picker still needs a choice. Linking a device only needs an
-  // account-scoped session, so a pending approval resumes ahead of the picker.
+  // An interrupted destination wins: the guard (or a mid-session eviction) recorded where the
+  // visitor was headed, search params and all, so resume it verbatim. Otherwise route by what
+  // the tokens can already do — a profile-scoped session goes straight to the library, anything
+  // less still owes the picker a choice.
   function onAuthenticated(tokens: AuthTokens) {
-    if (redirect === RESUMABLE) {
-      navigate({ to: RESUMABLE, search: code ? { code } : {} })
+    if (redirect) {
+      router.history.push(redirect)
       return
     }
     navigate({ to: tokens.scope === 'profile' ? '/' : '/select' })
