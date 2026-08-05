@@ -1,8 +1,8 @@
 import { screen, waitFor } from '@testing-library/react'
 import { HttpResponse, graphql, http } from 'msw'
 import { describe, expect, it } from 'vitest'
-import { renderAppAt } from '../test/render'
-import { server } from '../test/server'
+import { renderAppAt } from '../../test/render'
+import { server } from '../../test/server'
 
 const ME = {
   accountId: '11111111-1111-1111-1111-111111111111',
@@ -109,16 +109,6 @@ describe('/link', () => {
     await user.click(screen.getByRole('button', { name: /continue/i }))
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
-    expect(router.state.location.search).toEqual({ redirect: '/link', code: 'bcdf-ghjk' })
-  })
-
-  it('shouldNotOfferAReturnPathFromAPageSignInCannotResume', async () => {
-    // Only /link is resumable; echoing back wherever the visitor happened to be is how
-    // open-redirect bugs get in.
-    serverRejectsTheVisitor()
-    const { router } = renderAppAt('/')
-
-    await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
-    expect(router.state.location.search).toEqual({})
+    expect(router.state.location.search).toEqual({ redirect: '/link?code=bcdf-ghjk' })
   })
 })

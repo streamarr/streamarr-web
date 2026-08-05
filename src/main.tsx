@@ -10,7 +10,7 @@ import { postCsrfTokenToServiceWorker } from './auth/csrf'
 import { createAppRouter } from './router'
 import { decideRegistration } from './sw/registration'
 
-const { router, apolloClient } = createAppRouter()
+const { router, apolloClient, session } = createAppRouter()
 
 if ('serviceWorker' in navigator) {
   const { scriptUrl, options } = decideRegistration(import.meta.env.DEV)
@@ -26,7 +26,7 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <MantineProvider defaultColorScheme="dark">
       <ApolloProvider client={apolloClient}>
-        <AuthProvider>
+        <AuthProvider sessionStore={session}>
           <RouterProvider router={router} />
         </AuthProvider>
       </ApolloProvider>
