@@ -7,6 +7,10 @@ import userEvent from '@testing-library/user-event'
 import type { ReactElement } from 'react'
 import { vi } from 'vitest'
 import { AuthProvider } from '../auth/AuthProvider'
+import {
+  inactiveRenewalBridge,
+  type RenewalBridge,
+} from '../auth/renewalBridge'
 import { createSessionStore, type SessionStore } from '../auth/session'
 import { createApolloClient } from '../graphql/client'
 import { createAppRouter } from '../router'
@@ -23,7 +27,12 @@ export function renderWithProviders(ui: ReactElement): Rendered {
   const session = createSessionStore(() =>
     Promise.reject(new Error('component tests must not probe the session')),
   )
-  return renderUnderProviders(createApolloClient(vi.fn()), session, ui)
+  return renderUnderProviders(
+    createApolloClient(vi.fn()),
+    session,
+    inactiveRenewalBridge,
+    ui,
+  )
 }
 
 /**
@@ -32,14 +41,23 @@ export function renderWithProviders(ui: ReactElement): Rendered {
  * as it ships. The returned router is the assertion surface: its location says where a visitor
  * landed.
  */
-export function renderAppAt(path: string): Rendered & {
+export function renderAppAt(
+  path: string,
+  renewal: RenewalBridge = inactiveRenewalBridge,
+): Rendered & {
   router: ReturnType<typeof createAppRouter>['router']
 } {
   const { router, apolloClient, session } = createAppRouter(
     createMemoryHistory({ initialEntries: [path] }),
+    renewal,
   )
   return {
-    ...renderUnderProviders(apolloClient, session, <RouterProvider router={router} />),
+    ...renderUnderProviders(
+      apolloClient,
+      session,
+      renewal,
+      <RouterProvider router={router} />,
+    ),
     router,
   }
 }
@@ -47,13 +65,16 @@ export function renderAppAt(path: string): Rendered & {
 function renderUnderProviders(
   client: ApolloClient,
   session: SessionStore,
+  renewal: RenewalBridge,
   ui: ReactElement,
 ): Rendered {
   const user = userEvent.setup()
   const result = render(
     <ApolloProvider client={client}>
       <MantineProvider defaultColorScheme="dark">
-        <AuthProvider sessionStore={session}>{ui}</AuthProvider>
+        <AuthProvider sessionStore={session} renewal={renewal}>
+          {ui}
+        </AuthProvider>
       </MantineProvider>
     </ApolloProvider>,
   )

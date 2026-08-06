@@ -9,7 +9,8 @@ import {
   type LoginInput,
   type SetupInput,
 } from './api'
-import { postCsrfTokenToServiceWorker, scheduleTokenRenewal } from './csrf'
+import { postCsrfTokenToServiceWorker } from './csrf'
+import type { RenewalBridge } from './renewalBridge'
 import type { SessionStore } from './session'
 
 export interface Session {
@@ -30,9 +31,11 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({
   sessionStore,
+  renewal,
   children,
 }: {
   sessionStore: SessionStore
+  renewal: Pick<RenewalBridge, 'adoptExpiry' | 'stop'>
   children: ReactNode
 }) {
   const [session, setSession] = useState<Session | null>(null)
@@ -44,11 +47,11 @@ export function AuthProvider({
     (tokens: AuthTokens): AuthTokens => {
       sessionStore.markAuthenticated()
       setSession({ scope: tokens.scope, accessTokenExpiresAt: tokens.accessTokenExpiresAt })
-      scheduleTokenRenewal(tokens.accessTokenExpiresAt)
+      renewal.adoptExpiry(tokens.accessTokenExpiresAt)
       postCsrfTokenToServiceWorker()
       return tokens
     },
-    [sessionStore],
+    [renewal, sessionStore],
   )
 
   const login = useCallback((input: LoginInput) => apiLogin(input).then(adopt), [adopt])
@@ -63,8 +66,9 @@ export function AuthProvider({
       apiLogout().then(() => {
         sessionStore.markAnonymous()
         setSession(null)
+        renewal.stop()
       }),
-    [sessionStore],
+    [renewal, sessionStore],
   )
 
   const value = useMemo(

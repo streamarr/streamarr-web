@@ -7,9 +7,9 @@ import { defineConfig } from 'vite'
 //   STREAMARR_API_TARGET=http://10.0.0.5:8080 npm run dev
 const apiTarget = process.env.STREAMARR_API_TARGET ?? 'http://localhost:8080'
 
-// The service worker builds as its own entry served from the origin root (/sw.js) so its scope
-// covers the whole app; in dev Vite serves the module entry from /src/sw/, so root scope is
-// only reachable because the dev server sends Service-Worker-Allowed below.
+// Both workers build as stable origin-root entries. The service worker's /sw.js location gives it
+// whole-app scope; in dev Vite serves the module entries from /src/, so the worker's root scope
+// is only reachable because the dev server sends Service-Worker-Allowed below.
 export default defineConfig({
   plugins: [tanstackRouter({ target: 'react', autoCodeSplitting: true }), react()],
   server: {
@@ -25,10 +25,15 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: path.resolve(import.meta.dirname, 'index.html'),
+        renewal: path.resolve(import.meta.dirname, 'src/auth/renewal-worker.ts'),
         sw: path.resolve(import.meta.dirname, 'src/sw/sw.ts'),
       },
       output: {
-        entryFileNames: (chunk) => (chunk.name === 'sw' ? 'sw.js' : 'assets/[name]-[hash].js'),
+        entryFileNames: (chunk) => {
+          if (chunk.name === 'sw') return 'sw.js'
+          if (chunk.name === 'renewal') return 'renewal-worker.js'
+          return 'assets/[name]-[hash].js'
+        },
       },
     },
   },
