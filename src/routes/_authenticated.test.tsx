@@ -1,6 +1,6 @@
 import { screen, waitFor } from '@testing-library/react'
 import { HttpResponse, graphql, http } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
 
@@ -95,6 +95,19 @@ describe('the authenticated layout', () => {
     expect(await screen.findByRole('button', { name: /sign in/i })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/login')
     expect(screen.queryByRole('button', { name: /sign out/i })).not.toBeInTheDocument()
+  })
+
+  it('shouldRestartProactiveRenewalAfterAuthenticatedHardReload', async () => {
+    server.use(graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })))
+    const renewal = {
+      adoptExpiry: vi.fn(),
+      refreshNow: vi.fn(async () => ({ kind: 'renewed' as const, expiresAt: '2026-08-06T12:10:00Z' })),
+      stop: vi.fn(),
+    }
+
+    renderAppAt('/', renewal)
+
+    await waitFor(() => expect(renewal.refreshNow).toHaveBeenCalledOnce())
   })
 
   it('shouldLeaveSignInReachableWithoutAskingTheServer', async () => {

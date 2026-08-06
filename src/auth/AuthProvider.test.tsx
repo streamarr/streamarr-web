@@ -1,0 +1,72 @@
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { HttpResponse, http } from 'msw'
+import { describe, expect, it, vi } from 'vitest'
+import { server } from '../test/server'
+import { AuthProvider, useAuth } from './AuthProvider'
+import { createSessionStore } from './session'
+
+const TOKENS = {
+  accessTokenExpiresAt: '2026-08-06T12:10:00Z',
+  scope: 'profile',
+}
+
+function LoginHarness() {
+  const auth = useAuth()
+  return (
+    <button
+      onClick={() =>
+        void auth.login({ email: 'user@example.com', password: 'correct password' })
+      }
+    >
+      Sign in
+    </button>
+  )
+}
+
+function LogoutHarness() {
+  const auth = useAuth()
+  return <button onClick={() => void auth.logout()}>Sign out</button>
+}
+
+describe('AuthProvider renewal', () => {
+  it('shouldAdoptEveryCredentialIssuingResponseIntoRenewal', async () => {
+    server.use(http.post('/api/auth/login', () => HttpResponse.json(TOKENS)))
+    const renewal = {
+      adoptExpiry: vi.fn(),
+      refreshNow: vi.fn(),
+      stop: vi.fn(),
+    }
+    const session = createSessionStore(async () => 'anonymous')
+    render(
+      <AuthProvider sessionStore={session} renewal={renewal}>
+        <LoginHarness />
+      </AuthProvider>,
+    )
+
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Sign in' }))
+
+    await waitFor(() => {
+      expect(renewal.adoptExpiry).toHaveBeenCalledWith(TOKENS.accessTokenExpiresAt)
+    })
+  })
+
+  it('shouldStopRenewalAfterLogoutCompletes', async () => {
+    server.use(http.post('/api/auth/logout', () => new HttpResponse(null, { status: 204 })))
+    const renewal = {
+      adoptExpiry: vi.fn(),
+      refreshNow: vi.fn(),
+      stop: vi.fn(),
+    }
+    const session = createSessionStore(async () => 'authenticated')
+    render(
+      <AuthProvider sessionStore={session} renewal={renewal}>
+        <LogoutHarness />
+      </AuthProvider>,
+    )
+
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Sign out' }))
+
+    await waitFor(() => expect(renewal.stop).toHaveBeenCalledOnce())
+  })
+})

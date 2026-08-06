@@ -45,10 +45,3 @@ export function postCsrfTokenToServiceWorker(): void {
     navigator.serviceWorker.controller.postMessage({ type: 'csrf', token })
   }
 }
-
-export function scheduleTokenRenewal(expiresAt: string): void {
-  navigator.serviceWorker?.controller?.postMessage({
-    type: 'schedule-renewal',
-    expiresAt,
-  })
-}
