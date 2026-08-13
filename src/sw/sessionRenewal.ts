@@ -131,7 +131,7 @@ export function createSessionRenewal({
         return response
       }
       if (refreshRejected) {
-        return response
+        return sessionEndedResponse()
       }
       if (preflightResult) {
         return preflightResult.kind === 'unavailable'
@@ -145,6 +145,11 @@ export function createSessionRenewal({
       if (result.kind === 'unavailable') {
         return refreshUnavailableResponse()
       }
+      // A terminal rejection routes to sign-in; a stale-generation rejection is not a verdict,
+      // so the caller keeps the server's own answer.
+      if (refreshRejected) {
+        return sessionEndedResponse()
+      }
       return response
     },
   }
@@ -157,6 +162,21 @@ function refreshUnavailableResponse(): Response {
       message: 'Your session could not be renewed. Try again.',
     },
     { status: 503, headers: { 'Cache-Control': 'no-store' } },
+  )
+}
+
+/**
+ * A raw EXPIRED_TOKEN passthrough would wedge the page: the error router deliberately leaves
+ * that code to this worker, and reloading can never help once renewal is terminally rejected.
+ * Surface the code the router sends to sign-in instead.
+ */
+function sessionEndedResponse(): Response {
+  return Response.json(
+    {
+      code: 'AUTHENTICATION_REQUIRED',
+      message: 'Your session has ended. Sign in again.',
+    },
+    { status: 401, headers: { 'Cache-Control': 'no-store' } },
   )
 }
 
