@@ -14,6 +14,11 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      # Local dev and the lockfile are npm 11; node 22 ships npm 10, whose
+      # lock completeness rules disagree with 11 in both directions (missing
+      # @emnapi entries one way, missing lightningcss platform optionals the
+      # other). One npm authors the lock, the same npm consumes it.
+      - run: npm install -g npm@11
       - run: npm ci
       - run: npm test
       - run: npm run build
