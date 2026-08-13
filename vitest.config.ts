@@ -2,6 +2,8 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
+    // Unit tests only: the Playwright specs under e2e/ run through their own runner.
+    include: ['src/**/*.test.{ts,tsx}'],
     environment: 'jsdom',
     environmentOptions: {
       jsdom: {
