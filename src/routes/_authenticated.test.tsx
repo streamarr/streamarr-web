@@ -71,6 +71,32 @@ describe('the authenticated layout', () => {
     expect(router.state.location.pathname).toBe('/')
   })
 
+  it('shouldSignOutFromTheHeaderAndReturnToSignIn', async () => {
+    let loggedOut = false
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
+      http.post('/api/auth/logout', () => {
+        loggedOut = true
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+    const { router, user } = renderAppAt('/')
+    await screen.findByText(/welcome, owner/i)
+
+    await user.click(screen.getByRole('button', { name: /sign out/i }))
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
+    expect(loggedOut).toBe(true)
+  })
+
+  it('shouldHideSignOutFromAVisitorWhoIsNotSignedIn', async () => {
+    const { router } = renderAppAt('/login')
+
+    expect(await screen.findByRole('button', { name: /sign in/i })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/login')
+    expect(screen.queryByRole('button', { name: /sign out/i })).not.toBeInTheDocument()
+  })
+
   it('shouldLeaveSignInReachableWithoutAskingTheServer', async () => {
     // No MSW handlers at all: if the gate probed the server from /login, the unhandled request
     // would fail this test loudly.
