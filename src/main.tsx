@@ -8,6 +8,7 @@ import { createRoot } from 'react-dom/client'
 import { postCsrfTokenToServiceWorker } from './auth/csrf'
 import { apolloClient } from './graphql/client'
 import { routeTree } from './routeTree.gen'
+import { decideRegistration } from './sw/registration'
 
 const router = createRouter({ routeTree })
 
@@ -18,9 +19,9 @@ declare module '@tanstack/react-router' {
 }
 
 if ('serviceWorker' in navigator) {
-  const swUrl = import.meta.env.DEV ? '/src/sw/sw.ts' : '/sw.js'
+  const { scriptUrl, options } = decideRegistration(import.meta.env.DEV)
   navigator.serviceWorker
-    .register(swUrl, { type: 'module' })
+    .register(scriptUrl, options)
     .then(() => postCsrfTokenToServiceWorker())
     .catch(() => {
       // Best-effort: the app works without the worker; renewal falls back to login routing.
