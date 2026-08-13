@@ -24,6 +24,17 @@ describe('session store', () => {
     expect(probe).toHaveBeenCalledTimes(1)
   })
 
+  it('shouldExposeTheCachedAnswerWithoutProbing', async () => {
+    const probe = vi.fn().mockResolvedValue('authenticated' as const)
+    const store = createSessionStore(probe)
+
+    expect(store.peek()).toBeNull()
+    await store.ensure()
+
+    expect(store.peek()).toBe('authenticated')
+    expect(probe).toHaveBeenCalledTimes(1)
+  })
+
   it('shouldNotProbeAgainOnceTheAnswerIsKnown', async () => {
     const probe = vi.fn().mockResolvedValue('anonymous' as const)
     const store = createSessionStore(probe)

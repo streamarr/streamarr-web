@@ -28,6 +28,21 @@ async function signIn(user: Awaited<ReturnType<typeof renderAppAt>>['user']) {
   await user.click(screen.getByRole('button', { name: /sign in/i }))
 }
 
+describe('/login gate', () => {
+  it('shouldBounceAKnownSignedInVisitorAwayFromSignIn', async () => {
+    // Only the cached answer drives this: /login must stay reachable with the server down
+    // (see shouldLeaveSignInReachableWithoutAskingTheServer), so the bounce covers exactly the
+    // visitor this page can teach nothing — one the server vouched for in this document's life.
+    server.use(graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })))
+    const { router } = renderAppAt('/')
+    await screen.findByText(/welcome, owner/i)
+
+    await router.navigate({ to: '/login' })
+
+    expect(router.state.location.pathname).toBe('/')
+  })
+})
+
 describe('/login resume', () => {
   it('shouldResumeTheInterruptedDestinationAfterSigningIn', async () => {
     serverAcceptsCredentials('account')
