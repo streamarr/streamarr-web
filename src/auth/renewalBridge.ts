@@ -25,6 +25,7 @@ interface RenewalBridgeDependencies {
   serviceWorkers: ServiceWorkerConnection
   readCsrfToken: () => string | null
   replyTimeoutMs?: number
+  discoveryTimeoutMs?: number
   createReplyChannel: () => {
     port1: BridgeMessagePort
     port2: BridgeMessagePort
@@ -51,6 +52,7 @@ export function createRenewalBridge({
   readCsrfToken,
   createReplyChannel,
   replyTimeoutMs = 30_000,
+  discoveryTimeoutMs = 3_000,
 }: RenewalBridgeDependencies): RenewalBridge {
   const postToSharedWorker = (message: unknown): void => {
     try {
@@ -61,10 +63,24 @@ export function createRenewalBridge({
   }
 
   const serviceWorkerEndpoint = async (): Promise<ServiceWorkerEndpoint | null> => {
+    // navigator.serviceWorker.ready never settles when no registration's scope matches the
+    // page, so discovery carries its own deadline instead of trusting the promise.
+    let deadline: ReturnType<typeof setTimeout> | undefined
     try {
-      return serviceWorkers.controller ?? (await serviceWorkers.ready).active
+      if (serviceWorkers.controller) {
+        return serviceWorkers.controller
+      }
+      const ready = await Promise.race([
+        serviceWorkers.ready,
+        new Promise<null>((resolve) => {
+          deadline = setTimeout(() => resolve(null), discoveryTimeoutMs)
+        }),
+      ])
+      return ready?.active ?? null
     } catch {
       return null
+    } finally {
+      clearTimeout(deadline)
     }
   }
 
