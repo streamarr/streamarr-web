@@ -1,4 +1,5 @@
 import '@mantine/core/styles.css'
+import './styles/tokens.generated.css'
 
 import { ApolloProvider } from '@apollo/client/react'
 import { MantineProvider } from '@mantine/core'
@@ -11,6 +12,7 @@ import { inactiveRenewalBridge } from './auth/renewalBridge'
 import { createBrowserRenewalBridge } from './auth/renewalBrowser'
 import { createAppRouter } from './router'
 import { decideRegistration } from './sw/registration'
+import { cssVariablesResolver, theme } from './theme'
 
 const renewal =
   'serviceWorker' in navigator
@@ -30,7 +32,11 @@ if ('serviceWorker' in navigator) {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <MantineProvider defaultColorScheme="dark">
+    <MantineProvider
+      defaultColorScheme="dark"
+      theme={theme}
+      cssVariablesResolver={cssVariablesResolver}
+    >
       <ApolloProvider client={apolloClient}>
         <AuthProvider sessionStore={session} renewal={renewal}>
           <RouterProvider router={router} />
