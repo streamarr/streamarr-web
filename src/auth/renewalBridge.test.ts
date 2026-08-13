@@ -276,6 +276,28 @@ describe('renewal bridge', () => {
     await expect(bridge.refreshNow()).resolves.toEqual({ kind: 'unavailable' })
   })
 
+  it('shouldReportUnavailableWhenNoServiceWorkerEverTakesControl', async () => {
+    // navigator.serviceWorker.ready never settles when no registration's scope matches the
+    // page (the dev scope regression), so endpoint discovery must carry its own deadline.
+    vi.useFakeTimers()
+    const bridge = createRenewalBridge({
+      sharedPort: null,
+      serviceWorkers: {
+        controller: null,
+        ready: new Promise(() => {}),
+        addEventListener: vi.fn(),
+      },
+      readCsrfToken: () => null,
+      createReplyChannel: replyChannel,
+      discoveryTimeoutMs: 100,
+    })
+
+    const renewal = bridge.refreshNow()
+    await vi.advanceTimersByTimeAsync(100)
+
+    await expect(renewal).resolves.toEqual({ kind: 'unavailable' })
+  })
+
   it('shouldReportUnavailableWhenServiceWorkerReadinessFails', async () => {
     const bridge = createRenewalBridge({
       sharedPort: null,
