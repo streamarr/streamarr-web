@@ -47,13 +47,19 @@ export function createSessionStore(probe: () => Promise<SessionAnswer>): Session
  * link's auth routing: a 401 here is the answer "anonymous", not a mid-session eviction, and the
  * guard that called this owns the resulting navigation. A PROFILE_REQUIRED answer means the
  * session is real and only a scope upgrade is missing — authenticated, as far as gating goes.
- * Anything else (server down, 500) rejects: the caller must not mistake an outage for a verdict.
+ * An EXPIRED_TOKEN that reaches the probe escaped every renewal layer, so on arrival it is also
+ * the answer "anonymous" — only the error link treats it as renewal's business. Anything else
+ * (server down, 500) rejects: the caller must not mistake an outage for a verdict.
  */
 export function probeSession(client: ApolloClient): Promise<SessionAnswer> {
   return client.query({ query: ME_QUERY, context: { skipAuthRouting: true } }).then(
     () => 'authenticated',
     (error) => {
-      switch (decideAuthRoute(extractAuthContext(error))) {
+      const context = extractAuthContext(error)
+      if (context.networkStatus === 401 && context.networkCode === 'EXPIRED_TOKEN') {
+        return 'anonymous'
+      }
+      switch (decideAuthRoute(context)) {
         case '/login':
           return 'anonymous'
         case '/select':
