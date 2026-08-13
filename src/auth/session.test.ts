@@ -82,6 +82,14 @@ describe('probeSession', () => {
     await expect(probeSession(createApolloClient(vi.fn()))).resolves.toBe('anonymous')
   })
 
+  it('shouldAnswerAnonymousWhenTheAccessTokenExpiredUnrenewed', async () => {
+    server.use(
+      http.post('/graphql', () => HttpResponse.json({ code: 'EXPIRED_TOKEN' }, { status: 401 })),
+    )
+
+    await expect(probeSession(createApolloClient(vi.fn()))).resolves.toBe('anonymous')
+  })
+
   it('shouldAnswerAuthenticatedWhenOnlyAProfileChoiceIsMissing', async () => {
     // PROFILE_REQUIRED means the server recognized the session and wants a scope upgrade — that
     // is a signed-in visitor, and /select is the error link's routing to arrange, not the guard's.

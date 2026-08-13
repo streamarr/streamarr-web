@@ -51,6 +51,18 @@ describe('the authenticated layout', () => {
     expect(router.state.location.search).toEqual({ redirect: '/' })
   })
 
+  it('shouldBounceAnExpiredUnrenewedSessionToSignIn', async () => {
+    // An expired token that reaches the probe escaped every renewal layer — a verdict about
+    // the session, not an outage. A reload-and-retry alert cannot help; signing in can.
+    server.use(
+      http.post('/graphql', () => HttpResponse.json({ code: 'EXPIRED_TOKEN' }, { status: 401 })),
+    )
+    const { router } = renderAppAt('/')
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
+    expect(router.state.location.search).toEqual({ redirect: '/' })
+  })
+
   it('shouldRenderTheGuardedPageForASignedInVisitor', async () => {
     server.use(graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })))
     const { router } = renderAppAt('/')
