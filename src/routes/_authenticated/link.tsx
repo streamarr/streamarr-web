@@ -17,6 +17,7 @@ export const Route = createFileRoute('/_authenticated/link')({
 // typed is the lookup's 401 to answer, and it must still carry the typed code back.
 function Link() {
   const { code } = Route.useSearch()
+  const { session } = Route.useRouteContext()
   const navigate = useNavigate()
   // Read once: the effect below removes it from the URL, and re-reading would clear the field.
   const [initialCode] = useState(code ?? '')
@@ -33,14 +34,17 @@ function Link() {
   return (
     <LinkDevice
       initialCode={initialCode}
-      onUnauthenticated={(pendingCode) =>
-        navigate({
+      onUnauthenticated={(pendingCode) => {
+        // Every eviction records the store's answer before bouncing — otherwise /login's
+        // cached-session gate would turn the evicted visitor straight back around.
+        session.markAnonymous()
+        return navigate({
           to: '/login',
           search: {
             redirect: pendingCode ? `/link?code=${encodeURIComponent(pendingCode)}` : '/link',
           },
         })
-      }
+      }}
     />
   )
 }

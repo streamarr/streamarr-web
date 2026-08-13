@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
+import { createFileRoute, redirect, useNavigate, useRouter } from '@tanstack/react-router'
 import type { AuthTokens } from '../auth/api'
 import { LoginForm } from '../auth/LoginForm'
 import { type ResumeSearch, sanitizeResumeTarget } from '../auth/resume'
@@ -7,6 +7,15 @@ export const Route = createFileRoute('/login')({
   validateSearch: (search: Record<string, unknown>): ResumeSearch => ({
     redirect: sanitizeResumeTarget(search.redirect),
   }),
+  // Only the cached session answer may drive this bounce: /login must render without any
+  // server dependency (it is the escape hatch from a broken auth state), so this never probes.
+  // It turns away exactly the visitor this page can teach nothing — one the server already
+  // vouched for during this document's lifetime.
+  beforeLoad: ({ context }) => {
+    if (context.session.peek() === 'authenticated') {
+      throw redirect({ to: '/' })
+    }
+  },
   component: Login,
 })
 

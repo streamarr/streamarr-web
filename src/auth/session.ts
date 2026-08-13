@@ -12,6 +12,8 @@ export type SessionAnswer = 'authenticated' | 'anonymous'
 export interface SessionStore {
   /** Resolve the session state, probing the server once if it has never answered. */
   ensure(): Promise<SessionAnswer>
+  /** The cached answer only — never probes; null until the server has answered once. */
+  peek(): SessionAnswer | null
   markAuthenticated(): void
   markAnonymous(): void
 }
@@ -32,6 +34,9 @@ export function createSessionStore(probe: () => Promise<SessionAnswer>): Session
           inFlight = null
         })
       return inFlight
+    },
+    peek() {
+      return known
     },
     markAuthenticated() {
       known = 'authenticated'
