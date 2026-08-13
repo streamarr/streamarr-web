@@ -1,0 +1,88 @@
+/**
+ * Do not edit directly, this file was auto-generated.
+ */
+
+:root {
+  --color-brand-blue: #1993c9; /** Brand ramp start. Pairs with brand.purple in gradient.brand only — never used as a lone accent; interaction accents use blue.deep. */
+  --color-brand-purple: #9254c0; /** Brand ramp end. Only appears inside gradient.brand. */
+  --color-blue-deep: #12557a; /** Active blue. Selected nav items, active filter chips, selected rows on neutral screens. Aliased as selection.active. */
+  --color-blue-sky: #5cc0e8; /** Active-track indicator bar in the player track menus. */
+  --color-gold-rating: #ffd60a; /** Rating star glyph. Matches the shipped StreamarrTheme.Semantic.rating. */
+  --color-mint: #6fe0bf; /** Semantic success and watched-state accent. Also the accent slot of the teal ambient reference palette — on neutral screens its use is semantic only (principle 1.2). */
+  --color-mint-ink: #06231c; /** Ink text on mint fills (watched check glyph, success chips). */
+  --color-white: #ffffff;
+  --color-alpha-10: rgba(255, 255, 255, 0.1); /** White 10% — hairline separators and dividers. */
+  --color-alpha-12: rgba(255, 255, 255, 0.12); /** White 12% — strong panel fill (badges, metadata chips). */
+  --color-alpha-16: rgba(255, 255, 255, 0.16); /** White 16% — quaternary text and inactive indicator dots (pagination marks). */
+  --color-alpha-18: rgba(255, 255, 255, 0.18); /** White 18% — heaviest panel fill: button chips and prominent controls. */
+  --color-alpha-32: rgba(255, 255, 255, 0.32); /** White 32% — tertiary text on web. */
+  --color-alpha-34: rgba(255, 255, 255, 0.34); /** White 34% — tertiary text on tv (10-foot contrast floor). */
+  --color-alpha-50: rgba(255, 255, 255, 0.5); /** White 50% — secondary text on web. */
+  --color-alpha-60: rgba(255, 255, 255, 0.6); /** White 60% — secondary text on tv. */
+  --color-alpha-92: rgba(255, 255, 255, 0.92); /** White 92% — primary text on both platforms. */
+  --color-alpha-05: rgba(255, 255, 255, 0.05); /** White 5% — subtlest panel wash (README: panels .05–.12). */
+  --color-alpha-07: rgba(255, 255, 255, 0.07); /** White 7% — standard panel fill. Dominant panel alpha in both mocks. */
+  --color-red-error: #ff4539; /** Error borders on invalid inputs. Matches the shipped StreamarrTheme.Semantic.error within one bit — production and mocks agree. */
+  --color-red-error-text: #e05c5c; /** Validation-failure text and failed-code borders (used at .65 alpha for borders). The web mock's #FF6B62 (3 uses) reads as drift from this value — flagged for normalization. */
+  --color-ground: #0a0b0e; /** Neutral base for web screens. */
+  --color-chrome: rgba(22, 24, 28, 0.78); /** Floating chrome on web — rgba(22,24,28,.78), the player control bar. */
+  --gradient-brand-angle: 45; /** Degrees, CSS convention. The mark's angle — every render of gradient.brand uses it. */
+  --gradient-wash-angle: 135; /** Degrees, CSS convention. Single-hue alpha washes (panel sheen) always run at this angle (principle 2.2). Scrims are excluded — they follow content geometry (principle 2.3). */
+  --font-family-content: 'Space Grotesk', system-ui, sans-serif; /** The content voice (principle 9.1). Set once at the root and inherited — the mocks declare it a single time; everything not explicitly system voice is Space Grotesk. */
+  --font-family-system: 'JetBrains Mono', ui-monospace, monospace; /** The system voice (principle 9.2): eyebrows, key–value labels, timestamps, pairing codes, badges. Always uppercase with tracking (letterSpacing.system). */
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --surface-raised: #15171c; /** Solid raised surface — sticky section headers inside scroll containers. Solid on purpose: content scrolling beneath must not ghost through. */
+  --surface-popover: #1b1e24; /** Anchored popover / context menu chrome, including its caret diamond (principle 11.2). */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+  --radius-2xl: 14px;
+  --border-width-hairline: 1px; /** Separators at desktop distance. tv uses 2px. */
+  --border-width-rule: 2px; /** The rule that stream tabs sit flush on (mocks/README.md shared patterns). */
+  --letter-spacing-system: 0.10em; /** Tracking for the uppercase system voice. Dominant value in the web mock (41 uses). */
+  --font-size-micro: 10px;
+  --font-size-caption: 11px;
+  --font-size-label: 12px;
+  --font-size-body: 13px;
+  --font-size-emphasis: 15px;
+  --font-size-subtitle: 16px;
+  --font-size-title: 20px;
+  --font-size-heading: 30px;
+  --font-size-display: 38px;
+  --font-size-hero: 52px;
+  --font-size-hero-lg: 64px;
+  --spacing-4: 4px;
+  --spacing-6: 6px;
+  --spacing-8: 8px;
+  --spacing-10: 10px;
+  --spacing-12: 12px;
+  --spacing-14: 14px;
+  --spacing-16: 16px;
+  --spacing-18: 18px;
+  --spacing-20: 20px;
+  --spacing-24: 24px;
+  --spacing-page: 50px; /** Screen content padding at web scale (50px vs 56 on tv). */
+  --line-height-display: 1.05; /** Hero and display titles. */
+  --line-height-prose: 1.55; /** Synopses and multi-line body copy. */
+  --text-primary: var(--color-alpha-92); /** Primary copy on neutral screens. */
+  --text-secondary: var(--color-alpha-50);
+  --text-tertiary: var(--color-alpha-32);
+  --text-quaternary: var(--color-alpha-16); /** Quietest text tier and inactive marks. */
+  --surface-wash: var(--color-alpha-05); /** Subtlest panel wash — rendered as a single-hue ramp at gradient.washAngle. */
+  --surface-panel: var(--color-alpha-07); /** Standard panel fill. */
+  --surface-panel-strong: var(--color-alpha-12); /** Strong panel fill — badges, chips, metadata pills-that-are-not-pills. */
+  --surface-panel-heavy: var(--color-alpha-18); /** Heaviest panel fill — button chips. */
+  --surface-chrome: var(--color-chrome); /** Floating chrome for player controls and floating overlays. */
+  --border-hairline: var(--color-alpha-10); /** Separator color. Width is platform-specific (borderWidth.hairline); hairlines stop a few px short of container edges (principle 4.1). */
+  --selection-active: var(--color-blue-deep); /** Selection on neutral screens (principle 2.5). On ambient pages, selection uses the runtime ambient.selected slot instead — see tokens/ambient/contract.json. */
+  --semantic-success: var(--color-mint); /** Success and watched state. The one sanctioned reuse of an ambient hue on neutral screens (principle 1.2) — reuse by meaning, not by mood. */
+  --semantic-success-ink: var(--color-mint-ink);
+  --semantic-rating: var(--color-gold-rating);
+  --semantic-error: var(--color-red-error); /** Error state — input borders, failure badges. */
+  --semantic-error-text: var(--color-red-error-text); /** Error copy on dark grounds. */
+  --indicator-active-track: var(--color-blue-sky); /** Active-track indicator bar in player track/quality menus. */
+}

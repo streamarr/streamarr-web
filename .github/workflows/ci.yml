@@ -23,3 +23,16 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npm run typecheck
+      # streamarr-ux is private, so this gate needs a read token for it
+      # (fine-grained PAT with Contents: read on streamarr/streamarr-ux,
+      # stored as STREAMARR_UX_TOKEN). Until the secret exists the step
+      # warns and passes — a skipped gate must never be a silent one.
+      - name: Verify design tokens match the pinned streamarr-ux ref
+        env:
+          GH_TOKEN: ${{ secrets.STREAMARR_UX_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::STREAMARR_UX_TOKEN not set — token drift gate skipped"
+            exit 0
+          fi
+          npm run tokens:check
