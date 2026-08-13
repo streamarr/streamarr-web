@@ -1,5 +1,6 @@
 import '@mantine/core/styles.css'
 import './styles/tokens.generated.css'
+import './styles/fonts.css'
 
 import { ApolloProvider } from '@apollo/client/react'
 import { MantineProvider } from '@mantine/core'
