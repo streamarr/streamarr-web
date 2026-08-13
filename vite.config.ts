@@ -4,10 +4,14 @@ import path from 'node:path'
 import { defineConfig } from 'vite'
 
 // The service worker builds as its own entry served from the origin root (/sw.js) so its scope
-// covers the whole app; in dev it is registered as /src/sw/sw.ts and Vite serves it as a module.
+// covers the whole app; in dev Vite serves the module entry from /src/sw/, so root scope is
+// only reachable because the dev server sends Service-Worker-Allowed below.
 export default defineConfig({
   plugins: [tanstackRouter({ target: 'react', autoCodeSplitting: true }), react()],
   server: {
+    headers: {
+      'Service-Worker-Allowed': '/',
+    },
     proxy: {
       '/graphql': 'http://localhost:8080',
       '/api': 'http://localhost:8080',
