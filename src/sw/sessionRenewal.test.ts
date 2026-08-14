@@ -162,6 +162,28 @@ describe('session renewal', () => {
     })
   })
 
+  it('shouldRenewAndReplayAnInvalidAccessTokenRequestOnce', async () => {
+    const paths: string[] = []
+    let apiAttempts = 0
+    const fetcher: typeof fetch = async (input) => {
+      const path = new URL(input instanceof Request ? input.url : input).pathname
+      paths.push(path)
+      if (path === '/api/auth/refresh') {
+        return Response.json({ accessTokenExpiresAt: NEXT_EXPIRY, scope: 'profile' })
+      }
+      apiAttempts += 1
+      return apiAttempts === 1
+        ? Response.json({ code: 'INVALID_TOKEN' }, { status: 401 })
+        : Response.json({ data: { me: { id: 'user-1' } } })
+    }
+    const renewal = createSessionRenewal({ fetch: fetcher, now: () => NOW, onRenewed: vi.fn() })
+
+    const response = await renewal.fetch(new Request('https://streamarr.test/graphql'))
+
+    expect(response.status).toBe(200)
+    expect(paths).toEqual(['/graphql', '/api/auth/refresh', '/graphql'])
+  })
+
   it('shouldExposeATemporaryRefreshOutageWithoutReportingLogout', async () => {
     const fetcher: typeof fetch = async (input) => {
       if (new URL(input instanceof Request ? input.url : input).pathname === '/api/auth/refresh') {

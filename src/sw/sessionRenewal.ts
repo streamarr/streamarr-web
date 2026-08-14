@@ -166,8 +166,8 @@ function refreshUnavailableResponse(): Response {
 }
 
 /**
- * A raw EXPIRED_TOKEN passthrough would wedge the page: the error router deliberately leaves
- * that code to this worker, and reloading can never help once renewal is terminally rejected.
+ * A raw recoverable-token response would wedge the page: renewal already failed terminally, and
+ * reloading cannot repair the rejected refresh session.
  * Surface the code the router sends to sign-in instead.
  */
 function sessionEndedResponse(): Response {

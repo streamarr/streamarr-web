@@ -61,15 +61,12 @@ export function AuthProvider({
     [adopt],
   )
   const selectProfile = useCallback((id: string) => apiSelectProfile(id).then(adopt), [adopt])
-  const logout = useCallback(
-    () =>
-      apiLogout().then(() => {
-        sessionStore.markAnonymous()
-        setSession(null)
-        renewal.stop()
-      }),
-    [renewal, sessionStore],
-  )
+  const logout = useCallback(async () => {
+    sessionStore.markAnonymous()
+    setSession(null)
+    renewal.stop()
+    await apiLogout()
+  }, [renewal, sessionStore])
 
   const value = useMemo(
     () => ({ session, login, setup, selectHousehold, selectProfile, logout }),
