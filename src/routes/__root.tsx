@@ -45,11 +45,10 @@ function SignOutButton() {
   const navigate = useNavigate()
 
   function onSignOut() {
-    // Only a server-confirmed logout leaves the session: on failure nothing changes on screen
-    // — the visitor stays signed in and the button remains to retry.
-    logout()
-      .then(() => navigate({ to: '/login' }))
-      .catch(() => {})
+    // Local state ends immediately. Server revocation remains best-effort so an outage cannot
+    // trap the visitor in a session they explicitly left.
+    void logout().catch(() => {})
+    void navigate({ to: '/login' })
   }
 
   return (

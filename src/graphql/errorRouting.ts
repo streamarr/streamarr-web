@@ -1,5 +1,6 @@
-// Where an auth error should send the user. EXPIRED_TOKEN is deliberately absent — the service
-// worker refreshes and replays those, so they rarely reach Apollo and never trigger a redirect.
+// Where an auth error should send the user. EXPIRED_TOKEN is deliberately absent because it is
+// useful only to the renewal worker. INVALID_TOKEN remains a login fallback if it escapes that
+// worker (for example, before a newly installed worker controls the page).
 
 export interface AuthErrorContext {
   networkStatus?: number

@@ -9,7 +9,8 @@ service worker that owns silent token renewal.
 The two worker types are complementary:
 
 - The service worker is the sole refresh executor. It owns the single-flight refresh request,
-  preflights API calls near expiry, and refreshes and replays once after `401 EXPIRED_TOKEN`.
+  preflights API calls near expiry, and refreshes and replays once after a recoverable access-token
+  rejection (`401 EXPIRED_TOKEN` or `401 INVALID_TOKEN`).
 - A shared worker owns one proactive deadline for all open tabs. Thirty seconds before the latest
   server-provided expiry it asks a page to route renewal through the service worker, then re-arms
   from the returned expiry. Transient failures use bounded exponential backoff.

@@ -27,6 +27,9 @@ describe('decideIntercept', () => {
     expect(decideIntercept(`${ORIGIN}/api/auth/refresh`, ORIGIN)).toBe(
       'pass-through',
     )
+    expect(decideIntercept(`${ORIGIN}/api/auth/refresh/revoke`, ORIGIN)).toBe(
+      'pass-through',
+    )
     // Playback URLs carry their own token; hls.js requests must not be touched.
     expect(
       decideIntercept(`${ORIGIN}/api/stream/abc/multivariant.m3u8`, ORIGIN),
@@ -52,9 +55,15 @@ describe('isRecoverableAccessTokenResponse', () => {
     expect(isRecoverableAccessTokenResponse(401, { code: 'EXPIRED_TOKEN' })).toBe(true)
   })
 
+  it('shouldDetectInvalidAccessTokenResponse', () => {
+    expect(isRecoverableAccessTokenResponse(401, { code: 'INVALID_TOKEN' })).toBe(true)
+  })
+
   it('shouldIgnoreOtherUnauthorizedAndNonJsonResponses', () => {
-    // INVALID_TOKEN / AUTHENTICATION_REQUIRED must fall through to the page's login routing.
-    expect(isRecoverableAccessTokenResponse(401, { code: 'INVALID_TOKEN' })).toBe(false)
+    // AUTHENTICATION_REQUIRED is already terminal and must fall through to login routing.
+    expect(
+      isRecoverableAccessTokenResponse(401, { code: 'AUTHENTICATION_REQUIRED' }),
+    ).toBe(false)
     expect(isRecoverableAccessTokenResponse(401, null)).toBe(false)
     expect(isRecoverableAccessTokenResponse(401, 'nope')).toBe(false)
     expect(isRecoverableAccessTokenResponse(403, { code: 'EXPIRED_TOKEN' })).toBe(false)
