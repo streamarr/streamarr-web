@@ -30,7 +30,7 @@ export function decideIntercept(
 }
 
 /** The refresh-and-retry signal: a 401 whose body carries code EXPIRED_TOKEN. */
-export function isExpiredTokenResponse(status: number, body: unknown): boolean {
+export function isRecoverableAccessTokenResponse(status: number, body: unknown): boolean {
   if (status !== 401 || typeof body !== 'object' || body === null) {
     return false
   }

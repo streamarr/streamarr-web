@@ -1,7 +1,7 @@
 import { CSRF_HEADER } from '../auth/csrf'
 import type { RenewalResult } from '../auth/renewalProtocol'
 import {
-  isExpiredTokenResponse,
+  isRecoverableAccessTokenResponse,
   rememberCsrfToken as chooseCsrfToken,
   SingleFlight,
 } from './decisions'
@@ -127,7 +127,7 @@ export function createSessionRenewal({
         preflightResult = await refresh()
       }
       const response = await fetcher(request)
-      if (!(await isExpired(response))) {
+      if (!(await isRecoverableAccessFailure(response))) {
         return response
       }
       if (refreshRejected) {
@@ -180,12 +180,12 @@ function sessionEndedResponse(): Response {
   )
 }
 
-async function isExpired(response: Response): Promise<boolean> {
+async function isRecoverableAccessFailure(response: Response): Promise<boolean> {
   if (response.status !== 401) {
     return false
   }
   try {
-    return isExpiredTokenResponse(response.status, await response.clone().json())
+    return isRecoverableAccessTokenResponse(response.status, await response.clone().json())
   } catch {
     return false
   }
