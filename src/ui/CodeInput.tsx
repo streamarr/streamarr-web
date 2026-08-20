@@ -58,7 +58,8 @@ export function CodeInput({
         className={`codeInputCell${active ? ' codeInputCellActive' : ''}`}
         aria-hidden
       >
-        {active && !filled ? '|' : filled ? (secret ? '•' : value[index]) : ' '}
+        {filled ? (secret ? '•' : value[index]) : ' '}
+        {active && !filled ? <span className="codeInputCaret" /> : null}
       </div>
     )
   })

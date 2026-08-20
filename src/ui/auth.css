@@ -94,6 +94,7 @@
 
 .codeInputCell {
   box-sizing: border-box;
+  position: relative;
   width: 52px;
   height: 64px;
   display: flex;
@@ -110,7 +111,30 @@
 
 .codeInputCellActive {
   border-color: var(--indicator-active-track);
-  color: var(--indicator-active-track);
+}
+
+.codeInputCaret {
+  position: absolute;
+  width: 2px;
+  height: 32px;
+  border-radius: 1px;
+  background: var(--indicator-active-track);
+  animation: codeInputCaretBlink 1.06s step-end infinite;
+}
+
+@keyframes codeInputCaretBlink {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .codeInputCaret {
+    animation: none;
+  }
 }
 
 .codeInputError .codeInputCell {

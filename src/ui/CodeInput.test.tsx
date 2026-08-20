@@ -52,6 +52,27 @@ describe('CodeInput', () => {
     expect(cells()).toBe(4)
   })
 
+  it('shouldBlinkACaretWhereTheNextDigitLands', async () => {
+    const user = userEvent.setup()
+    render(<Harness minLength={4} />)
+
+    await user.type(screen.getByLabelText('PIN'), '12')
+
+    // The caret is a dedicated blinking element, not a printed bar — a static glyph
+    // reads as a character, not an insertion point.
+    expect(document.querySelector('.codeInputCaret')).not.toBeNull()
+  })
+
+  it('shouldRestTheCaretWhenTheFloorIsReached', async () => {
+    const user = userEvent.setup()
+    render(<Harness minLength={4} />)
+
+    await user.type(screen.getByLabelText('PIN'), '1234')
+
+    // Complete-at-the-floor shows four filled boxes and no caret asking for a fifth.
+    expect(document.querySelector('.codeInputCaret')).toBeNull()
+  })
+
   it('shouldKeepAFixedLengthFixed', async () => {
     const user = userEvent.setup()
     render(<Harness length={8} />)
