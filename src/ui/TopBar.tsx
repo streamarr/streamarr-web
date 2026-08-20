@@ -26,7 +26,9 @@ export function TopBar() {
       <div className="topBarTrail">
         <ProfileMenu
           me={data.me}
-          onPinRequired={() => navigate({ to: '/select-profile' })}
+          onPinRequired={(profileId) =>
+            navigate({ to: '/select-profile', search: { profile: profileId } })
+          }
           onSignedOut={() => navigate({ to: '/login' })}
         />
       </div>
