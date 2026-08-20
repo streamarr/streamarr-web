@@ -1,0 +1,7 @@
+mutation CreateStreamSession($mediaFileId: ID!) {
+  createStreamSession(mediaFileId: $mediaFileId) {
+    id
+    streamUrl
+    transcodeMode
+  }
+}
