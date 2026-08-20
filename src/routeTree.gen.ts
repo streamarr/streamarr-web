@@ -17,6 +17,7 @@ import { Route as SetupRouteImport } from './routes/setup'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedLinkRouteImport } from './routes/_authenticated/link'
 import { Route as AuthenticatedSelectRouteImport } from './routes/_authenticated/select'
+import { Route as AuthenticatedSharingRouteImport } from './routes/_authenticated/sharing'
 import { Route as AuthenticatedPlayMediaFileIdRouteImport } from './routes/_authenticated/play.$mediaFileId'
 
 const AuthenticatedRoute = AuthenticatedRouteImport.update({
@@ -58,6 +59,11 @@ const AuthenticatedSelectRoute = AuthenticatedSelectRouteImport.update({
   path: '/select',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedSharingRoute = AuthenticatedSharingRouteImport.update({
+  id: '/sharing',
+  path: '/sharing',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedPlayMediaFileIdRoute =
   AuthenticatedPlayMediaFileIdRouteImport.update({
     id: '/play/$mediaFileId',
@@ -73,6 +79,7 @@ export interface FileRoutesByFullPath {
   '/setup': typeof SetupRoute
   '/link': typeof AuthenticatedLinkRoute
   '/select': typeof AuthenticatedSelectRoute
+  '/sharing': typeof AuthenticatedSharingRoute
   '/play/$mediaFileId': typeof AuthenticatedPlayMediaFileIdRoute
 }
 export interface FileRoutesByTo {
@@ -82,6 +89,7 @@ export interface FileRoutesByTo {
   '/setup': typeof SetupRoute
   '/link': typeof AuthenticatedLinkRoute
   '/select': typeof AuthenticatedSelectRoute
+  '/sharing': typeof AuthenticatedSharingRoute
   '/': typeof AuthenticatedIndexRoute
   '/play/$mediaFileId': typeof AuthenticatedPlayMediaFileIdRoute
 }
@@ -94,6 +102,7 @@ export interface FileRoutesById {
   '/setup': typeof SetupRoute
   '/_authenticated/link': typeof AuthenticatedLinkRoute
   '/_authenticated/select': typeof AuthenticatedSelectRoute
+  '/_authenticated/sharing': typeof AuthenticatedSharingRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/play/$mediaFileId': typeof AuthenticatedPlayMediaFileIdRoute
 }
@@ -107,6 +116,7 @@ export interface FileRouteTypes {
     | '/setup'
     | '/link'
     | '/select'
+    | '/sharing'
     | '/play/$mediaFileId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -116,6 +126,7 @@ export interface FileRouteTypes {
     | '/setup'
     | '/link'
     | '/select'
+    | '/sharing'
     | '/'
     | '/play/$mediaFileId'
   id:
@@ -127,6 +138,7 @@ export interface FileRouteTypes {
     | '/setup'
     | '/_authenticated/link'
     | '/_authenticated/select'
+    | '/_authenticated/sharing'
     | '/_authenticated/'
     | '/_authenticated/play/$mediaFileId'
   fileRoutesById: FileRoutesById
@@ -197,6 +209,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSelectRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/sharing': {
+      id: '/_authenticated/sharing'
+      path: '/sharing'
+      fullPath: '/sharing'
+      preLoaderRoute: typeof AuthenticatedSharingRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/play/$mediaFileId': {
       id: '/_authenticated/play/$mediaFileId'
       path: '/play/$mediaFileId'
@@ -210,6 +229,7 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedRouteChildren {
   AuthenticatedLinkRoute: typeof AuthenticatedLinkRoute
   AuthenticatedSelectRoute: typeof AuthenticatedSelectRoute
+  AuthenticatedSharingRoute: typeof AuthenticatedSharingRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedPlayMediaFileIdRoute: typeof AuthenticatedPlayMediaFileIdRoute
 }
@@ -217,6 +237,7 @@ interface AuthenticatedRouteChildren {
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedLinkRoute: AuthenticatedLinkRoute,
   AuthenticatedSelectRoute: AuthenticatedSelectRoute,
+  AuthenticatedSharingRoute: AuthenticatedSharingRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedPlayMediaFileIdRoute: AuthenticatedPlayMediaFileIdRoute,
 }

@@ -1,0 +1,105 @@
+query SharingOverview($householdId: ID!, $profileId: ID!) {
+  pendingShareOffers(householdId: $householdId, first: 50) {
+    edges {
+      node {
+        id
+        profileId
+        householdId
+        status
+        expiresAt
+      }
+    }
+  }
+  profileShares(profileId: $profileId, first: 50) {
+    edges {
+      node {
+        id
+        householdId
+        status
+        structural
+      }
+    }
+  }
+}
+
+query SharePreflight($profileId: ID!, $householdId: ID!) {
+  sharePreflight(profileId: $profileId, householdId: $householdId) {
+    wouldLock
+    nameConflict
+  }
+}
+
+mutation OfferProfileShare($input: OfferProfileShareInput!) {
+  offerProfileShare(input: $input) {
+    share {
+      id
+      status
+    }
+    userErrors {
+      __typename
+      ... on MutationError {
+        message
+      }
+    }
+  }
+}
+
+mutation AcceptProfileShare($input: AcceptProfileShareInput!) {
+  acceptProfileShare(input: $input) {
+    share {
+      id
+      status
+    }
+    userErrors {
+      __typename
+      ... on MutationError {
+        message
+      }
+    }
+  }
+}
+
+mutation RejectProfileShare($input: RejectProfileShareInput!) {
+  rejectProfileShare(input: $input) {
+    share {
+      id
+      status
+    }
+    userErrors {
+      __typename
+      ... on MutationError {
+        message
+      }
+    }
+  }
+}
+
+mutation CancelProfileShare($input: CancelProfileShareInput!) {
+  cancelProfileShare(input: $input) {
+    share {
+      id
+      status
+    }
+    userErrors {
+      __typename
+      ... on MutationError {
+        message
+      }
+    }
+  }
+}
+
+mutation EndProfileShare($input: EndProfileShareInput!) {
+  endProfileShare(input: $input) {
+    share {
+      id
+      status
+    }
+    userErrors {
+      __typename
+      ... on MutationError {
+        message
+      }
+    }
+  }
+}
