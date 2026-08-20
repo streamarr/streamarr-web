@@ -1,3 +1,4 @@
+import { AuthShell } from '../../ui/AuthShell'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { Picker } from '../../identity/Picker'
 
@@ -7,5 +8,9 @@ export const Route = createFileRoute('/_authenticated/select')({
 
 function Select() {
   const navigate = useNavigate()
-  return <Picker onProfileSelected={() => navigate({ to: '/' })} />
+  return (
+    <AuthShell width={640}>
+      <Picker onProfileSelected={() => navigate({ to: '/' })} />
+    </AuthShell>
+  )
 }

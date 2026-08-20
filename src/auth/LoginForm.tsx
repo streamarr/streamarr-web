@@ -4,7 +4,6 @@ import {
   PasswordInput,
   Stack,
   TextInput,
-  Title,
 } from '@mantine/core'
 import { useState } from 'react'
 import { AuthApiError, type AuthTokens } from './api'
@@ -48,7 +47,7 @@ export function LoginForm({
   return (
     <form onSubmit={onSubmit}>
       <Stack maw={360}>
-        <Title order={2}>Sign in</Title>
+        <h1 className="authTitle">Sign in</h1>
         {error && (
           <Alert color="red" role="alert">
             {error}
@@ -69,9 +68,11 @@ export function LoginForm({
           onChange={(event) => setPassword(event.currentTarget.value)}
           required
         />
-        <Button type="submit" loading={submitting}>
-          Sign in
-        </Button>
+        <div>
+          <Button type="submit" loading={submitting}>
+            Sign in
+          </Button>
+        </div>
       </Stack>
     </form>
   )

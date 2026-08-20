@@ -82,8 +82,9 @@ describe('Picker', () => {
     )
     const { user } = renderWithProviders(<Picker onProfileSelected={vi.fn()} />)
 
-    const locked = await screen.findByRole('button', { name: /Kids/ })
-    expect(locked).toHaveAttribute('data-disabled')
+    // The tile is genuinely disabled; the lock reads from the glyph, not prose.
+    const locked = await screen.findByRole('button', { name: /Kids \(locked\)/ })
+    expect(locked).toBeDisabled()
     await user.click(locked)
 
     expect(screen.queryByTestId('pin-input')).not.toBeInTheDocument()

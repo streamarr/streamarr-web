@@ -85,7 +85,7 @@ describe('/link', () => {
     serverKnowsTheVisitor()
     renderAppAt('/link?code=BCDF-GHJK')
 
-    expect(await screen.findByLabelText(/pairing code/i)).toHaveValue('BCDF-GHJK')
+    expect(await screen.findByLabelText(/pairing code/i)).toHaveValue('BCDFGHJK')
   })
 
   it('shouldStillBounceCarryingTheCodeWhenTheSessionExpiresAfterArriving', async () => {
@@ -99,10 +99,10 @@ describe('/link', () => {
     )
     const { router, user } = renderAppAt('/link')
 
+    // Frame 13: lookup fires on the final character.
     await user.type(await screen.findByLabelText(/pairing code/i), 'bcdf-ghjk')
-    await user.click(screen.getByRole('button', { name: /continue/i }))
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
-    expect(router.state.location.search).toEqual({ redirect: '/link?code=bcdf-ghjk' })
+    expect(router.state.location.search).toEqual({ redirect: '/link?code=BCDFGHJK' })
   })
 })

@@ -17,6 +17,19 @@ export const Route = createRootRouteWithContext<RouterContext>()({
   component: RootLayout,
 })
 
+/**
+ * Auth ceremonies render full-bleed on the bloom (mock frames 12-15a) — the wordmark in their
+ * column is the brand, so the header would say it twice. Everything else keeps the app chrome.
+ */
+const CEREMONY_ROUTES = new Set([
+  '/login',
+  '/setup',
+  '/reset',
+  '/invite',
+  '/_authenticated/select',
+  '/_authenticated/link',
+])
+
 function RootLayout() {
   // Signed-in chrome keys off the committed route matches: the _authenticated layout only
   // commits once the guard has the server's word, so this cannot show sign-out to a visitor
@@ -24,6 +37,13 @@ function RootLayout() {
   const signedIn = useRouterState({
     select: (state) => state.matches.some((match) => match.routeId === '/_authenticated'),
   })
+  const ceremony = useRouterState({
+    select: (state) => state.matches.some((match) => CEREMONY_ROUTES.has(match.routeId)),
+  })
+
+  if (ceremony) {
+    return <Outlet />
+  }
 
   return (
     <AppShell header={{ height: 56 }} padding="md">

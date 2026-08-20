@@ -1,3 +1,4 @@
+import { AuthShell } from '../ui/AuthShell'
 import { createFileRoute } from '@tanstack/react-router'
 import { ResetPasswordScreen } from '../auth/ResetPasswordScreen'
 
@@ -10,5 +11,9 @@ export const Route = createFileRoute('/reset')({
 
 function Reset() {
   const { code } = Route.useSearch()
-  return <ResetPasswordScreen initialCode={code} />
+  return (
+    <AuthShell>
+      <ResetPasswordScreen initialCode={code} />
+    </AuthShell>
+  )
 }

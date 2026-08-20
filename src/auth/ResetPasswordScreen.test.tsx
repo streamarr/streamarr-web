@@ -18,7 +18,8 @@ describe('ResetPasswordScreen', () => {
     const { user } = renderWithProviders(<ResetPasswordScreen initialCode={CODE} />)
 
     await user.type(screen.getByLabelText(/^new password/i), 'brand new passphrase')
-    await user.click(screen.getByRole('button', { name: 'Change password' }))
+    await user.type(screen.getByLabelText(/^confirm password/i), 'brand new passphrase')
+    await user.click(screen.getByRole('button', { name: 'Set new password' }))
 
     expect(await screen.findByText('Password changed')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Sign in' })).toBeInTheDocument()
@@ -33,7 +34,8 @@ describe('ResetPasswordScreen', () => {
     const { user } = renderWithProviders(<ResetPasswordScreen initialCode={CODE} />)
 
     await user.type(screen.getByLabelText(/^new password/i), 'brand new passphrase')
-    await user.click(screen.getByRole('button', { name: 'Change password' }))
+    await user.type(screen.getByLabelText(/^confirm password/i), 'brand new passphrase')
+    await user.click(screen.getByRole('button', { name: 'Set new password' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       "That reset code isn't valid anymore",

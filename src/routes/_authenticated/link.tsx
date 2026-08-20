@@ -1,3 +1,4 @@
+import { AuthShell } from '../../ui/AuthShell'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { LinkDevice } from '../../pairing/LinkDevice'
@@ -32,7 +33,8 @@ function Link() {
   }, [code])
 
   return (
-    <LinkDevice
+    <AuthShell width={560}>
+      <LinkDevice
       initialCode={initialCode}
       onUnauthenticated={(pendingCode) => {
         // Every eviction records the store's answer before bouncing — otherwise /login's
@@ -45,6 +47,7 @@ function Link() {
           },
         })
       }}
-    />
+      />
+    </AuthShell>
   )
 }
