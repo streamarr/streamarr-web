@@ -6,7 +6,7 @@ import { csrfHeaders, isCsrfRejection } from '../auth/csrf'
 import generatedIntrospection from './generated/possibleTypes.json'
 import { decideAuthRoute, extractAuthContext } from './errorRouting'
 
-export type AuthRoute = '/login' | '/select'
+export type AuthRoute = '/login' | '/select-profile'
 
 const CSRF_RETRY_ATTEMPTED = 'csrfRetryAttempted'
 

@@ -2,7 +2,7 @@ import { AuthShell } from '../../ui/AuthShell'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { Picker } from '../../identity/Picker'
 
-export const Route = createFileRoute('/_authenticated/select')({
+export const Route = createFileRoute('/_authenticated/select-profile')({
   component: Select,
 })
 

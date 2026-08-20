@@ -20,7 +20,7 @@ const CEREMONY_ROUTES = new Set([
   '/setup',
   '/reset',
   '/invite',
-  '/_authenticated/select',
+  '/_authenticated/select-profile',
   '/_authenticated/link',
 ])
 

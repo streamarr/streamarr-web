@@ -22,7 +22,7 @@ function Setup() {
   }, [navigate])
 
   function onAuthenticated(tokens: AuthTokens) {
-    navigate({ to: tokens.scope === 'profile' ? '/' : '/select' })
+    navigate({ to: tokens.scope === 'profile' ? '/' : '/select-profile' })
   }
 
   if (!ready) {

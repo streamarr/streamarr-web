@@ -15,7 +15,7 @@ function Invite() {
   // Acceptance signs the new person in (ACCOUNT scope), so the picker is always the next stop.
   return (
     <AuthShell width={480}>
-      <InvitationScreen initialCode={code} onAccepted={() => navigate({ to: '/select' })} />
+      <InvitationScreen initialCode={code} onAccepted={() => navigate({ to: '/select-profile' })} />
     </AuthShell>
   )
 }
