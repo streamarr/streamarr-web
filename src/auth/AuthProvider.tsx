@@ -1,5 +1,7 @@
 import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from 'react'
 import {
+  type AcceptInvitationInput,
+  acceptInvitation as apiAcceptInvitation,
   type AuthTokens,
   login as apiLogin,
   logout as apiLogout,
@@ -22,6 +24,7 @@ interface AuthContextValue {
   session: Session | null
   login: (input: LoginInput) => Promise<AuthTokens>
   setup: (input: SetupInput) => Promise<AuthTokens>
+  acceptInvitation: (input: AcceptInvitationInput) => Promise<AuthTokens>
   selectHousehold: (householdId: string) => Promise<AuthTokens>
   selectProfile: (profileId: string, pin?: string) => Promise<AuthTokens>
   logout: () => Promise<void>
@@ -56,6 +59,10 @@ export function AuthProvider({
 
   const login = useCallback((input: LoginInput) => apiLogin(input).then(adopt), [adopt])
   const setup = useCallback((input: SetupInput) => apiSetup(input).then(adopt), [adopt])
+  const acceptInvitation = useCallback(
+    (input: AcceptInvitationInput) => apiAcceptInvitation(input).then(adopt),
+    [adopt],
+  )
   const selectHousehold = useCallback(
     (id: string) => apiSelectHousehold(id).then(adopt),
     [adopt],
@@ -72,8 +79,9 @@ export function AuthProvider({
   }, [renewal, sessionStore])
 
   const value = useMemo(
-    () => ({ session, login, setup, selectHousehold, selectProfile, logout }),
-    [session, login, setup, selectHousehold, selectProfile, logout],
+    () => ({ session, login, setup,
+      acceptInvitation, selectHousehold, selectProfile, logout }),
+    [session, login, setup, acceptInvitation, selectHousehold, selectProfile, logout],
   )
 
   return <AuthContext value={value}>{children}</AuthContext>
