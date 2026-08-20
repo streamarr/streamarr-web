@@ -2,7 +2,7 @@ import { HttpResponse, graphql, http } from 'msw'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { server } from '../test/server'
 import { createApolloClient } from './client'
-import { ME_QUERY } from './operations'
+import { MeDocument } from './generated/graphql'
 
 const ME = {
   accountId: '11111111-1111-1111-1111-111111111111',
@@ -29,7 +29,7 @@ describe('apollo client', () => {
       }),
     )
 
-    await createApolloClient(vi.fn()).query({ query: ME_QUERY })
+    await createApolloClient(vi.fn()).query({ query: MeDocument })
 
     expect(header).toBeNull()
   })
@@ -46,7 +46,7 @@ describe('apollo client', () => {
     const client = createApolloClient(onAuthRoute)
 
     await client
-      .query({ query: ME_QUERY, context: { skipAuthRouting: true } })
+      .query({ query: MeDocument, context: { skipAuthRouting: true } })
       .catch(() => {
         // The 401 still rejects the query; only the navigation is suppressed.
       })
@@ -65,10 +65,10 @@ describe('apollo client', () => {
     )
     const client = createApolloClient(vi.fn())
 
-    await client.query({ query: ME_QUERY })
+    await client.query({ query: MeDocument })
     // The server may re-mint the token, so it is read per request, not once at construction.
     document.cookie = '__Host-XSRF-TOKEN=csrf-replaced; Secure; Path=/'
-    await client.query({ query: ME_QUERY, fetchPolicy: 'network-only' })
+    await client.query({ query: MeDocument, fetchPolicy: 'network-only' })
 
     expect(headers).toEqual(['csrf-graphql', 'csrf-replaced'])
   })
@@ -94,7 +94,7 @@ describe('apollo client', () => {
     )
 
     await expect(
-      createApolloClient(vi.fn()).query({ query: ME_QUERY }),
+      createApolloClient(vi.fn()).query({ query: MeDocument }),
     ).resolves.toMatchObject({
       data: { me: ME },
     })
@@ -114,7 +114,7 @@ describe('apollo client', () => {
     )
 
     await expect(
-      createApolloClient(vi.fn()).query({ query: ME_QUERY }),
+      createApolloClient(vi.fn()).query({ query: MeDocument }),
     ).rejects.toBeDefined()
     expect(attempts).toBe(2)
   })
@@ -129,7 +129,7 @@ describe('apollo client', () => {
     )
 
     await expect(
-      createApolloClient(vi.fn()).query({ query: ME_QUERY }),
+      createApolloClient(vi.fn()).query({ query: MeDocument }),
     ).rejects.toBeDefined()
     expect(attempts).toBe(1)
   })

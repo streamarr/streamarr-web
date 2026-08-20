@@ -1,0 +1,19 @@
+query Me {
+  me {
+    accountId
+    email
+    displayName
+    role
+    scope
+    memberships {
+      householdId
+      householdName
+      householdRole
+      profiles {
+        id
+        name
+        active
+      }
+    }
+  }
+}

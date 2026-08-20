@@ -1,6 +1,6 @@
 import type { ApolloClient } from '@apollo/client'
 import { decideAuthRoute, extractAuthContext } from '../graphql/errorRouting'
-import { ME_QUERY } from '../graphql/operations'
+import { MeDocument } from '../graphql/generated/graphql'
 
 // Whether the browser holds live session cookies is a fact only the server can state — the
 // client cannot read the httpOnly cookies, and after a hard reload its own auth state is empty.
@@ -57,7 +57,7 @@ export function createSessionStore(probe: () => Promise<SessionAnswer>): Session
  * (server down, 500) rejects: the caller must not mistake an outage for a verdict.
  */
 export function probeSession(client: ApolloClient): Promise<SessionAnswer> {
-  return client.query({ query: ME_QUERY, context: { skipAuthRouting: true } }).then(
+  return client.query({ query: MeDocument, context: { skipAuthRouting: true } }).then(
     () => 'authenticated',
     (error) => {
       const context = extractAuthContext(error)

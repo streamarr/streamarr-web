@@ -2,11 +2,11 @@ import { useMutation } from '@apollo/client/react'
 import { Alert, AspectRatio } from '@mantine/core'
 import Hls from 'hls.js'
 import { useEffect, useRef, useState } from 'react'
-import { CREATE_STREAM_SESSION } from '../graphql/operations'
+import { CreateStreamSessionDocument } from '../graphql/generated/graphql'
 
 export function Player({ mediaFileId }: { mediaFileId: string }) {
   const videoRef = useRef<HTMLVideoElement>(null)
-  const [createStreamSession] = useMutation(CREATE_STREAM_SESSION)
+  const [createStreamSession] = useMutation(CreateStreamSessionDocument)
   const [failed, setFailed] = useState(false)
 
   useEffect(() => {
