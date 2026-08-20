@@ -1,4 +1,3 @@
-import { useApolloClient } from '@apollo/client/react'
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../auth/AuthProvider'
 import type { MeQuery } from '../graphql/generated/graphql'
@@ -23,7 +22,6 @@ export function ProfileMenu({
   onSignedOut: () => void
 }) {
   const { selectProfile, logout } = useAuth()
-  const client = useApolloClient()
   const [opened, setOpened] = useState(false)
   const [busy, setBusy] = useState(false)
   const anchor = useRef<HTMLDivElement>(null)
@@ -62,9 +60,8 @@ export function ProfileMenu({
     }
     setBusy(true)
     try {
+      // The auth boundary resets the Apollo store itself: a switch is an identity change.
       await selectProfile(profile.id)
-      // A different profile is a different identity: nothing cached may survive it.
-      await client.resetStore()
       setOpened(false)
     } finally {
       setBusy(false)

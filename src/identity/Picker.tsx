@@ -14,7 +14,7 @@ type SelectableProfile = MeQuery['me']['selectableProfiles']['edges'][number]['n
 // chosen — the lock is the Household's PIN safety rule, not a permission. Selecting a protected
 // Profile opens the PIN gate (frame 15a); the server ceremony decides everything else.
 export function Picker({ onProfileSelected }: { onProfileSelected: (tokens: AuthTokens) => void }) {
-  const { data, loading, error, refetch } = useMe()
+  const { data, loading, error } = useMe()
   const { selectHousehold, selectProfile } = useAuth()
   const [busy, setBusy] = useState<string | null>(null)
   const [switching, setSwitching] = useState(false)
@@ -46,8 +46,8 @@ export function Picker({ onProfileSelected }: { onProfileSelected: (tokens: Auth
     }
     setSwitching(true)
     try {
+      // The auth boundary resets the Apollo store, which refetches the active Me.
       await selectHousehold(householdId)
-      await refetch()
     } finally {
       setSwitching(false)
     }

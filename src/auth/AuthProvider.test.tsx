@@ -1,8 +1,10 @@
+import { ApolloProvider } from '@apollo/client/react'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { HttpResponse, http } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { server } from '../test/server'
+import { createApolloClient } from '../graphql/client'
 import { AuthProvider, useAuth } from './AuthProvider'
 import { createSessionStore } from './session'
 
@@ -39,9 +41,11 @@ describe('AuthProvider renewal', () => {
     }
     const session = createSessionStore(async () => 'anonymous')
     render(
+      <ApolloProvider client={createApolloClient(() => {})}>
       <AuthProvider sessionStore={session} renewal={renewal}>
         <LoginHarness />
-      </AuthProvider>,
+      </AuthProvider>
+      </ApolloProvider>,
     )
 
     await userEvent.setup().click(screen.getByRole('button', { name: 'Sign in' }))
@@ -62,9 +66,11 @@ describe('AuthProvider renewal', () => {
     }
     const session = createSessionStore(async () => 'authenticated')
     render(
+      <ApolloProvider client={createApolloClient(() => {})}>
       <AuthProvider sessionStore={session} renewal={renewal}>
         <LogoutHarness />
-      </AuthProvider>,
+      </AuthProvider>
+      </ApolloProvider>,
     )
 
     await userEvent.setup().click(screen.getByRole('button', { name: 'Sign out' }))
@@ -85,9 +91,11 @@ describe('AuthProvider renewal', () => {
     const session = createSessionStore(async () => 'authenticated')
     session.markAuthenticated()
     render(
+      <ApolloProvider client={createApolloClient(() => {})}>
       <AuthProvider sessionStore={session} renewal={renewal}>
         <LogoutHarness />
-      </AuthProvider>,
+      </AuthProvider>
+      </ApolloProvider>,
     )
 
     await userEvent.setup().click(screen.getByRole('button', { name: 'Sign out' }))
