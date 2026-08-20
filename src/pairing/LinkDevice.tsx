@@ -1,4 +1,4 @@
-import { Alert, Button, Group, Radio, Stack, Text } from '@mantine/core'
+import { Alert, Button, Group, SegmentedControl, Stack, Text } from '@mantine/core'
 import { CodeInput } from '../ui/CodeInput'
 import { useState } from 'react'
 import { AuthApiError } from '../api/http'
@@ -219,17 +219,23 @@ function ConfirmDevice({
       <Text c="dimmed" size="sm">
         Requested {formatRequestedAt(pairing.requestedAt)}
       </Text>
-      <Radio.Group
-        label="Sign it in to"
-        value={householdId}
-        onChange={setHouseholdId}
-      >
-        <Stack gap="xs" mt="xs">
-          {pairing.households.map((household) => (
-            <Radio key={household.id} value={household.id} label={household.name} />
-          ))}
-        </Stack>
-      </Radio.Group>
+      <Stack gap={6}>
+        <Text component="label" className="fieldLabel" id="household-choice-label">
+          Sign it in to
+        </Text>
+        {/* The same control the profile picker uses for Households — one vocabulary for one
+            choice. An unmatched value renders no thumb, so approval still demands an explicit
+            pick when more than one Household is usable. */}
+        <SegmentedControl
+          aria-labelledby="household-choice-label"
+          value={householdId}
+          onChange={setHouseholdId}
+          data={pairing.households.map((household) => ({
+            value: household.id,
+            label: household.name,
+          }))}
+        />
+      </Stack>
       <Group>
         <Button
           loading={busy}
