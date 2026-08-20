@@ -168,6 +168,7 @@ function InvitationReview({
               <Text fw={600}>{preview.profileName}</Text>
               {preview.profileKind === 'KID' && <Badge color="teal">Kid</Badge>}
               <Badge variant="light">{preview.householdRole}</Badge>
+              {preview.mode === 'CONNECT' && <Badge color="grape">Your existing Profile</Badge>}
             </Group>
             <Text size="sm" c="dimmed">
               Your account will use {preview.recipientEmail}. The invitation expires{' '}
@@ -175,6 +176,7 @@ function InvitationReview({
             </Text>
           </Stack>
         </Card>
+        {preview.mode === 'CONNECT' && <ConnectReview preview={preview} />}
         {failure && (
           <Alert color="red" role="alert">
             {failure}
@@ -209,6 +211,69 @@ function InvitationReview({
         </Group>
       </Stack>
     </form>
+  )
+}
+
+// Web PR #5 (frames 14/14a variant): what connecting means, before consent. The Profile becomes
+// this person's Personal Profile; a share that admitted a Profile must never silently admit the
+// person, so every current visit ends and the listed Households are offered it afresh —
+// each host consents again. The named direct managers keep their authority.
+function ConnectReview({ preview }: { preview: InvitationPreview }) {
+  return (
+    <Card withBorder>
+      <Stack gap="xs">
+        <Text fw={600}>Connecting {preview.profileName} to your new account</Text>
+        <Text size="sm">
+          {preview.profileName} becomes your Personal Profile — its history, progress, and
+          preferences come with it.
+        </Text>
+        <ConsequenceList
+          title="These people keep managing it"
+          items={preview.remainingManagers}
+          empty="Nobody else manages it after connecting."
+        />
+        <ConsequenceList
+          title="These Households lose it when you accept"
+          items={preview.endingHouseholds}
+          empty="It isn't visiting any other Household."
+        />
+        <ConsequenceList
+          title="These Households will be offered it afresh"
+          items={preview.reofferHouseholds}
+          empty="No Household will be offered it again."
+        />
+      </Stack>
+    </Card>
+  )
+}
+
+function ConsequenceList({
+  title,
+  items,
+  empty,
+}: {
+  title: string
+  items: string[]
+  empty: string
+}) {
+  if (items.length === 0) {
+    return (
+      <Text size="sm" c="dimmed">
+        {empty}
+      </Text>
+    )
+  }
+  return (
+    <Stack gap={2}>
+      <Text size="sm" fw={600}>
+        {title}
+      </Text>
+      {items.map((item) => (
+        <Text key={item} size="sm">
+          · {item}
+        </Text>
+      ))}
+    </Stack>
   )
 }
 
