@@ -25,7 +25,13 @@ export function PinGate({
   const [failure, setFailure] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  async function submit() {
+  // A real form: Enter inside the PIN field submits, exactly like every other credential
+  // entry. The guard mirrors the button's — a short PIN is not a submission.
+  async function submit(event: React.FormEvent) {
+    event.preventDefault()
+    if (busy || !PIN_SHAPE.test(pin)) {
+      return
+    }
     setBusy(true)
     setFailure(null)
     try {
@@ -39,7 +45,7 @@ export function PinGate({
   }
 
   return (
-    <div className="pinGate">
+    <form className="pinGate" onSubmit={submit}>
       <PinGateAvatar name={profileName} paletteIndex={paletteIndex} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
         <h1 className="authTitle">Enter {profileName}&rsquo;s PIN</h1>
@@ -59,15 +65,15 @@ export function PinGate({
           testId="pin-input"
         />
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <Button onClick={submit} loading={busy} disabled={!PIN_SHAPE.test(pin)}>
+          <Button type="submit" loading={busy} disabled={!PIN_SHAPE.test(pin)}>
             Watch
           </Button>
-          <Button variant="subtle" onClick={onSwitchProfile} disabled={busy}>
+          <Button type="button" variant="subtle" onClick={onSwitchProfile} disabled={busy}>
             Switch profile
           </Button>
         </div>
       </div>
-    </div>
+    </form>
   )
 }
 
