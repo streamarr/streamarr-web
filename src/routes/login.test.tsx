@@ -93,6 +93,6 @@ describe('/login resume', () => {
 
     await signIn(user)
 
-    await waitFor(() => expect(router.state.location.pathname).toBe('/select'))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/select-profile'))
   })
 })

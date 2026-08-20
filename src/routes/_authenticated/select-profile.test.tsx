@@ -11,7 +11,7 @@ const TOKENS = {
   scope: 'profile',
 }
 
-describe('/select', () => {
+describe('/select-profile', () => {
   it('shouldShowTheNewProfileAsActiveAfterAPinSwitch', async () => {
     // The server's truth moves when the selection succeeds; the client must not keep showing
     // the old identity from its cache.
@@ -40,7 +40,7 @@ describe('/select', () => {
         return HttpResponse.json(TOKENS)
       }),
     )
-    const { router, user } = renderAppAt('/select')
+    const { router, user } = renderAppAt('/select-profile')
 
     await user.click(await screen.findByRole('button', { name: /toni \(pin protected\)/i }))
     await user.type(await screen.findByLabelText('PIN'), '4242')

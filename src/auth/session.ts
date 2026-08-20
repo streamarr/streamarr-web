@@ -67,7 +67,7 @@ export function probeSession(client: ApolloClient): Promise<SessionAnswer> {
       switch (decideAuthRoute(context)) {
         case '/login':
           return 'anonymous'
-        case '/select':
+        case '/select-profile':
           return 'authenticated'
         default:
           throw error
