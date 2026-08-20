@@ -34,7 +34,7 @@ function Home() {
   }
 
   return (
-    <Stack>
+    <Stack gap={4}>
       <Title order={2}>Welcome, {data.me.displayName}</Title>
       <Text c="dimmed">Library browsing lands here.</Text>
     </Stack>
