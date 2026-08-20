@@ -13,12 +13,24 @@ type SelectableProfile = MeQuery['me']['selectableProfiles']['edges'][number]['n
 // Personal Profile is shared into other Households. A locked Profile stays visible but cannot be
 // chosen — the lock is the Household's PIN safety rule, not a permission. Selecting a protected
 // Profile opens the PIN gate (frame 15a); the server ceremony decides everything else.
-export function Picker({ onProfileSelected }: { onProfileSelected: (tokens: AuthTokens) => void }) {
+//
+// The gate is controlled from outside through pinProfileId — the route stores it in the URL so
+// the gate is a history entry the browser's Back can leave.
+export function Picker({
+  pinProfileId,
+  onPinRequested,
+  onPinDismissed,
+  onProfileSelected,
+}: {
+  pinProfileId?: string
+  onPinRequested: (profileId: string) => void
+  onPinDismissed: () => void
+  onProfileSelected: (tokens: AuthTokens) => void
+}) {
   const { data, loading, error } = useMe()
   const { selectHousehold, selectProfile } = useAuth()
   const [busy, setBusy] = useState<string | null>(null)
   const [switching, setSwitching] = useState(false)
-  const [pinFor, setPinFor] = useState<SelectableProfile | null>(null)
 
   if (loading) {
     return (
@@ -58,7 +70,7 @@ export function Picker({ onProfileSelected }: { onProfileSelected: (tokens: Auth
       return
     }
     if (profile.pinConfigured) {
-      setPinFor(profile)
+      onPinRequested(profile.id)
       return
     }
     setBusy(profile.id)
@@ -69,14 +81,20 @@ export function Picker({ onProfileSelected }: { onProfileSelected: (tokens: Auth
     }
   }
 
-  // Frame 15a is a full state of this screen, not an overlay (principle 11).
+  // Frame 15a is a full state of this screen, not an overlay (principle 11). A stale or
+  // hand-edited deep link must never open a gate the grid itself would refuse: only a
+  // protected, unlocked Profile qualifies — anything else falls back to the grid.
+  const pinFor =
+    profiles.find(
+      (profile) => profile.id === pinProfileId && profile.pinConfigured && !profile.locked,
+    ) ?? null
   if (pinFor) {
     const gated = pinFor
     return (
       <PinGate
         profileName={gated.name}
         paletteIndex={profiles.findIndex((profile) => profile.id === gated.id)}
-        onSwitchProfile={() => setPinFor(null)}
+        onSwitchProfile={onPinDismissed}
         onSubmit={async (pin: string) => {
           onProfileSelected(await selectProfile(gated.id, pin))
         }}

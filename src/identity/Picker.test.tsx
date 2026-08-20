@@ -10,6 +10,26 @@ import {
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
 import { Picker } from './Picker'
+import { useState } from 'react'
+import type { AuthTokens } from '../auth/api'
+
+// The route owns the gate's state in the URL; these component tests stand in for it with
+// plain state so the Picker's own behavior stays testable without a router.
+function PickerHarness({
+  onProfileSelected,
+}: {
+  onProfileSelected: (tokens: AuthTokens) => void
+}) {
+  const [pinProfileId, setPinProfileId] = useState<string | undefined>()
+  return (
+    <Picker
+      pinProfileId={pinProfileId}
+      onPinRequested={setPinProfileId}
+      onPinDismissed={() => setPinProfileId(undefined)}
+      onProfileSelected={onProfileSelected}
+    />
+  )
+}
 
 const OTHER_HOUSEHOLD_ID = '55555555-5555-5555-5555-555555555555'
 const TOKENS = { accessTokenExpiresAt: '2026-08-20T12:10:00Z', scope: 'profile' }
@@ -24,7 +44,7 @@ describe('Picker', () => {
       }),
     )
     const onProfileSelected = vi.fn()
-    const { user } = renderWithProviders(<Picker onProfileSelected={onProfileSelected} />)
+    const { user } = renderWithProviders(<PickerHarness onProfileSelected={onProfileSelected} />)
 
     await user.click(await screen.findByRole('button', { name: /Alex/ }))
 
@@ -47,7 +67,7 @@ describe('Picker', () => {
       }),
     )
     const onProfileSelected = vi.fn()
-    const { user } = renderWithProviders(<Picker onProfileSelected={onProfileSelected} />)
+    const { user } = renderWithProviders(<PickerHarness onProfileSelected={onProfileSelected} />)
 
     await user.click(await screen.findByRole('button', { name: /Alex/ }))
     const pinInput = await screen.findByTestId('pin-input')
@@ -77,7 +97,7 @@ describe('Picker', () => {
       http.post('/api/auth/select-profile', () => HttpResponse.json(TOKENS)),
     )
     const onProfileSelected = vi.fn()
-    const { user } = renderWithProviders(<Picker onProfileSelected={onProfileSelected} />)
+    const { user } = renderWithProviders(<PickerHarness onProfileSelected={onProfileSelected} />)
     await user.click(await screen.findByRole('button', { name: /Alex/ }))
 
     await user.type(await screen.findByTestId('pin-input'), '4242{Enter}')
@@ -102,7 +122,7 @@ describe('Picker', () => {
         return HttpResponse.json(TOKENS)
       }),
     )
-    const { user } = renderWithProviders(<Picker onProfileSelected={vi.fn()} />)
+    const { user } = renderWithProviders(<PickerHarness onProfileSelected={vi.fn()} />)
     await user.click(await screen.findByRole('button', { name: /Alex/ }))
 
     await user.type(await screen.findByTestId('pin-input'), '42{Enter}')
@@ -127,7 +147,7 @@ describe('Picker', () => {
         return HttpResponse.json(TOKENS)
       }),
     )
-    const { user } = renderWithProviders(<Picker onProfileSelected={vi.fn()} />)
+    const { user } = renderWithProviders(<PickerHarness onProfileSelected={vi.fn()} />)
 
     // The tile is genuinely disabled; the lock reads from the glyph, not prose.
     const locked = await screen.findByRole('button', { name: /Kids \(locked\)/ })
@@ -167,7 +187,7 @@ describe('Picker', () => {
         return HttpResponse.json({ ...TOKENS, scope: 'account' })
       }),
     )
-    const { user } = renderWithProviders(<Picker onProfileSelected={vi.fn()} />)
+    const { user } = renderWithProviders(<PickerHarness onProfileSelected={vi.fn()} />)
 
     await user.click(await screen.findByRole('radio', { name: 'Cabin' }))
 
