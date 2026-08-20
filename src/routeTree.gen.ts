@@ -10,7 +10,9 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
+import { Route as InviteRouteImport } from './routes/invite'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as ResetRouteImport } from './routes/reset'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedLinkRouteImport } from './routes/_authenticated/link'
@@ -21,9 +23,19 @@ const AuthenticatedRoute = AuthenticatedRouteImport.update({
   id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
 } as any)
+const InviteRoute = InviteRouteImport.update({
+  id: '/invite',
+  path: '/invite',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResetRoute = ResetRouteImport.update({
+  id: '/reset',
+  path: '/reset',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SetupRoute = SetupRouteImport.update({
@@ -55,14 +67,18 @@ const AuthenticatedPlayMediaFileIdRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
+  '/invite': typeof InviteRoute
   '/login': typeof LoginRoute
+  '/reset': typeof ResetRoute
   '/setup': typeof SetupRoute
   '/link': typeof AuthenticatedLinkRoute
   '/select': typeof AuthenticatedSelectRoute
   '/play/$mediaFileId': typeof AuthenticatedPlayMediaFileIdRoute
 }
 export interface FileRoutesByTo {
+  '/invite': typeof InviteRoute
   '/login': typeof LoginRoute
+  '/reset': typeof ResetRoute
   '/setup': typeof SetupRoute
   '/link': typeof AuthenticatedLinkRoute
   '/select': typeof AuthenticatedSelectRoute
@@ -72,7 +88,9 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteWithChildren
+  '/invite': typeof InviteRoute
   '/login': typeof LoginRoute
+  '/reset': typeof ResetRoute
   '/setup': typeof SetupRoute
   '/_authenticated/link': typeof AuthenticatedLinkRoute
   '/_authenticated/select': typeof AuthenticatedSelectRoute
@@ -82,13 +100,30 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/login' | '/setup' | '/link' | '/select' | '/play/$mediaFileId'
+    | '/'
+    | '/invite'
+    | '/login'
+    | '/reset'
+    | '/setup'
+    | '/link'
+    | '/select'
+    | '/play/$mediaFileId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/login' | '/setup' | '/link' | '/select' | '/' | '/play/$mediaFileId'
+  to:
+    | '/invite'
+    | '/login'
+    | '/reset'
+    | '/setup'
+    | '/link'
+    | '/select'
+    | '/'
+    | '/play/$mediaFileId'
   id:
     | '__root__'
     | '/_authenticated'
+    | '/invite'
     | '/login'
+    | '/reset'
     | '/setup'
     | '/_authenticated/link'
     | '/_authenticated/select'
@@ -98,7 +133,9 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
+  InviteRoute: typeof InviteRoute
   LoginRoute: typeof LoginRoute
+  ResetRoute: typeof ResetRoute
   SetupRoute: typeof SetupRoute
 }
 
@@ -111,11 +148,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/invite': {
+      id: '/invite'
+      path: '/invite'
+      fullPath: '/invite'
+      preLoaderRoute: typeof InviteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reset': {
+      id: '/reset'
+      path: '/reset'
+      fullPath: '/reset'
+      preLoaderRoute: typeof ResetRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/setup': {
@@ -176,7 +227,9 @@ const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
+  InviteRoute: InviteRoute,
   LoginRoute: LoginRoute,
+  ResetRoute: ResetRoute,
   SetupRoute: SetupRoute,
 }
 export const routeTree = rootRouteImport
