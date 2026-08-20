@@ -63,6 +63,53 @@ describe('Picker', () => {
     await waitFor(() => expect(onProfileSelected).toHaveBeenCalledWith(TOKENS))
   })
 
+  it('shouldSubmitThePinWithEnter', async () => {
+    server.use(
+      graphql.query('Me', () =>
+        HttpResponse.json({
+          data: {
+            me: meFixture({
+              profiles: [profileFixture({ name: 'Alex', pinConfigured: true })],
+            }),
+          },
+        }),
+      ),
+      http.post('/api/auth/select-profile', () => HttpResponse.json(TOKENS)),
+    )
+    const onProfileSelected = vi.fn()
+    const { user } = renderWithProviders(<Picker onProfileSelected={onProfileSelected} />)
+    await user.click(await screen.findByRole('button', { name: /Alex/ }))
+
+    await user.type(await screen.findByTestId('pin-input'), '4242{Enter}')
+
+    await waitFor(() => expect(onProfileSelected).toHaveBeenCalledWith(TOKENS))
+  })
+
+  it('shouldIgnoreEnterWhileThePinIsShort', async () => {
+    const selectProfile = vi.fn()
+    server.use(
+      graphql.query('Me', () =>
+        HttpResponse.json({
+          data: {
+            me: meFixture({
+              profiles: [profileFixture({ name: 'Alex', pinConfigured: true })],
+            }),
+          },
+        }),
+      ),
+      http.post('/api/auth/select-profile', () => {
+        selectProfile()
+        return HttpResponse.json(TOKENS)
+      }),
+    )
+    const { user } = renderWithProviders(<Picker onProfileSelected={vi.fn()} />)
+    await user.click(await screen.findByRole('button', { name: /Alex/ }))
+
+    await user.type(await screen.findByTestId('pin-input'), '42{Enter}')
+
+    expect(selectProfile).not.toHaveBeenCalled()
+  })
+
   it('shouldShowALockedProfileWithoutLettingItBeChosen', async () => {
     const selectProfile = vi.fn()
     server.use(
