@@ -1,3 +1,4 @@
+import { AuthShell } from '../ui/AuthShell'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { InvitationScreen } from '../identity/InvitationScreen'
 
@@ -13,6 +14,8 @@ function Invite() {
   const { code } = Route.useSearch()
   // Acceptance signs the new person in (ACCOUNT scope), so the picker is always the next stop.
   return (
-    <InvitationScreen initialCode={code} onAccepted={() => navigate({ to: '/select' })} />
+    <AuthShell width={480}>
+      <InvitationScreen initialCode={code} onAccepted={() => navigate({ to: '/select' })} />
+    </AuthShell>
   )
 }

@@ -10,7 +10,6 @@ import {
   Stack,
   Text,
   TextInput,
-  Title,
 } from '@mantine/core'
 import { useEffect, useState } from 'react'
 import {
@@ -76,7 +75,7 @@ export function InvitationScreen({
   if (phase.at === 'declined') {
     return (
       <Stack maw={480}>
-        <Title order={2}>Invitation declined</Title>
+        <h1 className="authTitle">Invitation declined</h1>
         <Text>Nothing was created. You can close this page.</Text>
       </Stack>
     )
@@ -95,7 +94,7 @@ export function InvitationScreen({
 
   return (
     <Stack maw={480}>
-      <Title order={2}>Join Streamarr</Title>
+      <h1 className="authTitle">Create your account</h1>
       <Text>Paste the invitation code you were sent.</Text>
       {failure && (
         <Alert color="red" role="alert">
@@ -129,6 +128,7 @@ function InvitationReview({
   const { acceptInvitation } = useAuth()
   const [displayName, setDisplayName] = useState('')
   const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
   const [failure, setFailure] = useState<string | null>(null)
   const [busy, setBusy] = useState<'accept' | 'decline' | null>(null)
 
@@ -161,7 +161,8 @@ function InvitationReview({
   return (
     <form onSubmit={accept}>
       <Stack maw={480}>
-        <Title order={2}>You're invited to {preview.householdName}</Title>
+        <h1 className="authTitle">Create your account</h1>
+        <Text className="authLede">You were invited to {preview.householdName}.</Text>
         <Card withBorder>
           <Stack gap="xs">
             <Group>
@@ -195,8 +196,19 @@ function InvitationReview({
           onChange={(event) => setPassword(event.currentTarget.value)}
           required
         />
+        <PasswordInput
+          label="Confirm password"
+          value={confirm}
+          onChange={(event) => setConfirm(event.currentTarget.value)}
+          error={confirm.length > 0 && confirm !== password ? "Passwords don't match" : undefined}
+          required
+        />
         <Group>
-          <Button type="submit" loading={busy === 'accept'} disabled={busy === 'decline'}>
+          <Button
+            type="submit"
+            loading={busy === 'accept'}
+            disabled={busy === 'decline' || confirm !== password}
+          >
             Create my account
           </Button>
           <Button

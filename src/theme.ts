@@ -1,4 +1,4 @@
-import { createTheme, type CSSVariablesResolver } from '@mantine/core'
+import { colorsTuple, createTheme, type CSSVariablesResolver } from '@mantine/core'
 
 /**
  * The Mantine theme, fed from the generated design tokens (src/styles/tokens.generated.css,
@@ -11,6 +11,27 @@ import { createTheme, type CSSVariablesResolver } from '@mantine/core'
  * (streamarr-ux components.yaml).
  */
 export const theme = createTheme({
+  /**
+   * Interaction accents use blue.deep (the tokens' own rule: brand hues live only in the
+   * gradient; the CTA color of every auth mock is this value). A single-shade virtual color
+   * keeps the value in the token layer.
+   */
+  colors: {
+    streamarr: colorsTuple('var(--color-blue-deep)'),
+  },
+  primaryColor: 'streamarr',
+  /**
+   * Field anatomy from the auth mocks (frames 12-14a): system-voice labels, panel-alpha
+   * fills. Bound globally so every screen inherits it — the mocks style fields once.
+   */
+  components: {
+    InputWrapper: {
+      classNames: { label: 'fieldLabel', required: 'fieldRequired' },
+    },
+    Input: {
+      classNames: { input: 'fieldInput' },
+    },
+  },
   /**
    * The content voice, app-wide (principle 9.1) — the mocks set Space Grotesk
    * once at the root and inherit it everywhere. The system voice (JetBrains
