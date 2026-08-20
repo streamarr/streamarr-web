@@ -3,15 +3,9 @@ import { describe, expect, it, vi } from 'vitest'
 import { createApolloClient } from '../graphql/client'
 import { server } from '../test/server'
 import { createSessionStore, probeSession } from './session'
+import { meFixture } from '../test/meFixture'
 
-const ME = {
-  accountId: '11111111-1111-1111-1111-111111111111',
-  email: 'owner@example.com',
-  displayName: 'Owner',
-  role: 'ADMIN',
-  scope: 'account',
-  memberships: [],
-}
+const ME = meFixture({ scope: 'account' })
 
 describe('session store', () => {
   it('shouldProbeOnceAndShareTheAnswerAcrossConcurrentCallers', async () => {
