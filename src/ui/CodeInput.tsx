@@ -38,7 +38,10 @@ export function CodeInput({
   const id = useId()
   const [focused, setFocused] = useState(false)
   const max = length ?? 8
-  const shown = length ?? Math.max(minLength ?? 4, Math.min(value.length + 1, max))
+  // Four at rest and one box per typed digit past that: a fully typed four-digit PIN is four
+  // filled boxes — growing a fifth on completion implied it wasn't done — and the count still
+  // never leaks a longer PIN's length before its digits arrive.
+  const shown = length ?? Math.max(minLength ?? 4, Math.min(value.length, max))
   const clean = (raw: string) =>
     (alphanumeric ? raw.replaceAll(/[^a-zA-Z0-9]/g, '') : raw.replaceAll(/\D/g, ''))
       .toUpperCase()
@@ -46,7 +49,9 @@ export function CodeInput({
 
   const cells = Array.from({ length: shown }, (_, index) => {
     const filled = index < value.length
-    const active = focused && !settled && index === Math.min(value.length, shown - 1)
+    // The cursor marks where the next digit lands, and only while a visible box awaits one.
+    const active =
+      focused && !settled && value.length < max && index === value.length && index < shown
     return (
       <div
         key={index}
