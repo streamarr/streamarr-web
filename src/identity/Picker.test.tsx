@@ -54,12 +54,12 @@ describe('Picker', () => {
 
     // The wrong PIN earns the typed refusal and the dialog stays for another try.
     await user.type(pinInput, '1111')
-    await user.click(screen.getByRole('button', { name: 'Watch' }))
+    await user.click(screen.getByRole('button', { name: 'Unlock' }))
     expect(await screen.findByRole('alert')).toHaveTextContent("That PIN isn't right")
     expect(onProfileSelected).not.toHaveBeenCalled()
 
     await user.type(screen.getByTestId('pin-input'), '4242')
-    await user.click(screen.getByRole('button', { name: 'Watch' }))
+    await user.click(screen.getByRole('button', { name: 'Unlock' }))
     await waitFor(() => expect(onProfileSelected).toHaveBeenCalledWith(TOKENS))
   })
 

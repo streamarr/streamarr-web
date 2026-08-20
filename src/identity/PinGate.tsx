@@ -66,7 +66,7 @@ export function PinGate({
         />
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <Button type="submit" loading={busy} disabled={!PIN_SHAPE.test(pin)}>
-            Watch
+            Unlock
           </Button>
           <Button type="button" variant="subtle" onClick={onSwitchProfile} disabled={busy}>
             Switch profile

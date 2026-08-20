@@ -44,7 +44,7 @@ describe('/select', () => {
 
     await user.click(await screen.findByRole('button', { name: /toni \(pin protected\)/i }))
     await user.type(await screen.findByLabelText('PIN'), '4242')
-    await user.click(screen.getByRole('button', { name: 'Watch' }))
+    await user.click(screen.getByRole('button', { name: 'Unlock' }))
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/'))
     // The top bar's chip is the identity the person sees everywhere.
