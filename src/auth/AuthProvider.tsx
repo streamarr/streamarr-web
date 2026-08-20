@@ -23,7 +23,7 @@ interface AuthContextValue {
   login: (input: LoginInput) => Promise<AuthTokens>
   setup: (input: SetupInput) => Promise<AuthTokens>
   selectHousehold: (householdId: string) => Promise<AuthTokens>
-  selectProfile: (profileId: string) => Promise<AuthTokens>
+  selectProfile: (profileId: string, pin?: string) => Promise<AuthTokens>
   logout: () => Promise<void>
 }
 
@@ -60,7 +60,10 @@ export function AuthProvider({
     (id: string) => apiSelectHousehold(id).then(adopt),
     [adopt],
   )
-  const selectProfile = useCallback((id: string) => apiSelectProfile(id).then(adopt), [adopt])
+  const selectProfile = useCallback(
+    (id: string, pin?: string) => apiSelectProfile(id, pin).then(adopt),
+    [adopt],
+  )
   const logout = useCallback(async () => {
     sessionStore.markAnonymous()
     setSession(null)

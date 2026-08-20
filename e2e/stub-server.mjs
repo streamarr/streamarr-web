@@ -8,22 +8,43 @@ const port = Number(process.env.STUB_PORT ?? 5198)
 let mode = 'renewable'
 let accessValid = false
 
+const household = { __typename: 'HouseholdSummary', id: 'household-1', name: 'Dev Household' }
+const profile = {
+  __typename: 'SelectableProfile',
+  id: 'profile-1',
+  name: 'Dev',
+  picture: null,
+  kind: 'ADULT',
+  personal: true,
+  pinConfigured: false,
+  locked: false,
+  selected: true,
+}
 const me = {
   __typename: 'Me',
   accountId: 'account-1',
   email: 'dev@streamarr.test',
   displayName: 'Dev Admin',
-  role: 'ADMIN',
+  serverAdmin: true,
   scope: 'profile',
-  memberships: [
-    {
-      __typename: 'Membership',
-      householdId: 'household-1',
-      householdName: 'Dev Household',
-      householdRole: 'OWNER',
-      profiles: [{ __typename: 'SelectableProfile', id: 'profile-1', name: 'Dev', active: true }],
-    },
-  ],
+  deviceBound: false,
+  householdRole: 'ADMIN',
+  household,
+  contextHousehold: household,
+  usableHouseholds: {
+    __typename: 'UsableHouseholdConnection',
+    edges: [
+      {
+        __typename: 'UsableHouseholdEdge',
+        node: { __typename: 'UsableHousehold', membership: true, household },
+      },
+    ],
+  },
+  selectableProfiles: {
+    __typename: 'SelectableProfileConnection',
+    edges: [{ __typename: 'SelectableProfileEdge', node: profile }],
+  },
+  selectedProfile: profile,
 }
 
 const json = (response, status, body) => {

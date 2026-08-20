@@ -3,17 +3,46 @@ query Me {
     accountId
     email
     displayName
-    role
+    serverAdmin
     scope
-    memberships {
-      householdId
-      householdName
-      householdRole
-      profiles {
-        id
-        name
-        active
+    deviceBound
+    householdRole
+    household {
+      id
+      name
+    }
+    contextHousehold {
+      id
+      name
+    }
+    usableHouseholds(first: 20) {
+      edges {
+        node {
+          membership
+          household {
+            id
+            name
+          }
+        }
       }
+    }
+    selectableProfiles(first: 100) {
+      edges {
+        node {
+          id
+          name
+          picture
+          kind
+          personal
+          pinConfigured
+          locked
+          selected
+        }
+      }
+    }
+    selectedProfile {
+      id
+      name
     }
   }
 }

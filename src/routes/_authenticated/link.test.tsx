@@ -3,15 +3,9 @@ import { HttpResponse, graphql, http } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { renderAppAt } from '../../test/render'
 import { server } from '../../test/server'
+import { meFixture } from '../../test/meFixture'
 
-const ME = {
-  accountId: '11111111-1111-1111-1111-111111111111',
-  email: 'owner@example.com',
-  displayName: 'Owner',
-  role: 'ADMIN',
-  scope: 'account',
-  memberships: [],
-}
+const ME = meFixture({ scope: 'account' })
 
 function serverKnowsTheVisitor() {
   server.use(graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })))
