@@ -239,3 +239,227 @@
   font-size: 15px;
   color: var(--color-alpha-92);
 }
+
+/* ---- App chrome: the top bar and profile menu (frames 01/01a). ---- */
+
+.topBar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 20px clamp(24px, 3.3vw, 50px);
+}
+
+.topBarLockup {
+  height: 30px;
+  width: auto;
+  display: block;
+}
+
+.topBarDivider {
+  width: 1px;
+  height: 26px;
+  background: var(--color-alpha-16);
+}
+
+.topBarNav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.navPill {
+  padding: 7px 18px;
+  border-radius: var(--radius-sm);
+  background: var(--color-alpha-10);
+  font-size: 15px;
+  color: var(--color-alpha-92);
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+}
+
+.navPillActive {
+  background: var(--selection-active);
+  font-weight: 600;
+}
+
+.topBarTrail {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.profileChip {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  background: var(--color-alpha-18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-alpha-92);
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.profileChipOpen {
+  background: var(--selection-active);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--indicator-active-track) 50%, transparent);
+}
+
+/* Floating chrome (principle 5): the menu rides the chrome surface over the page. */
+.profileMenu {
+  width: 250px;
+  border: 1px solid var(--color-alpha-16);
+  border-radius: var(--radius-xl);
+  /* The mock's panel is solid: the chrome token layered over the opaque ground. A blurred
+     translucency here also stalls Chromium's compositor during captures. */
+  background:
+    linear-gradient(var(--color-chrome), var(--color-chrome)),
+    var(--color-ground);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
+}
+
+.profileMenuRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  border-radius: var(--radius-md);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-alpha-92);
+  font: inherit;
+  text-align: left;
+  width: 100%;
+}
+
+.profileMenuRow:hover:not(:disabled),
+.profileMenuRow:focus-visible {
+  background: var(--color-alpha-07);
+}
+
+.profileMenuRow:disabled {
+  cursor: default;
+}
+
+/* Only a locked profile reads dimmed; the current row is disabled merely because it is not a
+   choice — its name stays primary, like the mock's. */
+.profileMenuRow:disabled:not(.profileMenuRowCurrent) {
+  color: var(--color-alpha-50);
+}
+
+.profileMenuRowCurrent {
+  background: var(--color-alpha-07);
+}
+
+.profileMenuAvatar {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 600;
+  flex: none;
+  color: var(--color-white);
+}
+
+.profileMenuName {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.profileMenuName span:first-child {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.profileMenuRole {
+  font-size: 12px;
+  color: var(--color-alpha-50);
+}
+
+.profileMenuCheck {
+  margin-left: auto;
+  color: var(--indicator-active-track);
+}
+
+.profileMenuDivider {
+  height: 1px;
+  margin: 6px 10px;
+  background: var(--color-alpha-10);
+}
+
+/* ---- Home groundwork (frame 01): the ambient wash over the ground. ---- */
+.homeShell {
+  position: relative;
+  min-height: 100dvh;
+  background: var(--color-ground);
+}
+
+.homeAmbient {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 900px;
+  background:
+    radial-gradient(
+      80% 60% at 75% 0%,
+      color-mix(in srgb, var(--color-brand-purple) 22%, transparent),
+      transparent 65%
+    ),
+    radial-gradient(
+      70% 50% at 10% 10%,
+      color-mix(in srgb, var(--color-brand-blue) 16%, transparent),
+      transparent 70%
+    );
+  pointer-events: none;
+}
+
+.homeContent {
+  position: relative;
+  padding: 14px clamp(24px, 3.3vw, 50px) 40px;
+}
+
+.profileMenuAnchor {
+  position: relative;
+}
+
+.profileMenuAnchor .profileMenu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 20;
+}
+
+/* The caret notch pointing at the chip (frame 01a). */
+.profileMenu::before {
+  content: '';
+  position: absolute;
+  right: 20px;
+  top: -7px;
+  width: 13px;
+  height: 13px;
+  transform: rotate(45deg);
+  background:
+    linear-gradient(var(--color-chrome), var(--color-chrome)),
+    var(--color-ground);
+  border-left: 1px solid var(--color-alpha-16);
+  border-top: 1px solid var(--color-alpha-16);
+}

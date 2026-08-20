@@ -70,7 +70,7 @@ const TILE_COLORS = [
   'color-mix(in srgb, var(--color-brand-blue) 45%, #060608)',
 ]
 
-function tileColor(index: number) {
+export function tileColor(index: number) {
   return TILE_COLORS[((index % TILE_COLORS.length) + TILE_COLORS.length) % TILE_COLORS.length]
 }
 
