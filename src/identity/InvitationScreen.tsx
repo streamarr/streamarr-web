@@ -12,6 +12,7 @@ import {
   TextInput,
 } from '@mantine/core'
 import { useEffect, useState } from 'react'
+import { AuthLede, AuthTitle } from '../ui/AuthShell'
 import {
   AuthApiError,
   type AuthTokens,
@@ -75,7 +76,7 @@ export function InvitationScreen({
   if (phase.at === 'declined') {
     return (
       <Stack maw={480}>
-        <h1 className="authTitle">Invitation declined</h1>
+        <AuthTitle>Invitation declined</AuthTitle>
         <Text>Nothing was created. You can close this page.</Text>
       </Stack>
     )
@@ -94,7 +95,7 @@ export function InvitationScreen({
 
   return (
     <Stack maw={480}>
-      <h1 className="authTitle">Create your account</h1>
+      <AuthTitle>Create your account</AuthTitle>
       <Text>Paste the invitation code you were sent.</Text>
       {failure && (
         <Alert color="red" role="alert">
@@ -165,8 +166,8 @@ function InvitationReview({
   return (
     <form onSubmit={accept}>
       <Stack maw={480}>
-        <h1 className="authTitle">Create your account</h1>
-        <Text className="authLede">You were invited to {preview.householdName}.</Text>
+        <AuthTitle>Create your account</AuthTitle>
+        <AuthLede>You were invited to {preview.householdName}.</AuthLede>
         <Card withBorder>
           <Stack gap="xs">
             <Group>

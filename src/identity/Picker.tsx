@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useAuth } from '../auth/AuthProvider'
 import { AuthApiError, type AuthTokens } from '../auth/api'
 import type { MeQuery } from '../graphql/generated/graphql'
+import { AuthTitle } from '../ui/AuthShell'
 import { ProfileTile } from '../ui/ProfileTile'
 import { PinGate } from './PinGate'
 import { useMe } from './useMe'
@@ -120,7 +121,7 @@ export function Picker({
 
   return (
     <Stack gap={28}>
-      <h1 className="authTitle">Who's watching?</h1>
+      <AuthTitle>Who's watching?</AuthTitle>
       {failure && (
         <Alert color="red" role="alert">
           {failure}
