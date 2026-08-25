@@ -429,6 +429,13 @@
   background: var(--color-alpha-10);
 }
 
+.profileMenuError {
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--color-red-error-text);
+}
+
 /* ---- Home groundwork (frame 01): the ambient wash over the ground. ---- */
 .homeShell {
   position: relative;

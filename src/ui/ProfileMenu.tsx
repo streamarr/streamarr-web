@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { AuthApiError } from '../auth/api'
 import { useAuth } from '../auth/AuthProvider'
 import type { MeQuery } from '../graphql/generated/graphql'
 import { initials, tileColor } from './ProfileTile'
@@ -6,6 +7,9 @@ import './auth.css'
 
 type Me = MeQuery['me']
 type SelectableProfile = Me['selectableProfiles']['edges'][number]['node']
+
+const SESSION_EVICTION_CODES = new Set(['AUTHENTICATION_REQUIRED', 'EXPIRED_TOKEN', 'INVALID_TOKEN'])
+const SWITCH_FAILED_MESSAGE = "Couldn't switch profiles. Try again."
 
 // Frame 01a: the profile menu under the top bar's avatar chip. The current profile leads with
 // its role; the Household's other profiles follow — a PIN-protected one detours through the
@@ -16,14 +20,17 @@ export function ProfileMenu({
   me,
   onPinRequired,
   onSignedOut,
+  onUnauthenticated,
 }: {
   me: Me
   onPinRequired: (profileId: string) => void
   onSignedOut: () => void
+  onUnauthenticated: () => void
 }) {
   const { selectProfile, logout } = useAuth()
   const [opened, setOpened] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [failure, setFailure] = useState<string | null>(null)
   const anchor = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -59,13 +66,31 @@ export function ProfileMenu({
       return
     }
     setBusy(true)
+    setFailure(null)
     try {
       // The auth boundary resets the Apollo store itself: a switch is an identity change.
       await selectProfile(profile.id)
       setOpened(false)
+    } catch (error) {
+      reportSwitchFailure(error)
     } finally {
       setBusy(false)
     }
+  }
+
+  // REST errors bypass the Apollo error link, so a session-level 401 is routed from here.
+  function reportSwitchFailure(error: unknown) {
+    if (isSessionEviction(error)) {
+      setOpened(false)
+      onUnauthenticated()
+      return
+    }
+    setFailure(switchFailureMessage(error))
+  }
+
+  function toggle() {
+    setFailure(null)
+    setOpened((open) => !open)
   }
 
   function signOut() {
@@ -84,7 +109,7 @@ export function ProfileMenu({
         aria-label={`Profile menu (${chipName})`}
         aria-haspopup="menu"
         aria-expanded={opened}
-        onClick={() => setOpened((open) => !open)}
+        onClick={toggle}
       >
         {initials(chipName)}
       </button>
@@ -111,6 +136,11 @@ export function ProfileMenu({
             {profile.selected && <CheckGlyph />}
           </button>
         ))}
+          {failure && (
+            <div className="profileMenuError" role="alert">
+              {failure}
+            </div>
+          )}
           <div className="profileMenuDivider" aria-hidden />
           <button type="button" className="profileMenuRow" onClick={signOut}>
             <SignOutGlyph />
@@ -120,6 +150,22 @@ export function ProfileMenu({
       )}
     </div>
   )
+}
+
+function isSessionEviction(error: unknown): boolean {
+  return (
+    error instanceof AuthApiError &&
+    error.status === 401 &&
+    error.code !== null &&
+    SESSION_EVICTION_CODES.has(error.code)
+  )
+}
+
+function switchFailureMessage(error: unknown): string {
+  if (error instanceof AuthApiError && error.serverMessage) {
+    return error.serverMessage
+  }
+  return SWITCH_FAILED_MESSAGE
 }
 
 function rowLabel(profile: SelectableProfile) {

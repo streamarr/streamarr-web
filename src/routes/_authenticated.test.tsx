@@ -3,9 +3,16 @@ import { HttpResponse, graphql, http } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
-import { meFixture } from '../test/meFixture'
+import { meFixture, profileFixture } from '../test/meFixture'
 
 const ME = meFixture({ scope: 'profile' })
+const HOUSEHOLD = meFixture({
+  scope: 'profile',
+  profiles: [
+    profileFixture({ id: 'p-alex', name: 'Alex', selected: true }),
+    profileFixture({ id: 'p-sam', name: 'Sam', personal: false }),
+  ],
+})
 
 describe('the authenticated layout', () => {
   it('shouldShowOnlyTheCheckWhileTheServerHasNotAnswered', async () => {
@@ -105,6 +112,22 @@ describe('the authenticated layout', () => {
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
     finishRevocation()
+  })
+
+  it('shouldReturnToSignInWhenAProfileSwitchFindsTheSessionGone', async () => {
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ data: { me: HOUSEHOLD } })),
+      http.post('/api/auth/select-profile', () =>
+        HttpResponse.json({ code: 'AUTHENTICATION_REQUIRED' }, { status: 401 }),
+      ),
+    )
+    const { router, user } = renderAppAt('/')
+    await screen.findByText(/welcome, owner/i)
+
+    await user.click(await screen.findByRole('button', { name: /profile menu/i }))
+    await user.click(screen.getByRole('button', { name: 'Sam' }))
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
   })
 
   it('shouldHideSignOutFromAVisitorWhoIsNotSignedIn', async () => {
