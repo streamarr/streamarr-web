@@ -21,23 +21,10 @@ export function Player({ mediaFileId }: { mediaFileId: string }) {
         if (cancelled || !url || !video) {
           return
         }
-        // The stream URL carries the playback ?t= token; relative segment requests inherit it.
-        if (Hls.isSupported()) {
-          hls = new Hls()
-          hls.on(Hls.Events.ERROR, (_event, data) => {
-            if (!data.fatal) {
-              return
-            }
-            // An expired ?t= token or a restarted server: the instance cannot recover.
-            hls?.destroy()
-            hls = null
-            setFailed(true)
-          })
-          hls.loadSource(url)
-          hls.attachMedia(video)
-        } else {
-          video.src = url
-        }
+        hls = attach(video, url, () => {
+          hls = null
+          setFailed(true)
+        })
       })
       .catch(() => {
         if (!cancelled) {
@@ -64,4 +51,24 @@ export function Player({ mediaFileId }: { mediaFileId: string }) {
       </AspectRatio>
     </Stack>
   )
+}
+
+// The stream URL carries the playback ?t= token; relative segment requests inherit it.
+function attach(video: HTMLVideoElement, url: string, onFatal: () => void): Hls | null {
+  if (!Hls.isSupported()) {
+    video.src = url
+    return null
+  }
+  const hls = new Hls()
+  hls.on(Hls.Events.ERROR, (_event, data) => {
+    if (!data.fatal) {
+      return
+    }
+    // An expired ?t= token or a restarted server: the instance cannot recover.
+    hls.destroy()
+    onFatal()
+  })
+  hls.loadSource(url)
+  hls.attachMedia(video)
+  return hls
 }
