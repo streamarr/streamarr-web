@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { AuthApiError } from '../auth/api'
 import { useAuth } from '../auth/AuthProvider'
 import type { MeQuery } from '../graphql/generated/graphql'
@@ -32,6 +32,8 @@ export function ProfileMenu({
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
   const anchor = useRef<HTMLDivElement>(null)
+  const chip = useRef<HTMLButtonElement>(null)
+  const panelId = useId()
 
   useEffect(() => {
     if (!opened) {
@@ -44,7 +46,7 @@ export function ProfileMenu({
     }
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
-        setOpened(false)
+        close()
       }
     }
     document.addEventListener('mousedown', onPointerDown)
@@ -59,9 +61,15 @@ export function ProfileMenu({
   const current = profiles.find((profile) => profile.selected)
   const chipName = current?.name ?? me.displayName
 
+  // Closing from inside the panel (Escape, a choice) must not drop focus on <body>.
+  function close() {
+    setOpened(false)
+    chip.current?.focus()
+  }
+
   async function switchTo(profile: SelectableProfile) {
     if (profile.pinConfigured) {
-      setOpened(false)
+      close()
       onPinRequired(profile.id)
       return
     }
@@ -70,7 +78,7 @@ export function ProfileMenu({
     try {
       // The auth boundary resets the Apollo store itself: a switch is an identity change.
       await selectProfile(profile.id)
-      setOpened(false)
+      close()
     } catch (error) {
       reportSwitchFailure(error)
     } finally {
@@ -81,7 +89,7 @@ export function ProfileMenu({
   // REST errors bypass the Apollo error link, so a session-level 401 is routed from here.
   function reportSwitchFailure(error: unknown) {
     if (isSessionEviction(error)) {
-      setOpened(false)
+      close()
       onUnauthenticated()
       return
     }
@@ -94,7 +102,7 @@ export function ProfileMenu({
   }
 
   function signOut() {
-    setOpened(false)
+    close()
     // Local state ends immediately; server revocation stays best-effort — an outage must never
     // trap someone in a session they explicitly left.
     void logout().catch(() => {})
@@ -104,17 +112,18 @@ export function ProfileMenu({
   return (
     <div className="profileMenuAnchor" ref={anchor}>
       <button
+        ref={chip}
         type="button"
         className={`profileChip${opened ? ' profileChipOpen' : ''}`}
         aria-label={`Profile menu (${chipName})`}
-        aria-haspopup="menu"
         aria-expanded={opened}
+        aria-controls={opened ? panelId : undefined}
         onClick={toggle}
       >
         {initials(chipName)}
       </button>
       {opened && (
-        <div className="profileMenu" role="menu">
+        <div id={panelId} className="profileMenu">
         {profiles.map((profile, index) => (
           <button
             key={profile.id}

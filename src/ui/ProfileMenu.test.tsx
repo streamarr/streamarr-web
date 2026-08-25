@@ -61,6 +61,34 @@ describe('ProfileMenu', () => {
     expect(screen.getByRole('button', { name: /rob \(locked\)/i })).toBeDisabled()
   })
 
+  it('shouldReturnFocusToTheChipWhenEscapeClosesThePanel', async () => {
+    const { user } = renderMenu()
+    const chip = screen.getByRole('button', { name: /profile menu \(alex\)/i })
+
+    await user.click(chip)
+    await user.tab()
+    expect(screen.getByRole('button', { name: 'Sam' })).toHaveFocus()
+
+    await user.keyboard('{Escape}')
+
+    expect(screen.queryByRole('button', { name: 'Sam' })).not.toBeInTheDocument()
+    expect(chip).toHaveFocus()
+    expect(chip).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('shouldDiscloseThePanelRatherThanClaimAMenuRole', async () => {
+    const { user } = renderMenu()
+    const chip = screen.getByRole('button', { name: /profile menu \(alex\)/i })
+
+    await user.click(chip)
+
+    const panel = document.getElementById(chip.getAttribute('aria-controls') ?? '')
+    expect(panel).not.toBeNull()
+    expect(panel).toContainElement(screen.getByRole('button', { name: 'Sam' }))
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(chip).not.toHaveAttribute('aria-haspopup')
+  })
+
   it('shouldSwitchToAPinlessProfileDirectly', async () => {
     let selected: unknown = null
     server.use(
