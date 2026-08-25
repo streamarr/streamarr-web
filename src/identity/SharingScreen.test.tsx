@@ -1,15 +1,20 @@
 import { screen, waitFor } from '@testing-library/react'
 import { graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
+import type { SharingOverviewQuery } from '../graphql/generated/graphql'
 import { HOUSEHOLD_ID, meFixture, PROFILE_ID, profileFixture } from '../test/meFixture'
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
 import { SharingScreen } from './SharingScreen'
 
+type PendingOffer = SharingOverviewQuery['pendingShareOffers']['edges'][number]['node']
+type ProfileShareRow = SharingOverviewQuery['profileShares']['edges'][number]['node']
+type ShareNode = PendingOffer & ProfileShareRow & { __typename: 'ProfileShare' }
+
 const OFFER_ID = '77777777-7777-7777-7777-777777777777'
 const OTHER_HOUSEHOLD_ID = '55555555-5555-5555-5555-555555555555'
 
-function serverAnswersOverview(overrides: { offers?: unknown[]; shares?: unknown[] } = {}) {
+function serverAnswersOverview(overrides: { offers?: ShareNode[]; shares?: ShareNode[] } = {}) {
   server.use(
     graphql.query('Me', () =>
       HttpResponse.json({ data: { me: meFixture({ profiles: [profileFixture()] }) } }),
@@ -37,7 +42,7 @@ function serverAnswersOverview(overrides: { offers?: unknown[]; shares?: unknown
   )
 }
 
-function shareRow(overrides: Record<string, unknown> = {}) {
+function shareRow(overrides: Partial<ShareNode> = {}): ShareNode {
   return {
     __typename: 'ProfileShare',
     id: OFFER_ID,
