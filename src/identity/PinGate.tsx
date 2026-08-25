@@ -7,10 +7,7 @@ import { PinGateAvatar } from '../ui/ProfileTile'
 const PIN_SHAPE = /^\d{4,8}$/
 const FAILURE_MESSAGE = "Couldn't select that Profile. Try again."
 
-// Frame 15a: the PIN gate for a protected Profile, a full state of the picker screen rather
-// than a modal (principle 11 — nothing here is a one-way door). The server owns the whole
-// ceremony — throttling, verification, the Household safety lock — so this collects digits
-// and translates the typed refusals. Codes and PINs never touch GraphQL (ADR 0024).
+// PINs ride the REST ceremony, never GraphQL: the server verifies, throttles, and refuses.
 export function PinGate({
   profileName,
   paletteIndex,

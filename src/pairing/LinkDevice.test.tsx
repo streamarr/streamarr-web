@@ -28,7 +28,7 @@ function decisionReturns(body: object, status = 200, headers?: Record<string, st
 }
 
 async function enterCode(user: ReturnType<typeof import('@testing-library/user-event').default.setup>, code = 'bcdf-ghjk') {
-  // Frame 13: lookup runs on the last character — typing the code is the whole gesture.
+  // Lookup runs on the last character: typing the code is the whole gesture.
   await user.type(screen.getByLabelText(/pairing code/i), code)
 }
 

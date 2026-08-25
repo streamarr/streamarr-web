@@ -21,10 +21,7 @@ import {
 } from '../auth/api'
 import { useAuth } from '../auth/AuthProvider'
 
-// Frames 14/14a: the Account-invitation ceremony. The recipient has no Account yet, so the whole
-// flow authenticates by the pasted code alone; every miss reads the same ("that link isn't valid
-// anymore") because unknown, expired, and decided codes are deliberately indistinguishable.
-// Invitation codes are opaque tokens, so this is a pasteable field — never the PIN/TV code input.
+// The recipient has no Account yet: the pasted code alone authenticates lookup, accept, and decline.
 
 const FAILURE_MESSAGE = 'Something went wrong. Please try again.'
 
@@ -226,10 +223,7 @@ function InvitationReview({
   )
 }
 
-// Web PR #5 (frames 14/14a variant): what connecting means, before consent. The Profile becomes
-// this person's Personal Profile; a share that admitted a Profile must never silently admit the
-// person, so every current visit ends and the listed Households are offered it afresh —
-// each host consents again. The named direct managers keep their authority.
+// A share that admitted a Profile must never silently admit the person: every visit ends, each host consents afresh.
 function ConnectReview({ preview }: { preview: InvitationPreview }) {
   return (
     <Card withBorder>
