@@ -11,6 +11,9 @@ const pin = JSON.parse(await readFile(join(root, 'src/graphql/schema.pin.json'),
 
 const treeUrl = `https://api.github.com/repos/${pin.repository}/git/trees/${pin.commit}?recursive=1`
 const tree = await fetchJson(treeUrl)
+if (tree.truncated) {
+  throw new Error(`Tree listing for ${pin.repository}@${pin.commit} was truncated; the schema would be incomplete`)
+}
 const files = tree.tree
   .filter(
     (entry) =>
