@@ -18,8 +18,8 @@ import {
   CancelProfileShareDocument,
   EndProfileShareDocument,
   OfferProfileShareDocument,
+  ProfileSharePreviewDocument,
   RejectProfileShareDocument,
-  SharePreflightDocument,
   SharingOverviewDocument,
   type SharingOverviewQuery,
 } from '../graphql/generated/graphql'
@@ -33,7 +33,7 @@ const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 
 // The Profile-sharing flow (ADR 0024 §Profile sharing): offers into the context Household for
 // its admins to decide, the caller's own Personal Profile's shares to cancel or end, and the
-// offer form with the preflight's only two answers — wouldLock and nameConflict. Every expected
+// offer form with the preview's two answers — wouldLock and nameConflict. Every expected
 // refusal arrives as a typed user error and renders through the shared message fallback, so an
 // unknown member still reads as something actionable.
 export function SharingScreen() {
@@ -199,7 +199,7 @@ function OfferForm({
   const [householdId, setHouseholdId] = useState('')
   const [failure, setFailure] = useState<string | null>(null)
   const validTarget = UUID_SHAPE.test(householdId)
-  const preflight = useQuery(SharePreflightDocument, {
+  const preview = useQuery(ProfileSharePreviewDocument, {
     variables: { profileId, householdId },
     skip: !validTarget,
   })
@@ -217,7 +217,7 @@ function OfferForm({
     onOffered()
   }
 
-  const answers = preflight.data?.sharePreflight
+  const answers = preview.data?.profileSharePreview
 
   return (
     <Card withBorder>
@@ -306,9 +306,9 @@ function OwnShares({
                   : `Household ${shortId(share.householdId)}`}
               </Text>
               <Badge variant="light">{share.status}</Badge>
-              {share.structural && <Badge color="blue">Home</Badge>}
+              {share.requiredByAccountMembership && <Badge color="blue">Home</Badge>}
             </Group>
-            {!share.structural && (share.status === 'PENDING' || share.status === 'ACTIVE') && (
+            {!share.requiredByAccountMembership && (share.status === 'PENDING' || share.status === 'ACTIVE') && (
               <Button
                 size="xs"
                 variant="subtle"

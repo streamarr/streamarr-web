@@ -1,5 +1,5 @@
 {
   "repository": "streamarr/streamarr-server",
-  "commit": "d570d676da32429fe93160de7bc79b184a65514e",
+  "commit": "5e795b6312cf584cafd360acca31b4513bcbb69c",
   "schemaDirectory": "src/main/resources/schema"
 }
