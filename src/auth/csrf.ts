@@ -4,17 +4,24 @@
 // The wire-contract counterpart is AuthCookies in streamarr-server.
 
 export function readCsrfCookie(): string | null {
-  const match =
-    document.cookie.match(/(?:^|;\s*)__Host-XSRF-TOKEN=([^;]+)/) ??
-    document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)
-  if (!match) {
+  const value = readCookie('__Host-XSRF-TOKEN') ?? readCookie('XSRF-TOKEN')
+  if (value === null) {
     return null
   }
   try {
-    return decodeURIComponent(match[1])
+    return decodeURIComponent(value)
   } catch {
     return null
   }
+}
+
+function readCookie(name: string): string | null {
+  const prefix = `${name}=`
+  const value = document.cookie
+    .split('; ')
+    .find((cookie) => cookie.startsWith(prefix))
+    ?.slice(prefix.length)
+  return value ? value : null
 }
 
 export const CSRF_HEADER = 'X-XSRF-TOKEN'
