@@ -13,19 +13,14 @@ export const Route = createFileRoute('/_authenticated/link')({
   component: LinkDevicePage,
 })
 
-// Approving a device is an account action; the _authenticated layout has already made the
-// server vouch for the session before this renders. A session that dies while the code is being
-// typed is the lookup's 401 to answer, and it must still carry the typed code back.
 function LinkDevicePage() {
   const { code } = Route.useSearch()
   const { session } = Route.useRouteContext()
   const navigate = useNavigate()
-  // Read once: the effect below removes it from the URL, and re-reading would clear the field.
+  // Read once: the strip below would otherwise clear the field.
   const [initialCode] = useState(code ?? '')
 
-  // A code in the query is only ever a pre-fill, and today only arrives on the way back from
-  // signing in. Strip it so it cannot be shoulder-surfed from the address bar, pasted into a
-  // shared link, or written to a proxy's access log. It is never auto-submitted.
+  // The code is only a pre-fill; the address bar, shared links, and proxy logs must not keep it.
   useEffect(() => {
     if (code) {
       void navigate({ to: '/link', search: {}, replace: true })
@@ -37,8 +32,7 @@ function LinkDevicePage() {
       <LinkDevice
       initialCode={initialCode}
       onUnauthenticated={(pendingCode) => {
-        // Every eviction records the store's answer before bouncing — otherwise /login's
-        // cached-session gate would turn the evicted visitor straight back around.
+        // Recorded first, or /login's cached-session gate would turn the visitor straight back.
         session.markAnonymous()
         return navigate({
           to: '/login',

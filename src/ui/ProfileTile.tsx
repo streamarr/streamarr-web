@@ -1,9 +1,5 @@
 import './auth.css'
 
-// A profile of the context Household as the picker shows it (frame 15): a 120px rounded
-// square of initials, the lock badge riding the corner when a PIN stands between the person
-// and the profile, and the Kids mark as a system-voice label. The glyph carries the state —
-// no helper prose (principles 6 and 8.2).
 export function ProfileTile({
   name,
   kid = false,
@@ -15,9 +11,9 @@ export function ProfileTile({
 }: {
   name: string
   kid?: boolean
-  /** Selecting detours through the PIN gate; the lock glyph marks the door, not a wall. */
+  /** Selecting detours through the PIN gate. */
   pinProtected?: boolean
-  /** The Household safety rule: visible, not selectable, until a PIN is set. */
+  /** Visible, not selectable, until a PIN is set. */
   locked?: boolean
   paletteIndex?: number
   busy?: boolean
@@ -60,9 +56,7 @@ export function initials(name: string) {
   return (first + last).toUpperCase()
 }
 
-// Solid fills drawn from the token layer (principle 2.5): deep blue is selection.active's own
-// value; the deep purple and mint are the brand and semantic hues grounded toward black, the
-// same derivation the mock tiles use. Cycled by position, so a Household's tiles differ.
+// Token-layer hues grounded toward black, cycled by position so a Household's tiles differ.
 const TILE_COLORS = [
   'var(--color-blue-deep)',
   'color-mix(in srgb, var(--color-brand-purple) 45%, #060608)',

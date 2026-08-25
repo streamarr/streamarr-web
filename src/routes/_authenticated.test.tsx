@@ -16,8 +16,6 @@ const HOUSEHOLD = meFixture({
 
 describe('the authenticated layout', () => {
   it('shouldShowOnlyTheCheckWhileTheServerHasNotAnswered', async () => {
-    // While the answer is pending nothing but the check may show — not the page, whose own
-    // loading states only exist for visitors already past the gate.
     let answer = () => {}
     const held = new Promise<void>((resolve) => {
       answer = resolve
@@ -48,13 +46,11 @@ describe('the authenticated layout', () => {
     const { router } = renderAppAt('/')
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
-    // The bounce records where the visitor was headed so signing in can resume it.
     expect(router.state.location.search).toEqual({ redirect: '/' })
   })
 
   it('shouldBounceAnExpiredUnrenewedSessionToSignIn', async () => {
-    // An expired token that reaches the probe escaped every renewal layer — a verdict about
-    // the session, not an outage. A reload-and-retry alert cannot help; signing in can.
+    // An expired token that reaches the probe escaped every renewal layer: a verdict, not an outage.
     server.use(
       http.post('/graphql', () => HttpResponse.json({ code: 'EXPIRED_TOKEN' }, { status: 401 })),
     )
@@ -84,7 +80,6 @@ describe('the authenticated layout', () => {
     const { router, user } = renderAppAt('/')
     await screen.findByText(/welcome, owner/i)
 
-    // Sign out lives in the profile menu now (frame 01a).
     await user.click(await screen.findByRole('button', { name: /profile menu/i }))
     await user.click(screen.getByRole('button', { name: /sign out/i }))
 
@@ -152,8 +147,7 @@ describe('the authenticated layout', () => {
   })
 
   it('shouldLeaveSignInReachableWithoutAskingTheServer', async () => {
-    // No MSW handlers at all: if the gate probed the server from /login, the unhandled request
-    // would fail this test loudly.
+    // No MSW handlers at all: a probe from /login would fail this test loudly.
     const { router } = renderAppAt('/login')
 
     expect(await screen.findByRole('button', { name: /sign in/i })).toBeInTheDocument()
@@ -161,8 +155,6 @@ describe('the authenticated layout', () => {
   })
 
   it('shouldFailClosedWithAnAlertWhenTheServerCannotAnswer', async () => {
-    // An outage is not a verdict: neither the page nor a misleading bounce to sign-in — the
-    // visitor may well be signed in. Say so and let them retry.
     server.use(http.post('/graphql', () => HttpResponse.json({}, { status: 500 })))
     const { router } = renderAppAt('/')
 

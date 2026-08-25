@@ -21,8 +21,7 @@ export function Player({ mediaFileId }: { mediaFileId: string }) {
         if (cancelled || !url || !video) {
           return
         }
-        // The stream URL carries the playback ?t= token; segment requests spawned from the
-        // playlist are relative and inherit it. hls.js handles that natively.
+        // The stream URL carries the playback ?t= token; relative segment requests inherit it.
         if (Hls.isSupported()) {
           hls = new Hls()
           hls.on(Hls.Events.ERROR, (_event, data) => {
@@ -37,7 +36,6 @@ export function Player({ mediaFileId }: { mediaFileId: string }) {
           hls.loadSource(url)
           hls.attachMedia(video)
         } else {
-          // Native HLS (Safari): the token rides the src just the same.
           video.src = url
         }
       })

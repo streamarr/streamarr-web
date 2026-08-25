@@ -4,15 +4,12 @@ import { useMe } from '../identity/useMe'
 import { ProfileMenu } from './ProfileMenu'
 import './auth.css'
 
-// Frame 01's top bar: the lockup, a hairline, the nav pills, and the profile chip. Library
-// pills and search land with their pages — a pill that goes nowhere teaches the feature might
-// not exist. The bar renders nothing while me is in flight; chrome must never flash a
-// half-known identity.
 export function TopBar() {
   const { data } = useMe()
   const { session } = useRouteContext({ from: '__root__' })
   const navigate = useNavigate()
 
+  // Chrome must never flash a half-known identity.
   if (!data) {
     return <header className="topBar" aria-hidden />
   }
