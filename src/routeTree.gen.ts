@@ -13,7 +13,7 @@ import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as InviteRouteImport } from './routes/invite'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ResetRouteImport } from './routes/reset'
-import { Route as SetupRouteImport } from './routes/setup'
+import { Route as SetupServerRouteImport } from './routes/setup-server'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedLinkRouteImport } from './routes/_authenticated/link'
 import { Route as AuthenticatedSelectProfileRouteImport } from './routes/_authenticated/select-profile'
@@ -39,9 +39,9 @@ const ResetRoute = ResetRouteImport.update({
   path: '/reset',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SetupRoute = SetupRouteImport.update({
-  id: '/setup',
-  path: '/setup',
+const SetupServerRoute = SetupServerRouteImport.update({
+  id: '/setup-server',
+  path: '/setup-server',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
@@ -77,7 +77,7 @@ export interface FileRoutesByFullPath {
   '/invite': typeof InviteRoute
   '/login': typeof LoginRoute
   '/reset': typeof ResetRoute
-  '/setup': typeof SetupRoute
+  '/setup-server': typeof SetupServerRoute
   '/link': typeof AuthenticatedLinkRoute
   '/select-profile': typeof AuthenticatedSelectProfileRoute
   '/sharing': typeof AuthenticatedSharingRoute
@@ -87,7 +87,7 @@ export interface FileRoutesByTo {
   '/invite': typeof InviteRoute
   '/login': typeof LoginRoute
   '/reset': typeof ResetRoute
-  '/setup': typeof SetupRoute
+  '/setup-server': typeof SetupServerRoute
   '/link': typeof AuthenticatedLinkRoute
   '/select-profile': typeof AuthenticatedSelectProfileRoute
   '/sharing': typeof AuthenticatedSharingRoute
@@ -100,7 +100,7 @@ export interface FileRoutesById {
   '/invite': typeof InviteRoute
   '/login': typeof LoginRoute
   '/reset': typeof ResetRoute
-  '/setup': typeof SetupRoute
+  '/setup-server': typeof SetupServerRoute
   '/_authenticated/link': typeof AuthenticatedLinkRoute
   '/_authenticated/select-profile': typeof AuthenticatedSelectProfileRoute
   '/_authenticated/sharing': typeof AuthenticatedSharingRoute
@@ -114,7 +114,7 @@ export interface FileRouteTypes {
     | '/invite'
     | '/login'
     | '/reset'
-    | '/setup'
+    | '/setup-server'
     | '/link'
     | '/select-profile'
     | '/sharing'
@@ -124,7 +124,7 @@ export interface FileRouteTypes {
     | '/invite'
     | '/login'
     | '/reset'
-    | '/setup'
+    | '/setup-server'
     | '/link'
     | '/select-profile'
     | '/sharing'
@@ -136,7 +136,7 @@ export interface FileRouteTypes {
     | '/invite'
     | '/login'
     | '/reset'
-    | '/setup'
+    | '/setup-server'
     | '/_authenticated/link'
     | '/_authenticated/select-profile'
     | '/_authenticated/sharing'
@@ -149,7 +149,7 @@ export interface RootRouteChildren {
   InviteRoute: typeof InviteRoute
   LoginRoute: typeof LoginRoute
   ResetRoute: typeof ResetRoute
-  SetupRoute: typeof SetupRoute
+  SetupServerRoute: typeof SetupServerRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -182,11 +182,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ResetRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/setup': {
-      id: '/setup'
-      path: '/setup'
-      fullPath: '/setup'
-      preLoaderRoute: typeof SetupRouteImport
+    '/setup-server': {
+      id: '/setup-server'
+      path: '/setup-server'
+      fullPath: '/setup-server'
+      preLoaderRoute: typeof SetupServerRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/': {
@@ -252,7 +252,7 @@ const rootRouteChildren: RootRouteChildren = {
   InviteRoute: InviteRoute,
   LoginRoute: LoginRoute,
   ResetRoute: ResetRoute,
-  SetupRoute: SetupRoute,
+  SetupServerRoute: SetupServerRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

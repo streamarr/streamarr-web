@@ -18,7 +18,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
  */
 const CEREMONY_ROUTES = new Set<FileRouteTypes['id']>([
   '/login',
-  '/setup',
+  '/setup-server',
   '/reset',
   '/invite',
   '/_authenticated/select-profile',
