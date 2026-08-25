@@ -1,0 +1,49 @@
+.topBar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: clamp(12px, 3vw, 24px);
+  padding: 20px clamp(24px, 3.3vw, 50px);
+}
+
+.topBarLockup {
+  height: 30px;
+  width: auto;
+  display: block;
+}
+
+.topBarDivider {
+  width: 1px;
+  height: 26px;
+  background: var(--color-alpha-16);
+}
+
+.topBarNav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.navPill {
+  padding: 7px 18px;
+  border-radius: var(--radius-sm);
+  background: var(--color-alpha-10);
+  font-size: 15px;
+  color: var(--color-alpha-92);
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+}
+
+.navPillActive {
+  background: var(--selection-active);
+  font-weight: 600;
+}
+
+.topBarTrail {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}

@@ -1,8 +1,8 @@
 import { createRootRouteWithContext, Outlet, useRouterState } from '@tanstack/react-router'
 import type { SessionStore } from '../auth/session'
 import type { FileRouteTypes } from '../routeTree.gen'
+import { HomeShell } from '../ui/HomeShell'
 import { TopBar } from '../ui/TopBar'
-import '../ui/auth.css'
 
 interface RouterContext {
   session: SessionStore
@@ -36,12 +36,8 @@ function RootLayout() {
   }
 
   return (
-    <div className="homeShell">
-      <div className="homeAmbient" aria-hidden />
-      {signedIn && <TopBar />}
-      <main className="homeContent">
-        <Outlet />
-      </main>
-    </div>
+    <HomeShell chrome={signedIn && <TopBar />}>
+      <Outlet />
+    </HomeShell>
   )
 }
