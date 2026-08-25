@@ -1,0 +1,65 @@
+type Mutation {
+    addRating(input: RatingInput!): Rating!
+    addLibrary(input: AddLibraryInput!): AddLibraryPayload
+    removeLibrary(id: ID!): Boolean!
+    scanLibrary(id: ID!): Boolean!
+    refreshLibrary(id: ID!, imageRefreshMode: ImageRefreshMode! = PRESERVE): Boolean!
+    createStreamSession(mediaFileId: ID!, options: StreamingOptionsInput): StreamSession!
+    destroyStreamSession(sessionId: ID!): Boolean!
+    reportStreamSessionTimeline(sessionId: ID!, positionSeconds: Int!, state: PlaybackState!): Boolean!
+    markWatched(id: ID!): Boolean!
+    markUnwatched(id: ID!): Boolean!
+    grantServerAdmin(input: GrantServerAdminInput!): GrantServerAdminPayload
+    revokeServerAdmin(input: RevokeServerAdminInput!): RevokeServerAdminPayload
+    grantHouseholdAdmin(input: GrantHouseholdAdminInput!): GrantHouseholdAdminPayload
+    revokeHouseholdAdmin(input: RevokeHouseholdAdminInput!): RevokeHouseholdAdminPayload
+    disableAccount(input: DisableAccountInput!): DisableAccountPayload
+    enableAccount(input: EnableAccountInput!): EnableAccountPayload
+    renameAccount(input: RenameAccountInput!): RenameAccountPayload
+    createHousehold(input: CreateHouseholdInput!): CreateHouseholdPayload
+    renameHousehold(input: RenameHouseholdInput!): RenameHouseholdPayload
+    createProfile(input: CreateProfileInput!): CreateProfilePayload
+    renameProfile(input: RenameProfileInput!): RenameProfilePayload
+    setProfilePicture(input: SetProfilePictureInput!): SetProfilePicturePayload
+    changeProfileKind(input: ChangeProfileKindInput!): ChangeProfileKindPayload
+    setProfileMaximumAllowedRatingAge(input: SetProfileMaximumAllowedRatingAgeInput!): SetProfileMaximumAllowedRatingAgePayload
+    removeProfileMaximumAllowedRatingAge(input: RemoveProfileMaximumAllowedRatingAgeInput!): RemoveProfileMaximumAllowedRatingAgePayload
+    setProfilePin(input: SetProfilePinInput!): SetProfilePinPayload
+    removeProfilePin(input: RemoveProfilePinInput!): RemoveProfilePinPayload
+    administrativelyResetProfilePin(input: AdministrativelyResetProfilePinInput!): AdministrativelyResetProfilePinPayload
+    deleteProfile(input: DeleteProfileInput!): DeleteProfilePayload
+    issueAccountInvitation(input: IssueAccountInvitationInput!): IssueAccountInvitationPayload
+    cancelAccountInvitation(input: CancelAccountInvitationInput!): CancelAccountInvitationPayload
+    issuePasswordReset(input: IssuePasswordResetInput!): IssuePasswordResetPayload
+    offerProfileShare(input: OfferProfileShareInput!): OfferProfileSharePayload
+    acceptProfileShare(input: AcceptProfileShareInput!): AcceptProfileSharePayload
+    rejectProfileShare(input: RejectProfileShareInput!): RejectProfileSharePayload
+    cancelProfileShare(input: CancelProfileShareInput!): CancelProfileSharePayload
+    endProfileShare(input: EndProfileShareInput!): EndProfileSharePayload
+    forceEndProfileShare(input: ForceEndProfileShareInput!): ForceEndProfileSharePayload
+    inviteProfileManager(input: InviteProfileManagerInput!): InviteProfileManagerPayload
+    cancelManagerInvitation(input: CancelManagerInvitationInput!): CancelManagerInvitationPayload
+    acceptManagerInvitation(input: AcceptManagerInvitationInput!): AcceptManagerInvitationPayload
+    declineManagerInvitation(input: DeclineManagerInvitationInput!): DeclineManagerInvitationPayload
+    relinquishProfileManagement(input: RelinquishProfileManagementInput!): RelinquishProfileManagementPayload
+    removeProfileManager(input: RemoveProfileManagerInput!): RemoveProfileManagerPayload
+    grantProfileManagerOverride(input: GrantProfileManagerOverrideInput!): GrantProfileManagerOverridePayload
+    removeProfileManagerOverride(input: RemoveProfileManagerOverrideInput!): RemoveProfileManagerOverridePayload
+    revokeDeviceRegistration(input: RevokeDeviceRegistrationInput!): RevokeDeviceRegistrationPayload
+    blockEsn(input: BlockEsnInput!): BlockEsnPayload
+    blockEsnServerWide(input: BlockEsnServerWideInput!): BlockEsnServerWidePayload
+    unblockEsn(input: UnblockEsnInput!): UnblockEsnPayload
+    unblockEsnServerWide(input: UnblockEsnServerWideInput!): UnblockEsnServerWidePayload
+    transferAccount(input: TransferAccountInput!): TransferAccountPayload
+    deleteAccount(input: DeleteAccountInput!): DeleteAccountPayload
+    deleteMyAccount(input: DeleteMyAccountInput!): DeleteMyAccountPayload
+    transferProfile(input: TransferProfileInput!): TransferProfilePayload
+    administrativelyDeleteProfile(input: AdministrativelyDeleteProfileInput!): AdministrativelyDeleteProfilePayload
+    tearDownHousehold(input: TearDownHouseholdInput!): TearDownHouseholdPayload
+}
+
+enum ImageRefreshMode {
+    PRESERVE
+    REFRESH_IF_CHANGED
+    FORCE_REFRESH
+}

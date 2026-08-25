@@ -12,8 +12,13 @@ import {
 import { describe, expect, it } from 'vitest'
 
 const root = join(__dirname, '..')
+const schemaDirectory = join(__dirname, 'schema')
 const schema = buildSchema(
-  readFileSync(join(__dirname, 'schema.graphql'), 'utf8').replaceAll(/^# ---.*$/gm, ''),
+  readdirSync(schemaDirectory)
+    .filter((entry) => entry.endsWith('.graphqls'))
+    .sort()
+    .map((entry) => readFileSync(join(schemaDirectory, entry), 'utf8'))
+    .join('\n'),
 )
 
 const documents = findDocuments(root).map((path) => ({
@@ -84,7 +89,7 @@ function findDocuments(directory: string): string[] {
       if (entry !== 'generated' && entry !== 'node_modules') {
         found.push(...findDocuments(path))
       }
-    } else if (entry.endsWith('.graphql') && entry !== 'schema.graphql') {
+    } else if (entry.endsWith('.graphql')) {
       found.push(path)
     }
   }

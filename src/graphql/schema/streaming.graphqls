@@ -1,0 +1,53 @@
+type StreamSession {
+    id: ID!
+    streamUrl: String!
+    transcodeMode: TranscodeMode!
+}
+
+enum TranscodeMode {
+    REMUX
+    AUDIO_TRANSCODE
+    VIDEO_TRANSCODE
+    FULL_TRANSCODE
+}
+
+input StreamingOptionsInput {
+    quality: VideoQuality
+    maxWidth: Int
+    maxHeight: Int
+    maxBitrate: Int
+    supportedCodecs: [String!]
+    supportedAudioCodecs: [String!]
+    maxAudioChannels: Int
+    audioLanguage: String
+    subtitleLanguage: String
+}
+
+enum VideoQuality {
+    AUTO
+    LOW_360P
+    MEDIUM_480P
+    HIGH_720P
+    FULL_HD_1080P
+    UHD_4K
+}
+
+enum PlaybackState {
+    PLAYING
+    PAUSED
+    STOPPED
+}
+
+enum WatchStatus {
+    UNWATCHED
+    IN_PROGRESS
+    WATCHED
+}
+
+type WatchProgress {
+    positionSeconds: Int!
+    percentComplete: Float!
+    durationSeconds: Int!
+}
+
+union ContinueWatchingMedia = Movie | Episode
