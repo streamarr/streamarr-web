@@ -1,4 +1,4 @@
-import { useNavigate } from '@tanstack/react-router'
+import { useNavigate, useRouteContext } from '@tanstack/react-router'
 import lockup from '../assets/streamarr-mark-and-text-light.svg'
 import { useMe } from '../identity/useMe'
 import { ProfileMenu } from './ProfileMenu'
@@ -10,6 +10,7 @@ import './auth.css'
 // half-known identity.
 export function TopBar() {
   const { data } = useMe()
+  const { session } = useRouteContext({ from: '__root__' })
   const navigate = useNavigate()
 
   if (!data) {
@@ -30,6 +31,10 @@ export function TopBar() {
             navigate({ to: '/select-profile', search: { profile: profileId } })
           }
           onSignedOut={() => navigate({ to: '/login' })}
+          onUnauthenticated={() => {
+            session.markAnonymous()
+            navigate({ to: '/login' })
+          }}
         />
       </div>
     </header>
