@@ -47,6 +47,18 @@ export function CodeInput({
       .toUpperCase()
       .slice(0, max)
 
+  // Secret mode reconstructs the value from the masked field's tail, which only holds if the
+  // caret never leaves the end — the boxes draw it there anyway.
+  function pinCaretToEnd(field: HTMLInputElement) {
+    if (!secret) {
+      return
+    }
+    const end = field.value.length
+    if (field.selectionStart !== end || field.selectionEnd !== end) {
+      field.setSelectionRange(end, end)
+    }
+  }
+
   const cells = Array.from({ length: shown }, (_, index) => {
     const filled = index < value.length
     // The cursor marks where the next digit lands, and only while a visible box awaits one.
@@ -93,6 +105,7 @@ export function CodeInput({
         data-testid={testId}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
+        onSelect={(event) => pinCaretToEnd(event.currentTarget)}
         onChange={(event) => {
           // Secret mode renders masked text into the field; reconstruct from the tail so
           // ordinary typing and deletions both land on the real value.

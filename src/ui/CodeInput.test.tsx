@@ -7,14 +7,17 @@ import { CodeInput } from './CodeInput'
 function Harness({ minLength, length }: { minLength?: number; length?: number }) {
   const [value, setValue] = useState('')
   return (
-    <CodeInput
-      label="PIN"
-      value={value}
-      onChange={setValue}
-      minLength={minLength}
-      length={length}
-      secret
-    />
+    <>
+      <CodeInput
+        label="PIN"
+        value={value}
+        onChange={setValue}
+        minLength={minLength}
+        length={length}
+        secret
+      />
+      <output data-testid="value">{value}</output>
+    </>
   )
 }
 
@@ -71,6 +74,29 @@ describe('CodeInput', () => {
 
     // Complete-at-the-floor shows four filled boxes and no caret asking for a fifth.
     expect(document.querySelector('.codeInputCaret')).toBeNull()
+  })
+
+  it('shouldAppendADigitTypedAfterTheCaretWasMovedBack', async () => {
+    const user = userEvent.setup()
+    render(<Harness minLength={4} />)
+    const field = screen.getByLabelText('PIN')
+
+    await user.type(field, '12')
+    await user.keyboard('{ArrowLeft}3')
+
+    expect(field).toHaveValue('•••')
+    expect(screen.getByTestId('value')).toHaveTextContent('123')
+  })
+
+  it('shouldDeleteTheLastDigitOnBackspaceAfterTheCaretWasMovedBack', async () => {
+    const user = userEvent.setup()
+    render(<Harness minLength={4} />)
+    const field = screen.getByLabelText('PIN')
+
+    await user.type(field, '123')
+    await user.keyboard('{ArrowLeft}{Backspace}')
+
+    expect(screen.getByTestId('value')).toHaveTextContent('12')
   })
 
   it('shouldKeepAFixedLengthFixed', async () => {
