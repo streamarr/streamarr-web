@@ -117,27 +117,27 @@ export function ProfileMenu({
       </button>
       {opened && (
         <div id={panelId} className="profileMenu">
-        {profiles.map((profile, index) => (
-          <button
-            key={profile.id}
-            type="button"
-            className={`profileMenuRow${profile.selected ? ' profileMenuRowCurrent' : ''}`}
-            disabled={busy || profile.locked || profile.selected}
-            aria-label={rowLabel(profile)}
-            onClick={() => switchTo(profile)}
-          >
-            <span className="profileMenuAvatar" style={{ background: tileColor(index) }}>
-              {initials(profile.name)}
-            </span>
-            <span className="profileMenuName">
-              <span>{profile.name}</span>
-              {profile.selected && roleLabel(me) && (
-                <span className="profileMenuRole">{roleLabel(me)}</span>
-              )}
-            </span>
-            {profile.selected && <CheckGlyph />}
-          </button>
-        ))}
+          {profiles.map((profile, index) => (
+            <button
+              key={profile.id}
+              type="button"
+              className={`profileMenuRow${profile.selected ? ' profileMenuRowCurrent' : ''}`}
+              disabled={busy || profile.locked || profile.selected}
+              aria-label={rowLabel(profile)}
+              onClick={() => switchTo(profile)}
+            >
+              <span className="profileMenuAvatar" style={{ background: tileColor(index) }}>
+                {initials(profile.name)}
+              </span>
+              <span className="profileMenuName">
+                <span>{profile.name}</span>
+                {profile.selected && roleLabel(me) && (
+                  <span className="profileMenuRole">{roleLabel(me)}</span>
+                )}
+              </span>
+              {profile.selected && <CheckGlyph />}
+            </button>
+          ))}
           {failure && (
             <div className="profileMenuError" role="alert">
               {failure}

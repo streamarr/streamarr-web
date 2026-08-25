@@ -44,6 +44,16 @@ export function CodeInput({
       .toUpperCase()
       .slice(0, max)
 
+  function valueFrom(raw: string): string {
+    if (!secret) {
+      return clean(raw)
+    }
+    if (raw.length < value.length) {
+      return value.slice(0, raw.length)
+    }
+    return clean(value + raw.slice(value.length))
+  }
+
   // The masked value is rebuilt from the field's tail, so the caret must stay at the end.
   function pinCaretToEnd(field: HTMLInputElement) {
     if (!secret) {
@@ -102,19 +112,7 @@ export function CodeInput({
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         onSelect={(event) => pinCaretToEnd(event.currentTarget)}
-        onChange={(event) => {
-          const raw = event.currentTarget.value
-          if (!secret) {
-            onChange(clean(raw))
-            return
-          }
-          const masked = '•'.repeat(value.length)
-          if (raw.length < masked.length) {
-            onChange(value.slice(0, raw.length))
-            return
-          }
-          onChange(clean(value + raw.slice(masked.length)))
-        }}
+        onChange={(event) => onChange(valueFrom(event.currentTarget.value))}
         onPaste={(event: ClipboardEvent<HTMLInputElement>) => {
           event.preventDefault()
           onChange(clean(event.clipboardData.getData('text')))

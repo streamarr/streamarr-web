@@ -24,7 +24,7 @@ export function ProfileTile({
       type="button"
       className="profileTile"
       disabled={locked || busy}
-      aria-label={locked ? `${name} (locked)` : pinProtected ? `${name} (PIN protected)` : name}
+      aria-label={tileLabel(name, locked, pinProtected)}
       onClick={onSelect}
     >
       <span className="profileTileAvatar" style={{ background: tileColor(paletteIndex) }}>
@@ -39,6 +39,12 @@ export function ProfileTile({
       {kid && <span className="profileTileKind">Kids</span>}
     </button>
   )
+}
+
+function tileLabel(name: string, locked: boolean, pinProtected: boolean) {
+  if (locked) return `${name} (locked)`
+  if (pinProtected) return `${name} (PIN protected)`
+  return name
 }
 
 export function PinGateAvatar({ name, paletteIndex = 0 }: { name: string; paletteIndex?: number }) {

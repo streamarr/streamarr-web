@@ -30,17 +30,17 @@ function LinkDevicePage() {
   return (
     <AuthShell width={560}>
       <LinkDevice
-      initialCode={initialCode}
-      onUnauthenticated={(pendingCode) => {
-        // Recorded first, or /login's cached-session gate would turn the visitor straight back.
-        session.markAnonymous()
-        return navigate({
-          to: '/login',
-          search: {
-            redirect: pendingCode ? `/link?code=${encodeURIComponent(pendingCode)}` : '/link',
-          },
-        })
-      }}
+        initialCode={initialCode}
+        onUnauthenticated={(pendingCode) => {
+          // Recorded first, or /login's cached-session gate would turn the visitor straight back.
+          session.markAnonymous()
+          return navigate({
+            to: '/login',
+            search: {
+              redirect: pendingCode ? `/link?code=${encodeURIComponent(pendingCode)}` : '/link',
+            },
+          })
+        }}
       />
     </AuthShell>
   )
