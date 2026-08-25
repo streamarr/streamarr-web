@@ -38,24 +38,39 @@ export async function request(
   url: string,
   init: RequestInit,
 ): Promise<Response> {
-  // A CSRF rejection may send this request twice. Callers must therefore supply a replayable body;
-  // postJson serializes its body to a string, which is safe to reuse.
   const unsafe = !SAFE_METHODS.has(init.method?.toUpperCase() ?? 'GET')
-  const send = () => {
-    const headers = new Headers(init.headers)
-    if (unsafe) {
-      // Cookie-authenticated requests echo the current script-readable CSRF cookie.
-      for (const [name, value] of Object.entries(csrfHeaders())) {
-        headers.set(name, value)
-      }
-    }
-    return fetch(url, { ...init, headers, credentials: 'same-origin' })
-  }
+  const send = () =>
+    fetch(url, { ...init, headers: requestHeaders(init, unsafe), credentials: 'same-origin' })
 
-  let response = await send()
-  if (unsafe && isCsrfRejection(response.status, (await readErrorBody(response)).code)) {
-    response = await send()
+  const response = await send()
+  if (!unsafe || !(await isCsrfRejected(response))) {
+    return checked(response)
   }
+  // The retry echoes the re-minted cookie. Callers must supply a replayable body; postJson's
+  // serialized string is safe to reuse.
+  return checked(await send())
+}
+
+function requestHeaders(init: RequestInit, unsafe: boolean): Headers {
+  const headers = new Headers(init.headers)
+  if (!unsafe) {
+    return headers
+  }
+  // Cookie-authenticated requests echo the current script-readable CSRF cookie.
+  for (const [name, value] of Object.entries(csrfHeaders())) {
+    headers.set(name, value)
+  }
+  return headers
+}
+
+async function isCsrfRejected(response: Response): Promise<boolean> {
+  if (response.status !== 403) {
+    return false
+  }
+  return isCsrfRejection(response.status, (await readErrorBody(response)).code)
+}
+
+async function checked(response: Response): Promise<Response> {
   await throwIfError(response)
   return response
 }
