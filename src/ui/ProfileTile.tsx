@@ -1,4 +1,4 @@
-import './auth.css'
+import styles from './ProfileTile.module.css'
 
 export function ProfileTile({
   name,
@@ -22,21 +22,21 @@ export function ProfileTile({
   return (
     <button
       type="button"
-      className="profileTile"
+      className={styles.profileTile}
       disabled={locked || busy}
       aria-label={tileLabel(name, locked, pinProtected)}
       onClick={onSelect}
     >
-      <span className="profileTileAvatar" style={{ background: tileColor(paletteIndex) }}>
+      <span className={styles.profileTileAvatar} style={{ background: tileColor(paletteIndex) }}>
         {initials(name)}
         {(locked || pinProtected) && (
-          <span className="profileTileLock">
+          <span className={styles.profileTileLock}>
             <LockGlyph />
           </span>
         )}
       </span>
-      <span className="profileTileName">{name}</span>
-      {kid && <span className="profileTileKind">Kids</span>}
+      <span className={styles.profileTileName}>{name}</span>
+      {kid && <span className={styles.profileTileKind}>Kids</span>}
     </button>
   )
 }
@@ -49,7 +49,7 @@ function tileLabel(name: string, locked: boolean, pinProtected: boolean) {
 
 export function PinGateAvatar({ name, paletteIndex = 0 }: { name: string; paletteIndex?: number }) {
   return (
-    <span className="pinGateAvatar" style={{ background: tileColor(paletteIndex) }}>
+    <span className={styles.pinGateAvatar} style={{ background: tileColor(paletteIndex) }}>
       {initials(name)}
     </span>
   )

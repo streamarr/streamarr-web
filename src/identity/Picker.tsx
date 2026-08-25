@@ -7,6 +7,7 @@ import { AuthTitle } from '../ui/AuthShell'
 import { ProfileTile } from '../ui/ProfileTile'
 import { PinGate } from './PinGate'
 import { useMe } from './useMe'
+import styles from './Picker.module.css'
 
 type SelectableProfile = MeQuery['me']['selectableProfiles']['edges'][number]['node']
 
@@ -139,7 +140,7 @@ export function Picker({
           }))}
         />
       )}
-      <div className="profileTiles">
+      <div className={styles.profileTiles}>
         {profiles.map((profile, index) => (
           <ProfileTile
             key={profile.id}
