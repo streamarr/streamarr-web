@@ -28,9 +28,9 @@ function LinkDevicePage() {
   // shared link, or written to a proxy's access log. It is never auto-submitted.
   useEffect(() => {
     if (code) {
-      window.history.replaceState(null, '', '/link')
+      void navigate({ to: '/link', search: {}, replace: true })
     }
-  }, [code])
+  }, [code, navigate])
 
   return (
     <AuthShell width={560}>

@@ -81,11 +81,16 @@ describe('/link', () => {
     expect(router.state.location.pathname).toBe('/link')
   })
 
-  it('shouldPrefillTheCodeCarriedBackFromSigningIn', async () => {
+  it('shouldPrefillTheCodeCarriedBackFromSigningInAndStripItFromTheUrl', async () => {
     serverKnowsTheVisitor()
-    renderAppAt('/link?code=BCDF-GHJK')
+    const { router } = renderAppAt('/link?code=BCDF-GHJK')
 
     expect(await screen.findByLabelText(/pairing code/i)).toHaveValue('BCDFGHJK')
+    // Stripped through the router, so the history entry keeps its index and key.
+    await waitFor(() => expect(router.state.location.search).toEqual({}))
+    expect(router.state.location.pathname).toBe('/link')
+    expect(typeof router.state.location.state.__TSR_index).toBe('number')
+    expect(screen.getByLabelText(/pairing code/i)).toHaveValue('BCDFGHJK')
   })
 
   it('shouldStillBounceCarryingTheCodeWhenTheSessionExpiresAfterArriving', async () => {
