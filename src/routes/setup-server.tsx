@@ -7,7 +7,7 @@ import { SetupForm } from '../auth/SetupForm'
 
 // First-run gate: once the server is set up, the wizard must never show again. A thrown
 // redirect replaces the entry, so Back cannot return to a gate that bounces again.
-export const Route = createFileRoute('/setup')({
+export const Route = createFileRoute('/setup-server')({
   beforeLoad: async () => {
     if ((await getSetupStatus()).setupComplete) {
       throw redirect({ to: '/login' })
@@ -16,10 +16,10 @@ export const Route = createFileRoute('/setup')({
   pendingMs: 0,
   pendingComponent: CheckingServer,
   errorComponent: ServerStatusUnknown,
-  component: Setup,
+  component: SetupServer,
 })
 
-function Setup() {
+function SetupServer() {
   const navigate = useNavigate()
 
   function onAuthenticated(tokens: AuthTokens) {
