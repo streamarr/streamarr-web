@@ -159,6 +159,9 @@ export function createRenewalBridge({
     } catch {
       // The service worker remains the reactive correctness fallback.
     }
+    // The host forgets a port only when told; a closed tab would otherwise keep receiving
+    // refresh-due dispatches until postMessage finally throws.
+    window.addEventListener('pagehide', () => postToSharedWorker({ type: 'disconnect' }))
   }
 
   serviceWorkers.addEventListener('message', ({ data }) => {
