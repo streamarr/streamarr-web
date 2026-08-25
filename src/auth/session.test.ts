@@ -87,6 +87,18 @@ describe('probeSession', () => {
     await expect(probeSession(createApolloClient(vi.fn()))).resolves.toBe('anonymous')
   })
 
+  it('shouldAnswerAnonymousWhenTheServerRejectsTheSessionAsAGraphqlError', async () => {
+    server.use(
+      graphql.query('Me', () =>
+        HttpResponse.json({
+          errors: [{ message: 'sign in', extensions: { code: 'AUTHENTICATION_REQUIRED' } }],
+        }),
+      ),
+    )
+
+    await expect(probeSession(createApolloClient(vi.fn()))).resolves.toBe('anonymous')
+  })
+
   it('shouldAnswerAnonymousWhenTheAccessTokenExpiredUnrenewed', async () => {
     server.use(
       http.post('/graphql', () => HttpResponse.json({ code: 'EXPIRED_TOKEN' }, { status: 401 })),

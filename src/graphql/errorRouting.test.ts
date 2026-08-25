@@ -8,6 +8,12 @@ describe('decideAuthRoute', () => {
     )
   })
 
+  it('shouldRouteToLoginOnAuthenticationRequiredAsAGraphqlError', () => {
+    // The server's data-fetcher handler classifies AuthenticationRequiredException as a GraphQL
+    // error with this extensions code (HTTP 200 + errors), not only as a network-level 401.
+    expect(decideAuthRoute({ graphqlCodes: ['AUTHENTICATION_REQUIRED'] })).toBe('/login')
+  })
+
   it('shouldRouteToLoginOnInvalidToken', () => {
     expect(decideAuthRoute({ networkStatus: 401, networkCode: 'INVALID_TOKEN' })).toBe('/login')
   })
