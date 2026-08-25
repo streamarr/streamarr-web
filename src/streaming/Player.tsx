@@ -1,5 +1,5 @@
 import { useMutation } from '@apollo/client/react'
-import { Alert, AspectRatio } from '@mantine/core'
+import { Alert, AspectRatio, Stack } from '@mantine/core'
 import Hls from 'hls.js'
 import { useEffect, useRef, useState } from 'react'
 import { CreateStreamSessionDocument } from '../graphql/generated/graphql'
@@ -12,6 +12,7 @@ export function Player({ mediaFileId }: { mediaFileId: string }) {
   useEffect(() => {
     let hls: Hls | null = null
     let cancelled = false
+    setFailed(false)
 
     createStreamSession({ variables: { mediaFileId } })
       .then((result) => {
@@ -31,7 +32,11 @@ export function Player({ mediaFileId }: { mediaFileId: string }) {
           video.src = url
         }
       })
-      .catch(() => setFailed(true))
+      .catch(() => {
+        if (!cancelled) {
+          setFailed(true)
+        }
+      })
 
     return () => {
       cancelled = true
@@ -39,18 +44,17 @@ export function Player({ mediaFileId }: { mediaFileId: string }) {
     }
   }, [mediaFileId, createStreamSession])
 
-  if (failed) {
-    return (
-      <Alert color="red" role="alert">
-        Playback couldn't start. Try again.
-      </Alert>
-    )
-  }
-
   return (
-    <AspectRatio ratio={16 / 9} maw={960}>
-      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-      <video ref={videoRef} controls style={{ width: '100%' }} />
-    </AspectRatio>
+    <Stack maw={960}>
+      {failed && (
+        <Alert color="red" role="alert">
+          Playback couldn't start. Try again.
+        </Alert>
+      )}
+      <AspectRatio ratio={16 / 9}>
+        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+        <video ref={videoRef} controls style={{ width: '100%' }} />
+      </AspectRatio>
+    </Stack>
   )
 }
