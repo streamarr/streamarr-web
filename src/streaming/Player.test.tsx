@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import { HttpResponse, graphql } from 'msw'
 import { useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -16,6 +16,7 @@ const hls = vi.hoisted(() => ({
 
 vi.mock('hls.js', () => ({
   default: class {
+    static Events = { ERROR: 'hlsError' }
     static isSupported() {
       return hls.supported
     }
@@ -74,6 +75,23 @@ describe('Player', () => {
     renderWithProviders(<Player mediaFileId="abcd" />)
 
     expect(await screen.findByRole('alert')).toBeInTheDocument()
+  })
+
+  it('shouldReportAFatalStreamErrorAndTearDownHls', async () => {
+    server.use(
+      graphql.mutation('CreateStreamSession', () =>
+        HttpResponse.json({ data: { createStreamSession: SESSION } }),
+      ),
+    )
+    renderWithProviders(<Player mediaFileId="abcd" />)
+    await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(STREAM_URL))
+
+    const onError = hls.on.mock.calls.find(([event]) => event === 'hlsError')?.[1]
+    expect(onError).toBeTypeOf('function')
+    act(() => onError('hlsError', { fatal: true, type: 'networkError' }))
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(hls.destroy).toHaveBeenCalled()
   })
 
   it('shouldRecoverWhenTheNextMediaFileStartsAfterAFailedOne', async () => {

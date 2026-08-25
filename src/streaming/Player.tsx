@@ -25,6 +25,15 @@ export function Player({ mediaFileId }: { mediaFileId: string }) {
         // playlist are relative and inherit it. hls.js handles that natively.
         if (Hls.isSupported()) {
           hls = new Hls()
+          hls.on(Hls.Events.ERROR, (_event, data) => {
+            if (!data.fatal) {
+              return
+            }
+            // An expired ?t= token or a restarted server: the instance cannot recover.
+            hls?.destroy()
+            hls = null
+            setFailed(true)
+          })
           hls.loadSource(url)
           hls.attachMedia(video)
         } else {
