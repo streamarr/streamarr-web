@@ -34,8 +34,8 @@
   display: flex;
   flex-direction: column;
   gap: 28px;
-  padding: 90px 24px;
-  margin-left: clamp(24px, 6vw, 90px);
+  padding: clamp(40px, 8vh, 90px) 24px;
+  margin-inline: clamp(24px, 6vw, 90px) clamp(16px, 4vw, 90px);
   justify-content: center;
   min-height: 100dvh;
   box-sizing: border-box;
@@ -58,7 +58,7 @@
 }
 
 .authTitle {
-  font-size: clamp(34px, 4.5vw, 52px);
+  font-size: clamp(28px, 3vw + 18px, 52px);
   font-weight: 700;
   letter-spacing: -0.025em;
   line-height: 1.05;
@@ -78,8 +78,9 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: clamp(4px, 1.2vw, 8px);
   width: fit-content;
+  max-width: 100%;
 }
 
 .codeInputField {
@@ -95,8 +96,8 @@
 .codeInputCell {
   box-sizing: border-box;
   position: relative;
-  width: 52px;
-  height: 64px;
+  width: clamp(30px, 8vw, 52px);
+  height: clamp(42px, 11vw, 64px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -104,7 +105,7 @@
   background: var(--color-alpha-07);
   border: 1px solid var(--color-alpha-12);
   font-family: var(--font-family-system);
-  font-size: 30px;
+  font-size: clamp(20px, 5.5vw, 30px);
   font-weight: 600;
   color: var(--color-alpha-92);
 }
@@ -146,7 +147,7 @@
 }
 
 .codeInputSeparator {
-  width: 14px;
+  width: clamp(8px, 2.5vw, 14px);
   height: 2px;
   border-radius: 1px;
   background: color-mix(in srgb, var(--color-white) 30%, transparent);
@@ -224,18 +225,24 @@
 /* Frame 15a: the PIN gate's avatar sits beside the title block. */
 .pinGate {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   gap: 24px;
 }
 
+.pinGate > :not(.pinGateAvatar) {
+  min-width: 0;
+  flex: 1 1 16rem;
+}
+
 .pinGateAvatar {
-  width: 132px;
-  height: 132px;
+  width: clamp(72px, 22vw, 132px);
+  height: clamp(72px, 22vw, 132px);
   border-radius: var(--radius-2xl);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 42px;
+  font-size: clamp(24px, 7vw, 42px);
   font-weight: 700;
   flex: none;
   color: var(--color-white);
@@ -270,7 +277,7 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: clamp(12px, 3vw, 24px);
   padding: 20px clamp(24px, 3.3vw, 50px);
 }
 
@@ -448,7 +455,7 @@
   left: 0;
   right: 0;
   top: 0;
-  height: 900px;
+  height: min(900px, 100%);
   background:
     radial-gradient(
       80% 60% at 75% 0%,
