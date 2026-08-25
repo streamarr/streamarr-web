@@ -77,6 +77,41 @@ describe('/select-profile', () => {
     expect(screen.queryByTestId('pin-input')).not.toBeInTheDocument()
   })
 
+  it('shouldNotReopenTheGateWithBackAfterSwitchingProfile', async () => {
+    // Leaving the gate by 'Switch profile' replaces the gate's entry: Back from the grid must
+    // land before the gate, not on it again.
+    server.use(
+      graphql.query('Me', () =>
+        HttpResponse.json({
+          data: {
+            me: meFixture({
+              profiles: [
+                profileFixture({ id: 'p-alex', name: 'Alex' }),
+                profileFixture({
+                  id: 'p-toni',
+                  name: 'Toni',
+                  personal: false,
+                  pinConfigured: true,
+                }),
+              ],
+            }),
+          },
+        }),
+      ),
+    )
+    const { router, user } = renderAppAt('/select-profile')
+
+    await user.click(await screen.findByRole('button', { name: /toni \(pin protected\)/i }))
+    expect(await screen.findByRole('heading', { name: /enter toni/i })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Switch profile' }))
+    expect(await screen.findByRole('heading', { name: /who's watching\?/i })).toBeInTheDocument()
+
+    router.history.back()
+
+    await waitFor(() => expect(router.state.location.search).toEqual({}))
+    expect(screen.queryByRole('heading', { name: /enter toni/i })).not.toBeInTheDocument()
+  })
+
   it('shouldOpenTheGateOnAFreshDeepLink', async () => {
     // A refresh on the gate stays on the gate: the URL carries the whole state.
     server.use(

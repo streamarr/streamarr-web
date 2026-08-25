@@ -23,7 +23,7 @@ function SelectProfile() {
         onPinRequested={(profileId) =>
           navigate({ to: '/select-profile', search: { profile: profileId } })
         }
-        onPinDismissed={() => navigate({ to: '/select-profile', search: {} })}
+        onPinDismissed={() => navigate({ to: '/select-profile', search: {}, replace: true })}
         onProfileSelected={() => navigate({ to: '/' })}
         onUnauthenticated={() => {
           // Record the eviction first, or /login's cached-session gate would bounce straight back.
