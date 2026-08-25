@@ -139,7 +139,6 @@ describe('AuthProvider identity cache', () => {
   })
 
   it('shouldForgetTheCachedIdentityOnSignIn', async () => {
-    // Account B signs in on the document that cached Account A: nothing cached may survive.
     server.use(http.post('/api/auth/login', () => HttpResponse.json(TOKENS)))
     const client = renderWithSeededIdentity(createSessionStore(async () => 'anonymous'))
     expect(client.readQuery({ query: MeDocument })).not.toBeNull()

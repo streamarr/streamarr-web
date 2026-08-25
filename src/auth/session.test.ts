@@ -108,8 +108,7 @@ describe('probeSession', () => {
   })
 
   it('shouldAnswerAuthenticatedWhenOnlyAProfileChoiceIsMissing', async () => {
-    // PROFILE_REQUIRED means the server recognized the session and wants a scope upgrade — that
-    // is a signed-in visitor, and /select is the error link's routing to arrange, not the guard's.
+    // The server issues PROFILE_REQUIRED only for a session it recognizes.
     server.use(
       graphql.query('Me', () =>
         HttpResponse.json({
@@ -128,8 +127,6 @@ describe('probeSession', () => {
   })
 
   it('shouldNotTriggerTheAuthRedirectWhileProbing', async () => {
-    // The guard owns arrival gating; if the probe's 401 also fired the error link's redirect the
-    // two would race for the router.
     server.use(
       http.post('/graphql', () =>
         HttpResponse.json({ code: 'AUTHENTICATION_REQUIRED' }, { status: 401 }),

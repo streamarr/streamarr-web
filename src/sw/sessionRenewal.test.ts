@@ -216,9 +216,7 @@ describe('session renewal', () => {
   })
 
   it('shouldReportSessionEndedWhenTheRefreshSessionIsRejected', async () => {
-    // A raw EXPIRED_TOKEN passthrough wedges the app: the error router deliberately ignores
-    // that code (the worker owns it), so a terminally rejected renewal must surface as the
-    // code that routes to sign-in.
+    // The page's error router leaves EXPIRED_TOKEN to the worker, so a raw one has no handler.
     const fetcher: typeof fetch = async (input) => {
       const path = new URL(input instanceof Request ? input.url : input).pathname
       return path === '/api/auth/refresh'
@@ -340,9 +338,7 @@ describe('session renewal', () => {
   })
 
   it('shouldReportSessionEndedWhenAnExpiredTokenSurvivesASuccessfulPreflight', async () => {
-    // Renewal already ran once for this request; a second attempt would loop. But the page has
-    // no handler for a raw EXPIRED_TOKEN (the error router leaves that code to this worker), so
-    // the worker's last word must be the code that routes to sign-in.
+    // Renewing twice for one request would loop, and a raw EXPIRED_TOKEN has no page handler.
     const paths: string[] = []
     const fetcher: typeof fetch = async (input) => {
       const path = new URL(input instanceof Request ? input.url : input).pathname
@@ -362,8 +358,7 @@ describe('session renewal', () => {
   })
 
   it('shouldKeepTheServersAnswerWhenASignInSupersedesThePreflightRefresh', async () => {
-    // A stale-generation rejection is not a verdict: the page adopted a newer session while the
-    // preflight was in flight, so the server's own answer passes through untouched.
+    // adoptExpiry inside the refresh fetch is a sign-in landing mid-preflight (generation guard).
     const renewal = createSessionRenewal({
       fetch: async (input) => {
         const path = new URL(input instanceof Request ? input.url : input).pathname

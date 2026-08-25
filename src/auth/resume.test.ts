@@ -18,8 +18,7 @@ describe('sanitizeResumeTarget', () => {
   })
 
   it('shouldRefuseBackslashSmuggling', () => {
-    // Browsers normalize backslashes to slashes when resolving, so '/\evil.example' is
-    // protocol-relative in disguise.
+    // Browsers resolve '/\evil.example' as protocol-relative.
     expect(sanitizeResumeTarget('/\\evil.example')).toBeUndefined()
   })
 

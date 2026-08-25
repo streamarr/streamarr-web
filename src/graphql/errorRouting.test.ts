@@ -9,8 +9,6 @@ describe('decideAuthRoute', () => {
   })
 
   it('shouldRouteToLoginOnAuthenticationRequiredAsAGraphqlError', () => {
-    // The server's data-fetcher handler classifies AuthenticationRequiredException as a GraphQL
-    // error with this extensions code (HTTP 200 + errors), not only as a network-level 401.
     expect(decideAuthRoute({ graphqlCodes: ['AUTHENTICATION_REQUIRED'] })).toBe('/login')
   })
 
@@ -24,7 +22,7 @@ describe('decideAuthRoute', () => {
   })
 
   it('shouldNotRouteOnExpiredToken', () => {
-    // The service worker refreshes and replays these; the page must not redirect.
+    // The service worker renews and replays EXPIRED_TOKEN itself.
     expect(decideAuthRoute({ networkStatus: 401, networkCode: 'EXPIRED_TOKEN' })).toBeNull()
   })
 

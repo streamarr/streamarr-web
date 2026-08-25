@@ -36,9 +36,7 @@ describe('LoginForm', () => {
 
   it('shouldSignInWhenAStaleAuthCookieMakesTheServerDemandCsrf', async () => {
     document.cookie = 'XSRF-TOKEN=csrf-abc'
-    // A stale streamarr_access cookie rides along on the login POST, so the server's CSRF
-    // matcher covers it and refuses the request unless the token cookie is echoed back —
-    // and signing in is the very act that would have replaced the stale cookie.
+    // A stale access cookie on the login POST puts it under the server's CSRF matcher.
     server.use(
       http.post('/api/auth/login', ({ request }) =>
         request.headers.get('X-XSRF-TOKEN')

@@ -18,12 +18,6 @@ import { cssVariablesResolver, theme } from '../theme'
 
 type Rendered = RenderResult & { user: ReturnType<typeof userEvent.setup> }
 
-/**
- * Renders under the app's providers (Apollo + Mantine + AuthProvider) with a fresh Apollo client
- * per render so its cache never leaks between tests. GraphQL requests hit /graphql, where MSW's
- * graphql handlers intercept them. Component tests render no routes, so their session store must
- * never need the server's answer — a probe here is a bug, and it fails loudly.
- */
 export function renderWithProviders(ui: ReactElement): Rendered {
   const session = createSessionStore(() =>
     Promise.reject(new Error('component tests must not probe the session')),
@@ -36,12 +30,6 @@ export function renderWithProviders(ui: ReactElement): Rendered {
   )
 }
 
-/**
- * Renders the whole app at a starting path — the real route tree, guard, and error-link-to-
- * navigation wiring — so route-level behavior (guards, redirects, search params) is exercised
- * as it ships. The returned router is the assertion surface: its location says where a visitor
- * landed.
- */
 export function renderAppAt(
   path: string,
   renewal: RenewalBridge = inactiveRenewalBridge,
