@@ -47,9 +47,13 @@ export function InvitationScreen({
     try {
       setPhase({ at: 'preview', preview: await lookupInvitation(presented) })
     } catch (error) {
-      setPhase({ at: 'code' })
-      setFailure(refusalMessage(error))
+      refuseCode(error)
     }
+  }
+
+  function refuseCode(error: unknown) {
+    setPhase({ at: 'code' })
+    setFailure(refusalMessage(error))
   }
 
   useEffect(() => {
@@ -145,13 +149,17 @@ function InvitationReview({
     setFailure(null)
     setBusy('decline')
     try {
-      await declineInvitation(code)
-      onDeclined()
+      await sendDecline()
     } catch (error) {
       setFailure(refusalMessage(error))
     } finally {
       setBusy(null)
     }
+  }
+
+  async function sendDecline() {
+    await declineInvitation(code)
+    onDeclined()
   }
 
   return (
@@ -196,7 +204,7 @@ function InvitationReview({
           label="Confirm password"
           value={confirm}
           onChange={(event) => setConfirm(event.currentTarget.value)}
-          error={confirm.length > 0 && confirm !== password ? "Passwords don't match" : undefined}
+          error={mismatchError(password, confirm)}
           required
         />
         <Group>
@@ -279,6 +287,13 @@ function ConsequenceList({
       ))}
     </Stack>
   )
+}
+
+function mismatchError(password: string, confirm: string): string | undefined {
+  if (confirm.length === 0 || confirm === password) {
+    return undefined
+  }
+  return "Passwords don't match"
 }
 
 function refusalMessage(error: unknown): string {

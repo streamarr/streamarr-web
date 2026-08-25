@@ -34,28 +34,38 @@ export function LinkDevice({
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
+  function onCodeChange(next: string) {
+    setCode(next)
+    setError(null)
+    if (next.length === 8 && !busy) {
+      void onCodeComplete(next)
+    }
+  }
+
   async function onCodeComplete(fullCode: string) {
     setError(null)
     setSettled(null)
     setBusy(true)
     try {
-      const found = await lookupPairingRequest(fullCode)
-      setPairing(found)
-      settle(found.status)
+      showRequest(await lookupPairingRequest(fullCode))
     } catch (caught) {
-      setPairing(null)
-      if (!bouncedToSignIn(caught, fullCode)) {
-        setError(messageFor(caught))
-      }
+      refuseLookup(caught, fullCode)
     } finally {
       setBusy(false)
+    }
+  }
+
+  function refuseLookup(caught: unknown, carriedCode: string) {
+    setPairing(null)
+    if (!bouncedToSignIn(caught, carriedCode)) {
+      setError(messageFor(caught))
     }
   }
 
   // The code travels as an argument: the lookup fires from the keystroke that completed it,
   // before that keystroke's state has committed.
   function bouncedToSignIn(caught: unknown, carriedCode: string): boolean {
-    if (!onUnauthenticated || !(caught instanceof AuthApiError) || caught.status !== 401) {
+    if (!onUnauthenticated || !isSessionExpired(caught)) {
       return false
     }
     onUnauthenticated(carriedCode)
@@ -66,8 +76,7 @@ export function LinkDevice({
     setError(null)
     setBusy(true)
     try {
-      const result = await decidePairingRequest(pairing!.userCode, decision, householdId)
-      settle(result.status)
+      await sendDecision(decision, householdId)
     } catch (caught) {
       await handleDecisionFailure(caught)
     } finally {
@@ -75,23 +84,34 @@ export function LinkDevice({
     }
   }
 
+  async function sendDecision(decision: PairingDecision, householdId?: string) {
+    const result = await decidePairingRequest(pairing!.userCode, decision, householdId)
+    settle(result.status)
+  }
+
   // A 409 means the request was already decided: re-read once rather than resubmit blindly.
   async function handleDecisionFailure(caught: unknown) {
     if (bouncedToSignIn(caught, code)) {
       return
     }
-    if (!(caught instanceof AuthApiError) || caught.code !== 'DEVICE_CODE_NOT_PENDING') {
+    if (!isAlreadyDecided(caught)) {
       setError(messageFor(caught))
       return
     }
+    await showAuthoritativeOutcome()
+  }
 
+  async function showAuthoritativeOutcome() {
     try {
-      const current = await lookupPairingRequest(pairing!.userCode)
-      setPairing(current)
-      settle(current.status)
+      showRequest(await lookupPairingRequest(pairing!.userCode))
     } catch (lookupFailed) {
       setError(messageFor(lookupFailed))
     }
+  }
+
+  function showRequest(found: PairingRequest) {
+    setPairing(found)
+    settle(found.status)
   }
 
   function settle(status: PairingStatus) {
@@ -107,29 +127,17 @@ export function LinkDevice({
     setCode('')
   }
 
-  return (
-    <Stack gap={28}>
-      <h1 className="authTitle">Link your TV</h1>
-
-      <div role="status" aria-live="polite">
-        {settled && (
-          <Alert color={SIGNED_IN_STATUSES.has(settled) ? 'green' : 'red'}>
-            {SETTLED_MESSAGES[settled] ?? SETTLED_FALLBACK}
-          </Alert>
-        )}
-      </div>
-
-      {error && (
-        <Alert color="red" role="alert">
-          {error}
-        </Alert>
-      )}
-
-      {settled ? (
+  function renderStep() {
+    if (settled) {
+      return (
         <Button variant="default" onClick={startOver}>
           Link another device
         </Button>
-      ) : pairing ? (
+      )
+    }
+
+    if (pairing) {
+      return (
         <Stack gap={10}>
           <Text className="authLede">Code accepted</Text>
           <CodeInput
@@ -143,29 +151,59 @@ export function LinkDevice({
           />
           <ConfirmDevice pairing={pairing} busy={busy} onDecide={onDecide} onCancel={startOver} />
         </Stack>
-      ) : (
-        <Stack gap={10}>
-          <Text className="authLede">Enter the code shown on your TV</Text>
-          <CodeInput
-            label="Pairing code"
-            value={code}
-            onChange={(next) => {
-              setCode(next)
-              setError(null)
-              if (next.length === 8 && !busy) {
-                void onCodeComplete(next)
-              }
-            }}
-            length={8}
-            groupSize={4}
-            alphanumeric
-            error={error != null}
-            autoFocus
-          />
-        </Stack>
+      )
+    }
+
+    return (
+      <Stack gap={10}>
+        <Text className="authLede">Enter the code shown on your TV</Text>
+        <CodeInput
+          label="Pairing code"
+          value={code}
+          onChange={onCodeChange}
+          length={8}
+          groupSize={4}
+          alphanumeric
+          error={error != null}
+          autoFocus
+        />
+      </Stack>
+    )
+  }
+
+  return (
+    <Stack gap={28}>
+      <h1 className="authTitle">Link your TV</h1>
+
+      <div role="status" aria-live="polite">
+        {settled && <SettledNotice status={settled} />}
+      </div>
+
+      {error && (
+        <Alert color="red" role="alert">
+          {error}
+        </Alert>
       )}
+
+      {renderStep()}
     </Stack>
   )
+}
+
+function SettledNotice({ status }: { status: string }) {
+  return (
+    <Alert color={SIGNED_IN_STATUSES.has(status) ? 'green' : 'red'}>
+      {SETTLED_MESSAGES[status] ?? SETTLED_FALLBACK}
+    </Alert>
+  )
+}
+
+function isSessionExpired(caught: unknown): boolean {
+  return caught instanceof AuthApiError && caught.status === 401
+}
+
+function isAlreadyDecided(caught: unknown): boolean {
+  return caught instanceof AuthApiError && caught.code === 'DEVICE_CODE_NOT_PENDING'
 }
 
 function normalizeCode(raw: string) {
@@ -186,9 +224,8 @@ function ConfirmDevice({
   onDecide: (decision: PairingDecision, householdId?: string) => void
   onCancel: () => void
 }) {
-  const [householdId, setHouseholdId] = useState(
-    pairing.households.length === 1 ? pairing.households[0].id : '',
-  )
+  const [householdId, setHouseholdId] = useState(preselectedHousehold(pairing.households))
+
   return (
     <Stack>
       <Text>
@@ -229,6 +266,10 @@ function ConfirmDevice({
       </Group>
     </Stack>
   )
+}
+
+function preselectedHousehold(households: PairingRequest['households']): string {
+  return households.length === 1 ? households[0].id : ''
 }
 
 function formatRequestedAt(requestedAt: string): string {

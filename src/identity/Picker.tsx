@@ -106,13 +106,8 @@ export function Picker({
     }
   }
 
-  // A deep link must never open a gate the grid itself would refuse.
-  const pinFor =
-    profiles.find(
-      (profile) => profile.id === pinProfileId && profile.pinConfigured && !profile.locked,
-    ) ?? null
-  if (pinFor) {
-    const gated = pinFor
+  const gated = findGatedProfile(profiles, pinProfileId)
+  if (gated) {
     return (
       <PinGate
         profileName={gated.name}
@@ -161,6 +156,16 @@ export function Picker({
         <Text c="dimmed">No Profiles are available in {me.contextHousehold.name} yet.</Text>
       )}
     </Stack>
+  )
+}
+
+// A deep link must never open a gate the grid itself would refuse.
+function findGatedProfile(
+  profiles: SelectableProfile[],
+  pinProfileId: string | undefined,
+): SelectableProfile | undefined {
+  return profiles.find(
+    (profile) => profile.id === pinProfileId && profile.pinConfigured && !profile.locked,
   )
 }
 

@@ -33,11 +33,15 @@ export function PinGate({
     try {
       await onSubmit(pin)
     } catch (error) {
-      setPin('')
-      setFailure(refusalMessage(error))
+      refuse(error)
     } finally {
       setBusy(false)
     }
+  }
+
+  function refuse(error: unknown) {
+    setPin('')
+    setFailure(refusalMessage(error))
   }
 
   return (
