@@ -1,7 +1,5 @@
-// The CSRF cookie is deliberately script-readable; the page reads it and hands it to the service
-// worker, which attaches it to its own refresh POSTs. Secure deployments use the host-bound name.
-// The unprefixed name is reserved for the development profile proposed by streamarr-server #266.
-// The wire-contract counterpart is AuthCookies in streamarr-server.
+// Script-readable by design: the page echoes it and hands it to the service worker for its own
+// refresh POSTs. Names match AuthCookies in streamarr-server; the unprefixed one is dev-only.
 
 export function readCsrfCookie(): string | null {
   const value = readCookie('__Host-XSRF-TOKEN') ?? readCookie('XSRF-TOKEN')
@@ -36,11 +34,7 @@ export function isCsrfRejection(
   return status === 403 && code === CSRF_REJECTION_CODE
 }
 
-/**
- * The double-submit echo every cookie-mode unsafe request carries — read per request, since the
- * server may replace the cookie. Empty until the server has issued a token: there is nothing to
- * echo yet.
- */
+/** Read per request: the server may replace the cookie. Empty until a token has been issued. */
 export function csrfHeaders(): Record<string, string> {
   const token = readCsrfCookie()
   return token ? { [CSRF_HEADER]: token } : {}

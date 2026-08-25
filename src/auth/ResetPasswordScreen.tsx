@@ -2,10 +2,8 @@ import { Alert, Anchor, Button, PasswordInput, Stack, Text, TextInput } from '@m
 import { useState } from 'react'
 import { AuthApiError, redeemPasswordReset } from './api'
 
-// Frame 12b: password-reset redemption. A ServerAdmin issued the code; redemption works even
-// while the Account is disabled, changes the password, revokes every refresh session, and
-// deliberately signs nobody in — the person continues to the sign-in page with the new password.
-// Reset codes are opaque tokens, so this is a pasteable field — never the PIN/TV code input.
+// Redemption deliberately signs nobody in. Reset codes are opaque tokens, so this is a
+// pasteable field — never the PIN/TV code input.
 
 const INVALID_MESSAGE = "That reset code isn't valid anymore. Ask for a new one."
 

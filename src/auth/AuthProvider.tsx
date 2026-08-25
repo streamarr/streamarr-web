@@ -44,11 +44,10 @@ export function AuthProvider({
 }) {
   const [session, setSession] = useState<Session | null>(null)
 
-  // Every credential-issuing response updates session state, tells the store the server now
-  // vouches for the visitor (so route guards agree), and hands the worker the fresh expiry (to
-  // schedule proactive renewal) and CSRF token — the worker can read neither cookie.
   const apollo = useApolloClient()
 
+  // The worker can read neither cookie, so every credential-issuing response hands it the
+  // expiry and the CSRF token.
   const adopt = useCallback(
     (tokens: AuthTokens): AuthTokens => {
       sessionStore.markAuthenticated()
@@ -60,9 +59,8 @@ export function AuthProvider({
     [renewal, sessionStore],
   )
 
-  // Credentials from sign-in, setup, or an accepted invitation may land on a document that
-  // served another Account: nothing cached may survive. clearStore rather than resetStore —
-  // nothing should be watching, and a refetch failure must not fail a sign-in that succeeded.
+  // The document may have served another Account: clearStore, not resetStore — nothing should
+  // be watching, and a refetch failure must not fail a sign-in that already succeeded.
   const adoptNewIdentity = useCallback(
     async (tokens: AuthTokens): Promise<AuthTokens> => {
       await apollo.clearStore()
@@ -83,8 +81,7 @@ export function AuthProvider({
     (input: AcceptInvitationInput) => apiAcceptInvitation(input).then(adoptNewIdentity),
     [adoptNewIdentity],
   )
-  // A different Household or Profile is a different identity: nothing cached may survive the
-  // switch, whichever screen performed it — the picker, the PIN gate, or the profile menu.
+  // A different Household or Profile is a different identity: nothing cached survives the switch.
   const selectHousehold = useCallback(
     async (id: string) => {
       const tokens = await apiSelectHousehold(id).then(adopt)
