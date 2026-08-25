@@ -79,7 +79,7 @@ export function PinGate({
 
 function refusalMessage(error: unknown): string {
   if (error instanceof AuthApiError) {
-    if (error.status === 401) {
+    if (error.code === 'INVALID_PROFILE_PIN') {
       return "That PIN isn't right. Try again."
     }
     if (error.status === 429) {

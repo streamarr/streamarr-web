@@ -17,8 +17,10 @@ import type { AuthTokens } from '../auth/api'
 // plain state so the Picker's own behavior stays testable without a router.
 function PickerHarness({
   onProfileSelected,
+  onUnauthenticated = () => {},
 }: {
   onProfileSelected: (tokens: AuthTokens) => void
+  onUnauthenticated?: () => void
 }) {
   const [pinProfileId, setPinProfileId] = useState<string | undefined>()
   return (
@@ -27,6 +29,7 @@ function PickerHarness({
       onPinRequested={setPinProfileId}
       onPinDismissed={() => setPinProfileId(undefined)}
       onProfileSelected={onProfileSelected}
+      onUnauthenticated={onUnauthenticated}
     />
   )
 }
@@ -81,6 +84,34 @@ describe('Picker', () => {
     await user.type(screen.getByTestId('pin-input'), '4242')
     await user.click(screen.getByRole('button', { name: 'Unlock' }))
     await waitFor(() => expect(onProfileSelected).toHaveBeenCalledWith(TOKENS))
+  })
+
+  it('shouldSendADeadSessionToSignInInsteadOfBlamingThePin', async () => {
+    server.use(
+      graphql.query('Me', () =>
+        HttpResponse.json({
+          data: { me: meFixture({ profiles: [profileFixture({ pinConfigured: true })] }) },
+        }),
+      ),
+      http.post('/api/auth/select-profile', () =>
+        HttpResponse.json(
+          { code: 'AUTHENTICATION_REQUIRED', message: 'Authentication is required.' },
+          { status: 401 },
+        ),
+      ),
+    )
+    const onUnauthenticated = vi.fn()
+    const { user } = renderWithProviders(
+      <PickerHarness onProfileSelected={vi.fn()} onUnauthenticated={onUnauthenticated} />,
+    )
+    await user.click(await screen.findByRole('button', { name: /Alex/ }))
+
+    await user.type(await screen.findByTestId('pin-input'), '4242')
+    await user.click(screen.getByRole('button', { name: 'Unlock' }))
+
+    // A dead session is not a wrong PIN: no refusal is shown, the person goes to sign in.
+    await waitFor(() => expect(onUnauthenticated).toHaveBeenCalled())
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 
   it('shouldSubmitThePinWithEnter', async () => {
