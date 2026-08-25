@@ -21,8 +21,6 @@ import {
 } from '../auth/api'
 import { useAuth } from '../auth/AuthProvider'
 
-// The recipient has no Account yet: the pasted code alone authenticates lookup, accept, and decline.
-
 const FAILURE_MESSAGE = 'Something went wrong. Please try again.'
 
 type Phase =
@@ -31,6 +29,7 @@ type Phase =
   | { at: 'preview'; preview: InvitationPreview }
   | { at: 'declined' }
 
+// The recipient has no Account yet: the pasted code alone authenticates lookup, accept, and decline.
 export function InvitationScreen({
   initialCode,
   onAccepted,
@@ -223,7 +222,6 @@ function InvitationReview({
   )
 }
 
-// A share that admitted a Profile must never silently admit the person: every visit ends, each host consents afresh.
 function ConnectReview({ preview }: { preview: InvitationPreview }) {
   return (
     <Card withBorder>

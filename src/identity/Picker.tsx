@@ -11,7 +11,7 @@ type SelectableProfile = MeQuery['me']['selectableProfiles']['edges'][number]['n
 
 const SESSION_REFUSALS = new Set(['AUTHENTICATION_REQUIRED', 'EXPIRED_TOKEN', 'INVALID_TOKEN'])
 
-// The gate is opened from outside through pinProfileId: the route keeps it in the URL so Back can leave it.
+// pinProfileId is the route's to keep in the URL, so the browser's Back can leave the gate.
 export function Picker({
   pinProfileId,
   onPinRequested,
@@ -67,7 +67,6 @@ export function Picker({
     }
   }
 
-  // A dead session is the sign-in page's to answer, never a refusal of the choice itself.
   function refuse(error: unknown, fallback: string) {
     if (isSessionRefusal(error)) {
       onUnauthenticated()

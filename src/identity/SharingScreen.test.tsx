@@ -110,7 +110,6 @@ describe('SharingScreen', () => {
     const { user } = renderWithProviders(<SharingScreen />)
 
     await user.type(await screen.findByLabelText(/^household id/i), OTHER_HOUSEHOLD_ID)
-    // The preview's two answers surface before anything is written.
     expect(await screen.findByText(/would arrive locked/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Offer share' }))
 
@@ -189,7 +188,6 @@ describe('SharingScreen', () => {
     )
     const { user } = renderWithProviders(<SharingScreen />)
 
-    // The membership-required Home share offers no way to end it.
     expect(await screen.findByText('Home')).toBeInTheDocument()
     const endButtons = screen.getAllByRole('button', { name: 'End share' })
     expect(endButtons).toHaveLength(1)

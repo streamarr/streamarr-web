@@ -13,8 +13,7 @@ import { Picker } from './Picker'
 import { useState } from 'react'
 import type { AuthTokens } from '../auth/api'
 
-// The route owns the gate's state in the URL; these component tests stand in for it with
-// plain state so the Picker's own behavior stays testable without a router.
+// Stands in for the route, which keeps the gate's Profile in the URL.
 function PickerHarness({
   onProfileSelected,
   onUnauthenticated = () => {},
@@ -78,7 +77,6 @@ describe('Picker', () => {
     await user.click(await screen.findByRole('button', { name: /Alex/ }))
     const pinInput = await screen.findByTestId('pin-input')
 
-    // The wrong PIN earns the server's refusal and the gate stays for another try.
     await user.type(pinInput, '1111')
     await user.click(screen.getByRole('button', { name: 'Unlock' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('The PIN is incorrect.')
@@ -112,7 +110,6 @@ describe('Picker', () => {
     await user.type(await screen.findByTestId('pin-input'), '4242')
     await user.click(screen.getByRole('button', { name: 'Unlock' }))
 
-    // A dead session is not a wrong PIN: no refusal is shown, the person goes to sign in.
     await waitFor(() => expect(onUnauthenticated).toHaveBeenCalled())
     expect(screen.queryByRole('alert')).toBeNull()
   })
@@ -211,7 +208,6 @@ describe('Picker', () => {
     )
     const { user } = renderWithProviders(<PickerHarness onProfileSelected={vi.fn()} />)
 
-    // The tile is genuinely disabled; the lock reads from the glyph, not prose.
     const locked = await screen.findByRole('button', { name: /Kids \(locked\)/ })
     expect(locked).toBeDisabled()
     await user.click(locked)
@@ -296,7 +292,6 @@ describe('Picker', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'The requested household is not accessible to this account.',
     )
-    // Still on the original Household, with its profiles on offer.
     expect(screen.getByRole('button', { name: /Alex/ })).toBeInTheDocument()
   })
 

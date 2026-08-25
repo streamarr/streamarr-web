@@ -13,8 +13,6 @@ const TOKENS = {
 
 describe('/select-profile', () => {
   it('shouldOpenTheGateDirectlyFromTheMenuChoice', async () => {
-    // Choosing a protected Profile in the top bar's menu IS the choice — landing on the
-    // picker grid to click the same Profile again would ask the question twice.
     server.use(
       graphql.query('Me', () =>
         HttpResponse.json({
@@ -45,8 +43,6 @@ describe('/select-profile', () => {
   })
 
   it('shouldReturnToThePickerWithBrowserBack', async () => {
-    // The gate is a history entry, not component state: the browser's own Back is the way
-    // out, no bespoke back button needed.
     server.use(
       graphql.query('Me', () =>
         HttpResponse.json({
@@ -78,8 +74,6 @@ describe('/select-profile', () => {
   })
 
   it('shouldNotReopenTheGateWithBackAfterSwitchingProfile', async () => {
-    // Leaving the gate by 'Switch profile' replaces the gate's entry: Back from the grid must
-    // land before the gate, not on it again.
     server.use(
       graphql.query('Me', () =>
         HttpResponse.json({
@@ -113,7 +107,6 @@ describe('/select-profile', () => {
   })
 
   it('shouldOpenTheGateOnAFreshDeepLink', async () => {
-    // A refresh on the gate stays on the gate: the URL carries the whole state.
     server.use(
       graphql.query('Me', () =>
         HttpResponse.json({
@@ -139,8 +132,6 @@ describe('/select-profile', () => {
   })
 
   it('shouldFallBackToTheGridWhenTheGatedProfileIsLocked', async () => {
-    // A stale or hand-edited deep link must never open a gate the picker itself would
-    // refuse: a locked Profile is visible but not selectable (principle 7.2).
     server.use(
       graphql.query('Me', () =>
         HttpResponse.json({
@@ -204,8 +195,6 @@ describe('/select-profile', () => {
   })
 
   it('shouldShowTheNewProfileAsActiveAfterAPinSwitch', async () => {
-    // The server's truth moves when the selection succeeds; the client must not keep showing
-    // the old identity from its cache.
     let selectedId = 'p-alex'
     server.use(
       graphql.query('Me', () =>
@@ -238,7 +227,6 @@ describe('/select-profile', () => {
     await user.click(screen.getByRole('button', { name: 'Unlock' }))
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/'))
-    // The top bar's chip is the identity the person sees everywhere.
     expect(
       await screen.findByRole('button', { name: /profile menu \(toni\)/i }),
     ).toBeInTheDocument()

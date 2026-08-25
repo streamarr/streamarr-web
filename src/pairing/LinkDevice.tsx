@@ -12,7 +12,6 @@ import {
 
 const FALLBACK_MESSAGE = 'Something went wrong. Please try again.'
 
-/** Terminal states an approver can land on — none of them offer the buttons again. */
 const SETTLED_MESSAGES: Record<string, string> = {
   APPROVED: 'This device was approved. It should be signed in within a few seconds.',
   DENIED: 'This request was denied. The device was not signed in.',
@@ -35,7 +34,6 @@ export function LinkDevice({
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  // Lookup runs on the last character; there is no submit button.
   async function onCodeComplete(fullCode: string) {
     setError(null)
     setSettled(null)
@@ -54,11 +52,8 @@ export function LinkDevice({
     }
   }
 
-  /**
-   * Approving is an account action; an expired session sends the approver to sign in and back.
-   * The code travels as an argument: the lookup can fire from the keystroke that completed it,
-   * before that keystroke's state has committed.
-   */
+  // The code travels as an argument: the lookup fires from the keystroke that completed it,
+  // before that keystroke's state has committed.
   function bouncedToSignIn(caught: unknown, carriedCode: string): boolean {
     if (!onUnauthenticated || !(caught instanceof AuthApiError) || caught.status !== 401) {
       return false
@@ -80,10 +75,7 @@ export function LinkDevice({
     }
   }
 
-  /**
-   * A 409 means someone or something already decided this request. Re-read once and show the
-   * authoritative outcome rather than inviting a blind resubmit that would only 409 again.
-   */
+  // A 409 means the request was already decided: re-read once rather than resubmit blindly.
   async function handleDecisionFailure(caught: unknown) {
     if (bouncedToSignIn(caught, code)) {
       return
@@ -102,7 +94,6 @@ export function LinkDevice({
     }
   }
 
-  /** Only a decided request settles the page; a still-pending read keeps the choice on offer. */
   function settle(status: PairingStatus) {
     if (status !== 'PENDING') {
       setSettled(status)
@@ -184,12 +175,6 @@ function normalizeCode(raw: string) {
     .slice(0, 8)
 }
 
-/**
- * Confirmation before commitment: the approver sees which device is asking, since when, and
- * chooses the one Household the TV will be registered to (ADR 0024 §Devices). A single usable
- * Household is preselected; more than one demands an explicit choice before Approve unlocks.
- * Denying names no Household.
- */
 function ConfirmDevice({
   pairing,
   busy,
@@ -216,9 +201,7 @@ function ConfirmDevice({
         <Text component="label" className="fieldLabel" id="household-choice-label">
           Sign it in to
         </Text>
-        {/* The same control the profile picker uses for Households — one vocabulary for one
-            choice. An unmatched value renders no thumb, so approval still demands an explicit
-            pick when more than one Household is usable. */}
+        {/* An unmatched value renders no thumb, so several Households demand an explicit pick. */}
         <SegmentedControl
           aria-labelledby="household-choice-label"
           value={householdId}
