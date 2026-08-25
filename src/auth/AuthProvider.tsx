@@ -60,11 +60,28 @@ export function AuthProvider({
     [renewal, sessionStore],
   )
 
-  const login = useCallback((input: LoginInput) => apiLogin(input).then(adopt), [adopt])
-  const setup = useCallback((input: SetupInput) => apiSetup(input).then(adopt), [adopt])
+  // Credentials from sign-in, setup, or an accepted invitation may land on a document that
+  // served another Account: nothing cached may survive. clearStore rather than resetStore —
+  // nothing should be watching, and a refetch failure must not fail a sign-in that succeeded.
+  const adoptNewIdentity = useCallback(
+    async (tokens: AuthTokens): Promise<AuthTokens> => {
+      await apollo.clearStore()
+      return adopt(tokens)
+    },
+    [adopt, apollo],
+  )
+
+  const login = useCallback(
+    (input: LoginInput) => apiLogin(input).then(adoptNewIdentity),
+    [adoptNewIdentity],
+  )
+  const setup = useCallback(
+    (input: SetupInput) => apiSetup(input).then(adoptNewIdentity),
+    [adoptNewIdentity],
+  )
   const acceptInvitation = useCallback(
-    (input: AcceptInvitationInput) => apiAcceptInvitation(input).then(adopt),
-    [adopt],
+    (input: AcceptInvitationInput) => apiAcceptInvitation(input).then(adoptNewIdentity),
+    [adoptNewIdentity],
   )
   // A different Household or Profile is a different identity: nothing cached may survive the
   // switch, whichever screen performed it — the picker, the PIN gate, or the profile menu.
@@ -88,8 +105,9 @@ export function AuthProvider({
     sessionStore.markAnonymous()
     setSession(null)
     renewal.stop()
+    await apollo.clearStore()
     await apiLogout()
-  }, [renewal, sessionStore])
+  }, [apollo, renewal, sessionStore])
 
   const value = useMemo(
     () => ({ session, login, setup,
