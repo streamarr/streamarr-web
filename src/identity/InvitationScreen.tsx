@@ -26,7 +26,7 @@ import { useAuth } from '../auth/AuthProvider'
 // anymore") because unknown, expired, and decided codes are deliberately indistinguishable.
 // Invitation codes are opaque tokens, so this is a pasteable field — never the PIN/TV code input.
 
-const INVALID_MESSAGE = "That invitation isn't valid anymore. Ask for a new one."
+const FAILURE_MESSAGE = 'Something went wrong. Please try again.'
 
 type Phase =
   | { at: 'code' }
@@ -290,15 +290,11 @@ function ConsequenceList({
 }
 
 function refusalMessage(error: unknown): string {
-  if (error instanceof AuthApiError) {
-    if (error.status === 404) {
-      return INVALID_MESSAGE
-    }
-    if (error.status === 429) {
-      return error.retryAfterSeconds
-        ? `Too many attempts. Try again in ${error.retryAfterSeconds} seconds.`
-        : 'Too many attempts. Try again later.'
-    }
+  if (!(error instanceof AuthApiError)) {
+    return FAILURE_MESSAGE
   }
-  return 'Something went wrong. Please try again.'
+  if (error.retryAfterSeconds) {
+    return `Too many attempts. Try again in ${error.retryAfterSeconds} seconds.`
+  }
+  return error.serverMessage ?? FAILURE_MESSAGE
 }
