@@ -1,11 +1,20 @@
 # Streamarr Web - Agent Guidelines
 
 ## Commands
+- `npm run dev` — Vite dev server
 - `npm test` — unit tests (Vitest)
-- `npm run typecheck` — TypeScript, no emit
+- `npm run test:watch` — unit tests in watch mode
+- `npm run test:coverage` — unit tests with coverage; the session-renewal core is gated at 95% per file
+- `npm run test:e2e` — browser suite (Playwright drives vite dev against the API stub in `e2e/`)
+- `npm run typecheck` — TypeScript, no emit, for both the app and the `tsconfig.e2e.json` project
+- `npm run build` — production bundle (Vite)
 - `npm run schema:pull` — refresh `src/graphql/schema.graphql` from the pinned server commit
 - `npm run codegen` — regenerate `src/graphql/generated/` from the schema and `.graphql` documents
-- `npm run codegen:check` — CI drift gate: pull + generate, then fail on any diff
+- `npm run codegen:check` — CI drift gate: pull + generate, then fail on any diff or untracked output
+- `npm run tokens` — refresh `src/styles/tokens.generated.css` from streamarr-ux (needs `gh` auth for the private repo)
+- `npm run tokens:check` — CI drift gate: fail if the committed tokens differ from streamarr-ux
+- `TOKENS_REF` pins the streamarr-ux commit the tokens come from; `npm run tokens` is the only way
+  `src/styles/tokens.generated.css` changes — never edit it by hand
 
 ## Commit discipline
 - Commit subjects start with the lowercase prefix `structural:` or `behavioral:` (Kent Beck's
