@@ -61,8 +61,7 @@ describe('CodeInput', () => {
 
     await user.type(screen.getByLabelText('PIN'), '12')
 
-    // The caret is a dedicated blinking element, not a printed bar — a static glyph
-    // reads as a character, not an insertion point.
+    // A dedicated blinking element: a printed bar would read as a character.
     expect(document.querySelector('.codeInputCaret')).not.toBeNull()
   })
 

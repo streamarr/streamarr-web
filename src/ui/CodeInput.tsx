@@ -1,9 +1,8 @@
 import { useId, useState, type ClipboardEvent } from 'react'
 import './auth.css'
 
-// One-character-per-box code entry (components.yaml CodeInput; frames 13/15a): link-TV codes
-// and PIN pads are the same component. A real input rides invisibly over the boxes so focus,
-// paste, and assistive tech work on a genuine field; the boxes are its rendering.
+// A real input rides invisibly over the boxes so focus, paste, and assistive tech work on a
+// genuine field; the boxes are its rendering.
 export function CodeInput({
   label,
   value,
@@ -21,16 +20,16 @@ export function CodeInput({
   label: string
   value: string
   onChange: (next: string) => void
-  /** Fixed code length (link-TV). Omit for variable-length secrets and set minLength. */
+  /** Fixed code length. Omit for variable-length secrets and set minLength. */
   length?: number
-  /** Variable-length floor (PINs are 4-8 digits): boxes grow past it as digits arrive. */
+  /** Variable-length floor: boxes grow past it as digits arrive. */
   minLength?: number
-  /** Draws the mock's dash separator after every N boxes (link-TV: 4). */
+  /** Draws a separator after every N boxes. */
   groupSize?: number
   secret?: boolean
   alphanumeric?: boolean
   error?: boolean
-  /** Frame 13b: an accepted code stays visible but recedes. */
+  /** An accepted code stays visible but recedes. */
   settled?: boolean
   autoFocus?: boolean
   testId?: string
@@ -38,17 +37,14 @@ export function CodeInput({
   const id = useId()
   const [focused, setFocused] = useState(false)
   const max = length ?? 8
-  // Four at rest and one box per typed digit past that: a fully typed four-digit PIN is four
-  // filled boxes — growing a fifth on completion implied it wasn't done — and the count still
-  // never leaks a longer PIN's length before its digits arrive.
+  // A PIN typed to the floor shows no extra box, and a longer PIN's length never leaks ahead.
   const shown = length ?? Math.max(minLength ?? 4, Math.min(value.length, max))
   const clean = (raw: string) =>
     (alphanumeric ? raw.replaceAll(/[^a-zA-Z0-9]/g, '') : raw.replaceAll(/\D/g, ''))
       .toUpperCase()
       .slice(0, max)
 
-  // Secret mode reconstructs the value from the masked field's tail, which only holds if the
-  // caret never leaves the end — the boxes draw it there anyway.
+  // The masked value is rebuilt from the field's tail, so the caret must stay at the end.
   function pinCaretToEnd(field: HTMLInputElement) {
     if (!secret) {
       return
@@ -107,8 +103,6 @@ export function CodeInput({
         onBlur={() => setFocused(false)}
         onSelect={(event) => pinCaretToEnd(event.currentTarget)}
         onChange={(event) => {
-          // Secret mode renders masked text into the field; reconstruct from the tail so
-          // ordinary typing and deletions both land on the real value.
           const raw = event.currentTarget.value
           if (!secret) {
             onChange(clean(raw))

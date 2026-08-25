@@ -12,10 +12,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
   component: RootLayout,
 })
 
-/**
- * Auth ceremonies render full-bleed on the bloom (mock frames 12-15a) — the wordmark in their
- * column is the brand, so the header would say it twice. Everything else keeps the app chrome.
- */
+// Ceremonies render full-bleed; their column carries the wordmark, so the header would repeat it.
 const CEREMONY_ROUTES = new Set<FileRouteTypes['id']>([
   '/login',
   '/setup-server',
@@ -26,9 +23,7 @@ const CEREMONY_ROUTES = new Set<FileRouteTypes['id']>([
 ])
 
 function RootLayout() {
-  // Signed-in chrome keys off the committed route matches: the _authenticated layout only
-  // commits once the guard has the server's word, so this cannot show the top bar to a visitor
-  // whose session was never vouched for.
+  // Keyed off committed matches: _authenticated only commits once the server has vouched.
   const signedIn = useRouterState({
     select: (state) => state.matches.some((match) => match.routeId === '/_authenticated'),
   })
@@ -40,8 +35,6 @@ function RootLayout() {
     return <Outlet />
   }
 
-  // Frame 01's chrome: the ambient wash over the ground, the top bar riding it, and the page
-  // below — no boxed shell around the content.
   return (
     <div className="homeShell">
       <div className="homeAmbient" aria-hidden />

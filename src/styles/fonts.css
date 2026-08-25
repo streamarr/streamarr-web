@@ -1,9 +1,5 @@
-/*
- * The two voices of the product (principle 9), self-hosted from /public/fonts —
- * vendored from streamarr-ux fonts/ with their OFL licenses beside them. Never
- * a font CDN: Streamarr clients must work on an offline LAN, and a CDN request
- * leaks every visitor to a third party (principle 16).
- */
+/* Self-hosted (vendored from streamarr-ux with their OFL licenses): clients must work on an
+   offline LAN, and a font CDN would leak every visitor to a third party. */
 
 /* Content voice — variable, 300–700 */
 @font-face {
@@ -14,7 +10,7 @@
   src: url('/fonts/SpaceGrotesk.woff2') format('woff2');
 }
 
-/* System voice — static weights the mocks use */
+/* System voice — static weights */
 @font-face {
   font-family: 'JetBrains Mono';
   font-style: normal;

@@ -11,11 +11,6 @@ type SelectableProfile = Me['selectableProfiles']['edges'][number]['node']
 const SESSION_EVICTION_CODES = new Set(['AUTHENTICATION_REQUIRED', 'EXPIRED_TOKEN', 'INVALID_TOKEN'])
 const SWITCH_FAILED_MESSAGE = "Couldn't switch profiles. Try again."
 
-// Frame 01a: the profile menu under the top bar's avatar chip. The current profile leads with
-// its role; the Household's other profiles follow — a PIN-protected one detours through the
-// full gate, a safety-locked one is visible but not selectable (principle 7.2) — and sign out
-// closes the panel. Settings lands with a settings page; a dead row would teach the feature
-// might not exist.
 export function ProfileMenu({
   me,
   onPinRequired,
@@ -76,7 +71,6 @@ export function ProfileMenu({
     setBusy(true)
     setFailure(null)
     try {
-      // The auth boundary resets the Apollo store itself: a switch is an identity change.
       await selectProfile(profile.id)
       close()
     } catch (error) {
@@ -103,8 +97,7 @@ export function ProfileMenu({
 
   function signOut() {
     close()
-    // Local state ends immediately; server revocation stays best-effort — an outage must never
-    // trap someone in a session they explicitly left.
+    // Revocation is best-effort: an outage must never trap someone in a session they left.
     void logout().catch(() => {})
     onSignedOut()
   }

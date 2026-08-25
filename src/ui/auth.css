@@ -1,6 +1,4 @@
-/* The auth shell (mock frames 12-15a): black ground, the brand bloom, and a left scrim
-   carrying a single left-anchored column. Every value routes through the token layer;
-   the bloom's geometry (ellipse position, blur 90) is component-tier per components.yaml. */
+/* ---- The auth shell: black ground, the brand bloom, a left scrim, one column. ---- */
 
 .authShell {
   position: relative;
@@ -41,15 +39,12 @@
   box-sizing: border-box;
 }
 
-/* The one sanctioned gradient-text rendering (principle 2.4): the wordmark is a version of
-   the mark, not text. Weight 700 — the top of Space Grotesk's variable range; the mock's 800
-   was browser-synthesized (components.yaml WordmarkLockup note). */
+/* The one sanctioned gradient-text rendering: the wordmark is a version of the mark. */
 .wordmark {
   width: fit-content;
   font-size: 20px;
   font-weight: 700;
   letter-spacing: 0.46em;
-  /* gradient.brand at gradient.brandAngle (45deg, the mark's angle). */
   background-image: linear-gradient(45deg, var(--color-brand-blue), var(--color-brand-purple));
   -webkit-background-clip: text;
   background-clip: text;
@@ -72,8 +67,7 @@
   text-wrap: pretty;
 }
 
-/* One-character-per-box code entry (CodeInput, frames 13/15a). The real input sits invisibly
-   over the boxes so focus, paste, and assistive tech all work on a genuine field. */
+/* ---- CodeInput: the real input sits invisibly over the boxes. ---- */
 .codeInput {
   position: relative;
   display: flex;
@@ -153,8 +147,7 @@
   background: color-mix(in srgb, var(--color-white) 30%, transparent);
 }
 
-/* Profile tiles (frame 15): 120px rounded squares with initials; the lock badge rides the
-   top-right corner; the Kids mark is a system-voice label under the name. */
+/* ---- Profile tiles and the PIN gate. ---- */
 .profileTiles {
   display: flex;
   flex-wrap: wrap;
@@ -222,7 +215,6 @@
   color: var(--color-alpha-50);
 }
 
-/* Frame 15a: the PIN gate's avatar sits beside the title block. */
 .pinGate {
   display: flex;
   flex-wrap: wrap;
@@ -248,7 +240,7 @@
   color: var(--color-white);
 }
 
-/* Global field anatomy (frames 12-14a), bound through theme.ts. */
+/* ---- Field anatomy, bound through theme.ts. ---- */
 .fieldLabel {
   font-family: var(--font-family-system);
   font-size: 12px;
@@ -258,8 +250,7 @@
   font-weight: 500;
 }
 
-/* The mocks carry no asterisk; required-ness reads from context (principle 8.2). The marker
-   stays in the DOM for the accessibility tree. */
+/* No asterisk; the marker stays in the DOM for the accessibility tree. */
 .fieldRequired {
   display: none;
 }
@@ -271,7 +262,7 @@
   color: var(--color-alpha-92);
 }
 
-/* ---- App chrome: the top bar and profile menu (frames 01/01a). ---- */
+/* ---- App chrome: the top bar and profile menu. ---- */
 
 .topBar {
   position: relative;
@@ -344,13 +335,11 @@
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--indicator-active-track) 50%, transparent);
 }
 
-/* Floating chrome (principle 5): the menu rides the chrome surface over the page. */
 .profileMenu {
   width: 250px;
   border: 1px solid var(--color-alpha-16);
   border-radius: var(--radius-xl);
-  /* The mock's panel is solid: the chrome token layered over the opaque ground. A blurred
-     translucency here also stalls Chromium's compositor during captures. */
+  /* Solid on purpose: a blurred translucency stalls Chromium's compositor during captures. */
   background:
     linear-gradient(var(--color-chrome), var(--color-chrome)),
     var(--color-ground);
@@ -385,8 +374,7 @@
   cursor: default;
 }
 
-/* Only a locked profile reads dimmed; the current row is disabled merely because it is not a
-   choice — its name stays primary, like the mock's. */
+/* Only a locked profile reads dimmed; the current row is disabled merely because it is not a choice. */
 .profileMenuRow:disabled:not(.profileMenuRowCurrent) {
   color: var(--color-alpha-50);
 }
@@ -443,7 +431,7 @@
   color: var(--color-red-error-text);
 }
 
-/* ---- Home groundwork (frame 01): the ambient wash over the ground. ---- */
+/* ---- Home: the ambient wash over the ground. ---- */
 .homeShell {
   position: relative;
   min-height: 100dvh;
@@ -486,7 +474,7 @@
   z-index: 20;
 }
 
-/* The caret notch pointing at the chip (frame 01a). */
+/* The notch pointing at the chip. */
 .profileMenu::before {
   content: '';
   position: absolute;

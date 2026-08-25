@@ -58,8 +58,6 @@ describe('Player', () => {
 
     renderWithProviders(<Player mediaFileId="abcd" />)
 
-    // The playlist URL — carrying the playback ?t= token — is what hls.js loads; segment
-    // requests spawned from it inherit the token.
     await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(STREAM_URL))
     expect(hls.attachMedia).toHaveBeenCalledOnce()
     expect(variables).toEqual({ mediaFileId: 'abcd' })
