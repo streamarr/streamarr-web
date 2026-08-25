@@ -57,21 +57,22 @@ export function createSessionStore(probe: () => Promise<SessionAnswer>): Session
  * (server down, 500) rejects: the caller must not mistake an outage for a verdict.
  */
 export function probeSession(client: ApolloClient): Promise<SessionAnswer> {
-  return client.query({ query: MeDocument, context: { skipAuthRouting: true } }).then(
-    () => 'authenticated',
-    (error) => {
-      const context = extractAuthContext(error)
-      if (context.networkStatus === 401 && context.networkCode === 'EXPIRED_TOKEN') {
-        return 'anonymous'
-      }
-      switch (decideAuthRoute(context)) {
-        case '/login':
-          return 'anonymous'
-        case '/select-profile':
-          return 'authenticated'
-        default:
-          throw error
-      }
-    },
-  )
+  return client
+    .query({ query: MeDocument, context: { skipAuthRouting: true } })
+    .then(() => 'authenticated', answerFromRejection)
+}
+
+function answerFromRejection(error: unknown): SessionAnswer {
+  const context = extractAuthContext(error)
+  if (context.networkStatus === 401 && context.networkCode === 'EXPIRED_TOKEN') {
+    return 'anonymous'
+  }
+  const route = decideAuthRoute(context)
+  if (route === '/login') {
+    return 'anonymous'
+  }
+  if (route === '/select-profile') {
+    return 'authenticated'
+  }
+  throw error
 }

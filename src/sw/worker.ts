@@ -35,6 +35,13 @@ interface FetchWorkerEvent {
   respondWith(response: Promise<Response>): void
 }
 
+interface PageMessage {
+  type?: unknown
+  token?: unknown
+  csrfToken?: unknown
+  expiresAt?: unknown
+}
+
 export function installSessionServiceWorker(
   scope: SessionServiceWorkerScope,
   { fetch: fetcher, now }: SessionServiceWorkerDependencies,
@@ -54,26 +61,19 @@ export function installSessionServiceWorker(
     },
   })
 
-  scope.addEventListener('install', () => {
-    void scope.skipWaiting()
-  })
+  const refreshForPage = async (event: MessageWorkerEvent, csrfToken: unknown): Promise<void> => {
+    if (typeof csrfToken === 'string') {
+      renewal.rememberCsrfToken(csrfToken)
+    }
+    const result = await renewal.refresh()
+    event.ports?.[0]?.postMessage(result)
+  }
 
-  scope.addEventListener('activate', (unknownEvent) => {
-    const event = unknownEvent as ExtendableWorkerEvent
-    event.waitUntil(scope.clients.claim())
-  })
-
-  scope.addEventListener('message', (unknownEvent) => {
-    const event = unknownEvent as MessageWorkerEvent
+  const handleMessage = (event: MessageWorkerEvent): void => {
     if (typeof event.data !== 'object' || event.data === null) {
       return
     }
-    const message = event.data as {
-      type?: unknown
-      token?: unknown
-      csrfToken?: unknown
-      expiresAt?: unknown
-    }
+    const message = event.data as PageMessage
     if (message.type === 'csrf' && typeof message.token === 'string') {
       renewal.rememberCsrfToken(message.token)
       return
@@ -87,22 +87,24 @@ export function installSessionServiceWorker(
       return
     }
     if (message.type === 'refresh-now') {
-      if (typeof message.csrfToken === 'string') {
-        renewal.rememberCsrfToken(message.csrfToken)
-      }
-      const work = renewal.refresh().then((result) => {
-        event.ports?.[0]?.postMessage(result)
-      })
-      event.waitUntil(work)
+      event.waitUntil(refreshForPage(event, message.csrfToken))
     }
-  })
+  }
 
-  scope.addEventListener('fetch', (unknownEvent) => {
-    const event = unknownEvent as FetchWorkerEvent
+  const handleFetch = (event: FetchWorkerEvent): void => {
     if (decideIntercept(event.request.url, scope.location.origin) !== 'intercept') {
       return
     }
     renewal.rememberCsrfToken(event.request.headers.get(CSRF_HEADER))
     event.respondWith(renewal.fetch(event.request))
+  }
+
+  scope.addEventListener('install', () => {
+    void scope.skipWaiting()
   })
+  scope.addEventListener('activate', (event) => {
+    ;(event as ExtendableWorkerEvent).waitUntil(scope.clients.claim())
+  })
+  scope.addEventListener('message', (event) => handleMessage(event as MessageWorkerEvent))
+  scope.addEventListener('fetch', (event) => handleFetch(event as FetchWorkerEvent))
 }
