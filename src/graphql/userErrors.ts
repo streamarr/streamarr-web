@@ -1,7 +1,5 @@
-// ADR 0026 user-error helpers: every mutation error implements MutationError (message), and
-// input-bound members add inputPath. Unknown union members are expected input — the server
-// deploys new members only after clients can parse them — so everything here works from the
-// shared fields alone and never switches exhaustively on __typename.
+// Unknown union members are expected input (the server deploys new members before clients can
+// parse them), so everything here works from the shared MutationError fields alone.
 
 export interface UserErrorLike {
   readonly __typename?: string
@@ -17,9 +15,9 @@ export function userErrorMessage(error: UserErrorLike | null | undefined): strin
   return message ? message : GENERIC_MESSAGE
 }
 
-/** Errors keyed by their dotted input path; path-less members group under the form itself. */
 export const FORM_ERRORS = ''
 
+/** Errors keyed by their dotted input path; path-less members group under FORM_ERRORS. */
 export function groupByInputPath<E extends UserErrorLike>(
   errors: readonly E[] | null | undefined,
 ): Map<string, E[]> {

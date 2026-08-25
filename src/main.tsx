@@ -28,7 +28,7 @@ if ('serviceWorker' in navigator) {
     .register(scriptUrl, options)
     .then(() => postCsrfTokenToServiceWorker())
     .catch(() => {
-      // Best-effort: the app works without the worker; renewal falls back to login routing.
+      // Best-effort: the app works without the worker.
     })
 }
 

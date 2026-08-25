@@ -10,16 +10,8 @@ export type AuthRoute = '/login' | '/select-profile'
 
 const CSRF_RETRY_ATTEMPTED = 'csrfRetryAttempted'
 
-// No auth link: cookies and the service worker own the session, and the only header the client
-// adds is the CSRF echo — a POST carrying the auth cookies is exactly what the server's CSRF
-// matcher covers, so every operation must send it. The error link routes terminal or escaped
-// auth failures — AUTHENTICATION_REQUIRED/INVALID_TOKEN → /login, and
-// PROFILE_REQUIRED/HOUSEHOLD_REQUIRED → /select. A CSRF rejection retries once; forward() resumes
-// at the downstream CSRF link, which re-reads the re-minted cookie before the HTTP link sends the
-// operation. The session probe opts out of routing only: its 401 is an answer to "am I signed
-// in?", not an eviction, and the guard that asked owns the navigation — but it still benefits from
-// the CSRF retry like any other operation. Recoverable 401s rarely reach here because the SW
-// refreshes and replays them once.
+// No auth link: cookies and the service worker own the session; the CSRF echo is the only header
+// the client adds.
 export function createApolloClient(onAuthRoute: (route: AuthRoute) => void): ApolloClient {
   const errorLink = onError(({ error, operation, forward }) => {
     const context = extractAuthContext(error)
@@ -31,6 +23,7 @@ export function createApolloClient(onAuthRoute: (route: AuthRoute) => void): Apo
       return forward(operation)
     }
 
+    // The session probe opts out of the navigation only; it still gets the CSRF retry.
     if (operation.getContext().skipAuthRouting) {
       return
     }
@@ -51,9 +44,11 @@ export function createApolloClient(onAuthRoute: (route: AuthRoute) => void): Apo
   })
 
   return new ApolloClient({
+    // Error link first: forward() on a CSRF rejection re-enters the CSRF link, which re-reads the
+    // re-minted cookie before the HTTP link sends.
     link: from([errorLink, csrfLink, httpLink]),
-    // Generated possibleTypes keep fragment matching correct across the schema's unions and
-    // interfaces — a silent mismatch would drop fields, not fail loudly.
+    // Generated possibleTypes keep fragment matching correct across unions; a mismatch drops
+    // fields silently.
     cache: new InMemoryCache({ possibleTypes: generatedIntrospection.possibleTypes }),
   })
 }

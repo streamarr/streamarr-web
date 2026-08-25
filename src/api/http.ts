@@ -1,8 +1,5 @@
 import { csrfHeaders, isCsrfRejection } from '../auth/csrf'
 
-// Same-origin by construction (Vite dev proxy in development, reverse proxy in production), so
-// no CORS. Cookies are the carrier; nothing here ever touches a token value.
-
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS', 'TRACE'])
 
 /** The server's `{ code, message }` error body: route on `code`, show `serverMessage`. */
@@ -46,8 +43,7 @@ export async function request(
   if (!unsafe || !(await isCsrfRejected(response))) {
     return checked(response)
   }
-  // The retry echoes the re-minted cookie. Callers must supply a replayable body; postJson's
-  // serialized string is safe to reuse.
+  // Callers must supply a replayable body; postJson's serialized string is safe to reuse.
   return checked(await send())
 }
 
@@ -56,7 +52,6 @@ function requestHeaders(init: RequestInit, unsafe: boolean): Headers {
   if (!unsafe) {
     return headers
   }
-  // Cookie-authenticated requests echo the current script-readable CSRF cookie.
   for (const [name, value] of Object.entries(csrfHeaders())) {
     headers.set(name, value)
   }

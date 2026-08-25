@@ -119,8 +119,7 @@ export function createSessionRenewal({
     if (preflight.kind === 'unavailable') {
       return refreshUnavailableResponse()
     }
-    // Renewal already ran for this request; a second attempt would loop. Only a
-    // stale-generation rejection is not a verdict and keeps the server's own answer.
+    // Renewal already ran for this request; only a stale-generation rejection is not a verdict.
     return preflight.kind === 'renewed' ? sessionEndedResponse() : response
   }
 
@@ -133,8 +132,7 @@ export function createSessionRenewal({
     if (result.kind === 'unavailable') {
       return refreshUnavailableResponse()
     }
-    // A terminal rejection routes to sign-in; a stale-generation rejection is not a verdict,
-    // so the caller keeps the server's own answer.
+    // A stale-generation rejection is not a verdict: the caller keeps the server's own answer.
     return refreshRejected ? sessionEndedResponse() : response
   }
 
@@ -183,9 +181,8 @@ function refreshUnavailableResponse(): Response {
 }
 
 /**
- * A raw recoverable-token response would wedge the page: the error router leaves those codes to
- * this worker, and renewal has already had its one chance for this request — rejected
- * terminally, or renewed and still refused. Surface the code the router sends to sign-in instead.
+ * The error router leaves recoverable-token codes to this worker, so once renewal has had its one
+ * chance for a request the page must see the code that routes to sign-in.
  */
 function sessionEndedResponse(): Response {
   return Response.json(
