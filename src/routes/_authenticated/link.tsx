@@ -10,13 +10,13 @@ interface LinkSearch {
 export const Route = createFileRoute('/_authenticated/link')({
   validateSearch: (search: Record<string, unknown>): LinkSearch =>
     typeof search.code === 'string' ? { code: search.code } : {},
-  component: Link,
+  component: LinkDevicePage,
 })
 
 // Approving a device is an account action; the _authenticated layout has already made the
 // server vouch for the session before this renders. A session that dies while the code is being
 // typed is the lookup's 401 to answer, and it must still carry the typed code back.
-function Link() {
+function LinkDevicePage() {
   const { code } = Route.useSearch()
   const { session } = Route.useRouteContext()
   const navigate = useNavigate()
