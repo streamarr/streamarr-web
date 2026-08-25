@@ -5,6 +5,7 @@ import { CodeInput } from '../ui/CodeInput'
 import { PinGateAvatar } from '../ui/ProfileTile'
 
 const PIN_SHAPE = /^\d{4,8}$/
+const FAILURE_MESSAGE = "Couldn't select that Profile. Try again."
 
 // Frame 15a: the PIN gate for a protected Profile, a full state of the picker screen rather
 // than a modal (principle 11 — nothing here is a one-way door). The server owns the whole
@@ -78,18 +79,11 @@ export function PinGate({
 }
 
 function refusalMessage(error: unknown): string {
-  if (error instanceof AuthApiError) {
-    if (error.code === 'INVALID_PROFILE_PIN') {
-      return "That PIN isn't right. Try again."
-    }
-    if (error.status === 429) {
-      return error.retryAfterSeconds
-        ? `Too many attempts. Try again in ${error.retryAfterSeconds} seconds.`
-        : 'Too many attempts. Try again later.'
-    }
-    if (error.status === 409) {
-      return 'This Profile is locked until a PIN is set for it.'
-    }
+  if (!(error instanceof AuthApiError)) {
+    return FAILURE_MESSAGE
   }
-  return "Couldn't select that Profile. Try again."
+  if (error.retryAfterSeconds) {
+    return `Too many attempts. Try again in ${error.retryAfterSeconds} seconds.`
+  }
+  return error.serverMessage ?? FAILURE_MESSAGE
 }
