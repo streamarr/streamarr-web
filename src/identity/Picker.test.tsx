@@ -189,6 +189,86 @@ describe('Picker', () => {
     expect(selectProfile).not.toHaveBeenCalled()
   })
 
+  it('shouldShowTheServersRefusalWhenAProfileCannotBeSelected', async () => {
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ data: { me: meFixture() } })),
+      http.post('/api/auth/select-profile', () =>
+        HttpResponse.json(
+          {
+            code: 'PROFILE_LOCKED',
+            message: 'This profile needs a PIN before it can be selected here.',
+          },
+          { status: 409 },
+        ),
+      ),
+    )
+    const onProfileSelected = vi.fn()
+    const { user } = renderWithProviders(<PickerHarness onProfileSelected={onProfileSelected} />)
+
+    await user.click(await screen.findByRole('button', { name: /Alex/ }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'This profile needs a PIN before it can be selected here.',
+    )
+    expect(onProfileSelected).not.toHaveBeenCalled()
+  })
+
+  it('shouldSendADeadSessionToSignInFromTheGrid', async () => {
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ data: { me: meFixture() } })),
+      http.post('/api/auth/select-profile', () =>
+        HttpResponse.json(
+          { code: 'AUTHENTICATION_REQUIRED', message: 'Authentication is required.' },
+          { status: 401 },
+        ),
+      ),
+    )
+    const onUnauthenticated = vi.fn()
+    const { user } = renderWithProviders(
+      <PickerHarness onProfileSelected={vi.fn()} onUnauthenticated={onUnauthenticated} />,
+    )
+
+    await user.click(await screen.findByRole('button', { name: /Alex/ }))
+
+    await waitFor(() => expect(onUnauthenticated).toHaveBeenCalled())
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('shouldShowTheServersRefusalWhenAHouseholdCannotBeSwitchedTo', async () => {
+    server.use(
+      graphql.query('Me', () =>
+        HttpResponse.json({
+          data: {
+            me: meFixture({
+              usableHouseholds: [
+                { id: HOUSEHOLD_ID, name: 'Smith Family', membership: true },
+                { id: OTHER_HOUSEHOLD_ID, name: 'Cabin', membership: false },
+              ],
+            }),
+          },
+        }),
+      ),
+      http.post('/api/auth/select-household', () =>
+        HttpResponse.json(
+          {
+            code: 'HOUSEHOLD_ACCESS_DENIED',
+            message: 'The requested household is not accessible to this account.',
+          },
+          { status: 403 },
+        ),
+      ),
+    )
+    const { user } = renderWithProviders(<PickerHarness onProfileSelected={vi.fn()} />)
+
+    await user.click(await screen.findByRole('radio', { name: 'Cabin' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The requested household is not accessible to this account.',
+    )
+    // Still on the original Household, with its profiles on offer.
+    expect(screen.getByRole('button', { name: /Alex/ })).toBeInTheDocument()
+  })
+
   it('shouldSwitchHouseholdsAndReloadTheirProfiles', async () => {
     const twoHouseholds = {
       usableHouseholds: [

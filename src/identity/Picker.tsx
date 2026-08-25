@@ -35,6 +35,7 @@ export function Picker({
   const { selectHousehold, selectProfile } = useAuth()
   const [busy, setBusy] = useState<string | null>(null)
   const [switching, setSwitching] = useState(false)
+  const [failure, setFailure] = useState<string | null>(null)
 
   if (loading) {
     return (
@@ -60,16 +61,28 @@ export function Picker({
     if (householdId === me.contextHousehold.id) {
       return
     }
+    setFailure(null)
     setSwitching(true)
     try {
       // The auth boundary resets the Apollo store, which refetches the active Me.
       await selectHousehold(householdId)
+    } catch (error) {
+      refuse(error, "Couldn't switch Households. Try again.")
     } finally {
       setSwitching(false)
     }
   }
 
   // A dead session is the sign-in page's to answer, never a refusal of the choice itself.
+  function refuse(error: unknown, fallback: string) {
+    if (isSessionRefusal(error)) {
+      onUnauthenticated()
+      return
+    }
+    setFailure(refusalMessage(error, fallback))
+  }
+
+  // The gate shows its own refusals; only a dead session is taken off its hands.
   async function select(request: () => Promise<AuthTokens>) {
     try {
       onProfileSelected(await request())
@@ -89,9 +102,12 @@ export function Picker({
       onPinRequested(profile.id)
       return
     }
+    setFailure(null)
     setBusy(profile.id)
     try {
       onProfileSelected(await selectProfile(profile.id))
+    } catch (error) {
+      refuse(error, "Couldn't select that Profile. Try again.")
     } finally {
       setBusy(null)
     }
@@ -119,6 +135,11 @@ export function Picker({
   return (
     <Stack gap={28}>
       <h1 className="authTitle">Who's watching?</h1>
+      {failure && (
+        <Alert color="red" role="alert">
+          {failure}
+        </Alert>
+      )}
       {households.length > 1 && (
         <SegmentedControl
           aria-label="Household"
@@ -150,6 +171,13 @@ export function Picker({
       )}
     </Stack>
   )
+}
+
+function refusalMessage(error: unknown, fallback: string): string {
+  if (!(error instanceof AuthApiError)) {
+    return fallback
+  }
+  return error.serverMessage ?? fallback
 }
 
 function isSessionRefusal(error: unknown): boolean {
