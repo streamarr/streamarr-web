@@ -1,0 +1,124 @@
+type Library {
+    id: ID!
+    createdBy: String
+    createdOn: String!
+    lastModifiedBy: String
+    lastModifiedOn: String!
+    name: String
+    filepathUri: String!
+    scanStartedOn: String
+    scanCompletedOn: String
+    status: LibraryStatus!
+    backend: LibraryBackend!
+    type: MediaType!
+    items(first: Int
+          after: String
+          last: Int
+          before: String
+          sort: MediaSort
+          filter: MediaFilter): MediaConnection!
+    alphabetIndex: [AlphabetIndex!]!
+}
+
+enum LibraryStatus {
+    SCANNING
+    REFRESHING
+    HEALTHY
+    UNHEALTHY
+}
+
+enum LibraryBackend {
+    LOCAL
+    REMOTE
+}
+
+enum MediaType {
+    MOVIE
+    SERIES
+    OTHER
+}
+
+enum OrderMediaBy {
+    TITLE
+    ADDED
+    RELEASE_DATE
+    RUNTIME
+    LAST_WATCHED
+}
+
+enum SortDirection {
+    ASC
+    DESC
+}
+
+input MediaSort {
+    by: OrderMediaBy = TITLE
+    direction: SortDirection = ASC
+}
+
+input MediaFilter {
+    startLetter: AlphabetLetter
+    genreIds: [ID!]
+    years: [Int!]
+    contentRatings: [String!]
+    studioIds: [ID!]
+    directorIds: [ID!]
+    castMemberIds: [ID!]
+    unmatched: Boolean
+    watchStatus: WatchStatus
+}
+
+enum AlphabetLetter {
+    A B C D E F G H I J K L M
+    N O P Q R S T U V W X Y Z
+    HASH
+}
+
+type AlphabetIndex {
+    letter: AlphabetLetter!
+    count: Int!
+}
+
+type MediaConnection {
+    edges: [MediaEdge]
+    pageInfo: PageInfo!
+}
+
+type MediaEdge {
+    node: Media
+    cursor: String!
+}
+
+type PageInfo {
+    hasPreviousPage: Boolean!
+    hasNextPage: Boolean!
+    startCursor: String
+    endCursor: String
+}
+
+union Media = Movie | Series
+
+enum ExternalAgentStrategy {
+    TMDB
+}
+
+input AddLibraryInput {
+    name: String!
+    filepath: String!
+    type: MediaType!
+    backend: LibraryBackend!
+    externalAgentStrategy: ExternalAgentStrategy
+}
+
+type AddLibraryPayload {
+    library: Library
+    userErrors: [AddLibraryError!]!
+}
+
+union AddLibraryError =
+    LibraryNameRequiredError
+  | LibraryPathRequiredError
+  | LibraryPathNotFoundError
+  | LibraryPathNotDirectoryError
+  | LibraryPathNotReadableError
+  | LibraryPathAlreadyRegisteredError

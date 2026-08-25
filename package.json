@@ -14,7 +14,7 @@
     "test:e2e": "playwright test",
     "schema:pull": "node scripts/pull-schema.mjs",
     "codegen": "graphql-codegen --config codegen.ts",
-    "codegen:check": "npm run schema:pull && npm run codegen && drift=\"$(git status --porcelain -- src/graphql/schema.graphql src/graphql/generated)\" && if [ -n \"$drift\" ]; then echo \"Generated GraphQL artifacts drifted:\"; echo \"$drift\"; exit 1; fi"
+    "codegen:check": "npm run schema:pull && npm run codegen && drift=\"$(git status --porcelain -- src/graphql/schema src/graphql/generated)\" && if [ -n \"$drift\" ]; then echo \"Generated GraphQL artifacts drifted:\"; echo \"$drift\"; exit 1; fi"
   },
   "repository": {
     "type": "git",

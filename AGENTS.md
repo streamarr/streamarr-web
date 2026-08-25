@@ -8,7 +8,7 @@
 - `npm run test:e2e` — browser suite (Playwright drives vite dev against the API stub in `e2e/`)
 - `npm run typecheck` — TypeScript, no emit, for both the app and the `tsconfig.e2e.json` project
 - `npm run build` — production bundle (Vite)
-- `npm run schema:pull` — refresh `src/graphql/schema.graphql` from the pinned server commit
+- `npm run schema:pull` — refresh `src/graphql/schema/` (the server's `.graphqls` files + `PROVENANCE`) from the pinned server commit
 - `npm run codegen` — regenerate `src/graphql/generated/` from the schema and `.graphql` documents
 - `npm run codegen:check` — CI drift gate: pull + generate, then fail on any diff or untracked output
 - `npm run tokens` — refresh `src/styles/tokens.generated.css` from streamarr-ux (needs `gh` auth for the private repo)
@@ -24,8 +24,8 @@
 
 ## GraphQL contract
 - The server SDL is pinned to an exact streamarr-server main commit in `src/graphql/schema.pin.json`;
-  `npm run schema:pull` fetches and concatenates the schema files in stable name order with a
-  provenance header. Never edit `src/graphql/schema.graphql` by hand.
+  `npm run schema:pull` vendors the server's `.graphqls` files verbatim into `src/graphql/schema/`
+  and records the source in `src/graphql/schema/PROVENANCE`. Never edit that directory by hand.
 - Operations live in `.graphql` files next to their feature (or under `src/graphql/operations/`);
   generated types and typed documents come from GraphQL Code Generator and are committed.
 - Apollo's `InMemoryCache` is configured with generated `possibleTypes`; treat unknown union and
