@@ -1,25 +1,26 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { STUB_URL } from './ports'
 
-// End-to-end proof that the dev-served app keeps sessions alive: the service worker must take
-// control of the page (a scope regression leaves it activated but controlling nothing), renew
-// an expired access token transparently, and hand a dead session to the login page instead of
-// wedging on an error alert.
-
-const STUB = 'http://localhost:5198'
+// Proves the dev-served app keeps sessions alive: the service worker takes control of the page,
+// renews an expired access token transparently, and sends a dead session to sign-in.
 
 async function setStubMode(request: APIRequestContext, mode: 'renewable' | 'rejected') {
-  await request.post(`${STUB}/__test/mode`, { data: { mode } })
+  await request.post(`${STUB_URL}/__test/mode`, { data: { mode } })
+}
+
+async function expectServiceWorkerControl(page: Page) {
+  await expect
+    .poll(() => page.evaluate(() => navigator.serviceWorker.controller !== null), {
+      message: 'service worker never took control',
+    })
+    .toBe(true)
 }
 
 async function navigateUnderServiceWorkerControl(page: Page) {
-  // The first navigation registers the worker; only after clients.claim() does it control the
-  // page. The guard may bounce that uncontrolled first load to /login (its probe can race the
-  // claim), so navigate back to the root once control exists — every fetch from here on flows
-  // through a controlled document.
+  // The guard may bounce the uncontrolled first load to /login (its probe races clients.claim()),
+  // so navigate again once the worker controls the page.
   await page.goto('/')
-  await page.waitForFunction(() => navigator.serviceWorker.controller !== null, undefined, {
-    timeout: 15_000,
-  })
+  await expectServiceWorkerControl(page)
   await page.goto('/')
 }
 
@@ -29,15 +30,13 @@ test.beforeEach(async ({ request }) => {
 
 test('the service worker takes control of the dev-served app', async ({ page }) => {
   await page.goto('/')
-  await page.waitForFunction(() => navigator.serviceWorker.controller !== null, undefined, {
-    timeout: 15_000,
-  })
+  await expectServiceWorkerControl(page)
 })
 
 test('an expired session renews and replays into the signed-in shell', async ({ page }) => {
   await navigateUnderServiceWorkerControl(page)
 
-  await expect(page.getByText('Welcome, Dev Admin')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByRole('heading', { name: 'Welcome, Dev Admin' })).toBeVisible()
   await expect(page.getByRole('alert')).toHaveCount(0)
 })
 
@@ -46,5 +45,5 @@ test('a dead refresh session lands on sign-in instead of wedging', async ({ page
 
   await navigateUnderServiceWorkerControl(page)
 
-  await expect(page).toHaveURL(/\/login/, { timeout: 15_000 })
+  await expect(page).toHaveURL(/\/login/)
 })
