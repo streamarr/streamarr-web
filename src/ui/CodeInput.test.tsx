@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, it } from 'vitest'
 import { CodeInput } from './CodeInput'
+import styles from './CodeInput.module.css'
 
 function Harness({ minLength, length }: { minLength?: number; length?: number }) {
   const [value, setValue] = useState('')
@@ -22,7 +23,7 @@ function Harness({ minLength, length }: { minLength?: number; length?: number })
 }
 
 function cells() {
-  return document.querySelectorAll('.codeInputCell').length
+  return document.querySelectorAll(`.${styles.codeInputCell}`).length
 }
 
 describe('CodeInput', () => {
@@ -62,7 +63,7 @@ describe('CodeInput', () => {
     await user.type(screen.getByLabelText('PIN'), '12')
 
     // A dedicated blinking element: a printed bar would read as a character.
-    expect(document.querySelector('.codeInputCaret')).not.toBeNull()
+    expect(document.querySelector(`.${styles.codeInputCaret}`)).not.toBeNull()
   })
 
   it('shouldRestTheCaretWhenTheFloorIsReached', async () => {
@@ -72,7 +73,7 @@ describe('CodeInput', () => {
     await user.type(screen.getByLabelText('PIN'), '1234')
 
     // Complete-at-the-floor shows four filled boxes and no caret asking for a fifth.
-    expect(document.querySelector('.codeInputCaret')).toBeNull()
+    expect(document.querySelector(`.${styles.codeInputCaret}`)).toBeNull()
   })
 
   it('shouldAppendADigitTypedAfterTheCaretWasMovedBack', async () => {
