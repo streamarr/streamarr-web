@@ -26,7 +26,7 @@ jobs:
       - run: npm run typecheck
       - run: npm run test:coverage
       # streamarr-server is public; GITHUB_TOKEN only lifts the anonymous API rate limit.
-      - name: Verify the GraphQL contract matches the pinned server schema
+      - name: Verify the vendored server contract matches the pinned commit
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run codegen:check

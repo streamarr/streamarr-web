@@ -25,6 +25,7 @@ export default defineConfig({
       exclude: [
         'src/test/**',
         'src/graphql/generated/**',
+        'src/api/generated/**',
         'src/routeTree.gen.ts',
         'src/main.tsx',
         'src/sw/sw.ts',
