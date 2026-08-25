@@ -277,8 +277,7 @@ describe('renewal bridge', () => {
   })
 
   it('shouldReportUnavailableWhenNoServiceWorkerEverTakesControl', async () => {
-    // navigator.serviceWorker.ready never settles when no registration's scope matches the
-    // page (the dev scope regression), so endpoint discovery must carry its own deadline.
+    // navigator.serviceWorker.ready never settles when no registration's scope matches the page.
     vi.useFakeTimers()
     const bridge = createRenewalBridge({
       sharedPort: null,
@@ -376,8 +375,7 @@ describe('renewal bridge', () => {
   })
 
   it('shouldDisconnectFromTheSharedClockWhenThePageGoesAway', () => {
-    // The host only forgets a port when told; a silently closed tab would otherwise keep
-    // receiving refresh-due dispatches until postMessage finally throws.
+    // A SharedWorker only forgets a port when told; a closed tab is otherwise invisible to it.
     const sharedPort = new FakeSharedPort()
     createRenewalBridge({
       sharedPort,
