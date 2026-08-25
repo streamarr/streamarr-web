@@ -1,3 +1,4 @@
+import { rem } from '@mantine/core'
 import type { ReactNode } from 'react'
 import './auth.css'
 
@@ -6,7 +7,7 @@ export function AuthShell({ width = 400, children }: { width?: number; children:
     <div className="authShell">
       <div className="authShellBloom" />
       <div className="authShellScrim" />
-      <div className="authShellColumn" style={{ maxWidth: width }}>
+      <div className="authShellColumn" style={{ maxWidth: rem(width) }}>
         <Wordmark />
         {children}
       </div>
