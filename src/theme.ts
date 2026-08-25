@@ -1,4 +1,5 @@
 import { colorsTuple, createTheme, type CSSVariablesResolver } from '@mantine/core'
+import styles from './styles/field.module.css'
 
 // Values reference the generated tokens (src/styles/tokens.generated.css) as CSS custom
 // properties rather than copying them, so re-vendoring restyles the app without touching this.
@@ -10,10 +11,10 @@ export const theme = createTheme({
   primaryColor: 'streamarr',
   components: {
     InputWrapper: {
-      classNames: { label: 'fieldLabel', required: 'fieldRequired' },
+      classNames: { label: styles.fieldLabel, required: styles.fieldRequired },
     },
     Input: {
-      classNames: { input: 'fieldInput' },
+      classNames: { input: styles.fieldInput },
     },
   },
   fontFamily: "'Space Grotesk', var(--font-family-content)",

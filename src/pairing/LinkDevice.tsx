@@ -1,6 +1,7 @@
 import { Alert, Button, Group, SegmentedControl, Stack, Text } from '@mantine/core'
 import { AuthLede, AuthTitle } from '../ui/AuthShell'
 import { CodeInput } from '../ui/CodeInput'
+import styles from '../styles/field.module.css'
 import { useState } from 'react'
 import { AuthApiError } from '../api/http'
 import {
@@ -236,7 +237,7 @@ function ConfirmDevice({
         Requested {formatRequestedAt(pairing.requestedAt)}
       </Text>
       <Stack gap={6}>
-        <Text component="label" className="fieldLabel" id="household-choice-label">
+        <Text component="label" className={styles.fieldLabel} id="household-choice-label">
           Sign it in to
         </Text>
         {/* An unmatched value renders no thumb, so several Households demand an explicit pick. */}
