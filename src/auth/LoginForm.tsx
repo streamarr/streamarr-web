@@ -9,13 +9,8 @@ import { useState } from 'react'
 import { AuthTitle } from '../ui/AuthShell'
 import { AuthApiError, type AuthTokens } from './api'
 import { useAuth } from './AuthProvider'
-import { CSRF_REJECTION_CODE, CSRF_REJECTION_MESSAGE } from './csrf'
+import { CSRF_REJECTION_MESSAGE, isCsrfRejection } from './csrf'
 
-const MESSAGES: Record<string, string> = {
-  INVALID_CREDENTIALS: 'Incorrect email or password.',
-  TOO_MANY_ATTEMPTS: 'Too many attempts. Wait a few minutes and try again.',
-  [CSRF_REJECTION_CODE]: CSRF_REJECTION_MESSAGE,
-}
 const FALLBACK_MESSAGE = 'Sign in failed. Please try again.'
 
 export function LoginForm({
@@ -38,8 +33,7 @@ export function LoginForm({
         await login({ email, password, deviceName: navigator.userAgent }),
       )
     } catch (caught) {
-      const code = caught instanceof AuthApiError ? caught.code : null
-      setError((code && MESSAGES[code]) ?? FALLBACK_MESSAGE)
+      setError(refusalMessage(caught))
     } finally {
       setSubmitting(false)
     }
@@ -77,4 +71,15 @@ export function LoginForm({
       </Stack>
     </form>
   )
+}
+
+/** The server's sentence, except that only the client knows a CSRF miss is cured by reloading. */
+function refusalMessage(error: unknown): string {
+  if (!(error instanceof AuthApiError)) {
+    return FALLBACK_MESSAGE
+  }
+  if (isCsrfRejection(error.status, error.code)) {
+    return CSRF_REJECTION_MESSAGE
+  }
+  return error.serverMessage ?? FALLBACK_MESSAGE
 }

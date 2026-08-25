@@ -4,9 +4,8 @@ import { AuthTitle } from '../ui/AuthShell'
 import { AuthApiError, type AuthTokens } from './api'
 import { useAuth } from './AuthProvider'
 
-const MESSAGES: Record<string, string> = {
-  SETUP_ALREADY_COMPLETED: 'This server has already been set up. Sign in instead.',
-}
+const ALREADY_SET_UP_MESSAGE = 'This server has already been set up.'
+const SIGN_IN_INSTEAD = 'Sign in instead.'
 const FALLBACK_MESSAGE = 'Setup failed. Please try again.'
 
 export function SetupForm({ onAuthenticated }: { onAuthenticated: (tokens: AuthTokens) => void }) {
@@ -37,8 +36,7 @@ export function SetupForm({ onAuthenticated }: { onAuthenticated: (tokens: AuthT
     try {
       onAuthenticated(await setup(fields))
     } catch (caught) {
-      const code = caught instanceof AuthApiError ? caught.code : null
-      setError((code && MESSAGES[code]) ?? FALLBACK_MESSAGE)
+      setError(refusalMessage(caught))
     } finally {
       setSubmitting(false)
     }
@@ -67,4 +65,15 @@ export function SetupForm({ onAuthenticated }: { onAuthenticated: (tokens: AuthT
       </Stack>
     </form>
   )
+}
+
+/** The server's sentence, plus the one thing it cannot know: a set-up server means sign in. */
+function refusalMessage(error: unknown): string {
+  if (!(error instanceof AuthApiError)) {
+    return FALLBACK_MESSAGE
+  }
+  if (error.code === 'SETUP_ALREADY_COMPLETED') {
+    return `${error.serverMessage ?? ALREADY_SET_UP_MESSAGE} ${SIGN_IN_INSTEAD}`
+  }
+  return error.serverMessage ?? FALLBACK_MESSAGE
 }
