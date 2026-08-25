@@ -64,7 +64,10 @@ describe('Picker', () => {
       http.post('/api/auth/select-profile', async ({ request }) => {
         const body = (await request.json()) as { pin?: string }
         if (body.pin !== '4242') {
-          return HttpResponse.json({ code: 'INVALID_PROFILE_PIN' }, { status: 401 })
+          return HttpResponse.json(
+            { code: 'INVALID_PROFILE_PIN', message: 'The PIN is incorrect.' },
+            { status: 401 },
+          )
         }
         return HttpResponse.json(TOKENS)
       }),
@@ -75,10 +78,10 @@ describe('Picker', () => {
     await user.click(await screen.findByRole('button', { name: /Alex/ }))
     const pinInput = await screen.findByTestId('pin-input')
 
-    // The wrong PIN earns the typed refusal and the dialog stays for another try.
+    // The wrong PIN earns the server's refusal and the gate stays for another try.
     await user.type(pinInput, '1111')
     await user.click(screen.getByRole('button', { name: 'Unlock' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent("That PIN isn't right")
+    expect(await screen.findByRole('alert')).toHaveTextContent('The PIN is incorrect.')
     expect(onProfileSelected).not.toHaveBeenCalled()
 
     await user.type(screen.getByTestId('pin-input'), '4242')
@@ -112,6 +115,34 @@ describe('Picker', () => {
     // A dead session is not a wrong PIN: no refusal is shown, the person goes to sign in.
     await waitFor(() => expect(onUnauthenticated).toHaveBeenCalled())
     expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('shouldShowTheServersThrottleSentenceWhenNoRetryAfterIsGiven', async () => {
+    server.use(
+      graphql.query('Me', () =>
+        HttpResponse.json({
+          data: { me: meFixture({ profiles: [profileFixture({ pinConfigured: true })] }) },
+        }),
+      ),
+      http.post('/api/auth/select-profile', () =>
+        HttpResponse.json(
+          {
+            code: 'TOO_MANY_ATTEMPTS',
+            message: 'Too many failed credential attempts. Try again later.',
+          },
+          { status: 429 },
+        ),
+      ),
+    )
+    const { user } = renderWithProviders(<PickerHarness onProfileSelected={vi.fn()} />)
+    await user.click(await screen.findByRole('button', { name: /Alex/ }))
+
+    await user.type(await screen.findByTestId('pin-input'), '4242')
+    await user.click(screen.getByRole('button', { name: 'Unlock' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Too many failed credential attempts. Try again later.',
+    )
   })
 
   it('shouldSubmitThePinWithEnter', async () => {

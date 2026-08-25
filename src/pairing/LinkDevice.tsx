@@ -10,18 +10,6 @@ import {
   type PairingStatus,
 } from './api'
 
-const LOOKUP_MESSAGES: Record<string, string> = {
-  INVALID_USER_CODE: "That doesn't look like a pairing code. Check the code on your device.",
-  DEVICE_CODE_NOT_FOUND: 'No pairing request matches that code. It may have expired — start a new one on your device.',
-}
-const DECISION_MESSAGES: Record<string, string> = {
-  ...LOOKUP_MESSAGES,
-  DEVICE_CODE_EXPIRED: 'That code expired. Start a new one on your device.',
-  INVALID_DECISION: 'Something went wrong sending your choice. Please try again.',
-  HOUSEHOLD_REQUIRED: 'Choose which Household this TV joins.',
-  HOUSEHOLD_ACCESS_DENIED: 'You can no longer use that Household. Choose another.',
-  ESN_BLOCKED: 'That device is blocked and cannot be linked.',
-}
 const FALLBACK_MESSAGE = 'Something went wrong. Please try again.'
 
 /** Terminal states an approver can land on — none of them offer the buttons again. */
@@ -59,7 +47,7 @@ export function LinkDevice({
     } catch (caught) {
       setPairing(null)
       if (!bouncedToSignIn(caught, fullCode)) {
-        setError(messageFor(caught, LOOKUP_MESSAGES))
+        setError(messageFor(caught))
       }
     } finally {
       setBusy(false)
@@ -101,7 +89,7 @@ export function LinkDevice({
       return
     }
     if (!(caught instanceof AuthApiError) || caught.code !== 'DEVICE_CODE_NOT_PENDING') {
-      setError(messageFor(caught, DECISION_MESSAGES))
+      setError(messageFor(caught))
       return
     }
 
@@ -110,7 +98,7 @@ export function LinkDevice({
       setPairing(current)
       settle(current.status)
     } catch (lookupFailed) {
-      setError(messageFor(lookupFailed, DECISION_MESSAGES))
+      setError(messageFor(lookupFailed))
     }
   }
 
@@ -265,20 +253,18 @@ function formatRequestedAt(requestedAt: string): string {
   return Number.isNaN(parsed.getTime()) ? 'just now' : parsed.toLocaleString()
 }
 
-function messageFor(caught: unknown, messages: Record<string, string>): string {
+/** The server's sentence, except that only Retry-After can say how long a throttle lasts. */
+function messageFor(caught: unknown): string {
   if (!(caught instanceof AuthApiError)) {
     return FALLBACK_MESSAGE
   }
-  if (caught.code === 'TOO_MANY_ATTEMPTS') {
+  if (caught.retryAfterSeconds) {
     return throttleMessage(caught.retryAfterSeconds)
   }
-  return (caught.code && messages[caught.code]) ?? FALLBACK_MESSAGE
+  return caught.serverMessage ?? FALLBACK_MESSAGE
 }
 
-function throttleMessage(retryAfterSeconds: number | null): string {
-  if (retryAfterSeconds === null) {
-    return 'Too many attempts. Wait a few minutes and try again.'
-  }
+function throttleMessage(retryAfterSeconds: number): string {
   const minutes = Math.ceil(retryAfterSeconds / 60)
   return `Too many attempts. Try again in about ${minutes} minute${minutes === 1 ? '' : 's'}.`
 }
