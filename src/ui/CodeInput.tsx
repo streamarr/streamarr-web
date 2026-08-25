@@ -1,5 +1,5 @@
 import { useId, useState, type ClipboardEvent } from 'react'
-import './auth.css'
+import styles from './CodeInput.module.css'
 
 // A real input rides invisibly over the boxes so focus, paste, and assistive tech work on a
 // genuine field; the boxes are its rendering.
@@ -73,11 +73,12 @@ export function CodeInput({
     return (
       <div
         key={index}
-        className={`codeInputCell${active ? ' codeInputCellActive' : ''}`}
+        className={`${styles.codeInputCell}${active ? ` ${styles.codeInputCellActive}` : ''}`}
+        data-part="cell"
         aria-hidden
       >
         {filled ? (secret ? '•' : value[index]) : ' '}
-        {active && !filled ? <span className="codeInputCaret" /> : null}
+        {active && !filled ? <span className={styles.codeInputCaret} /> : null}
       </div>
     )
   })
@@ -85,19 +86,25 @@ export function CodeInput({
   const withSeparators = groupSize
     ? cells.flatMap((cell, index) =>
         index > 0 && index % groupSize === 0
-          ? [<div key={`sep-${index}`} className="codeInputSeparator" aria-hidden />, cell]
+          ? [<div key={`sep-${index}`} className={styles.codeInputSeparator} aria-hidden />, cell]
           : [cell],
       )
     : cells
 
   return (
     <div
-      className={`codeInput${error ? ' codeInputError' : ''}${settled ? ' codeInputSettled' : ''}`}
+      className={[
+        styles.codeInput,
+        error ? styles.codeInputError : '',
+        settled ? styles.codeInputSettled : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
     >
       {withSeparators}
       <input
         id={id}
-        className="codeInputField"
+        className={styles.codeInputField}
         aria-label={label}
         aria-invalid={error || undefined}
         inputMode={alphanumeric ? 'text' : 'numeric'}
