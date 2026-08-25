@@ -18,6 +18,9 @@ export function decideAuthRoute(ctx: AuthErrorContext): '/login' | '/select-prof
   if (ctx.networkStatus === 401 && ctx.networkCode && LOGIN_CODES.has(ctx.networkCode)) {
     return '/login'
   }
+  if (ctx.graphqlCodes?.some((code) => LOGIN_CODES.has(code))) {
+    return '/login'
+  }
   return null
 }
 
