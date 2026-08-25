@@ -36,22 +36,16 @@ export function SharingScreen() {
   const { data: meData, loading: meLoading, error: meError } = useMe()
 
   if (meLoading) {
-    return (
-      <Center h={200}>
-        <Loader />
-      </Center>
-    )
+    return <SharingLoading />
   }
+
   const personal = meData?.me.selectableProfiles.edges
     .map((edge) => edge.node)
     .find((profile) => profile.personal)
   if (meError || !meData || !personal) {
-    return (
-      <Alert color="red" role="alert">
-        Couldn't load sharing. Try again.
-      </Alert>
-    )
+    return <SharingUnavailable />
   }
+
   return (
     <Sharing
       householdId={meData.me.contextHousehold.id}
@@ -79,18 +73,11 @@ function Sharing({
   const refetch = () => overview.refetch()
 
   if (overview.loading) {
-    return (
-      <Center h={200}>
-        <Loader />
-      </Center>
-    )
+    return <SharingLoading />
   }
+
   if (overview.error || !overview.data) {
-    return (
-      <Alert color="red" role="alert">
-        Couldn't load sharing. Try again.
-      </Alert>
-    )
+    return <SharingUnavailable />
   }
 
   const offers = overview.data.pendingShareOffers.edges.map((edge) => edge.node)
@@ -108,6 +95,22 @@ function Sharing({
         onChanged={refetch}
       />
     </Stack>
+  )
+}
+
+function SharingLoading() {
+  return (
+    <Center h={200}>
+      <Loader />
+    </Center>
+  )
+}
+
+function SharingUnavailable() {
+  return (
+    <Alert color="red" role="alert">
+      Couldn't load sharing. Try again.
+    </Alert>
   )
 }
 
@@ -129,17 +132,21 @@ function OffersIntoHousehold({
     setFailure(null)
     setBusy(offer.id)
     try {
-      const errors = await sendDecision(offer, decision)
-      if (errors?.length) {
-        setFailure(userErrorMessage(errors[0]))
-        return
-      }
-      onDecided()
+      await applyDecision(offer, decision)
     } catch {
       setFailure(FAILURE_MESSAGE)
     } finally {
       setBusy(null)
     }
+  }
+
+  async function applyDecision(offer: PendingOffer, decision: 'accept' | 'reject') {
+    const errors = await sendDecision(offer, decision)
+    if (errors?.length) {
+      setFailure(userErrorMessage(errors[0]))
+      return
+    }
+    onDecided()
   }
 
   async function sendDecision(
@@ -211,17 +218,21 @@ function OfferForm({
   async function submit() {
     setFailure(null)
     try {
-      const result = await offer({ variables: { input: { profileId, householdId } } })
-      const errors = result.data?.offerProfileShare?.userErrors
-      if (errors?.length) {
-        setFailure(userErrorMessage(errors[0]))
-        return
-      }
-      setHouseholdId('')
-      onOffered()
+      await sendOffer()
     } catch {
       setFailure(FAILURE_MESSAGE)
     }
+  }
+
+  async function sendOffer() {
+    const result = await offer({ variables: { input: { profileId, householdId } } })
+    const errors = result.data?.offerProfileShare?.userErrors
+    if (errors?.length) {
+      setFailure(userErrorMessage(errors[0]))
+      return
+    }
+    setHouseholdId('')
+    onOffered()
   }
 
   const answers = preview.data?.profileSharePreview
@@ -277,17 +288,21 @@ function OwnShares({
     setFailure(null)
     setBusy(share.id)
     try {
-      const errors = await sendChange(share)
-      if (errors?.length) {
-        setFailure(userErrorMessage(errors[0]))
-        return
-      }
-      onChanged()
+      await applyChange(share)
     } catch {
       setFailure(FAILURE_MESSAGE)
     } finally {
       setBusy(null)
     }
+  }
+
+  async function applyChange(share: ProfileShareRow) {
+    const errors = await sendChange(share)
+    if (errors?.length) {
+      setFailure(userErrorMessage(errors[0]))
+      return
+    }
+    onChanged()
   }
 
   async function sendChange(
@@ -321,7 +336,7 @@ function OwnShares({
               <Badge variant="light">{share.status}</Badge>
               {share.requiredByAccountMembership && <Badge color="blue">Home</Badge>}
             </Group>
-            {!share.requiredByAccountMembership && (share.status === 'PENDING' || share.status === 'ACTIVE') && (
+            {canChange(share) && (
               <Button
                 size="xs"
                 variant="subtle"
@@ -337,6 +352,13 @@ function OwnShares({
       </Stack>
     </Card>
   )
+}
+
+function canChange(share: ProfileShareRow): boolean {
+  if (share.requiredByAccountMembership) {
+    return false
+  }
+  return share.status === 'PENDING' || share.status === 'ACTIVE'
 }
 
 function shortId(id: string): string {
