@@ -1,4 +1,5 @@
 import { Alert, Button, Group, SegmentedControl, Stack, Text } from '@mantine/core'
+import { AuthLede, AuthTitle } from '../ui/AuthShell'
 import { CodeInput } from '../ui/CodeInput'
 import { useState } from 'react'
 import { AuthApiError } from '../api/http'
@@ -139,7 +140,7 @@ export function LinkDevice({
     if (pairing) {
       return (
         <Stack gap={10}>
-          <Text className="authLede">Code accepted</Text>
+          <AuthLede>Code accepted</AuthLede>
           <CodeInput
             label="Pairing code"
             value={code}
@@ -156,7 +157,7 @@ export function LinkDevice({
 
     return (
       <Stack gap={10}>
-        <Text className="authLede">Enter the code shown on your TV</Text>
+        <AuthLede>Enter the code shown on your TV</AuthLede>
         <CodeInput
           label="Pairing code"
           value={code}
@@ -173,7 +174,7 @@ export function LinkDevice({
 
   return (
     <Stack gap={28}>
-      <h1 className="authTitle">Link your TV</h1>
+      <AuthTitle>Link your TV</AuthTitle>
 
       <div role="status" aria-live="polite">
         {settled && <SettledNotice status={settled} />}

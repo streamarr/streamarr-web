@@ -1,5 +1,6 @@
 import { Alert, Button, PasswordInput, Stack, Text, TextInput } from '@mantine/core'
 import { useState } from 'react'
+import { AuthTitle } from '../ui/AuthShell'
 import { AuthApiError, type AuthTokens } from './api'
 import { useAuth } from './AuthProvider'
 
@@ -46,7 +47,7 @@ export function SetupForm({ onAuthenticated }: { onAuthenticated: (tokens: AuthT
   return (
     <form onSubmit={onSubmit}>
       <Stack maw={420}>
-        <h1 className="authTitle">Set up your server</h1>
+        <AuthTitle>Set up your server</AuthTitle>
         <Text c="dimmed" size="sm">
           Create the first admin account, household, and profile.
         </Text>

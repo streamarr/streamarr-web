@@ -1,6 +1,7 @@
 import { Button, Text } from '@mantine/core'
 import { useState } from 'react'
 import { AuthApiError } from '../auth/api'
+import { AuthTitle } from '../ui/AuthShell'
 import { CodeInput } from '../ui/CodeInput'
 import { PinGateAvatar } from '../ui/ProfileTile'
 
@@ -48,7 +49,7 @@ export function PinGate({
     <form className="pinGate" onSubmit={submit}>
       <PinGateAvatar name={profileName} paletteIndex={paletteIndex} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-        <h1 className="authTitle">Enter {profileName}&rsquo;s PIN</h1>
+        <AuthTitle>Enter {profileName}&rsquo;s PIN</AuthTitle>
         {failure && (
           <Text role="alert" style={{ color: 'var(--color-red-error-text)' }}>
             {failure}

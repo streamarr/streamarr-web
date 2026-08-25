@@ -6,6 +6,7 @@ import {
   TextInput,
 } from '@mantine/core'
 import { useState } from 'react'
+import { AuthTitle } from '../ui/AuthShell'
 import { AuthApiError, type AuthTokens } from './api'
 import { useAuth } from './AuthProvider'
 import { CSRF_REJECTION_CODE, CSRF_REJECTION_MESSAGE } from './csrf'
@@ -47,7 +48,7 @@ export function LoginForm({
   return (
     <form onSubmit={onSubmit}>
       <Stack maw={360}>
-        <h1 className="authTitle">Sign in</h1>
+        <AuthTitle>Sign in</AuthTitle>
         {error && (
           <Alert color="red" role="alert">
             {error}

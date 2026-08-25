@@ -1,5 +1,6 @@
 import { Alert, Anchor, Button, PasswordInput, Stack, Text, TextInput } from '@mantine/core'
 import { useState } from 'react'
+import { AuthTitle } from '../ui/AuthShell'
 import { AuthApiError, redeemPasswordReset } from './api'
 
 // Redemption deliberately signs nobody in. Reset codes are opaque tokens, so this is a
@@ -32,7 +33,7 @@ export function ResetPasswordScreen({ initialCode }: { initialCode?: string }) {
   if (done) {
     return (
       <Stack maw={480}>
-        <h1 className="authTitle">Password changed</h1>
+        <AuthTitle>Password changed</AuthTitle>
         <Text>
           Every signed-in session was signed out. <Anchor href="/login">Sign in</Anchor> with your
           new password.
@@ -44,7 +45,7 @@ export function ResetPasswordScreen({ initialCode }: { initialCode?: string }) {
   return (
     <form onSubmit={redeem}>
       <Stack maw={480}>
-        <h1 className="authTitle">Choose a new password</h1>
+        <AuthTitle>Choose a new password</AuthTitle>
         {failure && (
           <Alert color="red" role="alert">
             {failure}
