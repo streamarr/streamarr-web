@@ -1,5 +1,5 @@
 import { AuthShell } from '../../ui/AuthShell'
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, useLocation, useNavigate } from '@tanstack/react-router'
 import { Picker } from '../../identity/Picker'
 
 // The PIN gate is a history entry, not component state: ?profile=<id> opens the gate for
@@ -14,6 +14,8 @@ export const Route = createFileRoute('/_authenticated/select-profile')({
 function SelectProfile() {
   const navigate = useNavigate()
   const { profile } = Route.useSearch()
+  const { session } = Route.useRouteContext()
+  const { href } = useLocation()
   return (
     <AuthShell width={640}>
       <Picker
@@ -23,6 +25,11 @@ function SelectProfile() {
         }
         onPinDismissed={() => navigate({ to: '/select-profile', search: {} })}
         onProfileSelected={() => navigate({ to: '/' })}
+        onUnauthenticated={() => {
+          // Record the eviction first, or /login's cached-session gate would bounce straight back.
+          session.markAnonymous()
+          return navigate({ to: '/login', search: { redirect: href } })
+        }}
       />
     </AuthShell>
   )

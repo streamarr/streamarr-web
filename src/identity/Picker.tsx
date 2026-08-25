@@ -1,13 +1,15 @@
 import { Alert, Center, Loader, SegmentedControl, Stack, Text } from '@mantine/core'
 import { useState } from 'react'
 import { useAuth } from '../auth/AuthProvider'
-import type { AuthTokens } from '../auth/api'
+import { AuthApiError, type AuthTokens } from '../auth/api'
 import type { MeQuery } from '../graphql/generated/graphql'
 import { ProfileTile } from '../ui/ProfileTile'
 import { PinGate } from './PinGate'
 import { useMe } from './useMe'
 
 type SelectableProfile = MeQuery['me']['selectableProfiles']['edges'][number]['node']
+
+const SESSION_REFUSALS = new Set(['AUTHENTICATION_REQUIRED', 'EXPIRED_TOKEN', 'INVALID_TOKEN'])
 
 // Frame 15: the Profile picker of the context Household, with the Household switcher when the
 // Personal Profile is shared into other Households. A locked Profile stays visible but cannot be
@@ -21,11 +23,13 @@ export function Picker({
   onPinRequested,
   onPinDismissed,
   onProfileSelected,
+  onUnauthenticated,
 }: {
   pinProfileId?: string
   onPinRequested: (profileId: string) => void
   onPinDismissed: () => void
   onProfileSelected: (tokens: AuthTokens) => void
+  onUnauthenticated: () => void
 }) {
   const { data, loading, error } = useMe()
   const { selectHousehold, selectProfile } = useAuth()
@@ -65,6 +69,18 @@ export function Picker({
     }
   }
 
+  // A dead session is the sign-in page's to answer, never a refusal of the choice itself.
+  async function select(request: () => Promise<AuthTokens>) {
+    try {
+      onProfileSelected(await request())
+    } catch (error) {
+      if (!isSessionRefusal(error)) {
+        throw error
+      }
+      onUnauthenticated()
+    }
+  }
+
   async function choose(profile: SelectableProfile) {
     if (profile.locked) {
       return
@@ -95,9 +111,7 @@ export function Picker({
         profileName={gated.name}
         paletteIndex={profiles.findIndex((profile) => profile.id === gated.id)}
         onSwitchProfile={onPinDismissed}
-        onSubmit={async (pin: string) => {
-          onProfileSelected(await selectProfile(gated.id, pin))
-        }}
+        onSubmit={(pin: string) => select(() => selectProfile(gated.id, pin))}
       />
     )
   }
@@ -135,5 +149,14 @@ export function Picker({
         <Text c="dimmed">No Profiles are available in {me.contextHousehold.name} yet.</Text>
       )}
     </Stack>
+  )
+}
+
+function isSessionRefusal(error: unknown): boolean {
+  return (
+    error instanceof AuthApiError &&
+    error.status === 401 &&
+    error.code !== null &&
+    SESSION_REFUSALS.has(error.code)
   )
 }

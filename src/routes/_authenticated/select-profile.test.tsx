@@ -132,6 +132,42 @@ describe('/select-profile', () => {
     expect(screen.queryByTestId('pin-input')).not.toBeInTheDocument()
   })
 
+  it('shouldSendADeadSessionBackToSignInFromTheGate', async () => {
+    server.use(
+      graphql.query('Me', () =>
+        HttpResponse.json({
+          data: {
+            me: meFixture({
+              profiles: [
+                profileFixture({ id: 'p-alex', name: 'Alex' }),
+                profileFixture({
+                  id: 'p-toni',
+                  name: 'Toni',
+                  personal: false,
+                  pinConfigured: true,
+                }),
+              ],
+            }),
+          },
+        }),
+      ),
+      http.post('/api/auth/select-profile', () =>
+        HttpResponse.json(
+          { code: 'AUTHENTICATION_REQUIRED', message: 'Authentication is required.' },
+          { status: 401 },
+        ),
+      ),
+    )
+    const { router, user } = renderAppAt('/select-profile')
+
+    await user.click(await screen.findByRole('button', { name: /toni \(pin protected\)/i }))
+    await user.type(await screen.findByLabelText('PIN'), '4242')
+    await user.click(screen.getByRole('button', { name: 'Unlock' }))
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
+    expect(router.state.location.search).toEqual({ redirect: '/select-profile?profile=p-toni' })
+  })
+
   it('shouldShowTheNewProfileAsActiveAfterAPinSwitch', async () => {
     // The server's truth moves when the selection succeeds; the client must not keep showing
     // the old identity from its cache.
