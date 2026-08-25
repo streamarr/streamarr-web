@@ -40,15 +40,64 @@ export function createSessionRenewal({
 
   const adoptExpiry = (expiresAt: string): void => {
     const candidate = new Date(expiresAt).getTime()
-    if (!Number.isNaN(candidate)) {
-      generation += 1
-      expiresAtMs = candidate
-      refreshRejected = false
+    if (Number.isNaN(candidate)) {
+      return
     }
+    generation += 1
+    expiresAtMs = candidate
+    refreshRejected = false
+  }
+
+  const clearSession = (): void => {
+    generation += 1
+    expiresAtMs = null
+    refreshRejected = true
   }
 
   const rememberCsrfToken = (token: string | null): void => {
     csrfToken = chooseCsrfToken(csrfToken, token)
+  }
+
+  const postRefresh = (): Promise<Response> =>
+    fetcher(new URL('/api/auth/refresh', origin), {
+      method: 'POST',
+      headers: csrfToken ? { [CSRF_HEADER]: csrfToken } : {},
+      credentials: 'same-origin',
+    })
+
+  const publishExpiry = async (expiresAt: string, refreshGeneration: number): Promise<void> => {
+    try {
+      await onRenewed(expiresAt, () => refreshGeneration === generation && !refreshRejected)
+    } catch {
+      // Metadata fan-out is best-effort; the cookie session was already renewed.
+    }
+  }
+
+  const renewOnce = async (): Promise<RenewalResult> => {
+    const refreshGeneration = generation
+    const response = await postRefresh()
+    if (refreshGeneration !== generation) {
+      return { kind: 'rejected' }
+    }
+    if (response.status === 401) {
+      expiresAtMs = null
+      refreshRejected = true
+      return { kind: 'rejected' }
+    }
+    if (!response.ok) {
+      return { kind: 'unavailable' }
+    }
+    const body = (await response.json()) as { accessTokenExpiresAt?: unknown }
+    const renewed = parseFutureExpiry(body.accessTokenExpiresAt, now)
+    if (!renewed) {
+      return { kind: 'unavailable' }
+    }
+    expiresAtMs = renewed.expiresAtMs
+    await publishExpiry(renewed.expiresAt, refreshGeneration)
+    if (refreshGeneration !== generation) {
+      return { kind: 'rejected' }
+    }
+    return { kind: 'renewed', expiresAt: renewed.expiresAt }
   }
 
   const refresh = (): Promise<RenewalResult> =>
@@ -56,107 +105,71 @@ export function createSessionRenewal({
       if (refreshRejected) {
         return { kind: 'rejected' }
       }
-      const refreshGeneration = generation
       try {
-        const headers: HeadersInit = csrfToken ? { [CSRF_HEADER]: csrfToken } : {}
-        const response = await fetcher(new URL('/api/auth/refresh', origin), {
-          method: 'POST',
-          headers,
-          credentials: 'same-origin',
-        })
-        if (refreshGeneration !== generation) {
-          return { kind: 'rejected' }
-        }
-        if (response.status === 401) {
-          expiresAtMs = null
-          refreshRejected = true
-          return { kind: 'rejected' }
-        }
-        if (!response.ok) {
-          return { kind: 'unavailable' }
-        }
-        const body = (await response.json()) as { accessTokenExpiresAt?: unknown }
-        const expiresAt = body.accessTokenExpiresAt
-        const parsedExpiresAtMs =
-          typeof expiresAt === 'string'
-            ? new Date(expiresAt).getTime()
-            : Number.NaN
-        if (
-          typeof expiresAt !== 'string' ||
-          Number.isNaN(parsedExpiresAtMs) ||
-          parsedExpiresAtMs <= now()
-        ) {
-          return { kind: 'unavailable' }
-        }
-        expiresAtMs = parsedExpiresAtMs
-        try {
-          await onRenewed(
-            expiresAt,
-            () => refreshGeneration === generation && !refreshRejected,
-          )
-        } catch {
-          // Metadata fan-out is best-effort; the cookie session was already renewed.
-        }
-        if (refreshGeneration !== generation) {
-          return { kind: 'rejected' }
-        }
-        return { kind: 'renewed', expiresAt }
+        return await renewOnce()
       } catch {
         return { kind: 'unavailable' }
       }
     })
 
-  return {
-    adoptExpiry,
+  const nearExpiry = (): boolean =>
+    expiresAtMs !== null && expiresAtMs - now() <= RENEWAL_LEEWAY_MS
 
-    clearSession() {
-      generation += 1
-      expiresAtMs = null
-      refreshRejected = true
-    },
-
-    rememberCsrfToken,
-
-    refresh,
-
-    async fetch(request) {
-      rememberCsrfToken(request.headers.get(CSRF_HEADER))
-      const replayable = request.clone()
-      let preflightResult: RenewalResult | undefined
-      if (expiresAtMs !== null && expiresAtMs - now() <= RENEWAL_LEEWAY_MS) {
-        preflightResult = await refresh()
-      }
-      const response = await fetcher(request)
-      if (!(await isRecoverableAccessFailure(response))) {
-        return response
-      }
-      if (refreshRejected) {
-        return sessionEndedResponse()
-      }
-      if (preflightResult) {
-        if (preflightResult.kind === 'unavailable') {
-          return refreshUnavailableResponse()
-        }
-        // Renewal already ran for this request; a second attempt would loop. Only a
-        // stale-generation rejection is not a verdict and keeps the server's own answer.
-        return preflightResult.kind === 'renewed' ? sessionEndedResponse() : response
-      }
-      const result = await refresh()
-      if (result.kind === 'renewed') {
-        const replayed = await fetcher(replayable)
-        return (await isRecoverableAccessFailure(replayed)) ? sessionEndedResponse() : replayed
-      }
-      if (result.kind === 'unavailable') {
-        return refreshUnavailableResponse()
-      }
-      // A terminal rejection routes to sign-in; a stale-generation rejection is not a verdict,
-      // so the caller keeps the server's own answer.
-      if (refreshRejected) {
-        return sessionEndedResponse()
-      }
-      return response
-    },
+  const settleAfterPreflight = (preflight: RenewalResult, response: Response): Response => {
+    if (preflight.kind === 'unavailable') {
+      return refreshUnavailableResponse()
+    }
+    // Renewal already ran for this request; a second attempt would loop. Only a
+    // stale-generation rejection is not a verdict and keeps the server's own answer.
+    return preflight.kind === 'renewed' ? sessionEndedResponse() : response
   }
+
+  const renewAndReplay = async (replayable: Request, response: Response): Promise<Response> => {
+    const result = await refresh()
+    if (result.kind === 'renewed') {
+      const replayed = await fetcher(replayable)
+      return (await isRecoverableAccessFailure(replayed)) ? sessionEndedResponse() : replayed
+    }
+    if (result.kind === 'unavailable') {
+      return refreshUnavailableResponse()
+    }
+    // A terminal rejection routes to sign-in; a stale-generation rejection is not a verdict,
+    // so the caller keeps the server's own answer.
+    return refreshRejected ? sessionEndedResponse() : response
+  }
+
+  const fetchWithRenewal = async (request: Request): Promise<Response> => {
+    rememberCsrfToken(request.headers.get(CSRF_HEADER))
+    const replayable = request.clone()
+    const preflightResult = nearExpiry() ? await refresh() : undefined
+    const response = await fetcher(request)
+    if (!(await isRecoverableAccessFailure(response))) {
+      return response
+    }
+    if (refreshRejected) {
+      return sessionEndedResponse()
+    }
+    if (preflightResult) {
+      return settleAfterPreflight(preflightResult, response)
+    }
+    return renewAndReplay(replayable, response)
+  }
+
+  return { adoptExpiry, clearSession, rememberCsrfToken, refresh, fetch: fetchWithRenewal }
+}
+
+function parseFutureExpiry(
+  value: unknown,
+  now: () => number,
+): { expiresAt: string; expiresAtMs: number } | null {
+  if (typeof value !== 'string') {
+    return null
+  }
+  const expiresAtMs = new Date(value).getTime()
+  if (Number.isNaN(expiresAtMs) || expiresAtMs <= now()) {
+    return null
+  }
+  return { expiresAt: value, expiresAtMs }
 }
 
 function refreshUnavailableResponse(): Response {
@@ -188,9 +201,13 @@ async function isRecoverableAccessFailure(response: Response): Promise<boolean> 
   if (response.status !== 401) {
     return false
   }
+  return isRecoverableAccessTokenResponse(response.status, await readJsonBody(response))
+}
+
+async function readJsonBody(response: Response): Promise<unknown> {
   try {
-    return isRecoverableAccessTokenResponse(response.status, await response.clone().json())
+    return await response.clone().json()
   } catch {
-    return false
+    return null
   }
 }
