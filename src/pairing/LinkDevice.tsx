@@ -14,13 +14,13 @@ import {
 
 const FALLBACK_MESSAGE = 'Something went wrong. Please try again.'
 
-const SETTLED_MESSAGES: Record<string, string> = {
+const OUTCOME_MESSAGES: Record<string, string> = {
   APPROVED: 'This device was approved. It should be signed in within a few seconds.',
   DENIED: 'This request was denied. The device was not signed in.',
   CONSUMED: 'This device is already signed in.',
 }
-// A status this build does not know still settles the page; it must still say something.
-const SETTLED_FALLBACK = 'This pairing request is no longer pending. Start a new one on your device.'
+// A status this build does not know still ends the request; the page must still say what happened.
+const UNKNOWN_OUTCOME_MESSAGE = 'This pairing request is no longer pending. Start a new one on your device.'
 const SIGNED_IN_STATUSES = new Set(['APPROVED', 'CONSUMED'])
 
 export function LinkDevice({
@@ -32,7 +32,7 @@ export function LinkDevice({
 }) {
   const [code, setCode] = useState(normalizeCode(initialCode))
   const [pairing, setPairing] = useState<PairingRequest | null>(null)
-  const [settled, setSettled] = useState<string | null>(null)
+  const [outcome, setOutcome] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -46,7 +46,7 @@ export function LinkDevice({
 
   async function onCodeComplete(fullCode: string) {
     setError(null)
-    setSettled(null)
+    setOutcome(null)
     setBusy(true)
     try {
       showRequest(await lookupPairingRequest(fullCode))
@@ -118,19 +118,19 @@ export function LinkDevice({
 
   function settle(status: PairingStatus) {
     if (status !== 'PENDING') {
-      setSettled(status)
+      setOutcome(status)
     }
   }
 
   function startOver() {
     setPairing(null)
-    setSettled(null)
+    setOutcome(null)
     setError(null)
     setCode('')
   }
 
   function renderStep() {
-    if (settled) {
+    if (outcome) {
       return (
         <Button variant="default" onClick={startOver}>
           Link another device
@@ -178,7 +178,7 @@ export function LinkDevice({
       <AuthTitle>Link your TV</AuthTitle>
 
       <div role="status" aria-live="polite">
-        {settled && <SettledNotice status={settled} />}
+        {outcome && <OutcomeNotice status={outcome} />}
       </div>
 
       {error && (
@@ -192,10 +192,10 @@ export function LinkDevice({
   )
 }
 
-function SettledNotice({ status }: { status: string }) {
+function OutcomeNotice({ status }: { status: string }) {
   return (
     <Alert color={SIGNED_IN_STATUSES.has(status) ? 'green' : 'red'}>
-      {SETTLED_MESSAGES[status] ?? SETTLED_FALLBACK}
+      {OUTCOME_MESSAGES[status] ?? UNKNOWN_OUTCOME_MESSAGE}
     </Alert>
   )
 }
