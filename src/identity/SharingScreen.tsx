@@ -30,6 +30,7 @@ type PendingOffer = SharingOverviewQuery['pendingShareOffers']['edges'][number][
 type ProfileShareRow = SharingOverviewQuery['profileShares']['edges'][number]['node']
 
 const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const FAILURE_MESSAGE = 'Something went wrong. Please try again.'
 
 // The Profile-sharing flow (ADR 0024 §Profile sharing): offers into the context Household for
 // its admins to decide, the caller's own Personal Profile's shares to cancel or end, and the
@@ -133,21 +134,28 @@ function OffersIntoHousehold({
     setFailure(null)
     setBusy(offer.id)
     try {
-      const variables = { input: { shareId: offer.id } }
-      let errors: readonly UserErrorLike[] | undefined
-      if (decision === 'accept') {
-        errors = (await accept({ variables })).data?.acceptProfileShare?.userErrors
-      } else {
-        errors = (await reject({ variables })).data?.rejectProfileShare?.userErrors
-      }
+      const errors = await sendDecision(offer, decision)
       if (errors?.length) {
         setFailure(userErrorMessage(errors[0]))
         return
       }
       onDecided()
+    } catch {
+      setFailure(FAILURE_MESSAGE)
     } finally {
       setBusy(null)
     }
+  }
+
+  async function sendDecision(
+    offer: PendingOffer,
+    decision: 'accept' | 'reject',
+  ): Promise<readonly UserErrorLike[] | undefined> {
+    const variables = { input: { shareId: offer.id } }
+    if (decision === 'accept') {
+      return (await accept({ variables })).data?.acceptProfileShare?.userErrors
+    }
+    return (await reject({ variables })).data?.rejectProfileShare?.userErrors
   }
 
   return (
@@ -207,14 +215,18 @@ function OfferForm({
 
   async function submit() {
     setFailure(null)
-    const result = await offer({ variables: { input: { profileId, householdId } } })
-    const errors = result.data?.offerProfileShare?.userErrors
-    if (errors?.length) {
-      setFailure(userErrorMessage(errors[0]))
-      return
+    try {
+      const result = await offer({ variables: { input: { profileId, householdId } } })
+      const errors = result.data?.offerProfileShare?.userErrors
+      if (errors?.length) {
+        setFailure(userErrorMessage(errors[0]))
+        return
+      }
+      setHouseholdId('')
+      onOffered()
+    } catch {
+      setFailure(FAILURE_MESSAGE)
     }
-    setHouseholdId('')
-    onOffered()
   }
 
   const answers = preview.data?.profileSharePreview
@@ -270,21 +282,27 @@ function OwnShares({
     setFailure(null)
     setBusy(share.id)
     try {
-      const variables = { input: { shareId: share.id } }
-      let errors: readonly UserErrorLike[] | undefined
-      if (share.status === 'PENDING') {
-        errors = (await cancel({ variables })).data?.cancelProfileShare?.userErrors
-      } else {
-        errors = (await end({ variables })).data?.endProfileShare?.userErrors
-      }
+      const errors = await sendChange(share)
       if (errors?.length) {
         setFailure(userErrorMessage(errors[0]))
         return
       }
       onChanged()
+    } catch {
+      setFailure(FAILURE_MESSAGE)
     } finally {
       setBusy(null)
     }
+  }
+
+  async function sendChange(
+    share: ProfileShareRow,
+  ): Promise<readonly UserErrorLike[] | undefined> {
+    const variables = { input: { shareId: share.id } }
+    if (share.status === 'PENDING') {
+      return (await cancel({ variables })).data?.cancelProfileShare?.userErrors
+    }
+    return (await end({ variables })).data?.endProfileShare?.userErrors
   }
 
   return (

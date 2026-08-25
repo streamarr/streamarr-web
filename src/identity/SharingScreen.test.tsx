@@ -119,6 +119,51 @@ describe('SharingScreen', () => {
     ).toBeInTheDocument()
   })
 
+  it('shouldReportARejectedDecisionInsteadOfSwallowingIt', async () => {
+    serverAnswersOverview({ offers: [shareRow()] })
+    server.use(
+      graphql.mutation('AcceptProfileShare', () =>
+        HttpResponse.json({
+          errors: [{ message: 'forbidden', extensions: { code: 'FORBIDDEN' } }],
+        }),
+      ),
+    )
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    await user.click(await screen.findByRole('button', { name: 'Accept' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/something went wrong/i)
+    expect(screen.getByRole('button', { name: 'Accept' })).toBeEnabled()
+  })
+
+  it('shouldReportARejectedOfferInsteadOfSwallowingIt', async () => {
+    serverAnswersOverview()
+    server.use(
+      graphql.query('ProfileSharePreview', () =>
+        HttpResponse.json({
+          data: {
+            profileSharePreview: {
+              __typename: 'ProfileSharePreview',
+              wouldLock: false,
+              nameConflict: false,
+            },
+          },
+        }),
+      ),
+      graphql.mutation('OfferProfileShare', () =>
+        HttpResponse.json({
+          errors: [{ message: 'forbidden', extensions: { code: 'FORBIDDEN' } }],
+        }),
+      ),
+    )
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    await user.type(await screen.findByLabelText(/^household id/i), OTHER_HOUSEHOLD_ID)
+    await user.click(screen.getByRole('button', { name: 'Offer share' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/something went wrong/i)
+  })
+
   it('shouldEndAnActiveShareButNeverTheHomeOne', async () => {
     serverAnswersOverview({
       shares: [
