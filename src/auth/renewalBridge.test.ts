@@ -375,6 +375,26 @@ describe('renewal bridge', () => {
     })
   })
 
+  it('shouldDisconnectFromTheSharedClockWhenThePageGoesAway', () => {
+    // The host only forgets a port when told; a silently closed tab would otherwise keep
+    // receiving refresh-due dispatches until postMessage finally throws.
+    const sharedPort = new FakeSharedPort()
+    createRenewalBridge({
+      sharedPort,
+      serviceWorkers: {
+        controller: null,
+        ready: Promise.resolve({ active: null }),
+        addEventListener: vi.fn(),
+      },
+      readCsrfToken: () => null,
+      createReplyChannel: replyChannel,
+    })
+
+    window.dispatchEvent(new Event('pagehide'))
+
+    expect(sharedPort.posted).toContainEqual({ type: 'disconnect' })
+  })
+
   it('shouldKeepPageActionsSafeWhenTheServiceWorkerStops', async () => {
     const serviceWorker = {
       postMessage: vi.fn(() => {
