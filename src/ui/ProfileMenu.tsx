@@ -3,7 +3,7 @@ import { AuthApiError } from '../auth/api'
 import { useAuth } from '../auth/AuthProvider'
 import type { MeQuery } from '../graphql/generated/graphql'
 import { initials, tileColor } from './ProfileTile'
-import './auth.css'
+import styles from './ProfileMenu.module.css'
 
 type Me = MeQuery['me']
 type SelectableProfile = Me['selectableProfiles']['edges'][number]['node']
@@ -103,11 +103,11 @@ export function ProfileMenu({
   }
 
   return (
-    <div className="profileMenuAnchor" ref={anchor}>
+    <div className={styles.profileMenuAnchor} ref={anchor}>
       <button
         ref={chip}
         type="button"
-        className={`profileChip${opened ? ' profileChipOpen' : ''}`}
+        className={opened ? `${styles.profileChip} ${styles.profileChipOpen}` : styles.profileChip}
         aria-label={`Profile menu (${chipName})`}
         aria-expanded={opened}
         aria-controls={opened ? panelId : undefined}
@@ -116,35 +116,39 @@ export function ProfileMenu({
         {initials(chipName)}
       </button>
       {opened && (
-        <div id={panelId} className="profileMenu">
+        <div id={panelId} className={styles.profileMenu}>
           {profiles.map((profile, index) => (
             <button
               key={profile.id}
               type="button"
-              className={`profileMenuRow${profile.selected ? ' profileMenuRowCurrent' : ''}`}
+              className={
+                profile.selected
+                  ? `${styles.profileMenuRow} ${styles.profileMenuRowCurrent}`
+                  : styles.profileMenuRow
+              }
               disabled={busy || profile.locked || profile.selected}
               aria-label={rowLabel(profile)}
               onClick={() => switchTo(profile)}
             >
-              <span className="profileMenuAvatar" style={{ background: tileColor(index) }}>
+              <span className={styles.profileMenuAvatar} style={{ background: tileColor(index) }}>
                 {initials(profile.name)}
               </span>
-              <span className="profileMenuName">
-                <span>{profile.name}</span>
+              <span className={styles.profileMenuName}>
+                <span className={styles.profileMenuLabel}>{profile.name}</span>
                 {profile.selected && roleLabel(me) && (
-                  <span className="profileMenuRole">{roleLabel(me)}</span>
+                  <span className={styles.profileMenuRole}>{roleLabel(me)}</span>
                 )}
               </span>
               {profile.selected && <CheckGlyph />}
             </button>
           ))}
           {failure && (
-            <div className="profileMenuError" role="alert">
+            <div className={styles.profileMenuError} role="alert">
               {failure}
             </div>
           )}
-          <div className="profileMenuDivider" aria-hidden />
-          <button type="button" className="profileMenuRow" onClick={signOut}>
+          <div className={styles.profileMenuDivider} aria-hidden />
+          <button type="button" className={styles.profileMenuRow} onClick={signOut}>
             <SignOutGlyph />
             <span>Sign out</span>
           </button>
@@ -185,7 +189,7 @@ function roleLabel(me: Me): string | null {
 function CheckGlyph() {
   return (
     <svg
-      className="profileMenuCheck"
+      className={styles.profileMenuCheck}
       width="15"
       height="15"
       viewBox="0 0 24 24"

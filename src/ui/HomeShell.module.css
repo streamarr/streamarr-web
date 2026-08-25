@@ -1,0 +1,31 @@
+/* Home: the ambient wash over the ground. */
+.homeShell {
+  position: relative;
+  min-height: 100dvh;
+  background: var(--color-ground);
+}
+
+.homeAmbient {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: min(900px, 100%);
+  background:
+    radial-gradient(
+      80% 60% at 75% 0%,
+      color-mix(in srgb, var(--color-brand-purple) 22%, transparent),
+      transparent 65%
+    ),
+    radial-gradient(
+      70% 50% at 10% 10%,
+      color-mix(in srgb, var(--color-brand-blue) 16%, transparent),
+      transparent 70%
+    );
+  pointer-events: none;
+}
+
+.homeContent {
+  position: relative;
+  padding: 14px clamp(24px, 3.3vw, 50px) 40px;
+}
