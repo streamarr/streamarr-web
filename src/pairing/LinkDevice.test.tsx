@@ -97,6 +97,18 @@ describe('LinkDevice', () => {
     expect(screen.queryByRole('button', { name: /approve/i })).not.toBeInTheDocument()
   })
 
+  it('shouldStillSayWhatHappenedForAStatusItDoesNotKnow', async () => {
+    lookupReturns({ ...PENDING, status: 'EXPIRED' })
+    const { user } = renderWithProviders(<LinkDevice />)
+
+    await enterCode(user)
+
+    // Unknown members are expected input; an outcome with no sentence is not an outcome.
+    expect(await screen.findByRole('button', { name: /link another device/i })).toBeInTheDocument()
+    expect(screen.getByRole('status').textContent?.trim()).not.toBe('')
+    expect(screen.queryByRole('button', { name: /approve/i })).not.toBeInTheDocument()
+  })
+
   it('shouldShowTheAuthoritativeOutcomeWhenTheDecisionRacesAnother', async () => {
     lookupReturns(PENDING)
     decisionReturns({ code: 'DEVICE_CODE_NOT_PENDING' }, 409)

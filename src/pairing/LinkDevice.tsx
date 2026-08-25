@@ -24,14 +24,15 @@ const DECISION_MESSAGES: Record<string, string> = {
 }
 const FALLBACK_MESSAGE = 'Something went wrong. Please try again.'
 
-type SettledStatus = Exclude<PairingStatus, 'PENDING'>
-
 /** Terminal states an approver can land on — none of them offer the buttons again. */
-const SETTLED_MESSAGES: Record<SettledStatus, string> = {
+const SETTLED_MESSAGES: Record<string, string> = {
   APPROVED: 'This device was approved. It should be signed in within a few seconds.',
   DENIED: 'This request was denied. The device was not signed in.',
   CONSUMED: 'This device is already signed in.',
 }
+// A status this build does not know still settles the page; it must still say something.
+const SETTLED_FALLBACK = 'This pairing request is no longer pending. Start a new one on your device.'
+const SIGNED_IN_STATUSES = new Set(['APPROVED', 'CONSUMED'])
 
 export function LinkDevice({
   initialCode = '',
@@ -42,7 +43,7 @@ export function LinkDevice({
 }) {
   const [code, setCode] = useState(normalizeCode(initialCode))
   const [pairing, setPairing] = useState<PairingRequest | null>(null)
-  const [settled, setSettled] = useState<SettledStatus | null>(null)
+  const [settled, setSettled] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -132,7 +133,11 @@ export function LinkDevice({
       <h1 className="authTitle">Link your TV</h1>
 
       <div role="status" aria-live="polite">
-        {settled && <Alert color={settled === 'DENIED' ? 'red' : 'green'}>{SETTLED_MESSAGES[settled]}</Alert>}
+        {settled && (
+          <Alert color={SIGNED_IN_STATUSES.has(settled) ? 'green' : 'red'}>
+            {SETTLED_MESSAGES[settled] ?? SETTLED_FALLBACK}
+          </Alert>
+        )}
       </div>
 
       {error && (
