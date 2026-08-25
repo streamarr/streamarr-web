@@ -134,13 +134,17 @@ export function createSessionRenewal({
         return sessionEndedResponse()
       }
       if (preflightResult) {
-        return preflightResult.kind === 'unavailable'
-          ? refreshUnavailableResponse()
-          : response
+        if (preflightResult.kind === 'unavailable') {
+          return refreshUnavailableResponse()
+        }
+        // Renewal already ran for this request; a second attempt would loop. Only a
+        // stale-generation rejection is not a verdict and keeps the server's own answer.
+        return preflightResult.kind === 'renewed' ? sessionEndedResponse() : response
       }
       const result = await refresh()
       if (result.kind === 'renewed') {
-        return fetcher(replayable)
+        const replayed = await fetcher(replayable)
+        return (await isRecoverableAccessFailure(replayed)) ? sessionEndedResponse() : replayed
       }
       if (result.kind === 'unavailable') {
         return refreshUnavailableResponse()
@@ -166,9 +170,9 @@ function refreshUnavailableResponse(): Response {
 }
 
 /**
- * A raw recoverable-token response would wedge the page: renewal already failed terminally, and
- * reloading cannot repair the rejected refresh session.
- * Surface the code the router sends to sign-in instead.
+ * A raw recoverable-token response would wedge the page: the error router leaves those codes to
+ * this worker, and renewal has already had its one chance for this request — rejected
+ * terminally, or renewed and still refused. Surface the code the router sends to sign-in instead.
  */
 function sessionEndedResponse(): Response {
   return Response.json(

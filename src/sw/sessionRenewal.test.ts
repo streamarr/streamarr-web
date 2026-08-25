@@ -339,7 +339,10 @@ describe('session renewal', () => {
     expect(paths).toEqual(['/api/auth/refresh', '/graphql', '/graphql'])
   })
 
-  it('shouldPreserveAnExpiredResponseAfterASuccessfulPreflightAlreadyRenewedOnce', async () => {
+  it('shouldReportSessionEndedWhenAnExpiredTokenSurvivesASuccessfulPreflight', async () => {
+    // Renewal already ran once for this request; a second attempt would loop. But the page has
+    // no handler for a raw EXPIRED_TOKEN (the error router leaves that code to this worker), so
+    // the worker's last word must be the code that routes to sign-in.
     const paths: string[] = []
     const fetcher: typeof fetch = async (input) => {
       const path = new URL(input instanceof Request ? input.url : input).pathname
@@ -354,7 +357,49 @@ describe('session renewal', () => {
     const response = await renewal.fetch(new Request('https://streamarr.test/graphql'))
 
     expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toMatchObject({ code: 'AUTHENTICATION_REQUIRED' })
     expect(paths).toEqual(['/api/auth/refresh', '/graphql'])
+  })
+
+  it('shouldKeepTheServersAnswerWhenASignInSupersedesThePreflightRefresh', async () => {
+    // A stale-generation rejection is not a verdict: the page adopted a newer session while the
+    // preflight was in flight, so the server's own answer passes through untouched.
+    const renewal = createSessionRenewal({
+      fetch: async (input) => {
+        const path = new URL(input instanceof Request ? input.url : input).pathname
+        if (path === '/api/auth/refresh') {
+          renewal.adoptExpiry(new Date(NOW + 600_000).toISOString())
+          return Response.json({ accessTokenExpiresAt: NEXT_EXPIRY })
+        }
+        return Response.json({ code: 'EXPIRED_TOKEN' }, { status: 401 })
+      },
+      now: () => NOW,
+      onRenewed: vi.fn(),
+    })
+    renewal.adoptExpiry(new Date(NOW + 20_000).toISOString())
+
+    const response = await renewal.fetch(new Request('https://streamarr.test/graphql'))
+
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toEqual({ code: 'EXPIRED_TOKEN' })
+  })
+
+  it('shouldReportSessionEndedWhenTheReplayStillFindsAnExpiredToken', async () => {
+    const paths: string[] = []
+    const fetcher: typeof fetch = async (input) => {
+      const path = new URL(input instanceof Request ? input.url : input).pathname
+      paths.push(path)
+      return path === '/api/auth/refresh'
+        ? Response.json({ accessTokenExpiresAt: NEXT_EXPIRY })
+        : Response.json({ code: 'EXPIRED_TOKEN' }, { status: 401 })
+    }
+    const renewal = createSessionRenewal({ fetch: fetcher, now: () => NOW, onRenewed: vi.fn() })
+
+    const response = await renewal.fetch(new Request('https://streamarr.test/graphql'))
+
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toMatchObject({ code: 'AUTHENTICATION_REQUIRED' })
+    expect(paths).toEqual(['/graphql', '/api/auth/refresh', '/graphql'])
   })
 
   it('shouldNotPreflightARequestWhenTheKnownTokenHasTimeRemaining', async () => {
