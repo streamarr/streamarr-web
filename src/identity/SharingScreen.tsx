@@ -32,11 +32,6 @@ type ProfileShareRow = SharingOverviewQuery['profileShares']['edges'][number]['n
 const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const FAILURE_MESSAGE = 'Something went wrong. Please try again.'
 
-// The Profile-sharing flow (ADR 0024 §Profile sharing): offers into the context Household for
-// its admins to decide, the caller's own Personal Profile's shares to cancel or end, and the
-// offer form with the preview's two answers — wouldLock and nameConflict. Every expected
-// refusal arrives as a typed user error and renders through the shared message fallback, so an
-// unknown member still reads as something actionable.
 export function SharingScreen() {
   const { data: meData, loading: meLoading, error: meError } = useMe()
 

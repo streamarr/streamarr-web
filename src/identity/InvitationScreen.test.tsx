@@ -85,10 +85,8 @@ describe('InvitationScreen', () => {
     await user.click(screen.getByRole('button', { name: 'Look up invitation' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('That code is not redeemable.')
-    // Back at the code field for another paste.
     expect(screen.getByLabelText(/^invitation code/i)).toBeInTheDocument()
   })
-
 
   it('shouldShowTheServersRefusalWhenTheEmailIsAlreadyTaken', async () => {
     serverKnowsTheCode()
@@ -129,11 +127,9 @@ describe('InvitationScreen', () => {
       await screen.findByText(/Connecting Grandpa Joe to your new account/),
     ).toBeInTheDocument()
     expect(screen.getByText('Your existing Profile')).toBeInTheDocument()
-    // Who keeps managing, which visits end, and who must consent afresh.
     expect(screen.getByText('· Nina')).toBeInTheDocument()
     expect(screen.getByText('· Lake House')).toBeInTheDocument()
     expect(screen.getByText('These Households will be offered it afresh')).toBeInTheDocument()
-    // Consent is still the same ceremony: name, password, create.
     expect(screen.getByRole('button', { name: 'Create my account' })).toBeInTheDocument()
   })
 

@@ -28,7 +28,6 @@ function decisionReturns(body: object, status = 200, headers?: Record<string, st
 }
 
 async function enterCode(user: ReturnType<typeof import('@testing-library/user-event').default.setup>, code = 'bcdf-ghjk') {
-  // Lookup runs on the last character: typing the code is the whole gesture.
   await user.type(screen.getByLabelText(/pairing code/i), code)
 }
 
@@ -103,7 +102,6 @@ describe('LinkDevice', () => {
 
     await enterCode(user)
 
-    // Unknown members are expected input; an outcome with no sentence is not an outcome.
     expect(await screen.findByRole('button', { name: /link another device/i })).toBeInTheDocument()
     expect(screen.getByRole('status').textContent?.trim()).not.toBe('')
     expect(screen.queryByRole('button', { name: /approve/i })).not.toBeInTheDocument()
@@ -118,7 +116,6 @@ describe('LinkDevice', () => {
     const { user } = renderWithProviders(<LinkDevice />)
     await enterCode(user)
 
-    // The 409 loses to whoever decided first; re-read rather than inviting a blind resubmit.
     lookupReturns({ ...PENDING, status: 'DENIED' })
     await user.click(await screen.findByRole('button', { name: /approve/i }))
 
@@ -174,7 +171,6 @@ describe('LinkDevice', () => {
   })
 
   it('shouldSayHowLongToWaitWhenThrottled', async () => {
-    // Retry-After is the one thing the server's sentence does not carry: say how long.
     lookupReturns(
       { code: 'TOO_MANY_ATTEMPTS', message: 'Too many failed credential attempts. Try again later.' },
       429,
@@ -236,7 +232,6 @@ describe('LinkDevice', () => {
     )
     renderWithProviders(<LinkDevice initialCode="BCDF-GHJK" />)
 
-    // The field carries the normalized eight characters; the boxes draw the group separator.
     expect(await screen.findByLabelText(/pairing code/i)).toHaveValue('BCDFGHJK')
     expect(lookups).toBe(0)
   })
@@ -266,7 +261,6 @@ describe('LinkDevice', () => {
 
     await enterCode(user)
 
-    // No preselection with two Households: Approve stays locked until one is chosen.
     const approve = await screen.findByRole('button', { name: /approve/i })
     expect(approve).toBeDisabled()
     await user.click(screen.getByRole('radio', { name: 'Cabin' }))

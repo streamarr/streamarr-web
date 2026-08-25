@@ -8,8 +8,6 @@ const CODE = 'pub-1234.super-secret'
 
 describe('/invite', () => {
   it('shouldStripTheCodeFromTheAddressWhileKeepingItAsThePrefill', async () => {
-    // An invitation code is a bearer capability that creates an account: it must not stay in
-    // the address bar or the history entry, but the person must not have to paste it again.
     let lookups = 0
     server.use(
       http.post('/api/auth/invitation/lookup', () => {

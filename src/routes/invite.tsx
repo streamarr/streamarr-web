@@ -16,8 +16,7 @@ function Invite() {
   // Read once: the effect below strips it from the URL, and the prefill must outlive that.
   const [initialCode] = useState(code)
 
-  // The code is a bearer capability that creates an account; it stays out of the address bar,
-  // the history entry, and any proxy log. It is only ever a prefill.
+  // A bearer capability that creates an account: keep it out of the address bar and history.
   useEffect(() => {
     if (code) {
       void navigate({ to: '/invite', search: {}, replace: true })

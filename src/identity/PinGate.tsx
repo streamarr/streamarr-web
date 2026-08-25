@@ -23,8 +23,6 @@ export function PinGate({
   const [failure, setFailure] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  // A real form: Enter inside the PIN field submits, exactly like every other credential
-  // entry. The guard mirrors the button's — a short PIN is not a submission.
   async function submit(event: React.FormEvent) {
     event.preventDefault()
     if (busy || !PIN_SHAPE.test(pin)) {
