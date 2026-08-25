@@ -35,7 +35,7 @@ export function LinkDevice({
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  // Frame 13: lookup runs on the last character — there is no submit button to find.
+  // Lookup runs on the last character; there is no submit button.
   async function onCodeComplete(fullCode: string) {
     setError(null)
     setSettled(null)

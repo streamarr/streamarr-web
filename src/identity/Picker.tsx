@@ -11,13 +11,7 @@ type SelectableProfile = MeQuery['me']['selectableProfiles']['edges'][number]['n
 
 const SESSION_REFUSALS = new Set(['AUTHENTICATION_REQUIRED', 'EXPIRED_TOKEN', 'INVALID_TOKEN'])
 
-// Frame 15: the Profile picker of the context Household, with the Household switcher when the
-// Personal Profile is shared into other Households. A locked Profile stays visible but cannot be
-// chosen — the lock is the Household's PIN safety rule, not a permission. Selecting a protected
-// Profile opens the PIN gate (frame 15a); the server ceremony decides everything else.
-//
-// The gate is controlled from outside through pinProfileId — the route stores it in the URL so
-// the gate is a history entry the browser's Back can leave.
+// The gate is opened from outside through pinProfileId: the route keeps it in the URL so Back can leave it.
 export function Picker({
   pinProfileId,
   onPinRequested,
@@ -113,9 +107,7 @@ export function Picker({
     }
   }
 
-  // Frame 15a is a full state of this screen, not an overlay (principle 11). A stale or
-  // hand-edited deep link must never open a gate the grid itself would refuse: only a
-  // protected, unlocked Profile qualifies — anything else falls back to the grid.
+  // A deep link must never open a gate the grid itself would refuse.
   const pinFor =
     profiles.find(
       (profile) => profile.id === pinProfileId && profile.pinConfigured && !profile.locked,
