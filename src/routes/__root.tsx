@@ -1,5 +1,6 @@
 import { createRootRouteWithContext, Outlet, useRouterState } from '@tanstack/react-router'
 import type { SessionStore } from '../auth/session'
+import type { FileRouteTypes } from '../routeTree.gen'
 import { TopBar } from '../ui/TopBar'
 import '../ui/auth.css'
 
@@ -15,7 +16,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
  * Auth ceremonies render full-bleed on the bloom (mock frames 12-15a) — the wordmark in their
  * column is the brand, so the header would say it twice. Everything else keeps the app chrome.
  */
-const CEREMONY_ROUTES = new Set([
+const CEREMONY_ROUTES = new Set<FileRouteTypes['id']>([
   '/login',
   '/setup',
   '/reset',
