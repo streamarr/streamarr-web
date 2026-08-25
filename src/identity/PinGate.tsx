@@ -4,6 +4,7 @@ import { AuthApiError } from '../auth/api'
 import { AuthTitle } from '../ui/AuthShell'
 import { CodeInput } from '../ui/CodeInput'
 import { PinGateAvatar } from '../ui/ProfileTile'
+import styles from './PinGate.module.css'
 
 const PIN_SHAPE = /^\d{4,8}$/
 const FAILURE_MESSAGE = "Couldn't select that Profile. Try again."
@@ -46,9 +47,9 @@ export function PinGate({
   }
 
   return (
-    <form className="pinGate" onSubmit={submit}>
+    <form className={styles.pinGate} onSubmit={submit}>
       <PinGateAvatar name={profileName} paletteIndex={paletteIndex} />
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+      <div className={styles.pinGateColumn}>
         <AuthTitle>Enter {profileName}&rsquo;s PIN</AuthTitle>
         {failure && (
           <Text role="alert" style={{ color: 'var(--color-red-error-text)' }}>
@@ -65,7 +66,7 @@ export function PinGate({
           autoFocus
           testId="pin-input"
         />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        <div className={styles.pinGateActions}>
           <Button type="submit" loading={busy} disabled={!PIN_SHAPE.test(pin)}>
             Unlock
           </Button>

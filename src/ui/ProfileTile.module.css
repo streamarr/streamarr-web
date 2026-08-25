@@ -1,0 +1,74 @@
+.profileTile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--color-alpha-92);
+  font: inherit;
+
+  &:hover .profileTileAvatar,
+  &:focus-visible .profileTileAvatar {
+    outline: 2px solid var(--selection-active);
+    outline-offset: 3px;
+  }
+
+  &:disabled {
+    cursor: default;
+  }
+}
+
+.profileTileAvatar {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  border-radius: var(--radius-2xl);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 38px;
+  font-weight: 700;
+  color: var(--color-white);
+}
+
+.profileTileLock {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-md);
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.profileTileName {
+  font-size: 15px;
+}
+
+.profileTileKind {
+  font-family: var(--font-family-system);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-alpha-50);
+}
+
+/* The PIN gate's larger avatar, rendered by PinGateAvatar. */
+.pinGateAvatar {
+  width: clamp(72px, 22vw, 132px);
+  height: clamp(72px, 22vw, 132px);
+  border-radius: var(--radius-2xl);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(24px, 7vw, 42px);
+  font-weight: 700;
+  flex: none;
+  color: var(--color-white);
+}
