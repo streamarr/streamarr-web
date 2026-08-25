@@ -5,7 +5,7 @@ import type { CodegenConfig } from '@graphql-codegen/cli'
 // only after clients parse them, so unknown values are expected input, never a crash.
 const config: CodegenConfig = {
   schema: 'src/graphql/schema.graphql',
-  documents: ['src/**/*.graphql'],
+  documents: ['src/**/*.graphql', '!src/graphql/schema.graphql'],
   generates: {
     'src/graphql/generated/': {
       preset: 'client',

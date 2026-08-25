@@ -9,12 +9,12 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.e2e.json",
     "test:watch": "vitest",
-    "tokens": "gh api \"repos/streamarr/streamarr-ux/contents/dist/web/tokens.css?ref=$(cat TOKENS_REF)\" -H 'Accept: application/vnd.github.raw' > src/styles/tokens.generated.css",
+    "tokens": "gh api \"repos/streamarr/streamarr-ux/contents/dist/web/tokens.css?ref=$(cat TOKENS_REF)\" -H 'Accept: application/vnd.github.raw' > src/styles/tokens.generated.css.tmp && mv src/styles/tokens.generated.css.tmp src/styles/tokens.generated.css",
     "tokens:check": "gh api \"repos/streamarr/streamarr-ux/contents/dist/web/tokens.css?ref=$(cat TOKENS_REF)\" -H 'Accept: application/vnd.github.raw' | diff - src/styles/tokens.generated.css",
     "test:e2e": "playwright test",
     "schema:pull": "node scripts/pull-schema.mjs",
     "codegen": "graphql-codegen --config codegen.ts",
-    "codegen:check": "npm run schema:pull && npm run codegen && git diff --exit-code -- src/graphql/schema.graphql src/graphql/generated"
+    "codegen:check": "npm run schema:pull && npm run codegen && drift=\"$(git status --porcelain -- src/graphql/schema.graphql src/graphql/generated)\" && if [ -n \"$drift\" ]; then echo \"Generated GraphQL artifacts drifted:\"; echo \"$drift\"; exit 1; fi"
   },
   "repository": {
     "type": "git",
@@ -24,7 +24,7 @@
     "url": "https://github.com/streamarr/streamarr-web/issues"
   },
   "homepage": "https://github.com/streamarr/streamarr-web#readme",
-  "private": "true",
+  "private": true,
   "type": "module",
   "engines": {
     "node": ">=24",
@@ -57,7 +57,7 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
-    "@vitest/coverage-v8": "4.1.10",
+    "@vitest/coverage-v8": "^4.1.10",
     "jsdom": "^29.1.1",
     "msw": "^2.15.0",
     "postcss": "^8.5.16",
