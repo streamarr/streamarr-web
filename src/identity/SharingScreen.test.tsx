@@ -44,7 +44,7 @@ function shareRow(overrides: Record<string, unknown> = {}) {
     profileId: PROFILE_ID,
     householdId: OTHER_HOUSEHOLD_ID,
     status: 'PENDING',
-    structural: false,
+    requiredByAccountMembership: false,
     expiresAt: '2026-08-27T12:00:00Z',
     ...overrides,
   }
@@ -79,11 +79,11 @@ describe('SharingScreen', () => {
   it('shouldRenderTypedRefusalsThroughTheMessageFallback', async () => {
     serverAnswersOverview()
     server.use(
-      graphql.query('SharePreflight', () =>
+      graphql.query('ProfileSharePreview', () =>
         HttpResponse.json({
           data: {
-            sharePreflight: {
-              __typename: 'SharePreflight',
+            profileSharePreview: {
+              __typename: 'ProfileSharePreview',
               wouldLock: true,
               nameConflict: false,
             },
@@ -110,7 +110,7 @@ describe('SharingScreen', () => {
     const { user } = renderWithProviders(<SharingScreen />)
 
     await user.type(await screen.findByLabelText(/^household id/i), OTHER_HOUSEHOLD_ID)
-    // The preflight's two answers surface before anything is written.
+    // The preview's two answers surface before anything is written.
     expect(await screen.findByText(/would arrive locked/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Offer share' }))
 
@@ -122,7 +122,7 @@ describe('SharingScreen', () => {
   it('shouldEndAnActiveShareButNeverTheHomeOne', async () => {
     serverAnswersOverview({
       shares: [
-        shareRow({ id: '88888888-8888-8888-8888-888888888888', householdId: HOUSEHOLD_ID, status: 'ACTIVE', structural: true }),
+        shareRow({ id: '88888888-8888-8888-8888-888888888888', householdId: HOUSEHOLD_ID, status: 'ACTIVE', requiredByAccountMembership: true }),
         shareRow({ status: 'ACTIVE' }),
       ],
     })
@@ -144,7 +144,7 @@ describe('SharingScreen', () => {
     )
     const { user } = renderWithProviders(<SharingScreen />)
 
-    // The structural Home share offers no way to end it.
+    // The membership-required Home share offers no way to end it.
     expect(await screen.findByText('Home')).toBeInTheDocument()
     const endButtons = screen.getAllByRole('button', { name: 'End share' })
     expect(endButtons).toHaveLength(1)

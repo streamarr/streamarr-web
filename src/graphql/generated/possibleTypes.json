@@ -3,10 +3,10 @@
     "AcceptManagerInvitationError": [
       "AlreadyManagerError",
       "ManagerInvitationNotFoundError",
-      "RecipientNotEligibleError"
+      "ProfileManagerNotEligibleError"
     ],
     "AcceptProfileShareError": [
-      "NoEligibleAdminError",
+      "RestrictedProfileRequiresHouseholdAdminError",
       "ShareNameConflictError",
       "ShareNotFoundError",
       "ShareNotPendingError"
@@ -18,6 +18,18 @@
       "LibraryPathNotFoundError",
       "LibraryPathNotReadableError",
       "LibraryPathRequiredError"
+    ],
+    "AdministrativelyDeleteProfileError": [
+      "ProfileBelongsToAccountError",
+      "ProfileNotFoundError",
+      "ReasonRequiredError",
+      "ReauthenticationRequiredError"
+    ],
+    "AdministrativelyResetProfilePinError": [
+      "InvalidProfilePinError",
+      "ProfileNotFoundError",
+      "ReasonRequiredError",
+      "ReauthenticationRequiredError"
     ],
     "BaseCollectable": [
       "Movie",
@@ -47,18 +59,11 @@
       "ShareNotPendingError"
     ],
     "ChangeProfileKindError": [
-      "HomeAnchorRequiredError",
+      "MaximumAllowedRatingAgeInvalidError",
       "ProfileNotFoundError",
-      "ReauthenticationRequiredError"
-    ],
-    "ClearProfileContentCeilingError": [
-      "HomeAnchorRequiredError",
-      "ProfileNotFoundError",
-      "ReauthenticationRequiredError"
-    ],
-    "ClearProfilePinError": [
-      "ProfileNotFoundError",
-      "WouldLockProfileError"
+      "ProfileRequiresEligibleManagerError",
+      "ReauthenticationRequiredError",
+      "RestrictedAccountCannotAdministerError"
     ],
     "ContinueWatchingMedia": [
       "Episode",
@@ -68,37 +73,37 @@
       "HouseholdNameRequiredError"
     ],
     "CreateProfileError": [
-      "HomeAnchorRequiredError",
+      "AccountNotFoundError",
       "HouseholdNotFoundError",
-      "LocalManagerNotFoundError",
-      "ManagerNotEligibleError",
+      "MaximumAllowedRatingAgeInvalidError",
+      "ProfileManagerNotEligibleError",
       "ProfileNameRequiredError",
-      "ProfileNameTakenError"
+      "ProfileNameTakenError",
+      "ProfileRequiresEligibleManagerError"
     ],
     "DeclineManagerInvitationError": [
       "ManagerInvitationNotFoundError"
     ],
     "DeleteAccountError": [
       "AccountNotFoundError",
-      "FinalAccountError",
-      "HomeAnchorRequiredError",
+      "LastHouseholdAccountError",
       "LastHouseholdAdminError",
       "LastServerAdminError",
-      "NoEligibleAdminError",
+      "ProfileManagerNotEligibleError",
+      "ProfileRequiresEligibleManagerError",
       "ReasonRequiredError",
       "ReauthenticationRequiredError",
-      "ReplacementManagerNotEligibleError",
-      "ReplacementManagerNotFoundError",
-      "ReplacementManagerRequiredError"
+      "ReplacementManagerRequiredError",
+      "RestrictedProfileRequiresHouseholdAdminError"
     ],
     "DeleteMyAccountError": [
       "ConfirmationRequiredError",
-      "FinalAccountError",
-      "HomeAnchorRequiredError",
+      "LastHouseholdAccountError",
       "LastHouseholdAdminError",
       "LastServerAdminError",
-      "NoEligibleAdminError",
-      "ReauthenticationRequiredError"
+      "ProfileRequiresEligibleManagerError",
+      "ReauthenticationRequiredError",
+      "RestrictedProfileRequiresHouseholdAdminError"
     ],
     "DeleteProfileError": [
       "ProfileNotDeletableError",
@@ -107,46 +112,44 @@
     ],
     "DisableAccountError": [
       "AccountNotFoundError",
+      "InvalidIdError",
       "LastServerAdminError"
     ],
     "EnableAccountError": [
-      "AccountNotFoundError"
+      "AccountNotFoundError",
+      "InvalidIdError"
     ],
     "EndProfileShareError": [
+      "MembershipShareCannotEndError",
       "ShareNotActiveError",
-      "ShareNotFoundError",
-      "StructuralShareError"
+      "ShareNotFoundError"
     ],
-    "ForceDeleteProfileError": [
-      "ProfileLinkedError",
+    "ForceEndProfileShareError": [
+      "MembershipShareCannotEndError",
+      "ReasonRequiredError",
+      "ReauthenticationRequiredError",
+      "ShareNotActiveError",
+      "ShareNotFoundError"
+    ],
+    "GrantHouseholdAdminError": [
+      "AccountNotFoundError",
+      "InvalidIdError",
+      "RestrictedAccountCannotAdministerError"
+    ],
+    "GrantProfileManagerOverrideError": [
+      "AccountNotFoundError",
+      "AlreadyManagerError",
+      "ProfileManagerNotEligibleError",
       "ProfileNotFoundError",
       "ReasonRequiredError",
       "ReauthenticationRequiredError"
     ],
-    "ForceEndProfileShareError": [
-      "ReasonRequiredError",
-      "ReauthenticationRequiredError",
-      "ShareNotActiveError",
-      "ShareNotFoundError",
-      "StructuralShareError"
-    ],
-    "GrantHouseholdAdminError": [
-      "AccountNotFoundError",
-      "RestrictedAccountAuthorityError"
-    ],
-    "GrantProfileManagerOverrideError": [
-      "AlreadyManagerError",
-      "ProfileNotFoundError",
-      "ReasonRequiredError",
-      "ReauthenticationRequiredError",
-      "RecipientNotEligibleError",
-      "RecipientNotFoundError"
-    ],
     "GrantServerAdminError": [
       "AccountNotFoundError",
+      "InvalidIdError",
       "ReasonRequiredError",
       "ReauthenticationRequiredError",
-      "RestrictedAccountAuthorityError"
+      "RestrictedAccountCannotAdministerError"
     ],
     "InputMutationError": [
       "AccountNotFoundError",
@@ -157,6 +160,7 @@
       "DestinationNotFoundError",
       "DestinationRequiredError",
       "DisplayNameRequiredError",
+      "EligibleProfileManagerRequiredError",
       "EmailAlreadyUsedError",
       "EmailRequiredError",
       "EsnAlreadyBlockedError",
@@ -164,6 +168,8 @@
       "EsnRequiredError",
       "HouseholdNameRequiredError",
       "HouseholdNotFoundError",
+      "InvalidIdError",
+      "InvalidProfilePinError",
       "InvitationNotPendingError",
       "LibraryNameRequiredError",
       "LibraryPathAlreadyRegisteredError",
@@ -171,48 +177,42 @@
       "LibraryPathNotFoundError",
       "LibraryPathNotReadableError",
       "LibraryPathRequiredError",
-      "LocalManagerNotFoundError",
-      "LocalManagerRequiredError",
       "ManagerInvitationNotFoundError",
-      "ManagerNotEligibleError",
+      "MaximumAllowedRatingAgeInvalidError",
       "NotAManagerError",
-      "PinMalformedError",
       "ProfileAlreadyLinkedError",
       "ProfileAlreadySharedError",
+      "ProfileManagerNotEligibleError",
       "ProfileNameRequiredError",
       "ProfileNameTakenError",
       "ProfileNotFoundError",
       "ProfileNotInHouseholdError",
       "ReasonRequiredError",
-      "RecipientNotEligibleError",
-      "RecipientNotFoundError",
       "RegistrationNotActiveError",
       "RegistrationNotFoundError",
       "ReofferHouseholdNotFoundError",
       "ReofferHouseholdNotSharedError",
-      "ReplacementManagerNotEligibleError",
-      "ReplacementManagerNotFoundError",
       "ReplacementManagerRequiredError",
-      "RestrictedAccountAuthorityError",
+      "RestrictedAccountCannotAdministerError",
       "SameHouseholdError",
       "ShareNotActiveError",
       "ShareNotFoundError",
       "ShareNotPendingError"
     ],
     "InviteProfileManagerError": [
+      "AccountNotFoundError",
       "AlreadyManagerError",
-      "ProfileNotFoundError",
-      "RecipientNotEligibleError",
-      "RecipientNotFoundError"
+      "ProfileManagerNotEligibleError",
+      "ProfileNotFoundError"
     ],
     "IssueAccountInvitationError": [
+      "AccountNotFoundError",
       "ConnectProfileNotFoundError",
       "ConnectProfileRequiredError",
+      "EligibleProfileManagerRequiredError",
       "EmailAlreadyUsedError",
       "EmailRequiredError",
       "HouseholdNotFoundError",
-      "LocalManagerNotFoundError",
-      "LocalManagerRequiredError",
       "ProfileAlreadyLinkedError",
       "ProfileNameRequiredError",
       "ProfileNotInHouseholdError",
@@ -239,18 +239,20 @@
       "DestinationNotFoundError",
       "DestinationRequiredError",
       "DisplayNameRequiredError",
+      "EligibleProfileManagerRequiredError",
       "EmailAlreadyUsedError",
       "EmailRequiredError",
       "EsnAlreadyBlockedError",
       "EsnBlockNotFoundError",
       "EsnRequiredError",
-      "FinalAccountError",
-      "FinalAccountRequiredError",
-      "FinalAccountUnexpectedError",
-      "HomeAnchorRequiredError",
       "HouseholdNameRequiredError",
       "HouseholdNotFoundError",
+      "InvalidIdError",
+      "InvalidProfilePinError",
       "InvitationNotPendingError",
+      "LastAccountActionNotAllowedError",
+      "LastAccountActionRequiredError",
+      "LastHouseholdAccountError",
       "LastHouseholdAdminError",
       "LastServerAdminError",
       "LibraryNameRequiredError",
@@ -259,54 +261,42 @@
       "LibraryPathNotFoundError",
       "LibraryPathNotReadableError",
       "LibraryPathRequiredError",
-      "LocalManagerNotFoundError",
-      "LocalManagerRequiredError",
       "ManagementAlreadyRemovedError",
-      "ManagerAnchorRequiredError",
       "ManagerInvitationNotFoundError",
-      "ManagerNotEligibleError",
-      "NoEligibleAdminError",
+      "MaximumAllowedRatingAgeInvalidError",
+      "MembershipShareCannotEndError",
       "NotAManagerError",
-      "PinMalformedError",
       "ProfileAlreadyLinkedError",
       "ProfileAlreadySharedError",
-      "ProfileLinkedError",
+      "ProfileBelongsToAccountError",
+      "ProfileManagerNotEligibleError",
       "ProfileNameRequiredError",
       "ProfileNameTakenError",
       "ProfileNotDeletableError",
       "ProfileNotFoundError",
       "ProfileNotInHouseholdError",
+      "ProfilePinRequiredError",
+      "ProfileRequiresEligibleManagerError",
       "ReasonRequiredError",
       "ReauthenticationRequiredError",
-      "RecipientNotEligibleError",
-      "RecipientNotFoundError",
       "RegistrationNotActiveError",
       "RegistrationNotFoundError",
       "ReofferHouseholdNotFoundError",
       "ReofferHouseholdNotSharedError",
-      "ReplacementManagerNotEligibleError",
-      "ReplacementManagerNotFoundError",
       "ReplacementManagerRequiredError",
-      "RestrictedAccountAuthorityError",
+      "RestrictedAccountCannotAdministerError",
       "RestrictedFirstAccountError",
+      "RestrictedProfileRequiresHouseholdAdminError",
       "SameHouseholdError",
       "ShareNameConflictError",
       "ShareNotActiveError",
       "ShareNotFoundError",
-      "ShareNotPendingError",
-      "StructuralShareError",
-      "WouldLockProfileError"
+      "ShareNotPendingError"
     ],
     "OfferProfileShareError": [
       "HouseholdNotFoundError",
       "ProfileAlreadySharedError",
       "ProfileNotFoundError"
-    ],
-    "OverrideProfilePinError": [
-      "PinMalformedError",
-      "ProfileNotFoundError",
-      "ReasonRequiredError",
-      "ReauthenticationRequiredError"
     ],
     "RejectProfileShareError": [
       "ShareNotFoundError",
@@ -314,28 +304,41 @@
     ],
     "RelinquishProfileManagementError": [
       "ManagementAlreadyRemovedError",
-      "ManagerAnchorRequiredError",
-      "ProfileNotFoundError"
+      "ProfileNotFoundError",
+      "ProfileRequiresEligibleManagerError"
     ],
     "RemoveProfileManagerError": [
-      "ManagerAnchorRequiredError",
-      "NotAManagerError",
-      "ProfileNotFoundError"
-    ],
-    "RemoveProfileManagerOverrideError": [
-      "ManagerAnchorRequiredError",
       "NotAManagerError",
       "ProfileNotFoundError",
+      "ProfileRequiresEligibleManagerError"
+    ],
+    "RemoveProfileManagerOverrideError": [
+      "NotAManagerError",
+      "ProfileNotFoundError",
+      "ProfileRequiresEligibleManagerError",
       "ReasonRequiredError",
       "ReauthenticationRequiredError"
     ],
+    "RemoveProfileMaximumAllowedRatingAgeError": [
+      "MaximumAllowedRatingAgeInvalidError",
+      "ProfileNotFoundError",
+      "ProfileRequiresEligibleManagerError",
+      "ReauthenticationRequiredError",
+      "RestrictedAccountCannotAdministerError"
+    ],
+    "RemoveProfilePinError": [
+      "ProfileNotFoundError",
+      "ProfilePinRequiredError"
+    ],
     "RenameAccountError": [
       "AccountNotFoundError",
-      "DisplayNameRequiredError"
+      "DisplayNameRequiredError",
+      "InvalidIdError"
     ],
     "RenameHouseholdError": [
       "HouseholdNameRequiredError",
-      "HouseholdNotFoundError"
+      "HouseholdNotFoundError",
+      "InvalidIdError"
     ],
     "RenameProfileError": [
       "ProfileNameRequiredError",
@@ -348,60 +351,64 @@
     ],
     "RevokeHouseholdAdminError": [
       "AccountNotFoundError",
+      "InvalidIdError",
       "LastHouseholdAdminError"
     ],
     "RevokeServerAdminError": [
       "AccountNotFoundError",
+      "InvalidIdError",
       "LastServerAdminError",
       "ReasonRequiredError",
       "ReauthenticationRequiredError"
     ],
-    "SetProfileContentCeilingError": [
-      "HomeAnchorRequiredError",
+    "SetProfileMaximumAllowedRatingAgeError": [
+      "MaximumAllowedRatingAgeInvalidError",
       "ProfileNotFoundError",
-      "ReauthenticationRequiredError"
+      "ProfileRequiresEligibleManagerError",
+      "ReauthenticationRequiredError",
+      "RestrictedAccountCannotAdministerError"
     ],
     "SetProfilePictureError": [
       "ProfileNotFoundError"
     ],
     "SetProfilePinError": [
-      "PinMalformedError",
+      "InvalidProfilePinError",
       "ProfileNotFoundError"
     ],
     "TearDownHouseholdError": [
+      "AccountNotFoundError",
       "AccountsRemainError",
       "DestinationNotFoundError",
       "DestinationRequiredError",
-      "FinalAccountRequiredError",
-      "FinalAccountUnexpectedError",
       "HouseholdNotFoundError",
+      "LastAccountActionNotAllowedError",
+      "LastAccountActionRequiredError",
       "LastServerAdminError",
+      "ProfileManagerNotEligibleError",
       "ReasonRequiredError",
       "ReauthenticationRequiredError",
-      "ReplacementManagerNotEligibleError",
-      "ReplacementManagerNotFoundError",
       "ReplacementManagerRequiredError"
     ],
     "TransferAccountError": [
       "AccountNotFoundError",
-      "FinalAccountError",
-      "HomeAnchorRequiredError",
       "HouseholdNotFoundError",
+      "LastHouseholdAccountError",
       "LastHouseholdAdminError",
-      "NoEligibleAdminError",
       "ProfileNameTakenError",
+      "ProfileRequiresEligibleManagerError",
       "RestrictedFirstAccountError",
+      "RestrictedProfileRequiresHouseholdAdminError",
       "SameHouseholdError"
     ],
     "TransferProfileError": [
+      "AccountNotFoundError",
+      "EligibleProfileManagerRequiredError",
       "HouseholdNotFoundError",
-      "LocalManagerNotFoundError",
-      "LocalManagerRequiredError",
-      "NoEligibleAdminError",
-      "ProfileLinkedError",
+      "ProfileBelongsToAccountError",
+      "ProfileManagerNotEligibleError",
       "ProfileNameTakenError",
       "ProfileNotFoundError",
-      "ReplacementManagerNotEligibleError",
+      "RestrictedProfileRequiresHouseholdAdminError",
       "SameHouseholdError"
     ],
     "UnblockEsnError": [

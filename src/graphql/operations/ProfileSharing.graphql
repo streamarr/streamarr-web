@@ -16,14 +16,14 @@ query SharingOverview($householdId: ID!, $profileId: ID!) {
         id
         householdId
         status
-        structural
+        requiredByAccountMembership
       }
     }
   }
 }
 
-query SharePreflight($profileId: ID!, $householdId: ID!) {
-  sharePreflight(profileId: $profileId, householdId: $householdId) {
+query ProfileSharePreview($profileId: ID!, $householdId: ID!) {
+  profileSharePreview(profileId: $profileId, householdId: $householdId) {
     wouldLock
     nameConflict
   }
