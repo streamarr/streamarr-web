@@ -202,11 +202,13 @@ export function LibraryScreen({
             {hasNextPage && <div ref={loadMoreRef} aria-hidden className={styles.sentinel} />}
           </div>
         )}
-        {/* alphabetIndex has no filter argument — it can't reflect a watch-status filter. */}
-        {!search.watchStatus && (
+        {/* startLetter is only a seek anchor under TITLE sort (ADR 0018) — a tap under any other
+            sort would silently shrink the library to one letter, and alphabetIndex itself has no
+            filter argument to reflect a watch-status filter either. */}
+        {!search.watchStatus && trackingLetter && (
           <AlphabetRail
             index={library.alphabetIndex}
-            selected={trackingLetter ? (visibleLetter ?? search.letter ?? null) : null}
+            selected={visibleLetter ?? search.letter ?? null}
             onSelect={selectLetter}
           />
         )}
