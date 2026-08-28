@@ -1,0 +1,52 @@
+.libraryScreen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-16);
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-16);
+}
+
+.libraryName {
+  font-size: var(--font-size-display);
+  font-weight: 700;
+  margin: 0;
+}
+
+.scanStatus {
+  font-family: var(--font-family-system);
+  font-size: var(--font-size-caption);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: var(--letter-spacing-system);
+}
+
+.sortSlot {
+  margin-left: auto;
+}
+
+.body {
+  display: flex;
+  gap: var(--spacing-16);
+}
+
+.grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: var(--spacing-20);
+  align-content: start;
+}
+
+.sentinel {
+  grid-column: 1 / -1;
+  height: 1px;
+}
+
+.empty {
+  color: var(--text-secondary);
+  padding: var(--spacing-24) 0;
+}
