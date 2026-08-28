@@ -49,6 +49,29 @@ describe('useVisibleLetter', () => {
     expect(getByTestId('visible-letter')).toHaveTextContent('none')
   })
 
+  it('drops an unmounted item instead of letting it keep winning as topmost forever', () => {
+    const { getByTestId, rerender } = render(<Harness letters={['HASH']} />)
+    const hashObserver = intersectionObserverInstances.at(-1)!
+    const hashElement = hashObserver.observe.mock.calls[0][0] as Element
+    act(() => {
+      hashObserver.callback([{ target: hashElement, isIntersecting: true } as IntersectionObserverEntry], hashObserver)
+    })
+    expect(getByTestId('visible-letter')).toHaveTextContent('HASH')
+
+    // A letter jump replaces the whole edges array: the HASH item unmounts, a J item mounts.
+    // disconnect() alone (no synthetic not-intersecting event) must not leave HASH stuck forever
+    // once J is confirmed intersecting — even though HASH is still in `intersecting` at this
+    // exact instant (its own cleanup already ran, but isConnected pruning is lazy).
+    rerender(<Harness letters={['J']} />)
+
+    const jObserver = intersectionObserverInstances.at(-1)!
+    const jElement = jObserver.observe.mock.calls[0][0] as Element
+    act(() => {
+      jObserver.callback([{ target: jElement, isIntersecting: true } as IntersectionObserverEntry], jObserver)
+    })
+    expect(getByTestId('visible-letter')).toHaveTextContent('J')
+  })
+
   it('observes against the given scroll container, not the default viewport', () => {
     const container = document.createElement('div')
     render(<Harness letters={['A']} root={container} />)
