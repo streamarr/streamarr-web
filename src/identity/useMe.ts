@@ -1,6 +1,6 @@
 import { useQuery } from '@apollo/client/react'
-import { ME_QUERY } from '../graphql/operations'
+import { MeDocument } from '../graphql/generated/graphql'
 
 export function useMe() {
-  return useQuery(ME_QUERY)
+  return useQuery(MeDocument)
 }

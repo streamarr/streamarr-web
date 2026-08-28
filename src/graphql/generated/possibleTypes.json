@@ -1,0 +1,16 @@
+{
+  "possibleTypes": {
+    "BaseCollectable": [
+      "Movie",
+      "Series"
+    ],
+    "ContinueWatchingMedia": [
+      "Episode",
+      "Movie"
+    ],
+    "Media": [
+      "Movie",
+      "Series"
+    ]
+  }
+}

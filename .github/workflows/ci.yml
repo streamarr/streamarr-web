@@ -21,6 +21,12 @@ jobs:
       - run: npm install -g npm@11
       - run: npm ci
       - run: npm test
+      # The committed schema and generated client must match the pinned server commit exactly;
+      # streamarr-server is public, so no token is needed to pull the SDL.
+      - name: Verify the GraphQL contract matches the pinned server schema
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run codegen:check
       - run: npm run build
       - run: npm run typecheck
       # The browser suite drives the real vite dev server (playwright.config.ts
