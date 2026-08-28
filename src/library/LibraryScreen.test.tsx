@@ -113,16 +113,25 @@ describe('LibraryScreen', () => {
 
   it('hides the alphabet rail under a watch-status filter, since alphabetIndex has no filter argument', async () => {
     server.use(graphql.query('LibraryPage', () => HttpResponse.json({ data: libraryData({ edges: [] }) })))
-    renderWithProviders(<Harness initialSearch={{ ...DEFAULT_SEARCH, watchStatus: 'IN_PROGRESS' }} />)
+    renderWithProviders(
+      <Harness initialSearch={{ by: 'TITLE', direction: 'ASC', watchStatus: 'IN_PROGRESS' }} />,
+    )
     await waitFor(() => expect(screen.getByText('No items match this filter.')).toBeInTheDocument())
     expect(screen.queryByRole('navigation', { name: 'Jump to letter' })).not.toBeInTheDocument()
   })
 
   it('shows the alphabet rail again once the watch-status filter is cleared', async () => {
     server.use(graphql.query('LibraryPage', () => HttpResponse.json({ data: libraryData() })))
-    renderWithProviders(<Harness />)
+    renderWithProviders(<Harness initialSearch={{ by: 'TITLE', direction: 'ASC' }} />)
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Movies' })).toBeInTheDocument())
     expect(screen.getByRole('navigation', { name: 'Jump to letter' })).toBeInTheDocument()
+  })
+
+  it('hides the alphabet rail when sorted by anything other than TITLE, since a tap would silently shrink the library to one letter (ADR 0018)', async () => {
+    server.use(graphql.query('LibraryPage', () => HttpResponse.json({ data: libraryData() })))
+    renderWithProviders(<Harness initialSearch={{ by: 'ADDED', direction: 'DESC' }} />)
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Movies' })).toBeInTheDocument())
+    expect(screen.queryByRole('navigation', { name: 'Jump to letter' })).not.toBeInTheDocument()
   })
 
   it('reports a filter chip tap through onSearchChange', async () => {
