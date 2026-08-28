@@ -1,5 +1,9 @@
 import type { ApolloClient } from '@apollo/client'
 import { createRouter, type RouterHistory } from '@tanstack/react-router'
+import {
+  inactiveRenewalBridge,
+  type RenewalBridge,
+} from './auth/renewalBridge'
 import { createSessionStore, probeSession } from './auth/session'
 import { createApolloClient } from './graphql/client'
 import { routeTree } from './routeTree.gen'
@@ -10,11 +14,20 @@ import { routeTree } from './routeTree.gen'
  * store. `history` is only passed by tests, which drive a memory history instead of the address
  * bar.
  */
-export function createAppRouter(history?: RouterHistory) {
+export function createAppRouter(
+  history?: RouterHistory,
+  renewal: Pick<RenewalBridge, 'refreshNow'> = inactiveRenewalBridge,
+) {
   // The probe closes over the client assigned below — created in the only order that satisfies
   // the circular wiring.
   let apolloClient: ApolloClient
-  const session = createSessionStore(() => probeSession(apolloClient))
+  const session = createSessionStore(async () => {
+    const answer = await probeSession(apolloClient)
+    if (answer === 'authenticated') {
+      void renewal.refreshNow()
+    }
+    return answer
+  })
   const router = createRouter({ routeTree, history, context: { session } })
   apolloClient = createApolloClient((route) => {
     if (route === '/select') {
