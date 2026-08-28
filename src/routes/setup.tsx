@@ -1,4 +1,5 @@
 import { Center, Loader } from '@mantine/core'
+import { AuthShell } from '../ui/AuthShell'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { getSetupStatus } from '../auth/api'
@@ -21,16 +22,22 @@ function Setup() {
   }, [navigate])
 
   function onAuthenticated(tokens: AuthTokens) {
-    navigate({ to: tokens.scope === 'profile' ? '/' : '/select' })
+    navigate({ to: tokens.scope === 'profile' ? '/' : '/select-profile' })
   }
 
   if (!ready) {
     return (
-      <Center h={200}>
-        <Loader />
-      </Center>
+      <AuthShell>
+        <Center h={200}>
+          <Loader />
+        </Center>
+      </AuthShell>
     )
   }
 
-  return <SetupForm onAuthenticated={onAuthenticated} />
+  return (
+    <AuthShell>
+      <SetupForm onAuthenticated={onAuthenticated} />
+    </AuthShell>
+  )
 }

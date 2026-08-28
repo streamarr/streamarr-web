@@ -10,6 +10,26 @@ import {
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
 import { Picker } from './Picker'
+import { useState } from 'react'
+import type { AuthTokens } from '../auth/api'
+
+// The route owns the gate's state in the URL; these component tests stand in for it with
+// plain state so the Picker's own behavior stays testable without a router.
+function PickerHarness({
+  onProfileSelected,
+}: {
+  onProfileSelected: (tokens: AuthTokens) => void
+}) {
+  const [pinProfileId, setPinProfileId] = useState<string | undefined>()
+  return (
+    <Picker
+      pinProfileId={pinProfileId}
+      onPinRequested={setPinProfileId}
+      onPinDismissed={() => setPinProfileId(undefined)}
+      onProfileSelected={onProfileSelected}
+    />
+  )
+}
 
 const OTHER_HOUSEHOLD_ID = '55555555-5555-5555-5555-555555555555'
 const TOKENS = { accessTokenExpiresAt: '2026-08-20T12:10:00Z', scope: 'profile' }
@@ -24,7 +44,7 @@ describe('Picker', () => {
       }),
     )
     const onProfileSelected = vi.fn()
-    const { user } = renderWithProviders(<Picker onProfileSelected={onProfileSelected} />)
+    const { user } = renderWithProviders(<PickerHarness onProfileSelected={onProfileSelected} />)
 
     await user.click(await screen.findByRole('button', { name: /Alex/ }))
 
@@ -47,20 +67,67 @@ describe('Picker', () => {
       }),
     )
     const onProfileSelected = vi.fn()
-    const { user } = renderWithProviders(<Picker onProfileSelected={onProfileSelected} />)
+    const { user } = renderWithProviders(<PickerHarness onProfileSelected={onProfileSelected} />)
 
     await user.click(await screen.findByRole('button', { name: /Alex/ }))
     const pinInput = await screen.findByTestId('pin-input')
 
     // The wrong PIN earns the typed refusal and the dialog stays for another try.
     await user.type(pinInput, '1111')
-    await user.click(screen.getByRole('button', { name: 'Watch' }))
+    await user.click(screen.getByRole('button', { name: 'Unlock' }))
     expect(await screen.findByRole('alert')).toHaveTextContent("That PIN isn't right")
     expect(onProfileSelected).not.toHaveBeenCalled()
 
     await user.type(screen.getByTestId('pin-input'), '4242')
-    await user.click(screen.getByRole('button', { name: 'Watch' }))
+    await user.click(screen.getByRole('button', { name: 'Unlock' }))
     await waitFor(() => expect(onProfileSelected).toHaveBeenCalledWith(TOKENS))
+  })
+
+  it('shouldSubmitThePinWithEnter', async () => {
+    server.use(
+      graphql.query('Me', () =>
+        HttpResponse.json({
+          data: {
+            me: meFixture({
+              profiles: [profileFixture({ name: 'Alex', pinConfigured: true })],
+            }),
+          },
+        }),
+      ),
+      http.post('/api/auth/select-profile', () => HttpResponse.json(TOKENS)),
+    )
+    const onProfileSelected = vi.fn()
+    const { user } = renderWithProviders(<PickerHarness onProfileSelected={onProfileSelected} />)
+    await user.click(await screen.findByRole('button', { name: /Alex/ }))
+
+    await user.type(await screen.findByTestId('pin-input'), '4242{Enter}')
+
+    await waitFor(() => expect(onProfileSelected).toHaveBeenCalledWith(TOKENS))
+  })
+
+  it('shouldIgnoreEnterWhileThePinIsShort', async () => {
+    const selectProfile = vi.fn()
+    server.use(
+      graphql.query('Me', () =>
+        HttpResponse.json({
+          data: {
+            me: meFixture({
+              profiles: [profileFixture({ name: 'Alex', pinConfigured: true })],
+            }),
+          },
+        }),
+      ),
+      http.post('/api/auth/select-profile', () => {
+        selectProfile()
+        return HttpResponse.json(TOKENS)
+      }),
+    )
+    const { user } = renderWithProviders(<PickerHarness onProfileSelected={vi.fn()} />)
+    await user.click(await screen.findByRole('button', { name: /Alex/ }))
+
+    await user.type(await screen.findByTestId('pin-input'), '42{Enter}')
+
+    expect(selectProfile).not.toHaveBeenCalled()
   })
 
   it('shouldShowALockedProfileWithoutLettingItBeChosen', async () => {
@@ -80,10 +147,11 @@ describe('Picker', () => {
         return HttpResponse.json(TOKENS)
       }),
     )
-    const { user } = renderWithProviders(<Picker onProfileSelected={vi.fn()} />)
+    const { user } = renderWithProviders(<PickerHarness onProfileSelected={vi.fn()} />)
 
-    const locked = await screen.findByRole('button', { name: /Kids/ })
-    expect(locked).toHaveAttribute('data-disabled')
+    // The tile is genuinely disabled; the lock reads from the glyph, not prose.
+    const locked = await screen.findByRole('button', { name: /Kids \(locked\)/ })
+    expect(locked).toBeDisabled()
     await user.click(locked)
 
     expect(screen.queryByTestId('pin-input')).not.toBeInTheDocument()
@@ -119,7 +187,7 @@ describe('Picker', () => {
         return HttpResponse.json({ ...TOKENS, scope: 'account' })
       }),
     )
-    const { user } = renderWithProviders(<Picker onProfileSelected={vi.fn()} />)
+    const { user } = renderWithProviders(<PickerHarness onProfileSelected={vi.fn()} />)
 
     await user.click(await screen.findByRole('radio', { name: 'Cabin' }))
 

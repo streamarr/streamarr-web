@@ -16,7 +16,7 @@ import { Route as ResetRouteImport } from './routes/reset'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedLinkRouteImport } from './routes/_authenticated/link'
-import { Route as AuthenticatedSelectRouteImport } from './routes/_authenticated/select'
+import { Route as AuthenticatedSelectProfileRouteImport } from './routes/_authenticated/select-profile'
 import { Route as AuthenticatedSharingRouteImport } from './routes/_authenticated/sharing'
 import { Route as AuthenticatedPlayMediaFileIdRouteImport } from './routes/_authenticated/play.$mediaFileId'
 
@@ -54,11 +54,12 @@ const AuthenticatedLinkRoute = AuthenticatedLinkRouteImport.update({
   path: '/link',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
-const AuthenticatedSelectRoute = AuthenticatedSelectRouteImport.update({
-  id: '/select',
-  path: '/select',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
+const AuthenticatedSelectProfileRoute =
+  AuthenticatedSelectProfileRouteImport.update({
+    id: '/select-profile',
+    path: '/select-profile',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedSharingRoute = AuthenticatedSharingRouteImport.update({
   id: '/sharing',
   path: '/sharing',
@@ -78,7 +79,7 @@ export interface FileRoutesByFullPath {
   '/reset': typeof ResetRoute
   '/setup': typeof SetupRoute
   '/link': typeof AuthenticatedLinkRoute
-  '/select': typeof AuthenticatedSelectRoute
+  '/select-profile': typeof AuthenticatedSelectProfileRoute
   '/sharing': typeof AuthenticatedSharingRoute
   '/play/$mediaFileId': typeof AuthenticatedPlayMediaFileIdRoute
 }
@@ -88,7 +89,7 @@ export interface FileRoutesByTo {
   '/reset': typeof ResetRoute
   '/setup': typeof SetupRoute
   '/link': typeof AuthenticatedLinkRoute
-  '/select': typeof AuthenticatedSelectRoute
+  '/select-profile': typeof AuthenticatedSelectProfileRoute
   '/sharing': typeof AuthenticatedSharingRoute
   '/': typeof AuthenticatedIndexRoute
   '/play/$mediaFileId': typeof AuthenticatedPlayMediaFileIdRoute
@@ -101,7 +102,7 @@ export interface FileRoutesById {
   '/reset': typeof ResetRoute
   '/setup': typeof SetupRoute
   '/_authenticated/link': typeof AuthenticatedLinkRoute
-  '/_authenticated/select': typeof AuthenticatedSelectRoute
+  '/_authenticated/select-profile': typeof AuthenticatedSelectProfileRoute
   '/_authenticated/sharing': typeof AuthenticatedSharingRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/play/$mediaFileId': typeof AuthenticatedPlayMediaFileIdRoute
@@ -115,7 +116,7 @@ export interface FileRouteTypes {
     | '/reset'
     | '/setup'
     | '/link'
-    | '/select'
+    | '/select-profile'
     | '/sharing'
     | '/play/$mediaFileId'
   fileRoutesByTo: FileRoutesByTo
@@ -125,7 +126,7 @@ export interface FileRouteTypes {
     | '/reset'
     | '/setup'
     | '/link'
-    | '/select'
+    | '/select-profile'
     | '/sharing'
     | '/'
     | '/play/$mediaFileId'
@@ -137,7 +138,7 @@ export interface FileRouteTypes {
     | '/reset'
     | '/setup'
     | '/_authenticated/link'
-    | '/_authenticated/select'
+    | '/_authenticated/select-profile'
     | '/_authenticated/sharing'
     | '/_authenticated/'
     | '/_authenticated/play/$mediaFileId'
@@ -202,11 +203,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedLinkRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/select': {
-      id: '/_authenticated/select'
-      path: '/select'
-      fullPath: '/select'
-      preLoaderRoute: typeof AuthenticatedSelectRouteImport
+    '/_authenticated/select-profile': {
+      id: '/_authenticated/select-profile'
+      path: '/select-profile'
+      fullPath: '/select-profile'
+      preLoaderRoute: typeof AuthenticatedSelectProfileRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/sharing': {
@@ -228,7 +229,7 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteChildren {
   AuthenticatedLinkRoute: typeof AuthenticatedLinkRoute
-  AuthenticatedSelectRoute: typeof AuthenticatedSelectRoute
+  AuthenticatedSelectProfileRoute: typeof AuthenticatedSelectProfileRoute
   AuthenticatedSharingRoute: typeof AuthenticatedSharingRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedPlayMediaFileIdRoute: typeof AuthenticatedPlayMediaFileIdRoute
@@ -236,7 +237,7 @@ interface AuthenticatedRouteChildren {
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedLinkRoute: AuthenticatedLinkRoute,
-  AuthenticatedSelectRoute: AuthenticatedSelectRoute,
+  AuthenticatedSelectProfileRoute: AuthenticatedSelectProfileRoute,
   AuthenticatedSharingRoute: AuthenticatedSharingRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedPlayMediaFileIdRoute: AuthenticatedPlayMediaFileIdRoute,

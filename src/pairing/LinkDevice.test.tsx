@@ -28,8 +28,8 @@ function decisionReturns(body: object, status = 200, headers?: Record<string, st
 }
 
 async function enterCode(user: ReturnType<typeof import('@testing-library/user-event').default.setup>, code = 'bcdf-ghjk') {
+  // Frame 13: lookup runs on the last character — typing the code is the whole gesture.
   await user.type(screen.getByLabelText(/pairing code/i), code)
-  await user.click(screen.getByRole('button', { name: /continue/i }))
 }
 
 describe('LinkDevice', () => {
@@ -124,7 +124,7 @@ describe('LinkDevice', () => {
     lookupReturns({ code: 'INVALID_USER_CODE' }, 400)
     const { user } = renderWithProviders(<LinkDevice />)
 
-    await enterCode(user, 'nope')
+    await enterCode(user, 'nopenope')
 
     expect(await screen.findByText(/doesn't look like a pairing code/i)).toBeInTheDocument()
   })
@@ -160,7 +160,7 @@ describe('LinkDevice', () => {
 
     await enterCode(user)
 
-    await waitFor(() => expect(onUnauthenticated).toHaveBeenCalledWith('bcdf-ghjk'))
+    await waitFor(() => expect(onUnauthenticated).toHaveBeenCalledWith('BCDFGHJK'))
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
@@ -174,7 +174,8 @@ describe('LinkDevice', () => {
     )
     renderWithProviders(<LinkDevice initialCode="BCDF-GHJK" />)
 
-    expect(await screen.findByLabelText(/pairing code/i)).toHaveValue('BCDF-GHJK')
+    // The field carries the normalized eight characters; the boxes draw the group separator.
+    expect(await screen.findByLabelText(/pairing code/i)).toHaveValue('BCDFGHJK')
     expect(lookups).toBe(0)
   })
 

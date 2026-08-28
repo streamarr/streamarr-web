@@ -1,3 +1,4 @@
+import { useApolloClient } from '@apollo/client/react'
 import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from 'react'
 import {
   type AcceptInvitationInput,
@@ -46,6 +47,8 @@ export function AuthProvider({
   // Every credential-issuing response updates session state, tells the store the server now
   // vouches for the visitor (so route guards agree), and hands the worker the fresh expiry (to
   // schedule proactive renewal) and CSRF token — the worker can read neither cookie.
+  const apollo = useApolloClient()
+
   const adopt = useCallback(
     (tokens: AuthTokens): AuthTokens => {
       sessionStore.markAuthenticated()
@@ -63,13 +66,23 @@ export function AuthProvider({
     (input: AcceptInvitationInput) => apiAcceptInvitation(input).then(adopt),
     [adopt],
   )
+  // A different Household or Profile is a different identity: nothing cached may survive the
+  // switch, whichever screen performed it — the picker, the PIN gate, or the profile menu.
   const selectHousehold = useCallback(
-    (id: string) => apiSelectHousehold(id).then(adopt),
-    [adopt],
+    async (id: string) => {
+      const tokens = await apiSelectHousehold(id).then(adopt)
+      await apollo.resetStore()
+      return tokens
+    },
+    [adopt, apollo],
   )
   const selectProfile = useCallback(
-    (id: string, pin?: string) => apiSelectProfile(id, pin).then(adopt),
-    [adopt],
+    async (id: string, pin?: string) => {
+      const tokens = await apiSelectProfile(id, pin).then(adopt)
+      await apollo.resetStore()
+      return tokens
+    },
+    [adopt, apollo],
   )
   const logout = useCallback(async () => {
     sessionStore.markAnonymous()

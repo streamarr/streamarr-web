@@ -30,7 +30,7 @@ export function createAppRouter(
   })
   const router = createRouter({ routeTree, history, context: { session } })
   apolloClient = createApolloClient((route) => {
-    if (route === '/select') {
+    if (route === '/select-profile') {
       router.navigate({ to: route })
       return
     }

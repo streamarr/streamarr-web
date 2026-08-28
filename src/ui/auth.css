@@ -1,0 +1,489 @@
+/* The auth shell (mock frames 12-15a): black ground, the brand bloom, and a left scrim
+   carrying a single left-anchored column. Every value routes through the token layer;
+   the bloom's geometry (ellipse position, blur 90) is component-tier per components.yaml. */
+
+.authShell {
+  position: relative;
+  min-height: 100dvh;
+  overflow: hidden;
+  background: #000;
+}
+
+.authShellBloom {
+  position: absolute;
+  inset: -140px;
+  background: radial-gradient(
+    ellipse 60% 68% at 86% 30%,
+    color-mix(in srgb, var(--color-brand-purple) 85%, transparent),
+    color-mix(in srgb, var(--color-brand-blue) 40%, transparent) 52%,
+    transparent 75%
+  );
+  filter: blur(90px);
+  pointer-events: none;
+}
+
+.authShellScrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.85), rgba(0, 0, 0, 0.15) 55%, transparent);
+  pointer-events: none;
+}
+
+.authShellColumn {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  padding: 90px 24px;
+  margin-left: clamp(24px, 6vw, 90px);
+  justify-content: center;
+  min-height: 100dvh;
+  box-sizing: border-box;
+}
+
+/* The one sanctioned gradient-text rendering (principle 2.4): the wordmark is a version of
+   the mark, not text. Weight 700 — the top of Space Grotesk's variable range; the mock's 800
+   was browser-synthesized (components.yaml WordmarkLockup note). */
+.wordmark {
+  width: fit-content;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.46em;
+  /* gradient.brand at gradient.brandAngle (45deg, the mark's angle). */
+  background-image: linear-gradient(45deg, var(--color-brand-blue), var(--color-brand-purple));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+.authTitle {
+  font-size: clamp(34px, 4.5vw, 52px);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.05;
+  color: var(--color-alpha-92);
+}
+
+.authLede {
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--color-alpha-50);
+  text-wrap: pretty;
+}
+
+/* One-character-per-box code entry (CodeInput, frames 13/15a). The real input sits invisibly
+   over the boxes so focus, paste, and assistive tech all work on a genuine field. */
+.codeInput {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+}
+
+.codeInputField {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  font-size: 30px;
+  cursor: text;
+}
+
+.codeInputCell {
+  box-sizing: border-box;
+  position: relative;
+  width: 52px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-lg);
+  background: var(--color-alpha-07);
+  border: 1px solid var(--color-alpha-12);
+  font-family: var(--font-family-system);
+  font-size: 30px;
+  font-weight: 600;
+  color: var(--color-alpha-92);
+}
+
+.codeInputCellActive {
+  border-color: var(--indicator-active-track);
+}
+
+.codeInputCaret {
+  position: absolute;
+  width: 2px;
+  height: 32px;
+  border-radius: 1px;
+  background: var(--indicator-active-track);
+  animation: codeInputCaretBlink 1.06s step-end infinite;
+}
+
+@keyframes codeInputCaretBlink {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .codeInputCaret {
+    animation: none;
+  }
+}
+
+.codeInputError .codeInputCell {
+  border-color: color-mix(in srgb, var(--color-red-error-text) 65%, transparent);
+}
+
+.codeInputSettled {
+  opacity: 0.45;
+}
+
+.codeInputSeparator {
+  width: 14px;
+  height: 2px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--color-white) 30%, transparent);
+}
+
+/* Profile tiles (frame 15): 120px rounded squares with initials; the lock badge rides the
+   top-right corner; the Kids mark is a system-voice label under the name. */
+.profileTiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+.profileTile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--color-alpha-92);
+  font: inherit;
+}
+
+.profileTileAvatar {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  border-radius: var(--radius-2xl);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 38px;
+  font-weight: 700;
+  color: var(--color-white);
+}
+
+.profileTile:hover .profileTileAvatar,
+.profileTile:focus-visible .profileTileAvatar {
+  outline: 2px solid var(--selection-active);
+  outline-offset: 3px;
+}
+
+.profileTile:disabled {
+  cursor: default;
+}
+
+.profileTileLock {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-md);
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.profileTileName {
+  font-size: 15px;
+}
+
+.profileTileKind {
+  font-family: var(--font-family-system);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-alpha-50);
+}
+
+/* Frame 15a: the PIN gate's avatar sits beside the title block. */
+.pinGate {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.pinGateAvatar {
+  width: 132px;
+  height: 132px;
+  border-radius: var(--radius-2xl);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 42px;
+  font-weight: 700;
+  flex: none;
+  color: var(--color-white);
+}
+
+/* Global field anatomy (frames 12-14a), bound through theme.ts. */
+.fieldLabel {
+  font-family: var(--font-family-system);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-alpha-50);
+  font-weight: 500;
+}
+
+/* The mocks carry no asterisk; required-ness reads from context (principle 8.2). The marker
+   stays in the DOM for the accessibility tree. */
+.fieldRequired {
+  display: none;
+}
+
+.fieldInput {
+  background: var(--color-alpha-07);
+  border: 1px solid var(--color-alpha-12);
+  font-size: 15px;
+  color: var(--color-alpha-92);
+}
+
+/* ---- App chrome: the top bar and profile menu (frames 01/01a). ---- */
+
+.topBar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 20px clamp(24px, 3.3vw, 50px);
+}
+
+.topBarLockup {
+  height: 30px;
+  width: auto;
+  display: block;
+}
+
+.topBarDivider {
+  width: 1px;
+  height: 26px;
+  background: var(--color-alpha-16);
+}
+
+.topBarNav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.navPill {
+  padding: 7px 18px;
+  border-radius: var(--radius-sm);
+  background: var(--color-alpha-10);
+  font-size: 15px;
+  color: var(--color-alpha-92);
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+}
+
+.navPillActive {
+  background: var(--selection-active);
+  font-weight: 600;
+}
+
+.topBarTrail {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.profileChip {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  background: var(--color-alpha-18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-alpha-92);
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.profileChipOpen {
+  background: var(--selection-active);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--indicator-active-track) 50%, transparent);
+}
+
+/* Floating chrome (principle 5): the menu rides the chrome surface over the page. */
+.profileMenu {
+  width: 250px;
+  border: 1px solid var(--color-alpha-16);
+  border-radius: var(--radius-xl);
+  /* The mock's panel is solid: the chrome token layered over the opaque ground. A blurred
+     translucency here also stalls Chromium's compositor during captures. */
+  background:
+    linear-gradient(var(--color-chrome), var(--color-chrome)),
+    var(--color-ground);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
+}
+
+.profileMenuRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  border-radius: var(--radius-md);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-alpha-92);
+  font: inherit;
+  text-align: left;
+  width: 100%;
+}
+
+.profileMenuRow:hover:not(:disabled),
+.profileMenuRow:focus-visible {
+  background: var(--color-alpha-07);
+}
+
+.profileMenuRow:disabled {
+  cursor: default;
+}
+
+/* Only a locked profile reads dimmed; the current row is disabled merely because it is not a
+   choice — its name stays primary, like the mock's. */
+.profileMenuRow:disabled:not(.profileMenuRowCurrent) {
+  color: var(--color-alpha-50);
+}
+
+.profileMenuRowCurrent {
+  background: var(--color-alpha-07);
+}
+
+.profileMenuAvatar {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 600;
+  flex: none;
+  color: var(--color-white);
+}
+
+.profileMenuName {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.profileMenuName span:first-child {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.profileMenuRole {
+  font-size: 12px;
+  color: var(--color-alpha-50);
+}
+
+.profileMenuCheck {
+  margin-left: auto;
+  color: var(--indicator-active-track);
+}
+
+.profileMenuDivider {
+  height: 1px;
+  margin: 6px 10px;
+  background: var(--color-alpha-10);
+}
+
+/* ---- Home groundwork (frame 01): the ambient wash over the ground. ---- */
+.homeShell {
+  position: relative;
+  min-height: 100dvh;
+  background: var(--color-ground);
+}
+
+.homeAmbient {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 900px;
+  background:
+    radial-gradient(
+      80% 60% at 75% 0%,
+      color-mix(in srgb, var(--color-brand-purple) 22%, transparent),
+      transparent 65%
+    ),
+    radial-gradient(
+      70% 50% at 10% 10%,
+      color-mix(in srgb, var(--color-brand-blue) 16%, transparent),
+      transparent 70%
+    );
+  pointer-events: none;
+}
+
+.homeContent {
+  position: relative;
+  padding: 14px clamp(24px, 3.3vw, 50px) 40px;
+}
+
+.profileMenuAnchor {
+  position: relative;
+}
+
+.profileMenuAnchor .profileMenu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 20;
+}
+
+/* The caret notch pointing at the chip (frame 01a). */
+.profileMenu::before {
+  content: '';
+  position: absolute;
+  right: 20px;
+  top: -7px;
+  width: 13px;
+  height: 13px;
+  transform: rotate(45deg);
+  background:
+    linear-gradient(var(--color-chrome), var(--color-chrome)),
+    var(--color-ground);
+  border-left: 1px solid var(--color-alpha-16);
+  border-top: 1px solid var(--color-alpha-16);
+}

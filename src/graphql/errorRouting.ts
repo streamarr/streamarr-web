@@ -11,9 +11,9 @@ export interface AuthErrorContext {
 const LOGIN_CODES = new Set(['AUTHENTICATION_REQUIRED', 'INVALID_TOKEN'])
 const SELECT_CODES = new Set(['PROFILE_REQUIRED', 'HOUSEHOLD_REQUIRED'])
 
-export function decideAuthRoute(ctx: AuthErrorContext): '/login' | '/select' | null {
+export function decideAuthRoute(ctx: AuthErrorContext): '/login' | '/select-profile' | null {
   if (ctx.graphqlCodes?.some((code) => SELECT_CODES.has(code))) {
-    return '/select'
+    return '/select-profile'
   }
   if (ctx.networkStatus === 401 && ctx.networkCode && LOGIN_CODES.has(ctx.networkCode)) {
     return '/login'
