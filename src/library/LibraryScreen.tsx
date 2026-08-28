@@ -1,5 +1,5 @@
 import { Alert, Center, Loader, Text, Title } from '@mantine/core'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { MediaFilter, MediaSort, OrderMediaBy, SortDirection } from '../graphql/generated/graphql'
 import { AlphabetRail } from '../media/AlphabetRail'
 import { formatRelativeTime } from '../media/formatting'
@@ -51,9 +51,8 @@ export function LibraryScreen({
   } = useLibraryItems({ libraryId, sort, filter })
   const { visibleLetter, registerItem } = useVisibleLetter()
 
-  // The grid is its own scroll container (not the page), so the sentinels' IntersectionObserver
-  // root must be the grid, not the default viewport. A ref *object* wouldn't do: the observer
-  // needs to be rebuilt once the element actually mounts, which only a state-backed ref triggers.
+  // State, not a ref object: the sentinels' observer root is the grid, and needs to rebuild once
+  // it actually mounts, which only a state-backed ref triggers.
   const [gridElement, setGridElement] = useState<HTMLDivElement | null>(null)
   const itemElementsRef = useRef(new Map<string, HTMLElement>())
 
@@ -65,18 +64,37 @@ export function LibraryScreen({
     },
     { root: gridElement, rootMargin: '400px' },
   )
+
+  // The top sentinel is always the grid's first child, so a prepend alone never moves it out of
+  // the intersecting zone; scrollTop must be compensated below or it never fires again.
+  const pendingBackwardMeasurementRef = useRef<number | null>(null)
   const loadPreviousRef = useIntersectionObserver(
     (entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) {
+      if (entries.some((entry) => entry.isIntersecting) && gridElement) {
+        pendingBackwardMeasurementRef.current = gridElement.scrollHeight
         loadPrevious()
       }
     },
     { root: gridElement, rootMargin: '400px' },
   )
 
-  // Scrolls the letter-jump's actual landing item into view once it (and the backward continuity
-  // page prepended above it) have rendered — otherwise the jump reads as landing on the wrong
-  // letter, since the prepended items push the real target below the fold.
+  useLayoutEffect(() => {
+    const heightBefore = pendingBackwardMeasurementRef.current
+    if (heightBefore === null || !gridElement) {
+      return
+    }
+    const delta = gridElement.scrollHeight - heightBefore
+    // Only clear once growth is observed: this can re-run before the fetch has actually landed
+    // (edges is a fresh array every render), and clearing on that zero-delta pass would drop the
+    // pending measurement before the real page arrives.
+    if (delta > 0) {
+      gridElement.scrollTop += delta
+      pendingBackwardMeasurementRef.current = null
+    }
+  }, [edges.length, edges[0]?.cursor, gridElement])
+
+  // Scrolls the letter-jump's landing item into view once rendered, or the backward continuity
+  // page prepended above it reads as having landed on the wrong letter.
   useEffect(() => {
     if (!scrollTarget) {
       return
@@ -102,9 +120,8 @@ export function LibraryScreen({
     })
   }
 
-  // startLetter is only a seek anchor under TITLE sort (server ADR 0018) — under any other sort
-  // it becomes a strict equality filter that would silently shrink the library to one letter, so
-  // a tap always forces TITLE/ASC first.
+  // startLetter is only a seek anchor under TITLE sort (ADR 0018) — otherwise it's a strict
+  // filter that would shrink the library to one letter, so a tap forces TITLE/ASC first.
   function selectLetter(letter: string | null) {
     onSearchChange(letter ? { ...search, by: 'TITLE', direction: 'ASC', letter } : { ...search, letter: undefined })
   }
@@ -185,11 +202,14 @@ export function LibraryScreen({
             {hasNextPage && <div ref={loadMoreRef} aria-hidden className={styles.sentinel} />}
           </div>
         )}
-        <AlphabetRail
-          index={library.alphabetIndex}
-          selected={trackingLetter ? (visibleLetter ?? search.letter ?? null) : null}
-          onSelect={selectLetter}
-        />
+        {/* alphabetIndex has no filter argument — it can't reflect a watch-status filter. */}
+        {!search.watchStatus && (
+          <AlphabetRail
+            index={library.alphabetIndex}
+            selected={trackingLetter ? (visibleLetter ?? search.letter ?? null) : null}
+            onSelect={selectLetter}
+          />
+        )}
       </div>
     </div>
   )

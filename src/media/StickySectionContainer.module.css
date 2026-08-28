@@ -25,6 +25,7 @@
 }
 
 .body {
+  composes: thin from '../styles/scrollbar.module.css';
   height: 600px;
   overflow-y: auto;
   padding: var(--spacing-20);
