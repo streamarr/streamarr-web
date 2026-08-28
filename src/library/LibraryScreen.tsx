@@ -49,12 +49,12 @@ export function LibraryScreen({
     scrollTarget,
     clearScrollTarget,
   } = useLibraryItems({ libraryId, sort, filter })
-  const { visibleLetter, registerItem } = useVisibleLetter()
 
   // State, not a ref object: the sentinels' observer root is the grid, and needs to rebuild once
   // it actually mounts, which only a state-backed ref triggers.
   const [gridElement, setGridElement] = useState<HTMLDivElement | null>(null)
   const itemElementsRef = useRef(new Map<string, HTMLElement>())
+  const { visibleLetter, registerItem } = useVisibleLetter(gridElement)
 
   const loadMoreRef = useIntersectionObserver(
     (entries) => {

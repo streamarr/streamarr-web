@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest'
 import { intersectionObserverInstances } from '../../vitest.setup'
 import { useVisibleLetter } from './useVisibleLetter'
 
-function Harness({ letters }: { letters: string[] }) {
-  const { visibleLetter, registerItem } = useVisibleLetter()
+function Harness({ letters, root = null }: { letters: string[]; root?: Element | null }) {
+  const { visibleLetter, registerItem } = useVisibleLetter(root)
   return (
     <div>
       <div data-testid="visible-letter">{visibleLetter ?? 'none'}</div>
@@ -47,5 +47,12 @@ describe('useVisibleLetter', () => {
       observer.callback([{ target: element, isIntersecting: false } as IntersectionObserverEntry], observer)
     })
     expect(getByTestId('visible-letter')).toHaveTextContent('none')
+  })
+
+  it('observes against the given scroll container, not the default viewport', () => {
+    const container = document.createElement('div')
+    render(<Harness letters={['A']} root={container} />)
+    const observer = intersectionObserverInstances.at(-1)!
+    expect(observer.root).toBe(container)
   })
 })

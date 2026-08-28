@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { LibraryPageDocument, type MediaFilter, type MediaSort } from '../graphql/generated/graphql'
 import { definedEdges } from '../media/edges'
 
-const PAGE_SIZE = 24
+const PAGE_SIZE = 48
 
 // Filter/sort/letter are props, so a plain change is a normal Apollo variables change: edges
 // accumulated by loadMore/loadPrevious are dropped automatically, no bespoke reset needed.
