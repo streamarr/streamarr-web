@@ -1,0 +1,34 @@
+.filterBar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-12);
+  padding-bottom: var(--spacing-16);
+  border-bottom: var(--border-width-hairline) solid var(--border-hairline);
+}
+
+.chips {
+  display: flex;
+  gap: var(--spacing-8);
+}
+
+.chip {
+  padding: 7px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-panel);
+  border: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--font-size-body);
+  cursor: pointer;
+}
+
+.chipActive {
+  background: var(--selection-active);
+  font-weight: 600;
+}
+
+.showing {
+  margin-left: auto;
+  font-size: var(--font-size-caption);
+  color: var(--text-secondary);
+}

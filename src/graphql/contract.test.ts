@@ -2,6 +2,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   buildSchema,
+  concatAST,
   Kind,
   parse,
   validate,
@@ -31,8 +32,13 @@ describe('the pinned GraphQL contract', () => {
     expect(documents.length).toBeGreaterThanOrEqual(2)
   })
 
-  it.each(documents)('validates $path against the pinned schema', ({ document }) => {
-    expect(validate(schema, document).map(String)).toEqual([])
+  it.each(documents)('validates $path against the pinned schema', ({ path, document }) => {
+    // graphql-codegen already treats every `.graphql` file under src/ as one combined document
+    // set (documents: 'src/**/*.graphql' in codegen.ts), so a fragment defined in one file and
+    // spread by an operation in another is a normal, supported shape here — merge with every
+    // other file before validating, or a shared fragment file would always read as unused.
+    const others = documents.filter((other) => other.path !== path).map((other) => other.document)
+    expect(validate(schema, concatAST([document, ...others])).map(String)).toEqual([])
   })
 
   it.each(documents)('keeps $path to one root mutation field', ({ document }) => {
