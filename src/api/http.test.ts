@@ -85,4 +85,38 @@ describe('http requests', () => {
 
     expect(attempts).toBe(1)
   })
+
+  it('shouldCarryTheServerMessageOnARefusal', async () => {
+    server.use(
+      http.post('/api/test/refused', () =>
+        HttpResponse.json(
+          { code: 'PROFILE_LOCKED', message: 'This profile needs a PIN before it can be selected here.' },
+          { status: 409 },
+        ),
+      ),
+    )
+
+    await expect(request('/api/test/refused', { method: 'POST' })).rejects.toMatchObject({
+      status: 409,
+      code: 'PROFILE_LOCKED',
+      serverMessage: 'This profile needs a PIN before it can be selected here.',
+    })
+  })
+
+  it('shouldLeaveTheServerMessageNullWhenTheBodyHasNone', async () => {
+    server.use(
+      http.post('/api/test/bare', () => HttpResponse.json({ code: 'FORBIDDEN', message: '  ' }, { status: 403 })),
+      http.post('/api/test/empty', () => new HttpResponse(null, { status: 500 })),
+    )
+
+    await expect(request('/api/test/bare', { method: 'POST' })).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+      serverMessage: null,
+    })
+    await expect(request('/api/test/empty', { method: 'POST' })).rejects.toMatchObject({
+      status: 500,
+      code: null,
+      serverMessage: null,
+    })
+  })
 })

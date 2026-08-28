@@ -1,0 +1,20 @@
+.pinGate {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.pinGateColumn {
+  min-width: 0;
+  flex: 1 1 16rem;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.pinGateActions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}

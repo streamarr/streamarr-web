@@ -1,13 +1,8 @@
-// Pure decision logic for the service worker, imported by sw.ts and unit-tested here.
-// The worker is best-effort by design (ADR 0016): correctness never rests on it, so these
-// functions decide narrowly and default to passing requests through untouched.
-
 export type InterceptDecision = 'intercept' | 'pass-through'
 
 /**
- * Intercept same-origin /graphql and /api/** fetches, EXCEPT the worker's own refresh call
- * (recursion) and /api/stream/** (playback URLs carry their own ?t= token; hls.js requests
- * must pass through untouched).
+ * Same-origin /graphql and /api/** only, minus the worker's own refresh calls (recursion) and
+ * /api/stream/** (playback URLs carry their own ?t= token).
  */
 export function decideIntercept(
   requestUrl: string | URL,
@@ -47,10 +42,7 @@ export function rememberCsrfToken(
   return requestToken?.trim() ? requestToken : cachedToken
 }
 
-/**
- * Collapses concurrent invocations onto one in-flight operation. One SW instance serves every
- * tab of the origin, so a module-scoped instance of this IS the cross-tab refresh lock.
- */
+/** One SW instance serves every tab of the origin, so one of these is the cross-tab refresh lock. */
 export class SingleFlight<T> {
   private inFlight: Promise<T> | null = null
 

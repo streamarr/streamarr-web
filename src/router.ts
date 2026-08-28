@@ -9,17 +9,14 @@ import { createApolloClient } from './graphql/client'
 import { routeTree } from './routeTree.gen'
 
 /**
- * The router, the Apollo client, and the session store are one composition: the guard's probe
- * asks over the client, the error link's auth routing IS a navigation, and both report into the
- * store. `history` is only passed by tests, which drive a memory history instead of the address
- * bar.
+ * One composition: the guard probes over the client, and the error link's routing is a
+ * navigation. `history` is passed only by tests.
  */
 export function createAppRouter(
   history?: RouterHistory,
   renewal: Pick<RenewalBridge, 'refreshNow'> = inactiveRenewalBridge,
 ) {
-  // The probe closes over the client assigned below — created in the only order that satisfies
-  // the circular wiring.
+  // The probe closes over the client assigned below: the only order the circular wiring allows.
   let apolloClient: ApolloClient
   const session = createSessionStore(async () => {
     const answer = await probeSession(apolloClient)
@@ -34,8 +31,8 @@ export function createAppRouter(
       router.navigate({ to: route })
       return
     }
-    // An eviction: the server just refused the session. Record it so the guard cannot wave a
-    // back-navigation through on a stale answer, then bounce carrying the way back.
+    // An eviction: record it so the guard cannot wave a back-navigation through on a stale
+    // answer, then bounce carrying the way back.
     session.markAnonymous()
     router.navigate({ to: route, search: { redirect: router.state.location.href } })
   })

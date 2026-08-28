@@ -62,25 +62,28 @@ export function createRenewalBridge({
     }
   }
 
-  const serviceWorkerEndpoint = async (): Promise<ServiceWorkerEndpoint | null> => {
-    // navigator.serviceWorker.ready never settles when no registration's scope matches the
-    // page, so discovery carries its own deadline instead of trusting the promise.
+  // navigator.serviceWorker.ready never settles when no registration's scope matches the
+  // page, so discovery carries its own deadline instead of trusting the promise.
+  const awaitActiveServiceWorker = async (): Promise<ServiceWorkerEndpoint | null> => {
     let deadline: ReturnType<typeof setTimeout> | undefined
+    const expired = new Promise<null>((resolve) => {
+      deadline = setTimeout(() => resolve(null), discoveryTimeoutMs)
+    })
     try {
-      if (serviceWorkers.controller) {
-        return serviceWorkers.controller
-      }
-      const ready = await Promise.race([
-        serviceWorkers.ready,
-        new Promise<null>((resolve) => {
-          deadline = setTimeout(() => resolve(null), discoveryTimeoutMs)
-        }),
-      ])
-      return ready?.active ?? null
-    } catch {
-      return null
+      return (await Promise.race([serviceWorkers.ready, expired]))?.active ?? null
     } finally {
       clearTimeout(deadline)
+    }
+  }
+
+  const serviceWorkerEndpoint = async (): Promise<ServiceWorkerEndpoint | null> => {
+    if (serviceWorkers.controller) {
+      return serviceWorkers.controller
+    }
+    try {
+      return await awaitActiveServiceWorker()
+    } catch {
+      return null
     }
   }
 
@@ -93,75 +96,72 @@ export function createRenewalBridge({
     }
   }
 
+  const awaitReply = (port1: BridgeMessagePort, port2: BridgeMessagePort) => {
+    let settled = false
+    let resolveResult!: (value: RenewalResult) => void
+    const result = new Promise<RenewalResult>((resolve) => {
+      resolveResult = resolve
+    })
+    const finish = (value: RenewalResult): void => {
+      if (settled) {
+        return
+      }
+      settled = true
+      clearTimeout(timeout)
+      port1.close?.()
+      port2.close?.()
+      resolveResult(value)
+    }
+    const timeout = setTimeout(() => finish({ kind: 'unavailable' }), replyTimeoutMs)
+    port1.onmessage = ({ data }) =>
+      finish(isRenewalResult(data) ? data : { kind: 'unavailable' })
+    return { result, finish }
+  }
+
   const refreshNow = async (): Promise<RenewalResult> => {
     const serviceWorker = await serviceWorkerEndpoint()
     if (!serviceWorker) {
       return { kind: 'unavailable' }
     }
     const { port1, port2 } = createReplyChannel()
-    let finish!: (value: RenewalResult) => void
-    const result = new Promise<RenewalResult>((resolve) => {
-      let settled = false
-      finish = (value: RenewalResult): void => {
-        if (settled) {
-          return
-        }
-        settled = true
-        clearTimeout(timeout)
-        port1.close?.()
-        port2.close?.()
-        resolve(value)
-      }
-      const timeout = setTimeout(
-        () => finish({ kind: 'unavailable' }),
-        replyTimeoutMs,
-      )
-      port1.onmessage = ({ data }) =>
-        finish(isRenewalResult(data) ? data : { kind: 'unavailable' })
-    })
+    const reply = awaitReply(port1, port2)
     try {
-      serviceWorker.postMessage(
-        { type: 'refresh-now', csrfToken: readCsrfToken() },
-        [port2],
-      )
+      serviceWorker.postMessage({ type: 'refresh-now', csrfToken: readCsrfToken() }, [port2])
     } catch {
-      finish({ kind: 'unavailable' })
+      reply.finish({ kind: 'unavailable' })
     }
-    const renewalResult = await result
+    const renewalResult = await reply.result
     if (renewalResult.kind === 'renewed') {
-      postToSharedWorker({
-        type: 'adopt-expiry',
-        expiresAt: renewalResult.expiresAt,
-      })
+      postToSharedWorker({ type: 'adopt-expiry', expiresAt: renewalResult.expiresAt })
     }
     return renewalResult
   }
 
-  if (sharedPort) {
-    sharedPort.onmessage = ({ data }) => {
-      if (typeof data !== 'object' || data === null) {
-        return
-      }
-      const message = data as { type?: unknown; requestId?: unknown }
-      if (message.type !== 'refresh-due' || typeof message.requestId !== 'number') {
-        return
-      }
-      void refreshNow().then((result) => {
-        postToSharedWorker({
-          type: 'refresh-result',
-          requestId: message.requestId,
-          result,
-        })
-      })
+  const onSharedWorkerMessage = ({ data }: { data: unknown }): void => {
+    if (typeof data !== 'object' || data === null) {
+      return
     }
+    const message = data as { type?: unknown; requestId?: unknown }
+    if (message.type !== 'refresh-due' || typeof message.requestId !== 'number') {
+      return
+    }
+    void refreshNow().then((result) => {
+      postToSharedWorker({ type: 'refresh-result', requestId: message.requestId, result })
+    })
+  }
+
+  const attachSharedWorker = (port: RenewalPort): void => {
+    port.onmessage = onSharedWorkerMessage
     try {
-      sharedPort.start()
+      port.start()
     } catch {
       // The service worker remains the reactive correctness fallback.
     }
+    // The host forgets a port only when told.
+    window.addEventListener('pagehide', () => postToSharedWorker({ type: 'disconnect' }))
   }
 
-  serviceWorkers.addEventListener('message', ({ data }) => {
+  const onServiceWorkerMessage = ({ data }: { data: unknown }): void => {
     if (typeof data !== 'object' || data === null) {
       return
     }
@@ -169,7 +169,12 @@ export function createRenewalBridge({
     if (message.type === 'token-renewed' && typeof message.expiresAt === 'string') {
       postToSharedWorker({ type: 'adopt-expiry', expiresAt: message.expiresAt })
     }
-  })
+  }
+
+  if (sharedPort) {
+    attachSharedWorker(sharedPort)
+  }
+  serviceWorkers.addEventListener('message', onServiceWorkerMessage)
 
   return {
     adoptExpiry(expiresAt) {

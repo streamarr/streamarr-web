@@ -1,13 +1,14 @@
 import { Alert, Anchor, Button, PasswordInput, Stack, Text, TextInput } from '@mantine/core'
 import { useState } from 'react'
+import { AuthTitle } from '../ui/AuthShell'
 import { AuthApiError, redeemPasswordReset } from './api'
 
-// Frame 12b: password-reset redemption. A ServerAdmin issued the code; redemption works even
-// while the Account is disabled, changes the password, revokes every refresh session, and
-// deliberately signs nobody in — the person continues to the sign-in page with the new password.
-// Reset codes are opaque tokens, so this is a pasteable field — never the PIN/TV code input.
+// Redemption deliberately signs nobody in. Reset codes are opaque tokens, so this is a
+// pasteable field — never the PIN/TV code input.
 
-const INVALID_MESSAGE = "That reset code isn't valid anymore. Ask for a new one."
+// The server's validation 400 carries no sentence of its own.
+const UNUSABLE_PASSWORD_MESSAGE = 'That password cannot be used. Choose a different one.'
+const FALLBACK_MESSAGE = 'Something went wrong. Please try again.'
 
 export function ResetPasswordScreen({ initialCode }: { initialCode?: string }) {
   const [code, setCode] = useState(initialCode ?? '')
@@ -34,7 +35,7 @@ export function ResetPasswordScreen({ initialCode }: { initialCode?: string }) {
   if (done) {
     return (
       <Stack maw={480}>
-        <h1 className="authTitle">Password changed</h1>
+        <AuthTitle>Password changed</AuthTitle>
         <Text>
           Every signed-in session was signed out. <Anchor href="/login">Sign in</Anchor> with your
           new password.
@@ -46,7 +47,7 @@ export function ResetPasswordScreen({ initialCode }: { initialCode?: string }) {
   return (
     <form onSubmit={redeem}>
       <Stack maw={480}>
-        <h1 className="authTitle">Choose a new password</h1>
+        <AuthTitle>Choose a new password</AuthTitle>
         {failure && (
           <Alert color="red" role="alert">
             {failure}
@@ -86,19 +87,16 @@ export function ResetPasswordScreen({ initialCode }: { initialCode?: string }) {
   )
 }
 
+/** The server's sentence, except that only Retry-After can say how long a throttle lasts. */
 function refusalMessage(error: unknown): string {
-  if (error instanceof AuthApiError) {
-    if (error.status === 404) {
-      return INVALID_MESSAGE
-    }
-    if (error.status === 429) {
-      return error.retryAfterSeconds
-        ? `Too many attempts. Try again in ${error.retryAfterSeconds} seconds.`
-        : 'Too many attempts. Try again later.'
-    }
-    if (error.status === 400) {
-      return 'That password cannot be used. Choose a different one.'
-    }
+  if (!(error instanceof AuthApiError)) {
+    return FALLBACK_MESSAGE
   }
-  return 'Something went wrong. Please try again.'
+  if (error.retryAfterSeconds) {
+    return `Too many attempts. Try again in ${error.retryAfterSeconds} seconds.`
+  }
+  if (error.serverMessage) {
+    return error.serverMessage
+  }
+  return error.status === 400 ? UNUSABLE_PASSWORD_MESSAGE : FALLBACK_MESSAGE
 }

@@ -1,36 +1,37 @@
 import { Alert, Center, Loader, SegmentedControl, Stack, Text } from '@mantine/core'
 import { useState } from 'react'
 import { useAuth } from '../auth/AuthProvider'
-import type { AuthTokens } from '../auth/api'
+import { AuthApiError, type AuthTokens } from '../auth/api'
 import type { MeQuery } from '../graphql/generated/graphql'
+import { AuthTitle } from '../ui/AuthShell'
 import { ProfileTile } from '../ui/ProfileTile'
 import { PinGate } from './PinGate'
 import { useMe } from './useMe'
+import styles from './Picker.module.css'
 
 type SelectableProfile = MeQuery['me']['selectableProfiles']['edges'][number]['node']
 
-// Frame 15: the Profile picker of the context Household, with the Household switcher when the
-// Personal Profile is shared into other Households. A locked Profile stays visible but cannot be
-// chosen — the lock is the Household's PIN safety rule, not a permission. Selecting a protected
-// Profile opens the PIN gate (frame 15a); the server ceremony decides everything else.
-//
-// The gate is controlled from outside through pinProfileId — the route stores it in the URL so
-// the gate is a history entry the browser's Back can leave.
+const SESSION_REFUSALS = new Set(['AUTHENTICATION_REQUIRED', 'EXPIRED_TOKEN', 'INVALID_TOKEN'])
+
+// pinProfileId is the route's to keep in the URL, so the browser's Back can leave the gate.
 export function Picker({
   pinProfileId,
   onPinRequested,
   onPinDismissed,
   onProfileSelected,
+  onUnauthenticated,
 }: {
   pinProfileId?: string
   onPinRequested: (profileId: string) => void
   onPinDismissed: () => void
   onProfileSelected: (tokens: AuthTokens) => void
+  onUnauthenticated: () => void
 }) {
   const { data, loading, error } = useMe()
   const { selectHousehold, selectProfile } = useAuth()
   const [busy, setBusy] = useState<string | null>(null)
   const [switching, setSwitching] = useState(false)
+  const [failure, setFailure] = useState<string | null>(null)
 
   if (loading) {
     return (
@@ -56,12 +57,35 @@ export function Picker({
     if (householdId === me.contextHousehold.id) {
       return
     }
+    setFailure(null)
     setSwitching(true)
     try {
       // The auth boundary resets the Apollo store, which refetches the active Me.
       await selectHousehold(householdId)
+    } catch (error) {
+      refuse(error, "Couldn't switch Households. Try again.")
     } finally {
       setSwitching(false)
+    }
+  }
+
+  function refuse(error: unknown, fallback: string) {
+    if (isSessionRefusal(error)) {
+      onUnauthenticated()
+      return
+    }
+    setFailure(refusalMessage(error, fallback))
+  }
+
+  // The gate shows its own refusals; only a dead session is taken off its hands.
+  async function select(request: () => Promise<AuthTokens>) {
+    try {
+      onProfileSelected(await request())
+    } catch (error) {
+      if (!isSessionRefusal(error)) {
+        throw error
+      }
+      onUnauthenticated()
     }
   }
 
@@ -73,38 +97,37 @@ export function Picker({
       onPinRequested(profile.id)
       return
     }
+    setFailure(null)
     setBusy(profile.id)
     try {
       onProfileSelected(await selectProfile(profile.id))
+    } catch (error) {
+      refuse(error, "Couldn't select that Profile. Try again.")
     } finally {
       setBusy(null)
     }
   }
 
-  // Frame 15a is a full state of this screen, not an overlay (principle 11). A stale or
-  // hand-edited deep link must never open a gate the grid itself would refuse: only a
-  // protected, unlocked Profile qualifies — anything else falls back to the grid.
-  const pinFor =
-    profiles.find(
-      (profile) => profile.id === pinProfileId && profile.pinConfigured && !profile.locked,
-    ) ?? null
-  if (pinFor) {
-    const gated = pinFor
+  const gated = findGatedProfile(profiles, pinProfileId)
+  if (gated) {
     return (
       <PinGate
         profileName={gated.name}
         paletteIndex={profiles.findIndex((profile) => profile.id === gated.id)}
         onSwitchProfile={onPinDismissed}
-        onSubmit={async (pin: string) => {
-          onProfileSelected(await selectProfile(gated.id, pin))
-        }}
+        onSubmit={(pin: string) => select(() => selectProfile(gated.id, pin))}
       />
     )
   }
 
   return (
     <Stack gap={28}>
-      <h1 className="authTitle">Who's watching?</h1>
+      <AuthTitle>Who's watching?</AuthTitle>
+      {failure && (
+        <Alert color="red" role="alert">
+          {failure}
+        </Alert>
+      )}
       {households.length > 1 && (
         <SegmentedControl
           aria-label="Household"
@@ -117,7 +140,7 @@ export function Picker({
           }))}
         />
       )}
-      <div className="profileTiles">
+      <div className={styles.profileTiles}>
         {profiles.map((profile, index) => (
           <ProfileTile
             key={profile.id}
@@ -135,5 +158,31 @@ export function Picker({
         <Text c="dimmed">No Profiles are available in {me.contextHousehold.name} yet.</Text>
       )}
     </Stack>
+  )
+}
+
+// A deep link must never open a gate the grid itself would refuse.
+function findGatedProfile(
+  profiles: SelectableProfile[],
+  pinProfileId: string | undefined,
+): SelectableProfile | undefined {
+  return profiles.find(
+    (profile) => profile.id === pinProfileId && profile.pinConfigured && !profile.locked,
+  )
+}
+
+function refusalMessage(error: unknown, fallback: string): string {
+  if (!(error instanceof AuthApiError)) {
+    return fallback
+  }
+  return error.serverMessage ?? fallback
+}
+
+function isSessionRefusal(error: unknown): boolean {
+  return (
+    error instanceof AuthApiError &&
+    error.status === 401 &&
+    error.code !== null &&
+    SESSION_REFUSALS.has(error.code)
   )
 }

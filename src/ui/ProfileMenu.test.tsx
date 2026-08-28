@@ -13,6 +13,11 @@ const TOKENS = {
   scope: 'profile',
 }
 
+const DENIED = {
+  code: 'PROFILE_ACCESS_DENIED',
+  message: 'The requested profile is not accessible to this account.',
+}
+
 function household(): MeQuery['me'] {
   const profiles = [
     profileFixture({ id: 'p-alex', name: 'Alex', selected: true }),
@@ -23,15 +28,27 @@ function household(): MeQuery['me'] {
   return { ...meFixture({ profiles }), serverAdmin: true } as MeQuery['me']
 }
 
+type MenuProps = Parameters<typeof ProfileMenu>[0]
+
+function renderMenu(overrides: Partial<MenuProps> = {}) {
+  return renderWithProviders(
+    <ProfileMenu
+      me={household()}
+      onPinRequired={vi.fn()}
+      onSignedOut={vi.fn()}
+      onUnauthenticated={vi.fn()}
+      {...overrides}
+    />,
+  )
+}
+
 async function openMenu(user: ReturnType<typeof import('@testing-library/user-event').default.setup>) {
   await user.click(screen.getByRole('button', { name: /profile menu \(alex\)/i }))
 }
 
 describe('ProfileMenu', () => {
   it('shouldShowEveryProfileWithTheCurrentOneLeading', async () => {
-    const { user } = renderWithProviders(
-      <ProfileMenu me={household()} onPinRequired={vi.fn()} onSignedOut={vi.fn()} />,
-    )
+    const { user } = renderMenu()
 
     await openMenu(user)
 
@@ -44,6 +61,34 @@ describe('ProfileMenu', () => {
     expect(screen.getByRole('button', { name: /rob \(locked\)/i })).toBeDisabled()
   })
 
+  it('shouldReturnFocusToTheChipWhenEscapeClosesThePanel', async () => {
+    const { user } = renderMenu()
+    const chip = screen.getByRole('button', { name: /profile menu \(alex\)/i })
+
+    await user.click(chip)
+    await user.tab()
+    expect(screen.getByRole('button', { name: 'Sam' })).toHaveFocus()
+
+    await user.keyboard('{Escape}')
+
+    expect(screen.queryByRole('button', { name: 'Sam' })).not.toBeInTheDocument()
+    expect(chip).toHaveFocus()
+    expect(chip).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('shouldDiscloseThePanelRatherThanClaimAMenuRole', async () => {
+    const { user } = renderMenu()
+    const chip = screen.getByRole('button', { name: /profile menu \(alex\)/i })
+
+    await user.click(chip)
+
+    const panel = document.getElementById(chip.getAttribute('aria-controls') ?? '')
+    expect(panel).not.toBeNull()
+    expect(panel).toContainElement(screen.getByRole('button', { name: 'Sam' }))
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(chip).not.toHaveAttribute('aria-haspopup')
+  })
+
   it('shouldSwitchToAPinlessProfileDirectly', async () => {
     let selected: unknown = null
     server.use(
@@ -53,14 +98,41 @@ describe('ProfileMenu', () => {
       }),
       graphql.query('Me', () => HttpResponse.json({ data: { me: household() } })),
     )
-    const { user } = renderWithProviders(
-      <ProfileMenu me={household()} onPinRequired={vi.fn()} onSignedOut={vi.fn()} />,
-    )
+    const { user } = renderMenu()
 
     await openMenu(user)
     await user.click(screen.getByRole('button', { name: 'Sam' }))
 
     await waitFor(() => expect(selected).toEqual({ profileId: 'p-sam' }))
+  })
+
+  it('shouldReportARefusedSwitchInsideThePanel', async () => {
+    server.use(
+      http.post('/api/auth/select-profile', () => HttpResponse.json(DENIED, { status: 403 })),
+    )
+    const { user } = renderMenu()
+
+    await openMenu(user)
+    await user.click(screen.getByRole('button', { name: 'Sam' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(DENIED.message)
+    expect(screen.getByRole('button', { name: 'Sam' })).toBeEnabled()
+  })
+
+  it('shouldHandASessionEvictionToTheCaller', async () => {
+    server.use(
+      http.post('/api/auth/select-profile', () =>
+        HttpResponse.json({ code: 'AUTHENTICATION_REQUIRED' }, { status: 401 }),
+      ),
+    )
+    const onUnauthenticated = vi.fn()
+    const { user } = renderMenu({ onUnauthenticated })
+
+    await openMenu(user)
+    await user.click(screen.getByRole('button', { name: 'Sam' }))
+
+    await waitFor(() => expect(onUnauthenticated).toHaveBeenCalledOnce())
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('shouldDetourAPinProtectedProfileThroughTheGate', async () => {
@@ -72,9 +144,7 @@ describe('ProfileMenu', () => {
       }),
     )
     const onPinRequired = vi.fn()
-    const { user } = renderWithProviders(
-      <ProfileMenu me={household()} onPinRequired={onPinRequired} onSignedOut={vi.fn()} />,
-    )
+    const { user } = renderMenu({ onPinRequired })
 
     await openMenu(user)
     await user.click(screen.getByRole('button', { name: /toni \(pin protected\)/i }))
@@ -92,9 +162,7 @@ describe('ProfileMenu', () => {
       }),
     )
     const onSignedOut = vi.fn()
-    const { user } = renderWithProviders(
-      <ProfileMenu me={household()} onPinRequired={vi.fn()} onSignedOut={onSignedOut} />,
-    )
+    const { user } = renderMenu({ onSignedOut })
 
     await openMenu(user)
     await user.click(screen.getByRole('button', { name: /sign out/i }))

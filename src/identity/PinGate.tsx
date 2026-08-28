@@ -1,15 +1,15 @@
 import { Button, Text } from '@mantine/core'
 import { useState } from 'react'
 import { AuthApiError } from '../auth/api'
+import { AuthTitle } from '../ui/AuthShell'
 import { CodeInput } from '../ui/CodeInput'
 import { PinGateAvatar } from '../ui/ProfileTile'
+import styles from './PinGate.module.css'
 
 const PIN_SHAPE = /^\d{4,8}$/
+const FAILURE_MESSAGE = "Couldn't select that Profile. Try again."
 
-// Frame 15a: the PIN gate for a protected Profile, a full state of the picker screen rather
-// than a modal (principle 11 — nothing here is a one-way door). The server owns the whole
-// ceremony — throttling, verification, the Household safety lock — so this collects digits
-// and translates the typed refusals. Codes and PINs never touch GraphQL (ADR 0024).
+// PINs ride the REST ceremony, never GraphQL: the server verifies, throttles, and refuses.
 export function PinGate({
   profileName,
   paletteIndex,
@@ -25,8 +25,6 @@ export function PinGate({
   const [failure, setFailure] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  // A real form: Enter inside the PIN field submits, exactly like every other credential
-  // entry. The guard mirrors the button's — a short PIN is not a submission.
   async function submit(event: React.FormEvent) {
     event.preventDefault()
     if (busy || !PIN_SHAPE.test(pin)) {
@@ -37,18 +35,22 @@ export function PinGate({
     try {
       await onSubmit(pin)
     } catch (error) {
-      setPin('')
-      setFailure(refusalMessage(error))
+      refuse(error)
     } finally {
       setBusy(false)
     }
   }
 
+  function refuse(error: unknown) {
+    setPin('')
+    setFailure(refusalMessage(error))
+  }
+
   return (
-    <form className="pinGate" onSubmit={submit}>
+    <form className={styles.pinGate} onSubmit={submit}>
       <PinGateAvatar name={profileName} paletteIndex={paletteIndex} />
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-        <h1 className="authTitle">Enter {profileName}&rsquo;s PIN</h1>
+      <div className={styles.pinGateColumn}>
+        <AuthTitle>Enter {profileName}&rsquo;s PIN</AuthTitle>
         {failure && (
           <Text role="alert" style={{ color: 'var(--color-red-error-text)' }}>
             {failure}
@@ -64,7 +66,7 @@ export function PinGate({
           autoFocus
           testId="pin-input"
         />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        <div className={styles.pinGateActions}>
           <Button type="submit" loading={busy} disabled={!PIN_SHAPE.test(pin)}>
             Unlock
           </Button>
@@ -78,18 +80,11 @@ export function PinGate({
 }
 
 function refusalMessage(error: unknown): string {
-  if (error instanceof AuthApiError) {
-    if (error.status === 401) {
-      return "That PIN isn't right. Try again."
-    }
-    if (error.status === 429) {
-      return error.retryAfterSeconds
-        ? `Too many attempts. Try again in ${error.retryAfterSeconds} seconds.`
-        : 'Too many attempts. Try again later.'
-    }
-    if (error.status === 409) {
-      return 'This Profile is locked until a PIN is set for it.'
-    }
+  if (!(error instanceof AuthApiError)) {
+    return FAILURE_MESSAGE
   }
-  return "Couldn't select that Profile. Try again."
+  if (error.retryAfterSeconds) {
+    return `Too many attempts. Try again in ${error.retryAfterSeconds} seconds.`
+  }
+  return error.serverMessage ?? FAILURE_MESSAGE
 }

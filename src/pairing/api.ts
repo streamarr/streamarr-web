@@ -33,7 +33,6 @@ export function lookupPairingRequest(
   return postJson('/api/auth/device/authorizations/lookup', { userCode })
 }
 
-// Approval binds the TV to one chosen Household; denial names none.
 export function decidePairingRequest(
   userCode: string,
   decision: PairingDecision,

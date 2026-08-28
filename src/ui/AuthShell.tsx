@@ -1,15 +1,13 @@
-import type { ReactNode } from 'react'
-import './auth.css'
+import { rem, Text, type TextProps } from '@mantine/core'
+import type { ComponentPropsWithoutRef, ReactNode } from 'react'
+import styles from './AuthShell.module.css'
 
-// The shared frame of every auth ceremony (frames 12-15a): black ground, the brand bloom,
-// a left scrim, and one left-anchored column under the wordmark. Layout chrome only — each
-// screen keeps its own heading and content, so screens stay testable in isolation.
 export function AuthShell({ width = 400, children }: { width?: number; children: ReactNode }) {
   return (
-    <div className="authShell">
-      <div className="authShellBloom" />
-      <div className="authShellScrim" />
-      <div className="authShellColumn" style={{ maxWidth: width }}>
+    <div className={styles.authShell}>
+      <div className={styles.authShellBloom} />
+      <div className={styles.authShellScrim} />
+      <div className={styles.authShellColumn} style={{ maxWidth: rem(width) }}>
         <Wordmark />
         {children}
       </div>
@@ -17,7 +15,20 @@ export function AuthShell({ width = 400, children }: { width?: number; children:
   )
 }
 
-// The one sanctioned gradient-text rendering (principle 2.4): a version of the mark, not text.
+// The one sanctioned gradient-text rendering: a version of the mark, not text.
 export function Wordmark() {
-  return <div className="wordmark">STREAMARR</div>
+  return <div className={styles.wordmark}>STREAMARR</div>
+}
+
+// A plain h1 on purpose: Mantine's Title zeroes the margin the ceremonies' rhythm relies on.
+export function AuthTitle({ className, ...props }: ComponentPropsWithoutRef<'h1'>) {
+  return <h1 {...props} className={joinClasses(styles.authTitle, className)} />
+}
+
+export function AuthLede({ className, ...props }: TextProps & { children?: ReactNode }) {
+  return <Text {...props} className={joinClasses(styles.authLede, className)} />
+}
+
+function joinClasses(...names: (string | undefined)[]) {
+  return names.filter(Boolean).join(' ')
 }

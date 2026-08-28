@@ -3,15 +3,12 @@ import { createFileRoute, redirect } from '@tanstack/react-router'
 import { CSRF_REJECTION_MESSAGE, isCsrfRejection } from '../auth/csrf'
 import { extractAuthContext } from '../graphql/errorRouting'
 
-// The gate for every signed-in page: routes nested under this layout render only once the
-// server has vouched for the session (the client cannot read the httpOnly cookies, so only the
-// server's answer counts). New routes are protected by default by living in _authenticated/;
-// being public — /login, /setup — is the explicit choice. Mid-session evictions stay the Apollo
-// error link's job; this guard only covers arrival.
+// Only the server's answer counts (the httpOnly cookies are unreadable), and only on arrival:
+// mid-session evictions are the Apollo error link's job.
 export const Route = createFileRoute('/_authenticated')({
   beforeLoad: async ({ context, location }) => {
     if ((await context.session.ensure()) === 'anonymous') {
-      // The full href, so search params (like a pairing code) survive the round trip.
+      // The full href, so search params like a pairing code survive the round trip.
       throw redirect({ to: '/login', search: { redirect: location.href } })
     }
   },
@@ -28,10 +25,7 @@ function CheckingSession() {
   )
 }
 
-// The probe rejected: an outage, not a verdict. Bouncing to sign-in would gaslight a visitor
-// whose session may be fine, and rendering the page would waive the gate — so fail closed. A
-// CSRF-specific rejection gets its own actionable message; every page under this gate inherits
-// it instead of each page re-deriving it from its own query error.
+// A rejected probe is an outage, not a verdict: neither bounce nor waive the gate.
 function SessionUnconfirmed({ error }: { error: unknown }) {
   const context = extractAuthContext(error)
   const message = isCsrfRejection(context.networkStatus, context.networkCode)

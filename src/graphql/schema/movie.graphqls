@@ -1,0 +1,31 @@
+type Movie implements BaseCollectable {
+    id: ID!
+    createdBy: String
+    createdOn: String!
+    lastModifiedBy: String
+    lastModifiedOn: String!
+    title: String
+    originalTitle: String
+    titleSort: String
+    tagline: String
+    summary: String
+    runtime: Int
+    releaseDate: String
+    contentRating: ContentRating
+    files: [MediaFile]!
+    studios: [Company]!
+    cast: [Person]!
+    directors: [Person]!
+    genres: [Genre]!
+    ratings: [Rating]!
+    reviews: [Review]!
+    images(type: ImageType): [Image]!
+    watchProgress: WatchProgress
+    watchStatus: WatchStatus!
+}
+
+type ContentRating {
+    system: String!
+    value: String!
+    country: String!
+}

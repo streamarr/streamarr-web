@@ -8,6 +8,10 @@ describe('decideAuthRoute', () => {
     )
   })
 
+  it('shouldRouteToLoginOnAuthenticationRequiredAsAGraphqlError', () => {
+    expect(decideAuthRoute({ graphqlCodes: ['AUTHENTICATION_REQUIRED'] })).toBe('/login')
+  })
+
   it('shouldRouteToLoginOnInvalidToken', () => {
     expect(decideAuthRoute({ networkStatus: 401, networkCode: 'INVALID_TOKEN' })).toBe('/login')
   })
@@ -18,7 +22,7 @@ describe('decideAuthRoute', () => {
   })
 
   it('shouldNotRouteOnExpiredToken', () => {
-    // The service worker refreshes and replays these; the page must not redirect.
+    // The service worker renews and replays EXPIRED_TOKEN itself.
     expect(decideAuthRoute({ networkStatus: 401, networkCode: 'EXPIRED_TOKEN' })).toBeNull()
   })
 

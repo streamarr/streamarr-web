@@ -19,8 +19,8 @@ const PENDING = {
   households: [HOME],
 }
 
-function lookupReturns(body: object, status = 200) {
-  server.use(http.post(LOOKUP, () => HttpResponse.json(body, { status })))
+function lookupReturns(body: object, status = 200, headers?: Record<string, string>) {
+  server.use(http.post(LOOKUP, () => HttpResponse.json(body, { status, headers })))
 }
 
 function decisionReturns(body: object, status = 200, headers?: Record<string, string>) {
@@ -28,7 +28,6 @@ function decisionReturns(body: object, status = 200, headers?: Record<string, st
 }
 
 async function enterCode(user: ReturnType<typeof import('@testing-library/user-event').default.setup>, code = 'bcdf-ghjk') {
-  // Frame 13: lookup runs on the last character — typing the code is the whole gesture.
   await user.type(screen.getByLabelText(/pairing code/i), code)
 }
 
@@ -97,13 +96,26 @@ describe('LinkDevice', () => {
     expect(screen.queryByRole('button', { name: /approve/i })).not.toBeInTheDocument()
   })
 
+  it('shouldStillSayWhatHappenedForAStatusItDoesNotKnow', async () => {
+    lookupReturns({ ...PENDING, status: 'EXPIRED' })
+    const { user } = renderWithProviders(<LinkDevice />)
+
+    await enterCode(user)
+
+    expect(await screen.findByRole('button', { name: /link another device/i })).toBeInTheDocument()
+    expect(screen.getByRole('status').textContent?.trim()).not.toBe('')
+    expect(screen.queryByRole('button', { name: /approve/i })).not.toBeInTheDocument()
+  })
+
   it('shouldShowTheAuthoritativeOutcomeWhenTheDecisionRacesAnother', async () => {
     lookupReturns(PENDING)
-    decisionReturns({ code: 'DEVICE_CODE_NOT_PENDING' }, 409)
+    decisionReturns(
+      { code: 'DEVICE_CODE_NOT_PENDING', message: 'That pairing request has already been decided.' },
+      409,
+    )
     const { user } = renderWithProviders(<LinkDevice />)
     await enterCode(user)
 
-    // The 409 loses to whoever decided first; re-read rather than inviting a blind resubmit.
     lookupReturns({ ...PENDING, status: 'DENIED' })
     await user.click(await screen.findByRole('button', { name: /approve/i }))
 
@@ -112,39 +124,57 @@ describe('LinkDevice', () => {
   })
 
   it('shouldExplainAnUnknownOrExpiredCode', async () => {
-    lookupReturns({ code: 'DEVICE_CODE_NOT_FOUND' }, 404)
+    lookupReturns(
+      { code: 'DEVICE_CODE_NOT_FOUND', message: 'No pairing request matches that code.' },
+      404,
+    )
     const { user } = renderWithProviders(<LinkDevice />)
 
     await enterCode(user)
 
-    expect(await screen.findByText(/no pairing request matches/i)).toBeInTheDocument()
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'No pairing request matches that code.',
+    )
   })
 
   it('shouldExplainAMalformedCode', async () => {
-    lookupReturns({ code: 'INVALID_USER_CODE' }, 400)
+    lookupReturns(
+      { code: 'INVALID_USER_CODE', message: 'The user code is not a valid pairing code.' },
+      400,
+    )
     const { user } = renderWithProviders(<LinkDevice />)
 
     await enterCode(user, 'nopenope')
 
-    expect(await screen.findByText(/doesn't look like a pairing code/i)).toBeInTheDocument()
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The user code is not a valid pairing code.',
+    )
   })
 
   it('shouldExplainAnExpiredCodeAtDecisionTime', async () => {
     lookupReturns(PENDING)
-    decisionReturns({ code: 'DEVICE_CODE_EXPIRED' }, 400)
+    decisionReturns(
+      {
+        code: 'DEVICE_CODE_EXPIRED',
+        message: 'That pairing code has expired; start a new one on the device.',
+      },
+      400,
+    )
     const { user } = renderWithProviders(<LinkDevice />)
 
     await enterCode(user)
     await user.click(await screen.findByRole('button', { name: /approve/i }))
 
-    expect(await screen.findByText(/that code expired/i)).toBeInTheDocument()
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'That pairing code has expired; start a new one on the device.',
+    )
   })
 
   it('shouldSayHowLongToWaitWhenThrottled', async () => {
-    server.use(
-      http.post(LOOKUP, () =>
-        HttpResponse.json({ code: 'TOO_MANY_ATTEMPTS' }, { status: 429, headers: { 'Retry-After': '120' } }),
-      ),
+    lookupReturns(
+      { code: 'TOO_MANY_ATTEMPTS', message: 'Too many failed credential attempts. Try again later.' },
+      429,
+      { 'Retry-After': '120' },
     )
     const { user } = renderWithProviders(<LinkDevice />)
 
@@ -153,8 +183,36 @@ describe('LinkDevice', () => {
     expect(await screen.findByText(/try again in about 2 minutes/i)).toBeInTheDocument()
   })
 
+  it('shouldShowTheServersThrottleSentenceWhenNoRetryAfterIsGiven', async () => {
+    lookupReturns(
+      { code: 'TOO_MANY_ATTEMPTS', message: 'Too many failed credential attempts. Try again later.' },
+      429,
+    )
+    const { user } = renderWithProviders(<LinkDevice />)
+
+    await enterCode(user)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Too many failed credential attempts. Try again later.',
+    )
+  })
+
+  it('shouldFallBackToAGenericSentenceWhenTheServerSendsNone', async () => {
+    lookupReturns({}, 500)
+    const { user } = renderWithProviders(<LinkDevice />)
+
+    await enterCode(user)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Something went wrong. Please try again.',
+    )
+  })
+
   it('shouldBounceToSignInCarryingTheCodeWhenTheSessionExpired', async () => {
-    lookupReturns({ code: 'AUTHENTICATION_REQUIRED' }, 401)
+    lookupReturns(
+      { code: 'AUTHENTICATION_REQUIRED', message: 'Authentication is required.' },
+      401,
+    )
     const onUnauthenticated = vi.fn()
     const { user } = renderWithProviders(<LinkDevice onUnauthenticated={onUnauthenticated} />)
 
@@ -174,7 +232,6 @@ describe('LinkDevice', () => {
     )
     renderWithProviders(<LinkDevice initialCode="BCDF-GHJK" />)
 
-    // The field carries the normalized eight characters; the boxes draw the group separator.
     expect(await screen.findByLabelText(/pairing code/i)).toHaveValue('BCDFGHJK')
     expect(lookups).toBe(0)
   })
@@ -204,7 +261,6 @@ describe('LinkDevice', () => {
 
     await enterCode(user)
 
-    // No preselection with two Households: Approve stays locked until one is chosen.
     const approve = await screen.findByRole('button', { name: /approve/i })
     expect(approve).toBeDisabled()
     await user.click(screen.getByRole('radio', { name: 'Cabin' }))
@@ -221,14 +277,12 @@ describe('LinkDevice', () => {
 
   it('shouldExplainABlockedDevice', async () => {
     lookupReturns(PENDING)
-    decisionReturns({ code: 'ESN_BLOCKED' }, 403)
+    decisionReturns({ code: 'ESN_BLOCKED', message: 'That device is blocked.' }, 403)
     const { user } = renderWithProviders(<LinkDevice />)
 
     await enterCode(user)
     await user.click(await screen.findByRole('button', { name: /approve/i }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'That device is blocked and cannot be linked.',
-    )
+    expect(await screen.findByRole('alert')).toHaveTextContent('That device is blocked.')
   })
 })
