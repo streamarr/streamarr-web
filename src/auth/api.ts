@@ -56,5 +56,5 @@ export function selectProfile(profileId: string): Promise<AuthTokens> {
 }
 
 export async function logout(): Promise<void> {
-  await request('/api/auth/logout', { method: 'POST' })
+  await request('/api/auth/refresh/revoke', { method: 'POST' })
 }

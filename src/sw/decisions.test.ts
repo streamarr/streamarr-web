@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   decideIntercept,
-  isExpiredTokenResponse,
+  isRecoverableAccessTokenResponse,
   rememberCsrfToken,
   SingleFlight,
 } from './decisions'
@@ -27,6 +27,9 @@ describe('decideIntercept', () => {
     expect(decideIntercept(`${ORIGIN}/api/auth/refresh`, ORIGIN)).toBe(
       'pass-through',
     )
+    expect(decideIntercept(`${ORIGIN}/api/auth/refresh/revoke`, ORIGIN)).toBe(
+      'pass-through',
+    )
     // Playback URLs carry their own token; hls.js requests must not be touched.
     expect(
       decideIntercept(`${ORIGIN}/api/stream/abc/multivariant.m3u8`, ORIGIN),
@@ -47,18 +50,24 @@ describe('decideIntercept', () => {
   })
 })
 
-describe('isExpiredTokenResponse', () => {
+describe('isRecoverableAccessTokenResponse', () => {
   it('shouldDetectExpiredTokenResponse', () => {
-    expect(isExpiredTokenResponse(401, { code: 'EXPIRED_TOKEN' })).toBe(true)
+    expect(isRecoverableAccessTokenResponse(401, { code: 'EXPIRED_TOKEN' })).toBe(true)
+  })
+
+  it('shouldDetectInvalidAccessTokenResponse', () => {
+    expect(isRecoverableAccessTokenResponse(401, { code: 'INVALID_TOKEN' })).toBe(true)
   })
 
   it('shouldIgnoreOtherUnauthorizedAndNonJsonResponses', () => {
-    // INVALID_TOKEN / AUTHENTICATION_REQUIRED must fall through to the page's login routing.
-    expect(isExpiredTokenResponse(401, { code: 'INVALID_TOKEN' })).toBe(false)
-    expect(isExpiredTokenResponse(401, null)).toBe(false)
-    expect(isExpiredTokenResponse(401, 'nope')).toBe(false)
-    expect(isExpiredTokenResponse(403, { code: 'EXPIRED_TOKEN' })).toBe(false)
-    expect(isExpiredTokenResponse(200, { code: 'EXPIRED_TOKEN' })).toBe(false)
+    // AUTHENTICATION_REQUIRED is already terminal and must fall through to login routing.
+    expect(
+      isRecoverableAccessTokenResponse(401, { code: 'AUTHENTICATION_REQUIRED' }),
+    ).toBe(false)
+    expect(isRecoverableAccessTokenResponse(401, null)).toBe(false)
+    expect(isRecoverableAccessTokenResponse(401, 'nope')).toBe(false)
+    expect(isRecoverableAccessTokenResponse(403, { code: 'EXPIRED_TOKEN' })).toBe(false)
+    expect(isRecoverableAccessTokenResponse(200, { code: 'EXPIRED_TOKEN' })).toBe(false)
   })
 })
 

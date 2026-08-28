@@ -9,7 +9,7 @@ Status: completed and verified on 2026-08-06.
 - A shared worker owns only the proactive clock while at least one app page is open.
 - Pages bridge messages between the two workers and pass only expiry metadata and the
   script-readable CSRF token. Authentication cookies remain `httpOnly`.
-- Reactive `EXPIRED_TOKEN` recovery remains the correctness fallback when either worker is
+- Reactive access-token recovery remains the correctness fallback when either worker is
   unavailable or has lost volatile state.
 
 ## Behavior checklist
@@ -20,7 +20,8 @@ Status: completed and verified on 2026-08-06.
   responses as transient failures.
 - [x] Refresh before forwarding an intercepted request when the known expiry is inside the renewal
   leeway.
-- [x] Refresh and replay once after an intercepted `401 EXPIRED_TOKEN` response.
+- [x] Refresh and replay once after an intercepted `401 EXPIRED_TOKEN` or `401 INVALID_TOKEN`
+  response.
 - [x] Collapse proactive and reactive refresh attempts onto one in-flight refresh.
 - [x] Preserve the original authentication response after a terminal refresh rejection.
 - [x] Return a non-authentication failure after a transient refresh outage so the page does not
