@@ -14,6 +14,7 @@ import {
 import { createSessionStore, type SessionStore } from '../auth/session'
 import { createApolloClient } from '../graphql/client'
 import { createAppRouter } from '../router'
+import { cssVariablesResolver, theme } from '../theme'
 
 type Rendered = RenderResult & { user: ReturnType<typeof userEvent.setup> }
 
@@ -71,7 +72,7 @@ function renderUnderProviders(
   const user = userEvent.setup()
   const result = render(
     <ApolloProvider client={client}>
-      <MantineProvider defaultColorScheme="dark">
+      <MantineProvider defaultColorScheme="dark" theme={theme} cssVariablesResolver={cssVariablesResolver}>
         <AuthProvider sessionStore={session} renewal={renewal}>
           {ui}
         </AuthProvider>
