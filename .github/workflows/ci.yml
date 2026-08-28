@@ -23,6 +23,20 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npm run typecheck
+      # The browser suite drives the real vite dev server (playwright.config.ts
+      # starts it plus the stub API) because dev-mode wiring — service-worker
+      # scope, proxy headers, watcher behavior — is invisible to both the unit
+      # tests and the production build.
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      # The page-state-at-failure snapshots are what make a red run debuggable
+      # without reproducing locally.
+      - name: Upload browser failure context
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: test-results/
       # streamarr-ux is private, so this gate needs a read token for it
       # (fine-grained PAT with Contents: read on streamarr/streamarr-ux,
       # stored as STREAMARR_UX_TOKEN). Until the secret exists the step
