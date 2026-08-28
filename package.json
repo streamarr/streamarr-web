@@ -13,8 +13,10 @@
     "tokens:check": "gh api \"repos/streamarr/streamarr-ux/contents/dist/web/tokens.css?ref=$(cat TOKENS_REF)\" -H 'Accept: application/vnd.github.raw' | diff - src/styles/tokens.generated.css",
     "test:e2e": "playwright test",
     "schema:pull": "node scripts/pull-schema.mjs",
-    "codegen": "graphql-codegen --config codegen.ts",
-    "codegen:check": "npm run schema:pull && npm run codegen && drift=\"$(git status --porcelain -- src/graphql/schema src/graphql/generated)\" && if [ -n \"$drift\" ]; then echo \"Generated GraphQL artifacts drifted:\"; echo \"$drift\"; exit 1; fi"
+    "openapi:pull": "node scripts/pull-openapi.mjs",
+    "openapi:codegen": "openapi-typescript src/api/openapi.json -o src/api/generated/openapi.d.ts",
+    "codegen": "graphql-codegen --config codegen.ts && npm run openapi:codegen",
+    "codegen:check": "npm run schema:pull && npm run openapi:pull && npm run codegen && drift=\"$(git status --porcelain -- src/graphql/schema src/graphql/generated src/api/openapi.json src/api/generated)\" && if [ -n \"$drift\" ]; then echo \"Generated contract artifacts drifted:\"; echo \"$drift\"; exit 1; fi"
   },
   "repository": {
     "type": "git",
@@ -29,6 +31,11 @@
   "engines": {
     "node": ">=24",
     "npm": ">=11"
+  },
+  "overrides": {
+    "openapi-typescript": {
+      "typescript": "$typescript"
+    }
   },
   "dependencies": {
     "@apollo/client": "^4.2.6",
@@ -60,6 +67,7 @@
     "@vitest/coverage-v8": "^4.1.10",
     "jsdom": "^29.1.1",
     "msw": "^2.15.0",
+    "openapi-typescript": "^7.13.0",
     "postcss": "^8.5.16",
     "postcss-preset-mantine": "^1.18.0",
     "postcss-simple-vars": "^7.0.1",

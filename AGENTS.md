@@ -9,8 +9,9 @@
 - `npm run typecheck` — TypeScript, no emit, for both the app and the `tsconfig.e2e.json` project
 - `npm run build` — production bundle (Vite)
 - `npm run schema:pull` — refresh `src/graphql/schema/` (the server's `.graphqls` files + `PROVENANCE`) from the pinned server commit
-- `npm run codegen` — regenerate `src/graphql/generated/` from the schema and `.graphql` documents
-- `npm run codegen:check` — CI drift gate: pull + generate, then fail on any diff or untracked output
+- `npm run openapi:pull` — refresh `src/api/openapi.json` (the server's OpenAPI document) from the same pinned commit
+- `npm run codegen` — regenerate `src/graphql/generated/` from the schema and `.graphql` documents, and `src/api/generated/` from the OpenAPI document
+- `npm run codegen:check` — CI drift gate: pull both, generate, then fail on any diff or untracked output
 - `npm run tokens` — refresh `src/styles/tokens.generated.css` from streamarr-ux (needs `gh` auth for the private repo)
 - `npm run tokens:check` — CI drift gate: fail if the committed tokens differ from streamarr-ux
 - `TOKENS_REF` pins the streamarr-ux commit the tokens come from; `npm run tokens` is the only way
@@ -22,10 +23,19 @@
 - Signed commits (`git commit -S`); no Co-Authored-By or AI attribution trailers
 - Never mix structural and behavioral changes in one commit
 
-## GraphQL contract
-- The server SDL is pinned to an exact streamarr-server main commit in `src/graphql/schema.pin.json`;
-  `npm run schema:pull` vendors the server's `.graphqls` files verbatim into `src/graphql/schema/`
-  and records the source in `src/graphql/schema/PROVENANCE`. Never edit that directory by hand.
+## Server contract
+- The server contract is pinned to an exact streamarr-server commit in `src/graphql/schema.pin.json`;
+  the one pin covers both the SDL (`schemaDirectory`) and the REST document (`openapiDocument`,
+  the server's `docs/openapi.json`). Bumping it is a deliberate, reviewed change.
+- `npm run schema:pull` vendors the server's `.graphqls` files verbatim into `src/graphql/schema/`
+  and records the source in `src/graphql/schema/PROVENANCE`; `npm run openapi:pull` vendors the
+  OpenAPI document byte-for-byte into `src/api/openapi.json`. Never edit `src/graphql/schema/`,
+  `src/api/openapi.json`, `src/graphql/generated/`, or `src/api/generated/` by hand — `npm run codegen`
+  is the only way they change.
+- REST DTOs are aliases over the generated `paths`/`components` via `src/api/contract.ts`
+  (`Schema`, `RequestBody`, `Response2xx`), never hand-written interfaces; where the document is
+  wider than the server's behaviour (optional response fields, open enums) the client narrows
+  locally and says so.
 - Operations live in `.graphql` files next to their feature (or under `src/graphql/operations/`);
   generated types and typed documents come from GraphQL Code Generator and are committed.
 - Apollo's `InMemoryCache` is configured with generated `possibleTypes`; treat unknown union and
