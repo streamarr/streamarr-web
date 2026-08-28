@@ -1,0 +1,31 @@
+.container {
+  border-radius: var(--radius-2xl);
+  background: var(--surface-wash);
+  overflow: hidden;
+}
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-16) var(--spacing-20);
+  /* Solid on purpose: the poster grid scrolls in place underneath this heading. */
+  background: var(--surface-raised);
+  border-bottom: var(--border-width-hairline) solid var(--border-hairline);
+}
+
+.title {
+  font-size: var(--font-size-title);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.body {
+  height: 600px;
+  overflow-y: auto;
+  padding: var(--spacing-20);
+}

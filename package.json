@@ -42,6 +42,7 @@
     "@mantine/core": "^9.4.1",
     "@mantine/hooks": "^9.4.1",
     "@tanstack/react-router": "^1.170.17",
+    "blurhash": "^2.0.5",
     "graphql": "^16.14.2",
     "graphql-ws": "^6.0.8",
     "hls.js": "^1.6.16",

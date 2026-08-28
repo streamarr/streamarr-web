@@ -1,0 +1,49 @@
+fragment MediaSummaryFields on Media {
+  __typename
+  ... on Movie {
+    id
+    title
+    titleSort
+    releaseDate
+    runtime
+    watchStatus
+    watchProgress {
+      percentComplete
+    }
+    images(type: POSTER) {
+      aspectRatio
+      blurHash
+      variants {
+        id
+        size
+        width
+        height
+        url
+      }
+    }
+  }
+  ... on Series {
+    id
+    title
+    titleSort
+    firstAirDate
+    seasons {
+      id
+    }
+    watchStatus
+    watchProgress {
+      percentComplete
+    }
+    images(type: POSTER) {
+      aspectRatio
+      blurHash
+      variants {
+        id
+        size
+        width
+        height
+        url
+      }
+    }
+  }
+}

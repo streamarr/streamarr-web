@@ -1,0 +1,40 @@
+.stillCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 444px;
+  flex: none;
+}
+
+.stillArt {
+  position: relative;
+  width: 444px;
+  height: 250px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.progressTrack {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: var(--color-alpha-32);
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--color-white);
+}
+
+.stillTitle {
+  font-size: var(--font-size-emphasis);
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.stillSubtitle {
+  font-size: var(--font-size-caption);
+  color: var(--text-secondary);
+}

@@ -28,3 +28,30 @@ class QuietResizeObserver {
   disconnect() {}
 }
 globalThis.ResizeObserver ??= QuietResizeObserver as unknown as typeof ResizeObserver
+
+// jsdom has no IntersectionObserver either. Unlike ResizeObserver this one isn't fire-and-forget:
+// infinite-scroll and alphabet-rail tests need to trigger it manually, so each instance is kept
+// reachable via `intersectionObserverInstances` instead of being a no-op stub.
+export class MockIntersectionObserver implements IntersectionObserver {
+  root: Element | Document | null = null
+  rootMargin = ''
+  scrollMargin = ''
+  thresholds: ReadonlyArray<number> = []
+  readonly callback: IntersectionObserverCallback
+
+  constructor(callback: IntersectionObserverCallback) {
+    this.callback = callback
+    intersectionObserverInstances.push(this)
+  }
+
+  observe = vi.fn()
+  unobserve = vi.fn()
+  disconnect = vi.fn()
+  takeRecords = (): IntersectionObserverEntry[] => []
+}
+export const intersectionObserverInstances: MockIntersectionObserver[] = []
+globalThis.IntersectionObserver ??= MockIntersectionObserver as unknown as typeof IntersectionObserver
+
+afterEach(() => {
+  intersectionObserverInstances.length = 0
+})
