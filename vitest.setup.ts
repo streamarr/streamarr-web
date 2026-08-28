@@ -21,6 +21,10 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
 
+// jsdom has no scroll layout, so it implements neither this nor a meaningful scroll position;
+// tests that care about scrolling assert against the mocked IntersectionObserver instead.
+Element.prototype.scrollIntoView ??= function scrollIntoView() {}
+
 // Mantine's SegmentedControl positions its indicator with ResizeObserver, which jsdom lacks.
 class QuietResizeObserver {
   observe() {}

@@ -59,6 +59,8 @@ function Harness({ initialFilter = {} }: { initialFilter?: MediaFilter }) {
     <div>
       <div data-testid="loading">{String(result.loading)}</div>
       <div data-testid="hasNextPage">{String(result.hasNextPage)}</div>
+      <div data-testid="hasPreviousPage">{String(result.hasPreviousPage)}</div>
+      <div data-testid="scrollTarget">{result.scrollTarget ?? ''}</div>
       <ul>
         {result.edges.map((edge) => (
           <li key={edge.cursor}>{edge.node.title}</li>
@@ -66,6 +68,9 @@ function Harness({ initialFilter = {} }: { initialFilter?: MediaFilter }) {
       </ul>
       <button type="button" onClick={result.loadMore}>
         Load more
+      </button>
+      <button type="button" onClick={result.loadPrevious}>
+        Load previous
       </button>
       <button type="button" onClick={() => setFilter({ startLetter: 'N' })}>
         Jump to N
@@ -125,12 +130,14 @@ describe('useLibraryItems', () => {
     expect(screen.getByTestId('hasNextPage')).toHaveTextContent('false')
   })
 
-  it('replaces edges with the seek page and issues one backward fetch when hasPreviousPage is true', async () => {
+  it('replaces edges with the seek page, issues one backward fetch dropping startLetter, and records the jump target to scroll to', async () => {
     let backwardFetches = 0
+    let backwardFilter: unknown
     server.use(
       graphql.query('LibraryPage', ({ variables }) => {
         if (variables.before) {
           backwardFetches += 1
+          backwardFilter = variables.filter
           return HttpResponse.json({
             data: libraryResponse({
               edges: [{ cursor: 'c-before', node: movieNode('0', 'Alright') }],
@@ -159,9 +166,73 @@ describe('useLibraryItems', () => {
 
     await user.click(screen.getByText('Jump to N'))
 
+    // The landing page's own node is briefly the recorded scroll target, before the backward
+    // fetch (which the effect kicks off in the same tick) prepends items above it.
+    await waitFor(() => expect(screen.getByTestId('scrollTarget')).toHaveTextContent('c-n'))
     await waitFor(() => expect(screen.getByText('Alright')).toBeInTheDocument())
     expect(screen.getByText('Northern Line')).toBeInTheDocument()
     expect(backwardFetches).toBe(1)
+    // Once paginating via `before`, the seek anchor has nothing left to do (ADR 0018) — dropped,
+    // matching streamarr-apple's fetchPreviousPage.
+    expect(backwardFilter).toEqual({})
+  })
+
+  it('keeps loading previous pages on repeated loadPrevious calls, all the way back to the start', async () => {
+    let backwardCallCount = 0
+    server.use(
+      graphql.query('LibraryPage', ({ variables }) => {
+        if (variables.before === 'c-n') {
+          backwardCallCount += 1
+          return HttpResponse.json({
+            data: libraryResponse({
+              edges: [{ cursor: 'c-m', node: movieNode('m', 'Mid Title') }],
+              hasPreviousPage: true,
+              startCursor: 'c-m',
+            }),
+          })
+        }
+        if (variables.before === 'c-m') {
+          backwardCallCount += 1
+          return HttpResponse.json({
+            data: libraryResponse({
+              edges: [{ cursor: 'c-a', node: movieNode('a', 'Alright') }],
+              hasPreviousPage: false,
+            }),
+          })
+        }
+        if (variables.filter?.startLetter === 'N') {
+          return HttpResponse.json({
+            data: libraryResponse({
+              edges: [{ cursor: 'c-n', node: movieNode('n', 'Northern Line') }],
+              hasPreviousPage: true,
+              startCursor: 'c-n',
+            }),
+          })
+        }
+        return HttpResponse.json({
+          data: libraryResponse({ edges: [{ cursor: 'c1', node: movieNode('1', 'Everlight') }] }),
+        })
+      }),
+    )
+
+    const user = userEvent.setup()
+    renderWithProviders(<Harness />)
+    await waitFor(() => expect(screen.getByText('Everlight')).toBeInTheDocument())
+
+    await user.click(screen.getByText('Jump to N'))
+    // The one-shot centering fetch lands on "Mid Title", still with more before it.
+    await waitFor(() => expect(screen.getByText('Mid Title')).toBeInTheDocument())
+    expect(screen.getByTestId('hasPreviousPage')).toHaveTextContent('true')
+    expect(backwardCallCount).toBe(1)
+
+    // Scrolling further up keeps going, exactly like loadMore does for the forward direction.
+    await user.click(screen.getByText('Load previous'))
+
+    await waitFor(() => expect(screen.getByText('Alright')).toBeInTheDocument())
+    expect(screen.getByText('Mid Title')).toBeInTheDocument()
+    expect(screen.getByText('Northern Line')).toBeInTheDocument()
+    expect(screen.getByTestId('hasPreviousPage')).toHaveTextContent('false')
+    expect(backwardCallCount).toBe(2)
   })
 
   it('issues no backward fetch when the seek page has no previous page', async () => {
@@ -192,6 +263,49 @@ describe('useLibraryItems', () => {
     await user.click(screen.getByText('Jump to A'))
 
     await waitFor(() => expect(screen.getByText('Alright')).toBeInTheDocument())
+    expect(backwardFetches).toBe(0)
+  })
+
+  it('does not spuriously reopen backward pagination after a forward loadMore', async () => {
+    let backwardFetches = 0
+    server.use(
+      graphql.query('LibraryPage', ({ variables }) => {
+        if (variables.before) {
+          backwardFetches += 1
+          return HttpResponse.json({
+            data: libraryResponse({ edges: [{ cursor: 'c-dup', node: movieNode('dup', 'Should Not Appear') }] }),
+          })
+        }
+        if (variables.after) {
+          // The fetched page's own pageInfo correctly says there IS something before *it*
+          // (page 1) — that must not leak into the merged list's overall hasPreviousPage.
+          return HttpResponse.json({
+            data: libraryResponse({
+              edges: [{ cursor: 'c2', node: movieNode('2', 'Second Page') }],
+              hasNextPage: false,
+              hasPreviousPage: true,
+              startCursor: 'c2',
+            }),
+          })
+        }
+        return HttpResponse.json({
+          data: libraryResponse({
+            edges: [{ cursor: 'c1', node: movieNode('1', 'Everlight') }],
+            hasNextPage: true,
+            hasPreviousPage: false,
+          }),
+        })
+      }),
+    )
+    const user = userEvent.setup()
+    renderWithProviders(<Harness />)
+    await waitFor(() => expect(screen.getByTestId('hasNextPage')).toHaveTextContent('true'))
+    expect(screen.getByTestId('hasPreviousPage')).toHaveTextContent('false')
+
+    await user.click(screen.getByText('Load more'))
+
+    await waitFor(() => expect(screen.getByText('Second Page')).toBeInTheDocument())
+    expect(screen.getByTestId('hasPreviousPage')).toHaveTextContent('false')
     expect(backwardFetches).toBe(0)
   })
 

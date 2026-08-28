@@ -2,6 +2,11 @@
   display: flex;
   flex-direction: column;
   gap: var(--spacing-16);
+  /* Fills the viewport below the fixed top bar and HomeShell's content padding, so the grid
+     scrolls in its own container instead of growing the page. --topbar-height lives in
+     TopBar.module.css; the 14px/40px match HomeShell.module.css's .homeContent padding. */
+  height: calc(100dvh - var(--topbar-height) - 14px - 40px);
+  min-height: 0;
 }
 
 .header {
@@ -29,16 +34,23 @@
 }
 
 .body {
+  flex: 1;
+  min-height: 0;
   display: flex;
   gap: var(--spacing-16);
 }
 
 .grid {
   flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  /* minmax(0, 1fr), not 1fr: a track's default min-width is auto, so a nowrap title's
+     min-content width would otherwise widen its whole column past its fair 1/6 share. */
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: var(--spacing-20);
   align-content: start;
+  padding-right: var(--spacing-8);
 }
 
 .sentinel {

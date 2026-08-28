@@ -1,3 +1,11 @@
+:root {
+  /* This bar's rendered height (20px vertical padding + the 32px profile chip/nav pill content
+     row). Kept as a constant rather than measured: pages that need to fill the remaining
+     viewport height below the bar (e.g. Library's scroll container) reference this instead of
+     guessing. Revisit if this file's padding/content sizing changes. */
+  --topbar-height: 79px;
+}
+
 .topBar {
   position: relative;
   display: flex;
