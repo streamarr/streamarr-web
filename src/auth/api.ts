@@ -44,15 +44,15 @@ export function setup(input: SetupInput): Promise<AuthTokens> {
   return postJson('/api/auth/setup', { ...input, cookieMode: true })
 }
 
+// The select ceremonies infer cookie mode from how the request authenticated, so the body
+// carries only the choice — and for a protected Profile, the PIN the server verifies and
+// throttles itself (ADR 0024: PINs never ride GraphQL).
 export function selectHousehold(householdId: string): Promise<AuthTokens> {
-  return postJson('/api/auth/select-household', {
-    householdId,
-    cookieMode: true,
-  })
+  return postJson('/api/auth/select-household', { householdId })
 }
 
-export function selectProfile(profileId: string): Promise<AuthTokens> {
-  return postJson('/api/auth/select-profile', { profileId, cookieMode: true })
+export function selectProfile(profileId: string, pin?: string): Promise<AuthTokens> {
+  return postJson('/api/auth/select-profile', pin ? { profileId, pin } : { profileId })
 }
 
 export async function logout(): Promise<void> {

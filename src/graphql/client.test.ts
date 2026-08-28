@@ -3,15 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { server } from '../test/server'
 import { createApolloClient } from './client'
 import { MeDocument } from './generated/graphql'
+import { meFixture } from '../test/meFixture'
 
-const ME = {
-  accountId: '11111111-1111-1111-1111-111111111111',
-  email: 'owner@example.com',
-  displayName: 'Owner',
-  role: 'ADMIN',
-  scope: 'profile',
-  memberships: [],
-}
+const ME = meFixture({ scope: 'profile' })
 
 describe('apollo client', () => {
   afterEach(() => {

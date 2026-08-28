@@ -20,3 +20,11 @@ Object.defineProperty(window, 'matchMedia', {
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
+
+// Mantine's SegmentedControl positions its indicator with ResizeObserver, which jsdom lacks.
+class QuietResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+globalThis.ResizeObserver ??= QuietResizeObserver as unknown as typeof ResizeObserver
