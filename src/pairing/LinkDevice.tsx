@@ -1,4 +1,4 @@
-import { Alert, Button, Group, Stack, Text, TextInput, Title } from '@mantine/core'
+import { Alert, Button, Group, Radio, Stack, Text, TextInput, Title } from '@mantine/core'
 import { useState } from 'react'
 import { AuthApiError } from '../api/http'
 import {
@@ -17,6 +17,9 @@ const DECISION_MESSAGES: Record<string, string> = {
   ...LOOKUP_MESSAGES,
   DEVICE_CODE_EXPIRED: 'That code expired. Start a new one on your device.',
   INVALID_DECISION: 'Something went wrong sending your choice. Please try again.',
+  HOUSEHOLD_REQUIRED: 'Choose which Household this TV joins.',
+  HOUSEHOLD_ACCESS_DENIED: 'You can no longer use that Household. Choose another.',
+  ESN_BLOCKED: 'That device is blocked and cannot be linked.',
 }
 const FALLBACK_MESSAGE = 'Something went wrong. Please try again.'
 
@@ -70,11 +73,11 @@ export function LinkDevice({
     return true
   }
 
-  async function onDecide(decision: PairingDecision) {
+  async function onDecide(decision: PairingDecision, householdId?: string) {
     setError(null)
     setBusy(true)
     try {
-      const result = await decidePairingRequest(pairing!.userCode, decision)
+      const result = await decidePairingRequest(pairing!.userCode, decision, householdId)
       settle(result.status)
     } catch (caught) {
       await handleDecisionFailure(caught)
@@ -181,7 +184,12 @@ function EnterCode({
   )
 }
 
-/** Confirmation before commitment: the approver sees which device is asking, and since when. */
+/**
+ * Confirmation before commitment: the approver sees which device is asking, since when, and
+ * chooses the one Household the TV will be registered to (ADR 0024 §Devices). A single usable
+ * Household is preselected; more than one demands an explicit choice before Approve unlocks.
+ * Denying names no Household.
+ */
 function ConfirmDevice({
   pairing,
   busy,
@@ -190,9 +198,12 @@ function ConfirmDevice({
 }: {
   pairing: PairingRequest
   busy: boolean
-  onDecide: (decision: PairingDecision) => void
+  onDecide: (decision: PairingDecision, householdId?: string) => void
   onCancel: () => void
 }) {
+  const [householdId, setHouseholdId] = useState(
+    pairing.households.length === 1 ? pairing.households[0].id : '',
+  )
   return (
     <Stack>
       <Text>
@@ -201,8 +212,23 @@ function ConfirmDevice({
       <Text c="dimmed" size="sm">
         Requested {formatRequestedAt(pairing.requestedAt)} · code {pairing.userCode}
       </Text>
+      <Radio.Group
+        label="Sign it in to"
+        value={householdId}
+        onChange={setHouseholdId}
+      >
+        <Stack gap="xs" mt="xs">
+          {pairing.households.map((household) => (
+            <Radio key={household.id} value={household.id} label={household.name} />
+          ))}
+        </Stack>
+      </Radio.Group>
       <Group>
-        <Button loading={busy} onClick={() => onDecide('APPROVE')}>
+        <Button
+          loading={busy}
+          disabled={householdId === ''}
+          onClick={() => onDecide('APPROVE', householdId)}
+        >
           Approve
         </Button>
         <Button color="red" variant="light" loading={busy} onClick={() => onDecide('DENY')}>
