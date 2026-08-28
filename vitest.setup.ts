@@ -37,14 +37,17 @@ globalThis.ResizeObserver ??= QuietResizeObserver as unknown as typeof ResizeObs
 // infinite-scroll and alphabet-rail tests need to trigger it manually, so each instance is kept
 // reachable via `intersectionObserverInstances` instead of being a no-op stub.
 export class MockIntersectionObserver implements IntersectionObserver {
-  root: Element | Document | null = null
-  rootMargin = ''
+  root: Element | Document | null
+  rootMargin: string
   scrollMargin = ''
-  thresholds: ReadonlyArray<number> = []
+  thresholds: ReadonlyArray<number>
   readonly callback: IntersectionObserverCallback
 
-  constructor(callback: IntersectionObserverCallback) {
+  constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
     this.callback = callback
+    this.root = (options?.root as Element | Document | null) ?? null
+    this.rootMargin = options?.rootMargin ?? ''
+    this.thresholds = ([] as number[]).concat(options?.threshold ?? [])
     intersectionObserverInstances.push(this)
   }
 
