@@ -6,7 +6,9 @@
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  /* minmax(0, 1fr), not 1fr: a track's default min-width is auto, so a nowrap title's
+     min-content width would otherwise widen its whole column past its fair 1/3 share. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--spacing-16);
   align-content: start;
 }

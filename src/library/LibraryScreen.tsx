@@ -1,4 +1,5 @@
 import { Alert, Center, Loader, Text, Title } from '@mantine/core'
+import { useEffect, useRef, useState } from 'react'
 import type { MediaFilter, MediaSort, OrderMediaBy, SortDirection } from '../graphql/generated/graphql'
 import { AlphabetRail } from '../media/AlphabetRail'
 import { formatRelativeTime } from '../media/formatting'
@@ -36,8 +37,25 @@ export function LibraryScreen({
   }
   const trackingLetter = sort.by === 'TITLE'
 
-  const { loading, error, library, edges, hasNextPage, loadMore } = useLibraryItems({ libraryId, sort, filter })
+  const {
+    loading,
+    error,
+    library,
+    edges,
+    hasNextPage,
+    hasPreviousPage,
+    loadMore,
+    loadPrevious,
+    scrollTarget,
+    clearScrollTarget,
+  } = useLibraryItems({ libraryId, sort, filter })
   const { visibleLetter, registerItem } = useVisibleLetter()
+
+  // The grid is its own scroll container (not the page), so the sentinels' IntersectionObserver
+  // root must be the grid, not the default viewport. A ref *object* wouldn't do: the observer
+  // needs to be rebuilt once the element actually mounts, which only a state-backed ref triggers.
+  const [gridElement, setGridElement] = useState<HTMLDivElement | null>(null)
+  const itemElementsRef = useRef(new Map<string, HTMLElement>())
 
   const loadMoreRef = useIntersectionObserver(
     (entries) => {
@@ -45,8 +63,30 @@ export function LibraryScreen({
         loadMore()
       }
     },
-    { rootMargin: '400px' },
+    { root: gridElement, rootMargin: '400px' },
   )
+  const loadPreviousRef = useIntersectionObserver(
+    (entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        loadPrevious()
+      }
+    },
+    { root: gridElement, rootMargin: '400px' },
+  )
+
+  // Scrolls the letter-jump's actual landing item into view once it (and the backward continuity
+  // page prepended above it) have rendered — otherwise the jump reads as landing on the wrong
+  // letter, since the prepended items push the real target below the fold.
+  useEffect(() => {
+    if (!scrollTarget) {
+      return
+    }
+    const element = itemElementsRef.current.get(scrollTarget)
+    if (element) {
+      element.scrollIntoView({ block: 'start' })
+      clearScrollTarget()
+    }
+  }, [scrollTarget, edges, clearScrollTarget])
 
   function selectFilter(status: WatchStatusFilter) {
     onSearchChange({ ...search, watchStatus: status === 'ALL' ? undefined : status })
@@ -112,11 +152,26 @@ export function LibraryScreen({
         {edges.length === 0 ? (
           <Text className={styles.empty}>No items match this filter.</Text>
         ) : (
-          <div className={styles.grid}>
+          <div className={styles.grid} ref={setGridElement}>
+            {hasPreviousPage && <div ref={loadPreviousRef} aria-hidden className={styles.sentinel} />}
             {edges.map((edge) => {
               const summary = summarizeMedia(edge.node)
+              const letter = trackingLetter ? summaryLetter(summary) : null
               return (
-                <div key={edge.cursor} ref={trackingLetter ? registerItem(summaryLetter(summary)) : undefined}>
+                <div
+                  key={edge.cursor}
+                  ref={(element: HTMLDivElement | null) => {
+                    if (!element) {
+                      return undefined
+                    }
+                    itemElementsRef.current.set(edge.cursor, element)
+                    const disconnectObserver = letter ? registerItem(letter)(element) : undefined
+                    return () => {
+                      itemElementsRef.current.delete(edge.cursor)
+                      disconnectObserver?.()
+                    }
+                  }}
+                >
                   <PosterCard
                     title={summary.title}
                     meta={summary.meta}

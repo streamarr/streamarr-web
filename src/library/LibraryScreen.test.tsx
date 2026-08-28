@@ -182,4 +182,47 @@ describe('LibraryScreen', () => {
     await waitFor(() => expect(screen.getByText('N')).toHaveAttribute('aria-pressed', 'true'))
     expect(queryCount).toBe(queriesAfterLoad)
   })
+
+  it('scrolls the actual jump target into view, not the backward-continuity items prepended above it', async () => {
+    const scrollIntoView = vi.fn()
+    vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(scrollIntoView)
+    server.use(
+      graphql.query('LibraryPage', ({ variables }) => {
+        if (variables.before) {
+          return HttpResponse.json({
+            data: libraryData({
+              edges: [{ cursor: 'c-alright', node: movieNode({ id: 'a', title: 'Alright' }) }],
+              hasNextPage: false,
+            }),
+          })
+        }
+        if (variables.filter?.startLetter === 'N') {
+          return HttpResponse.json({
+            data: {
+              library: {
+                ...libraryData().library,
+                items: {
+                  edges: [{ cursor: 'c-northern', node: movieNode({ id: 'n', title: 'Northern Line' }) }],
+                  pageInfo: { hasNextPage: false, hasPreviousPage: true, startCursor: 'c-northern', endCursor: 'c-northern' },
+                },
+              },
+            },
+          })
+        }
+        return HttpResponse.json({ data: libraryData() })
+      }),
+    )
+    const user = userEvent.setup()
+    renderWithProviders(<Harness initialSearch={{ by: 'TITLE', direction: 'ASC' }} />)
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Movies' })).toBeInTheDocument())
+
+    await user.click(screen.getByText('N'))
+
+    await waitFor(() => expect(screen.getByText('Alright')).toBeInTheDocument())
+    expect(screen.getByText('Northern Line')).toBeInTheDocument()
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+    const scrolledElement = scrollIntoView.mock.instances[0] as Element
+    expect(scrolledElement.textContent).toContain('Northern Line')
+    expect(scrolledElement.textContent).not.toContain('Alright')
+  })
 })
