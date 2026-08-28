@@ -1,5 +1,5 @@
 import { useMutation } from '@apollo/client/react'
-import { Alert, AspectRatio } from '@mantine/core'
+import { Alert, AspectRatio, Stack } from '@mantine/core'
 import Hls from 'hls.js'
 import { useEffect, useRef, useState } from 'react'
 import { CreateStreamSessionDocument } from '../graphql/generated/graphql'
@@ -12,6 +12,7 @@ export function Player({ mediaFileId }: { mediaFileId: string }) {
   useEffect(() => {
     let hls: Hls | null = null
     let cancelled = false
+    setFailed(false)
 
     createStreamSession({ variables: { mediaFileId } })
       .then((result) => {
@@ -20,18 +21,16 @@ export function Player({ mediaFileId }: { mediaFileId: string }) {
         if (cancelled || !url || !video) {
           return
         }
-        // The stream URL carries the playback ?t= token; segment requests spawned from the
-        // playlist are relative and inherit it. hls.js handles that natively.
-        if (Hls.isSupported()) {
-          hls = new Hls()
-          hls.loadSource(url)
-          hls.attachMedia(video)
-        } else {
-          // Native HLS (Safari): the token rides the src just the same.
-          video.src = url
+        hls = attach(video, url, () => {
+          hls = null
+          setFailed(true)
+        })
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setFailed(true)
         }
       })
-      .catch(() => setFailed(true))
 
     return () => {
       cancelled = true
@@ -39,18 +38,37 @@ export function Player({ mediaFileId }: { mediaFileId: string }) {
     }
   }, [mediaFileId, createStreamSession])
 
-  if (failed) {
-    return (
-      <Alert color="red" role="alert">
-        Playback couldn't start. Try again.
-      </Alert>
-    )
-  }
-
   return (
-    <AspectRatio ratio={16 / 9} maw={960}>
-      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-      <video ref={videoRef} controls style={{ width: '100%' }} />
-    </AspectRatio>
+    <Stack maw={960}>
+      {failed && (
+        <Alert color="red" role="alert">
+          Playback couldn't start. Try again.
+        </Alert>
+      )}
+      <AspectRatio ratio={16 / 9}>
+        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+        <video ref={videoRef} controls style={{ width: '100%' }} />
+      </AspectRatio>
+    </Stack>
   )
+}
+
+// The stream URL carries the playback ?t= token; relative segment requests inherit it.
+function attach(video: HTMLVideoElement, url: string, onFatal: () => void): Hls | null {
+  if (!Hls.isSupported()) {
+    video.src = url
+    return null
+  }
+  const hls = new Hls()
+  hls.on(Hls.Events.ERROR, (_event, data) => {
+    if (!data.fatal) {
+      return
+    }
+    // An expired ?t= token or a restarted server: the instance cannot recover.
+    hls.destroy()
+    onFatal()
+  })
+  hls.loadSource(url)
+  hls.attachMedia(video)
+  return hls
 }

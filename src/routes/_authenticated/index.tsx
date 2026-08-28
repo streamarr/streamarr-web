@@ -8,8 +8,6 @@ export const Route = createFileRoute('/_authenticated/')({
   component: Home,
 })
 
-// The authenticated shell: rendering me proves the profile-scoped loop works. A me query that
-// 401s or lacks a profile is caught by the Apollo error link and routed to /login or /select.
 function Home() {
   const { data, loading, error } = useMe()
 

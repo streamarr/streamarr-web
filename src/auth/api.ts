@@ -1,10 +1,8 @@
 import { getJson, postJson, request } from '../api/http'
 
-// The client always uses cookie mode: tokens live in httpOnly cookies, the body carries only
-// the access-token expiry and the granted scope.
-
 export { AuthApiError } from '../api/http'
 
+// Cookie mode: the tokens live in httpOnly cookies; the body carries only expiry and scope.
 export interface AuthTokens {
   accessTokenExpiresAt: string
   scope: string
@@ -33,9 +31,8 @@ export function getSetupStatus(): Promise<ServerStatus> {
   return getJson<ServerStatus>('/api/auth/status')
 }
 
-// Signing in is itself a cookie-mode request: a stale streamarr_access cookie or the CSRF marker
-// still rides along, and the server's matcher covers unsafe requests carrying either. Without the
-// echo, the action that would replace the stale state is the one action refused.
+// A stale access cookie or CSRF marker rides along with sign-in, and the server's CSRF matcher
+// covers unsafe requests carrying either — so sign-in must echo the token like any other call.
 export function login(input: LoginInput): Promise<AuthTokens> {
   return postJson('/api/auth/login', { ...input, cookieMode: true })
 }
@@ -44,9 +41,8 @@ export function setup(input: SetupInput): Promise<AuthTokens> {
   return postJson('/api/auth/setup', { ...input, cookieMode: true })
 }
 
-// The select ceremonies infer cookie mode from how the request authenticated, so the body
-// carries only the choice — and for a protected Profile, the PIN the server verifies and
-// throttles itself (ADR 0024: PINs never ride GraphQL).
+// The select ceremonies infer cookie mode from the request itself; a Profile PIN rides REST
+// only, never GraphQL.
 export function selectHousehold(householdId: string): Promise<AuthTokens> {
   return postJson('/api/auth/select-household', { householdId })
 }
@@ -79,9 +75,8 @@ export interface AcceptInvitationInput {
   password: string
 }
 
-// The principal-less ceremonies (ADR 0024 §Invitations): the recipient has no Account yet, so
-// lookup, accept, and decline authenticate by code alone. Every miss answers 404 INVALID_CODE —
-// unknown, expired, and decided codes are deliberately indistinguishable.
+// Invitation ceremonies authenticate by code alone; every miss answers 404 INVALID_CODE, with
+// unknown, expired, and decided codes deliberately indistinguishable.
 export function lookupInvitation(code: string): Promise<InvitationPreview> {
   return postJson('/api/auth/invitation/lookup', { code })
 }
@@ -98,8 +93,7 @@ export async function declineInvitation(code: string): Promise<void> {
   })
 }
 
-// Redemption works while the Account is disabled, changes the password, revokes refresh
-// authority everywhere, and deliberately creates no session: the person signs in fresh.
+// Redemption deliberately creates no session: the person signs in fresh.
 export async function redeemPasswordReset(code: string, newPassword: string): Promise<void> {
   await request('/api/auth/password-reset/redeem', {
     method: 'POST',

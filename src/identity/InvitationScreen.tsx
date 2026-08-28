@@ -12,6 +12,7 @@ import {
   TextInput,
 } from '@mantine/core'
 import { useEffect, useState } from 'react'
+import { AuthLede, AuthTitle } from '../ui/AuthShell'
 import {
   AuthApiError,
   type AuthTokens,
@@ -21,12 +22,7 @@ import {
 } from '../auth/api'
 import { useAuth } from '../auth/AuthProvider'
 
-// Frames 14/14a: the Account-invitation ceremony. The recipient has no Account yet, so the whole
-// flow authenticates by the pasted code alone; every miss reads the same ("that link isn't valid
-// anymore") because unknown, expired, and decided codes are deliberately indistinguishable.
-// Invitation codes are opaque tokens, so this is a pasteable field — never the PIN/TV code input.
-
-const INVALID_MESSAGE = "That invitation isn't valid anymore. Ask for a new one."
+const FAILURE_MESSAGE = 'Something went wrong. Please try again.'
 
 type Phase =
   | { at: 'code' }
@@ -34,6 +30,7 @@ type Phase =
   | { at: 'preview'; preview: InvitationPreview }
   | { at: 'declined' }
 
+// The recipient has no Account yet: the pasted code alone authenticates lookup, accept, and decline.
 export function InvitationScreen({
   initialCode,
   onAccepted,
@@ -51,9 +48,13 @@ export function InvitationScreen({
     try {
       setPhase({ at: 'preview', preview: await lookupInvitation(presented) })
     } catch (error) {
-      setPhase({ at: 'code' })
-      setFailure(refusalMessage(error))
+      refuseCode(error)
     }
+  }
+
+  function refuseCode(error: unknown) {
+    setPhase({ at: 'code' })
+    setFailure(refusalMessage(error))
   }
 
   useEffect(() => {
@@ -75,7 +76,7 @@ export function InvitationScreen({
   if (phase.at === 'declined') {
     return (
       <Stack maw={480}>
-        <h1 className="authTitle">Invitation declined</h1>
+        <AuthTitle>Invitation declined</AuthTitle>
         <Text>Nothing was created. You can close this page.</Text>
       </Stack>
     )
@@ -94,7 +95,7 @@ export function InvitationScreen({
 
   return (
     <Stack maw={480}>
-      <h1 className="authTitle">Create your account</h1>
+      <AuthTitle>Create your account</AuthTitle>
       <Text>Paste the invitation code you were sent.</Text>
       {failure && (
         <Alert color="red" role="alert">
@@ -149,8 +150,7 @@ function InvitationReview({
     setFailure(null)
     setBusy('decline')
     try {
-      await declineInvitation(code)
-      onDeclined()
+      await sendDecline()
     } catch (error) {
       setFailure(refusalMessage(error))
     } finally {
@@ -158,11 +158,16 @@ function InvitationReview({
     }
   }
 
+  async function sendDecline() {
+    await declineInvitation(code)
+    onDeclined()
+  }
+
   return (
     <form onSubmit={accept}>
       <Stack maw={480}>
-        <h1 className="authTitle">Create your account</h1>
-        <Text className="authLede">You were invited to {preview.householdName}.</Text>
+        <AuthTitle>Create your account</AuthTitle>
+        <AuthLede>You were invited to {preview.householdName}.</AuthLede>
         <Card withBorder>
           <Stack gap="xs">
             <Group>
@@ -200,7 +205,7 @@ function InvitationReview({
           label="Confirm password"
           value={confirm}
           onChange={(event) => setConfirm(event.currentTarget.value)}
-          error={confirm.length > 0 && confirm !== password ? "Passwords don't match" : undefined}
+          error={mismatchError(password, confirm)}
           required
         />
         <Group>
@@ -226,10 +231,6 @@ function InvitationReview({
   )
 }
 
-// Web PR #5 (frames 14/14a variant): what connecting means, before consent. The Profile becomes
-// this person's Personal Profile; a share that admitted a Profile must never silently admit the
-// person, so every current visit ends and the listed Households are offered it afresh —
-// each host consents again. The named direct managers keep their authority.
 function ConnectReview({ preview }: { preview: InvitationPreview }) {
   return (
     <Card withBorder>
@@ -289,16 +290,19 @@ function ConsequenceList({
   )
 }
 
-function refusalMessage(error: unknown): string {
-  if (error instanceof AuthApiError) {
-    if (error.status === 404) {
-      return INVALID_MESSAGE
-    }
-    if (error.status === 429) {
-      return error.retryAfterSeconds
-        ? `Too many attempts. Try again in ${error.retryAfterSeconds} seconds.`
-        : 'Too many attempts. Try again later.'
-    }
+function mismatchError(password: string, confirm: string): string | undefined {
+  if (confirm.length === 0 || confirm === password) {
+    return undefined
   }
-  return 'Something went wrong. Please try again.'
+  return "Passwords don't match"
+}
+
+function refusalMessage(error: unknown): string {
+  if (!(error instanceof AuthApiError)) {
+    return FAILURE_MESSAGE
+  }
+  if (error.retryAfterSeconds) {
+    return `Too many attempts. Try again in ${error.retryAfterSeconds} seconds.`
+  }
+  return error.serverMessage ?? FAILURE_MESSAGE
 }

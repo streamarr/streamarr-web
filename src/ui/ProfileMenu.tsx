@@ -1,30 +1,34 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
+import { AuthApiError } from '../auth/api'
 import { useAuth } from '../auth/AuthProvider'
 import type { MeQuery } from '../graphql/generated/graphql'
 import { initials, tileColor } from './ProfileTile'
-import './auth.css'
+import styles from './ProfileMenu.module.css'
 
 type Me = MeQuery['me']
 type SelectableProfile = Me['selectableProfiles']['edges'][number]['node']
 
-// Frame 01a: the profile menu under the top bar's avatar chip. The current profile leads with
-// its role; the Household's other profiles follow — a PIN-protected one detours through the
-// full gate, a safety-locked one is visible but not selectable (principle 7.2) — and sign out
-// closes the panel. Settings lands with a settings page; a dead row would teach the feature
-// might not exist.
+const SESSION_EVICTION_CODES = new Set(['AUTHENTICATION_REQUIRED', 'EXPIRED_TOKEN', 'INVALID_TOKEN'])
+const SWITCH_FAILED_MESSAGE = "Couldn't switch profiles. Try again."
+
 export function ProfileMenu({
   me,
   onPinRequired,
   onSignedOut,
+  onUnauthenticated,
 }: {
   me: Me
   onPinRequired: (profileId: string) => void
   onSignedOut: () => void
+  onUnauthenticated: () => void
 }) {
   const { selectProfile, logout } = useAuth()
   const [opened, setOpened] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [failure, setFailure] = useState<string | null>(null)
   const anchor = useRef<HTMLDivElement>(null)
+  const chip = useRef<HTMLButtonElement>(null)
+  const panelId = useId()
 
   useEffect(() => {
     if (!opened) {
@@ -37,7 +41,7 @@ export function ProfileMenu({
     }
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
-        setOpened(false)
+        close()
       }
     }
     document.addEventListener('mousedown', onPointerDown)
@@ -52,67 +56,99 @@ export function ProfileMenu({
   const current = profiles.find((profile) => profile.selected)
   const chipName = current?.name ?? me.displayName
 
+  // Closing from inside the panel (Escape, a choice) must not drop focus on <body>.
+  function close() {
+    setOpened(false)
+    chip.current?.focus()
+  }
+
   async function switchTo(profile: SelectableProfile) {
     if (profile.pinConfigured) {
-      setOpened(false)
+      close()
       onPinRequired(profile.id)
       return
     }
     setBusy(true)
+    setFailure(null)
     try {
-      // The auth boundary resets the Apollo store itself: a switch is an identity change.
       await selectProfile(profile.id)
-      setOpened(false)
+      close()
+    } catch (error) {
+      reportSwitchFailure(error)
     } finally {
       setBusy(false)
     }
   }
 
+  // REST errors bypass the Apollo error link, so a session-level 401 is routed from here.
+  function reportSwitchFailure(error: unknown) {
+    if (isSessionEviction(error)) {
+      close()
+      onUnauthenticated()
+      return
+    }
+    setFailure(switchFailureMessage(error))
+  }
+
+  function toggle() {
+    setFailure(null)
+    setOpened((open) => !open)
+  }
+
   function signOut() {
-    setOpened(false)
-    // Local state ends immediately; server revocation stays best-effort — an outage must never
-    // trap someone in a session they explicitly left.
+    close()
+    // Revocation is best-effort: an outage must never trap someone in a session they left.
     void logout().catch(() => {})
     onSignedOut()
   }
 
   return (
-    <div className="profileMenuAnchor" ref={anchor}>
+    <div className={styles.profileMenuAnchor} ref={anchor}>
       <button
+        ref={chip}
         type="button"
-        className={`profileChip${opened ? ' profileChipOpen' : ''}`}
+        className={opened ? `${styles.profileChip} ${styles.profileChipOpen}` : styles.profileChip}
         aria-label={`Profile menu (${chipName})`}
-        aria-haspopup="menu"
         aria-expanded={opened}
-        onClick={() => setOpened((open) => !open)}
+        aria-controls={opened ? panelId : undefined}
+        onClick={toggle}
       >
         {initials(chipName)}
       </button>
       {opened && (
-        <div className="profileMenu" role="menu">
-        {profiles.map((profile, index) => (
-          <button
-            key={profile.id}
-            type="button"
-            className={`profileMenuRow${profile.selected ? ' profileMenuRowCurrent' : ''}`}
-            disabled={busy || profile.locked || profile.selected}
-            aria-label={rowLabel(profile)}
-            onClick={() => switchTo(profile)}
-          >
-            <span className="profileMenuAvatar" style={{ background: tileColor(index) }}>
-              {initials(profile.name)}
-            </span>
-            <span className="profileMenuName">
-              <span>{profile.name}</span>
-              {profile.selected && roleLabel(me) && (
-                <span className="profileMenuRole">{roleLabel(me)}</span>
-              )}
-            </span>
-            {profile.selected && <CheckGlyph />}
-          </button>
-        ))}
-          <div className="profileMenuDivider" aria-hidden />
-          <button type="button" className="profileMenuRow" onClick={signOut}>
+        <div id={panelId} className={styles.profileMenu}>
+          {profiles.map((profile, index) => (
+            <button
+              key={profile.id}
+              type="button"
+              className={
+                profile.selected
+                  ? `${styles.profileMenuRow} ${styles.profileMenuRowCurrent}`
+                  : styles.profileMenuRow
+              }
+              disabled={busy || profile.locked || profile.selected}
+              aria-label={rowLabel(profile)}
+              onClick={() => switchTo(profile)}
+            >
+              <span className={styles.profileMenuAvatar} style={{ background: tileColor(index) }}>
+                {initials(profile.name)}
+              </span>
+              <span className={styles.profileMenuName}>
+                <span className={styles.profileMenuLabel}>{profile.name}</span>
+                {profile.selected && roleLabel(me) && (
+                  <span className={styles.profileMenuRole}>{roleLabel(me)}</span>
+                )}
+              </span>
+              {profile.selected && <CheckGlyph />}
+            </button>
+          ))}
+          {failure && (
+            <div className={styles.profileMenuError} role="alert">
+              {failure}
+            </div>
+          )}
+          <div className={styles.profileMenuDivider} aria-hidden />
+          <button type="button" className={styles.profileMenuRow} onClick={signOut}>
             <SignOutGlyph />
             <span>Sign out</span>
           </button>
@@ -120,6 +156,22 @@ export function ProfileMenu({
       )}
     </div>
   )
+}
+
+function isSessionEviction(error: unknown): boolean {
+  return (
+    error instanceof AuthApiError &&
+    error.status === 401 &&
+    error.code !== null &&
+    SESSION_EVICTION_CODES.has(error.code)
+  )
+}
+
+function switchFailureMessage(error: unknown): string {
+  if (error instanceof AuthApiError && error.serverMessage) {
+    return error.serverMessage
+  }
+  return SWITCH_FAILED_MESSAGE
 }
 
 function rowLabel(profile: SelectableProfile) {
@@ -137,7 +189,7 @@ function roleLabel(me: Me): string | null {
 function CheckGlyph() {
   return (
     <svg
-      className="profileMenuCheck"
+      className={styles.profileMenuCheck}
       width="15"
       height="15"
       viewBox="0 0 24 24"

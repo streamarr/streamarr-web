@@ -1,0 +1,13 @@
+type Episode {
+    id: ID!
+    title: String
+    episodeNumber: Int!
+    overview: String
+    airDate: String
+    runtime: Int
+    season: Season!
+    files: [MediaFile]!
+    images(type: ImageType): [Image]!
+    watchProgress: WatchProgress
+    watchStatus: WatchStatus!
+}

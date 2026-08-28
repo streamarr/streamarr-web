@@ -1,6 +1,7 @@
-import { screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import { HttpResponse, graphql } from 'msw'
-import { describe, expect, it, vi } from 'vitest'
+import { useState } from 'react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
 import { Player } from './Player'
@@ -15,6 +16,7 @@ const hls = vi.hoisted(() => ({
 
 vi.mock('hls.js', () => ({
   default: class {
+    static Events = { ERROR: 'hlsError' }
     static isSupported() {
       return hls.supported
     }
@@ -28,7 +30,23 @@ vi.mock('hls.js', () => ({
 const STREAM_URL = '/api/stream/abcd/multivariant.m3u8?t=playback-token'
 const SESSION = { id: 'sess-1', streamUrl: STREAM_URL, transcodeMode: 'REMUX' }
 
+function Harness() {
+  const [mediaFileId, setMediaFileId] = useState('a')
+  return (
+    <>
+      <button type="button" onClick={() => setMediaFileId('b')}>
+        Next
+      </button>
+      <Player mediaFileId={mediaFileId} />
+    </>
+  )
+}
+
 describe('Player', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
   it('shouldCreateSessionAndFeedTokenedUrlToHls', async () => {
     let variables: unknown
     server.use(
@@ -40,8 +58,6 @@ describe('Player', () => {
 
     renderWithProviders(<Player mediaFileId="abcd" />)
 
-    // The playlist URL — carrying the playback ?t= token — is what hls.js loads; segment
-    // requests spawned from it inherit the token.
     await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(STREAM_URL))
     expect(hls.attachMedia).toHaveBeenCalledOnce()
     expect(variables).toEqual({ mediaFileId: 'abcd' })
@@ -57,5 +73,39 @@ describe('Player', () => {
     renderWithProviders(<Player mediaFileId="abcd" />)
 
     expect(await screen.findByRole('alert')).toBeInTheDocument()
+  })
+
+  it('shouldReportAFatalStreamErrorAndTearDownHls', async () => {
+    server.use(
+      graphql.mutation('CreateStreamSession', () =>
+        HttpResponse.json({ data: { createStreamSession: SESSION } }),
+      ),
+    )
+    renderWithProviders(<Player mediaFileId="abcd" />)
+    await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(STREAM_URL))
+
+    const onError = hls.on.mock.calls.find(([event]) => event === 'hlsError')?.[1]
+    expect(onError).toBeTypeOf('function')
+    act(() => onError('hlsError', { fatal: true, type: 'networkError' }))
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(hls.destroy).toHaveBeenCalled()
+  })
+
+  it('shouldRecoverWhenTheNextMediaFileStartsAfterAFailedOne', async () => {
+    server.use(
+      graphql.mutation('CreateStreamSession', ({ variables }) =>
+        variables.mediaFileId === 'a'
+          ? HttpResponse.json({ errors: [{ message: 'boom' }] }, { status: 200 })
+          : HttpResponse.json({ data: { createStreamSession: SESSION } }),
+      ),
+    )
+    const { user } = renderWithProviders(<Harness />)
+    await screen.findByRole('alert')
+
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+
+    await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(STREAM_URL))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 })

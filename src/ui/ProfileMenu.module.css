@@ -1,0 +1,143 @@
+.profileChip {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  background: var(--color-alpha-18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-alpha-92);
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.profileChipOpen {
+  background: var(--selection-active);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--indicator-active-track) 50%, transparent);
+}
+
+.profileMenuAnchor {
+  position: relative;
+
+  & .profileMenu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 8px);
+    z-index: 20;
+  }
+}
+
+.profileMenu {
+  width: 250px;
+  border: 1px solid var(--color-alpha-16);
+  border-radius: var(--radius-xl);
+  /* Solid on purpose: a blurred translucency stalls Chromium's compositor during captures. */
+  background:
+    linear-gradient(var(--color-chrome), var(--color-chrome)),
+    var(--color-ground);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
+
+  /* The notch pointing at the chip. */
+  &::before {
+    content: '';
+    position: absolute;
+    right: 20px;
+    top: -7px;
+    width: 13px;
+    height: 13px;
+    transform: rotate(45deg);
+    background:
+      linear-gradient(var(--color-chrome), var(--color-chrome)),
+      var(--color-ground);
+    border-left: 1px solid var(--color-alpha-16);
+    border-top: 1px solid var(--color-alpha-16);
+  }
+}
+
+.profileMenuRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  border-radius: var(--radius-md);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-alpha-92);
+  font: inherit;
+  text-align: left;
+  width: 100%;
+
+  &:hover:not(:disabled),
+  &:focus-visible {
+    background: var(--color-alpha-07);
+  }
+
+  &:disabled {
+    cursor: default;
+  }
+
+  /* Only a locked profile reads dimmed; the current row is disabled merely because it is not a choice. */
+  &:disabled:not(.profileMenuRowCurrent) {
+    color: var(--color-alpha-50);
+  }
+}
+
+.profileMenuRowCurrent {
+  background: var(--color-alpha-07);
+}
+
+.profileMenuAvatar {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 600;
+  flex: none;
+  color: var(--color-white);
+}
+
+.profileMenuName {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.profileMenuLabel {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.profileMenuRole {
+  font-size: 12px;
+  color: var(--color-alpha-50);
+}
+
+.profileMenuCheck {
+  margin-left: auto;
+  color: var(--indicator-active-track);
+}
+
+.profileMenuDivider {
+  height: 1px;
+  margin: 6px 10px;
+  background: var(--color-alpha-10);
+}
+
+.profileMenuError {
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--color-red-error-text);
+}

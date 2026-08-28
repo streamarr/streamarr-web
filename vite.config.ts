@@ -3,31 +3,26 @@ import react from '@vitejs/plugin-react'
 import path from 'node:path'
 import { defineConfig } from 'vite'
 
-// Dev-only: point the proxy at a server that is not on this machine, e.g. a box on the LAN.
-//   STREAMARR_API_TARGET=http://10.0.0.5:8080 npm run dev
+// Dev proxy target, e.g. STREAMARR_API_TARGET=http://10.0.0.5:8080 npm run dev
 const apiTarget = process.env.STREAMARR_API_TARGET ?? 'http://localhost:8080'
 
-// Both workers build as stable origin-root entries. The service worker's /sw.js location gives it
-// whole-app scope; in dev Vite serves the module entries from /src/, so the worker's root scope
-// is only reachable because the dev server sends Service-Worker-Allowed below.
 export default defineConfig({
   plugins: [
     tanstackRouter({
       target: 'react',
       autoCodeSplitting: true,
-      // Colocated route tests are not routes. Without this the generator rescans on every
-      // unclassifiable file, rewriting routeTree.gen.ts whose watcher event full-reloads the
-      // page, which re-requests the route chunk and rescans again — an endless reload loop.
+      // Colocated route tests are not routes; without this the generator rescans on each one,
+      // rewriting routeTree.gen.ts and reload-looping the page.
       routeFileIgnorePattern: '\\.test\\.(ts|tsx)$',
     }),
     react(),
   ],
   server: {
-    // The router plugin rewrites routeTree.gen.ts on every scan (unchanged bytes, fresh
-    // mtime); watching it turns each rewrite into a full-reload loop on code-split routes.
+    // Every scan rewrites routeTree.gen.ts (same bytes, fresh mtime); watching it reload-loops.
     watch: {
       ignored: ['**/routeTree.gen.ts'],
     },
+    // The dev worker entry lives under /src/, so root scope needs this header.
     headers: {
       'Service-Worker-Allowed': '/',
     },
@@ -36,6 +31,8 @@ export default defineConfig({
       '/api': apiTarget,
     },
   },
+  // Both workers build as stable origin-root entries; /sw.js gives the service worker whole-app
+  // scope.
   build: {
     rollupOptions: {
       input: {

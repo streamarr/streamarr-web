@@ -1,9 +1,8 @@
 import { useId, useState, type ClipboardEvent } from 'react'
-import './auth.css'
+import styles from './CodeInput.module.css'
 
-// One-character-per-box code entry (components.yaml CodeInput; frames 13/15a): link-TV codes
-// and PIN pads are the same component. A real input rides invisibly over the boxes so focus,
-// paste, and assistive tech work on a genuine field; the boxes are its rendering.
+// A real input rides invisibly over the boxes so focus, paste, and assistive tech work on a
+// genuine field; the boxes are its rendering.
 export function CodeInput({
   label,
   value,
@@ -21,16 +20,16 @@ export function CodeInput({
   label: string
   value: string
   onChange: (next: string) => void
-  /** Fixed code length (link-TV). Omit for variable-length secrets and set minLength. */
+  /** Fixed code length. Omit for variable-length secrets and set minLength. */
   length?: number
-  /** Variable-length floor (PINs are 4-8 digits): boxes grow past it as digits arrive. */
+  /** Variable-length floor: boxes grow past it as digits arrive. */
   minLength?: number
-  /** Draws the mock's dash separator after every N boxes (link-TV: 4). */
+  /** Draws a separator after every N boxes. */
   groupSize?: number
   secret?: boolean
   alphanumeric?: boolean
   error?: boolean
-  /** Frame 13b: an accepted code stays visible but recedes. */
+  /** An accepted code stays visible but recedes. */
   settled?: boolean
   autoFocus?: boolean
   testId?: string
@@ -38,14 +37,33 @@ export function CodeInput({
   const id = useId()
   const [focused, setFocused] = useState(false)
   const max = length ?? 8
-  // Four at rest and one box per typed digit past that: a fully typed four-digit PIN is four
-  // filled boxes — growing a fifth on completion implied it wasn't done — and the count still
-  // never leaks a longer PIN's length before its digits arrive.
+  // A PIN typed to the floor shows no extra box, and a longer PIN's length never leaks ahead.
   const shown = length ?? Math.max(minLength ?? 4, Math.min(value.length, max))
   const clean = (raw: string) =>
     (alphanumeric ? raw.replaceAll(/[^a-zA-Z0-9]/g, '') : raw.replaceAll(/\D/g, ''))
       .toUpperCase()
       .slice(0, max)
+
+  function valueFrom(raw: string): string {
+    if (!secret) {
+      return clean(raw)
+    }
+    if (raw.length < value.length) {
+      return value.slice(0, raw.length)
+    }
+    return clean(value + raw.slice(value.length))
+  }
+
+  // The masked value is rebuilt from the field's tail, so the caret must stay at the end.
+  function pinCaretToEnd(field: HTMLInputElement) {
+    if (!secret) {
+      return
+    }
+    const end = field.value.length
+    if (field.selectionStart !== end || field.selectionEnd !== end) {
+      field.setSelectionRange(end, end)
+    }
+  }
 
   const cells = Array.from({ length: shown }, (_, index) => {
     const filled = index < value.length
@@ -55,11 +73,12 @@ export function CodeInput({
     return (
       <div
         key={index}
-        className={`codeInputCell${active ? ' codeInputCellActive' : ''}`}
+        className={`${styles.codeInputCell}${active ? ` ${styles.codeInputCellActive}` : ''}`}
+        data-part="cell"
         aria-hidden
       >
         {filled ? (secret ? '•' : value[index]) : ' '}
-        {active && !filled ? <span className="codeInputCaret" /> : null}
+        {active && !filled ? <span className={styles.codeInputCaret} /> : null}
       </div>
     )
   })
@@ -67,19 +86,25 @@ export function CodeInput({
   const withSeparators = groupSize
     ? cells.flatMap((cell, index) =>
         index > 0 && index % groupSize === 0
-          ? [<div key={`sep-${index}`} className="codeInputSeparator" aria-hidden />, cell]
+          ? [<div key={`sep-${index}`} className={styles.codeInputSeparator} aria-hidden />, cell]
           : [cell],
       )
     : cells
 
   return (
     <div
-      className={`codeInput${error ? ' codeInputError' : ''}${settled ? ' codeInputSettled' : ''}`}
+      className={[
+        styles.codeInput,
+        error ? styles.codeInputError : '',
+        settled ? styles.codeInputSettled : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
     >
       {withSeparators}
       <input
         id={id}
-        className="codeInputField"
+        className={styles.codeInputField}
         aria-label={label}
         aria-invalid={error || undefined}
         inputMode={alphanumeric ? 'text' : 'numeric'}
@@ -93,21 +118,8 @@ export function CodeInput({
         data-testid={testId}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
-        onChange={(event) => {
-          // Secret mode renders masked text into the field; reconstruct from the tail so
-          // ordinary typing and deletions both land on the real value.
-          const raw = event.currentTarget.value
-          if (!secret) {
-            onChange(clean(raw))
-            return
-          }
-          const masked = '•'.repeat(value.length)
-          if (raw.length < masked.length) {
-            onChange(value.slice(0, raw.length))
-            return
-          }
-          onChange(clean(value + raw.slice(masked.length)))
-        }}
+        onSelect={(event) => pinCaretToEnd(event.currentTarget)}
+        onChange={(event) => onChange(valueFrom(event.currentTarget.value))}
         onPaste={(event: ClipboardEvent<HTMLInputElement>) => {
           event.preventDefault()
           onChange(clean(event.clipboardData.getData('text')))

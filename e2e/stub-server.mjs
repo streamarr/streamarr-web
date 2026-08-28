@@ -54,18 +54,33 @@ const json = (response, status, body) => {
 
 // Every request body is drained before responding: leaving it unread kills the keep-alive
 // socket the dev proxy pools, which stalls the request the worker replays on it.
-createServer((request, response) => {
+const server = createServer((request, response) => {
+  request.setEncoding('utf8')
   let raw = ''
   request.on('data', (chunk) => (raw += chunk))
   request.on('end', () => route(request, response, raw))
 })
-  .listen(port)
+server.on('error', (error) => {
+  console.error(`stub server failed on port ${port}:`, error)
+  process.exit(1)
+})
+server.listen(port)
 
 function route(request, response, raw) {
   const { pathname } = new URL(request.url, `http://localhost:${port}`)
 
   if (request.method === 'POST' && pathname === '/__test/mode') {
-    mode = JSON.parse(raw).mode
+    let body
+    try {
+      body = JSON.parse(raw)
+    } catch {
+      return json(response, 400, { code: 'BAD_JSON' })
+    }
+    const next = body?.mode
+    if (next !== 'renewable' && next !== 'rejected') {
+      return json(response, 400, { code: 'BAD_MODE' })
+    }
+    mode = next
     accessValid = false
     return json(response, 200, { mode })
   }

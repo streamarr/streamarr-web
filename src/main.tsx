@@ -1,7 +1,6 @@
 import '@mantine/core/styles.css'
 import './styles/tokens.generated.css'
 import './styles/fonts.css'
-import './ui/auth.css'
 
 import { ApolloProvider } from '@apollo/client/react'
 import { MantineProvider } from '@mantine/core'
@@ -28,7 +27,7 @@ if ('serviceWorker' in navigator) {
     .register(scriptUrl, options)
     .then(() => postCsrfTokenToServiceWorker())
     .catch(() => {
-      // Best-effort: the app works without the worker; renewal falls back to login routing.
+      // Best-effort: the app works without the worker.
     })
 }
 

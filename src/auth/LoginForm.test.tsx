@@ -36,9 +36,7 @@ describe('LoginForm', () => {
 
   it('shouldSignInWhenAStaleAuthCookieMakesTheServerDemandCsrf', async () => {
     document.cookie = 'XSRF-TOKEN=csrf-abc'
-    // A stale streamarr_access cookie rides along on the login POST, so the server's CSRF
-    // matcher covers it and refuses the request unless the token cookie is echoed back —
-    // and signing in is the very act that would have replaced the stale cookie.
+    // A stale access cookie on the login POST puts it under the server's CSRF matcher.
     server.use(
       http.post('/api/auth/login', ({ request }) =>
         request.headers.get('X-XSRF-TOKEN')
@@ -56,10 +54,13 @@ describe('LoginForm', () => {
     await waitFor(() => expect(onAuthenticated).toHaveBeenCalledWith(TOKENS))
   })
 
-  it('shouldShowMessageAndNotAuthenticateOnInvalidCredentials', async () => {
+  it('shouldShowTheServersRefusalAndNotAuthenticateOnInvalidCredentials', async () => {
     server.use(
       http.post('/api/auth/login', () =>
-        HttpResponse.json({ code: 'INVALID_CREDENTIALS' }, { status: 401 }),
+        HttpResponse.json(
+          { code: 'INVALID_CREDENTIALS', message: 'Invalid email or password.' },
+          { status: 401 },
+        ),
       ),
     )
     const onAuthenticated = vi.fn()
@@ -69,16 +70,20 @@ describe('LoginForm', () => {
 
     await fillAndSubmit(user)
 
-    expect(
-      await screen.findByText(/incorrect email or password/i),
-    ).toBeInTheDocument()
+    expect(await screen.findByRole('alert')).toHaveTextContent('Invalid email or password.')
     expect(onAuthenticated).not.toHaveBeenCalled()
   })
 
-  it('shouldShowThrottleMessageOnTooManyAttempts', async () => {
+  it('shouldShowTheServersThrottleSentenceOnTooManyAttempts', async () => {
     server.use(
       http.post('/api/auth/login', () =>
-        HttpResponse.json({ code: 'TOO_MANY_ATTEMPTS' }, { status: 429 }),
+        HttpResponse.json(
+          {
+            code: 'TOO_MANY_ATTEMPTS',
+            message: 'Too many failed login attempts. Try again later.',
+          },
+          { status: 429 },
+        ),
       ),
     )
     const { user } = renderWithProviders(
@@ -87,13 +92,18 @@ describe('LoginForm', () => {
 
     await fillAndSubmit(user)
 
-    expect(await screen.findByText(/too many attempts/i)).toBeInTheDocument()
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Too many failed login attempts. Try again later.',
+    )
   })
 
   it('shouldExplainHowToRecoverWhenCsrfRetryIsRejected', async () => {
     server.use(
       http.post('/api/auth/login', () =>
-        HttpResponse.json({ code: 'CSRF_TOKEN_REQUIRED' }, { status: 403 }),
+        HttpResponse.json(
+          { code: 'CSRF_TOKEN_REQUIRED', message: 'The CSRF token is missing or invalid.' },
+          { status: 403 },
+        ),
       ),
     )
     const { user } = renderWithProviders(
@@ -102,8 +112,8 @@ describe('LoginForm', () => {
 
     await fillAndSubmit(user)
 
-    expect(
-      await screen.findByText(/reload the page and try again/i),
-    ).toBeInTheDocument()
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Your session security check failed. Reload the page and try again.',
+    )
   })
 })

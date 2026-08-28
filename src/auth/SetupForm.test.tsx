@@ -42,16 +42,24 @@ describe('SetupForm', () => {
     })
   })
 
-  it('shouldShowMessageWhenSetupAlreadyCompleted', async () => {
+  it('shouldShowTheServersRefusalAndPointAtSignInWhenSetupAlreadyCompleted', async () => {
     server.use(
       http.post('/api/auth/setup', () =>
-        HttpResponse.json({ code: 'SETUP_ALREADY_COMPLETED' }, { status: 409 }),
+        HttpResponse.json(
+          {
+            code: 'SETUP_ALREADY_COMPLETED',
+            message: 'Server setup has already been completed.',
+          },
+          { status: 409 },
+        ),
       ),
     )
     const { user } = renderWithProviders(<SetupForm onAuthenticated={vi.fn()} />)
 
     await completeWizard(user)
 
-    expect(await screen.findByText(/already been set up/i)).toBeInTheDocument()
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Server setup has already been completed. Sign in instead.',
+    )
   })
 })

@@ -18,8 +18,8 @@ import {
   CancelProfileShareDocument,
   EndProfileShareDocument,
   OfferProfileShareDocument,
+  ProfileSharePreviewDocument,
   RejectProfileShareDocument,
-  SharePreflightDocument,
   SharingOverviewDocument,
   type SharingOverviewQuery,
 } from '../graphql/generated/graphql'
@@ -30,32 +30,22 @@ type PendingOffer = SharingOverviewQuery['pendingShareOffers']['edges'][number][
 type ProfileShareRow = SharingOverviewQuery['profileShares']['edges'][number]['node']
 
 const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const FAILURE_MESSAGE = 'Something went wrong. Please try again.'
 
-// The Profile-sharing flow (ADR 0024 §Profile sharing): offers into the context Household for
-// its admins to decide, the caller's own Personal Profile's shares to cancel or end, and the
-// offer form with the preflight's only two answers — wouldLock and nameConflict. Every expected
-// refusal arrives as a typed user error and renders through the shared message fallback, so an
-// unknown member still reads as something actionable.
 export function SharingScreen() {
   const { data: meData, loading: meLoading, error: meError } = useMe()
 
   if (meLoading) {
-    return (
-      <Center h={200}>
-        <Loader />
-      </Center>
-    )
+    return <SharingLoading />
   }
+
   const personal = meData?.me.selectableProfiles.edges
     .map((edge) => edge.node)
     .find((profile) => profile.personal)
   if (meError || !meData || !personal) {
-    return (
-      <Alert color="red" role="alert">
-        Couldn't load sharing. Try again.
-      </Alert>
-    )
+    return <SharingUnavailable />
   }
+
   return (
     <Sharing
       householdId={meData.me.contextHousehold.id}
@@ -83,18 +73,11 @@ function Sharing({
   const refetch = () => overview.refetch()
 
   if (overview.loading) {
-    return (
-      <Center h={200}>
-        <Loader />
-      </Center>
-    )
+    return <SharingLoading />
   }
+
   if (overview.error || !overview.data) {
-    return (
-      <Alert color="red" role="alert">
-        Couldn't load sharing. Try again.
-      </Alert>
-    )
+    return <SharingUnavailable />
   }
 
   const offers = overview.data.pendingShareOffers.edges.map((edge) => edge.node)
@@ -112,6 +95,22 @@ function Sharing({
         onChanged={refetch}
       />
     </Stack>
+  )
+}
+
+function SharingLoading() {
+  return (
+    <Center h={200}>
+      <Loader />
+    </Center>
+  )
+}
+
+function SharingUnavailable() {
+  return (
+    <Alert color="red" role="alert">
+      Couldn't load sharing. Try again.
+    </Alert>
   )
 }
 
@@ -133,21 +132,32 @@ function OffersIntoHousehold({
     setFailure(null)
     setBusy(offer.id)
     try {
-      const variables = { input: { shareId: offer.id } }
-      let errors: readonly UserErrorLike[] | undefined
-      if (decision === 'accept') {
-        errors = (await accept({ variables })).data?.acceptProfileShare?.userErrors
-      } else {
-        errors = (await reject({ variables })).data?.rejectProfileShare?.userErrors
-      }
-      if (errors?.length) {
-        setFailure(userErrorMessage(errors[0]))
-        return
-      }
-      onDecided()
+      await applyDecision(offer, decision)
+    } catch {
+      setFailure(FAILURE_MESSAGE)
     } finally {
       setBusy(null)
     }
+  }
+
+  async function applyDecision(offer: PendingOffer, decision: 'accept' | 'reject') {
+    const errors = await sendDecision(offer, decision)
+    if (errors?.length) {
+      setFailure(userErrorMessage(errors[0]))
+      return
+    }
+    onDecided()
+  }
+
+  async function sendDecision(
+    offer: PendingOffer,
+    decision: 'accept' | 'reject',
+  ): Promise<readonly UserErrorLike[] | undefined> {
+    const variables = { input: { shareId: offer.id } }
+    if (decision === 'accept') {
+      return (await accept({ variables })).data?.acceptProfileShare?.userErrors
+    }
+    return (await reject({ variables })).data?.rejectProfileShare?.userErrors
   }
 
   return (
@@ -199,7 +209,7 @@ function OfferForm({
   const [householdId, setHouseholdId] = useState('')
   const [failure, setFailure] = useState<string | null>(null)
   const validTarget = UUID_SHAPE.test(householdId)
-  const preflight = useQuery(SharePreflightDocument, {
+  const preview = useQuery(ProfileSharePreviewDocument, {
     variables: { profileId, householdId },
     skip: !validTarget,
   })
@@ -207,6 +217,14 @@ function OfferForm({
 
   async function submit() {
     setFailure(null)
+    try {
+      await sendOffer()
+    } catch {
+      setFailure(FAILURE_MESSAGE)
+    }
+  }
+
+  async function sendOffer() {
     const result = await offer({ variables: { input: { profileId, householdId } } })
     const errors = result.data?.offerProfileShare?.userErrors
     if (errors?.length) {
@@ -217,7 +235,7 @@ function OfferForm({
     onOffered()
   }
 
-  const answers = preflight.data?.sharePreflight
+  const answers = preview.data?.profileSharePreview
 
   return (
     <Card withBorder>
@@ -270,21 +288,31 @@ function OwnShares({
     setFailure(null)
     setBusy(share.id)
     try {
-      const variables = { input: { shareId: share.id } }
-      let errors: readonly UserErrorLike[] | undefined
-      if (share.status === 'PENDING') {
-        errors = (await cancel({ variables })).data?.cancelProfileShare?.userErrors
-      } else {
-        errors = (await end({ variables })).data?.endProfileShare?.userErrors
-      }
-      if (errors?.length) {
-        setFailure(userErrorMessage(errors[0]))
-        return
-      }
-      onChanged()
+      await applyChange(share)
+    } catch {
+      setFailure(FAILURE_MESSAGE)
     } finally {
       setBusy(null)
     }
+  }
+
+  async function applyChange(share: ProfileShareRow) {
+    const errors = await sendChange(share)
+    if (errors?.length) {
+      setFailure(userErrorMessage(errors[0]))
+      return
+    }
+    onChanged()
+  }
+
+  async function sendChange(
+    share: ProfileShareRow,
+  ): Promise<readonly UserErrorLike[] | undefined> {
+    const variables = { input: { shareId: share.id } }
+    if (share.status === 'PENDING') {
+      return (await cancel({ variables })).data?.cancelProfileShare?.userErrors
+    }
+    return (await end({ variables })).data?.endProfileShare?.userErrors
   }
 
   return (
@@ -306,9 +334,9 @@ function OwnShares({
                   : `Household ${shortId(share.householdId)}`}
               </Text>
               <Badge variant="light">{share.status}</Badge>
-              {share.structural && <Badge color="blue">Home</Badge>}
+              {share.requiredByAccountMembership && <Badge color="blue">Home</Badge>}
             </Group>
-            {!share.structural && (share.status === 'PENDING' || share.status === 'ACTIVE') && (
+            {canChange(share) && (
               <Button
                 size="xs"
                 variant="subtle"
@@ -324,6 +352,13 @@ function OwnShares({
       </Stack>
     </Card>
   )
+}
+
+function canChange(share: ProfileShareRow): boolean {
+  if (share.requiredByAccountMembership) {
+    return false
+  }
+  return share.status === 'PENDING' || share.status === 'ACTIVE'
 }
 
 function shortId(id: string): string {

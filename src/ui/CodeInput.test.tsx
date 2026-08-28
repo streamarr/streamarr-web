@@ -3,23 +3,27 @@ import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, it } from 'vitest'
 import { CodeInput } from './CodeInput'
+import styles from './CodeInput.module.css'
 
 function Harness({ minLength, length }: { minLength?: number; length?: number }) {
   const [value, setValue] = useState('')
   return (
-    <CodeInput
-      label="PIN"
-      value={value}
-      onChange={setValue}
-      minLength={minLength}
-      length={length}
-      secret
-    />
+    <>
+      <CodeInput
+        label="PIN"
+        value={value}
+        onChange={setValue}
+        minLength={minLength}
+        length={length}
+        secret
+      />
+      <output data-testid="value">{value}</output>
+    </>
   )
 }
 
 function cells() {
-  return document.querySelectorAll('.codeInputCell').length
+  return document.querySelectorAll(`.${styles.codeInputCell}`).length
 }
 
 describe('CodeInput', () => {
@@ -58,9 +62,8 @@ describe('CodeInput', () => {
 
     await user.type(screen.getByLabelText('PIN'), '12')
 
-    // The caret is a dedicated blinking element, not a printed bar — a static glyph
-    // reads as a character, not an insertion point.
-    expect(document.querySelector('.codeInputCaret')).not.toBeNull()
+    // A dedicated blinking element: a printed bar would read as a character.
+    expect(document.querySelector(`.${styles.codeInputCaret}`)).not.toBeNull()
   })
 
   it('shouldRestTheCaretWhenTheFloorIsReached', async () => {
@@ -70,7 +73,30 @@ describe('CodeInput', () => {
     await user.type(screen.getByLabelText('PIN'), '1234')
 
     // Complete-at-the-floor shows four filled boxes and no caret asking for a fifth.
-    expect(document.querySelector('.codeInputCaret')).toBeNull()
+    expect(document.querySelector(`.${styles.codeInputCaret}`)).toBeNull()
+  })
+
+  it('shouldAppendADigitTypedAfterTheCaretWasMovedBack', async () => {
+    const user = userEvent.setup()
+    render(<Harness minLength={4} />)
+    const field = screen.getByLabelText('PIN')
+
+    await user.type(field, '12')
+    await user.keyboard('{ArrowLeft}3')
+
+    expect(field).toHaveValue('•••')
+    expect(screen.getByTestId('value')).toHaveTextContent('123')
+  })
+
+  it('shouldDeleteTheLastDigitOnBackspaceAfterTheCaretWasMovedBack', async () => {
+    const user = userEvent.setup()
+    render(<Harness minLength={4} />)
+    const field = screen.getByLabelText('PIN')
+
+    await user.type(field, '123')
+    await user.keyboard('{ArrowLeft}{Backspace}')
+
+    expect(screen.getByTestId('value')).toHaveTextContent('12')
   })
 
   it('shouldKeepAFixedLengthFixed', async () => {

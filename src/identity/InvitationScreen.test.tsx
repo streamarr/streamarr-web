@@ -73,7 +73,10 @@ describe('InvitationScreen', () => {
   it('shouldReadEveryMissTheSameWay', async () => {
     server.use(
       http.post('/api/auth/invitation/lookup', () =>
-        HttpResponse.json({ code: 'INVALID_CODE' }, { status: 404 }),
+        HttpResponse.json(
+          { code: 'INVALID_CODE', message: 'That code is not redeemable.' },
+          { status: 404 },
+        ),
       ),
     )
     const { user } = renderWithProviders(<InvitationScreen onAccepted={vi.fn()} />)
@@ -81,13 +84,38 @@ describe('InvitationScreen', () => {
     await user.type(screen.getByLabelText(/^invitation code/i), 'pub-9999.wrong')
     await user.click(screen.getByRole('button', { name: 'Look up invitation' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      "That invitation isn't valid anymore",
-    )
-    // Back at the code field for another paste.
+    expect(await screen.findByRole('alert')).toHaveTextContent('That code is not redeemable.')
     expect(screen.getByLabelText(/^invitation code/i)).toBeInTheDocument()
   })
 
+  it('shouldShowTheServersRefusalWhenTheEmailIsAlreadyTaken', async () => {
+    serverKnowsTheCode()
+    server.use(
+      http.post('/api/auth/invitation/accept', () =>
+        HttpResponse.json(
+          {
+            code: 'INVITATION_EMAIL_ALREADY_USED',
+            message: 'The invitation email is already in use.',
+          },
+          { status: 409 },
+        ),
+      ),
+    )
+    const onAccepted = vi.fn()
+    const { user } = renderWithProviders(
+      <InvitationScreen initialCode={CODE} onAccepted={onAccepted} />,
+    )
+
+    await user.type(await screen.findByLabelText(/^your name/i), 'Kai H')
+    await user.type(screen.getByLabelText(/^choose a password/i), 'a strong passphrase')
+    await user.type(screen.getByLabelText(/^confirm password/i), 'a strong passphrase')
+    await user.click(screen.getByRole('button', { name: 'Create my account' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The invitation email is already in use.',
+    )
+    expect(onAccepted).not.toHaveBeenCalled()
+  })
 
   it('shouldSpellOutWhatConnectingMeansBeforeConsent', async () => {
     server.use(
@@ -99,11 +127,9 @@ describe('InvitationScreen', () => {
       await screen.findByText(/Connecting Grandpa Joe to your new account/),
     ).toBeInTheDocument()
     expect(screen.getByText('Your existing Profile')).toBeInTheDocument()
-    // Who keeps managing, which visits end, and who must consent afresh.
     expect(screen.getByText('· Nina')).toBeInTheDocument()
     expect(screen.getByText('· Lake House')).toBeInTheDocument()
     expect(screen.getByText('These Households will be offered it afresh')).toBeInTheDocument()
-    // Consent is still the same ceremony: name, password, create.
     expect(screen.getByRole('button', { name: 'Create my account' })).toBeInTheDocument()
   })
 

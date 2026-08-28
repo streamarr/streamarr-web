@@ -30,7 +30,7 @@ describe('decideIntercept', () => {
     expect(decideIntercept(`${ORIGIN}/api/auth/refresh/revoke`, ORIGIN)).toBe(
       'pass-through',
     )
-    // Playback URLs carry their own token; hls.js requests must not be touched.
+    // Playback URLs carry their own token.
     expect(
       decideIntercept(`${ORIGIN}/api/stream/abc/multivariant.m3u8`, ORIGIN),
     ).toBe('pass-through')
@@ -60,7 +60,7 @@ describe('isRecoverableAccessTokenResponse', () => {
   })
 
   it('shouldIgnoreOtherUnauthorizedAndNonJsonResponses', () => {
-    // AUTHENTICATION_REQUIRED is already terminal and must fall through to login routing.
+    // AUTHENTICATION_REQUIRED is terminal; no refresh can recover it.
     expect(
       isRecoverableAccessTokenResponse(401, { code: 'AUTHENTICATION_REQUIRED' }),
     ).toBe(false)
@@ -84,8 +84,6 @@ describe('rememberCsrfToken', () => {
 
 describe('SingleFlight', () => {
   it('shouldQueueAndReplayWhileSingleRefreshInFlight', async () => {
-    // One SW instance serves every tab, so a module-scoped in-flight promise IS the
-    // cross-tab lock: concurrent callers share exactly one refresh.
     const flight = new SingleFlight<boolean>()
     let release = () => {}
     const refresh = vi.fn(

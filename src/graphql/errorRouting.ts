@@ -1,13 +1,11 @@
-// Where an auth error should send the user. EXPIRED_TOKEN is deliberately absent because it is
-// useful only to the renewal worker. INVALID_TOKEN remains a login fallback if it escapes that
-// worker (for example, before a newly installed worker controls the page).
-
 export interface AuthErrorContext {
   networkStatus?: number
   networkCode?: string | null
   graphqlCodes?: string[]
 }
 
+// EXPIRED_TOKEN is deliberately absent: only the renewal worker acts on it. INVALID_TOKEN stays a
+// login fallback for when it escapes that worker.
 const LOGIN_CODES = new Set(['AUTHENTICATION_REQUIRED', 'INVALID_TOKEN'])
 const SELECT_CODES = new Set(['PROFILE_REQUIRED', 'HOUSEHOLD_REQUIRED'])
 
@@ -18,13 +16,15 @@ export function decideAuthRoute(ctx: AuthErrorContext): '/login' | '/select-prof
   if (ctx.networkStatus === 401 && ctx.networkCode && LOGIN_CODES.has(ctx.networkCode)) {
     return '/login'
   }
+  if (ctx.graphqlCodes?.some((code) => LOGIN_CODES.has(code))) {
+    return '/login'
+  }
   return null
 }
 
 /**
- * Reads the routing signals out of an Apollo v4 error by shape: a CombinedGraphQLErrors carries
- * an `errors` array with per-error `extensions.code`; a network error (ServerError) carries
- * `statusCode` and a JSON `bodyText`. Defensive so it never throws inside the error link.
+ * By shape: CombinedGraphQLErrors carries `errors[].extensions.code`; a ServerError carries
+ * `statusCode` and a JSON `bodyText`. Never throws inside the error link.
  */
 export function extractAuthContext(error: unknown): AuthErrorContext {
   if (typeof error !== 'object' || error === null) {

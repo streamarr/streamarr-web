@@ -5,3 +5,9 @@ coverage
 .DS_Store
 test-results
 playwright-report
+.tanstack/
+blob-report/
+*.tsbuildinfo
+vite.config.*.timestamp-*
+.env
+.claude/worktrees/
