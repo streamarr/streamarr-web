@@ -111,6 +111,20 @@ describe('LibraryScreen', () => {
     await waitFor(() => expect(screen.getByText('No items match this filter.')).toBeInTheDocument())
   })
 
+  it('hides the alphabet rail under a watch-status filter, since alphabetIndex has no filter argument', async () => {
+    server.use(graphql.query('LibraryPage', () => HttpResponse.json({ data: libraryData({ edges: [] }) })))
+    renderWithProviders(<Harness initialSearch={{ ...DEFAULT_SEARCH, watchStatus: 'IN_PROGRESS' }} />)
+    await waitFor(() => expect(screen.getByText('No items match this filter.')).toBeInTheDocument())
+    expect(screen.queryByRole('navigation', { name: 'Jump to letter' })).not.toBeInTheDocument()
+  })
+
+  it('shows the alphabet rail again once the watch-status filter is cleared', async () => {
+    server.use(graphql.query('LibraryPage', () => HttpResponse.json({ data: libraryData() })))
+    renderWithProviders(<Harness />)
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Movies' })).toBeInTheDocument())
+    expect(screen.getByRole('navigation', { name: 'Jump to letter' })).toBeInTheDocument()
+  })
+
   it('reports a filter chip tap through onSearchChange', async () => {
     server.use(graphql.query('LibraryPage', () => HttpResponse.json({ data: libraryData() })))
     const onSearchChange = vi.fn()
@@ -181,6 +195,53 @@ describe('LibraryScreen', () => {
 
     await waitFor(() => expect(screen.getByText('N')).toHaveAttribute('aria-pressed', 'true'))
     expect(queryCount).toBe(queriesAfterLoad)
+  })
+
+  it('compensates scrollTop when the top sentinel loads more, so it leaves the intersecting zone and the view does not jump', async () => {
+    server.use(
+      graphql.query('LibraryPage', ({ variables }) => {
+        if (variables.before) {
+          return HttpResponse.json({
+            data: libraryData({
+              edges: [{ cursor: 'c0', node: movieNode({ id: '0', title: 'Aardvark' }) }],
+              hasNextPage: false,
+            }),
+          })
+        }
+        return HttpResponse.json({
+          data: {
+            ...libraryData(),
+            library: {
+              ...libraryData().library,
+              items: {
+                edges: [{ cursor: 'c1', node: movieNode({ id: '1', title: 'Beta' }) }],
+                pageInfo: { hasNextPage: false, hasPreviousPage: true, startCursor: 'c1', endCursor: 'c1' },
+              },
+            },
+          },
+        })
+      }),
+    )
+    renderWithProviders(<Harness />)
+    await waitFor(() => expect(screen.getByText('Beta')).toBeInTheDocument())
+
+    const grid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
+    const sentinel = grid.firstElementChild as HTMLDivElement
+    // Tied to real DOM state so it reads 300 before the fetch resolves, 700 once rendered.
+    Object.defineProperty(grid, 'scrollHeight', {
+      configurable: true,
+      get: () => (document.body.textContent?.includes('Aardvark') ? 700 : 300),
+    })
+    grid.scrollTop = 50
+
+    const observer = intersectionObserverInstances.find((instance) =>
+      instance.observe.mock.calls.some((call) => call[0] === sentinel),
+    )!
+    observer.callback([{ target: sentinel, isIntersecting: true } as unknown as IntersectionObserverEntry], observer)
+
+    await waitFor(() => expect(screen.getByText('Aardvark')).toBeInTheDocument())
+    // scrollTop should track the 400px of growth exactly.
+    await waitFor(() => expect(grid.scrollTop).toBe(450))
   })
 
   it('scrolls the actual jump target into view, not the backward-continuity items prepended above it', async () => {

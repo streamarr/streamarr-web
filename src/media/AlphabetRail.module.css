@@ -2,9 +2,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  /* gap is a floor, not the only spacing: space-between spreads the letters across the full
-     container height (set explicitly, not just relying on flex-stretch from the parent, since a
-     caller's layout could change), only falling back to the 2px gap once they're tightly packed. */
+  /* gap is a floor; space-between spreads the letters across the full height beyond that. */
   justify-content: space-between;
   gap: 2px;
   width: 24px;
