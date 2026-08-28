@@ -3,6 +3,7 @@ import { from } from '@apollo/client/link'
 import { SetContextLink } from '@apollo/client/link/context'
 import { onError } from '@apollo/client/link/error'
 import { csrfHeaders, isCsrfRejection } from '../auth/csrf'
+import generatedIntrospection from './generated/possibleTypes.json'
 import { decideAuthRoute, extractAuthContext } from './errorRouting'
 
 export type AuthRoute = '/login' | '/select'
@@ -51,6 +52,8 @@ export function createApolloClient(onAuthRoute: (route: AuthRoute) => void): Apo
 
   return new ApolloClient({
     link: from([errorLink, csrfLink, httpLink]),
-    cache: new InMemoryCache(),
+    // Generated possibleTypes keep fragment matching correct across the schema's unions and
+    // interfaces — a silent mismatch would drop fields, not fail loudly.
+    cache: new InMemoryCache({ possibleTypes: generatedIntrospection.possibleTypes }),
   })
 }
