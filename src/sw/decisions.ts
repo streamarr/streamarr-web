@@ -19,6 +19,7 @@ export function decideIntercept(
   }
   if (
     url.pathname === '/api/auth/refresh' ||
+    url.pathname === '/api/auth/refresh/revoke' ||
     url.pathname.startsWith('/api/stream/')
   ) {
     return 'pass-through'
@@ -29,12 +30,13 @@ export function decideIntercept(
   return 'pass-through'
 }
 
-/** The refresh-and-retry signal: a 401 whose body carries code EXPIRED_TOKEN. */
-export function isExpiredTokenResponse(status: number, body: unknown): boolean {
+/** A 401 that may be repaired by renewing the cookie session and replaying once. */
+export function isRecoverableAccessTokenResponse(status: number, body: unknown): boolean {
   if (status !== 401 || typeof body !== 'object' || body === null) {
     return false
   }
-  return (body as { code?: unknown }).code === 'EXPIRED_TOKEN'
+  const code = (body as { code?: unknown }).code
+  return code === 'EXPIRED_TOKEN' || code === 'INVALID_TOKEN'
 }
 
 /** Prefer a token echoed by the page, allowing a restarted worker to rebuild its volatile cache. */

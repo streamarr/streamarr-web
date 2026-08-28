@@ -26,7 +26,7 @@ function LoginHarness() {
 
 function LogoutHarness() {
   const auth = useAuth()
-  return <button onClick={() => void auth.logout()}>Sign out</button>
+  return <button onClick={() => void auth.logout().catch(() => {})}>Sign out</button>
 }
 
 describe('AuthProvider renewal', () => {
@@ -52,7 +52,9 @@ describe('AuthProvider renewal', () => {
   })
 
   it('shouldStopRenewalAfterLogoutCompletes', async () => {
-    server.use(http.post('/api/auth/logout', () => new HttpResponse(null, { status: 204 })))
+    server.use(
+      http.post('/api/auth/refresh/revoke', () => new HttpResponse(null, { status: 204 })),
+    )
     const renewal = {
       adoptExpiry: vi.fn(),
       refreshNow: vi.fn(),
@@ -68,5 +70,29 @@ describe('AuthProvider renewal', () => {
     await userEvent.setup().click(screen.getByRole('button', { name: 'Sign out' }))
 
     await waitFor(() => expect(renewal.stop).toHaveBeenCalledOnce())
+  })
+
+  it('shouldClearLocalSessionWhenServerRevocationFails', async () => {
+    server.use(
+      http.post('/api/auth/logout', () => HttpResponse.json({}, { status: 503 })),
+      http.post('/api/auth/refresh/revoke', () => HttpResponse.json({}, { status: 503 })),
+    )
+    const renewal = {
+      adoptExpiry: vi.fn(),
+      refreshNow: vi.fn(),
+      stop: vi.fn(),
+    }
+    const session = createSessionStore(async () => 'authenticated')
+    session.markAuthenticated()
+    render(
+      <AuthProvider sessionStore={session} renewal={renewal}>
+        <LogoutHarness />
+      </AuthProvider>,
+    )
+
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Sign out' }))
+
+    await waitFor(() => expect(session.peek()).toBe('anonymous'))
+    expect(renewal.stop).toHaveBeenCalledOnce()
   })
 })

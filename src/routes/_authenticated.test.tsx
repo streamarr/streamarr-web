@@ -75,7 +75,7 @@ describe('the authenticated layout', () => {
     let loggedOut = false
     server.use(
       graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
-      http.post('/api/auth/logout', () => {
+      http.post('/api/auth/refresh/revoke', () => {
         loggedOut = true
         return new HttpResponse(null, { status: 204 })
       }),
@@ -87,6 +87,27 @@ describe('the authenticated layout', () => {
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
     expect(loggedOut).toBe(true)
+  })
+
+  it('shouldReturnToSignInBeforeServerRevocationFinishes', async () => {
+    let finishRevocation = () => {}
+    const revocation = new Promise<void>((resolve) => {
+      finishRevocation = resolve
+    })
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
+      http.post('/api/auth/refresh/revoke', async () => {
+        await revocation
+        return HttpResponse.json({}, { status: 503 })
+      }),
+    )
+    const { router, user } = renderAppAt('/')
+    await screen.findByText(/welcome, owner/i)
+
+    await user.click(screen.getByRole('button', { name: /sign out/i }))
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
+    finishRevocation()
   })
 
   it('shouldHideSignOutFromAVisitorWhoIsNotSignedIn', async () => {

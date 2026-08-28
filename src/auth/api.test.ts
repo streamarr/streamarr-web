@@ -125,14 +125,17 @@ describe('auth api', () => {
   it('shouldAttachCsrfHeaderAndResolveLogoutWithoutBody', async () => {
     document.cookie = '__Host-XSRF-TOKEN=csrf-logout; Secure; Path=/'
     let header: string | null = null
+    let body: string | null = null
     server.use(
-      http.post('/api/auth/logout', ({ request }) => {
+      http.post('/api/auth/refresh/revoke', async ({ request }) => {
         header = request.headers.get('X-XSRF-TOKEN')
+        body = await request.text()
         return new HttpResponse(null, { status: 204 })
       }),
     )
 
     await expect(logout()).resolves.toBeUndefined()
     expect(header).toBe('csrf-logout')
+    expect(body).toBe('')
   })
 })
