@@ -18,10 +18,14 @@ describe('the root layout', () => {
   })
 
   it('shouldWrapASignedInPageInTheChrome', async () => {
-    server.use(graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })))
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
+      graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
+      graphql.query('Home', () => HttpResponse.json({ data: { continueWatching: [], libraries: [] } })),
+    )
     renderAppAt('/')
 
-    expect(await screen.findByText(/welcome, owner/i)).toBeInTheDocument()
+    expect(await screen.findByText(/nothing to watch yet/i)).toBeInTheDocument()
     expect(screen.getByRole('banner')).toBeInTheDocument()
     expect(document.querySelector(`.${styles.homeShell}`)).not.toBeNull()
   })
