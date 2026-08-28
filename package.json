@@ -8,7 +8,9 @@
     "dev": "vite",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "tokens": "gh api \"repos/streamarr/streamarr-ux/contents/dist/web/tokens.css?ref=$(cat TOKENS_REF)\" -H 'Accept: application/vnd.github.raw' > src/styles/tokens.generated.css",
+    "tokens:check": "gh api \"repos/streamarr/streamarr-ux/contents/dist/web/tokens.css?ref=$(cat TOKENS_REF)\" -H 'Accept: application/vnd.github.raw' | diff - src/styles/tokens.generated.css"
   },
   "repository": {
     "type": "git",
