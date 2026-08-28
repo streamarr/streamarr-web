@@ -1,0 +1,11 @@
+.home {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-24);
+}
+
+.recentlyAdded {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: var(--spacing-24);
+}
