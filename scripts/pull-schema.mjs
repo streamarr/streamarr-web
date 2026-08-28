@@ -2,12 +2,11 @@
 // Vendors the pinned streamarr-server schema into src/graphql/schema/: every .graphqls file under
 // the server's schema directory, stored verbatim, plus a PROVENANCE note naming the source commit.
 // The pin is exact — bumping it is a deliberate, reviewed change.
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
-import { basename, dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { basename, join } from 'node:path'
+import { fetchBytes, fetchJson, rawUrl, readPin, root } from './pin.mjs'
 
-const root = join(dirname(fileURLToPath(import.meta.url)), '..')
-const pin = JSON.parse(await readFile(join(root, 'src/graphql/schema.pin.json'), 'utf8'))
+const pin = await readPin()
 const target = join(root, 'src/graphql/schema')
 
 const treeUrl = `https://api.github.com/repos/${pin.repository}/git/trees/${pin.commit}?recursive=1`
@@ -37,10 +36,7 @@ await rm(target, { recursive: true, force: true })
 await mkdir(target, { recursive: true })
 
 for (const path of files) {
-  const bytes = await fetchBytes(
-    `https://raw.githubusercontent.com/${pin.repository}/${pin.commit}/${path}`,
-  )
-  await writeFile(join(target, basename(path)), bytes)
+  await writeFile(join(target, basename(path)), await fetchBytes(rawUrl(pin, path)))
 }
 
 await writeFile(
@@ -48,21 +44,3 @@ await writeFile(
   `${pin.repository}@${pin.commit}\n${files.length} files from ${pin.schemaDirectory}\n`,
 )
 console.log(`Wrote ${files.length} files to src/graphql/schema/ from ${pin.repository}@${pin.commit}`)
-
-async function fetchJson(url) {
-  const response = await fetch(url, { headers: githubHeaders() })
-  if (!response.ok) throw new Error(`${url} answered ${response.status}`)
-  return response.json()
-}
-
-async function fetchBytes(url) {
-  const response = await fetch(url, { headers: githubHeaders() })
-  if (!response.ok) throw new Error(`${url} answered ${response.status}`)
-  return Buffer.from(await response.arrayBuffer())
-}
-
-function githubHeaders() {
-  return process.env.GITHUB_TOKEN
-    ? { authorization: `Bearer ${process.env.GITHUB_TOKEN}` }
-    : {}
-}
