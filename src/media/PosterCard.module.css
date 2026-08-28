@@ -1,0 +1,26 @@
+.posterCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.posterArt {
+  position: relative;
+  aspect-ratio: 2 / 3;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.posterTitle {
+  font-size: var(--font-size-body);
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.posterMeta {
+  font-size: var(--font-size-caption);
+  color: var(--text-secondary);
+}

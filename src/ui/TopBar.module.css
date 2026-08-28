@@ -1,3 +1,8 @@
+:root {
+  /* This bar's rendered height; revisit if the padding/content sizing below changes. */
+  --topbar-height: 79px;
+}
+
 .topBar {
   position: relative;
   display: flex;

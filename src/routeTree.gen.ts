@@ -18,6 +18,7 @@ import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedLinkRouteImport } from './routes/_authenticated/link'
 import { Route as AuthenticatedSelectProfileRouteImport } from './routes/_authenticated/select-profile'
 import { Route as AuthenticatedSharingRouteImport } from './routes/_authenticated/sharing'
+import { Route as AuthenticatedLibraryLibraryIdRouteImport } from './routes/_authenticated/library.$libraryId'
 import { Route as AuthenticatedPlayMediaFileIdRouteImport } from './routes/_authenticated/play.$mediaFileId'
 
 const AuthenticatedRoute = AuthenticatedRouteImport.update({
@@ -65,6 +66,12 @@ const AuthenticatedSharingRoute = AuthenticatedSharingRouteImport.update({
   path: '/sharing',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedLibraryLibraryIdRoute =
+  AuthenticatedLibraryLibraryIdRouteImport.update({
+    id: '/library/$libraryId',
+    path: '/library/$libraryId',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedPlayMediaFileIdRoute =
   AuthenticatedPlayMediaFileIdRouteImport.update({
     id: '/play/$mediaFileId',
@@ -81,6 +88,7 @@ export interface FileRoutesByFullPath {
   '/link': typeof AuthenticatedLinkRoute
   '/select-profile': typeof AuthenticatedSelectProfileRoute
   '/sharing': typeof AuthenticatedSharingRoute
+  '/library/$libraryId': typeof AuthenticatedLibraryLibraryIdRoute
   '/play/$mediaFileId': typeof AuthenticatedPlayMediaFileIdRoute
 }
 export interface FileRoutesByTo {
@@ -92,6 +100,7 @@ export interface FileRoutesByTo {
   '/select-profile': typeof AuthenticatedSelectProfileRoute
   '/sharing': typeof AuthenticatedSharingRoute
   '/': typeof AuthenticatedIndexRoute
+  '/library/$libraryId': typeof AuthenticatedLibraryLibraryIdRoute
   '/play/$mediaFileId': typeof AuthenticatedPlayMediaFileIdRoute
 }
 export interface FileRoutesById {
@@ -105,6 +114,7 @@ export interface FileRoutesById {
   '/_authenticated/select-profile': typeof AuthenticatedSelectProfileRoute
   '/_authenticated/sharing': typeof AuthenticatedSharingRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/library/$libraryId': typeof AuthenticatedLibraryLibraryIdRoute
   '/_authenticated/play/$mediaFileId': typeof AuthenticatedPlayMediaFileIdRoute
 }
 export interface FileRouteTypes {
@@ -118,6 +128,7 @@ export interface FileRouteTypes {
     | '/link'
     | '/select-profile'
     | '/sharing'
+    | '/library/$libraryId'
     | '/play/$mediaFileId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -129,6 +140,7 @@ export interface FileRouteTypes {
     | '/select-profile'
     | '/sharing'
     | '/'
+    | '/library/$libraryId'
     | '/play/$mediaFileId'
   id:
     | '__root__'
@@ -141,6 +153,7 @@ export interface FileRouteTypes {
     | '/_authenticated/select-profile'
     | '/_authenticated/sharing'
     | '/_authenticated/'
+    | '/_authenticated/library/$libraryId'
     | '/_authenticated/play/$mediaFileId'
   fileRoutesById: FileRoutesById
 }
@@ -217,6 +230,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSharingRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/library/$libraryId': {
+      id: '/_authenticated/library/$libraryId'
+      path: '/library/$libraryId'
+      fullPath: '/library/$libraryId'
+      preLoaderRoute: typeof AuthenticatedLibraryLibraryIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/play/$mediaFileId': {
       id: '/_authenticated/play/$mediaFileId'
       path: '/play/$mediaFileId'
@@ -232,6 +252,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedSelectProfileRoute: typeof AuthenticatedSelectProfileRoute
   AuthenticatedSharingRoute: typeof AuthenticatedSharingRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedLibraryLibraryIdRoute: typeof AuthenticatedLibraryLibraryIdRoute
   AuthenticatedPlayMediaFileIdRoute: typeof AuthenticatedPlayMediaFileIdRoute
 }
 
@@ -240,6 +261,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedSelectProfileRoute: AuthenticatedSelectProfileRoute,
   AuthenticatedSharingRoute: AuthenticatedSharingRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+  AuthenticatedLibraryLibraryIdRoute: AuthenticatedLibraryLibraryIdRoute,
   AuthenticatedPlayMediaFileIdRoute: AuthenticatedPlayMediaFileIdRoute,
 }
 

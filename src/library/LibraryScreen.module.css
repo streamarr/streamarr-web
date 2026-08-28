@@ -1,0 +1,66 @@
+.libraryScreen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-16);
+  /* Below the top bar and HomeShell's content padding (14px/40px), so the grid scrolls in its
+     own container instead of growing the page. */
+  height: calc(100dvh - var(--topbar-height) - 14px - 40px);
+  min-height: 0;
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-16);
+}
+
+.libraryName {
+  font-size: var(--font-size-display);
+  font-weight: 700;
+  margin: 0;
+}
+
+.scanStatus {
+  font-family: var(--font-family-system);
+  font-size: var(--font-size-caption);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: var(--letter-spacing-system);
+}
+
+.sortSlot {
+  margin-left: auto;
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: var(--spacing-16);
+}
+
+.grid {
+  composes: thin from '../styles/scrollbar.module.css';
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  /* minmax(0, 1fr), not 1fr: a track's default min-width is auto, so a nowrap title's
+     min-content width would otherwise widen its whole column past its fair 1/6 share. */
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--spacing-20);
+  align-content: start;
+  padding-right: var(--spacing-8);
+}
+
+.sentinel {
+  grid-column: 1 / -1;
+  height: 1px;
+}
+
+.empty {
+  /* Matches .grid's flex: 1, or it leaves the alphabet rail wherever the text ends. */
+  flex: 1;
+  color: var(--text-secondary);
+  padding: var(--spacing-24) 0;
+}

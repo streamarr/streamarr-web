@@ -21,6 +21,10 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
 
+// jsdom has no scroll layout, so it implements neither this nor a meaningful scroll position;
+// tests that care about scrolling assert against the mocked IntersectionObserver instead.
+Element.prototype.scrollIntoView ??= function scrollIntoView() {}
+
 // Mantine's SegmentedControl positions its indicator with ResizeObserver, which jsdom lacks.
 class QuietResizeObserver {
   observe() {}
@@ -28,3 +32,33 @@ class QuietResizeObserver {
   disconnect() {}
 }
 globalThis.ResizeObserver ??= QuietResizeObserver as unknown as typeof ResizeObserver
+
+// jsdom has no IntersectionObserver either. Unlike ResizeObserver this one isn't fire-and-forget:
+// infinite-scroll and alphabet-rail tests need to trigger it manually, so each instance is kept
+// reachable via `intersectionObserverInstances` instead of being a no-op stub.
+export class MockIntersectionObserver implements IntersectionObserver {
+  root: Element | Document | null
+  rootMargin: string
+  scrollMargin = ''
+  thresholds: ReadonlyArray<number>
+  readonly callback: IntersectionObserverCallback
+
+  constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
+    this.callback = callback
+    this.root = (options?.root as Element | Document | null) ?? null
+    this.rootMargin = options?.rootMargin ?? ''
+    this.thresholds = ([] as number[]).concat(options?.threshold ?? [])
+    intersectionObserverInstances.push(this)
+  }
+
+  observe = vi.fn()
+  unobserve = vi.fn()
+  disconnect = vi.fn()
+  takeRecords = (): IntersectionObserverEntry[] => []
+}
+export const intersectionObserverInstances: MockIntersectionObserver[] = []
+globalThis.IntersectionObserver ??= MockIntersectionObserver as unknown as typeof IntersectionObserver
+
+afterEach(() => {
+  intersectionObserverInstances.length = 0
+})

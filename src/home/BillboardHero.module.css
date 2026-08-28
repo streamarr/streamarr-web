@@ -1,0 +1,82 @@
+.hero {
+  position: relative;
+  height: 593px;
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+}
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+}
+
+.scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.75) 0%, rgba(0, 0, 0, 0.1) 55%, transparent 80%),
+    linear-gradient(0deg, rgba(0, 0, 0, 0.85) 0%, transparent 45%);
+}
+
+.panel {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: var(--spacing-12);
+  padding: var(--spacing-page);
+  max-width: 640px;
+}
+
+.tagline {
+  font-style: italic;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.title {
+  font-size: var(--font-size-hero-lg);
+  line-height: var(--line-height-display);
+  font-weight: 700;
+  margin: 0;
+}
+
+.metadata {
+  display: flex;
+  gap: var(--spacing-16);
+  font-family: var(--font-family-system);
+  font-size: var(--font-size-caption);
+  text-transform: uppercase;
+  letter-spacing: var(--letter-spacing-system);
+  color: var(--text-secondary);
+}
+
+.metadataLabel {
+  color: var(--text-tertiary);
+}
+
+.synopsis {
+  line-height: var(--line-height-prose);
+  color: var(--text-primary);
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.cta {
+  align-self: flex-start;
+  margin-top: var(--spacing-8);
+  padding: 12px 28px;
+  border-radius: var(--radius-lg);
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--color-white);
+  background: linear-gradient(
+    calc(var(--gradient-brand-angle) * 1deg),
+    var(--color-brand-blue),
+    var(--color-brand-purple)
+  );
+}
