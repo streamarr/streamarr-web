@@ -1,4 +1,5 @@
-import { Alert, Button, Group, Radio, Stack, Text, TextInput, Title } from '@mantine/core'
+import { Alert, Button, Group, SegmentedControl, Stack, Text } from '@mantine/core'
+import { CodeInput } from '../ui/CodeInput'
 import { useState } from 'react'
 import { AuthApiError } from '../api/http'
 import {
@@ -39,24 +40,24 @@ export function LinkDevice({
   initialCode?: string
   onUnauthenticated?: (code: string) => void
 }) {
-  const [code, setCode] = useState(initialCode)
+  const [code, setCode] = useState(normalizeCode(initialCode))
   const [pairing, setPairing] = useState<PairingRequest | null>(null)
   const [settled, setSettled] = useState<SettledStatus | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  async function onLookup(event: React.FormEvent) {
-    event.preventDefault()
+  // Frame 13: lookup runs on the last character — there is no submit button to find.
+  async function onCodeComplete(fullCode: string) {
     setError(null)
     setSettled(null)
     setBusy(true)
     try {
-      const found = await lookupPairingRequest(code)
+      const found = await lookupPairingRequest(fullCode)
       setPairing(found)
       settle(found.status)
     } catch (caught) {
       setPairing(null)
-      if (!bouncedToSignIn(caught)) {
+      if (!bouncedToSignIn(caught, fullCode)) {
         setError(messageFor(caught, LOOKUP_MESSAGES))
       }
     } finally {
@@ -64,12 +65,16 @@ export function LinkDevice({
     }
   }
 
-  /** Approving is an account action; an expired session sends the approver to sign in and back. */
-  function bouncedToSignIn(caught: unknown): boolean {
+  /**
+   * Approving is an account action; an expired session sends the approver to sign in and back.
+   * The code travels as an argument: the lookup can fire from the keystroke that completed it,
+   * before that keystroke's state has committed.
+   */
+  function bouncedToSignIn(caught: unknown, carriedCode: string): boolean {
     if (!onUnauthenticated || !(caught instanceof AuthApiError) || caught.status !== 401) {
       return false
     }
-    onUnauthenticated(code)
+    onUnauthenticated(carriedCode)
     return true
   }
 
@@ -91,7 +96,7 @@ export function LinkDevice({
    * authoritative outcome rather than inviting a blind resubmit that would only 409 again.
    */
   async function handleDecisionFailure(caught: unknown) {
-    if (bouncedToSignIn(caught)) {
+    if (bouncedToSignIn(caught, code)) {
       return
     }
     if (!(caught instanceof AuthApiError) || caught.code !== 'DEVICE_CODE_NOT_PENDING') {
@@ -123,11 +128,8 @@ export function LinkDevice({
   }
 
   return (
-    <Stack maw={420}>
-      <Title order={2}>Link a device</Title>
-      <Text c="dimmed">
-        Enter the code shown on your TV to confirm it should be signed in to your account.
-      </Text>
+    <Stack gap={28}>
+      <h1 className="authTitle">Link your TV</h1>
 
       <div role="status" aria-live="polite">
         {settled && <Alert color={settled === 'DENIED' ? 'red' : 'green'}>{SETTLED_MESSAGES[settled]}</Alert>}
@@ -144,44 +146,49 @@ export function LinkDevice({
           Link another device
         </Button>
       ) : pairing ? (
-        <ConfirmDevice pairing={pairing} busy={busy} onDecide={onDecide} onCancel={startOver} />
+        <Stack gap={10}>
+          <Text className="authLede">Code accepted</Text>
+          <CodeInput
+            label="Pairing code"
+            value={code}
+            onChange={() => {}}
+            length={8}
+            groupSize={4}
+            alphanumeric
+            settled
+          />
+          <ConfirmDevice pairing={pairing} busy={busy} onDecide={onDecide} onCancel={startOver} />
+        </Stack>
       ) : (
-        <EnterCode code={code} busy={busy} onChange={setCode} onSubmit={onLookup} />
+        <Stack gap={10}>
+          <Text className="authLede">Enter the code shown on your TV</Text>
+          <CodeInput
+            label="Pairing code"
+            value={code}
+            onChange={(next) => {
+              setCode(next)
+              setError(null)
+              if (next.length === 8 && !busy) {
+                void onCodeComplete(next)
+              }
+            }}
+            length={8}
+            groupSize={4}
+            alphanumeric
+            error={error != null}
+            autoFocus
+          />
+        </Stack>
       )}
     </Stack>
   )
 }
 
-function EnterCode({
-  code,
-  busy,
-  onChange,
-  onSubmit,
-}: {
-  code: string
-  busy: boolean
-  onChange: (code: string) => void
-  onSubmit: (event: React.FormEvent) => void
-}) {
-  return (
-    <form onSubmit={onSubmit}>
-      <Stack>
-        <TextInput
-          label="Pairing code"
-          description="Letters only — the hyphen is optional."
-          autoComplete="off"
-          autoCapitalize="characters"
-          spellCheck={false}
-          value={code}
-          onChange={(event) => onChange(event.currentTarget.value)}
-          required
-        />
-        <Button type="submit" loading={busy}>
-          Continue
-        </Button>
-      </Stack>
-    </form>
-  )
+function normalizeCode(raw: string) {
+  return raw
+    .replaceAll(/[^a-zA-Z0-9]/g, '')
+    .toUpperCase()
+    .slice(0, 8)
 }
 
 /**
@@ -210,19 +217,25 @@ function ConfirmDevice({
         <strong>{pairing.deviceName}</strong> wants access to your account.
       </Text>
       <Text c="dimmed" size="sm">
-        Requested {formatRequestedAt(pairing.requestedAt)} · code {pairing.userCode}
+        Requested {formatRequestedAt(pairing.requestedAt)}
       </Text>
-      <Radio.Group
-        label="Sign it in to"
-        value={householdId}
-        onChange={setHouseholdId}
-      >
-        <Stack gap="xs" mt="xs">
-          {pairing.households.map((household) => (
-            <Radio key={household.id} value={household.id} label={household.name} />
-          ))}
-        </Stack>
-      </Radio.Group>
+      <Stack gap={6}>
+        <Text component="label" className="fieldLabel" id="household-choice-label">
+          Sign it in to
+        </Text>
+        {/* The same control the profile picker uses for Households — one vocabulary for one
+            choice. An unmatched value renders no thumb, so approval still demands an explicit
+            pick when more than one Household is usable. */}
+        <SegmentedControl
+          aria-labelledby="household-choice-label"
+          value={householdId}
+          onChange={setHouseholdId}
+          data={pairing.households.map((household) => ({
+            value: household.id,
+            label: household.name,
+          }))}
+        />
+      </Stack>
       <Group>
         <Button
           loading={busy}

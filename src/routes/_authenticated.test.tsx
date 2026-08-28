@@ -77,6 +77,8 @@ describe('the authenticated layout', () => {
     const { router, user } = renderAppAt('/')
     await screen.findByText(/welcome, owner/i)
 
+    // Sign out lives in the profile menu now (frame 01a).
+    await user.click(await screen.findByRole('button', { name: /profile menu/i }))
     await user.click(screen.getByRole('button', { name: /sign out/i }))
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
@@ -98,6 +100,7 @@ describe('the authenticated layout', () => {
     const { router, user } = renderAppAt('/')
     await screen.findByText(/welcome, owner/i)
 
+    await user.click(await screen.findByRole('button', { name: /profile menu/i }))
     await user.click(screen.getByRole('button', { name: /sign out/i }))
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/login'))

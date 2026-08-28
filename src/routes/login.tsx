@@ -1,3 +1,4 @@
+import { AuthShell } from '../ui/AuthShell'
 import { createFileRoute, redirect, useNavigate, useRouter } from '@tanstack/react-router'
 import type { AuthTokens } from '../auth/api'
 import { LoginForm } from '../auth/LoginForm'
@@ -33,8 +34,12 @@ function Login() {
       router.history.push(redirect)
       return
     }
-    navigate({ to: tokens.scope === 'profile' ? '/' : '/select' })
+    navigate({ to: tokens.scope === 'profile' ? '/' : '/select-profile' })
   }
 
-  return <LoginForm onAuthenticated={onAuthenticated} />
+  return (
+    <AuthShell>
+      <LoginForm onAuthenticated={onAuthenticated} />
+    </AuthShell>
+  )
 }

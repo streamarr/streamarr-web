@@ -58,12 +58,13 @@ describe('InvitationScreen', () => {
     await user.type(screen.getByLabelText(/^invitation code/i), CODE)
     await user.click(screen.getByRole('button', { name: 'Look up invitation' }))
 
-    expect(await screen.findByText(/You're invited to Smith Family/)).toBeInTheDocument()
+    expect(await screen.findByText(/You were invited to Smith Family/)).toBeInTheDocument()
     expect(screen.getByText('Kai')).toBeInTheDocument()
     expect(screen.getByText(/kai@example.com/)).toBeInTheDocument()
 
     await user.type(screen.getByLabelText(/^your name/i), 'Kai H')
     await user.type(screen.getByLabelText(/^choose a password/i), 'a strong passphrase')
+    await user.type(screen.getByLabelText(/^confirm password/i), 'a strong passphrase')
     await user.click(screen.getByRole('button', { name: 'Create my account' }))
 
     await waitFor(() => expect(onAccepted).toHaveBeenCalledWith(TOKENS))

@@ -1,4 +1,4 @@
-import { Alert, Anchor, Button, PasswordInput, Stack, Text, TextInput, Title } from '@mantine/core'
+import { Alert, Anchor, Button, PasswordInput, Stack, Text, TextInput } from '@mantine/core'
 import { useState } from 'react'
 import { AuthApiError, redeemPasswordReset } from './api'
 
@@ -12,6 +12,7 @@ const INVALID_MESSAGE = "That reset code isn't valid anymore. Ask for a new one.
 export function ResetPasswordScreen({ initialCode }: { initialCode?: string }) {
   const [code, setCode] = useState(initialCode ?? '')
   const [newPassword, setNewPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
   const [failure, setFailure] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(false)
@@ -33,7 +34,7 @@ export function ResetPasswordScreen({ initialCode }: { initialCode?: string }) {
   if (done) {
     return (
       <Stack maw={480}>
-        <Title order={2}>Password changed</Title>
+        <h1 className="authTitle">Password changed</h1>
         <Text>
           Every signed-in session was signed out. <Anchor href="/login">Sign in</Anchor> with your
           new password.
@@ -45,7 +46,7 @@ export function ResetPasswordScreen({ initialCode }: { initialCode?: string }) {
   return (
     <form onSubmit={redeem}>
       <Stack maw={480}>
-        <Title order={2}>Reset your password</Title>
+        <h1 className="authTitle">Choose a new password</h1>
         {failure && (
           <Alert color="red" role="alert">
             {failure}
@@ -65,9 +66,21 @@ export function ResetPasswordScreen({ initialCode }: { initialCode?: string }) {
           autoFocus={Boolean(initialCode)}
           required
         />
-        <Button type="submit" loading={busy}>
-          Change password
-        </Button>
+        <PasswordInput
+          label="Confirm password"
+          value={confirm}
+          onChange={(event) => setConfirm(event.currentTarget.value)}
+          error={confirm.length > 0 && confirm !== newPassword ? "Passwords don't match" : undefined}
+          required
+        />
+        <div>
+          <Button type="submit" loading={busy} disabled={confirm !== newPassword}>
+            Set new password
+          </Button>
+        </div>
+        <Text size="sm" c="dimmed">
+          This code works once.
+        </Text>
       </Stack>
     </form>
   )

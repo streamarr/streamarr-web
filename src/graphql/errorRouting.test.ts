@@ -13,8 +13,8 @@ describe('decideAuthRoute', () => {
   })
 
   it('shouldRouteToSelectOnProfileOrHouseholdRequired', () => {
-    expect(decideAuthRoute({ graphqlCodes: ['PROFILE_REQUIRED'] })).toBe('/select')
-    expect(decideAuthRoute({ graphqlCodes: ['HOUSEHOLD_REQUIRED'] })).toBe('/select')
+    expect(decideAuthRoute({ graphqlCodes: ['PROFILE_REQUIRED'] })).toBe('/select-profile')
+    expect(decideAuthRoute({ graphqlCodes: ['HOUSEHOLD_REQUIRED'] })).toBe('/select-profile')
   })
 
   it('shouldNotRouteOnExpiredToken', () => {

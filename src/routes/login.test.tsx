@@ -66,7 +66,7 @@ describe('/login resume', () => {
     await signIn(user)
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/link'))
-    expect(await screen.findByLabelText(/pairing code/i)).toHaveValue('BCDF-GHJK')
+    expect(await screen.findByLabelText(/pairing code/i)).toHaveValue('BCDFGHJK')
   })
 
   it('shouldRefuseAnExternalResumeTarget', async () => {
@@ -93,6 +93,6 @@ describe('/login resume', () => {
 
     await signIn(user)
 
-    await waitFor(() => expect(router.state.location.pathname).toBe('/select'))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/select-profile'))
   })
 })
