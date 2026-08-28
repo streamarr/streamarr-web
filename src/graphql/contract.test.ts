@@ -48,14 +48,25 @@ describe('the pinned GraphQL contract', () => {
 
   it.each(documents)('selects the unknown-member fallback in $path', ({ document }) => {
     for (const userErrors of userErrorSelections(document)) {
-      const names = (userErrors.selectionSet?.selections ?? [])
-        .filter((selection) => selection.kind === Kind.FIELD)
-        .map((selection) => (selection as FieldNode).name.value)
+      const names = fieldNamesWithin(userErrors)
       expect(names).toContain('__typename')
+      // message may ride an inline fragment on MutationError — a union exposes no fields.
       expect(names).toContain('message')
     }
   })
 })
+
+function fieldNamesWithin(field: FieldNode): string[] {
+  const names: string[] = []
+  visit(field, {
+    Field(node) {
+      if (node !== field) {
+        names.push(node.name.value)
+      }
+    },
+  })
+  return names
+}
 
 function userErrorSelections(document: DocumentNode): FieldNode[] {
   const found: FieldNode[] = []
