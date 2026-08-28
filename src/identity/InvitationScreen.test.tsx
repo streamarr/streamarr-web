@@ -30,6 +30,15 @@ function serverKnowsTheCode() {
   )
 }
 
+const CONNECT_PREVIEW = {
+  ...PREVIEW,
+  mode: 'CONNECT',
+  profileName: 'Grandpa Joe',
+  remainingManagers: ['Nina'],
+  endingHouseholds: ['Cabin', 'Lake House'],
+  reofferHouseholds: ['Cabin'],
+}
+
 describe('InvitationScreen', () => {
   it('shouldPreviewThenCreateTheAccountFromThePastedCode', async () => {
     serverKnowsTheCode()
@@ -76,6 +85,25 @@ describe('InvitationScreen', () => {
     )
     // Back at the code field for another paste.
     expect(screen.getByLabelText(/^invitation code/i)).toBeInTheDocument()
+  })
+
+
+  it('shouldSpellOutWhatConnectingMeansBeforeConsent', async () => {
+    server.use(
+      http.post('/api/auth/invitation/lookup', () => HttpResponse.json(CONNECT_PREVIEW)),
+    )
+    renderWithProviders(<InvitationScreen initialCode={CODE} onAccepted={vi.fn()} />)
+
+    expect(
+      await screen.findByText(/Connecting Grandpa Joe to your new account/),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Your existing Profile')).toBeInTheDocument()
+    // Who keeps managing, which visits end, and who must consent afresh.
+    expect(screen.getByText('· Nina')).toBeInTheDocument()
+    expect(screen.getByText('· Lake House')).toBeInTheDocument()
+    expect(screen.getByText('These Households will be offered it afresh')).toBeInTheDocument()
+    // Consent is still the same ceremony: name, password, create.
+    expect(screen.getByRole('button', { name: 'Create my account' })).toBeInTheDocument()
   })
 
   it('shouldDeclineWithoutCreatingAnything', async () => {
