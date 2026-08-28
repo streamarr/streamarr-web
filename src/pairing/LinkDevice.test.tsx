@@ -8,11 +8,15 @@ import { LinkDevice } from './LinkDevice'
 const LOOKUP = '/api/auth/device/authorizations/lookup'
 const DECISION = '/api/auth/device/authorizations/decision'
 
+const HOME = { id: '22222222-2222-2222-2222-222222222222', name: 'Smith Family' }
+const CABIN = { id: '55555555-5555-5555-5555-555555555555', name: 'Cabin' }
+
 const PENDING = {
   userCode: 'BCDF-GHJK',
   deviceName: 'Living Room Apple TV',
   status: 'PENDING',
   requestedAt: '2026-08-03T12:00:00Z',
+  households: [HOME],
 }
 
 function lookupReturns(body: object, status = 200) {
@@ -54,7 +58,9 @@ describe('LinkDevice', () => {
     await enterCode(user, 'bcdf ghjk')
     await user.click(await screen.findByRole('button', { name: /approve/i }))
 
-    await waitFor(() => expect(sent).toEqual({ userCode: 'BCDF-GHJK', decision: 'APPROVE' }))
+    await waitFor(() =>
+      expect(sent).toEqual({ userCode: 'BCDF-GHJK', decision: 'APPROVE', householdId: HOME.id }),
+    )
   })
 
   it('shouldConfirmApprovalAndRemoveTheChoice', async () => {
@@ -182,5 +188,46 @@ describe('LinkDevice', () => {
 
     const status = await screen.findByRole('status')
     await waitFor(() => expect(status).toHaveTextContent(/was approved/i))
+  })
+
+  it('shouldDemandAHouseholdChoiceWhenMoreThanOneIsUsable', async () => {
+    lookupReturns({ ...PENDING, households: [HOME, CABIN] })
+    let sent: unknown
+    server.use(
+      http.post(DECISION, async ({ request }) => {
+        sent = await request.json()
+        return HttpResponse.json({ status: 'APPROVED', deviceName: PENDING.deviceName })
+      }),
+    )
+    const { user } = renderWithProviders(<LinkDevice />)
+
+    await enterCode(user)
+
+    // No preselection with two Households: Approve stays locked until one is chosen.
+    const approve = await screen.findByRole('button', { name: /approve/i })
+    expect(approve).toBeDisabled()
+    await user.click(screen.getByRole('radio', { name: 'Cabin' }))
+    await user.click(approve)
+
+    await waitFor(() =>
+      expect(sent).toEqual({
+        userCode: 'BCDF-GHJK',
+        decision: 'APPROVE',
+        householdId: CABIN.id,
+      }),
+    )
+  })
+
+  it('shouldExplainABlockedDevice', async () => {
+    lookupReturns(PENDING)
+    decisionReturns({ code: 'ESN_BLOCKED' }, 403)
+    const { user } = renderWithProviders(<LinkDevice />)
+
+    await enterCode(user)
+    await user.click(await screen.findByRole('button', { name: /approve/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'That device is blocked and cannot be linked.',
+    )
   })
 })
