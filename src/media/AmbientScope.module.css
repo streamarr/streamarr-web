@@ -1,0 +1,5 @@
+.scope {
+  min-height: 100%;
+  background: var(--ambient-base, transparent);
+  color: var(--ambient-text-primary, inherit);
+}

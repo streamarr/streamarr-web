@@ -137,17 +137,25 @@ describe('Home', () => {
     await waitFor(() => expect(screen.getByText('Nothing to watch yet.')).toBeInTheDocument())
   })
 
-  it('builds the billboard from a Movie in continueWatching', async () => {
+  it('builds the billboard from a Movie in continueWatching, resuming at its saved position', async () => {
     serve(homeData({ continueWatching: [continueWatchingMovie()] }))
     renderAppAt('/')
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Everlight' })).toBeInTheDocument())
+    expect(screen.getByRole('link', { name: 'Resume' })).toHaveAttribute('href', '/play/file-1?position=10')
   })
 
   it('builds the billboard from an Episode in continueWatching, reading the parent series', async () => {
     serve(homeData({ continueWatching: [continueWatchingEpisode()] }))
     renderAppAt('/')
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Northern Line' })).toBeInTheDocument())
-    expect(screen.getByRole('link', { name: 'Continue S2 E5' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Resume S2 E5' })).toHaveAttribute('href', '/play/file-2?position=600')
+  })
+
+  it('resumes a Continue Watching card at its saved position', async () => {
+    serve(homeData({ continueWatching: [continueWatchingMovie(), continueWatchingEpisode()] }))
+    renderAppAt('/')
+    await waitFor(() => expect(screen.getByText('Continue watching')).toBeInTheDocument())
+    expect(screen.getByRole('link', { name: /Breakage/ })).toHaveAttribute('href', '/play/file-2?position=600')
   })
 
   it('falls back to the newest recently-added item when continueWatching is empty', async () => {
@@ -173,6 +181,22 @@ describe('Home', () => {
     renderAppAt('/')
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Grid Movie' })).toBeInTheDocument())
     expect(screen.queryByText('Continue watching')).not.toBeInTheDocument()
+  })
+
+  it('links a recently-added movie card to its detail page', async () => {
+    serve(homeData({ libraries: [library({ items: { edges: [{ cursor: 'c1', node: recentMovie() }] } })] }))
+    renderAppAt('/')
+    await waitFor(() => expect(screen.getByRole('link', { name: /Grid Movie/ })).toHaveAttribute('href', '/movie/movie-2'))
+  })
+
+  it('links a recently-added series card to its detail page', async () => {
+    serve(
+      homeData({
+        libraries: [library({ id: 'lib-series', name: 'Series', type: 'SERIES', items: { edges: [{ cursor: 'c2', node: recentSeries() }] } })],
+      }),
+    )
+    renderAppAt('/')
+    await waitFor(() => expect(screen.getByRole('link', { name: /Grid Series/ })).toHaveAttribute('href', '/series/series-2'))
   })
 
   it('renders exactly one rail per Movie/Series library type, hiding a missing type', async () => {

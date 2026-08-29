@@ -26,8 +26,22 @@ function movieNode(overrides: Partial<{ id: string; title: string; watchStatus: 
   }
 }
 
+function seriesNode(overrides: Partial<{ id: string; title: string }> = {}) {
+  return {
+    __typename: 'Series' as const,
+    id: overrides.id ?? 's-1',
+    title: overrides.title ?? 'Northern Line',
+    titleSort: overrides.title ?? 'Northern Line',
+    firstAirDate: '2017-07-21',
+    seasons: [{ id: 'season-1' }],
+    watchStatus: 'UNWATCHED' as const,
+    watchProgress: null,
+    images: [],
+  }
+}
+
 function libraryData(overrides: {
-  edges?: { cursor: string; node: ReturnType<typeof movieNode> }[]
+  edges?: { cursor: string; node: ReturnType<typeof movieNode> | ReturnType<typeof seriesNode> }[]
   hasNextPage?: boolean
   scanCompletedOn?: string | null
 } = {}): LibraryPageQuery {
@@ -125,6 +139,26 @@ describe('LibraryScreen', () => {
     renderWithProviders(<Harness initialSearch={{ by: 'TITLE', direction: 'ASC' }} />)
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Movies' })).toBeInTheDocument())
     expect(screen.getByRole('navigation', { name: 'Jump to letter' })).toBeInTheDocument()
+  })
+
+  it('links each movie card to its detail page', async () => {
+    server.use(
+      graphql.query('LibraryPage', () =>
+        HttpResponse.json({ data: libraryData({ edges: [{ cursor: 'c1', node: movieNode({ id: 'm-1', title: 'Alright' }) }] }) }),
+      ),
+    )
+    renderWithProviders(<Harness />)
+    await waitFor(() => expect(screen.getByRole('link', { name: /Alright/ })).toHaveAttribute('href', '/movie/m-1'))
+  })
+
+  it('links each series card to its detail page', async () => {
+    server.use(
+      graphql.query('LibraryPage', () =>
+        HttpResponse.json({ data: libraryData({ edges: [{ cursor: 'c1', node: seriesNode({ id: 's-9', title: 'Northern Line' }) }] }) }),
+      ),
+    )
+    renderWithProviders(<Harness />)
+    await waitFor(() => expect(screen.getByRole('link', { name: /Northern Line/ })).toHaveAttribute('href', '/series/s-9'))
   })
 
   it('hides the alphabet rail when sorted by anything other than TITLE, since a tap would silently shrink the library to one letter (ADR 0018)', async () => {

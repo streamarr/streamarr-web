@@ -1,7 +1,11 @@
 import type { WatchStatus } from '../graphql/generated/graphql'
+import { CheckGlyph } from './glyphs'
 import styles from './WatchedBadge.module.css'
 
-export type WatchedBadgeProps = { status: 'watched' } | { status: 'in-progress'; percentComplete: number }
+export type WatchedBadgeProps =
+  | { status: 'watched' }
+  | { status: 'in-progress'; percentComplete: number }
+  | { status: 'unwatched-count'; count: number }
 
 export function badgeFromWatchState(
   watchStatus: WatchStatus,
@@ -25,27 +29,18 @@ export function WatchedBadge(props: WatchedBadgeProps) {
     )
   }
 
+  // Season and series posters count what is left rather than showing a percentage (principle 6).
+  if (props.status === 'unwatched-count') {
+    return (
+      <span className={styles.countBadge} aria-label={`${props.count} unwatched`}>
+        {props.count}
+      </span>
+    )
+  }
+
   return (
     <div className={styles.progressTrack} aria-hidden>
       <div className={styles.progressFill} style={{ width: `${props.percentComplete}%` }} />
     </div>
-  )
-}
-
-function CheckGlyph() {
-  return (
-    <svg
-      width="13"
-      height="13"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="3"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M5 12.5l4.5 4.5L19 7.5" />
-    </svg>
   )
 }

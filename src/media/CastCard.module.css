@@ -1,0 +1,23 @@
+.card {
+  width: 124px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-10);
+}
+
+.portrait {
+  position: relative;
+  height: 158px;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.name {
+  font-size: 14px;
+  font-weight: var(--font-weight-medium);
+  color: var(--ambient-text-primary, var(--text-primary));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
