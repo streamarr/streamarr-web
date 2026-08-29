@@ -85,16 +85,18 @@ describe('billboardFromContinueWatching', () => {
     ])
     expect(content.ctaLabel).toBe('Play')
     expect(content.ctaFileId).toBe('file-1')
+    expect(content.ctaPositionSeconds).toBeNull()
   })
 
-  it('maps a Movie in progress to a "Continue" CTA', () => {
+  it('maps a Movie in progress to a "Resume" CTA at its saved position', () => {
     const content = billboardFromContinueWatching(
       continueWatchingMovie({ watchProgress: { positionSeconds: 10, percentComplete: 5, durationSeconds: 100 } }),
     )
-    expect(content.ctaLabel).toBe('Continue')
+    expect(content.ctaLabel).toBe('Resume')
+    expect(content.ctaPositionSeconds).toBe(10)
   })
 
-  it('maps an Episode: Seasons/Genre/Added sourced from the parent series, "Continue S{n} E{n}"', () => {
+  it('maps an Episode: Seasons/Genre/Added sourced from the parent series, "Resume S{n} E{n}"', () => {
     const content = billboardFromContinueWatching(continueWatchingEpisode())
     expect(content.title).toBe('Northern Line')
     expect(content.metadata).toEqual([
@@ -102,8 +104,9 @@ describe('billboardFromContinueWatching', () => {
       { label: 'Genre', value: 'Crime' },
       { label: 'Added', value: expect.stringContaining('ago') },
     ])
-    expect(content.ctaLabel).toBe('Continue S2 E5')
+    expect(content.ctaLabel).toBe('Resume S2 E5')
     expect(content.ctaFileId).toBe('file-2')
+    expect(content.ctaPositionSeconds).toBe(600)
   })
 
   it("falls the episode's synopsis back to the series summary when the episode has none", () => {
@@ -122,5 +125,6 @@ describe('billboardFromRecentlyAdded', () => {
     const content = billboardFromRecentlyAdded(recentMovie())
     expect(content.ctaLabel).toBe('Play')
     expect(content.ctaFileId).toBe('file-3')
+    expect(content.ctaPositionSeconds).toBeNull()
   })
 })

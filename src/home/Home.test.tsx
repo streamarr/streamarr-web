@@ -137,17 +137,25 @@ describe('Home', () => {
     await waitFor(() => expect(screen.getByText('Nothing to watch yet.')).toBeInTheDocument())
   })
 
-  it('builds the billboard from a Movie in continueWatching', async () => {
+  it('builds the billboard from a Movie in continueWatching, resuming at its saved position', async () => {
     serve(homeData({ continueWatching: [continueWatchingMovie()] }))
     renderAppAt('/')
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Everlight' })).toBeInTheDocument())
+    expect(screen.getByRole('link', { name: 'Resume' })).toHaveAttribute('href', '/play/file-1?position=10')
   })
 
   it('builds the billboard from an Episode in continueWatching, reading the parent series', async () => {
     serve(homeData({ continueWatching: [continueWatchingEpisode()] }))
     renderAppAt('/')
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Northern Line' })).toBeInTheDocument())
-    expect(screen.getByRole('link', { name: 'Continue S2 E5' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Resume S2 E5' })).toHaveAttribute('href', '/play/file-2?position=600')
+  })
+
+  it('resumes a Continue Watching card at its saved position', async () => {
+    serve(homeData({ continueWatching: [continueWatchingMovie(), continueWatchingEpisode()] }))
+    renderAppAt('/')
+    await waitFor(() => expect(screen.getByText('Continue watching')).toBeInTheDocument())
+    expect(screen.getByRole('link', { name: /Breakage/ })).toHaveAttribute('href', '/play/file-2?position=600')
   })
 
   it('falls back to the newest recently-added item when continueWatching is empty', async () => {
