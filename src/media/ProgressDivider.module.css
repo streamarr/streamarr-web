@@ -1,0 +1,30 @@
+.divider {
+  padding: 0 var(--spacing-page);
+  margin-top: 28px;
+}
+
+.track {
+  position: relative;
+  height: 4px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--ambient-text-primary, var(--color-white)) 16%, transparent);
+}
+
+.fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--ambient-accent, var(--semantic-success));
+}
+
+.marker {
+  position: absolute;
+  top: -11px;
+  transform: translateX(-50%);
+  padding: 4px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--ambient-accent, var(--semantic-success));
+  color: var(--ambient-on-accent, var(--semantic-success-ink));
+  font-size: 12px;
+  font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
+}

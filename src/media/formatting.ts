@@ -32,6 +32,11 @@ export function formatYear(iso: string | null | undefined): string | null {
   return Number.isNaN(year) ? null : String(year)
 }
 
+// `S2 E5`, no zero padding and no colon — the copy rule shared with tvOS.
+export function formatEpisodeLabel(seasonNumber: number, episodeNumber: number): string {
+  return `S${seasonNumber} E${episodeNumber}`
+}
+
 export function formatTimeLeft(progress: { positionSeconds: number; durationSeconds: number }): string {
   const remainingMinutes = Math.max(0, Math.round((progress.durationSeconds - progress.positionSeconds) / 60))
   return `${formatRuntime(remainingMinutes)} left`

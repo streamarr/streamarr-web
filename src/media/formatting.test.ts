@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatRelativeTime, formatRuntime, formatTimeLeft, formatYear } from './formatting'
+import { formatEpisodeLabel, formatRelativeTime, formatRuntime, formatTimeLeft, formatYear } from './formatting'
 
 describe('formatRelativeTime', () => {
   const now = new Date('2026-08-28T12:00:00Z')
@@ -51,6 +51,13 @@ describe('formatYear', () => {
   it('returns null for a missing date', () => {
     expect(formatYear(null)).toBeNull()
     expect(formatYear(undefined)).toBeNull()
+  })
+})
+
+describe('formatEpisodeLabel', () => {
+  it('reads S{season} E{episode} with no zero padding, per the copy rules', () => {
+    expect(formatEpisodeLabel(2, 5)).toBe('S2 E5')
+    expect(formatEpisodeLabel(12, 10)).toBe('S12 E10')
   })
 })
 

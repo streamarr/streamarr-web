@@ -13,6 +13,11 @@ describe('WatchedBadge', () => {
     const fill = container.querySelector('[style]')
     expect(fill).toHaveStyle({ width: '42%' })
   })
+
+  it('renders the unwatched count for a season or series poster that is not fully watched', () => {
+    render(<WatchedBadge status="unwatched-count" count={3} />)
+    expect(screen.getByLabelText('3 unwatched')).toHaveTextContent('3')
+  })
 })
 
 describe('badgeFromWatchState', () => {
