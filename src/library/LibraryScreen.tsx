@@ -205,7 +205,9 @@ export function LibraryScreen({
                       {card}
                     </Link>
                   ) : (
-                    card
+                    <Link to="/series/$seriesId" params={{ seriesId: summary.id }} className={styles.cardLink}>
+                      {card}
+                    </Link>
                   )}
                 </div>
               )
