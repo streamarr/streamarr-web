@@ -19,6 +19,7 @@ import { Route as AuthenticatedLinkRouteImport } from './routes/_authenticated/l
 import { Route as AuthenticatedSelectProfileRouteImport } from './routes/_authenticated/select-profile'
 import { Route as AuthenticatedSharingRouteImport } from './routes/_authenticated/sharing'
 import { Route as AuthenticatedLibraryLibraryIdRouteImport } from './routes/_authenticated/library.$libraryId'
+import { Route as AuthenticatedMovieMovieIdRouteImport } from './routes/_authenticated/movie.$movieId'
 import { Route as AuthenticatedPlayMediaFileIdRouteImport } from './routes/_authenticated/play.$mediaFileId'
 
 const AuthenticatedRoute = AuthenticatedRouteImport.update({
@@ -72,6 +73,12 @@ const AuthenticatedLibraryLibraryIdRoute =
     path: '/library/$libraryId',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedMovieMovieIdRoute =
+  AuthenticatedMovieMovieIdRouteImport.update({
+    id: '/movie/$movieId',
+    path: '/movie/$movieId',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedPlayMediaFileIdRoute =
   AuthenticatedPlayMediaFileIdRouteImport.update({
     id: '/play/$mediaFileId',
@@ -89,6 +96,7 @@ export interface FileRoutesByFullPath {
   '/select-profile': typeof AuthenticatedSelectProfileRoute
   '/sharing': typeof AuthenticatedSharingRoute
   '/library/$libraryId': typeof AuthenticatedLibraryLibraryIdRoute
+  '/movie/$movieId': typeof AuthenticatedMovieMovieIdRoute
   '/play/$mediaFileId': typeof AuthenticatedPlayMediaFileIdRoute
 }
 export interface FileRoutesByTo {
@@ -101,6 +109,7 @@ export interface FileRoutesByTo {
   '/sharing': typeof AuthenticatedSharingRoute
   '/': typeof AuthenticatedIndexRoute
   '/library/$libraryId': typeof AuthenticatedLibraryLibraryIdRoute
+  '/movie/$movieId': typeof AuthenticatedMovieMovieIdRoute
   '/play/$mediaFileId': typeof AuthenticatedPlayMediaFileIdRoute
 }
 export interface FileRoutesById {
@@ -115,6 +124,7 @@ export interface FileRoutesById {
   '/_authenticated/sharing': typeof AuthenticatedSharingRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/library/$libraryId': typeof AuthenticatedLibraryLibraryIdRoute
+  '/_authenticated/movie/$movieId': typeof AuthenticatedMovieMovieIdRoute
   '/_authenticated/play/$mediaFileId': typeof AuthenticatedPlayMediaFileIdRoute
 }
 export interface FileRouteTypes {
@@ -129,6 +139,7 @@ export interface FileRouteTypes {
     | '/select-profile'
     | '/sharing'
     | '/library/$libraryId'
+    | '/movie/$movieId'
     | '/play/$mediaFileId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -141,6 +152,7 @@ export interface FileRouteTypes {
     | '/sharing'
     | '/'
     | '/library/$libraryId'
+    | '/movie/$movieId'
     | '/play/$mediaFileId'
   id:
     | '__root__'
@@ -154,6 +166,7 @@ export interface FileRouteTypes {
     | '/_authenticated/sharing'
     | '/_authenticated/'
     | '/_authenticated/library/$libraryId'
+    | '/_authenticated/movie/$movieId'
     | '/_authenticated/play/$mediaFileId'
   fileRoutesById: FileRoutesById
 }
@@ -237,6 +250,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedLibraryLibraryIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/movie/$movieId': {
+      id: '/_authenticated/movie/$movieId'
+      path: '/movie/$movieId'
+      fullPath: '/movie/$movieId'
+      preLoaderRoute: typeof AuthenticatedMovieMovieIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/play/$mediaFileId': {
       id: '/_authenticated/play/$mediaFileId'
       path: '/play/$mediaFileId'
@@ -253,6 +273,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedSharingRoute: typeof AuthenticatedSharingRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedLibraryLibraryIdRoute: typeof AuthenticatedLibraryLibraryIdRoute
+  AuthenticatedMovieMovieIdRoute: typeof AuthenticatedMovieMovieIdRoute
   AuthenticatedPlayMediaFileIdRoute: typeof AuthenticatedPlayMediaFileIdRoute
 }
 
@@ -262,6 +283,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedSharingRoute: AuthenticatedSharingRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedLibraryLibraryIdRoute: AuthenticatedLibraryLibraryIdRoute,
+  AuthenticatedMovieMovieIdRoute: AuthenticatedMovieMovieIdRoute,
   AuthenticatedPlayMediaFileIdRoute: AuthenticatedPlayMediaFileIdRoute,
 }
 

@@ -1,0 +1,55 @@
+query MovieDetail($id: ID!) {
+  movie(id: $id) {
+    id
+    title
+    tagline
+    summary
+    runtime
+    releaseDate
+    contentRating {
+      value
+    }
+    genres {
+      id
+      name
+    }
+    directors {
+      id
+      name
+    }
+    cast {
+      id
+      name
+      images(type: PROFILE) {
+        aspectRatio
+        blurHash
+        variants {
+          id
+          size
+          width
+          height
+          url
+        }
+      }
+    }
+    ratings {
+      id
+      source
+      value
+    }
+    files {
+      id
+    }
+    watchStatus
+    watchProgress {
+      positionSeconds
+      percentComplete
+    }
+    backdropImages: images(type: BACKDROP) {
+      ...ImageWithAmbientFields
+    }
+    posterImages: images(type: POSTER) {
+      ...ImageWithAmbientFields
+    }
+  }
+}

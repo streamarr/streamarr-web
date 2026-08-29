@@ -4,6 +4,7 @@ import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import {
   formatEpisodeLabel,
+  formatLongDate,
   formatRelativeTime,
   formatRuntime,
   formatTimeLeft,
@@ -74,6 +75,17 @@ describe('formatYear', () => {
   it('returns null for a missing date', () => {
     expect(formatYear(null)).toBeNull()
     expect(formatYear(undefined)).toBeNull()
+  })
+})
+
+describe('formatLongDate', () => {
+  it('reads day, short month, year regardless of the viewer locale', () => {
+    expect(formatLongDate('2021-12-10')).toBe('10 Dec 2021')
+  })
+
+  it('yields null for a missing or unparseable date', () => {
+    expect(formatLongDate(null)).toBeNull()
+    expect(formatLongDate('soon')).toBeNull()
   })
 })
 
