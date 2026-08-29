@@ -276,6 +276,28 @@ describe('Home', () => {
     )
   })
 
+  it('links a recently-added series card to its detail page', async () => {
+    serve(
+      homeData({
+        libraries: [
+          library({
+            id: 'lib-series',
+            name: 'Series',
+            type: 'SERIES',
+            items: { edges: [{ cursor: 'c2', node: recentSeries() }] },
+          }),
+        ],
+      }),
+    )
+    renderAppAt('/')
+    await waitFor(() =>
+      expect(screen.getByRole('link', { name: /Grid Series/ })).toHaveAttribute(
+        'href',
+        '/series/series-2',
+      ),
+    )
+  })
+
   it('renders a rail for each available library, hiding a missing type', async () => {
     serve(
       homeData({

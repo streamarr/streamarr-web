@@ -34,9 +34,23 @@ function movieNode(
   }
 }
 
+function seriesNode(overrides: Partial<{ id: string; title: string }> = {}) {
+  return {
+    __typename: 'Series' as const,
+    id: overrides.id ?? 's-1',
+    title: overrides.title ?? 'Northern Line',
+    titleSort: overrides.title ?? 'Northern Line',
+    firstAirDate: '2017-07-21',
+    seasons: [{ id: 'season-1' }],
+    watchStatus: 'UNWATCHED' as const,
+    watchProgress: null,
+    images: [],
+  }
+}
+
 function libraryData(
   overrides: {
-    edges?: { cursor: string; node: ReturnType<typeof movieNode> }[]
+    edges?: { cursor: string; node: ReturnType<typeof movieNode> | ReturnType<typeof seriesNode> }[]
     hasNextPage?: boolean
     scanCompletedOn?: string | null
   } = {},
@@ -205,6 +219,25 @@ describe('LibraryScreen', () => {
     renderWithProviders(<Harness />)
     await waitFor(() =>
       expect(screen.getByRole('link', { name: /Alright/ })).toHaveAttribute('href', '/movie/m-1'),
+    )
+  })
+
+  it('links each series card to its detail page', async () => {
+    server.use(
+      graphql.query('LibraryPage', () =>
+        HttpResponse.json({
+          data: libraryData({
+            edges: [{ cursor: 'c1', node: seriesNode({ id: 's-9', title: 'Northern Line' }) }],
+          }),
+        }),
+      ),
+    )
+    renderWithProviders(<Harness />)
+    await waitFor(() =>
+      expect(screen.getByRole('link', { name: /Northern Line/ })).toHaveAttribute(
+        'href',
+        '/series/s-9',
+      ),
     )
   })
 
