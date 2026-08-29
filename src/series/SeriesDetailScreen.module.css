@@ -22,3 +22,9 @@
 .notice {
   margin: var(--spacing-16) var(--spacing-page) 0;
 }
+
+.cardLink {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
