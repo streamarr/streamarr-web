@@ -1,0 +1,145 @@
+.header {
+  background: var(--ambient-base, var(--color-ground));
+  color: var(--ambient-text-primary, var(--text-primary));
+}
+
+.panel {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 44px;
+  align-items: flex-start;
+  padding: 44px var(--spacing-page) 0;
+}
+
+/* The 2px rule the mocks hang the detail tabs on; the tabs wait for a persisting server default. */
+.panel::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  background: color-mix(in srgb, var(--ambient-text-primary, var(--color-white)) 22%, transparent);
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+/* Series and season put the title in its own column beside the body. */
+.split {
+  grid-template-columns: 300px 1fr auto;
+}
+
+.split .main {
+  display: contents;
+}
+
+.heading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-8);
+}
+
+.eyebrow {
+  font-family: var(--font-family-system);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ambient-text-secondary, var(--text-secondary));
+}
+
+.tagline {
+  margin: 0;
+  font-size: 16px;
+  font-style: italic;
+  color: var(--ambient-text-secondary, var(--text-secondary));
+}
+
+.title {
+  margin: 0;
+  font-size: 54px;
+  font-weight: var(--font-weight-bold);
+  line-height: 1.02;
+  letter-spacing: -0.03em;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-16);
+  min-width: 0;
+}
+
+.metaLine {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  font-size: 14px;
+  color: var(--ambient-text-secondary, var(--text-secondary));
+}
+
+.dot {
+  opacity: 0.5;
+}
+
+.synopsis {
+  margin: 0;
+  font-size: 14px;
+  line-height: var(--line-height-prose);
+  max-width: 640px;
+  color: var(--ambient-text-secondary, var(--text-secondary));
+  text-wrap: pretty;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-10);
+  margin-top: var(--spacing-6);
+}
+
+.action {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 18px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: none;
+  font: inherit;
+  font-size: 15px;
+  color: inherit;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.primary {
+  padding: 11px 20px;
+  font-weight: var(--font-weight-semibold);
+  background: var(
+    --ambient-accent,
+    linear-gradient(calc(var(--gradient-brand-angle) * 1deg), var(--color-brand-blue), var(--color-brand-purple))
+  );
+  color: var(--ambient-on-accent, var(--color-white));
+}
+
+.secondary {
+  background: color-mix(in srgb, var(--ambient-text-primary, var(--color-white)) 13%, transparent);
+}
+
+.outline {
+  border-color: color-mix(in srgb, var(--ambient-text-primary, var(--color-white)) 24%, transparent);
+}
+
+.aside {
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-12);
+}
