@@ -473,7 +473,7 @@ export interface components {
         InvitationCodeRequest: {
             code: string;
         };
-        InvitationPreview: {
+        InvitationLookupResponse: {
             endingHouseholds?: string[];
             /** Format: date-time */
             expiresAt?: string;
@@ -785,7 +785,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["InvitationPreview"];
+                    "*/*": components["schemas"]["InvitationLookupResponse"];
                 };
             };
             /** @description Refusal: route on `code`, `message` is displayable */
