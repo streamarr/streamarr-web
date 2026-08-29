@@ -1,4 +1,5 @@
 import type { WatchStatus } from '../graphql/generated/graphql'
+import { CheckGlyph } from './glyphs'
 import styles from './WatchedBadge.module.css'
 
 export type WatchedBadgeProps =
@@ -41,23 +42,5 @@ export function WatchedBadge(props: WatchedBadgeProps) {
     <div className={styles.progressTrack} aria-hidden>
       <div className={styles.progressFill} style={{ width: `${props.percentComplete}%` }} />
     </div>
-  )
-}
-
-function CheckGlyph() {
-  return (
-    <svg
-      width="13"
-      height="13"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="3"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M5 12.5l4.5 4.5L19 7.5" />
-    </svg>
   )
 }
