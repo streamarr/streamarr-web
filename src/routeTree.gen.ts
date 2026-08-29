@@ -21,6 +21,7 @@ import { Route as AuthenticatedSharingRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedLibraryLibraryIdRouteImport } from './routes/_authenticated/library.$libraryId'
 import { Route as AuthenticatedMovieMovieIdRouteImport } from './routes/_authenticated/movie.$movieId'
 import { Route as AuthenticatedPlayMediaFileIdRouteImport } from './routes/_authenticated/play.$mediaFileId'
+import { Route as AuthenticatedSeasonSeasonIdRouteImport } from './routes/_authenticated/season.$seasonId'
 import { Route as AuthenticatedSeriesSeriesIdRouteImport } from './routes/_authenticated/series.$seriesId'
 
 const AuthenticatedRoute = AuthenticatedRouteImport.update({
@@ -86,6 +87,12 @@ const AuthenticatedPlayMediaFileIdRoute =
     path: '/play/$mediaFileId',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedSeasonSeasonIdRoute =
+  AuthenticatedSeasonSeasonIdRouteImport.update({
+    id: '/season/$seasonId',
+    path: '/season/$seasonId',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedSeriesSeriesIdRoute =
   AuthenticatedSeriesSeriesIdRouteImport.update({
     id: '/series/$seriesId',
@@ -105,6 +112,7 @@ export interface FileRoutesByFullPath {
   '/library/$libraryId': typeof AuthenticatedLibraryLibraryIdRoute
   '/movie/$movieId': typeof AuthenticatedMovieMovieIdRoute
   '/play/$mediaFileId': typeof AuthenticatedPlayMediaFileIdRoute
+  '/season/$seasonId': typeof AuthenticatedSeasonSeasonIdRoute
   '/series/$seriesId': typeof AuthenticatedSeriesSeriesIdRoute
 }
 export interface FileRoutesByTo {
@@ -119,6 +127,7 @@ export interface FileRoutesByTo {
   '/library/$libraryId': typeof AuthenticatedLibraryLibraryIdRoute
   '/movie/$movieId': typeof AuthenticatedMovieMovieIdRoute
   '/play/$mediaFileId': typeof AuthenticatedPlayMediaFileIdRoute
+  '/season/$seasonId': typeof AuthenticatedSeasonSeasonIdRoute
   '/series/$seriesId': typeof AuthenticatedSeriesSeriesIdRoute
 }
 export interface FileRoutesById {
@@ -135,6 +144,7 @@ export interface FileRoutesById {
   '/_authenticated/library/$libraryId': typeof AuthenticatedLibraryLibraryIdRoute
   '/_authenticated/movie/$movieId': typeof AuthenticatedMovieMovieIdRoute
   '/_authenticated/play/$mediaFileId': typeof AuthenticatedPlayMediaFileIdRoute
+  '/_authenticated/season/$seasonId': typeof AuthenticatedSeasonSeasonIdRoute
   '/_authenticated/series/$seriesId': typeof AuthenticatedSeriesSeriesIdRoute
 }
 export interface FileRouteTypes {
@@ -151,6 +161,7 @@ export interface FileRouteTypes {
     | '/library/$libraryId'
     | '/movie/$movieId'
     | '/play/$mediaFileId'
+    | '/season/$seasonId'
     | '/series/$seriesId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -165,6 +176,7 @@ export interface FileRouteTypes {
     | '/library/$libraryId'
     | '/movie/$movieId'
     | '/play/$mediaFileId'
+    | '/season/$seasonId'
     | '/series/$seriesId'
   id:
     | '__root__'
@@ -180,6 +192,7 @@ export interface FileRouteTypes {
     | '/_authenticated/library/$libraryId'
     | '/_authenticated/movie/$movieId'
     | '/_authenticated/play/$mediaFileId'
+    | '/_authenticated/season/$seasonId'
     | '/_authenticated/series/$seriesId'
   fileRoutesById: FileRoutesById
 }
@@ -277,6 +290,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPlayMediaFileIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/season/$seasonId': {
+      id: '/_authenticated/season/$seasonId'
+      path: '/season/$seasonId'
+      fullPath: '/season/$seasonId'
+      preLoaderRoute: typeof AuthenticatedSeasonSeasonIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/series/$seriesId': {
       id: '/_authenticated/series/$seriesId'
       path: '/series/$seriesId'
@@ -295,6 +315,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedLibraryLibraryIdRoute: typeof AuthenticatedLibraryLibraryIdRoute
   AuthenticatedMovieMovieIdRoute: typeof AuthenticatedMovieMovieIdRoute
   AuthenticatedPlayMediaFileIdRoute: typeof AuthenticatedPlayMediaFileIdRoute
+  AuthenticatedSeasonSeasonIdRoute: typeof AuthenticatedSeasonSeasonIdRoute
   AuthenticatedSeriesSeriesIdRoute: typeof AuthenticatedSeriesSeriesIdRoute
 }
 
@@ -306,6 +327,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedLibraryLibraryIdRoute: AuthenticatedLibraryLibraryIdRoute,
   AuthenticatedMovieMovieIdRoute: AuthenticatedMovieMovieIdRoute,
   AuthenticatedPlayMediaFileIdRoute: AuthenticatedPlayMediaFileIdRoute,
+  AuthenticatedSeasonSeasonIdRoute: AuthenticatedSeasonSeasonIdRoute,
   AuthenticatedSeriesSeriesIdRoute: AuthenticatedSeriesSeriesIdRoute,
 }
 

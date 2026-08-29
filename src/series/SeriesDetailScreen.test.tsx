@@ -226,6 +226,12 @@ describe('SeriesDetailScreen', () => {
     await waitFor(() => expect(markedIds).toEqual(['series-1']))
   })
 
+  it('links each season card to its page', async () => {
+    await renderSeries(seriesData())
+    expect(screen.getByRole('link', { name: /Season 1/ })).toHaveAttribute('href', '/season/season-1')
+    expect(screen.getByRole('link', { name: /Season 2/ })).toHaveAttribute('href', '/season/season-2')
+  })
+
   it('lists the cast in a shelf when present', async () => {
     await renderSeries(seriesData())
     expect(screen.getByRole('heading', { name: 'Cast' })).toBeInTheDocument()

@@ -1,0 +1,66 @@
+query SeasonDetail($id: ID!) {
+  season(id: $id) {
+    id
+    title
+    seasonNumber
+    overview
+    airDate
+    watchStatus
+    series {
+      id
+      title
+      contentRating {
+        value
+      }
+      directors {
+        id
+        name
+      }
+      seasons {
+        id
+        seasonNumber
+        title
+        watchStatus
+        episodes {
+          id
+          watchStatus
+        }
+      }
+      backdropImages: images(type: BACKDROP) {
+        ...ImageWithAmbientFields
+      }
+    }
+    episodes {
+      id
+      title
+      episodeNumber
+      runtime
+      watchStatus
+      watchProgress {
+        positionSeconds
+        percentComplete
+        durationSeconds
+      }
+      files {
+        id
+      }
+      stillImages: images(type: STILL) {
+        aspectRatio
+        blurHash
+        variants {
+          id
+          size
+          width
+          height
+          url
+        }
+      }
+    }
+    backdropImages: images(type: BACKDROP) {
+      ...ImageWithAmbientFields
+    }
+    posterImages: images(type: POSTER) {
+      ...ImageWithAmbientFields
+    }
+  }
+}
