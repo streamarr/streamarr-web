@@ -189,6 +189,16 @@ describe('Home', () => {
     await waitFor(() => expect(screen.getByRole('link', { name: /Grid Movie/ })).toHaveAttribute('href', '/movie/movie-2'))
   })
 
+  it('links a recently-added series card to its detail page', async () => {
+    serve(
+      homeData({
+        libraries: [library({ id: 'lib-series', name: 'Series', type: 'SERIES', items: { edges: [{ cursor: 'c2', node: recentSeries() }] } })],
+      }),
+    )
+    renderAppAt('/')
+    await waitFor(() => expect(screen.getByRole('link', { name: /Grid Series/ })).toHaveAttribute('href', '/series/series-2'))
+  })
+
   it('renders exactly one rail per Movie/Series library type, hiding a missing type', async () => {
     serve(
       homeData({

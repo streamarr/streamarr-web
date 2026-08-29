@@ -43,7 +43,9 @@ export function RecentlyAddedRail({ library }: { library: LibraryWithItems }) {
               {card}
             </Link>
           ) : (
-            <div key={edge.cursor}>{card}</div>
+            <Link key={edge.cursor} to="/series/$seriesId" params={{ seriesId: summary.id }} className={styles.cardLink}>
+              {card}
+            </Link>
           )
         })}
       </div>
