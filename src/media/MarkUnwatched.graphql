@@ -1,0 +1,3 @@
+mutation MarkUnwatched($id: ID!) {
+  markUnwatched(id: $id)
+}
