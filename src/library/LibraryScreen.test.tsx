@@ -127,6 +127,16 @@ describe('LibraryScreen', () => {
     expect(screen.getByRole('navigation', { name: 'Jump to letter' })).toBeInTheDocument()
   })
 
+  it('links each movie card to its detail page', async () => {
+    server.use(
+      graphql.query('LibraryPage', () =>
+        HttpResponse.json({ data: libraryData({ edges: [{ cursor: 'c1', node: movieNode({ id: 'm-1', title: 'Alright' }) }] }) }),
+      ),
+    )
+    renderWithProviders(<Harness />)
+    await waitFor(() => expect(screen.getByRole('link', { name: /Alright/ })).toHaveAttribute('href', '/movie/m-1'))
+  })
+
   it('hides the alphabet rail when sorted by anything other than TITLE, since a tap would silently shrink the library to one letter (ADR 0018)', async () => {
     server.use(graphql.query('LibraryPage', () => HttpResponse.json({ data: libraryData() })))
     renderWithProviders(<Harness initialSearch={{ by: 'ADDED', direction: 'DESC' }} />)

@@ -29,15 +29,21 @@ export function RecentlyAddedRail({ library }: { library: LibraryWithItems }) {
       <div className={styles.grid}>
         {edges.map((edge) => {
           const summary = summarizeMedia(edge.node)
-          return (
+          const card = (
             <PosterCard
-              key={edge.cursor}
               title={summary.title}
               meta={summary.meta}
               image={summary.poster}
               blurHash={summary.blurHash}
               badge={badgeFromWatchState(summary.watchStatus, summary.percentComplete)}
             />
+          )
+          return edge.node.__typename === 'Movie' ? (
+            <Link key={edge.cursor} to="/movie/$movieId" params={{ movieId: summary.id }} className={styles.cardLink}>
+              {card}
+            </Link>
+          ) : (
+            <div key={edge.cursor}>{card}</div>
           )
         })}
       </div>

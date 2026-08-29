@@ -183,6 +183,12 @@ describe('Home', () => {
     expect(screen.queryByText('Continue watching')).not.toBeInTheDocument()
   })
 
+  it('links a recently-added movie card to its detail page', async () => {
+    serve(homeData({ libraries: [library({ items: { edges: [{ cursor: 'c1', node: recentMovie() }] } })] }))
+    renderAppAt('/')
+    await waitFor(() => expect(screen.getByRole('link', { name: /Grid Movie/ })).toHaveAttribute('href', '/movie/movie-2'))
+  })
+
   it('renders exactly one rail per Movie/Series library type, hiding a missing type', async () => {
     serve(
       homeData({

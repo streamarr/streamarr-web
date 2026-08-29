@@ -1,0 +1,27 @@
+fragment ImageWithAmbientFields on Image {
+  aspectRatio
+  blurHash
+  ambientColors {
+    topLeft
+    topRight
+    bottomRight
+    bottomLeft
+    primary
+    theme {
+      base
+      panel
+      selected
+      accent
+      onAccent
+      textPrimary
+      textSecondary
+    }
+  }
+  variants {
+    id
+    size
+    width
+    height
+    url
+  }
+}

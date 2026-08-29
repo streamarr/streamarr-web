@@ -1,4 +1,5 @@
 import { Alert, Center, Loader, Text, Title } from '@mantine/core'
+import { Link } from '@tanstack/react-router'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { MediaFilter, MediaSort, OrderMediaBy, SortDirection } from '../graphql/generated/graphql'
 import { AlphabetRail } from '../media/AlphabetRail'
@@ -174,6 +175,15 @@ export function LibraryScreen({
             {edges.map((edge) => {
               const summary = summarizeMedia(edge.node)
               const letter = trackingLetter ? summaryLetter(summary) : null
+              const card = (
+                <PosterCard
+                  title={summary.title}
+                  meta={summary.meta}
+                  image={summary.poster}
+                  blurHash={summary.blurHash}
+                  badge={badgeFromWatchState(summary.watchStatus, summary.percentComplete)}
+                />
+              )
               return (
                 <div
                   key={edge.cursor}
@@ -189,13 +199,13 @@ export function LibraryScreen({
                     }
                   }}
                 >
-                  <PosterCard
-                    title={summary.title}
-                    meta={summary.meta}
-                    image={summary.poster}
-                    blurHash={summary.blurHash}
-                    badge={badgeFromWatchState(summary.watchStatus, summary.percentComplete)}
-                  />
+                  {edge.node.__typename === 'Movie' ? (
+                    <Link to="/movie/$movieId" params={{ movieId: summary.id }} className={styles.cardLink}>
+                      {card}
+                    </Link>
+                  ) : (
+                    card
+                  )}
                 </div>
               )
             })}

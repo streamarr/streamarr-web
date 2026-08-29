@@ -32,6 +32,14 @@ export function formatYear(iso: string | null | undefined): string | null {
   return Number.isNaN(year) ? null : String(year)
 }
 
+// `10 Dec 2021`, the detail metadata form; locale is fixed so the columns read the same everywhere.
+export function formatLongDate(iso: string | null | undefined): string | null {
+  if (!iso) return null
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return null
+  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
+}
+
 // `S2 E5`, no zero padding and no colon — the copy rule shared with tvOS.
 export function formatEpisodeLabel(seasonNumber: number, episodeNumber: number): string {
   return `S${seasonNumber} E${episodeNumber}`
