@@ -113,12 +113,19 @@ export type ProfileKind =
   | '%future added value';
 
 export type ProfileShareStatus =
+  /** The Profile is available in the Household. */
   | 'ACTIVE'
+  /** Withdrawn by the offerer, or replaced by a newer offer. */
   | 'CANCELED'
+  /** Ended after being active. */
   | 'ENDED'
+  /** Timed out before a decision. */
   | 'EXPIRED'
+  /** Withdrawn by the system because its offerer lost authority; invalidationReason says why. */
   | 'INVALIDATED'
+  /** Offered and awaiting the target Household's decision. */
   | 'PENDING'
+  /** Declined by the target Household. */
   | 'REJECTED'
   | '%future added value';
 
@@ -194,6 +201,7 @@ export type AcceptProfileShareMutationVariables = Exact<{
 
 
 export type AcceptProfileShareMutation = { acceptProfileShare: { share: { id: string, status: ProfileShareStatus } | null, userErrors: Array<
+      | { __typename: 'OfferInvalidatedError', message: string }
       | { __typename: 'RestrictedProfileRequiresHouseholdAdminError', message: string }
       | { __typename: 'ShareNameConflictError', message: string }
       | { __typename: 'ShareNotFoundError', message: string }
