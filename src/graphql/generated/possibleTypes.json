@@ -6,6 +6,7 @@
       "ProfileManagerNotEligibleError"
     ],
     "AcceptProfileShareError": [
+      "OfferInvalidatedError",
       "RestrictedProfileRequiresHouseholdAdminError",
       "ShareNameConflictError",
       "ShareNotFoundError",
@@ -24,6 +25,13 @@
       "ProfileNotFoundError",
       "ReasonRequiredError",
       "ReauthenticationRequiredError"
+    ],
+    "AdministrativelyEndProfileShareError": [
+      "MembershipShareCannotEndError",
+      "ReasonRequiredError",
+      "ReauthenticationRequiredError",
+      "ShareNotActiveError",
+      "ShareNotFoundError"
     ],
     "AdministrativelyResetProfilePinError": [
       "InvalidProfilePinError",
@@ -63,7 +71,8 @@
       "ProfileNotFoundError",
       "ProfileRequiresEligibleManagerError",
       "ReauthenticationRequiredError",
-      "RestrictedAccountCannotAdministerError"
+      "RestrictedAccountCannotAdministerError",
+      "RestrictedProfileRequiresHouseholdAdminError"
     ],
     "ContinueWatchingMedia": [
       "Episode",
@@ -124,13 +133,6 @@
       "ShareNotActiveError",
       "ShareNotFoundError"
     ],
-    "ForceEndProfileShareError": [
-      "MembershipShareCannotEndError",
-      "ReasonRequiredError",
-      "ReauthenticationRequiredError",
-      "ShareNotActiveError",
-      "ShareNotFoundError"
-    ],
     "GrantHouseholdAdminError": [
       "AccountNotFoundError",
       "InvalidIdError",
@@ -162,6 +164,7 @@
       "DisplayNameRequiredError",
       "EligibleProfileManagerRequiredError",
       "EmailAlreadyUsedError",
+      "EmailInvalidError",
       "EmailRequiredError",
       "EsnAlreadyBlockedError",
       "EsnBlockNotFoundError",
@@ -180,6 +183,7 @@
       "ManagerInvitationNotFoundError",
       "MaximumAllowedRatingAgeInvalidError",
       "NotAManagerError",
+      "OfferInvalidatedError",
       "ProfileAlreadyLinkedError",
       "ProfileAlreadySharedError",
       "ProfileManagerNotEligibleError",
@@ -194,6 +198,7 @@
       "ReofferHouseholdNotSharedError",
       "ReplacementManagerRequiredError",
       "RestrictedAccountCannotAdministerError",
+      "RestrictedHouseholdAdminError",
       "SameHouseholdError",
       "ShareNotActiveError",
       "ShareNotFoundError",
@@ -206,19 +211,23 @@
       "ProfileNotFoundError"
     ],
     "IssueAccountInvitationError": [
-      "AccountNotFoundError",
       "ConnectProfileNotFoundError",
       "ConnectProfileRequiredError",
       "EligibleProfileManagerRequiredError",
       "EmailAlreadyUsedError",
+      "EmailInvalidError",
       "EmailRequiredError",
       "HouseholdNotFoundError",
+      "MaximumAllowedRatingAgeInvalidError",
       "ProfileAlreadyLinkedError",
+      "ProfileManagerNotEligibleError",
       "ProfileNameRequiredError",
+      "ProfileNameTakenError",
       "ProfileNotInHouseholdError",
       "ReofferHouseholdNotFoundError",
       "ReofferHouseholdNotSharedError",
-      "RestrictedFirstAccountError"
+      "RestrictedFirstAccountError",
+      "RestrictedHouseholdAdminError"
     ],
     "IssuePasswordResetError": [
       "AccountNotFoundError",
@@ -241,6 +250,7 @@
       "DisplayNameRequiredError",
       "EligibleProfileManagerRequiredError",
       "EmailAlreadyUsedError",
+      "EmailInvalidError",
       "EmailRequiredError",
       "EsnAlreadyBlockedError",
       "EsnBlockNotFoundError",
@@ -266,6 +276,7 @@
       "MaximumAllowedRatingAgeInvalidError",
       "MembershipShareCannotEndError",
       "NotAManagerError",
+      "OfferInvalidatedError",
       "ProfileAlreadyLinkedError",
       "ProfileAlreadySharedError",
       "ProfileBelongsToAccountError",
@@ -286,6 +297,7 @@
       "ReplacementManagerRequiredError",
       "RestrictedAccountCannotAdministerError",
       "RestrictedFirstAccountError",
+      "RestrictedHouseholdAdminError",
       "RestrictedProfileRequiresHouseholdAdminError",
       "SameHouseholdError",
       "ShareNameConflictError",
@@ -324,7 +336,8 @@
       "ProfileNotFoundError",
       "ProfileRequiresEligibleManagerError",
       "ReauthenticationRequiredError",
-      "RestrictedAccountCannotAdministerError"
+      "RestrictedAccountCannotAdministerError",
+      "RestrictedProfileRequiresHouseholdAdminError"
     ],
     "RemoveProfilePinError": [
       "ProfileNotFoundError",
@@ -366,7 +379,8 @@
       "ProfileNotFoundError",
       "ProfileRequiresEligibleManagerError",
       "ReauthenticationRequiredError",
-      "RestrictedAccountCannotAdministerError"
+      "RestrictedAccountCannotAdministerError",
+      "RestrictedProfileRequiresHouseholdAdminError"
     ],
     "SetProfilePictureError": [
       "ProfileNotFoundError"
