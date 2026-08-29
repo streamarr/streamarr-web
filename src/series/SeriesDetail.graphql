@@ -1,0 +1,74 @@
+query SeriesDetail($id: ID!) {
+  series(id: $id) {
+    id
+    title
+    tagline
+    summary
+    firstAirDate
+    contentRating {
+      value
+    }
+    genres {
+      id
+      name
+    }
+    directors {
+      id
+      name
+    }
+    cast {
+      id
+      name
+      images(type: PROFILE) {
+        aspectRatio
+        blurHash
+        variants {
+          id
+          size
+          width
+          height
+          url
+        }
+      }
+    }
+    watchStatus
+    seasons {
+      id
+      seasonNumber
+      title
+      airDate
+      watchStatus
+      watchProgress {
+        percentComplete
+      }
+      posterImages: images(type: POSTER) {
+        aspectRatio
+        blurHash
+        variants {
+          id
+          size
+          width
+          height
+          url
+        }
+      }
+      episodes {
+        id
+        episodeNumber
+        watchStatus
+        watchProgress {
+          positionSeconds
+        }
+        files {
+          id
+        }
+      }
+    }
+    backdropImages: images(type: BACKDROP) {
+      ...ImageWithAmbientFields
+    }
+    posterImages: images(type: POSTER) {
+      ...ImageWithAmbientFields
+    }
+  }
+}
