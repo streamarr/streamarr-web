@@ -1,0 +1,25 @@
+.columns {
+  display: flex;
+  gap: 32px;
+  margin: 0;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.label {
+  font-family: var(--font-family-system);
+  font-size: 11px;
+  letter-spacing: var(--letter-spacing-system);
+  text-transform: uppercase;
+  color: var(--ambient-text-secondary, var(--text-secondary));
+}
+
+.value {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ambient-text-primary, var(--text-primary));
+}
