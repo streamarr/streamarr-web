@@ -28,4 +28,14 @@ describe('StillCard', () => {
     )
     expect(container.querySelector('[style]')).toHaveStyle({ width: '33%' })
   })
+
+  it('draws no progress track for an episode that has not been started', () => {
+    const { container } = render(<StillCard title="E4 — Cold Open" subtitle="52m" image={null} blurHash={null} />)
+    expect(container.querySelector('[style]')).toBeNull()
+  })
+
+  it('renders the watched badge when given one', () => {
+    render(<StillCard title="E6 — Grievances" subtitle="47m" image={null} blurHash={null} badge={{ status: 'watched' }} />)
+    expect(screen.getByLabelText('Watched')).toBeInTheDocument()
+  })
 })

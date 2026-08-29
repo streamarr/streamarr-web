@@ -122,15 +122,16 @@ export function SeriesDetailScreen({ seriesId }: { seriesId: string }) {
           <h2 className={styles.sectionTitle}>Seasons</h2>
           <div className={styles.seasonGrid}>
             {seasons.map((season) => (
-              <PosterCard
-                key={season.id}
-                title={season.title ?? `Season ${season.seasonNumber}`}
-                meta={formatYear(season.airDate) ?? ''}
-                image={pickImageVariant(season.posterImages[0], 'MEDIUM')}
-                blurHash={season.posterImages[0]?.blurHash ?? null}
-                badge={seasonBadge(season)}
-                progressPercent={season.watchProgress?.percentComplete ?? undefined}
-              />
+              <Link key={season.id} to="/season/$seasonId" params={{ seasonId: season.id }} className={styles.cardLink}>
+                <PosterCard
+                  title={season.title ?? `Season ${season.seasonNumber}`}
+                  meta={formatYear(season.airDate) ?? ''}
+                  image={pickImageVariant(season.posterImages[0], 'MEDIUM')}
+                  blurHash={season.posterImages[0]?.blurHash ?? null}
+                  badge={seasonBadge(season)}
+                  progressPercent={season.watchProgress?.percentComplete ?? undefined}
+                />
+              </Link>
             ))}
           </div>
         </section>
