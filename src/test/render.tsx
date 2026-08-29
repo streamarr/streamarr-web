@@ -1,7 +1,7 @@
 import type { ApolloClient } from '@apollo/client'
 import { ApolloProvider } from '@apollo/client/react'
 import { MantineProvider } from '@mantine/core'
-import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
+import { createMemoryHistory, RouterContextProvider, RouterProvider } from '@tanstack/react-router'
 import { render, type RenderResult } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactElement } from 'react'
@@ -18,15 +18,18 @@ import { cssVariablesResolver, theme } from '../theme'
 
 type Rendered = RenderResult & { user: ReturnType<typeof userEvent.setup> }
 
+// Mounts a component on its own. The real route tree is provided as context only, so a
+// component's <Link>s resolve without any route rendering.
 export function renderWithProviders(ui: ReactElement): Rendered {
   const session = createSessionStore(() =>
     Promise.reject(new Error('component tests must not probe the session')),
   )
+  const { router } = createAppRouter(createMemoryHistory({ initialEntries: ['/'] }))
   return renderUnderProviders(
     createApolloClient(vi.fn()),
     session,
     inactiveRenewalBridge,
-    ui,
+    <RouterContextProvider router={router}>{ui}</RouterContextProvider>,
   )
 }
 
