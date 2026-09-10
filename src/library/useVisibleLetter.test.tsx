@@ -36,14 +36,18 @@ describe('useVisibleLetter', () => {
     expect(getByTestId('visible-letter')).toHaveTextContent('none')
   })
 
-  it('reports the letter of whichever registered item crosses the top band', () => {
-    const { getByTestId } = render(<Harness letters={['A', 'N']} />)
+  it('keeps the visible letter across re-renders of connected items', () => {
+    const { getByTestId, rerender } = render(<Harness letters={['A', 'N']} />)
     const nObserver = intersectionObserverInstances.at(-1)!
     const nElement = nObserver.observe.mock.calls[0][0] as Element
 
     act(() => {
       nObserver.callback([{ target: nElement, isIntersecting: true } as IntersectionObserverEntry], nObserver)
     })
+
+    expect(getByTestId('visible-letter')).toHaveTextContent('N')
+
+    rerender(<Harness letters={['A', 'N']} />)
 
     expect(getByTestId('visible-letter')).toHaveTextContent('N')
   })
@@ -73,10 +77,7 @@ describe('useVisibleLetter', () => {
     })
     expect(getByTestId('visible-letter')).toHaveTextContent('HASH')
 
-    // A letter jump replaces the whole edges array: the HASH item unmounts, a J item mounts.
-    // disconnect() alone (no synthetic not-intersecting event) must not leave HASH stuck forever
-    // once J is confirmed intersecting — even though HASH is still in `intersecting` at this
-    // exact instant (its own cleanup already ran, but isConnected pruning is lazy).
+    // A letter jump replaces the items without a final intersection event for the old item.
     rerender(<Harness letters={['J']} />)
 
     const jObserver = intersectionObserverInstances.at(-1)!
