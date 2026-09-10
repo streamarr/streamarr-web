@@ -1,4 +1,5 @@
 import { Alert, Center, Loader, Text, Title } from '@mantine/core'
+import { useElementSize, useMergedRef } from '@mantine/hooks'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { MediaFilter, MediaSort, OrderMediaBy, SortDirection } from '../graphql/generated/graphql'
 import { AlphabetRail } from '../media/AlphabetRail'
@@ -53,6 +54,11 @@ export function LibraryScreen({
   // State, not a ref object: the sentinels' observer root is the grid, and needs to rebuild once
   // it actually mounts, which only a state-backed ref triggers.
   const [gridElement, setGridElement] = useState<HTMLDivElement | null>(null)
+  const { ref: measureGrid, height: gridHeight } = useElementSize<HTMLDivElement>()
+  const gridRef = useMergedRef(setGridElement, measureGrid)
+  // Prefetch half a visible grid ahead in either direction, updating on resize/rotation.
+  // The observer API has no vh/dvh units; derive pixels from the actual scroll viewport.
+  const prefetchMargin = `${gridHeight / 2}px 0px`
   const itemElementsRef = useRef(new Map<string, HTMLElement>())
   const { visibleLetter, registerItem } = useVisibleLetter(gridElement)
 
@@ -62,7 +68,7 @@ export function LibraryScreen({
         loadMore()
       }
     },
-    { root: gridElement, rootMargin: '400px' },
+    { root: gridElement, rootMargin: prefetchMargin },
   )
 
   // The top sentinel is always the grid's first child, so a prepend alone never moves it out of
@@ -80,7 +86,7 @@ export function LibraryScreen({
         loadPrevious()
       }
     },
-    { root: gridElement, rootMargin: '400px' },
+    { root: gridElement, rootMargin: prefetchMargin },
   )
 
   useLayoutEffect(() => {
@@ -174,7 +180,7 @@ export function LibraryScreen({
         {edges.length === 0 ? (
           <Text className={styles.empty}>No items match this filter.</Text>
         ) : (
-          <div className={styles.grid} ref={setGridElement}>
+          <div className={styles.grid} ref={gridRef}>
             {hasPreviousPage && <div ref={loadPreviousRef} aria-hidden className={styles.sentinel} />}
             {edges.map((edge) => {
               const summary = summarizeMedia(edge.node)
