@@ -1,3 +1,4 @@
+import { ObservableQuery } from '@apollo/client'
 import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { graphql, HttpResponse } from 'msw'
@@ -233,6 +234,7 @@ describe('LibraryScreen', () => {
   })
 
   it('does not apply an abandoned backward page measurement after changing the watch filter', async () => {
+    const fetchMore = vi.spyOn(ObservableQuery.prototype, 'fetchMore')
     let release!: () => void
     const pending = new Promise<void>((resolve) => { release = resolve })
     let backwardRequested = false
@@ -269,13 +271,21 @@ describe('LibraryScreen', () => {
     )!
     act(() => observer.callback([{ target: sentinel, isIntersecting: true } as IntersectionObserverEntry], observer))
     await waitFor(() => expect(backwardRequested).toBe(true))
+    const backwardCompletion = fetchMore.mock.results[0].value
 
     await user.click(screen.getByRole('button', { name: 'Unwatched' }))
     await screen.findByText('Available Alpha')
-    await act(async () => {
-      release()
-      await new Promise((resolve) => setTimeout(resolve, 100))
-    })
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      await act(async () => {
+        release()
+        await backwardCompletion
+        // Flush Apollo's deferred query notifications before checking the rendered grid.
+        await vi.runOnlyPendingTimersAsync()
+      })
+    } finally {
+      vi.useRealTimers()
+    }
 
     const filteredGrid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
     expect(screen.queryByText('Old backfill')).not.toBeInTheDocument()
