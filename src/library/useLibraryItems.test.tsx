@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { graphql, HttpResponse } from 'msw'
 import { useState } from 'react'
@@ -31,9 +31,10 @@ function libraryResponse(overrides: {
   hasPreviousPage?: boolean
   startCursor?: string | null
   endCursor?: string | null
-}): LibraryPageQuery {
+}): LibraryPageQuery & { library: { __typename: 'Library' } } {
   return {
     library: {
+      __typename: 'Library',
       id: LIBRARY_ID,
       name: 'Movies',
       status: 'HEALTHY',
@@ -86,6 +87,68 @@ function Harness({ initialFilter = {} }: { initialFilter?: MediaFilter }) {
 }
 
 describe('useLibraryItems', () => {
+  it('lands on a rendered item when the seek page starts with missing media', async () => {
+    const response = libraryResponse({ edges: [{ cursor: 'o', node: movieNode('o', 'Ocean') }] })
+    // The first N item no longer resolves; the seek continues at the next available title.
+    response.library.items.edges = [null, { cursor: 'missing-n', node: null }, ...response.library.items.edges!]
+    server.use(graphql.query('LibraryPage', () => HttpResponse.json({ data: response })))
+    renderWithProviders(<Harness initialFilter={{ startLetter: 'N' }} />)
+    await screen.findByText('Ocean')
+    await waitFor(() => expect(screen.getByTestId('scrollTarget')).toHaveTextContent('o'))
+  })
+
+  it('returns to the requested letter after revisiting a cached, backfilled page', async () => {
+    server.use(graphql.query('LibraryPage', ({ variables }) => {
+      const title = variables.before ? 'Middle' : variables.filter?.startLetter === 'N' ? 'Northern' : 'Alpha'
+      return HttpResponse.json({ data: libraryResponse({
+        edges: [{ cursor: title, node: movieNode(title, title) }],
+        hasPreviousPage: title === 'Northern',
+      }) })
+    }))
+    const { user } = renderWithProviders(<Harness />)
+    await screen.findByText('Alpha', { selector: 'li' })
+    await user.click(screen.getByText('Jump to N'))
+    await screen.findByText('Middle', { selector: 'li' })
+    await user.click(screen.getByText('Jump to A'))
+    await screen.findByText('Alpha', { selector: 'li' })
+    await user.click(screen.getByText('Jump to N'))
+    await screen.findByText('Middle', { selector: 'li' })
+    expect(screen.getByTestId('scrollTarget')).toHaveTextContent('Northern')
+  })
+
+  it.each(['forward', 'backward'])('ignores a %s page from the old filter after switching to Unwatched', async (direction) => {
+    let release!: () => void
+    const pending = new Promise<void>((resolve) => { release = resolve })
+    let requested = false
+    server.use(graphql.query('LibraryPage', async ({ variables }) => {
+      if (variables.after || variables.before) {
+        requested = true
+        await pending
+        return HttpResponse.json({ data: libraryResponse({
+          edges: [{ cursor: 'old', node: movieNode('old', 'Old filtered-out title') }],
+        }) })
+      }
+      return HttpResponse.json({ data: libraryResponse({
+        edges: variables.filter?.watchStatus
+          ? [{ cursor: 'unwatched', node: movieNode('unwatched', 'Unwatched title') }]
+          : [{ cursor: 'first', node: movieNode('first', 'First page') }],
+        hasNextPage: !variables.filter?.watchStatus && direction === 'forward',
+        hasPreviousPage: !variables.filter?.watchStatus && direction === 'backward',
+      }) })
+    }))
+    const { user } = renderWithProviders(<Harness />)
+    await screen.findByText('First page')
+    await user.click(screen.getByText(direction === 'forward' ? 'Load more' : 'Load previous'))
+    await waitFor(() => expect(requested).toBe(true))
+    await user.click(screen.getByText('Unwatched only'))
+    await screen.findByText('Unwatched title')
+    await act(async () => {
+      release()
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    })
+    expect(screen.getAllByRole('listitem').map((item) => item.textContent)).toEqual(['Unwatched title'])
+  })
+
   it('loads the initial page', async () => {
     server.use(
       graphql.query('LibraryPage', () =>
@@ -166,8 +229,7 @@ describe('useLibraryItems', () => {
 
     await user.click(screen.getByText('Jump to N'))
 
-    // The landing page's own node is briefly the recorded scroll target, before the backward
-    // fetch (which the effect kicks off in the same tick) prepends items above it.
+    // The seek node remains the landing target once the continuity page has rendered above it.
     await waitFor(() => expect(screen.getByTestId('scrollTarget')).toHaveTextContent('c-n'))
     await waitFor(() => expect(screen.getByText('Alright')).toBeInTheDocument())
     expect(screen.getByText('Northern Line')).toBeInTheDocument()

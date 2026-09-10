@@ -3,6 +3,14 @@ import { describe, expect, it } from 'vitest'
 import { badgeFromWatchState, WatchedBadge } from './WatchedBadge'
 
 describe('WatchedBadge', () => {
+  it('exposes the in-progress state and percentage to assistive technology', () => {
+    render(<WatchedBadge status="in-progress" percentComplete={42} />)
+    const progress = screen.getByRole('progressbar', { name: 'In progress' })
+    expect(progress).toHaveAttribute('aria-valuemin', '0')
+    expect(progress).toHaveAttribute('aria-valuemax', '100')
+    expect(progress).toHaveAttribute('aria-valuenow', '42')
+  })
+
   it('renders a mint check for the watched state', () => {
     render(<WatchedBadge status="watched" />)
     expect(screen.getByLabelText('Watched')).toBeInTheDocument()

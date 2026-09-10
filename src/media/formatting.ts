@@ -28,7 +28,7 @@ export function formatRuntime(totalMinutes: number): string {
 
 export function formatYear(iso: string | null | undefined): string | null {
   if (!iso) return null
-  const year = new Date(iso).getFullYear()
+  const year = new Date(iso).getUTCFullYear()
   return Number.isNaN(year) ? null : String(year)
 }
 

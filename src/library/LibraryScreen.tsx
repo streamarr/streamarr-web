@@ -30,12 +30,12 @@ export function LibraryScreen({
   onSearchChange: (search: LibrarySearch) => void
 }) {
   const sort: MediaSort = { by: search.by, direction: search.direction }
+  const trackingLetter = sort.by === 'TITLE'
   const filter: MediaFilter = {
     watchStatus: search.watchStatus,
-    // Only ever populated by AlphabetRail taps sourced from real alphabetIndex letters.
-    startLetter: search.letter as MediaFilter['startLetter'],
+    // URL state can also contain a letter while its rail is hidden.
+    startLetter: trackingLetter && !search.watchStatus ? search.letter as MediaFilter['startLetter'] : undefined,
   }
-  const trackingLetter = sort.by === 'TITLE'
 
   const {
     loading,
@@ -107,7 +107,7 @@ export function LibraryScreen({
   }, [scrollTarget, edges, clearScrollTarget])
 
   function selectFilter(status: WatchStatusFilter) {
-    onSearchChange({ ...search, watchStatus: status === 'ALL' ? undefined : status })
+    onSearchChange({ ...search, letter: undefined, watchStatus: status === 'ALL' ? undefined : status })
   }
 
   function selectSort(nextSort: MediaSort) {

@@ -3,5 +3,5 @@
 export function definedEdges<TCursor extends string, TNode>(
   edges: ReadonlyArray<{ cursor: TCursor; node: TNode | null } | null> | null | undefined,
 ): { cursor: TCursor; node: TNode }[] {
-  return (edges ?? []).flatMap((edge) => (edge?.node ? [{ cursor: edge.cursor, node: edge.node }] : []))
+  return (edges ?? []).flatMap((edge) => (edge != null && edge.node != null ? [{ cursor: edge.cursor, node: edge.node }] : []))
 }
