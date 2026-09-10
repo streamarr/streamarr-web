@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { graphql, HttpResponse } from 'msw'
 import { useState } from 'react'
@@ -30,9 +30,10 @@ function libraryData(overrides: {
   edges?: { cursor: string; node: ReturnType<typeof movieNode> }[]
   hasNextPage?: boolean
   scanCompletedOn?: string | null
-} = {}): LibraryPageQuery {
+} = {}): LibraryPageQuery & { library: { __typename: 'Library' } } {
   return {
     library: {
+      __typename: 'Library',
       id: LIBRARY_ID,
       name: 'Movies',
       status: 'HEALTHY',
@@ -229,6 +230,56 @@ describe('LibraryScreen', () => {
 
     await waitFor(() => expect(screen.getByText('N')).toHaveAttribute('aria-pressed', 'true'))
     expect(queryCount).toBe(queriesAfterLoad)
+  })
+
+  it('does not apply an abandoned backward page measurement after changing the watch filter', async () => {
+    let release!: () => void
+    const pending = new Promise<void>((resolve) => { release = resolve })
+    let backwardRequested = false
+    server.use(graphql.query('LibraryPage', async ({ variables }) => {
+      if (variables.before) {
+        backwardRequested = true
+        await pending
+        return HttpResponse.json({ data: libraryData({
+          edges: [{ cursor: 'old', node: movieNode({ id: 'old', title: 'Old backfill' }) }],
+        }) })
+      }
+      if (variables.filter?.watchStatus) {
+        return HttpResponse.json({ data: libraryData({ edges: [
+          { cursor: 'a', node: movieNode({ id: 'a', title: 'Available Alpha' }) },
+          { cursor: 'z', node: movieNode({ id: 'z', title: 'Available Zeta' }) },
+        ] }) })
+      }
+      const data = libraryData({
+        edges: [{ cursor: 'n', node: movieNode({ id: 'n', title: 'Northern' }) }],
+      })
+      data.library.items.pageInfo.hasPreviousPage = true
+      return HttpResponse.json({ data })
+    }))
+    // jsdom has no layout: model the new result as taller than the old measured grid.
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function (this: HTMLElement) {
+      return this.textContent?.includes('Available Alpha') ? 700 : 300
+    })
+    const { user } = renderWithProviders(<Harness initialSearch={{ by: 'TITLE', direction: 'ASC', letter: 'N' }} />)
+    await screen.findByText('Northern')
+    const oldGrid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
+    const sentinel = oldGrid.firstElementChild!
+    const observer = intersectionObserverInstances.find((instance) =>
+      instance.observe.mock.calls.some((call) => call[0] === sentinel),
+    )!
+    act(() => observer.callback([{ target: sentinel, isIntersecting: true } as IntersectionObserverEntry], observer))
+    await waitFor(() => expect(backwardRequested).toBe(true))
+
+    await user.click(screen.getByRole('button', { name: 'Unwatched' }))
+    await screen.findByText('Available Alpha')
+    await act(async () => {
+      release()
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    })
+
+    const filteredGrid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
+    expect(screen.queryByText('Old backfill')).not.toBeInTheDocument()
+    expect(filteredGrid.scrollTop).toBe(0)
   })
 
   it('compensates scrollTop when the top sentinel loads more, so it leaves the intersecting zone and the view does not jump', async () => {
