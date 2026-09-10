@@ -1,4 +1,4 @@
-import { act, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import { HttpResponse, graphql } from 'msw'
 import { useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -29,6 +29,41 @@ vi.mock('hls.js', () => ({
 
 const STREAM_URL = '/api/stream/abcd/multivariant.m3u8?t=playback-token'
 const SESSION = { id: 'sess-1', streamUrl: STREAM_URL, transcodeMode: 'REMUX' }
+
+interface TimelineReport {
+  sessionId: string
+  positionSeconds: number
+  state: string
+}
+
+function serveSession(): TimelineReport[] {
+  const reports: TimelineReport[] = []
+  server.use(
+    graphql.mutation('CreateStreamSession', () => HttpResponse.json({ data: { createStreamSession: SESSION } })),
+    graphql.mutation('ReportStreamSessionTimeline', ({ variables }) => {
+      reports.push(variables as unknown as TimelineReport)
+      return HttpResponse.json({ data: { reportStreamSessionTimeline: true } })
+    }),
+  )
+  return reports
+}
+
+// jsdom's media element has no real timeline; an own property stands in for currentTime so the
+// player's seek is observable and tests can move the playhead before firing events.
+async function attachedVideo(): Promise<HTMLVideoElement> {
+  await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(STREAM_URL))
+  const video = document.querySelector('video')
+  if (!video) {
+    throw new Error('no video element rendered')
+  }
+  Object.defineProperty(video, 'currentTime', { writable: true, value: 0, configurable: true })
+  return video
+}
+
+function playheadAt(video: HTMLVideoElement, seconds: number) {
+  video.currentTime = seconds
+  fireEvent(video, new Event('timeupdate'))
+}
 
 function Harness() {
   const [mediaFileId, setMediaFileId] = useState('a')
@@ -107,5 +142,68 @@ describe('Player', () => {
 
     await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(STREAM_URL))
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('shouldSeekToTheStartPositionOnceMetadataLoads', async () => {
+    serveSession()
+    renderWithProviders(<Player mediaFileId="abcd" startPositionSeconds={120} />)
+    const video = await attachedVideo()
+
+    fireEvent(video, new Event('loadedmetadata'))
+
+    expect(video.currentTime).toBe(120)
+  })
+
+  it('shouldStartFromTheBeginningWhenNoStartPositionIsGiven', async () => {
+    serveSession()
+    renderWithProviders(<Player mediaFileId="abcd" />)
+    const video = await attachedVideo()
+
+    fireEvent(video, new Event('loadedmetadata'))
+
+    expect(video.currentTime).toBe(0)
+  })
+
+  it('shouldReportPlayingTimelineEveryTenSecondsOfPlayback', async () => {
+    const reports = serveSession()
+    renderWithProviders(<Player mediaFileId="abcd" />)
+    const video = await attachedVideo()
+
+    playheadAt(video, 3)
+    playheadAt(video, 12)
+    await waitFor(() =>
+      expect(reports).toEqual([{ sessionId: 'sess-1', positionSeconds: 12, state: 'PLAYING' }]),
+    )
+
+    playheadAt(video, 15)
+    playheadAt(video, 25)
+    await waitFor(() => expect(reports).toHaveLength(2))
+    expect(reports[1]).toEqual({ sessionId: 'sess-1', positionSeconds: 25, state: 'PLAYING' })
+  })
+
+  it('shouldReportPausedStateOnPause', async () => {
+    const reports = serveSession()
+    renderWithProviders(<Player mediaFileId="abcd" />)
+    const video = await attachedVideo()
+
+    video.currentTime = 7
+    fireEvent(video, new Event('pause'))
+
+    await waitFor(() =>
+      expect(reports).toEqual([{ sessionId: 'sess-1', positionSeconds: 7, state: 'PAUSED' }]),
+    )
+  })
+
+  it('shouldReportStoppedStateAtTheLastKnownPositionOnUnmount', async () => {
+    const reports = serveSession()
+    const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
+    const video = await attachedVideo()
+    playheadAt(video, 42)
+    await waitFor(() => expect(reports).toHaveLength(1))
+
+    unmount()
+
+    await waitFor(() => expect(reports).toHaveLength(2))
+    expect(reports[1]).toEqual({ sessionId: 'sess-1', positionSeconds: 42, state: 'STOPPED' })
   })
 })

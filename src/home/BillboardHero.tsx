@@ -23,7 +23,12 @@ export function BillboardHero({ content }: { content: BillboardContent }) {
         </div>
         {content.synopsis && <p className={styles.synopsis}>{content.synopsis}</p>}
         {content.ctaFileId && (
-          <Link to="/play/$mediaFileId" params={{ mediaFileId: content.ctaFileId }} className={styles.cta}>
+          <Link
+            to="/play/$mediaFileId"
+            params={{ mediaFileId: content.ctaFileId }}
+            search={{ position: content.ctaPositionSeconds ?? undefined }}
+            className={styles.cta}
+          >
             {content.ctaLabel}
           </Link>
         )}

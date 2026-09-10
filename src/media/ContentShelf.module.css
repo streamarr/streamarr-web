@@ -55,8 +55,3 @@
   overflow-x: auto;
   scroll-behavior: smooth;
 }
-
-.track > * {
-  flex: 0 0 min(100%, clamp(16rem, 85%, 27.75rem));
-  min-width: 0;
-}

@@ -1,0 +1,3 @@
+mutation ReportStreamSessionTimeline($sessionId: ID!, $positionSeconds: Int!, $state: PlaybackState!) {
+  reportStreamSessionTimeline(sessionId: $sessionId, positionSeconds: $positionSeconds, state: $state)
+}

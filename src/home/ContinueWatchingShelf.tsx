@@ -31,12 +31,13 @@ export function ContinueWatchingShelf({ items }: { items: ContinueWatchingItem[]
             key={item.id}
             to="/play/$mediaFileId"
             params={{ mediaFileId: summary.ctaFileId }}
-            className={styles.cardLink}
+            search={{ position: summary.ctaPositionSeconds ?? undefined }}
+            className={styles.card}
           >
             {card}
           </Link>
         ) : (
-          <div key={item.id}>{card}</div>
+          <div key={item.id} className={styles.card}>{card}</div>
         )
       })}
     </ContentShelf>
@@ -50,8 +51,10 @@ function summarize(item: ContinueWatchingItem): {
   blurHash: string | null
   progressPercent: number
   ctaFileId: string | null
+  ctaPositionSeconds: number | null
 } {
   const timeLeft = item.watchProgress ? formatTimeLeft(item.watchProgress) : ''
+  const ctaPositionSeconds = item.watchProgress?.positionSeconds || null
 
   if (item.__typename === 'Movie') {
     const backdrop = item.images[0] ?? null
@@ -62,6 +65,7 @@ function summarize(item: ContinueWatchingItem): {
       blurHash: backdrop?.blurHash ?? null,
       progressPercent: item.watchProgress?.percentComplete ?? 0,
       ctaFileId: item.files[0]?.id ?? null,
+      ctaPositionSeconds,
     }
   }
 
@@ -73,5 +77,6 @@ function summarize(item: ContinueWatchingItem): {
     blurHash: still?.blurHash ?? null,
     progressPercent: item.watchProgress?.percentComplete ?? 0,
     ctaFileId: item.files[0]?.id ?? null,
+    ctaPositionSeconds,
   }
 }
