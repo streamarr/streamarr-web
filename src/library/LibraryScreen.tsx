@@ -32,10 +32,11 @@ export function LibraryScreen({
 }) {
   const sort: MediaSort = { by: search.by, direction: search.direction }
   const trackingLetter = sort.by === 'TITLE'
+  // The server's alphabet index is unfiltered, and letter seeking requires TITLE sort (ADR 0018).
+  const canSeekByLetter = trackingLetter && !search.watchStatus
   const filter: MediaFilter = {
     watchStatus: search.watchStatus,
-    // URL state can also contain a letter while its rail is hidden.
-    startLetter: trackingLetter && !search.watchStatus ? search.letter as MediaFilter['startLetter'] : undefined,
+    startLetter: canSeekByLetter ? search.letter as MediaFilter['startLetter'] : undefined,
   }
 
   const {
@@ -51,14 +52,12 @@ export function LibraryScreen({
     clearScrollTarget,
   } = useLibraryItems({ libraryId, sort, filter })
 
-  // State, not a ref object: the sentinels' observer root is the grid, and needs to rebuild once
-  // it actually mounts, which only a state-backed ref triggers.
+  // State lets observers attach to the grid after it mounts.
   const [gridElement, setGridElement] = useState<HTMLDivElement | null>(null)
   const { ref: measureGrid, height: gridHeight } = useElementSize<HTMLDivElement>()
   const gridRef = useMergedRef(setGridElement, measureGrid)
-  // Prefetch half a visible grid ahead in either direction, updating on resize/rotation.
-  // The observer API has no vh/dvh units; derive pixels from the actual scroll viewport.
-  const prefetchMargin = `${gridHeight / 2}px 0px`
+  // IntersectionObserver requires pixels here; vh/dvh units are unsupported.
+  const halfViewportPrefetchMargin = `${gridHeight / 2}px 0px`
   const itemElementsRef = useRef(new Map<string, HTMLElement>())
   const { visibleLetter, registerItem } = useVisibleLetter(gridElement)
 
@@ -68,45 +67,38 @@ export function LibraryScreen({
         loadMore()
       }
     },
-    { root: gridElement, rootMargin: prefetchMargin },
+    { root: gridElement, rootMargin: halfViewportPrefetchMargin },
   )
 
-  // The top sentinel is always the grid's first child, so a prepend alone never moves it out of
-  // the intersecting zone; scrollTop must be compensated below or it never fires again.
-  const pendingBackwardMeasurementRef = useRef<number | null>(null)
-  // An abandoned page cannot anchor a different query's results. Reset before compensation.
-  useLayoutEffect(() => {
-    pendingBackwardMeasurementRef.current = null
+  const heightBeforePrependRef = useRef<number | null>(null)
+  useLayoutEffect(function resetScrollAnchorForQuery() {
+    heightBeforePrependRef.current = null
   }, [libraryId, sort.by, sort.direction, filter.watchStatus, filter.startLetter])
 
   const loadPreviousRef = useIntersectionObserver(
-    (entries) => {
+    function loadPreviousPageWithScrollAnchor(entries) {
       if (entries.some((entry) => entry.isIntersecting) && gridElement) {
-        pendingBackwardMeasurementRef.current = gridElement.scrollHeight
+        heightBeforePrependRef.current = gridElement.scrollHeight
         loadPrevious()
       }
     },
-    { root: gridElement, rootMargin: prefetchMargin },
+    { root: gridElement, rootMargin: halfViewportPrefetchMargin },
   )
 
-  useLayoutEffect(() => {
-    const heightBefore = pendingBackwardMeasurementRef.current
+  useLayoutEffect(function restoreScrollAfterPrepend() {
+    const heightBefore = heightBeforePrependRef.current
     if (heightBefore === null || !gridElement) {
       return
     }
-    const delta = gridElement.scrollHeight - heightBefore
-    // Only clear once growth is observed: this can re-run before the fetch has actually landed
-    // (edges is a fresh array every render), and clearing on that zero-delta pass would drop the
-    // pending measurement before the real page arrives.
-    if (delta > 0) {
-      gridElement.scrollTop += delta
-      pendingBackwardMeasurementRef.current = null
+    const addedHeight = gridElement.scrollHeight - heightBefore
+    // A render can occur before the requested page adds any height.
+    if (addedHeight > 0) {
+      gridElement.scrollTop += addedHeight
+      heightBeforePrependRef.current = null
     }
   }, [edges.length, edges[0]?.cursor, gridElement])
 
-  // Scrolls the letter-jump's landing item into view once rendered, or the backward continuity
-  // page prepended above it reads as having landed on the wrong letter.
-  useEffect(() => {
+  useEffect(function scrollToLetterLanding() {
     if (!scrollTarget) {
       return
     }
@@ -131,8 +123,6 @@ export function LibraryScreen({
     })
   }
 
-  // startLetter is only a seek anchor under TITLE sort (ADR 0018) — otherwise it's a strict
-  // filter that would shrink the library to one letter, so a tap forces TITLE/ASC first.
   function selectLetter(letter: string | null) {
     onSearchChange(letter ? { ...search, by: 'TITLE', direction: 'ASC', letter } : { ...search, letter: undefined })
   }
@@ -213,10 +203,7 @@ export function LibraryScreen({
             {hasNextPage && <div ref={loadMoreRef} aria-hidden className={styles.sentinel} />}
           </div>
         )}
-        {/* startLetter is only a seek anchor under TITLE sort (ADR 0018) — a tap under any other
-            sort would silently shrink the library to one letter, and alphabetIndex itself has no
-            filter argument to reflect a watch-status filter either. */}
-        {!search.watchStatus && trackingLetter && (
+        {canSeekByLetter && (
           <AlphabetRail
             index={library.alphabetIndex}
             selected={visibleLetter ?? search.letter ?? null}
