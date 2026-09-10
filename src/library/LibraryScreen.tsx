@@ -68,6 +68,11 @@ export function LibraryScreen({
   // The top sentinel is always the grid's first child, so a prepend alone never moves it out of
   // the intersecting zone; scrollTop must be compensated below or it never fires again.
   const pendingBackwardMeasurementRef = useRef<number | null>(null)
+  // An abandoned page cannot anchor a different query's results. Reset before compensation.
+  useLayoutEffect(() => {
+    pendingBackwardMeasurementRef.current = null
+  }, [libraryId, sort.by, sort.direction, filter.watchStatus, filter.startLetter])
+
   const loadPreviousRef = useIntersectionObserver(
     (entries) => {
       if (entries.some((entry) => entry.isIntersecting) && gridElement) {
