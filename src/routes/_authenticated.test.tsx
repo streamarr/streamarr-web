@@ -5,6 +5,14 @@ import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
 import { meFixture, profileFixture } from '../test/meFixture'
 
+// Once signed in, the chrome mounts Home + TopBar, which fire their own queries.
+function homeHandlers() {
+  return [
+    graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
+    graphql.query('Home', () => HttpResponse.json({ data: { continueWatching: [], libraries: [] } })),
+  ]
+}
+
 const ME = meFixture({ scope: 'profile' })
 const HOUSEHOLD = meFixture({
   scope: 'profile',
@@ -61,16 +69,17 @@ describe('the authenticated layout', () => {
   })
 
   it('shouldRenderTheGuardedPageForASignedInVisitor', async () => {
-    server.use(graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })))
+    server.use(...homeHandlers(), graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })))
     const { router } = renderAppAt('/')
 
-    expect(await screen.findByText(/welcome, owner/i)).toBeInTheDocument()
+    expect(await screen.findByRole('banner')).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/')
   })
 
   it('shouldSignOutFromTheHeaderAndReturnToSignIn', async () => {
     let loggedOut = false
     server.use(
+      ...homeHandlers(),
       graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
       http.post('/api/auth/refresh/revoke', () => {
         loggedOut = true
@@ -78,7 +87,7 @@ describe('the authenticated layout', () => {
       }),
     )
     const { router, user } = renderAppAt('/')
-    await screen.findByText(/welcome, owner/i)
+    await screen.findByRole('banner')
 
     await user.click(await screen.findByRole('button', { name: /profile menu/i }))
     await user.click(screen.getByRole('button', { name: /sign out/i }))
@@ -93,6 +102,7 @@ describe('the authenticated layout', () => {
       finishRevocation = resolve
     })
     server.use(
+      ...homeHandlers(),
       graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
       http.post('/api/auth/refresh/revoke', async () => {
         await revocation
@@ -100,7 +110,7 @@ describe('the authenticated layout', () => {
       }),
     )
     const { router, user } = renderAppAt('/')
-    await screen.findByText(/welcome, owner/i)
+    await screen.findByRole('banner')
 
     await user.click(await screen.findByRole('button', { name: /profile menu/i }))
     await user.click(screen.getByRole('button', { name: /sign out/i }))
@@ -111,13 +121,14 @@ describe('the authenticated layout', () => {
 
   it('shouldReturnToSignInWhenAProfileSwitchFindsTheSessionGone', async () => {
     server.use(
+      ...homeHandlers(),
       graphql.query('Me', () => HttpResponse.json({ data: { me: HOUSEHOLD } })),
       http.post('/api/auth/select-profile', () =>
         HttpResponse.json({ code: 'AUTHENTICATION_REQUIRED' }, { status: 401 }),
       ),
     )
     const { router, user } = renderAppAt('/')
-    await screen.findByText(/welcome, owner/i)
+    await screen.findByRole('banner')
 
     await user.click(await screen.findByRole('button', { name: /profile menu/i }))
     await user.click(screen.getByRole('button', { name: 'Sam' }))
@@ -134,7 +145,7 @@ describe('the authenticated layout', () => {
   })
 
   it('shouldRestartProactiveRenewalAfterAuthenticatedHardReload', async () => {
-    server.use(graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })))
+    server.use(...homeHandlers(), graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })))
     const renewal = {
       adoptExpiry: vi.fn(),
       refreshNow: vi.fn(async () => ({ kind: 'renewed' as const, expiresAt: '2026-08-06T12:10:00Z' })),

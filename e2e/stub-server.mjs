@@ -47,6 +47,11 @@ const me = {
   selectedProfile: profile,
 }
 
+const libraries = [
+  { __typename: 'Library', id: 'movies', name: 'Movies', type: 'MOVIE' },
+  { __typename: 'Library', id: 'series', name: 'TV Series', type: 'SERIES' },
+]
+
 const json = (response, status, body) => {
   response.writeHead(status, { 'Content-Type': 'application/json' })
   response.end(JSON.stringify(body))
@@ -104,7 +109,16 @@ function route(request, response, raw) {
     if (!accessValid) {
       return json(response, 401, { code: 'EXPIRED_TOKEN', message: 'Authentication is required.' })
     }
-    return json(response, 200, { data: { me } })
+    const { operationName } = JSON.parse(raw)
+    if (operationName === 'Me') return json(response, 200, { data: { me } })
+    if (operationName === 'Libraries') return json(response, 200, { data: { libraries } })
+    if (operationName === 'Home') {
+      return json(response, 200, { data: {
+        continueWatching: [],
+        libraries: libraries.map((library) => ({ ...library, items: { edges: [] } })),
+      } })
+    }
+    return json(response, 200, { errors: [{ message: `Unhandled test operation: ${operationName}` }] })
   }
   json(response, 404, { code: 'NOT_FOUND', message: pathname })
 }

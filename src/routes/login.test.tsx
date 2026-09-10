@@ -13,6 +13,8 @@ function serverAcceptsCredentials(scope: 'account' | 'profile') {
       HttpResponse.json({ accessTokenExpiresAt: '2026-08-05T12:00:00Z', scope }),
     ),
     graphql.query('Me', () => HttpResponse.json({ data: { me: { ...ME, scope } } })),
+    graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
+    graphql.query('Home', () => HttpResponse.json({ data: { continueWatching: [], libraries: [] } })),
   )
 }
 
@@ -24,9 +26,13 @@ async function signIn(user: Awaited<ReturnType<typeof renderAppAt>>['user']) {
 
 describe('/login gate', () => {
   it('shouldBounceAKnownSignedInVisitorAwayFromSignIn', async () => {
-    server.use(graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })))
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
+      graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
+      graphql.query('Home', () => HttpResponse.json({ data: { continueWatching: [], libraries: [] } })),
+    )
     const { router } = renderAppAt('/')
-    await screen.findByText(/welcome, owner/i)
+    await screen.findByRole('banner')
 
     await router.navigate({ to: '/login' })
 
@@ -53,7 +59,7 @@ describe('/login resume', () => {
     await signIn(user)
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/'))
-    expect(await screen.findByText(/welcome, owner/i)).toBeInTheDocument()
+    expect(await screen.findByRole('banner')).toBeInTheDocument()
   })
 
   it('shouldCarryAPendingPairingCodeThroughSignIn', async () => {

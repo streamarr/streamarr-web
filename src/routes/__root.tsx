@@ -23,9 +23,12 @@ const CEREMONY_ROUTES = new Set<FileRouteTypes['id']>([
 ])
 
 function RootLayout() {
-  // Keyed off committed matches: _authenticated only commits once the server has vouched.
+  // 'success', not just present: the match exists (with a 'pending' status) the instant the path
+  // matches, before beforeLoad's session probe has actually vouched for it — chrome mounted then
+  // would fire its own queries against an unconfirmed session and race the guard's own redirect.
   const signedIn = useRouterState({
-    select: (state) => state.matches.some((match) => match.routeId === '/_authenticated'),
+    select: (state) =>
+      state.matches.some((match) => match.routeId === '/_authenticated' && match.status === 'success'),
   })
   const ceremony = useRouterState({
     select: (state) => state.matches.some((match) => CEREMONY_ROUTES.has(match.routeId)),
