@@ -85,7 +85,8 @@ export function useLibraryItems({
         sort,
         filter,
       },
-      updateQuery: (previous, { fetchMoreResult }) => !requestScope.active ? previous : ({
+      updateQuery: (previous, { fetchMoreResult }) => !requestScope.active ||
+        previous.library.items.pageInfo.endCursor !== pageInfo.endCursor ? previous : ({
         library: {
           ...fetchMoreResult.library,
           items: appendItemsPage(previous.library.items, fetchMoreResult.library.items),
@@ -114,7 +115,8 @@ export function useLibraryItems({
         sort,
         filter: continuationFilter,
       },
-      updateQuery: (previous, { fetchMoreResult }) => !requestScope.active ? previous : ({
+      updateQuery: (previous, { fetchMoreResult }) => !requestScope.active ||
+        previous.library.items.pageInfo.startCursor !== pageInfo.startCursor ? previous : ({
         library: {
           ...fetchMoreResult.library,
           items: prependItemsPage(previous.library.items, fetchMoreResult.library.items),

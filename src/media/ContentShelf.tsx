@@ -1,13 +1,12 @@
 import { useRef, type ReactNode } from 'react'
 import styles from './ContentShelf.module.css'
 
-const SCROLL_AMOUNT = 480
-
 export function ContentShelf({ title, count, children }: { title: string; count?: string; children: ReactNode }) {
   const trackRef = useRef<HTMLDivElement>(null)
 
   function scroll(direction: -1 | 1) {
-    trackRef.current?.scrollBy({ left: direction * SCROLL_AMOUNT, behavior: 'smooth' })
+    const track = trackRef.current
+    track?.scrollBy({ left: direction * track.clientWidth, behavior: 'smooth' })
   }
 
   return (

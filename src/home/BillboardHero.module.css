@@ -1,6 +1,7 @@
 .hero {
   position: relative;
-  height: 593px;
+  display: flex;
+  min-height: min(66dvh, 42rem);
   border-radius: var(--radius-xl);
   overflow: hidden;
 }
@@ -20,13 +21,15 @@
 
 .panel {
   position: relative;
-  height: 100%;
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
   gap: var(--spacing-12);
-  padding: var(--spacing-page);
-  max-width: 640px;
+  padding: clamp(1.25rem, 3.5vw, var(--spacing-page));
+  max-width: 40rem;
+  overflow-wrap: anywhere;
 }
 
 .tagline {
@@ -36,7 +39,7 @@
 }
 
 .title {
-  font-size: var(--font-size-hero-lg);
+  font-size: clamp(2rem, 4vw, var(--font-size-hero-lg));
   line-height: var(--line-height-display);
   font-weight: 700;
   margin: 0;
@@ -44,6 +47,7 @@
 
 .metadata {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--spacing-16);
   font-family: var(--font-family-system);
   font-size: var(--font-size-caption);
