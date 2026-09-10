@@ -37,8 +37,8 @@
 }
 
 .arrow {
-  width: 28px;
-  height: 28px;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
   border-radius: var(--radius-sm);
   background: var(--surface-panel);
   border: none;
@@ -57,6 +57,6 @@
 }
 
 .track > * {
-  flex: 0 0 min(85%, 27.75rem);
+  flex: 0 0 min(100%, clamp(16rem, 85%, 27.75rem));
   min-width: 0;
 }
