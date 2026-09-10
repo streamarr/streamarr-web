@@ -121,6 +121,27 @@ function serve(data: HomeQuery) {
 }
 
 describe('Home', () => {
+  it('omits empty recently-added sections when there is content elsewhere', async () => {
+    serve(homeData({ continueWatching: [continueWatchingMovie()], libraries: [library({ name: 'Empty library' })] }))
+    renderAppAt('/')
+    await screen.findByRole('heading', { name: 'Everlight' })
+    expect(screen.queryByRole('heading', { name: 'Recently added in Empty library' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'See all' })).not.toBeInTheDocument()
+  })
+
+  it('shows content from a second library of the same type when the first is empty', async () => {
+    serve(homeData({ libraries: [
+      library({ id: 'empty', name: 'Empty movies' }),
+      library({ id: 'family', name: 'Family movies', items: { edges: [
+        { cursor: 'family-film', node: recentMovie({ title: 'Family Film' }) },
+      ] } }),
+    ] }))
+    renderAppAt('/')
+    await screen.findByRole('heading', { name: 'Family Film' })
+    expect(screen.getByRole('heading', { name: 'Recently added in Family movies' })).toBeInTheDocument()
+    expect(screen.queryByText('Nothing to watch yet.')).not.toBeInTheDocument()
+  })
+
   it('shows an error state when the query fails', async () => {
     server.use(
       graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
@@ -175,7 +196,7 @@ describe('Home', () => {
     expect(screen.queryByText('Continue watching')).not.toBeInTheDocument()
   })
 
-  it('renders exactly one rail per Movie/Series library type, hiding a missing type', async () => {
+  it('renders a rail for each available library, hiding a missing type', async () => {
     serve(
       homeData({
         continueWatching: [continueWatchingMovie()],

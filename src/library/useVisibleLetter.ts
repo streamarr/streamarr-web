@@ -26,7 +26,11 @@ export function useVisibleLetter(root: Element | null) {
         intersecting.current.delete(element)
       }
     }
-    const topmost = intersecting.current.values().next().value
+    const topmost = [...intersecting.current].sort((a, b) => {
+      const verticalOrder = a.getBoundingClientRect().top - b.getBoundingClientRect().top
+      if (verticalOrder !== 0) return verticalOrder
+      return a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1
+    })[0]
     setVisibleLetter(topmost ? (lettersByElement.current.get(topmost) ?? null) : null)
   }
 

@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { execFileSync } from 'node:child_process'
+import { resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { formatRelativeTime, formatRuntime, formatTimeLeft, formatYear } from './formatting'
 
 describe('formatRelativeTime', () => {
@@ -44,6 +47,14 @@ describe('formatRuntime', () => {
 })
 
 describe('formatYear', () => {
+  it('preserves a January 1 calendar year west of UTC', () => {
+    const moduleUrl = pathToFileURL(resolve('src/media/formatting.ts')).href
+    const result = execFileSync(process.execPath, ['--input-type=module', '-e',
+      `import { formatYear } from ${JSON.stringify(moduleUrl)}; process.stdout.write(formatYear('2024-01-01'));`,
+    ], { env: { ...process.env, TZ: 'America/Los_Angeles' }, encoding: 'utf8' })
+    expect(result).toBe('2024')
+  })
+
   it('extracts the year from an ISO date', () => {
     expect(formatYear('2024-03-15')).toBe('2024')
   })

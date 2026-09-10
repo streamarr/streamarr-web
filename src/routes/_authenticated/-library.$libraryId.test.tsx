@@ -54,15 +54,15 @@ describe('/library/$libraryId', () => {
     expect(requests[0].filter?.startLetter).toBeUndefined()
   })
 
-  it('passes seeded search params through to the initial query', async () => {
+  it('passes a seeded title-sort letter jump through to the initial query', async () => {
     const requests: { libraryId?: string; sort?: MediaSort; filter?: MediaFilter }[] = []
     mockLibraryPage(requests)
 
-    renderAppAt(`/library/${LIBRARY_ID}?by=TITLE&direction=ASC&watchStatus=UNWATCHED&letter=N`)
+    renderAppAt(`/library/${LIBRARY_ID}?by=TITLE&direction=ASC&letter=N`)
 
     await screen.findByRole('heading', { name: 'Movies' })
     expect(requests[0].sort).toEqual({ by: 'TITLE', direction: 'ASC' })
-    expect(requests[0].filter?.watchStatus).toBe('UNWATCHED')
+    expect(requests[0].filter?.watchStatus).toBeUndefined()
     expect(requests[0].filter?.startLetter).toBe('N')
   })
 

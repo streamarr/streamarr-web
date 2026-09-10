@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useLayoutEffect, useRef } from 'react'
 
 type IntersectionHandler = (entries: IntersectionObserverEntry[]) => void
 
@@ -7,7 +7,9 @@ type IntersectionHandler = (entries: IntersectionObserverEntry[]) => void
 // visible-letter tracking), each element getting its own observer via React 19's ref cleanup.
 export function useIntersectionObserver(onChange: IntersectionHandler, options?: IntersectionObserverInit) {
   const onChangeRef = useRef(onChange)
-  onChangeRef.current = onChange
+  useLayoutEffect(() => {
+    onChangeRef.current = onChange
+  }, [onChange])
 
   return useCallback(
     (element: Element | null) => {

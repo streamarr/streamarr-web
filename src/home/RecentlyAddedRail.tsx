@@ -11,6 +11,7 @@ type LibraryWithItems = HomeQuery['libraries'][number]
 
 export function RecentlyAddedRail({ library }: { library: LibraryWithItems }) {
   const edges = definedEdges(library.items.edges)
+  if (edges.length === 0) return null
 
   return (
     <StickySectionContainer

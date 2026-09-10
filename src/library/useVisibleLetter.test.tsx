@@ -1,5 +1,5 @@
 import { act, render } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { intersectionObserverInstances } from '../../vitest.setup'
 import { useVisibleLetter } from './useVisibleLetter'
 
@@ -16,6 +16,21 @@ function Harness({ letters, root = null }: { letters: string[]; root?: Element |
 }
 
 describe('useVisibleLetter', () => {
+  it.each([100, 150])('selects the visually first item despite callback order (first top=%s)', (firstTop) => {
+    const { container, getByTestId } = render(<Harness letters={['A', 'N']} />)
+    const a = container.querySelector('[data-letter="A"]')!
+    const n = container.querySelector('[data-letter="N"]')!
+    vi.spyOn(a, 'getBoundingClientRect').mockReturnValue({ top: firstTop } as DOMRect)
+    vi.spyOn(n, 'getBoundingClientRect').mockReturnValue({ top: 150 } as DOMRect)
+    const aObserver = intersectionObserverInstances.find((o) => o.observe.mock.calls.some((call) => call[0] === a))!
+    const nObserver = intersectionObserverInstances.find((o) => o.observe.mock.calls.some((call) => call[0] === n))!
+    act(() => {
+      nObserver.callback([{ target: n, isIntersecting: true } as IntersectionObserverEntry], nObserver)
+      aObserver.callback([{ target: a, isIntersecting: true } as IntersectionObserverEntry], aObserver)
+    })
+    expect(getByTestId('visible-letter')).toHaveTextContent('A')
+  })
+
   it('starts with no visible letter', () => {
     const { getByTestId } = render(<Harness letters={['A', 'N']} />)
     expect(getByTestId('visible-letter')).toHaveTextContent('none')

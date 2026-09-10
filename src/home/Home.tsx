@@ -36,17 +36,15 @@ export function Home() {
     )
   }
 
-  const movieLibrary = data.libraries.find((library) => library.type === 'MOVIE')
-  const seriesLibrary = data.libraries.find((library) => library.type === 'SERIES')
+  const libraries = data.libraries.filter((library) => library.type === 'MOVIE' || library.type === 'SERIES')
 
   return (
     <div className={styles.home}>
       <BillboardHero content={billboard} />
       <ContinueWatchingShelf items={data.continueWatching} />
-      {(movieLibrary || seriesLibrary) && (
+      {libraries.length > 0 && (
         <div className={styles.recentlyAdded}>
-          {movieLibrary && <RecentlyAddedRail library={movieLibrary} />}
-          {seriesLibrary && <RecentlyAddedRail library={seriesLibrary} />}
+          {libraries.map((library) => <RecentlyAddedRail key={library.id} library={library} />)}
         </div>
       )}
     </div>
@@ -54,25 +52,18 @@ export function Home() {
 }
 
 // The billboard fallback reuses data Home already fetched (no second query): when nobody has
-// started anything, the newer of the two Recently Added rails' head items stands in.
+// started anything, the newest of the Recently Added rails' head items stands in.
 function billboardContentFor(data: HomeQuery): BillboardContent | null {
   if (data.continueWatching.length > 0) {
     return billboardFromContinueWatching(data.continueWatching[0])
   }
 
-  const movieCandidate = firstRecentNode(data, 'MOVIE')
-  const seriesCandidate = firstRecentNode(data, 'SERIES')
-  const candidates = [movieCandidate, seriesCandidate].filter(
-    (candidate): candidate is NonNullable<typeof candidate> => candidate !== null,
-  )
+  const candidates = data.libraries
+    .filter((library) => library.type === 'MOVIE' || library.type === 'SERIES')
+    .flatMap((library) => definedEdges(library.items.edges).slice(0, 1).map((edge) => edge.node))
   if (candidates.length === 0) {
     return null
   }
   const newest = candidates.reduce((a, b) => (a.createdOn > b.createdOn ? a : b))
   return billboardFromRecentlyAdded(newest)
-}
-
-function firstRecentNode(data: HomeQuery, type: 'MOVIE' | 'SERIES') {
-  const library = data.libraries.find((candidate) => candidate.type === type)
-  return definedEdges(library?.items.edges)[0]?.node ?? null
 }

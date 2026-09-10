@@ -44,6 +44,8 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* LibraryScreen preserves scroll position when prepending; native anchoring would add it twice. */
+  overflow-anchor: none;
   display: grid;
   /* minmax(0, 1fr), not 1fr: a track's default min-width is auto, so a nowrap title's
      min-content width would otherwise widen its whole column past its fair 1/6 share. */

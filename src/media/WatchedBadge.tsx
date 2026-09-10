@@ -26,7 +26,14 @@ export function WatchedBadge(props: WatchedBadgeProps) {
   }
 
   return (
-    <div className={styles.progressTrack} aria-hidden>
+    <div
+      className={styles.progressTrack}
+      role="progressbar"
+      aria-label="In progress"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={props.percentComplete}
+    >
       <div className={styles.progressFill} style={{ width: `${props.percentComplete}%` }} />
     </div>
   )

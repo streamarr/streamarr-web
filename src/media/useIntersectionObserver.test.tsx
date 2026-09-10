@@ -1,4 +1,5 @@
-import { render } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
+import { Suspense, startTransition, useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { intersectionObserverInstances } from '../../vitest.setup'
 import { useIntersectionObserver } from './useIntersectionObserver'
@@ -9,6 +10,28 @@ function Sentinel({ onChange }: { onChange: (entries: IntersectionObserverEntry[
 }
 
 describe('useIntersectionObserver', () => {
+  it('keeps the committed handler while a concurrent update is suspended', async () => {
+    const seen: string[] = []
+    const pending = new Promise<never>(() => {})
+    let change!: () => void
+    function SuspendingSentinel({ version }: { version: string }) {
+      const ref = useIntersectionObserver(() => seen.push(version))
+      if (version === 'uncommitted') throw pending
+      return <div ref={ref}>{version}</div>
+    }
+    function Harness() {
+      const [version, setVersion] = useState('committed')
+      change = () => startTransition(() => setVersion('uncommitted'))
+      return <Suspense fallback="pending"><SuspendingSentinel version={version} /></Suspense>
+    }
+    render(<Harness />)
+    const observer = intersectionObserverInstances.at(-1)!
+    await act(async () => { change() })
+    expect(screen.getByText('committed')).toBeInTheDocument()
+    act(() => observer.callback([], observer))
+    expect(seen).toEqual(['committed'])
+  })
+
   it('observes the attached element', () => {
     render(<Sentinel onChange={() => {}} />)
     const observer = intersectionObserverInstances.at(-1)

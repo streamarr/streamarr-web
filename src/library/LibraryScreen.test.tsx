@@ -47,8 +47,8 @@ function libraryData(overrides: {
         pageInfo: {
           hasNextPage: overrides.hasNextPage ?? false,
           hasPreviousPage: false,
-          startCursor: 'c1',
-          endCursor: 'c1',
+          startCursor: overrides.edges ? overrides.edges[0]?.cursor ?? null : 'c1',
+          endCursor: overrides.edges ? overrides.edges.at(-1)?.cursor ?? null : 'c1',
         },
       },
     },
@@ -78,6 +78,31 @@ function Harness({
 }
 
 describe('LibraryScreen', () => {
+  it.each([
+    { by: 'ADDED', direction: 'DESC', letter: 'N' },
+    { by: 'TITLE', direction: 'ASC', letter: 'N', watchStatus: 'UNWATCHED' },
+  ] satisfies LibrarySearch[])('ignores a hidden letter constraint in initial search state: %j', async (initialSearch) => {
+    server.use(graphql.query('LibraryPage', ({ variables }) => HttpResponse.json({ data: libraryData({
+      edges: variables.filter?.startLetter ? [] : [{ cursor: 'a', node: movieNode({ title: 'Available Alpha' }) }],
+    }) })))
+    renderWithProviders(<Harness initialSearch={initialSearch} />)
+    await screen.findByText('Available Alpha')
+    expect(screen.queryByRole('navigation', { name: 'Jump to letter' })).not.toBeInTheDocument()
+  })
+
+  it('shows matching earlier titles when a watch filter is applied after a letter jump', async () => {
+    server.use(graphql.query('LibraryPage', ({ variables }) => HttpResponse.json({ data: libraryData({
+      edges: variables.filter?.watchStatus
+        ? variables.filter.startLetter ? [] : [{ cursor: 'a', node: movieNode({ id: 'a', title: 'Alpha Unwatched' }) }]
+        : [{ cursor: 'n', node: movieNode({ id: 'n', title: 'Northern' }) }],
+    }) })))
+    const { user } = renderWithProviders(<Harness initialSearch={{ by: 'TITLE', direction: 'ASC', letter: 'N' }} />)
+    await screen.findByText('Northern')
+    await user.click(screen.getByRole('button', { name: 'Unwatched' }))
+    await screen.findByText('Alpha Unwatched')
+    expect(screen.queryByText('No items match this filter.')).not.toBeInTheDocument()
+  })
+
   it('shows an error state when the query fails', async () => {
     server.use(graphql.query('LibraryPage', () => HttpResponse.json({ errors: [{ message: 'boom' }] })))
     renderWithProviders(<Harness />)
