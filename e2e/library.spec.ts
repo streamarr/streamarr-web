@@ -63,3 +63,116 @@ test('a letter jump stays on its target when the earlier page arrives', async ({
   await expect(page.getByText('F Title 00', { exact: true })).toBeAttached()
   await expect(page.getByText('N Title 00', { exact: true })).toBeInViewport()
 })
+
+test('prefetching follows the visible grid height on a phone and after rotation', async ({ page, request }) => {
+  await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
+  await request.post(`${STUB_URL}/api/auth/refresh`)
+  let forwardPages = 0
+  await page.route('**/graphql', async (route) => {
+    const operation = route.request().postDataJSON() as { operationName: string; variables: LibraryPageQueryVariables }
+    if (operation.operationName !== 'LibraryPage') return route.continue()
+    if (operation.variables.after) forwardPages += 1
+    await route.fulfill({ json: { data: libraryPage(operation.variables) } })
+  })
+  await page.setViewportSize({ width: 375, height: 667 })
+  await page.goto('/library/movies?by=TITLE&direction=ASC')
+  await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
+  const grid = page.locator('[class*="_grid_"]')
+
+  for (const viewport of [{ width: 375, height: 667 }, { width: 812, height: 375 }]) {
+    await page.setViewportSize(viewport)
+    // Let layout and resize notifications settle before approaching the loading boundary.
+    await page.evaluate(() => new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+    }))
+    const pagesBefore = forwardPages
+    // Outside the half-screen prefetch zone, the next page must remain unloaded.
+    await grid.evaluate((element) => {
+      element.scrollTop = element.scrollHeight - element.clientHeight * 1.75
+    })
+    // Allow the real observer and its network request to run before asserting their absence.
+    await page.waitForTimeout(200)
+    expect(forwardPages).toBe(pagesBefore)
+
+    await grid.evaluate((element) => {
+      element.scrollTop = element.scrollHeight - element.clientHeight * 1.25
+    })
+    await expect.poll(() => forwardPages).toBe(pagesBefore + 1)
+    await expect(page.getByText(`${String.fromCharCode(65 + forwardPages * 4)} Title 00`, { exact: true })).toBeAttached()
+  }
+})
+
+test('the alphabet highlight follows vertical scrolling on desktop and a phone', async ({ page, request }) => {
+  await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
+  await request.post(`${STUB_URL}/api/auth/refresh`)
+  await page.route('**/graphql', async (route) => {
+    const operation = route.request().postDataJSON() as { operationName: string; variables: LibraryPageQueryVariables }
+    if (operation.operationName !== 'LibraryPage') return route.continue()
+    await route.fulfill({ json: { data: libraryPage(operation.variables) } })
+  })
+  await page.goto('/library/movies?by=TITLE&direction=ASC')
+  await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
+
+  for (const { viewport, letter } of [
+    { viewport: { width: 1440, height: 900 }, letter: 'B' },
+    { viewport: { width: 375, height: 667 }, letter: 'C' },
+  ]) {
+    await page.setViewportSize(viewport)
+    await page.getByText(`${letter} Title 00`, { exact: true }).evaluate((element) => {
+      element.scrollIntoView({ block: 'start' })
+    })
+    await expect(page.getByRole('button', { name: letter, exact: true })).toHaveAttribute('aria-pressed', 'true')
+  }
+})
+
+test('the requested letter stays visible in the mobile alphabet rail', async ({ page, request }) => {
+  await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
+  await request.post(`${STUB_URL}/api/auth/refresh`)
+  await page.route('**/graphql', async (route) => {
+    const operation = route.request().postDataJSON() as { operationName: string; variables: LibraryPageQueryVariables }
+    if (operation.operationName !== 'LibraryPage') return route.continue()
+    await route.fulfill({ json: { data: libraryPage(operation.variables) } })
+  })
+  await page.setViewportSize({ width: 375, height: 667 })
+  await page.goto('/library/movies?by=TITLE&direction=ASC&letter=N')
+  await expect(page.getByText('N Title 00', { exact: true })).toBeInViewport()
+  await expect(page.getByRole('button', { name: 'N', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('button', { name: 'N', exact: true })).toBeInViewport({ ratio: 0.99 })
+})
+
+for (const { orientation, viewport, minPosterShare } of [
+  { orientation: 'portrait', viewport: { width: 375, height: 667 }, minPosterShare: 0.4 },
+  { orientation: 'landscape', viewport: { width: 812, height: 375 }, minPosterShare: 0.2 },
+]) {
+  test(`Library cards and controls fit a phone in ${orientation}`, async ({ page, request }, testInfo) => {
+    await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
+    await request.post(`${STUB_URL}/api/auth/refresh`)
+    await page.route('**/graphql', async (route) => {
+      const operation = route.request().postDataJSON() as { operationName: string; variables: LibraryPageQueryVariables }
+      if (operation.operationName !== 'LibraryPage') return route.continue()
+      await route.fulfill({ json: { data: libraryPage(operation.variables) } })
+    })
+    await page.setViewportSize(viewport)
+    await page.goto('/library/movies?by=TITLE&direction=ASC')
+    await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
+    const dimensions = await page.evaluate(() => ({
+      width: document.documentElement.clientWidth,
+      contentWidth: document.documentElement.scrollWidth,
+      height: document.documentElement.clientHeight,
+      contentHeight: document.documentElement.scrollHeight,
+    }))
+    expect(dimensions.contentWidth).toBeLessThanOrEqual(dimensions.width)
+    expect(dimensions.contentHeight).toBeLessThanOrEqual(dimensions.height)
+    await expect(page.getByRole('button', { name: 'Sort: Title' })).toBeInViewport({ ratio: 1 })
+    await expect(page.getByRole('button', { name: 'In progress', exact: true })).toBeInViewport({ ratio: 1 })
+    const gridWidth = await page.locator('[class*="_grid_"]').evaluate((element) => element.clientWidth)
+    const posterWidth = await page.getByText('A Title 00', { exact: true }).evaluate((element) => element.parentElement!.clientWidth)
+    // Keep posters readable: two columns in portrait, up to four in landscape.
+    expect(posterWidth).toBeGreaterThan(gridWidth * minPosterShare)
+    expect(posterWidth).toBeLessThan(gridWidth * 0.6)
+    const lastLetter = page.getByRole('button', { name: 'Z', exact: true })
+    await lastLetter.focus()
+    await expect(lastLetter).toBeInViewport({ ratio: 0.99 })
+    await page.screenshot({ path: testInfo.outputPath('library.png') })
+  })
+}

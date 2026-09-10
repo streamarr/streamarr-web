@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import styles from './AlphabetRail.module.css'
 
 // Presentational only: forcing sort to TITLE/ASC on a tap, issuing the seek query, and the
@@ -12,12 +13,17 @@ export function AlphabetRail({
   onSelect: (letter: string | null) => void
 }) {
   const visible = index.filter((entry) => entry.count > 0)
+  const selectedCell = useRef<HTMLButtonElement | null>(null)
+  useEffect(() => {
+    selectedCell.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }, [selected])
 
   return (
     <nav className={styles.rail} aria-label="Jump to letter">
       {visible.map((entry) => (
         <button
           key={entry.letter}
+          ref={entry.letter === selected ? selectedCell : undefined}
           type="button"
           className={entry.letter === selected ? `${styles.cell} ${styles.cellSelected}` : styles.cell}
           aria-pressed={entry.letter === selected}

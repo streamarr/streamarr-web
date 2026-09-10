@@ -366,9 +366,9 @@ describe('LibraryScreen', () => {
 
     await waitFor(() => expect(screen.getByText('Alright')).toBeInTheDocument())
     expect(screen.getByText('Northern Line')).toBeInTheDocument()
-    expect(scrollIntoView).toHaveBeenCalledTimes(1)
-    const scrolledElement = scrollIntoView.mock.instances[0] as Element
-    expect(scrolledElement.textContent).toContain('Northern Line')
-    expect(scrolledElement.textContent).not.toContain('Alright')
+    // The alphabet button is also revealed within its scrollable rail.
+    const scrolledText = scrollIntoView.mock.instances.map((element) => (element as Element).textContent)
+    expect(scrolledText).toContainEqual(expect.stringContaining('Northern Line'))
+    expect(scrolledText).not.toContainEqual(expect.stringContaining('Alright'))
   })
 })

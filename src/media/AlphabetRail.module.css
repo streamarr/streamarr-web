@@ -7,9 +7,14 @@
   gap: 2px;
   width: 24px;
   height: 100%;
+  box-sizing: border-box;
+  padding-block: var(--spacing-4);
+  overflow-y: auto;
+  scrollbar-width: none;
 }
 
 .cell {
+  flex-shrink: 0;
   width: 24px;
   height: 18px;
   border-radius: 4px;
@@ -25,4 +30,23 @@
 .cellSelected {
   background: var(--selection-active);
   color: var(--text-primary);
+}
+
+@media (max-width: 48em) {
+  .rail {
+    flex-direction: row;
+    flex-shrink: 0;
+    justify-content: flex-start;
+    gap: var(--spacing-4);
+    width: 100%;
+    height: auto;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+  }
+
+  .cell {
+    flex: 0 0 2.75rem;
+    height: 2.75rem;
+  }
 }
