@@ -1,13 +1,12 @@
 import { useQuery } from '@apollo/client/react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { LibraryPageDocument, type MediaFilter, type MediaSort } from '../graphql/generated/graphql'
+import { LibraryPageDocument, type LibraryPageQuery, type MediaFilter, type MediaSort } from '../graphql/generated/graphql'
 import { definedEdges } from '../media/edges'
 import { alphabetLetterFromTitle } from '../media/alphabetLetter'
 
 const PAGE_SIZE = 48
+type LibraryItems = LibraryPageQuery['library']['items']
 
-// Filter/sort/letter are props, so a plain change is a normal Apollo variables change: edges
-// accumulated by loadMore/loadPrevious are dropped automatically, no bespoke reset needed.
 export function useLibraryItems({
   libraryId,
   sort,
@@ -29,7 +28,7 @@ export function useLibraryItems({
     () => ({ active: false, fetchingNext: false, previousRequest: null as Promise<string | null> | null }),
     [libraryId, JSON.stringify(sort), JSON.stringify(filter)],
   )
-  useLayoutEffect(() => {
+  useLayoutEffect(function activateCommittedQuery() {
     requestScope.active = true
     return () => { requestScope.active = false }
   }, [requestScope])
@@ -42,9 +41,7 @@ export function useLibraryItems({
   } | null>(null)
   const previousLetterRef = useRef<typeof letter>(undefined as unknown as typeof letter)
 
-  // The forward seek page is just the variables change above; this adds the one-shot backward
-  // continuity fetch (streamarr-apple's jumpToLetter) and records the item to scroll into view.
-  useEffect(() => {
+  useEffect(function beginLetterJump() {
     const previousLetter = previousLetterRef.current
     previousLetterRef.current = letter
     if (letter && letter !== previousLetter) {
@@ -52,21 +49,15 @@ export function useLibraryItems({
     }
   }, [letter])
 
-  useEffect(() => {
+  useEffect(function loadPrecedingPageForLetterJump() {
     if (!centering || loading || !pageInfo) {
       return
     }
     setCentering(false)
-    // Cached seek pages can already contain earlier rows from backward pagination.
-    const edges = definedEdges(data?.library.items.edges)
-    const landingEdge = edges.find((edge) =>
-      alphabetLetterFromTitle(edge.node.titleSort ?? edge.node.title ?? '') === letter)
-    const target = (landingEdge ?? edges[0])?.cursor ?? null
+    const target = findLetterLandingCursor(data?.library.items.edges, letter)
     const revealLanding = (precedingCursor?: string | null) => {
       if (requestScope.active) setLanding({ cursor: target, precedingCursor, scope: requestScope })
     }
-    // A cached page may already be scrolled past the top sentinel, so its next prepend has no
-    // sentinel measurement. Wait for that page to render, not merely for its request to settle.
     const previousPage = loadPrevious()
     if (previousPage) {
       void previousPage.then(
@@ -97,18 +88,7 @@ export function useLibraryItems({
       updateQuery: (previous, { fetchMoreResult }) => !requestScope.active ? previous : ({
         library: {
           ...fetchMoreResult.library,
-          items: {
-            ...previous.library.items,
-            edges: [...(previous.library.items.edges ?? []), ...(fetchMoreResult.library.items.edges ?? [])],
-            // The fetched page's own pageInfo describes that page's boundaries, not the merged
-            // list's — hasPreviousPage/startCursor must stay as they were, or this reopens
-            // backward pagination into content already loaded.
-            pageInfo: {
-              ...previous.library.items.pageInfo,
-              hasNextPage: fetchMoreResult.library.items.pageInfo.hasNextPage,
-              endCursor: fetchMoreResult.library.items.pageInfo.endCursor,
-            },
-          },
+          items: appendItemsPage(previous.library.items, fetchMoreResult.library.items),
         },
       }),
     }).finally(() => {
@@ -116,16 +96,13 @@ export function useLibraryItems({
     })
   }
 
-  // Ongoing backward pagination (streamarr-apple's loadPreviousPageIfNeeded), not just the
-  // one-shot centering fetch above.
   function loadPrevious() {
     if (!requestScope.active) return
     if (requestScope.previousRequest) return requestScope.previousRequest
     if (!pageInfo?.hasPreviousPage || !pageInfo.startCursor) {
       return
     }
-    // Once paginating via `before`, the cursor alone determines position (ADR 0018) — the seek
-    // anchor has nothing left to do.
+    // A `before` cursor replaces the letter seek anchor (ADR 0018).
     const { startLetter: _startLetter, ...continuationFilter } = filter
     requestScope.previousRequest = fetchMore({
       variables: {
@@ -140,15 +117,7 @@ export function useLibraryItems({
       updateQuery: (previous, { fetchMoreResult }) => !requestScope.active ? previous : ({
         library: {
           ...fetchMoreResult.library,
-          items: {
-            ...previous.library.items,
-            edges: [...(fetchMoreResult.library.items.edges ?? []), ...(previous.library.items.edges ?? [])],
-            pageInfo: {
-              ...previous.library.items.pageInfo,
-              hasPreviousPage: fetchMoreResult.library.items.pageInfo.hasPreviousPage,
-              startCursor: fetchMoreResult.library.items.pageInfo.startCursor,
-            },
-          },
+          items: prependItemsPage(previous.library.items, fetchMoreResult.library.items),
         },
       }),
     }).then((result) => result.data?.library.items.pageInfo.startCursor ?? null).finally(() => {
@@ -161,6 +130,14 @@ export function useLibraryItems({
     setLanding(null)
   }
 
+  function getReadyScrollTarget() {
+    if (!landing || landing.scope !== requestScope) return null
+    // A completed request may still be waiting for its rows to render.
+    const precedingPageHasRendered = !landing.precedingCursor ||
+      data?.library.items.edges?.some((edge) => edge?.cursor === landing.precedingCursor)
+    return precedingPageHasRendered ? landing.cursor : null
+  }
+
   return {
     loading: loading && !data,
     error,
@@ -170,9 +147,38 @@ export function useLibraryItems({
     hasPreviousPage: pageInfo?.hasPreviousPage ?? false,
     loadMore,
     loadPrevious,
-    scrollTarget: landing?.scope === requestScope && (!landing.precedingCursor ||
-      data?.library.items.edges?.some((edge) => edge?.cursor === landing.precedingCursor))
-      ? landing.cursor : null,
+    scrollTarget: getReadyScrollTarget(),
     clearScrollTarget,
+  }
+}
+
+function findLetterLandingCursor(edges: LibraryItems['edges'] | undefined, letter: string | null) {
+  const resolvedEdges = definedEdges(edges)
+  const landingEdge = resolvedEdges.find((edge) =>
+    alphabetLetterFromTitle(edge.node.titleSort ?? edge.node.title ?? '') === letter)
+  return (landingEdge ?? resolvedEdges[0])?.cursor ?? null
+}
+
+function appendItemsPage(loaded: LibraryItems, next: LibraryItems): LibraryItems {
+  return {
+    ...loaded,
+    edges: [...(loaded.edges ?? []), ...(next.edges ?? [])],
+    pageInfo: {
+      ...loaded.pageInfo,
+      hasNextPage: next.pageInfo.hasNextPage,
+      endCursor: next.pageInfo.endCursor,
+    },
+  }
+}
+
+function prependItemsPage(loaded: LibraryItems, previous: LibraryItems): LibraryItems {
+  return {
+    ...loaded,
+    edges: [...(previous.edges ?? []), ...(loaded.edges ?? [])],
+    pageInfo: {
+      ...loaded.pageInfo,
+      hasPreviousPage: previous.pageInfo.hasPreviousPage,
+      startCursor: previous.pageInfo.startCursor,
+    },
   }
 }
