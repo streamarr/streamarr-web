@@ -27,7 +27,10 @@ function movie(index: number) {
 }
 
 const home: HomeQuery = {
-  continueWatching: Array.from({ length: 6 }, (_, index) => movie(index)),
+  continueWatching: [
+    ...Array.from({ length: 5 }, (_, index) => movie(index)),
+    { ...movie(5), files: [] },
+  ],
   libraries: ['Movies', 'Family movies', 'Documentaries'].map((name, libraryIndex) => ({
     __typename: 'Library',
     id: `home-library-${libraryIndex}`,
@@ -61,9 +64,12 @@ test('continue-watching cards fit the shelf and grow with the available width', 
   const shelfWidth = await track.evaluate((element) => element.clientWidth)
   expect(phoneWidth).toBeLessThanOrEqual(shelfWidth)
   expect(phoneWidth).toBeGreaterThan(shelfWidth * 0.65)
+  const unavailableCard = shelf.getByText('Movie 5', { exact: true }).locator('..')
+  expect(await unavailableCard.evaluate((element) => element.clientWidth)).toBe(phoneWidth)
 
   await page.setViewportSize({ width: 1440, height: 900 })
   await expect.poll(() => card.evaluate((element) => element.clientWidth)).toBeGreaterThan(phoneWidth)
+  expect(await unavailableCard.evaluate((element) => element.clientWidth)).toBe(await card.evaluate((element) => element.clientWidth))
   const art = await card.locator('[class*="_stillArt_"]').boundingBox()
   expect(art!.width / art!.height).toBeCloseTo(16 / 9, 2)
 })
