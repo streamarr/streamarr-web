@@ -1,15 +1,15 @@
 .stillCard {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  width: 444px;
+  gap: var(--spacing-6);
+  width: 100%;
   flex: none;
 }
 
 .stillArt {
   position: relative;
-  width: 444px;
-  height: 250px;
+  width: 100%;
+  aspect-ratio: 16 / 9;
   border-radius: var(--radius-md);
   overflow: hidden;
 }

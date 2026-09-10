@@ -138,6 +138,36 @@ test('the requested letter stays visible in the mobile alphabet rail', async ({ 
   await expect(page.getByText('N Title 00', { exact: true })).toBeInViewport()
   await expect(page.getByRole('button', { name: 'N', exact: true })).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByRole('button', { name: 'N', exact: true })).toBeInViewport({ ratio: 0.99 })
+  const renderedTitles = await page.locator('[class*="_posterTitle_"]').allTextContents()
+  expect(renderedTitles).toHaveLength(new Set(renderedTitles).size)
+})
+
+test('the Library viewport adapts when navigation text makes the header taller', async ({ page, request }) => {
+  await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
+  await request.post(`${STUB_URL}/api/auth/refresh`)
+  await page.route('**/graphql', async (route) => {
+    const operation = route.request().postDataJSON() as { operationName: string; variables: LibraryPageQueryVariables }
+    if (operation.operationName !== 'LibraryPage') return route.continue()
+    await route.fulfill({ json: { data: libraryPage(operation.variables) } })
+  })
+  await page.goto('/library/movies?by=TITLE&direction=ASC')
+  await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
+  const grid = page.locator('[class*="_grid_"]')
+  const initialHeight = await grid.evaluate((element) => element.clientHeight)
+
+  await page.getByRole('navigation', { name: 'Primary' }).evaluate((element) => {
+    element.style.fontSize = '2rem'
+  })
+
+  await expect.poll(() => grid.evaluate((element) => element.clientHeight)).toBeLessThan(initialHeight)
+  const dimensions = await page.evaluate(() => ({
+    pageHeight: document.documentElement.scrollHeight,
+    viewportHeight: document.documentElement.clientHeight,
+    contentHeight: document.querySelector('main')!.scrollHeight,
+    contentViewportHeight: document.querySelector('main')!.clientHeight,
+  }))
+  expect(dimensions.pageHeight).toBeLessThanOrEqual(dimensions.viewportHeight)
+  expect(dimensions.contentHeight).toBeLessThanOrEqual(dimensions.contentViewportHeight)
 })
 
 for (const { orientation, viewport, minPosterShare } of [

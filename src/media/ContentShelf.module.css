@@ -6,12 +6,15 @@
 
 .header {
   display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-12);
   align-items: baseline;
   justify-content: space-between;
 }
 
 .heading {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   gap: var(--spacing-10);
 }
@@ -51,4 +54,9 @@
   gap: var(--spacing-16);
   overflow-x: auto;
   scroll-behavior: smooth;
+}
+
+.track > * {
+  flex: 0 0 min(85%, 27.75rem);
+  min-width: 0;
 }
