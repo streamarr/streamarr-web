@@ -32,12 +32,14 @@ export function ContinueWatchingShelf({ items }: Readonly<{ items: ContinueWatch
             to="/play/$mediaFileId"
             params={{ mediaFileId: summary.ctaFileId }}
             search={{ position: summary.ctaPositionSeconds ?? undefined }}
-            className={styles.cardLink}
+            className={styles.card}
           >
             {card}
           </Link>
         ) : (
-          <div key={item.id}>{card}</div>
+          <div key={item.id} className={styles.card}>
+            {card}
+          </div>
         )
       })}
     </ContentShelf>
