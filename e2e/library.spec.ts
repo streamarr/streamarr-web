@@ -170,6 +170,58 @@ test('the Library viewport adapts when navigation text makes the header taller',
   expect(dimensions.contentHeight).toBeLessThanOrEqual(dimensions.contentViewportHeight)
 })
 
+test('a short Library screen preserves a readable grid and lets the page scroll to it', async ({ page, request }) => {
+  await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
+  await request.post(`${STUB_URL}/api/auth/refresh`)
+  await page.route('**/graphql', async (route) => {
+    const operation = route.request().postDataJSON() as { operationName: string; variables: LibraryPageQueryVariables }
+    if (operation.operationName !== 'LibraryPage') return route.continue()
+    await route.fulfill({ json: { data: libraryPage(operation.variables) } })
+  })
+  await page.setViewportSize({ width: 375, height: 400 })
+  await page.goto('/library/movies?by=TITLE&direction=ASC')
+  const firstTitle = page.getByText('A Title 00', { exact: true })
+  await expect(firstTitle).toBeAttached()
+  const posterHeight = await firstTitle.locator('..').evaluate((element) => element.clientHeight)
+  const grid = page.locator('[class*="_grid_"]')
+  expect(await grid.evaluate((element) => element.clientHeight)).toBeGreaterThanOrEqual(posterHeight)
+
+  await firstTitle.scrollIntoViewIfNeeded()
+  await expect(firstTitle).toBeInViewport({ ratio: 1 })
+  const sort = page.getByRole('button', { name: 'Sort: Title' })
+  await sort.scrollIntoViewIfNeeded()
+  await expect(sort).toBeInViewport({ ratio: 1 })
+})
+
+test.describe('touch alphabet', () => {
+  test.use({ hasTouch: true })
+
+  test('keeps comfortable targets after rotation and can reach the last letter', async ({ page, request }) => {
+    await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
+    await request.post(`${STUB_URL}/api/auth/refresh`)
+    await page.route('**/graphql', async (route) => {
+      const operation = route.request().postDataJSON() as { operationName: string; variables: LibraryPageQueryVariables }
+      if (operation.operationName !== 'LibraryPage') return route.continue()
+      await route.fulfill({ json: { data: libraryPage(operation.variables) } })
+    })
+    await page.goto('/library/movies?by=TITLE&direction=ASC')
+    const rail = page.getByRole('navigation', { name: 'Jump to letter' })
+    await expect(rail).toBeVisible()
+    expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true)
+
+    for (const viewport of [{ width: 375, height: 667 }, { width: 812, height: 375 }]) {
+      await page.setViewportSize(viewport)
+      const bounds = await rail.getByRole('button', { name: 'A', exact: true }).boundingBox()
+      expect(bounds!.width).toBeGreaterThanOrEqual(44)
+      expect(bounds!.height).toBeGreaterThanOrEqual(44)
+      const lastLetter = rail.getByRole('button', { name: 'Z', exact: true })
+      await rail.getByRole('button', { name: 'A', exact: true }).focus()
+      await lastLetter.focus()
+      await expect(lastLetter).toBeInViewport({ ratio: 0.99 })
+    }
+  })
+})
+
 for (const { orientation, viewport, minPosterShare } of [
   { orientation: 'portrait', viewport: { width: 375, height: 667 }, minPosterShare: 0.4 },
   { orientation: 'landscape', viewport: { width: 812, height: 375 }, minPosterShare: 0.2 },

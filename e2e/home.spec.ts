@@ -68,6 +68,28 @@ test('continue-watching cards fit the shelf and grow with the available width', 
   expect(art!.width / art!.height).toBeCloseTo(16 / 9, 2)
 })
 
+test('shelf cards keep a readable minimum on narrow screens without overflowing the shelf', async ({ page }) => {
+  const shelf = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Continue watching' }) })
+  const card = shelf.getByText(FEATURED_TITLE, { exact: true }).locator('..')
+  const track = shelf.locator('[class*="_track_"]')
+  for (const width of [320, 280]) {
+    await page.setViewportSize({ width, height: 568 })
+    const rootFontSize = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize))
+    const availableWidth = await track.evaluate((element) => element.clientWidth)
+    const cardWidth = await card.evaluate((element) => element.clientWidth)
+    expect(cardWidth).toBeGreaterThanOrEqual(Math.min(16 * rootFontSize, availableWidth) - 1)
+    expect(cardWidth).toBeLessThanOrEqual(availableWidth)
+  }
+})
+
+test('shelf arrows have comfortable minimum target sizes', async ({ page }) => {
+  for (const name of ['Scroll left', 'Scroll right']) {
+    const bounds = await page.getByRole('button', { name, exact: true }).boundingBox()
+    expect(bounds!.width).toBeGreaterThanOrEqual(44)
+    expect(bounds!.height).toBeGreaterThanOrEqual(44)
+  }
+})
+
 test('the hero grows for its content and adapts to the viewport without clipping text', async ({ page }, testInfo) => {
   const hero = page.locator('[class*="_hero_"]')
   for (const viewport of [{ width: 375, height: 667 }, { width: 812, height: 375 }, { width: 1440, height: 900 }]) {
@@ -114,4 +136,16 @@ test('recent libraries keep readable posters and size their scroll panels to the
   }))
   expect(desktopSections[0].top).toBe(desktopSections[1].top)
   expect(desktopSections[1].left).toBeGreaterThan(desktopSections[0].left)
+})
+
+test('recent-content panels keep enough height for a poster on short screens', async ({ page }) => {
+  await page.setViewportSize({ width: 812, height: 320 })
+  const section = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Recently added in Movies', exact: true }) })
+  const body = section.locator('[class*="_body_"]')
+  const posterHeight = await section.getByText('Movie 10', { exact: true }).locator('..').evaluate((element) => element.clientHeight)
+  const visibleHeight = await body.evaluate((element) => {
+    const style = getComputedStyle(element)
+    return element.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom)
+  })
+  expect(visibleHeight).toBeGreaterThanOrEqual(posterHeight)
 })
