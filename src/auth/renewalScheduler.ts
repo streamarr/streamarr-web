@@ -42,9 +42,7 @@ export function createRenewalScheduler({
 
   const runRenewal = async (scheduledGeneration: number): Promise<void> => {
     timer = undefined
-    const result = await requestRenewal().catch(
-      (): RenewalResult => ({ kind: 'unavailable' }),
-    )
+    const result = await requestRenewal().catch((): RenewalResult => ({ kind: 'unavailable' }))
     if (scheduledGeneration !== generation) {
       return
     }

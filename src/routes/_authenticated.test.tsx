@@ -137,7 +137,10 @@ describe('the authenticated layout', () => {
     server.use(graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })))
     const renewal = {
       adoptExpiry: vi.fn(),
-      refreshNow: vi.fn(async () => ({ kind: 'renewed' as const, expiresAt: '2026-08-06T12:10:00Z' })),
+      refreshNow: vi.fn(async () => ({
+        kind: 'renewed' as const,
+        expiresAt: '2026-08-06T12:10:00Z',
+      })),
       stop: vi.fn(),
     }
 

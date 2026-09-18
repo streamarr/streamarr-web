@@ -42,7 +42,9 @@ function renderMenu(overrides: Partial<MenuProps> = {}) {
   )
 }
 
-async function openMenu(user: ReturnType<typeof import('@testing-library/user-event').default.setup>) {
+async function openMenu(
+  user: ReturnType<typeof import('@testing-library/user-event').default.setup>,
+) {
   await user.click(screen.getByRole('button', { name: /profile menu \(alex\)/i }))
 }
 

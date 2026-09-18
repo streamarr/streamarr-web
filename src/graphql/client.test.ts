@@ -37,9 +37,7 @@ describe('apollo client', () => {
     const onAuthRoute = vi.fn()
     const client = createApolloClient(onAuthRoute)
 
-    await client
-      .query({ query: MeDocument, context: { skipAuthRouting: true } })
-      .catch(() => {})
+    await client.query({ query: MeDocument, context: { skipAuthRouting: true } }).catch(() => {})
 
     expect(onAuthRoute).not.toHaveBeenCalled()
   })
@@ -82,9 +80,7 @@ describe('apollo client', () => {
       }),
     )
 
-    await expect(
-      createApolloClient(vi.fn()).query({ query: MeDocument }),
-    ).resolves.toMatchObject({
+    await expect(createApolloClient(vi.fn()).query({ query: MeDocument })).resolves.toMatchObject({
       data: { me: ME },
     })
     expect(headers).toEqual(['stale-token', 'fresh-token'])
@@ -95,16 +91,11 @@ describe('apollo client', () => {
     server.use(
       http.post('/graphql', () => {
         attempts += 1
-        return HttpResponse.json(
-          { code: 'CSRF_TOKEN_REQUIRED' },
-          { status: 403 },
-        )
+        return HttpResponse.json({ code: 'CSRF_TOKEN_REQUIRED' }, { status: 403 })
       }),
     )
 
-    await expect(
-      createApolloClient(vi.fn()).query({ query: MeDocument }),
-    ).rejects.toBeDefined()
+    await expect(createApolloClient(vi.fn()).query({ query: MeDocument })).rejects.toBeDefined()
     expect(attempts).toBe(2)
   })
 
@@ -117,9 +108,7 @@ describe('apollo client', () => {
       }),
     )
 
-    await expect(
-      createApolloClient(vi.fn()).query({ query: MeDocument }),
-    ).rejects.toBeDefined()
+    await expect(createApolloClient(vi.fn()).query({ query: MeDocument })).rejects.toBeDefined()
     expect(attempts).toBe(1)
   })
 })

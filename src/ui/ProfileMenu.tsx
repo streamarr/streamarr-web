@@ -8,7 +8,11 @@ import styles from './ProfileMenu.module.css'
 type Me = MeQuery['me']
 type SelectableProfile = Me['selectableProfiles']['edges'][number]['node']
 
-const SESSION_EVICTION_CODES = new Set(['AUTHENTICATION_REQUIRED', 'EXPIRED_TOKEN', 'INVALID_TOKEN'])
+const SESSION_EVICTION_CODES = new Set([
+  'AUTHENTICATION_REQUIRED',
+  'EXPIRED_TOKEN',
+  'INVALID_TOKEN',
+])
 const SWITCH_FAILED_MESSAGE = "Couldn't switch profiles. Try again."
 
 export function ProfileMenu({

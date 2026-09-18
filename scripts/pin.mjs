@@ -27,7 +27,5 @@ export async function fetchBytes(url) {
 }
 
 function githubHeaders() {
-  return process.env.GITHUB_TOKEN
-    ? { authorization: `Bearer ${process.env.GITHUB_TOKEN}` }
-    : {}
+  return process.env.GITHUB_TOKEN ? { authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {}
 }

@@ -1,8 +1,5 @@
 /// <reference lib="webworker" />
-import {
-  createRenewalSharedWorkerHost,
-  type RenewalPort,
-} from './renewalSharedWorker'
+import { createRenewalSharedWorkerHost, type RenewalPort } from './renewalSharedWorker'
 
 declare const self: SharedWorkerGlobalScope
 

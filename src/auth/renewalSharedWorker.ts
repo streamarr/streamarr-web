@@ -64,10 +64,7 @@ export function createRenewalSharedWorkerHost({
     }
     const requestId = nextRequestId++
     return new Promise((resolve) => {
-      const timeout = setTimeout(
-        () => settle(requestId, { kind: 'unavailable' }),
-        requestTimeoutMs,
-      )
+      const timeout = setTimeout(() => settle(requestId, { kind: 'unavailable' }), requestTimeoutMs)
       pending.set(requestId, { resolve, timeout })
       if (!broadcast({ type: 'refresh-due', requestId })) {
         settle(requestId, { kind: 'unavailable' })

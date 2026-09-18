@@ -19,9 +19,7 @@ function LoginHarness() {
   const auth = useAuth()
   return (
     <button
-      onClick={() =>
-        void auth.login({ email: 'user@example.com', password: 'correct password' })
-      }
+      onClick={() => void auth.login({ email: 'user@example.com', password: 'correct password' })}
     >
       Sign in
     </button>
@@ -44,9 +42,9 @@ describe('AuthProvider renewal', () => {
     const session = createSessionStore(async () => 'anonymous')
     render(
       <ApolloProvider client={createApolloClient(() => {})}>
-      <AuthProvider sessionStore={session} renewal={renewal}>
-        <LoginHarness />
-      </AuthProvider>
+        <AuthProvider sessionStore={session} renewal={renewal}>
+          <LoginHarness />
+        </AuthProvider>
       </ApolloProvider>,
     )
 
@@ -58,9 +56,7 @@ describe('AuthProvider renewal', () => {
   })
 
   it('shouldStopRenewalAfterLogoutCompletes', async () => {
-    server.use(
-      http.post('/api/auth/refresh/revoke', () => new HttpResponse(null, { status: 204 })),
-    )
+    server.use(http.post('/api/auth/refresh/revoke', () => new HttpResponse(null, { status: 204 })))
     const renewal = {
       adoptExpiry: vi.fn(),
       refreshNow: vi.fn(),
@@ -69,9 +65,9 @@ describe('AuthProvider renewal', () => {
     const session = createSessionStore(async () => 'authenticated')
     render(
       <ApolloProvider client={createApolloClient(() => {})}>
-      <AuthProvider sessionStore={session} renewal={renewal}>
-        <LogoutHarness />
-      </AuthProvider>
+        <AuthProvider sessionStore={session} renewal={renewal}>
+          <LogoutHarness />
+        </AuthProvider>
       </ApolloProvider>,
     )
 
@@ -94,9 +90,9 @@ describe('AuthProvider renewal', () => {
     session.markAuthenticated()
     render(
       <ApolloProvider client={createApolloClient(() => {})}>
-      <AuthProvider sessionStore={session} renewal={renewal}>
-        <LogoutHarness />
-      </AuthProvider>
+        <AuthProvider sessionStore={session} renewal={renewal}>
+          <LogoutHarness />
+        </AuthProvider>
       </ApolloProvider>,
     )
 
@@ -127,9 +123,7 @@ describe('AuthProvider identity cache', () => {
   }
 
   it('shouldForgetTheCachedIdentityOnSignOut', async () => {
-    server.use(
-      http.post('/api/auth/refresh/revoke', () => new HttpResponse(null, { status: 204 })),
-    )
+    server.use(http.post('/api/auth/refresh/revoke', () => new HttpResponse(null, { status: 204 })))
     const client = renderWithSeededIdentity(createSessionStore(async () => 'authenticated'))
     expect(client.readQuery({ query: MeDocument })).not.toBeNull()
 

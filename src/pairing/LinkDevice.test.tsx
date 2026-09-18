@@ -27,7 +27,10 @@ function decisionReturns(body: object, status = 200, headers?: Record<string, st
   server.use(http.post(DECISION, () => HttpResponse.json(body, { status, headers })))
 }
 
-async function enterCode(user: ReturnType<typeof import('@testing-library/user-event').default.setup>, code = 'bcdf-ghjk') {
+async function enterCode(
+  user: ReturnType<typeof import('@testing-library/user-event').default.setup>,
+  code = 'bcdf-ghjk',
+) {
   await user.type(screen.getByLabelText(/pairing code/i), code)
 }
 
@@ -110,7 +113,10 @@ describe('LinkDevice', () => {
   it('shouldShowTheAuthoritativeOutcomeWhenTheDecisionRacesAnother', async () => {
     lookupReturns(PENDING)
     decisionReturns(
-      { code: 'DEVICE_CODE_NOT_PENDING', message: 'That pairing request has already been decided.' },
+      {
+        code: 'DEVICE_CODE_NOT_PENDING',
+        message: 'That pairing request has already been decided.',
+      },
       409,
     )
     const { user } = renderWithProviders(<LinkDevice />)
@@ -172,7 +178,10 @@ describe('LinkDevice', () => {
 
   it('shouldSayHowLongToWaitWhenThrottled', async () => {
     lookupReturns(
-      { code: 'TOO_MANY_ATTEMPTS', message: 'Too many failed credential attempts. Try again later.' },
+      {
+        code: 'TOO_MANY_ATTEMPTS',
+        message: 'Too many failed credential attempts. Try again later.',
+      },
       429,
       { 'Retry-After': '120' },
     )
@@ -185,7 +194,10 @@ describe('LinkDevice', () => {
 
   it('shouldShowTheServersThrottleSentenceWhenNoRetryAfterIsGiven', async () => {
     lookupReturns(
-      { code: 'TOO_MANY_ATTEMPTS', message: 'Too many failed credential attempts. Try again later.' },
+      {
+        code: 'TOO_MANY_ATTEMPTS',
+        message: 'Too many failed credential attempts. Try again later.',
+      },
       429,
     )
     const { user } = renderWithProviders(<LinkDevice />)
@@ -209,10 +221,7 @@ describe('LinkDevice', () => {
   })
 
   it('shouldBounceToSignInCarryingTheCodeWhenTheSessionExpired', async () => {
-    lookupReturns(
-      { code: 'AUTHENTICATION_REQUIRED', message: 'Authentication is required.' },
-      401,
-    )
+    lookupReturns({ code: 'AUTHENTICATION_REQUIRED', message: 'Authentication is required.' }, 401)
     const onUnauthenticated = vi.fn()
     const { user } = renderWithProviders(<LinkDevice onUnauthenticated={onUnauthenticated} />)
 
