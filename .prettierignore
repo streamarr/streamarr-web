@@ -1,0 +1,18 @@
+# Vendored from streamarr-server and streamarr-ux, or generated from them: their tools own the bytes.
+src/graphql/schema/
+src/graphql/generated/
+src/api/openapi.json
+src/api/generated/
+src/styles/tokens.generated.css
+src/routeTree.gen.ts
+package-lock.json
+
+# Build and test output
+dist/
+coverage/
+test-results/
+playwright-report/
+blob-report/
+
+# Shared AGENTS.md sections stay byte-identical to streamarr-server; Prettier would re-indent them.
+*.md
