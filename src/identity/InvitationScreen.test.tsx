@@ -118,9 +118,7 @@ describe('InvitationScreen', () => {
   })
 
   it('shouldSpellOutWhatConnectingMeansBeforeConsent', async () => {
-    server.use(
-      http.post('/api/auth/invitation/lookup', () => HttpResponse.json(CONNECT_PREVIEW)),
-    )
+    server.use(http.post('/api/auth/invitation/lookup', () => HttpResponse.json(CONNECT_PREVIEW)))
     renderWithProviders(<InvitationScreen initialCode={CODE} onAccepted={vi.fn()} />)
 
     expect(

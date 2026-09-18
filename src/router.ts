@@ -1,9 +1,6 @@
 import type { ApolloClient } from '@apollo/client'
 import { createRouter, type RouterHistory } from '@tanstack/react-router'
-import {
-  inactiveRenewalBridge,
-  type RenewalBridge,
-} from './auth/renewalBridge'
+import { inactiveRenewalBridge, type RenewalBridge } from './auth/renewalBridge'
 import { createSessionStore, probeSession } from './auth/session'
 import { createApolloClient } from './graphql/client'
 import { routeTree } from './routeTree.gen'

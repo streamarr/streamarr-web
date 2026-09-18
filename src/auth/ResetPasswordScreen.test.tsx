@@ -8,9 +8,7 @@ import { ResetPasswordScreen } from './ResetPasswordScreen'
 const CODE = 'reset-1234.super-secret'
 
 function redeemAnswers(body: JsonBodyType, init: ResponseInit) {
-  server.use(
-    http.post('/api/auth/password-reset/redeem', () => HttpResponse.json(body, init)),
-  )
+  server.use(http.post('/api/auth/password-reset/redeem', () => HttpResponse.json(body, init)))
 }
 
 async function submitNewPassword(

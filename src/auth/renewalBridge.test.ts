@@ -431,10 +431,20 @@ describe('renewal bridge', () => {
       createReplyChannel: replyChannel,
     })
 
-    for (const data of [null, 'refresh-due', { type: 'refresh-due', requestId: '7' }, { type: 'unknown' }]) {
+    for (const data of [
+      null,
+      'refresh-due',
+      { type: 'refresh-due', requestId: '7' },
+      { type: 'unknown' },
+    ]) {
       sharedPort.receive(data)
     }
-    for (const data of [null, 'token-renewed', { type: 'token-renewed', expiresAt: 7 }, { type: 'unknown' }]) {
+    for (const data of [
+      null,
+      'token-renewed',
+      { type: 'token-renewed', expiresAt: 7 },
+      { type: 'unknown' },
+    ]) {
       onServiceWorkerMessage?.({ data })
     }
 

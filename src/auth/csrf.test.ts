@@ -24,9 +24,7 @@ describe('csrf cookie reader', () => {
   })
 
   it('shouldPreferHostBoundCsrfCookieWhenBothNamesExist', () => {
-    setDocumentCookies(
-      'XSRF-TOKEN=development-token; __Host-XSRF-TOKEN=host-token',
-    )
+    setDocumentCookies('XSRF-TOKEN=development-token; __Host-XSRF-TOKEN=host-token')
 
     expect(readCsrfCookie()).toBe('host-token')
   })

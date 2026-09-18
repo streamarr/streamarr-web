@@ -15,10 +15,7 @@ import { createAppRouter } from './router'
 import { decideRegistration } from './sw/registration'
 import { cssVariablesResolver, theme } from './theme'
 
-const renewal =
-  'serviceWorker' in navigator
-    ? createBrowserRenewalBridge()
-    : inactiveRenewalBridge
+const renewal = 'serviceWorker' in navigator ? createBrowserRenewalBridge() : inactiveRenewalBridge
 const { router, apolloClient, session } = createAppRouter(undefined, renewal)
 
 if ('serviceWorker' in navigator) {
