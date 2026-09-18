@@ -125,6 +125,20 @@ describe('the authenticated layout', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
   })
 
+  it('shouldAskForAProfileWhenTheServerRequiresOneMidSession', async () => {
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
+      graphql.query('SharingOverview', () =>
+        HttpResponse.json({
+          errors: [{ message: 'profile required', extensions: { code: 'PROFILE_REQUIRED' } }],
+        }),
+      ),
+    )
+    const { router } = renderAppAt('/sharing')
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/select-profile'))
+  })
+
   it('shouldHideSignOutFromAVisitorWhoIsNotSignedIn', async () => {
     const { router } = renderAppAt('/login')
 
