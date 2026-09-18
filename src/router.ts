@@ -25,13 +25,13 @@ export function createAppRouter(
   const router = createRouter({ routeTree, history, context: { session } })
   apolloClient = createApolloClient((route) => {
     if (route === '/select-profile') {
-      router.navigate({ to: route })
+      void router.navigate({ to: route })
       return
     }
     // An eviction: record it so the guard cannot wave a back-navigation through on a stale
     // answer, then bounce carrying the way back.
     session.markAnonymous()
-    router.navigate({ to: route, search: { redirect: router.state.location.href } })
+    void router.navigate({ to: route, search: { redirect: router.state.location.href } })
   })
   return { router, apolloClient, session }
 }

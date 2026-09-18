@@ -5,7 +5,7 @@ import { HttpResponse, http } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { server } from '../test/server'
 import { createApolloClient } from '../graphql/client'
-import { MeDocument, type MeQuery } from '../graphql/generated/graphql'
+import { MeDocument } from '../graphql/generated/graphql'
 import { meFixture } from '../test/meFixture'
 import { AuthProvider, useAuth } from './AuthProvider'
 import { createSessionStore, type SessionStore } from './session'
@@ -108,7 +108,7 @@ describe('AuthProvider identity cache', () => {
     const client = createApolloClient(() => {})
     client.writeQuery({
       query: MeDocument,
-      data: { me: meFixture({ scope: 'profile' }) as MeQuery['me'] },
+      data: { me: meFixture({ scope: 'profile' }) },
     })
     const renewal = { adoptExpiry: vi.fn(), refreshNow: vi.fn(), stop: vi.fn() }
     render(

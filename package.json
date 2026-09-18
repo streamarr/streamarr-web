@@ -9,6 +9,7 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.e2e.json",
     "test:watch": "vitest",
+    "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "tokens": "gh api \"repos/streamarr/streamarr-ux/contents/dist/web/tokens.css?ref=$(cat TOKENS_REF)\" -H 'Accept: application/vnd.github.raw' > src/styles/tokens.generated.css.tmp && mv src/styles/tokens.generated.css.tmp src/styles/tokens.generated.css",
@@ -51,6 +52,7 @@
     "react-dom": "^19.2.7"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@graphql-codegen/cli": "^7.2.0",
     "@graphql-codegen/client-preset": "^6.1.3",
     "@graphql-codegen/fragment-matcher": "^7.1.0",
@@ -67,6 +69,10 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
     "@vitest/coverage-v8": "^4.1.10",
+    "eslint": "^10.11.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.12.0",
     "jsdom": "^29.1.1",
     "msw": "^2.15.0",
     "openapi-typescript": "^7.13.0",
@@ -75,6 +81,7 @@
     "postcss-simple-vars": "^7.0.1",
     "prettier": "^3.9.8",
     "typescript": "^6.0.3",
+    "typescript-eslint": "^8.70.0",
     "vite": "^8.1.3",
     "vitest": "^4.1.10"
   }

@@ -25,7 +25,7 @@ function household(): MeQuery['me'] {
     profileFixture({ id: 'p-toni', name: 'Toni', personal: false, pinConfigured: true }),
     profileFixture({ id: 'p-rob', name: 'Rob', personal: false, locked: true }),
   ]
-  return { ...meFixture({ profiles }), serverAdmin: true } as MeQuery['me']
+  return { ...meFixture({ profiles }), serverAdmin: true }
 }
 
 type MenuProps = Parameters<typeof ProfileMenu>[0]

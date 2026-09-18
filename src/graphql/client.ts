@@ -35,7 +35,7 @@ export function createApolloClient(onAuthRoute: (route: AuthRoute) => void): Apo
   })
 
   const csrfLink = new SetContextLink((prevContext) => ({
-    headers: { ...prevContext.headers, ...csrfHeaders() },
+    headers: { ...(prevContext.headers as Record<string, string> | undefined), ...csrfHeaders() },
   }))
 
   const httpLink = new HttpLink({
