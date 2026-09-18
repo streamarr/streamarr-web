@@ -28,7 +28,7 @@ function Login() {
       router.history.push(redirect)
       return
     }
-    navigate({ to: tokens.scope === 'profile' ? '/' : '/select-profile' })
+    void navigate({ to: tokens.scope === 'profile' ? '/' : '/select-profile' })
   }
 
   return (

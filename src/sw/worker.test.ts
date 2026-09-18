@@ -13,7 +13,7 @@ function fakeScope() {
     },
     skipWaiting: vi.fn(async () => {}),
     addEventListener(type, listener) {
-      listeners.set(type, listener as (event: never) => void)
+      listeners.set(type, listener)
     },
   }
   return { scope, listeners }
