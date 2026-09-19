@@ -36,7 +36,8 @@ test('cast artwork stays portrait-shaped in the shared shelf on desktop and a ph
   await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
   await request.post(`${STUB_URL}/api/auth/refresh`)
   await page.route('**/graphql', async (route) => {
-    if (route.request().postDataJSON().operationName !== 'MovieDetail') return route.continue()
+    const { operationName } = route.request().postDataJSON() as { operationName?: string }
+    if (operationName !== 'MovieDetail') return route.continue()
     return route.fulfill({ json: { data: movie } })
   })
   await page.goto('/movie/m1')
