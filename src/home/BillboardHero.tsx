@@ -5,7 +5,7 @@ import styles from './BillboardHero.module.css'
 
 // No Trailer / More info / watchlist chips: none has a backing capability yet (no trailer URL in
 // the schema, no Detail route, no watchlist mutation) — a single primary CTA only.
-export function BillboardHero({ content }: { content: BillboardContent }) {
+export function BillboardHero({ content }: Readonly<{ content: BillboardContent }>) {
   return (
     <div className={styles.hero}>
       <MediaImage

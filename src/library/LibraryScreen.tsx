@@ -30,11 +30,11 @@ export function LibraryScreen({
   libraryId,
   search,
   onSearchChange,
-}: {
+}: Readonly<{
   libraryId: string
   search: LibrarySearch
   onSearchChange: (search: LibrarySearch) => void
-}) {
+}>) {
   const sort: MediaSort = { by: search.by, direction: search.direction }
   const trackingLetter = sort.by === 'TITLE'
   // The server's alphabet index is unfiltered, and letter seeking requires TITLE sort (ADR 0018).

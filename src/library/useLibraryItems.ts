@@ -165,7 +165,7 @@ export function useLibraryItems({
   }
 
   function getReadyScrollTarget() {
-    if (!landing || landing.scope !== requestScope) return null
+    if (landing?.scope !== requestScope) return null
     // A completed request may still be waiting for its rows to render.
     const precedingPageHasRendered =
       !landing.precedingCursor ||

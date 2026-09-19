@@ -9,7 +9,7 @@ import styles from './RecentlyAddedRail.module.css'
 
 type LibraryWithItems = HomeQuery['libraries'][number]
 
-export function RecentlyAddedRail({ library }: { library: LibraryWithItems }) {
+export function RecentlyAddedRail({ library }: Readonly<{ library: LibraryWithItems }>) {
   const edges = definedEdges(library.items.edges)
   if (edges.length === 0) return null
 

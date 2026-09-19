@@ -15,10 +15,10 @@ const SORT_OPTIONS: { by: OrderMediaBy; direction: SortDirection; label: string 
 export function SortMenu({
   sort,
   onChange,
-}: {
+}: Readonly<{
   sort: MediaSort
   onChange: (sort: MediaSort) => void
-}) {
+}>) {
   const [opened, setOpened] = useState(false)
   const anchor = useRef<HTMLDivElement>(null)
   const menuId = useId()

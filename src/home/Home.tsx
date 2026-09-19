@@ -76,6 +76,6 @@ function billboardContentFor(data: HomeQuery): BillboardContent | null {
   if (candidates.length === 0) {
     return null
   }
-  const newest = candidates.reduce((a, b) => (a.createdOn > b.createdOn ? a : b))
+  const newest = candidates.reduce((a, b) => (a.createdOn > b.createdOn ? a : b), candidates[0])
   return billboardFromRecentlyAdded(newest)
 }

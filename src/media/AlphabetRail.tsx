@@ -7,11 +7,11 @@ export function AlphabetRail({
   index,
   selected,
   onSelect,
-}: {
+}: Readonly<{
   index: ReadonlyArray<{ letter: string; count: number }>
   selected: string | null
   onSelect: (letter: string | null) => void
-}) {
+}>) {
   const visible = index.filter((entry) => entry.count > 0)
   const selectedCell = useRef<HTMLButtonElement | null>(null)
   useEffect(() => {

@@ -5,11 +5,11 @@ export function ContentShelf({
   title,
   count,
   children,
-}: {
+}: Readonly<{
   title: string
   count?: string
   children: ReactNode
-}) {
+}>) {
   const trackRef = useRef<HTMLDivElement>(null)
 
   function scroll(direction: -1 | 1) {
@@ -50,7 +50,7 @@ export function ContentShelf({
   )
 }
 
-function ChevronGlyph({ direction }: { direction: 'left' | 'right' }) {
+function ChevronGlyph({ direction }: Readonly<{ direction: 'left' | 'right' }>) {
   return (
     <svg
       width="16"
