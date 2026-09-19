@@ -18,7 +18,7 @@ export function ResetPasswordScreen({ initialCode }: { initialCode?: string }) {
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(false)
 
-  async function redeem(event: React.FormEvent) {
+  async function redeem(event: React.SubmitEvent) {
     event.preventDefault()
     setFailure(null)
     setBusy(true)
@@ -71,7 +71,9 @@ export function ResetPasswordScreen({ initialCode }: { initialCode?: string }) {
           label="Confirm password"
           value={confirm}
           onChange={(event) => setConfirm(event.currentTarget.value)}
-          error={confirm.length > 0 && confirm !== newPassword ? "Passwords don't match" : undefined}
+          error={
+            confirm.length > 0 && confirm !== newPassword ? "Passwords don't match" : undefined
+          }
           required
         />
         <div>

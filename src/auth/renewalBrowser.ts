@@ -8,9 +8,7 @@ import {
 import type { RenewalPort } from './renewalSharedWorker'
 
 export function createBrowserRenewalBridge(): RenewalBridge {
-  const workerUrl = import.meta.env.DEV
-    ? '/src/auth/renewal-worker.ts'
-    : '/renewal-worker.js'
+  const workerUrl = import.meta.env.DEV ? '/src/auth/renewal-worker.ts' : '/renewal-worker.js'
   let sharedPort: RenewalPort | null = null
   if ('SharedWorker' in globalThis) {
     try {

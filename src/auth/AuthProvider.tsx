@@ -107,8 +107,7 @@ export function AuthProvider({
   }, [apollo, renewal, sessionStore])
 
   const value = useMemo(
-    () => ({ session, login, setup,
-      acceptInvitation, selectHousehold, selectProfile, logout }),
+    () => ({ session, login, setup, acceptInvitation, selectHousehold, selectProfile, logout }),
     [session, login, setup, acceptInvitation, selectHousehold, selectProfile, logout],
   )
 

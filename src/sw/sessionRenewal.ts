@@ -9,10 +9,7 @@ import {
 interface SessionRenewalDependencies {
   fetch: typeof fetch
   now: () => number
-  onRenewed: (
-    expiresAt: string,
-    isCurrent: () => boolean,
-  ) => void | Promise<void>
+  onRenewed: (expiresAt: string, isCurrent: () => boolean) => void | Promise<void>
   origin?: string
 }
 
@@ -112,8 +109,7 @@ export function createSessionRenewal({
       }
     })
 
-  const nearExpiry = (): boolean =>
-    expiresAtMs !== null && expiresAtMs - now() <= RENEWAL_LEEWAY_MS
+  const nearExpiry = (): boolean => expiresAtMs !== null && expiresAtMs - now() <= RENEWAL_LEEWAY_MS
 
   const settleAfterPreflight = (preflight: RenewalResult, response: Response): Response => {
     if (preflight.kind === 'unavailable') {

@@ -1,10 +1,4 @@
-import {
-  Alert,
-  Button,
-  PasswordInput,
-  Stack,
-  TextInput,
-} from '@mantine/core'
+import { Alert, Button, PasswordInput, Stack, TextInput } from '@mantine/core'
 import { useState } from 'react'
 import { AuthTitle } from '../ui/AuthShell'
 import { AuthApiError, type AuthTokens } from './api'
@@ -15,23 +9,19 @@ const FALLBACK_MESSAGE = 'Sign in failed. Please try again.'
 
 export function LoginForm({
   onAuthenticated,
-}: {
-  onAuthenticated: (tokens: AuthTokens) => void
-}) {
+}: Readonly<{ onAuthenticated: (tokens: AuthTokens) => void }>) {
   const { login } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
-  async function onSubmit(event: React.FormEvent) {
+  async function onSubmit(event: React.SubmitEvent) {
     event.preventDefault()
     setError(null)
     setSubmitting(true)
     try {
-      onAuthenticated(
-        await login({ email, password, deviceName: navigator.userAgent }),
-      )
+      onAuthenticated(await login({ email, password, deviceName: navigator.userAgent }))
     } catch (caught) {
       setError(refusalMessage(caught))
     } finally {

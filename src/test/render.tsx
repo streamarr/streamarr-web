@@ -7,10 +7,7 @@ import userEvent from '@testing-library/user-event'
 import type { ReactElement } from 'react'
 import { vi } from 'vitest'
 import { AuthProvider } from '../auth/AuthProvider'
-import {
-  inactiveRenewalBridge,
-  type RenewalBridge,
-} from '../auth/renewalBridge'
+import { inactiveRenewalBridge, type RenewalBridge } from '../auth/renewalBridge'
 import { createSessionStore, type SessionStore } from '../auth/session'
 import { createApolloClient } from '../graphql/client'
 import { createAppRouter } from '../router'
@@ -22,12 +19,7 @@ export function renderWithProviders(ui: ReactElement): Rendered {
   const session = createSessionStore(() =>
     Promise.reject(new Error('component tests must not probe the session')),
   )
-  return renderUnderProviders(
-    createApolloClient(vi.fn()),
-    session,
-    inactiveRenewalBridge,
-    ui,
-  )
+  return renderUnderProviders(createApolloClient(vi.fn()), session, inactiveRenewalBridge, ui)
 }
 
 export function renderAppAt(
@@ -41,12 +33,7 @@ export function renderAppAt(
     renewal,
   )
   return {
-    ...renderUnderProviders(
-      apolloClient,
-      session,
-      renewal,
-      <RouterProvider router={router} />,
-    ),
+    ...renderUnderProviders(apolloClient, session, renewal, <RouterProvider router={router} />),
     router,
   }
 }
@@ -60,7 +47,11 @@ function renderUnderProviders(
   const user = userEvent.setup()
   const result = render(
     <ApolloProvider client={client}>
-      <MantineProvider defaultColorScheme="dark" theme={theme} cssVariablesResolver={cssVariablesResolver}>
+      <MantineProvider
+        defaultColorScheme="dark"
+        theme={theme}
+        cssVariablesResolver={cssVariablesResolver}
+      >
         <AuthProvider sessionStore={session} renewal={renewal}>
           {ui}
         </AuthProvider>

@@ -203,9 +203,7 @@ describe('session renewal', () => {
   })
 
   it('shouldPassThroughANonJsonUnauthorizedResponseWithoutRefreshing', async () => {
-    const fetcher = vi.fn<typeof fetch>(async () =>
-      new Response('unauthorized', { status: 401 }),
-    )
+    const fetcher = vi.fn<typeof fetch>(async () => new Response('unauthorized', { status: 401 }))
     const renewal = createSessionRenewal({ fetch: fetcher, now: () => NOW, onRenewed: vi.fn() })
 
     const response = await renewal.fetch(new Request('https://streamarr.test/graphql'))

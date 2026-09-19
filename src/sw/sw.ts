@@ -1,8 +1,5 @@
 /// <reference lib="webworker" />
-import {
-  installSessionServiceWorker,
-  type SessionServiceWorkerScope,
-} from './worker'
+import { installSessionServiceWorker, type SessionServiceWorkerScope } from './worker'
 
 declare const self: ServiceWorkerGlobalScope
 

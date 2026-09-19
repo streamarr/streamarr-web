@@ -31,18 +31,13 @@ describe('http requests', () => {
         headers.push(received.headers.get('X-XSRF-TOKEN'))
         if (headers.length === 1) {
           document.cookie = '__Host-XSRF-TOKEN=fresh-token; Secure; Path=/'
-          return HttpResponse.json(
-            { code: 'CSRF_TOKEN_REQUIRED' },
-            { status: 403 },
-          )
+          return HttpResponse.json({ code: 'CSRF_TOKEN_REQUIRED' }, { status: 403 })
         }
         return new HttpResponse(null, { status: 204 })
       }),
     )
 
-    await expect(
-      request('/api/test/recover', { method: 'POST' }),
-    ).resolves.toBeDefined()
+    await expect(request('/api/test/recover', { method: 'POST' })).resolves.toBeDefined()
 
     expect(headers).toEqual(['stale-token', 'fresh-token'])
   })
@@ -53,16 +48,13 @@ describe('http requests', () => {
     server.use(
       http.post('/api/test/still-rejected', () => {
         attempts += 1
-        return HttpResponse.json(
-          { code: 'CSRF_TOKEN_REQUIRED' },
-          { status: 403 },
-        )
+        return HttpResponse.json({ code: 'CSRF_TOKEN_REQUIRED' }, { status: 403 })
       }),
     )
 
-    await expect(
-      request('/api/test/still-rejected', { method: 'POST' }),
-    ).rejects.toBeInstanceOf(AuthApiError)
+    await expect(request('/api/test/still-rejected', { method: 'POST' })).rejects.toBeInstanceOf(
+      AuthApiError,
+    )
 
     expect(attempts).toBe(2)
   })
@@ -76,9 +68,7 @@ describe('http requests', () => {
       }),
     )
 
-    await expect(
-      request('/api/test/forbidden', { method: 'POST' }),
-    ).rejects.toMatchObject({
+    await expect(request('/api/test/forbidden', { method: 'POST' })).rejects.toMatchObject({
       status: 403,
       code: 'FORBIDDEN',
     })
@@ -90,7 +80,10 @@ describe('http requests', () => {
     server.use(
       http.post('/api/test/refused', () =>
         HttpResponse.json(
-          { code: 'PROFILE_LOCKED', message: 'This profile needs a PIN before it can be selected here.' },
+          {
+            code: 'PROFILE_LOCKED',
+            message: 'This profile needs a PIN before it can be selected here.',
+          },
           { status: 409 },
         ),
       ),
@@ -105,7 +98,9 @@ describe('http requests', () => {
 
   it('shouldLeaveTheServerMessageNullWhenTheBodyHasNone', async () => {
     server.use(
-      http.post('/api/test/bare', () => HttpResponse.json({ code: 'FORBIDDEN', message: '  ' }, { status: 403 })),
+      http.post('/api/test/bare', () =>
+        HttpResponse.json({ code: 'FORBIDDEN', message: '  ' }, { status: 403 }),
+      ),
       http.post('/api/test/empty', () => new HttpResponse(null, { status: 500 })),
     )
 

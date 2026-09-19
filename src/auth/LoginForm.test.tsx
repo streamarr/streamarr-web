@@ -14,10 +14,7 @@ async function fillAndSubmit(
   user: ReturnType<typeof import('@testing-library/user-event').default.setup>,
 ) {
   await user.type(screen.getByLabelText(/^email/i), 'user@example.com')
-  await user.type(
-    screen.getByLabelText(/^password/i),
-    'correct horse battery staple',
-  )
+  await user.type(screen.getByLabelText(/^password/i), 'correct horse battery staple')
   await user.click(screen.getByRole('button', { name: /sign in/i }))
 }
 
@@ -25,9 +22,7 @@ describe('LoginForm', () => {
   it('shouldAuthenticateAndReportScopeOnSuccess', async () => {
     server.use(http.post('/api/auth/login', () => HttpResponse.json(TOKENS)))
     const onAuthenticated = vi.fn()
-    const { user } = renderWithProviders(
-      <LoginForm onAuthenticated={onAuthenticated} />,
-    )
+    const { user } = renderWithProviders(<LoginForm onAuthenticated={onAuthenticated} />)
 
     await fillAndSubmit(user)
 
@@ -45,9 +40,7 @@ describe('LoginForm', () => {
       ),
     )
     const onAuthenticated = vi.fn()
-    const { user } = renderWithProviders(
-      <LoginForm onAuthenticated={onAuthenticated} />,
-    )
+    const { user } = renderWithProviders(<LoginForm onAuthenticated={onAuthenticated} />)
 
     await fillAndSubmit(user)
 
@@ -64,9 +57,7 @@ describe('LoginForm', () => {
       ),
     )
     const onAuthenticated = vi.fn()
-    const { user } = renderWithProviders(
-      <LoginForm onAuthenticated={onAuthenticated} />,
-    )
+    const { user } = renderWithProviders(<LoginForm onAuthenticated={onAuthenticated} />)
 
     await fillAndSubmit(user)
 
@@ -86,9 +77,7 @@ describe('LoginForm', () => {
         ),
       ),
     )
-    const { user } = renderWithProviders(
-      <LoginForm onAuthenticated={vi.fn()} />,
-    )
+    const { user } = renderWithProviders(<LoginForm onAuthenticated={vi.fn()} />)
 
     await fillAndSubmit(user)
 
@@ -106,9 +95,7 @@ describe('LoginForm', () => {
         ),
       ),
     )
-    const { user } = renderWithProviders(
-      <LoginForm onAuthenticated={vi.fn()} />,
-    )
+    const { user } = renderWithProviders(<LoginForm onAuthenticated={vi.fn()} />)
 
     await fillAndSubmit(user)
 
