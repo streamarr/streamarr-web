@@ -1,12 +1,7 @@
 import { screen, waitFor } from '@testing-library/react'
 import { graphql, http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
-import {
-  HOUSEHOLD_ID,
-  meFixture,
-  PROFILE_ID,
-  profileFixture,
-} from '../test/meFixture'
+import { HOUSEHOLD_ID, meFixture, PROFILE_ID, profileFixture } from '../test/meFixture'
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
 import { Picker } from './Picker'
@@ -312,7 +307,12 @@ describe('Picker', () => {
                   ...twoHouseholds,
                   contextHouseholdId: OTHER_HOUSEHOLD_ID,
                   contextHouseholdName: 'Cabin',
-                  profiles: [profileFixture({ id: '66666666-6666-6666-6666-666666666666', name: 'Visiting Alex' })],
+                  profiles: [
+                    profileFixture({
+                      id: '66666666-6666-6666-6666-666666666666',
+                      name: 'Visiting Alex',
+                    }),
+                  ],
                 })
               : meFixture(twoHouseholds),
           },

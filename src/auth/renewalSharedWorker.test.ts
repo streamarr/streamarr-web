@@ -1,8 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import {
-  createRenewalSharedWorkerHost,
-  type RenewalPort,
-} from './renewalSharedWorker'
+import { createRenewalSharedWorkerHost, type RenewalPort } from './renewalSharedWorker'
 
 const NOW = Date.parse('2026-08-06T12:00:00Z')
 
@@ -230,7 +227,13 @@ describe('renewal shared worker', () => {
     const page = new FakePort()
     host.connect(page)
 
-    for (const data of [null, 'stop', { type: 'adopt-expiry', expiresAt: 1 }, { type: 'refresh-result', requestId: '1' }, { type: 'unknown' }]) {
+    for (const data of [
+      null,
+      'stop',
+      { type: 'adopt-expiry', expiresAt: 1 },
+      { type: 'refresh-result', requestId: '1' },
+      { type: 'unknown' },
+    ]) {
       page.receive(data)
     }
     await vi.runAllTimersAsync()

@@ -14,38 +14,26 @@ describe('decideIntercept', () => {
   })
 
   it('shouldInterceptApiFetches', () => {
-    expect(decideIntercept(`${ORIGIN}/api/auth/select-profile`, ORIGIN)).toBe(
-      'intercept',
-    )
-    expect(decideIntercept(`${ORIGIN}/api/images/123`, ORIGIN)).toBe(
-      'intercept',
-    )
+    expect(decideIntercept(`${ORIGIN}/api/auth/select-profile`, ORIGIN)).toBe('intercept')
+    expect(decideIntercept(`${ORIGIN}/api/images/123`, ORIGIN)).toBe('intercept')
   })
 
   it('shouldPassThroughStreamAndRefreshFetches', () => {
     // The refresh call is the worker's own; intercepting it would recurse.
-    expect(decideIntercept(`${ORIGIN}/api/auth/refresh`, ORIGIN)).toBe(
-      'pass-through',
-    )
-    expect(decideIntercept(`${ORIGIN}/api/auth/refresh/revoke`, ORIGIN)).toBe(
-      'pass-through',
-    )
+    expect(decideIntercept(`${ORIGIN}/api/auth/refresh`, ORIGIN)).toBe('pass-through')
+    expect(decideIntercept(`${ORIGIN}/api/auth/refresh/revoke`, ORIGIN)).toBe('pass-through')
     // Playback URLs carry their own token.
-    expect(
-      decideIntercept(`${ORIGIN}/api/stream/abc/multivariant.m3u8`, ORIGIN),
-    ).toBe('pass-through')
-    expect(
-      decideIntercept(`${ORIGIN}/api/stream/abc/segment-0001.m4s?t=x`, ORIGIN),
-    ).toBe('pass-through')
+    expect(decideIntercept(`${ORIGIN}/api/stream/abc/multivariant.m3u8`, ORIGIN)).toBe(
+      'pass-through',
+    )
+    expect(decideIntercept(`${ORIGIN}/api/stream/abc/segment-0001.m4s?t=x`, ORIGIN)).toBe(
+      'pass-through',
+    )
   })
 
   it('shouldPassThroughCrossOriginAndAppShellFetches', () => {
-    expect(decideIntercept('https://other.example/graphql', ORIGIN)).toBe(
-      'pass-through',
-    )
-    expect(decideIntercept(`${ORIGIN}/assets/app.js`, ORIGIN)).toBe(
-      'pass-through',
-    )
+    expect(decideIntercept('https://other.example/graphql', ORIGIN)).toBe('pass-through')
+    expect(decideIntercept(`${ORIGIN}/assets/app.js`, ORIGIN)).toBe('pass-through')
     expect(decideIntercept(`${ORIGIN}/`, ORIGIN)).toBe('pass-through')
   })
 })
@@ -61,9 +49,7 @@ describe('isRecoverableAccessTokenResponse', () => {
 
   it('shouldIgnoreOtherUnauthorizedAndNonJsonResponses', () => {
     // AUTHENTICATION_REQUIRED is terminal; no refresh can recover it.
-    expect(
-      isRecoverableAccessTokenResponse(401, { code: 'AUTHENTICATION_REQUIRED' }),
-    ).toBe(false)
+    expect(isRecoverableAccessTokenResponse(401, { code: 'AUTHENTICATION_REQUIRED' })).toBe(false)
     expect(isRecoverableAccessTokenResponse(401, null)).toBe(false)
     expect(isRecoverableAccessTokenResponse(401, 'nope')).toBe(false)
     expect(isRecoverableAccessTokenResponse(403, { code: 'EXPIRED_TOKEN' })).toBe(false)
@@ -93,11 +79,7 @@ describe('SingleFlight', () => {
         }),
     )
 
-    const results = Promise.all([
-      flight.run(refresh),
-      flight.run(refresh),
-      flight.run(refresh),
-    ])
+    const results = Promise.all([flight.run(refresh), flight.run(refresh), flight.run(refresh)])
     release()
 
     expect(await results).toEqual([true, true, true])

@@ -31,10 +31,7 @@ export async function getJson<T>(url: string): Promise<T> {
   return (await parse(response)) as T
 }
 
-export async function request(
-  url: string,
-  init: RequestInit,
-): Promise<Response> {
+export async function request(url: string, init: RequestInit): Promise<Response> {
   const unsafe = !SAFE_METHODS.has(init.method?.toUpperCase() ?? 'GET')
   const send = () =>
     fetch(url, { ...init, headers: requestHeaders(init, unsafe), credentials: 'same-origin' })
@@ -72,10 +69,7 @@ async function checked(response: Response): Promise<Response> {
 
 async function parse(response: Response): Promise<unknown> {
   await throwIfError(response)
-  if (
-    response.status === 204 ||
-    response.headers.get('Content-Length') === '0'
-  ) {
+  if (response.status === 204 || response.headers.get('Content-Length') === '0') {
     return undefined
   }
   return response.json()

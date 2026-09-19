@@ -20,7 +20,8 @@ const OUTCOME_MESSAGES: Record<string, string> = {
   CONSUMED: 'This device is already signed in.',
 }
 // A status this build does not know still ends the request; the page must still say what happened.
-const UNKNOWN_OUTCOME_MESSAGE = 'This pairing request is no longer pending. Start a new one on your device.'
+const UNKNOWN_OUTCOME_MESSAGE =
+  'This pairing request is no longer pending. Start a new one on your device.'
 const SIGNED_IN_STATUSES = new Set(['APPROVED', 'CONSUMED'])
 
 export function LinkDevice({

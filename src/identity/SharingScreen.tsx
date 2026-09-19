@@ -253,9 +253,7 @@ function OfferForm({
           onChange={(event) => setHouseholdId(event.currentTarget.value.trim())}
         />
         {answers?.wouldLock && (
-          <Alert color="yellow">
-            {profileName} would arrive locked there until it gets a PIN.
-          </Alert>
+          <Alert color="yellow">{profileName} would arrive locked there until it gets a PIN.</Alert>
         )}
         {answers?.nameConflict && (
           <Alert color="yellow">Another Profile there already uses this name.</Alert>
@@ -305,9 +303,7 @@ function OwnShares({
     onChanged()
   }
 
-  async function sendChange(
-    share: ProfileShareRow,
-  ): Promise<readonly UserErrorLike[] | undefined> {
+  async function sendChange(share: ProfileShareRow): Promise<readonly UserErrorLike[] | undefined> {
     const variables = { input: { shareId: share.id } }
     if (share.status === 'PENDING') {
       return (await cancel({ variables })).data?.cancelProfileShare?.userErrors

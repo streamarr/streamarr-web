@@ -60,7 +60,9 @@ describe('/link', () => {
     )
     renderAppAt('/link')
 
-    expect(await screen.findByRole('status', { name: /checking your account/i })).toBeInTheDocument()
+    expect(
+      await screen.findByRole('status', { name: /checking your account/i }),
+    ).toBeInTheDocument()
     expect(codeField()).not.toBeInTheDocument()
 
     answer()
