@@ -19,7 +19,7 @@ export function BackdropHero({
   alt,
   back,
   metadata,
-}: {
+}: Readonly<{
   image: PickedImage | null
   blurHash: string | null
   corners: AmbientCorners | null
@@ -27,7 +27,7 @@ export function BackdropHero({
   alt: string
   back?: ReactNode
   metadata?: ReactNode
-}) {
+}>) {
   return (
     <div className={styles.hero} style={{ height }} data-testid="backdrop-hero">
       <MediaImage image={image} blurHash={blurHash} alt={alt} className={styles.artwork} />

@@ -8,7 +8,7 @@ interface Rating {
 
 // Ratings are free-form source/value pairs; each chip carries its own source rather than
 // assuming which is a critic and which an audience score.
-export function RatingChipRow({ ratings }: { ratings: ReadonlyArray<Rating | null> }) {
+export function RatingChipRow({ ratings }: Readonly<{ ratings: ReadonlyArray<Rating | null> }>) {
   const present = ratings.filter((rating): rating is Rating => rating !== null)
   if (present.length === 0) {
     return null

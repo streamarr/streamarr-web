@@ -30,7 +30,7 @@ export function DetailHeader({
   actions,
   aside,
   titleColumn = false,
-}: {
+}: Readonly<{
   backdrop: DetailBackdrop
   back?: ReactNode
   metadata: MetadataEntry[]
@@ -42,7 +42,7 @@ export function DetailHeader({
   actions: ReactNode
   aside?: ReactNode
   titleColumn?: boolean
-}) {
+}>) {
   return (
     <header className={styles.header}>
       <BackdropHero

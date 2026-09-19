@@ -11,14 +11,14 @@ export function ConfirmDialog({
   confirmLabel,
   onConfirm,
   onClose,
-}: {
+}: Readonly<{
   opened: boolean
   title: string
   body: string
   confirmLabel: string
   onConfirm: () => void
   onClose: () => void
-}) {
+}>) {
   return (
     <Modal
       opened={opened}

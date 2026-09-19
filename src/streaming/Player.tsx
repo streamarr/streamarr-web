@@ -16,10 +16,10 @@ type PlaybackState = ReportStreamSessionTimelineMutationVariables['state']
 export function Player({
   mediaFileId,
   startPositionSeconds,
-}: {
+}: Readonly<{
   mediaFileId: string
   startPositionSeconds?: number
-}) {
+}>) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [createStreamSession] = useMutation(CreateStreamSessionDocument)
   const client = useApolloClient()
@@ -140,9 +140,10 @@ function attachTimeline(
   }
 }
 
-// A missed progress report costs nothing the next one doesn't restore, and playback must never
-// surface it.
-function ignoreTimelineReportFailure() {}
+function ignoreTimelineReportFailure() {
+  // A missed progress report costs nothing the next one doesn't restore, and playback must never
+  // surface it.
+}
 
 // The stream URL carries the playback ?t= token; relative segment requests inherit it.
 function attach(video: HTMLVideoElement, url: string, onFatal: () => void): Hls | null {

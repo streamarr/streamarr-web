@@ -17,7 +17,7 @@ import styles from './MovieDetailScreen.module.css'
 
 type Movie = NonNullable<MovieDetailQuery['movie']>
 
-export function MovieDetailScreen({ movieId }: { movieId: string }) {
+export function MovieDetailScreen({ movieId }: Readonly<{ movieId: string }>) {
   const { data, loading, error } = useQuery(MovieDetailDocument, { variables: { id: movieId } })
   const watched = useWatchedToggle(movieId, MovieDetailDocument)
 

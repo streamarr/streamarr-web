@@ -7,11 +7,11 @@ export function CastCard({
   name,
   image,
   blurHash,
-}: {
+}: Readonly<{
   name: string
   image: PickedImage | null
   blurHash: string | null
-}) {
+}>) {
   return (
     <div className={styles.card}>
       <div className={styles.portrait}>

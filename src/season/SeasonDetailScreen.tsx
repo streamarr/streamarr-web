@@ -24,7 +24,7 @@ type Sibling = NonNullable<Season['series']['seasons'][number]>
 
 type BulkVerb = 'watched' | 'unwatched'
 
-export function SeasonDetailScreen({ seasonId }: { seasonId: string }) {
+export function SeasonDetailScreen({ seasonId }: Readonly<{ seasonId: string }>) {
   const { data, loading, error } = useQuery(SeasonDetailDocument, { variables: { id: seasonId } })
   const watched = useWatchedToggle(seasonId, SeasonDetailDocument)
   const navigate = useNavigate()
