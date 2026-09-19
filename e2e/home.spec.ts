@@ -50,7 +50,7 @@ test.beforeEach(async ({ page, request }) => {
   await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
   await request.post(`${STUB_URL}/api/auth/refresh`)
   await page.route('**/graphql', async (route) => {
-    const { operationName } = route.request().postDataJSON()
+    const { operationName } = route.request().postDataJSON() as { operationName?: string }
     if (operationName === 'Home') return route.fulfill({ json: { data: home } })
     if (operationName === 'Libraries')
       return route.fulfill({ json: { data: { libraries: home.libraries } } })

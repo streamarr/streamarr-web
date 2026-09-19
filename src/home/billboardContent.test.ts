@@ -31,7 +31,7 @@ function continueWatchingMovie(
     watchProgress: null,
     files: [{ id: 'file-1' }],
     ...overrides,
-  } as Extract<ContinueWatchingItem, { __typename: 'Movie' }>
+  }
 }
 
 function continueWatchingEpisode(
@@ -70,7 +70,7 @@ function continueWatchingEpisode(
       },
     },
     ...overrides,
-  } as Extract<ContinueWatchingItem, { __typename: 'Episode' }>
+  }
 }
 
 function recentMovie(
@@ -101,7 +101,7 @@ function recentMovie(
       },
     ],
     ...overrides,
-  } as Extract<RecentlyAddedNode, { __typename: 'Movie' }>
+  }
 }
 
 describe('billboardFromContinueWatching', () => {
@@ -111,7 +111,7 @@ describe('billboardFromContinueWatching', () => {
     expect(content.metadata).toEqual([
       { label: 'Runtime', value: '2h 22m' },
       { label: 'Genre', value: 'Drama' },
-      { label: 'Added', value: expect.stringContaining('ago') },
+      { label: 'Added', value: expect.stringContaining('ago') as string },
     ])
     expect(content.ctaLabel).toBe('Play')
     expect(content.ctaFileId).toBe('file-1')
@@ -132,7 +132,7 @@ describe('billboardFromContinueWatching', () => {
     expect(content.metadata).toEqual([
       { label: 'Seasons', value: '4' },
       { label: 'Genre', value: 'Crime' },
-      { label: 'Added', value: expect.stringContaining('ago') },
+      { label: 'Added', value: expect.stringContaining('ago') as string },
     ])
     expect(content.ctaLabel).toBe('Continue S2 E5')
     expect(content.ctaFileId).toBe('file-2')

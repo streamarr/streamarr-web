@@ -27,6 +27,8 @@ export function useIntersectionObserver(
       observer.observe(element)
       return () => observer.disconnect()
     },
+    // Callers pass a fresh options object each render, so the observer is keyed by its fields.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [options?.root, options?.rootMargin, options?.threshold],
   )
 }

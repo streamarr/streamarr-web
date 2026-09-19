@@ -23,6 +23,7 @@ afterAll(() => server.close())
 
 // jsdom has no scroll layout, so it implements neither this nor a meaningful scroll position;
 // tests that care about scrolling assert against the mocked IntersectionObserver instead.
+// eslint-disable-next-line @typescript-eslint/unbound-method -- a polyfill check reads the method without calling it
 Element.prototype.scrollIntoView ??= function scrollIntoView() {}
 
 // Mantine's SegmentedControl positions its indicator with ResizeObserver, which jsdom lacks.

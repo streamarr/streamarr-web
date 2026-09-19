@@ -1,9 +1,14 @@
 import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { graphql, HttpResponse } from 'msw'
+import { graphql, HttpResponse, type GraphQLQuery } from 'msw'
 import { useState } from 'react'
 import { describe, expect, it } from 'vitest'
-import type { LibraryPageQuery, MediaFilter, MediaSort } from '../graphql/generated/graphql'
+import type {
+  LibraryPageQuery,
+  LibraryPageQueryVariables,
+  MediaFilter,
+  MediaSort,
+} from '../graphql/generated/graphql'
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
 import { useLibraryItems } from './useLibraryItems'
@@ -106,7 +111,7 @@ describe('useLibraryItems', () => {
 
   it('returns to the requested letter after revisiting a cached, backfilled page', async () => {
     server.use(
-      graphql.query('LibraryPage', ({ variables }) => {
+      graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) => {
         const title = variables.before
           ? 'Middle'
           : variables.filter?.startLetter === 'N'
@@ -140,26 +145,29 @@ describe('useLibraryItems', () => {
       })
       let requested = false
       server.use(
-        graphql.query('LibraryPage', async ({ variables }) => {
-          if (variables.after || variables.before) {
-            requested = true
-            await pending
+        graphql.query<GraphQLQuery, LibraryPageQueryVariables>(
+          'LibraryPage',
+          async ({ variables }) => {
+            if (variables.after || variables.before) {
+              requested = true
+              await pending
+              return HttpResponse.json({
+                data: libraryResponse({
+                  edges: [{ cursor: 'old', node: movieNode('old', 'Old filtered-out title') }],
+                }),
+              })
+            }
             return HttpResponse.json({
               data: libraryResponse({
-                edges: [{ cursor: 'old', node: movieNode('old', 'Old filtered-out title') }],
+                edges: variables.filter?.watchStatus
+                  ? [{ cursor: 'unwatched', node: movieNode('unwatched', 'Unwatched title') }]
+                  : [{ cursor: 'first', node: movieNode('first', 'First page') }],
+                hasNextPage: !variables.filter?.watchStatus && direction === 'forward',
+                hasPreviousPage: !variables.filter?.watchStatus && direction === 'backward',
               }),
             })
-          }
-          return HttpResponse.json({
-            data: libraryResponse({
-              edges: variables.filter?.watchStatus
-                ? [{ cursor: 'unwatched', node: movieNode('unwatched', 'Unwatched title') }]
-                : [{ cursor: 'first', node: movieNode('first', 'First page') }],
-              hasNextPage: !variables.filter?.watchStatus && direction === 'forward',
-              hasPreviousPage: !variables.filter?.watchStatus && direction === 'backward',
-            }),
-          })
-        }),
+          },
+        ),
       )
       const { user } = renderWithProviders(<Harness />)
       await screen.findByText('First page')
@@ -193,7 +201,7 @@ describe('useLibraryItems', () => {
 
   it('appends edges on loadMore and stops once hasNextPage is false', async () => {
     server.use(
-      graphql.query('LibraryPage', ({ variables }) => {
+      graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) => {
         if (variables.after) {
           return HttpResponse.json({
             data: libraryResponse({
@@ -225,7 +233,7 @@ describe('useLibraryItems', () => {
     let backwardFetches = 0
     let backwardFilter: unknown
     server.use(
-      graphql.query('LibraryPage', ({ variables }) => {
+      graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) => {
         if (variables.before) {
           backwardFetches += 1
           backwardFilter = variables.filter
@@ -270,7 +278,7 @@ describe('useLibraryItems', () => {
   it('keeps loading previous pages on repeated loadPrevious calls, all the way back to the start', async () => {
     let backwardCallCount = 0
     server.use(
-      graphql.query('LibraryPage', ({ variables }) => {
+      graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) => {
         if (variables.before === 'c-n') {
           backwardCallCount += 1
           return HttpResponse.json({
@@ -328,7 +336,7 @@ describe('useLibraryItems', () => {
   it('issues no backward fetch when the seek page has no previous page', async () => {
     let backwardFetches = 0
     server.use(
-      graphql.query('LibraryPage', ({ variables }) => {
+      graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) => {
         if (variables.before) {
           backwardFetches += 1
         }
@@ -359,7 +367,7 @@ describe('useLibraryItems', () => {
   it('does not spuriously reopen backward pagination after a forward loadMore', async () => {
     let backwardFetches = 0
     server.use(
-      graphql.query('LibraryPage', ({ variables }) => {
+      graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) => {
         if (variables.before) {
           backwardFetches += 1
           return HttpResponse.json({
@@ -403,7 +411,7 @@ describe('useLibraryItems', () => {
 
   it('resets the accumulated edges when the filter changes', async () => {
     server.use(
-      graphql.query('LibraryPage', ({ variables }) => {
+      graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) => {
         if (variables.filter?.watchStatus === 'UNWATCHED') {
           return HttpResponse.json({
             data: libraryResponse({

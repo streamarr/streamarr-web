@@ -16,11 +16,15 @@ describe('useIntersectionObserver', () => {
     let change!: () => void
     function SuspendingSentinel({ version }: { version: string }) {
       const ref = useIntersectionObserver(() => seen.push(version))
+      // Suspense: throwing a promise is how a render suspends.
+      // eslint-disable-next-line @typescript-eslint/only-throw-error
       if (version === 'uncommitted') throw pending
       return <div ref={ref}>{version}</div>
     }
     function Harness() {
       const [version, setVersion] = useState('committed')
+      // The test drives the transition from outside the tree.
+      // eslint-disable-next-line react-hooks/globals
       change = () => startTransition(() => setVersion('uncommitted'))
       return (
         <Suspense fallback="pending">

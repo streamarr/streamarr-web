@@ -35,6 +35,9 @@ export function useLibraryItems({
       fetchingNext: false,
       previousRequest: null as Promise<string | null> | null,
     }),
+    // The scope is an identity per committed query: its dependencies are the query's variables by
+    // value, not what the factory reads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [libraryId, JSON.stringify(sort), JSON.stringify(filter)],
   )
   useLayoutEffect(
@@ -71,6 +74,8 @@ export function useLibraryItems({
       if (!centering || loading || !pageInfo) {
         return
       }
+      // Centering is a one-shot request; consuming it here is what keeps the jump from repeating.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setCentering(false)
       const target = findLetterLandingCursor(data?.library.items.edges, letter)
       const revealLanding = (precedingCursor?: string | null) => {
@@ -84,6 +89,9 @@ export function useLibraryItems({
         revealLanding()
       }
     },
+    // Runs when a jump is requested or its page settles. The rest is read fresh and must not
+    // retrigger the jump.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [centering, loading, pageInfo],
   )
 
@@ -92,7 +100,7 @@ export function useLibraryItems({
       return
     }
     requestScope.fetchingNext = true
-    fetchMore({
+    void fetchMore({
       // fetchMore merges onto the current variables — last/before must be cleared explicitly.
       variables: {
         libraryId,
