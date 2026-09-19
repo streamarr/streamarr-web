@@ -20,7 +20,7 @@
 - `npm run tokens:check` — CI drift gate: fail if the committed tokens differ from streamarr-ux
 - `TOKENS_REF` pins the streamarr-ux commit the tokens come from; `npm run tokens` is the only way
   `src/styles/tokens.generated.css` changes — never edit it by hand
-- CI (`.github/workflows/ci.yml`) runs `format:check`, `lint`, `typecheck`, `test:coverage`, `codegen:check`, `build`, the SonarCloud analysis, `test:e2e`, then `tokens:check`
+- CI (`.github/workflows/ci.yml`) installs with `npm ci --ignore-scripts` — no dependency needs its lifecycle scripts — then runs `format:check`, `lint`, `typecheck`, `test:coverage`, `codegen:check`, `build`, the SonarCloud analysis, `test:e2e`, then `tokens:check`
 
 ## Engineering Philosophy
 
