@@ -37,12 +37,13 @@
   padding: 7px 18px;
   border-radius: var(--radius-sm);
   background: var(--color-alpha-10);
+  /* Before font-size: the shorthand resets every font longhand declared ahead of it. */
+  font: inherit;
   font-size: 15px;
   color: var(--color-alpha-92);
   text-decoration: none;
   border: none;
   cursor: pointer;
-  font: inherit;
 }
 
 .navPillActive {
