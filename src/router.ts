@@ -1,9 +1,6 @@
 import type { ApolloClient } from '@apollo/client'
 import { createRouter, type RouterHistory } from '@tanstack/react-router'
-import {
-  inactiveRenewalBridge,
-  type RenewalBridge,
-} from './auth/renewalBridge'
+import { inactiveRenewalBridge, type RenewalBridge } from './auth/renewalBridge'
 import { createSessionStore, probeSession } from './auth/session'
 import { createApolloClient } from './graphql/client'
 import { routeTree } from './routeTree.gen'
@@ -28,13 +25,13 @@ export function createAppRouter(
   const router = createRouter({ routeTree, history, context: { session } })
   apolloClient = createApolloClient((route) => {
     if (route === '/select-profile') {
-      router.navigate({ to: route })
+      void router.navigate({ to: route })
       return
     }
     // An eviction: record it so the guard cannot wave a back-navigation through on a stale
     // answer, then bounce carrying the way back.
     session.markAnonymous()
-    router.navigate({ to: route, search: { redirect: router.state.location.href } })
+    void router.navigate({ to: route, search: { redirect: router.state.location.href } })
   })
   return { router, apolloClient, session }
 }

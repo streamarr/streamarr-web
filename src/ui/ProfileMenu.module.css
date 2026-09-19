@@ -35,9 +35,7 @@
   border: 1px solid var(--color-alpha-16);
   border-radius: var(--radius-xl);
   /* Solid on purpose: a blurred translucency stalls Chromium's compositor during captures. */
-  background:
-    linear-gradient(var(--color-chrome), var(--color-chrome)),
-    var(--color-ground);
+  background: linear-gradient(var(--color-chrome), var(--color-chrome)), var(--color-ground);
   padding: 10px;
   display: flex;
   flex-direction: column;
@@ -53,9 +51,7 @@
     width: 13px;
     height: 13px;
     transform: rotate(45deg);
-    background:
-      linear-gradient(var(--color-chrome), var(--color-chrome)),
-      var(--color-ground);
+    background: linear-gradient(var(--color-chrome), var(--color-chrome)), var(--color-ground);
     border-left: 1px solid var(--color-alpha-16);
     border-top: 1px solid var(--color-alpha-16);
   }

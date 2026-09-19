@@ -12,6 +12,8 @@ export function Player({ mediaFileId }: { mediaFileId: string }) {
   useEffect(() => {
     let hls: Hls | null = null
     let cancelled = false
+    // A new media file starts a new attempt, so the previous attempt's failure is cleared first.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFailed(false)
 
     createStreamSession({ variables: { mediaFileId } })
@@ -46,7 +48,6 @@ export function Player({ mediaFileId }: { mediaFileId: string }) {
         </Alert>
       )}
       <AspectRatio ratio={16 / 9}>
-        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
         <video ref={videoRef} controls style={{ width: '100%' }} />
       </AspectRatio>
     </Stack>

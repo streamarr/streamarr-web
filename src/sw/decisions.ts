@@ -4,10 +4,7 @@ export type InterceptDecision = 'intercept' | 'pass-through'
  * Same-origin /graphql and /api/** only, minus the worker's own refresh calls (recursion) and
  * /api/stream/** (playback URLs carry their own ?t= token).
  */
-export function decideIntercept(
-  requestUrl: string | URL,
-  pageOrigin: string,
-): InterceptDecision {
+export function decideIntercept(requestUrl: string | URL, pageOrigin: string): InterceptDecision {
   const url = new URL(requestUrl, pageOrigin)
   if (url.origin !== pageOrigin) {
     return 'pass-through'

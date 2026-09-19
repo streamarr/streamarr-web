@@ -1,14 +1,7 @@
 import { HttpResponse, http } from 'msw'
 import { afterEach, describe, expect, it } from 'vitest'
 import { server } from '../test/server'
-import {
-  AuthApiError,
-  getSetupStatus,
-  login,
-  logout,
-  selectProfile,
-  setup,
-} from './api'
+import { AuthApiError, getSetupStatus, login, logout, selectProfile, setup } from './api'
 
 const TOKENS = {
   accessTokenExpiresAt: '2026-07-08T12:10:00Z',
@@ -22,11 +15,7 @@ describe('auth api', () => {
   })
 
   it('shouldReportSetupStatus', async () => {
-    server.use(
-      http.get('/api/auth/status', () =>
-        HttpResponse.json({ setupComplete: true }),
-      ),
-    )
+    server.use(http.get('/api/auth/status', () => HttpResponse.json({ setupComplete: true })))
     await expect(getSetupStatus()).resolves.toEqual({ setupComplete: true })
   })
 
@@ -60,15 +49,13 @@ describe('auth api', () => {
       ),
     )
 
-    await expect(
-      login({ email: 'a@b.com', password: 'wrong' }),
-    ).rejects.toMatchObject({
+    await expect(login({ email: 'a@b.com', password: 'wrong' })).rejects.toMatchObject({
       status: 401,
       code: 'INVALID_CREDENTIALS',
     })
-    await expect(
-      login({ email: 'a@b.com', password: 'wrong' }),
-    ).rejects.toBeInstanceOf(AuthApiError)
+    await expect(login({ email: 'a@b.com', password: 'wrong' })).rejects.toBeInstanceOf(
+      AuthApiError,
+    )
   })
 
   it('shouldAttachCsrfHeaderOnLogin', async () => {

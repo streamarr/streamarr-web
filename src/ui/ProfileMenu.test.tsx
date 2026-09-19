@@ -25,7 +25,7 @@ function household(): MeQuery['me'] {
     profileFixture({ id: 'p-toni', name: 'Toni', personal: false, pinConfigured: true }),
     profileFixture({ id: 'p-rob', name: 'Rob', personal: false, locked: true }),
   ]
-  return { ...meFixture({ profiles }), serverAdmin: true } as MeQuery['me']
+  return { ...meFixture({ profiles }), serverAdmin: true }
 }
 
 type MenuProps = Parameters<typeof ProfileMenu>[0]
@@ -42,7 +42,9 @@ function renderMenu(overrides: Partial<MenuProps> = {}) {
   )
 }
 
-async function openMenu(user: ReturnType<typeof import('@testing-library/user-event').default.setup>) {
+async function openMenu(
+  user: ReturnType<typeof import('@testing-library/user-event').default.setup>,
+) {
   await user.click(screen.getByRole('button', { name: /profile menu \(alex\)/i }))
 }
 

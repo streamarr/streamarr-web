@@ -59,6 +59,8 @@ export function InvitationScreen({
 
   useEffect(() => {
     if (initialCode) {
+      // Looking up the linked code is the mount effect; it moves the screen to 'looking' at once.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       void lookUp(initialCode)
     }
     // The initial code arrives exactly once, from the link that opened this page.
@@ -133,7 +135,7 @@ function InvitationReview({
   const [failure, setFailure] = useState<string | null>(null)
   const [busy, setBusy] = useState<'accept' | 'decline' | null>(null)
 
-  async function accept(event: React.FormEvent) {
+  async function accept(event: React.SubmitEvent) {
     event.preventDefault()
     setFailure(null)
     setBusy('accept')

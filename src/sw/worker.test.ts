@@ -1,8 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import {
-  installSessionServiceWorker,
-  type SessionServiceWorkerScope,
-} from './worker'
+import { installSessionServiceWorker, type SessionServiceWorkerScope } from './worker'
 
 const NEXT_EXPIRY = '2026-08-06T12:10:00Z'
 
@@ -16,7 +13,7 @@ function fakeScope() {
     },
     skipWaiting: vi.fn(async () => {}),
     addEventListener(type, listener) {
-      listeners.set(type, listener as (event: never) => void)
+      listeners.set(type, listener)
     },
   }
   return { scope, listeners }
@@ -201,7 +198,13 @@ describe('session service worker', () => {
       now: () => Date.parse('2026-08-06'),
     })
 
-    for (const data of [null, 'csrf', { type: 'csrf', token: 1 }, { type: 'adopt-expiry', expiresAt: 1 }, { type: 'unknown' }]) {
+    for (const data of [
+      null,
+      'csrf',
+      { type: 'csrf', token: 1 },
+      { type: 'adopt-expiry', expiresAt: 1 },
+      { type: 'unknown' },
+    ]) {
       listeners.get('message')?.({ data } as never)
     }
 

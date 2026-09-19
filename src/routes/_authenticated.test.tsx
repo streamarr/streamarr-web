@@ -136,6 +136,20 @@ describe('the authenticated layout', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
   })
 
+  it('shouldAskForAProfileWhenTheServerRequiresOneMidSession', async () => {
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
+      graphql.query('SharingOverview', () =>
+        HttpResponse.json({
+          errors: [{ message: 'profile required', extensions: { code: 'PROFILE_REQUIRED' } }],
+        }),
+      ),
+    )
+    const { router } = renderAppAt('/sharing')
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/select-profile'))
+  })
+
   it('shouldHideSignOutFromAVisitorWhoIsNotSignedIn', async () => {
     const { router } = renderAppAt('/login')
 
@@ -148,7 +162,10 @@ describe('the authenticated layout', () => {
     server.use(...homeHandlers(), graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })))
     const renewal = {
       adoptExpiry: vi.fn(),
-      refreshNow: vi.fn(async () => ({ kind: 'renewed' as const, expiresAt: '2026-08-06T12:10:00Z' })),
+      refreshNow: vi.fn(async () => ({
+        kind: 'renewed' as const,
+        expiresAt: '2026-08-06T12:10:00Z',
+      })),
       stop: vi.fn(),
     }
 

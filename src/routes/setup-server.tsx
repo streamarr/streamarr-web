@@ -23,7 +23,7 @@ function SetupServer() {
   const navigate = useNavigate()
 
   function onAuthenticated(tokens: AuthTokens) {
-    navigate({ to: tokens.scope === 'profile' ? '/' : '/select-profile' })
+    void navigate({ to: tokens.scope === 'profile' ? '/' : '/select-profile' })
   }
 
   return (

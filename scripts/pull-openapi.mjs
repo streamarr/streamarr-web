@@ -14,4 +14,6 @@ const target = join(root, 'src/api/openapi.json')
 const bytes = await fetchBytes(rawUrl(pin, pin.openapiDocument))
 await mkdir(dirname(target), { recursive: true })
 await writeFile(target, bytes)
-console.log(`Wrote src/api/openapi.json from ${pin.repository}@${pin.commit} (${pin.openapiDocument})`)
+console.log(
+  `Wrote src/api/openapi.json from ${pin.repository}@${pin.commit} (${pin.openapiDocument})`,
+)
