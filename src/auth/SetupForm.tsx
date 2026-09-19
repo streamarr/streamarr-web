@@ -29,7 +29,7 @@ export function SetupForm({ onAuthenticated }: { onAuthenticated: (tokens: AuthT
     required: true,
   })
 
-  async function onSubmit(event: React.FormEvent) {
+  async function onSubmit(event: React.SubmitEvent) {
     event.preventDefault()
     setError(null)
     setSubmitting(true)
