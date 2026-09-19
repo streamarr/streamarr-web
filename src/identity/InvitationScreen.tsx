@@ -135,7 +135,7 @@ function InvitationReview({
   const [failure, setFailure] = useState<string | null>(null)
   const [busy, setBusy] = useState<'accept' | 'decline' | null>(null)
 
-  async function accept(event: React.FormEvent) {
+  async function accept(event: React.SubmitEvent) {
     event.preventDefault()
     setFailure(null)
     setBusy('accept')

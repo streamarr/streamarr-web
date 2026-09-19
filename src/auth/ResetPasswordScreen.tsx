@@ -18,7 +18,7 @@ export function ResetPasswordScreen({ initialCode }: { initialCode?: string }) {
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(false)
 
-  async function redeem(event: React.FormEvent) {
+  async function redeem(event: React.SubmitEvent) {
     event.preventDefault()
     setFailure(null)
     setBusy(true)

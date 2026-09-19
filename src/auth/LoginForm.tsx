@@ -7,14 +7,16 @@ import { CSRF_REJECTION_MESSAGE, isCsrfRejection } from './csrf'
 
 const FALLBACK_MESSAGE = 'Sign in failed. Please try again.'
 
-export function LoginForm({ onAuthenticated }: { onAuthenticated: (tokens: AuthTokens) => void }) {
+export function LoginForm({
+  onAuthenticated,
+}: Readonly<{ onAuthenticated: (tokens: AuthTokens) => void }>) {
   const { login } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
-  async function onSubmit(event: React.FormEvent) {
+  async function onSubmit(event: React.SubmitEvent) {
     event.preventDefault()
     setError(null)
     setSubmitting(true)

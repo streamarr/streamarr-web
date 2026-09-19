@@ -25,7 +25,7 @@ export function PinGate({
   const [failure, setFailure] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  async function submit(event: React.FormEvent) {
+  async function submit(event: React.SubmitEvent) {
     event.preventDefault()
     if (busy || !PIN_SHAPE.test(pin)) {
       return
