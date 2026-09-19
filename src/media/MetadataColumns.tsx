@@ -6,7 +6,7 @@ export interface MetadataEntry {
 }
 
 // An entry with nothing to say is absent, not dimmed (principle 7.1).
-export function MetadataColumns({ entries }: { entries: MetadataEntry[] }) {
+export function MetadataColumns({ entries }: Readonly<{ entries: MetadataEntry[] }>) {
   const present = entries.filter((entry): entry is { label: string; value: string } =>
     Boolean(entry.value),
   )

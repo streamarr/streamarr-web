@@ -15,11 +15,11 @@ export function SeasonSideRail({
   seasons,
   selectedId,
   onSelect,
-}: {
+}: Readonly<{
   seasons: SeasonRailEntry[]
   selectedId: string
   onSelect: (seasonId: string) => void
-}) {
+}>) {
   const selectedIndex = seasons.findIndex((season) => season.id === selectedId)
   const [expanded, setExpanded] = useState(selectedIndex >= VISIBLE_ROWS)
   const visible = expanded ? seasons : seasons.slice(0, VISIBLE_ROWS)

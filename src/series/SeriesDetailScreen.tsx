@@ -26,7 +26,7 @@ type Episode = NonNullable<Season['episodes'][number]>
 
 type BulkVerb = 'watched' | 'unwatched'
 
-export function SeriesDetailScreen({ seriesId }: { seriesId: string }) {
+export function SeriesDetailScreen({ seriesId }: Readonly<{ seriesId: string }>) {
   const { data, loading, error } = useQuery(SeriesDetailDocument, { variables: { id: seriesId } })
   const watched = useWatchedToggle(seriesId, SeriesDetailDocument)
   const [confirming, setConfirming] = useState<BulkVerb | null>(null)

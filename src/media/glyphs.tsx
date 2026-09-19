@@ -1,4 +1,4 @@
-export function CheckGlyph({ size = 13 }: { size?: number }) {
+export function CheckGlyph({ size = 13 }: Readonly<{ size?: number }>) {
   return (
     <svg
       width={size}

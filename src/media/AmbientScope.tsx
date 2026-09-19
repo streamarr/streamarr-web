@@ -8,10 +8,10 @@ import type { AmbientTheme } from './ambientTheme'
 export function AmbientScope({
   theme,
   children,
-}: {
+}: Readonly<{
   theme: AmbientTheme | null
   children: ReactNode
-}) {
+}>) {
   return (
     <div
       className={styles.scope}

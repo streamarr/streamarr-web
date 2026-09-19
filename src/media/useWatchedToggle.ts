@@ -22,5 +22,6 @@ export function useWatchedToggle(id: string, detailQuery: DocumentNode) {
   }
 }
 
-// The hook surfaces the failure through `failed`; the rejected promise carries nothing more.
-function ignoreReportedFailure() {}
+function ignoreReportedFailure() {
+  // The hook surfaces the failure through `failed`; the rejected promise carries nothing more.
+}

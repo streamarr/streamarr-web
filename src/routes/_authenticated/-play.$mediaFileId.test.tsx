@@ -57,33 +57,25 @@ describe('/play/$mediaFileId', () => {
     vi.clearAllMocks()
   })
 
-  it('hands the position search param to the player as its start position', async () => {
+  it.each([
+    {
+      behavior: 'hands the position search param to the player as its start position',
+      search: '?position=120',
+      startsAt: 120,
+    },
+    { behavior: 'starts from the beginning when position is absent', search: '', startsAt: 0 },
+    {
+      behavior: 'starts from the beginning when position is not a number',
+      search: '?position=soon',
+      startsAt: 0,
+    },
+  ])('$behavior', async ({ search, startsAt }) => {
     serveApp()
-    renderAppAt('/play/file-1?position=120')
+    renderAppAt(`/play/file-1${search}`)
     const video = await attachedVideo()
 
     fireEvent(video, new Event('loadedmetadata'))
 
-    expect(video.currentTime).toBe(120)
-  })
-
-  it('starts from the beginning when position is absent', async () => {
-    serveApp()
-    renderAppAt('/play/file-1')
-    const video = await attachedVideo()
-
-    fireEvent(video, new Event('loadedmetadata'))
-
-    expect(video.currentTime).toBe(0)
-  })
-
-  it('starts from the beginning when position is not a number', async () => {
-    serveApp()
-    renderAppAt('/play/file-1?position=soon')
-    const video = await attachedVideo()
-
-    fireEvent(video, new Event('loadedmetadata'))
-
-    expect(video.currentTime).toBe(0)
+    expect(video.currentTime).toBe(startsAt)
   })
 })
