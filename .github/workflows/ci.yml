@@ -25,7 +25,8 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci
+      # No dependency needs its lifecycle scripts here, so none of them run.
+      - run: npm ci --ignore-scripts
       - run: npm run format:check
       - run: npm run lint
       - run: npm run typecheck
@@ -65,10 +66,10 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
       - if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium
+        run: node_modules/.bin/playwright install --with-deps chromium
       # The cache holds only the browser; the OS packages it needs are not cached.
       - if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
+        run: node_modules/.bin/playwright install-deps chromium
       - run: npm run test:e2e
       - name: Upload browser test output
         if: ${{ !cancelled() }}
