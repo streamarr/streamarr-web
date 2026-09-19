@@ -171,7 +171,12 @@ describe('SharingScreen', () => {
   it('shouldEndAnActiveShareButNeverTheHomeOne', async () => {
     serverAnswersOverview({
       shares: [
-        shareRow({ id: '88888888-8888-8888-8888-888888888888', householdId: HOUSEHOLD_ID, status: 'ACTIVE', requiredByAccountMembership: true }),
+        shareRow({
+          id: '88888888-8888-8888-8888-888888888888',
+          householdId: HOUSEHOLD_ID,
+          status: 'ACTIVE',
+          requiredByAccountMembership: true,
+        }),
         shareRow({ status: 'ACTIVE' }),
       ],
     })

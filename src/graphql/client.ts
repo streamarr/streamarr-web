@@ -1,7 +1,6 @@
-import { ApolloClient, HttpLink, InMemoryCache } from '@apollo/client'
-import { from } from '@apollo/client/link'
+import { ApolloClient, ApolloLink, HttpLink, InMemoryCache } from '@apollo/client'
 import { SetContextLink } from '@apollo/client/link/context'
-import { onError } from '@apollo/client/link/error'
+import { ErrorLink } from '@apollo/client/link/error'
 import { csrfHeaders, isCsrfRejection } from '../auth/csrf'
 import generatedIntrospection from './generated/possibleTypes.json'
 import { decideAuthRoute, extractAuthContext } from './errorRouting'
@@ -13,7 +12,7 @@ const CSRF_RETRY_ATTEMPTED = 'csrfRetryAttempted'
 // No auth link: cookies and the service worker own the session; the CSRF echo is the only header
 // the client adds.
 export function createApolloClient(onAuthRoute: (route: AuthRoute) => void): ApolloClient {
-  const errorLink = onError(({ error, operation, forward }) => {
+  const errorLink = new ErrorLink(({ error, operation, forward }) => {
     const context = extractAuthContext(error)
     if (
       isCsrfRejection(context.networkStatus, context.networkCode) &&
@@ -35,7 +34,7 @@ export function createApolloClient(onAuthRoute: (route: AuthRoute) => void): Apo
   })
 
   const csrfLink = new SetContextLink((prevContext) => ({
-    headers: { ...prevContext.headers, ...csrfHeaders() },
+    headers: { ...(prevContext.headers as Record<string, string> | undefined), ...csrfHeaders() },
   }))
 
   const httpLink = new HttpLink({
@@ -46,7 +45,7 @@ export function createApolloClient(onAuthRoute: (route: AuthRoute) => void): Apo
   return new ApolloClient({
     // Error link first: forward() on a CSRF rejection re-enters the CSRF link, which re-reads the
     // re-minted cookie before the HTTP link sends.
-    link: from([errorLink, csrfLink, httpLink]),
+    link: ApolloLink.from([errorLink, csrfLink, httpLink]),
     // Generated possibleTypes keep fragment matching correct across unions; a mismatch drops
     // fields silently.
     cache: new InMemoryCache({ possibleTypes: generatedIntrospection.possibleTypes }),

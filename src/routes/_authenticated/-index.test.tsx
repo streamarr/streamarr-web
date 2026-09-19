@@ -14,8 +14,6 @@ describe('/', () => {
 
     renderAppAt('/')
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      /reload the page and try again/i,
-    )
+    expect(await screen.findByRole('alert')).toHaveTextContent(/reload the page and try again/i)
   })
 })

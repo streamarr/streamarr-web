@@ -14,10 +14,7 @@ interface ServiceWorkerEndpoint {
 export interface ServiceWorkerConnection {
   controller: ServiceWorkerEndpoint | null
   ready: Promise<{ active: ServiceWorkerEndpoint | null }>
-  addEventListener(
-    type: 'message',
-    listener: (event: { data: unknown }) => void,
-  ): void
+  addEventListener(type: 'message', listener: (event: { data: unknown }) => void): void
 }
 
 interface RenewalBridgeDependencies {
@@ -113,8 +110,7 @@ export function createRenewalBridge({
       resolveResult(value)
     }
     const timeout = setTimeout(() => finish({ kind: 'unavailable' }), replyTimeoutMs)
-    port1.onmessage = ({ data }) =>
-      finish(isRenewalResult(data) ? data : { kind: 'unavailable' })
+    port1.onmessage = ({ data }) => finish(isRenewalResult(data) ? data : { kind: 'unavailable' })
     return { result, finish }
   }
 

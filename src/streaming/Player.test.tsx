@@ -10,7 +10,7 @@ const hls = vi.hoisted(() => ({
   loadSource: vi.fn(),
   attachMedia: vi.fn(),
   destroy: vi.fn(),
-  on: vi.fn(),
+  on: vi.fn<(event: string, listener: (event: string, data: unknown) => void) => void>(),
   supported: true,
 }))
 
@@ -86,7 +86,7 @@ describe('Player', () => {
 
     const onError = hls.on.mock.calls.find(([event]) => event === 'hlsError')?.[1]
     expect(onError).toBeTypeOf('function')
-    act(() => onError('hlsError', { fatal: true, type: 'networkError' }))
+    act(() => onError?.('hlsError', { fatal: true, type: 'networkError' }))
 
     expect(await screen.findByRole('alert')).toBeInTheDocument()
     expect(hls.destroy).toHaveBeenCalled()

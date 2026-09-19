@@ -51,7 +51,7 @@ export function TopBar() {
           onSignedOut={() => navigate({ to: '/login' })}
           onUnauthenticated={() => {
             session.markAnonymous()
-            navigate({ to: '/login' })
+            void navigate({ to: '/login' })
           }}
         />
       </div>

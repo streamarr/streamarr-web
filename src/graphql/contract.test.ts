@@ -4,6 +4,7 @@ import {
   buildSchema,
   concatAST,
   Kind,
+  OperationTypeNode,
   parse,
   validate,
   visit,
@@ -43,7 +44,10 @@ describe('the pinned GraphQL contract', () => {
 
   it.each(documents)('keeps $path to one root mutation field', ({ document }) => {
     for (const definition of document.definitions) {
-      if (definition.kind !== Kind.OPERATION_DEFINITION || definition.operation !== 'mutation') {
+      if (
+        definition.kind !== Kind.OPERATION_DEFINITION ||
+        definition.operation !== OperationTypeNode.MUTATION
+      ) {
         continue
       }
       const rootFields = definition.selectionSet.selections.filter(

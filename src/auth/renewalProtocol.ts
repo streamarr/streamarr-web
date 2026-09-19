@@ -1,7 +1,5 @@
 export type RenewalResult =
-  | { kind: 'renewed'; expiresAt: string }
-  | { kind: 'rejected' }
-  | { kind: 'unavailable' }
+  { kind: 'renewed'; expiresAt: string } | { kind: 'rejected' } | { kind: 'unavailable' }
 
 export function isRenewalResult(value: unknown): value is RenewalResult {
   if (typeof value !== 'object' || value === null || !('kind' in value)) {

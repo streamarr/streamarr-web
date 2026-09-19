@@ -11,3 +11,4 @@ blob-report/
 vite.config.*.timestamp-*
 .env
 .claude/worktrees/
+.scannerwork/

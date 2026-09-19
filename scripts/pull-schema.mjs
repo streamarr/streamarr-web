@@ -12,7 +12,9 @@ const target = join(root, 'src/graphql/schema')
 const treeUrl = `https://api.github.com/repos/${pin.repository}/git/trees/${pin.commit}?recursive=1`
 const tree = await fetchJson(treeUrl)
 if (tree.truncated) {
-  throw new Error(`Tree listing for ${pin.repository}@${pin.commit} was truncated; the schema would be incomplete`)
+  throw new Error(
+    `Tree listing for ${pin.repository}@${pin.commit} was truncated; the schema would be incomplete`,
+  )
 }
 const files = tree.tree
   .filter(
@@ -28,7 +30,9 @@ if (files.length === 0) {
   throw new Error(`No schema files found under ${pin.schemaDirectory} at ${pin.commit}`)
 }
 if (new Set(files.map((path) => basename(path))).size !== files.length) {
-  throw new Error(`Schema files under ${pin.schemaDirectory} share a name; they cannot be stored flat`)
+  throw new Error(
+    `Schema files under ${pin.schemaDirectory} share a name; they cannot be stored flat`,
+  )
 }
 
 // Start from an empty directory so files the server removed disappear here too.
@@ -43,4 +47,6 @@ await writeFile(
   join(target, 'PROVENANCE'),
   `${pin.repository}@${pin.commit}\n${files.length} files from ${pin.schemaDirectory}\n`,
 )
-console.log(`Wrote ${files.length} files to src/graphql/schema/ from ${pin.repository}@${pin.commit}`)
+console.log(
+  `Wrote ${files.length} files to src/graphql/schema/ from ${pin.repository}@${pin.commit}`,
+)
