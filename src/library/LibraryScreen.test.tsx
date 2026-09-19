@@ -12,7 +12,14 @@ import { LibraryScreen, type LibrarySearch } from './LibraryScreen'
 
 const LIBRARY_ID = '11111111-1111-1111-1111-111111111111'
 
-function movieNode(overrides: Partial<{ id: string; title: string; watchStatus: string; percentComplete: number | null }> = {}) {
+function movieNode(
+  overrides: Partial<{
+    id: string
+    title: string
+    watchStatus: string
+    percentComplete: number | null
+  }> = {},
+) {
   return {
     __typename: 'Movie' as const,
     id: overrides.id ?? '1',
@@ -27,11 +34,13 @@ function movieNode(overrides: Partial<{ id: string; title: string; watchStatus: 
   }
 }
 
-function libraryData(overrides: {
-  edges?: { cursor: string; node: ReturnType<typeof movieNode> }[]
-  hasNextPage?: boolean
-  scanCompletedOn?: string | null
-} = {}): LibraryPageQuery & { library: { __typename: 'Library' } } {
+function libraryData(
+  overrides: {
+    edges?: { cursor: string; node: ReturnType<typeof movieNode> }[]
+    hasNextPage?: boolean
+    scanCompletedOn?: string | null
+  } = {},
+): LibraryPageQuery & { library: { __typename: 'Library' } } {
   return {
     library: {
       __typename: 'Library',
@@ -49,8 +58,8 @@ function libraryData(overrides: {
         pageInfo: {
           hasNextPage: overrides.hasNextPage ?? false,
           hasPreviousPage: false,
-          startCursor: overrides.edges ? overrides.edges[0]?.cursor ?? null : 'c1',
-          endCursor: overrides.edges ? overrides.edges.at(-1)?.cursor ?? null : 'c1',
+          startCursor: overrides.edges ? (overrides.edges[0]?.cursor ?? null) : 'c1',
+          endCursor: overrides.edges ? (overrides.edges.at(-1)?.cursor ?? null) : 'c1',
         },
       },
     },
@@ -83,22 +92,43 @@ describe('LibraryScreen', () => {
   it.each([
     { by: 'ADDED', direction: 'DESC', letter: 'N' },
     { by: 'TITLE', direction: 'ASC', letter: 'N', watchStatus: 'UNWATCHED' },
-  ] satisfies LibrarySearch[])('ignores a hidden letter constraint in initial search state: %j', async (initialSearch) => {
-    server.use(graphql.query('LibraryPage', ({ variables }) => HttpResponse.json({ data: libraryData({
-      edges: variables.filter?.startLetter ? [] : [{ cursor: 'a', node: movieNode({ title: 'Available Alpha' }) }],
-    }) })))
-    renderWithProviders(<Harness initialSearch={initialSearch} />)
-    await screen.findByText('Available Alpha')
-    expect(screen.queryByRole('navigation', { name: 'Jump to letter' })).not.toBeInTheDocument()
-  })
+  ] satisfies LibrarySearch[])(
+    'ignores a hidden letter constraint in initial search state: %j',
+    async (initialSearch) => {
+      server.use(
+        graphql.query('LibraryPage', ({ variables }) =>
+          HttpResponse.json({
+            data: libraryData({
+              edges: variables.filter?.startLetter
+                ? []
+                : [{ cursor: 'a', node: movieNode({ title: 'Available Alpha' }) }],
+            }),
+          }),
+        ),
+      )
+      renderWithProviders(<Harness initialSearch={initialSearch} />)
+      await screen.findByText('Available Alpha')
+      expect(screen.queryByRole('navigation', { name: 'Jump to letter' })).not.toBeInTheDocument()
+    },
+  )
 
   it('shows matching earlier titles when a watch filter is applied after a letter jump', async () => {
-    server.use(graphql.query('LibraryPage', ({ variables }) => HttpResponse.json({ data: libraryData({
-      edges: variables.filter?.watchStatus
-        ? variables.filter.startLetter ? [] : [{ cursor: 'a', node: movieNode({ id: 'a', title: 'Alpha Unwatched' }) }]
-        : [{ cursor: 'n', node: movieNode({ id: 'n', title: 'Northern' }) }],
-    }) })))
-    const { user } = renderWithProviders(<Harness initialSearch={{ by: 'TITLE', direction: 'ASC', letter: 'N' }} />)
+    server.use(
+      graphql.query('LibraryPage', ({ variables }) =>
+        HttpResponse.json({
+          data: libraryData({
+            edges: variables.filter?.watchStatus
+              ? variables.filter.startLetter
+                ? []
+                : [{ cursor: 'a', node: movieNode({ id: 'a', title: 'Alpha Unwatched' }) }]
+              : [{ cursor: 'n', node: movieNode({ id: 'n', title: 'Northern' }) }],
+          }),
+        }),
+      ),
+    )
+    const { user } = renderWithProviders(
+      <Harness initialSearch={{ by: 'TITLE', direction: 'ASC', letter: 'N' }} />,
+    )
     await screen.findByText('Northern')
     await user.click(screen.getByRole('button', { name: 'Unwatched' }))
     await screen.findByText('Alpha Unwatched')
@@ -106,7 +136,9 @@ describe('LibraryScreen', () => {
   })
 
   it('shows an error state when the query fails', async () => {
-    server.use(graphql.query('LibraryPage', () => HttpResponse.json({ errors: [{ message: 'boom' }] })))
+    server.use(
+      graphql.query('LibraryPage', () => HttpResponse.json({ errors: [{ message: 'boom' }] })),
+    )
     renderWithProviders(<Harness />)
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
   })
@@ -124,7 +156,9 @@ describe('LibraryScreen', () => {
     server.use(
       graphql.query('LibraryPage', () =>
         HttpResponse.json({
-          data: libraryData({ edges: [{ cursor: 'c1', node: movieNode({ watchStatus: 'WATCHED' }) }] }),
+          data: libraryData({
+            edges: [{ cursor: 'c1', node: movieNode({ watchStatus: 'WATCHED' }) }],
+          }),
         }),
       ),
     )
@@ -133,13 +167,17 @@ describe('LibraryScreen', () => {
   })
 
   it('shows an empty state when no items match', async () => {
-    server.use(graphql.query('LibraryPage', () => HttpResponse.json({ data: libraryData({ edges: [] }) })))
+    server.use(
+      graphql.query('LibraryPage', () => HttpResponse.json({ data: libraryData({ edges: [] }) })),
+    )
     renderWithProviders(<Harness />)
     await waitFor(() => expect(screen.getByText('No items match this filter.')).toBeInTheDocument())
   })
 
   it('hides the alphabet rail under a watch-status filter, since alphabetIndex has no filter argument', async () => {
-    server.use(graphql.query('LibraryPage', () => HttpResponse.json({ data: libraryData({ edges: [] }) })))
+    server.use(
+      graphql.query('LibraryPage', () => HttpResponse.json({ data: libraryData({ edges: [] }) })),
+    )
     renderWithProviders(
       <Harness initialSearch={{ by: 'TITLE', direction: 'ASC', watchStatus: 'IN_PROGRESS' }} />,
     )
@@ -177,7 +215,9 @@ describe('LibraryScreen', () => {
     server.use(graphql.query('LibraryPage', () => HttpResponse.json({ data: libraryData() })))
     const onSearchChange = vi.fn()
     const user = userEvent.setup()
-    renderWithProviders(<Harness initialSearch={{ by: 'TITLE', direction: 'ASC' }} onSearchChange={onSearchChange} />)
+    renderWithProviders(
+      <Harness initialSearch={{ by: 'TITLE', direction: 'ASC' }} onSearchChange={onSearchChange} />,
+    )
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Movies' })).toBeInTheDocument())
 
     await user.click(screen.getByText('N'))
@@ -191,14 +231,21 @@ describe('LibraryScreen', () => {
     const onSearchChange = vi.fn()
     const user = userEvent.setup()
     renderWithProviders(
-      <Harness initialSearch={{ by: 'TITLE', direction: 'ASC', letter: 'N' }} onSearchChange={onSearchChange} />,
+      <Harness
+        initialSearch={{ by: 'TITLE', direction: 'ASC', letter: 'N' }}
+        onSearchChange={onSearchChange}
+      />,
     )
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Movies' })).toBeInTheDocument())
 
     await user.click(screen.getByRole('button', { name: /Sort:/ }))
     await user.click(screen.getByRole('menuitemradio', { name: 'Recently added' }))
 
-    expect(onSearchChange).toHaveBeenCalledWith({ by: 'ADDED', direction: 'DESC', letter: undefined })
+    expect(onSearchChange).toHaveBeenCalledWith({
+      by: 'ADDED',
+      direction: 'DESC',
+      letter: undefined,
+    })
   })
 
   it('updates the rail highlight from scroll position without issuing a new query', async () => {
@@ -221,7 +268,9 @@ describe('LibraryScreen', () => {
     const queriesAfterLoad = queryCount
 
     const observer = intersectionObserverInstances.find((instance) =>
-      instance.observe.mock.calls.some((call) => (call[0] as Element).textContent?.includes('Northern Line')),
+      instance.observe.mock.calls.some((call) =>
+        (call[0] as Element).textContent?.includes('Northern Line'),
+      ),
     )!
     const target = observer.observe.mock.calls.find((call) =>
       (call[0] as Element).textContent?.includes('Northern Line'),
@@ -236,40 +285,59 @@ describe('LibraryScreen', () => {
   it('does not apply an abandoned backward page measurement after changing the watch filter', async () => {
     const fetchMore = vi.spyOn(ObservableQuery.prototype, 'fetchMore')
     let release!: () => void
-    const pending = new Promise<void>((resolve) => { release = resolve })
+    const pending = new Promise<void>((resolve) => {
+      release = resolve
+    })
     let backwardRequested = false
-    server.use(graphql.query('LibraryPage', async ({ variables }) => {
-      if (variables.before) {
-        backwardRequested = true
-        await pending
-        return HttpResponse.json({ data: libraryData({
-          edges: [{ cursor: 'old', node: movieNode({ id: 'old', title: 'Old backfill' }) }],
-        }) })
-      }
-      if (variables.filter?.watchStatus) {
-        return HttpResponse.json({ data: libraryData({ edges: [
-          { cursor: 'a', node: movieNode({ id: 'a', title: 'Available Alpha' }) },
-          { cursor: 'z', node: movieNode({ id: 'z', title: 'Available Zeta' }) },
-        ] }) })
-      }
-      const data = libraryData({
-        edges: [{ cursor: 'n', node: movieNode({ id: 'n', title: 'Northern' }) }],
-      })
-      data.library.items.pageInfo.hasPreviousPage = true
-      return HttpResponse.json({ data })
-    }))
+    server.use(
+      graphql.query('LibraryPage', async ({ variables }) => {
+        if (variables.before) {
+          backwardRequested = true
+          await pending
+          return HttpResponse.json({
+            data: libraryData({
+              edges: [{ cursor: 'old', node: movieNode({ id: 'old', title: 'Old backfill' }) }],
+            }),
+          })
+        }
+        if (variables.filter?.watchStatus) {
+          return HttpResponse.json({
+            data: libraryData({
+              edges: [
+                { cursor: 'a', node: movieNode({ id: 'a', title: 'Available Alpha' }) },
+                { cursor: 'z', node: movieNode({ id: 'z', title: 'Available Zeta' }) },
+              ],
+            }),
+          })
+        }
+        const data = libraryData({
+          edges: [{ cursor: 'n', node: movieNode({ id: 'n', title: 'Northern' }) }],
+        })
+        data.library.items.pageInfo.hasPreviousPage = true
+        return HttpResponse.json({ data })
+      }),
+    )
     // jsdom has no layout: model the new result as taller than the old measured grid.
-    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function (this: HTMLElement) {
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function (
+      this: HTMLElement,
+    ) {
       return this.textContent?.includes('Available Alpha') ? 700 : 300
     })
-    const { user } = renderWithProviders(<Harness initialSearch={{ by: 'TITLE', direction: 'ASC', letter: 'N' }} />)
+    const { user } = renderWithProviders(
+      <Harness initialSearch={{ by: 'TITLE', direction: 'ASC', letter: 'N' }} />,
+    )
     await screen.findByText('Northern')
     const oldGrid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
     const sentinel = oldGrid.firstElementChild!
     const observer = intersectionObserverInstances.find((instance) =>
       instance.observe.mock.calls.some((call) => call[0] === sentinel),
     )!
-    act(() => observer.callback([{ target: sentinel, isIntersecting: true } as IntersectionObserverEntry], observer))
+    act(() =>
+      observer.callback(
+        [{ target: sentinel, isIntersecting: true } as IntersectionObserverEntry],
+        observer,
+      ),
+    )
     await waitFor(() => expect(backwardRequested).toBe(true))
     const backwardCompletion = fetchMore.mock.results[0].value
 
@@ -310,7 +378,12 @@ describe('LibraryScreen', () => {
               ...libraryData().library,
               items: {
                 edges: [{ cursor: 'c1', node: movieNode({ id: '1', title: 'Beta' }) }],
-                pageInfo: { hasNextPage: false, hasPreviousPage: true, startCursor: 'c1', endCursor: 'c1' },
+                pageInfo: {
+                  hasNextPage: false,
+                  hasPreviousPage: true,
+                  startCursor: 'c1',
+                  endCursor: 'c1',
+                },
               },
             },
           },
@@ -332,7 +405,10 @@ describe('LibraryScreen', () => {
     const observer = intersectionObserverInstances.find((instance) =>
       instance.observe.mock.calls.some((call) => call[0] === sentinel),
     )!
-    observer.callback([{ target: sentinel, isIntersecting: true } as unknown as IntersectionObserverEntry], observer)
+    observer.callback(
+      [{ target: sentinel, isIntersecting: true } as unknown as IntersectionObserverEntry],
+      observer,
+    )
 
     await waitFor(() => expect(screen.getByText('Aardvark')).toBeInTheDocument())
     // scrollTop should track the 400px of growth exactly.
@@ -358,8 +434,15 @@ describe('LibraryScreen', () => {
               library: {
                 ...libraryData().library,
                 items: {
-                  edges: [{ cursor: 'c-northern', node: movieNode({ id: 'n', title: 'Northern Line' }) }],
-                  pageInfo: { hasNextPage: false, hasPreviousPage: true, startCursor: 'c-northern', endCursor: 'c-northern' },
+                  edges: [
+                    { cursor: 'c-northern', node: movieNode({ id: 'n', title: 'Northern Line' }) },
+                  ],
+                  pageInfo: {
+                    hasNextPage: false,
+                    hasPreviousPage: true,
+                    startCursor: 'c-northern',
+                    endCursor: 'c-northern',
+                  },
                 },
               },
             },
@@ -377,7 +460,9 @@ describe('LibraryScreen', () => {
     await waitFor(() => expect(screen.getByText('Alright')).toBeInTheDocument())
     expect(screen.getByText('Northern Line')).toBeInTheDocument()
     // The alphabet button is also revealed within its scrollable rail.
-    const scrolledText = scrollIntoView.mock.instances.map((element) => (element as Element).textContent)
+    const scrolledText = scrollIntoView.mock.instances.map(
+      (element) => (element as Element).textContent,
+    )
     expect(scrolledText).toContainEqual(expect.stringContaining('Northern Line'))
     expect(scrolledText).not.toContainEqual(expect.stringContaining('Alright'))
   })

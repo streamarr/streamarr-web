@@ -12,7 +12,13 @@ const SORT_OPTIONS: { by: OrderMediaBy; direction: SortDirection; label: string 
   { by: 'LAST_WATCHED', direction: 'DESC', label: 'Last watched' },
 ]
 
-export function SortMenu({ sort, onChange }: { sort: MediaSort; onChange: (sort: MediaSort) => void }) {
+export function SortMenu({
+  sort,
+  onChange,
+}: {
+  sort: MediaSort
+  onChange: (sort: MediaSort) => void
+}) {
   const [opened, setOpened] = useState(false)
   const anchor = useRef<HTMLDivElement>(null)
   const menuId = useId()
@@ -59,7 +65,9 @@ export function SortMenu({ sort, onChange }: { sort: MediaSort; onChange: (sort:
               type="button"
               role="menuitemradio"
               aria-checked={option.by === sort.by}
-              className={option.by === sort.by ? `${styles.item} ${styles.itemActive}` : styles.item}
+              className={
+                option.by === sort.by ? `${styles.item} ${styles.itemActive}` : styles.item
+              }
               onClick={() => {
                 onChange({ by: option.by, direction: option.direction })
                 setOpened(false)

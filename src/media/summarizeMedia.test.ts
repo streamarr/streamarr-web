@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import type { MediaSummaryFieldsFragment } from '../graphql/generated/graphql'
 import { summarizeMedia, summaryLetter } from './summarizeMedia'
 
-function movie(overrides: Partial<Extract<MediaSummaryFieldsFragment, { __typename: 'Movie' }>> = {}) {
+function movie(
+  overrides: Partial<Extract<MediaSummaryFieldsFragment, { __typename: 'Movie' }>> = {},
+) {
   return {
     __typename: 'Movie',
     id: 'movie-1',
@@ -17,7 +19,9 @@ function movie(overrides: Partial<Extract<MediaSummaryFieldsFragment, { __typena
   } satisfies Extract<MediaSummaryFieldsFragment, { __typename: 'Movie' }>
 }
 
-function series(overrides: Partial<Extract<MediaSummaryFieldsFragment, { __typename: 'Series' }>> = {}) {
+function series(
+  overrides: Partial<Extract<MediaSummaryFieldsFragment, { __typename: 'Series' }>> = {},
+) {
   return {
     __typename: 'Series',
     id: 'series-1',

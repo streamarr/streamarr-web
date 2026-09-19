@@ -7,7 +7,9 @@ type RecentlyAddedNode = NonNullable<
   NonNullable<HomeQuery['libraries'][number]['items']['edges']>[number]
 >['node']
 
-function continueWatchingMovie(overrides: Record<string, unknown> = {}): Extract<ContinueWatchingItem, { __typename: 'Movie' }> {
+function continueWatchingMovie(
+  overrides: Record<string, unknown> = {},
+): Extract<ContinueWatchingItem, { __typename: 'Movie' }> {
   return {
     __typename: 'Movie',
     id: 'movie-1',
@@ -17,14 +19,24 @@ function continueWatchingMovie(overrides: Record<string, unknown> = {}): Extract
     runtime: 142,
     createdOn: '2026-08-26T12:00:00Z',
     genres: [{ id: 'g1', name: 'Drama' }],
-    images: [{ aspectRatio: 1.78, blurHash: 'HASH', variants: [{ id: 'v1', size: 'LARGE', width: 1920, height: 1080, url: 'movie-backdrop.jpg' }] }],
+    images: [
+      {
+        aspectRatio: 1.78,
+        blurHash: 'HASH',
+        variants: [
+          { id: 'v1', size: 'LARGE', width: 1920, height: 1080, url: 'movie-backdrop.jpg' },
+        ],
+      },
+    ],
     watchProgress: null,
     files: [{ id: 'file-1' }],
     ...overrides,
   } as Extract<ContinueWatchingItem, { __typename: 'Movie' }>
 }
 
-function continueWatchingEpisode(overrides: Record<string, unknown> = {}): Extract<ContinueWatchingItem, { __typename: 'Episode' }> {
+function continueWatchingEpisode(
+  overrides: Record<string, unknown> = {},
+): Extract<ContinueWatchingItem, { __typename: 'Episode' }> {
   return {
     __typename: 'Episode',
     id: 'episode-1',
@@ -46,14 +58,24 @@ function continueWatchingEpisode(overrides: Record<string, unknown> = {}): Extra
         createdOn: '2026-08-27T09:00:00Z',
         genres: [{ id: 'g2', name: 'Crime' }],
         seasons: [{ id: 's1' }, { id: 's2' }, { id: 's3' }, { id: 's4' }],
-        images: [{ aspectRatio: 1.78, blurHash: 'SERIESHASH', variants: [{ id: 'v2', size: 'LARGE', width: 1920, height: 1080, url: 'series-backdrop.jpg' }] }],
+        images: [
+          {
+            aspectRatio: 1.78,
+            blurHash: 'SERIESHASH',
+            variants: [
+              { id: 'v2', size: 'LARGE', width: 1920, height: 1080, url: 'series-backdrop.jpg' },
+            ],
+          },
+        ],
       },
     },
     ...overrides,
   } as Extract<ContinueWatchingItem, { __typename: 'Episode' }>
 }
 
-function recentMovie(overrides: Record<string, unknown> = {}): Extract<RecentlyAddedNode, { __typename: 'Movie' }> {
+function recentMovie(
+  overrides: Record<string, unknown> = {},
+): Extract<RecentlyAddedNode, { __typename: 'Movie' }> {
   return {
     __typename: 'Movie',
     id: 'movie-2',
@@ -69,7 +91,15 @@ function recentMovie(overrides: Record<string, unknown> = {}): Extract<RecentlyA
     createdOn: '2026-08-28T00:00:00Z',
     genres: [{ id: 'g1', name: 'Drama' }],
     files: [{ id: 'file-3' }],
-    backdropImages: [{ aspectRatio: 1.78, blurHash: 'HASH2', variants: [{ id: 'v3', size: 'LARGE', width: 1920, height: 1080, url: 'recent-backdrop.jpg' }] }],
+    backdropImages: [
+      {
+        aspectRatio: 1.78,
+        blurHash: 'HASH2',
+        variants: [
+          { id: 'v3', size: 'LARGE', width: 1920, height: 1080, url: 'recent-backdrop.jpg' },
+        ],
+      },
+    ],
     ...overrides,
   } as Extract<RecentlyAddedNode, { __typename: 'Movie' }>
 }
@@ -89,7 +119,9 @@ describe('billboardFromContinueWatching', () => {
 
   it('maps a Movie in progress to a "Continue" CTA', () => {
     const content = billboardFromContinueWatching(
-      continueWatchingMovie({ watchProgress: { positionSeconds: 10, percentComplete: 5, durationSeconds: 100 } }),
+      continueWatchingMovie({
+        watchProgress: { positionSeconds: 10, percentComplete: 5, durationSeconds: 100 },
+      }),
     )
     expect(content.ctaLabel).toBe('Continue')
   })

@@ -22,13 +22,21 @@ function LibraryRoute() {
     <LibraryScreen
       libraryId={libraryId}
       search={search}
-      onSearchChange={(next) => navigate({ to: '/library/$libraryId', params: { libraryId }, search: next })}
+      onSearchChange={(next) =>
+        navigate({ to: '/library/$libraryId', params: { libraryId }, search: next })
+      }
     />
   )
 }
 
 function isOrderMediaBy(value: unknown): value is LibrarySearch['by'] {
-  return value === 'TITLE' || value === 'ADDED' || value === 'RELEASE_DATE' || value === 'RUNTIME' || value === 'LAST_WATCHED'
+  return (
+    value === 'TITLE' ||
+    value === 'ADDED' ||
+    value === 'RELEASE_DATE' ||
+    value === 'RUNTIME' ||
+    value === 'LAST_WATCHED'
+  )
 }
 
 function isSortDirection(value: unknown): value is LibrarySearch['direction'] {

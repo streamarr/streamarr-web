@@ -37,7 +37,8 @@ describe('decodeBlurHashToDataUrl', () => {
   it('releases old placeholders after browsing more than 512 unique images', () => {
     let serial = 0
     toDataURL.mockImplementation(() => `data:image/png;base64,render-${++serial}`)
-    const hash = (index: number) => `${HASH_DECODE.slice(0, 2)}${index.toString(36).padStart(4, '0')}${HASH_DECODE.slice(6)}`
+    const hash = (index: number) =>
+      `${HASH_DECODE.slice(0, 2)}${index.toString(36).padStart(4, '0')}${HASH_DECODE.slice(6)}`
     const oldest = decodeBlurHashToDataUrl(hash(0))
     let newest: string | null = null
     for (let index = 1; index <= 512; index += 1) {

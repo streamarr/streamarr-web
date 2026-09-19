@@ -36,9 +36,13 @@ test('the signed-in home fits a phone', async ({ page }) => {
   await navigateUnderServiceWorkerControl(page, '/')
 
   await expect(page.getByText('Nothing to watch yet.')).toBeVisible({ timeout: 15_000 })
-  await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'TV Series' })).toBeAttached()
+  await expect(
+    page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'TV Series' }),
+  ).toBeAttached()
   await expect(page.getByRole('button', { name: /Profile menu/ })).toBeInViewport({ ratio: 1 })
-  const lastLibrary = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'TV Series' })
+  const lastLibrary = page
+    .getByRole('navigation', { name: 'Primary' })
+    .getByRole('link', { name: 'TV Series' })
   await lastLibrary.focus()
   // Scroll containers round their pixel offsets; allow a subpixel clipped edge.
   await expect(lastLibrary).toBeInViewport({ ratio: 0.99 })

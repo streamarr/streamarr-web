@@ -7,8 +7,18 @@ import { server } from '../test/server'
 
 const ME = meFixture({ scope: 'profile' })
 const LIBRARIES = [
-  { __typename: 'Library' as const, id: '11111111-1111-1111-1111-111111111111', name: 'Movies', type: 'MOVIE' as const },
-  { __typename: 'Library' as const, id: '22222222-2222-2222-2222-222222222222', name: 'Series', type: 'SERIES' as const },
+  {
+    __typename: 'Library' as const,
+    id: '11111111-1111-1111-1111-111111111111',
+    name: 'Movies',
+    type: 'MOVIE' as const,
+  },
+  {
+    __typename: 'Library' as const,
+    id: '22222222-2222-2222-2222-222222222222',
+    name: 'Series',
+    type: 'SERIES' as const,
+  },
 ]
 
 function serveMe() {
@@ -18,7 +28,9 @@ function serveMe() {
 describe('TopBar', () => {
   it('renders a pill for Home plus one per library', async () => {
     serveMe()
-    server.use(graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: LIBRARIES } })))
+    server.use(
+      graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: LIBRARIES } })),
+    )
     renderAppAt('/')
 
     expect(await screen.findByRole('link', { name: 'Movies' })).toBeInTheDocument()
@@ -28,7 +40,9 @@ describe('TopBar', () => {
 
   it('marks the Home pill active at /', async () => {
     serveMe()
-    server.use(graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: LIBRARIES } })))
+    server.use(
+      graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: LIBRARIES } })),
+    )
     renderAppAt('/')
 
     await waitFor(() => expect(screen.getByRole('link', { name: 'Movies' })).toBeInTheDocument())
@@ -49,7 +63,15 @@ describe('TopBar', () => {
               status: 'HEALTHY',
               scanCompletedOn: null,
               alphabetIndex: [],
-              items: { edges: [], pageInfo: { hasNextPage: false, hasPreviousPage: false, startCursor: null, endCursor: null } },
+              items: {
+                edges: [],
+                pageInfo: {
+                  hasNextPage: false,
+                  hasPreviousPage: false,
+                  startCursor: null,
+                  endCursor: null,
+                },
+              },
             },
           },
         }),
@@ -66,7 +88,9 @@ describe('TopBar', () => {
     serveMe()
     server.use(
       graphql.query('Libraries', () =>
-        HttpResponse.json({ data: { libraries: [{ __typename: 'Library', id: 'x', name: null, type: 'MOVIE' }] } }),
+        HttpResponse.json({
+          data: { libraries: [{ __typename: 'Library', id: 'x', name: null, type: 'MOVIE' }] },
+        }),
       ),
     )
     renderAppAt('/')
@@ -78,7 +102,9 @@ describe('TopBar', () => {
     serveMe()
     server.use(
       graphql.query('Libraries', () => HttpResponse.json({ errors: [{ message: 'boom' }] })),
-      graphql.query('Home', () => HttpResponse.json({ data: { continueWatching: [], libraries: [] } })),
+      graphql.query('Home', () =>
+        HttpResponse.json({ data: { continueWatching: [], libraries: [] } }),
+      ),
     )
     renderAppAt('/')
 

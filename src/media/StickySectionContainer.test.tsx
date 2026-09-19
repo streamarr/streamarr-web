@@ -5,7 +5,10 @@ import { StickySectionContainer } from './StickySectionContainer'
 describe('StickySectionContainer', () => {
   it('renders the title, the action slot, and children inside the scroll region', () => {
     render(
-      <StickySectionContainer title="Recently added in Movies" action={<a href="/library/1">See all</a>}>
+      <StickySectionContainer
+        title="Recently added in Movies"
+        action={<a href="/library/1">See all</a>}
+      >
         <div>Poster grid</div>
       </StickySectionContainer>,
     )

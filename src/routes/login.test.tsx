@@ -14,7 +14,9 @@ function serverAcceptsCredentials(scope: 'account' | 'profile') {
     ),
     graphql.query('Me', () => HttpResponse.json({ data: { me: { ...ME, scope } } })),
     graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
-    graphql.query('Home', () => HttpResponse.json({ data: { continueWatching: [], libraries: [] } })),
+    graphql.query('Home', () =>
+      HttpResponse.json({ data: { continueWatching: [], libraries: [] } }),
+    ),
   )
 }
 
@@ -29,7 +31,9 @@ describe('/login gate', () => {
     server.use(
       graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
       graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
-      graphql.query('Home', () => HttpResponse.json({ data: { continueWatching: [], libraries: [] } })),
+      graphql.query('Home', () =>
+        HttpResponse.json({ data: { continueWatching: [], libraries: [] } }),
+      ),
     )
     const { router } = renderAppAt('/')
     await screen.findByRole('banner')

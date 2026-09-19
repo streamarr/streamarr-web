@@ -39,7 +39,10 @@ function libraryResponse(overrides: {
       name: 'Movies',
       status: 'HEALTHY',
       scanCompletedOn: '2026-08-28T11:00:00Z',
-      alphabetIndex: [{ letter: 'A', count: 1 }, { letter: 'N', count: 1 }],
+      alphabetIndex: [
+        { letter: 'A', count: 1 },
+        { letter: 'N', count: 1 },
+      ],
       items: {
         edges: overrides.edges,
         pageInfo: {
@@ -90,7 +93,11 @@ describe('useLibraryItems', () => {
   it('lands on a rendered item when the seek page starts with missing media', async () => {
     const response = libraryResponse({ edges: [{ cursor: 'o', node: movieNode('o', 'Ocean') }] })
     // The first N item no longer resolves; the seek continues at the next available title.
-    response.library.items.edges = [null, { cursor: 'missing-n', node: null }, ...response.library.items.edges!]
+    response.library.items.edges = [
+      null,
+      { cursor: 'missing-n', node: null },
+      ...response.library.items.edges!,
+    ]
     server.use(graphql.query('LibraryPage', () => HttpResponse.json({ data: response })))
     renderWithProviders(<Harness initialFilter={{ startLetter: 'N' }} />)
     await screen.findByText('Ocean')
@@ -98,13 +105,21 @@ describe('useLibraryItems', () => {
   })
 
   it('returns to the requested letter after revisiting a cached, backfilled page', async () => {
-    server.use(graphql.query('LibraryPage', ({ variables }) => {
-      const title = variables.before ? 'Middle' : variables.filter?.startLetter === 'N' ? 'Northern' : 'Alpha'
-      return HttpResponse.json({ data: libraryResponse({
-        edges: [{ cursor: title, node: movieNode(title, title) }],
-        hasPreviousPage: title === 'Northern',
-      }) })
-    }))
+    server.use(
+      graphql.query('LibraryPage', ({ variables }) => {
+        const title = variables.before
+          ? 'Middle'
+          : variables.filter?.startLetter === 'N'
+            ? 'Northern'
+            : 'Alpha'
+        return HttpResponse.json({
+          data: libraryResponse({
+            edges: [{ cursor: title, node: movieNode(title, title) }],
+            hasPreviousPage: title === 'Northern',
+          }),
+        })
+      }),
+    )
     const { user } = renderWithProviders(<Harness />)
     await screen.findByText('Alpha', { selector: 'li' })
     await user.click(screen.getByText('Jump to N'))
@@ -116,38 +131,51 @@ describe('useLibraryItems', () => {
     expect(screen.getByTestId('scrollTarget')).toHaveTextContent('Northern')
   })
 
-  it.each(['forward', 'backward'])('ignores a %s page from the old filter after switching to Unwatched', async (direction) => {
-    let release!: () => void
-    const pending = new Promise<void>((resolve) => { release = resolve })
-    let requested = false
-    server.use(graphql.query('LibraryPage', async ({ variables }) => {
-      if (variables.after || variables.before) {
-        requested = true
-        await pending
-        return HttpResponse.json({ data: libraryResponse({
-          edges: [{ cursor: 'old', node: movieNode('old', 'Old filtered-out title') }],
-        }) })
-      }
-      return HttpResponse.json({ data: libraryResponse({
-        edges: variables.filter?.watchStatus
-          ? [{ cursor: 'unwatched', node: movieNode('unwatched', 'Unwatched title') }]
-          : [{ cursor: 'first', node: movieNode('first', 'First page') }],
-        hasNextPage: !variables.filter?.watchStatus && direction === 'forward',
-        hasPreviousPage: !variables.filter?.watchStatus && direction === 'backward',
-      }) })
-    }))
-    const { user } = renderWithProviders(<Harness />)
-    await screen.findByText('First page')
-    await user.click(screen.getByText(direction === 'forward' ? 'Load more' : 'Load previous'))
-    await waitFor(() => expect(requested).toBe(true))
-    await user.click(screen.getByText('Unwatched only'))
-    await screen.findByText('Unwatched title')
-    await act(async () => {
-      release()
-      await new Promise((resolve) => setTimeout(resolve, 100))
-    })
-    expect(screen.getAllByRole('listitem').map((item) => item.textContent)).toEqual(['Unwatched title'])
-  })
+  it.each(['forward', 'backward'])(
+    'ignores a %s page from the old filter after switching to Unwatched',
+    async (direction) => {
+      let release!: () => void
+      const pending = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      let requested = false
+      server.use(
+        graphql.query('LibraryPage', async ({ variables }) => {
+          if (variables.after || variables.before) {
+            requested = true
+            await pending
+            return HttpResponse.json({
+              data: libraryResponse({
+                edges: [{ cursor: 'old', node: movieNode('old', 'Old filtered-out title') }],
+              }),
+            })
+          }
+          return HttpResponse.json({
+            data: libraryResponse({
+              edges: variables.filter?.watchStatus
+                ? [{ cursor: 'unwatched', node: movieNode('unwatched', 'Unwatched title') }]
+                : [{ cursor: 'first', node: movieNode('first', 'First page') }],
+              hasNextPage: !variables.filter?.watchStatus && direction === 'forward',
+              hasPreviousPage: !variables.filter?.watchStatus && direction === 'backward',
+            }),
+          })
+        }),
+      )
+      const { user } = renderWithProviders(<Harness />)
+      await screen.findByText('First page')
+      await user.click(screen.getByText(direction === 'forward' ? 'Load more' : 'Load previous'))
+      await waitFor(() => expect(requested).toBe(true))
+      await user.click(screen.getByText('Unwatched only'))
+      await screen.findByText('Unwatched title')
+      await act(async () => {
+        release()
+        await new Promise((resolve) => setTimeout(resolve, 100))
+      })
+      expect(screen.getAllByRole('listitem').map((item) => item.textContent)).toEqual([
+        'Unwatched title',
+      ])
+    },
+  )
 
   it('loads the initial page', async () => {
     server.use(
@@ -335,7 +363,9 @@ describe('useLibraryItems', () => {
         if (variables.before) {
           backwardFetches += 1
           return HttpResponse.json({
-            data: libraryResponse({ edges: [{ cursor: 'c-dup', node: movieNode('dup', 'Should Not Appear') }] }),
+            data: libraryResponse({
+              edges: [{ cursor: 'c-dup', node: movieNode('dup', 'Should Not Appear') }],
+            }),
           })
         }
         if (variables.after) {
@@ -376,7 +406,9 @@ describe('useLibraryItems', () => {
       graphql.query('LibraryPage', ({ variables }) => {
         if (variables.filter?.watchStatus === 'UNWATCHED') {
           return HttpResponse.json({
-            data: libraryResponse({ edges: [{ cursor: 'c-u', node: movieNode('5', 'Unwatched Title') }] }),
+            data: libraryResponse({
+              edges: [{ cursor: 'c-u', node: movieNode('5', 'Unwatched Title') }],
+            }),
           })
         }
         if (variables.after) {

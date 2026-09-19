@@ -15,7 +15,10 @@ describe('SortMenu', () => {
 
     await user.click(screen.getByRole('button', { name: 'Sort: Recently added' }))
 
-    expect(screen.getByRole('menuitemradio', { name: 'Recently added' })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByRole('menuitemradio', { name: 'Recently added' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    )
     expect(screen.getByRole('menuitemradio', { name: 'Title' })).toBeInTheDocument()
     expect(screen.getByRole('menuitemradio', { name: 'Release date' })).toBeInTheDocument()
     expect(screen.getByRole('menuitemradio', { name: 'Runtime' })).toBeInTheDocument()

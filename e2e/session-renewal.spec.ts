@@ -37,7 +37,11 @@ test('an expired session renews and replays into the signed-in shell', async ({ 
   await navigateUnderServiceWorkerControl(page)
 
   await expect(page.getByText('Nothing to watch yet.')).toBeVisible()
-  await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Movies', exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Primary' })
+      .getByRole('link', { name: 'Movies', exact: true }),
+  ).toBeVisible()
   await expect(page.getByRole('alert')).toHaveCount(0)
 })
 

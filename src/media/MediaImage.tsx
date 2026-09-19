@@ -22,7 +22,13 @@ export function MediaImage({
   return (
     <div className={className ? `${styles.mediaImage} ${className}` : styles.mediaImage}>
       {placeholder && !loaded && (
-        <img src={placeholder} alt="" aria-hidden data-testid="blur-placeholder" className={styles.placeholder} />
+        <img
+          src={placeholder}
+          alt=""
+          aria-hidden
+          data-testid="blur-placeholder"
+          className={styles.placeholder}
+        />
       )}
       {image && (
         <img

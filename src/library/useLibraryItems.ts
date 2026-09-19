@@ -1,6 +1,11 @@
 import { useQuery } from '@apollo/client/react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { LibraryPageDocument, type LibraryPageQuery, type MediaFilter, type MediaSort } from '../graphql/generated/graphql'
+import {
+  LibraryPageDocument,
+  type LibraryPageQuery,
+  type MediaFilter,
+  type MediaSort,
+} from '../graphql/generated/graphql'
 import { definedEdges } from '../media/edges'
 import { alphabetLetterFromTitle } from '../media/alphabetLetter'
 
@@ -25,13 +30,22 @@ export function useLibraryItems({
   // Each committed query owns its in-flight pages. Apollo applies updateQuery to the current
   // variables, so a response from an earlier query must not write into the new result.
   const requestScope = useMemo(
-    () => ({ active: false, fetchingNext: false, previousRequest: null as Promise<string | null> | null }),
+    () => ({
+      active: false,
+      fetchingNext: false,
+      previousRequest: null as Promise<string | null> | null,
+    }),
     [libraryId, JSON.stringify(sort), JSON.stringify(filter)],
   )
-  useLayoutEffect(function activateCommittedQuery() {
-    requestScope.active = true
-    return () => { requestScope.active = false }
-  }, [requestScope])
+  useLayoutEffect(
+    function activateCommittedQuery() {
+      requestScope.active = true
+      return () => {
+        requestScope.active = false
+      }
+    },
+    [requestScope],
+  )
 
   const [centering, setCentering] = useState(false)
   const [landing, setLanding] = useState<{
@@ -41,33 +55,37 @@ export function useLibraryItems({
   } | null>(null)
   const previousLetterRef = useRef<typeof letter>(undefined as unknown as typeof letter)
 
-  useEffect(function beginLetterJump() {
-    const previousLetter = previousLetterRef.current
-    previousLetterRef.current = letter
-    if (letter && letter !== previousLetter) {
-      setCentering(true)
-    }
-  }, [letter])
+  useEffect(
+    function beginLetterJump() {
+      const previousLetter = previousLetterRef.current
+      previousLetterRef.current = letter
+      if (letter && letter !== previousLetter) {
+        setCentering(true)
+      }
+    },
+    [letter],
+  )
 
-  useEffect(function loadPrecedingPageForLetterJump() {
-    if (!centering || loading || !pageInfo) {
-      return
-    }
-    setCentering(false)
-    const target = findLetterLandingCursor(data?.library.items.edges, letter)
-    const revealLanding = (precedingCursor?: string | null) => {
-      if (requestScope.active) setLanding({ cursor: target, precedingCursor, scope: requestScope })
-    }
-    const previousPage = loadPrevious()
-    if (previousPage) {
-      void previousPage.then(
-        revealLanding,
-        () => revealLanding(),
-      )
-    } else {
-      revealLanding()
-    }
-  }, [centering, loading, pageInfo])
+  useEffect(
+    function loadPrecedingPageForLetterJump() {
+      if (!centering || loading || !pageInfo) {
+        return
+      }
+      setCentering(false)
+      const target = findLetterLandingCursor(data?.library.items.edges, letter)
+      const revealLanding = (precedingCursor?: string | null) => {
+        if (requestScope.active)
+          setLanding({ cursor: target, precedingCursor, scope: requestScope })
+      }
+      const previousPage = loadPrevious()
+      if (previousPage) {
+        void previousPage.then(revealLanding, () => revealLanding())
+      } else {
+        revealLanding()
+      }
+    },
+    [centering, loading, pageInfo],
+  )
 
   function loadMore() {
     if (!requestScope.active || !pageInfo?.hasNextPage || requestScope.fetchingNext) {
@@ -85,13 +103,15 @@ export function useLibraryItems({
         sort,
         filter,
       },
-      updateQuery: (previous, { fetchMoreResult }) => !requestScope.active ||
-        previous.library.items.pageInfo.endCursor !== pageInfo.endCursor ? previous : ({
-        library: {
-          ...fetchMoreResult.library,
-          items: appendItemsPage(previous.library.items, fetchMoreResult.library.items),
-        },
-      }),
+      updateQuery: (previous, { fetchMoreResult }) =>
+        !requestScope.active || previous.library.items.pageInfo.endCursor !== pageInfo.endCursor
+          ? previous
+          : {
+              library: {
+                ...fetchMoreResult.library,
+                items: appendItemsPage(previous.library.items, fetchMoreResult.library.items),
+              },
+            },
     }).finally(() => {
       requestScope.fetchingNext = false
     })
@@ -115,16 +135,20 @@ export function useLibraryItems({
         sort,
         filter: continuationFilter,
       },
-      updateQuery: (previous, { fetchMoreResult }) => !requestScope.active ||
-        previous.library.items.pageInfo.startCursor !== pageInfo.startCursor ? previous : ({
-        library: {
-          ...fetchMoreResult.library,
-          items: prependItemsPage(previous.library.items, fetchMoreResult.library.items),
-        },
-      }),
-    }).then((result) => result.data?.library.items.pageInfo.startCursor ?? null).finally(() => {
-      requestScope.previousRequest = null
+      updateQuery: (previous, { fetchMoreResult }) =>
+        !requestScope.active || previous.library.items.pageInfo.startCursor !== pageInfo.startCursor
+          ? previous
+          : {
+              library: {
+                ...fetchMoreResult.library,
+                items: prependItemsPage(previous.library.items, fetchMoreResult.library.items),
+              },
+            },
     })
+      .then((result) => result.data?.library.items.pageInfo.startCursor ?? null)
+      .finally(() => {
+        requestScope.previousRequest = null
+      })
     return requestScope.previousRequest
   }
 
@@ -135,7 +159,8 @@ export function useLibraryItems({
   function getReadyScrollTarget() {
     if (!landing || landing.scope !== requestScope) return null
     // A completed request may still be waiting for its rows to render.
-    const precedingPageHasRendered = !landing.precedingCursor ||
+    const precedingPageHasRendered =
+      !landing.precedingCursor ||
       data?.library.items.edges?.some((edge) => edge?.cursor === landing.precedingCursor)
     return precedingPageHasRendered ? landing.cursor : null
   }
@@ -156,8 +181,9 @@ export function useLibraryItems({
 
 function findLetterLandingCursor(edges: LibraryItems['edges'] | undefined, letter: string | null) {
   const resolvedEdges = definedEdges(edges)
-  const landingEdge = resolvedEdges.find((edge) =>
-    alphabetLetterFromTitle(edge.node.titleSort ?? edge.node.title ?? '') === letter)
+  const landingEdge = resolvedEdges.find(
+    (edge) => alphabetLetterFromTitle(edge.node.titleSort ?? edge.node.title ?? '') === letter,
+  )
   return (landingEdge ?? resolvedEdges[0])?.cursor ?? null
 }
 

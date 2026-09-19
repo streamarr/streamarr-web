@@ -25,7 +25,9 @@ export function AlphabetRail({
           key={entry.letter}
           ref={entry.letter === selected ? selectedCell : undefined}
           type="button"
-          className={entry.letter === selected ? `${styles.cell} ${styles.cellSelected}` : styles.cell}
+          className={
+            entry.letter === selected ? `${styles.cell} ${styles.cellSelected}` : styles.cell
+          }
           aria-pressed={entry.letter === selected}
           onClick={() => onSelect(entry.letter === selected ? null : entry.letter)}
         >

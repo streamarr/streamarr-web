@@ -20,7 +20,10 @@ describe('pickImageVariant', () => {
   })
 
   it('ignores null entries in the variants list', () => {
-    const withNulls = { aspectRatio: 2, variants: [null, { size: 'MEDIUM', url: 'medium.jpg' }, null] }
+    const withNulls = {
+      aspectRatio: 2,
+      variants: [null, { size: 'MEDIUM', url: 'medium.jpg' }, null],
+    }
     expect(pickImageVariant(withNulls, 'MEDIUM')).toEqual({ url: 'medium.jpg', aspectRatio: 2 })
   })
 

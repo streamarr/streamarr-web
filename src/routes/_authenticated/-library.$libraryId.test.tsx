@@ -19,13 +19,20 @@ function libraryData() {
       alphabetIndex: [{ letter: 'A', count: 1 }],
       items: {
         edges: [],
-        pageInfo: { hasNextPage: false, hasPreviousPage: false, startCursor: null, endCursor: null },
+        pageInfo: {
+          hasNextPage: false,
+          hasPreviousPage: false,
+          startCursor: null,
+          endCursor: null,
+        },
       },
     },
   }
 }
 
-function mockLibraryPage(capture: { libraryId?: string; sort?: MediaSort; filter?: MediaFilter }[]) {
+function mockLibraryPage(
+  capture: { libraryId?: string; sort?: MediaSort; filter?: MediaFilter }[],
+) {
   server.use(
     graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
     graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),

@@ -7,8 +7,14 @@ describe('FilterBar', () => {
   it('renders the three chips and the showing count', () => {
     render(<FilterBar status="ALL" onChange={() => {}} showing="Showing 1–24 of 1,284" />)
     expect(screen.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByRole('button', { name: 'Unwatched' })).toHaveAttribute('aria-pressed', 'false')
-    expect(screen.getByRole('button', { name: 'In progress' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Unwatched' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+    expect(screen.getByRole('button', { name: 'In progress' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
     expect(screen.getByText('Showing 1–24 of 1,284')).toBeInTheDocument()
   })
 
