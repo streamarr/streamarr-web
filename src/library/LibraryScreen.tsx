@@ -87,12 +87,15 @@ export function LibraryScreen({
     function loadPreviousPageWithScrollAnchor(entries) {
       if (entries.some((entry) => entry.isIntersecting) && gridElement) {
         heightBeforePrependRef.current = gridElement.scrollHeight
-        loadPrevious()
+        void loadPrevious()
       }
     },
     { root: gridElement, rootMargin: halfViewportPrefetchMargin },
   )
 
+  const firstCursor = edges[0]?.cursor
+  // gridElement is the DOM node held in state; moving its scroll position is this effect's job.
+  /* eslint-disable react-hooks/immutability */
   useLayoutEffect(
     function restoreScrollAfterPrepend() {
       const heightBefore = heightBeforePrependRef.current
@@ -106,8 +109,9 @@ export function LibraryScreen({
         heightBeforePrependRef.current = null
       }
     },
-    [edges.length, edges[0]?.cursor, gridElement],
+    [edges.length, firstCursor, gridElement],
   )
+  /* eslint-enable react-hooks/immutability */
 
   useEffect(
     function scrollToLetterLanding() {

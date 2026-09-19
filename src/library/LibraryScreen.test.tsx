@@ -1,10 +1,10 @@
 import { ObservableQuery } from '@apollo/client'
 import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { graphql, HttpResponse } from 'msw'
+import { graphql, HttpResponse, type GraphQLQuery } from 'msw'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
-import type { LibraryPageQuery } from '../graphql/generated/graphql'
+import type { LibraryPageQuery, LibraryPageQueryVariables } from '../graphql/generated/graphql'
 import { intersectionObserverInstances } from '../../vitest.setup'
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
@@ -96,7 +96,7 @@ describe('LibraryScreen', () => {
     'ignores a hidden letter constraint in initial search state: %j',
     async (initialSearch) => {
       server.use(
-        graphql.query('LibraryPage', ({ variables }) =>
+        graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) =>
           HttpResponse.json({
             data: libraryData({
               edges: variables.filter?.startLetter
@@ -114,7 +114,7 @@ describe('LibraryScreen', () => {
 
   it('shows matching earlier titles when a watch filter is applied after a letter jump', async () => {
     server.use(
-      graphql.query('LibraryPage', ({ variables }) =>
+      graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) =>
         HttpResponse.json({
           data: libraryData({
             edges: variables.filter?.watchStatus
@@ -290,32 +290,35 @@ describe('LibraryScreen', () => {
     })
     let backwardRequested = false
     server.use(
-      graphql.query('LibraryPage', async ({ variables }) => {
-        if (variables.before) {
-          backwardRequested = true
-          await pending
-          return HttpResponse.json({
-            data: libraryData({
-              edges: [{ cursor: 'old', node: movieNode({ id: 'old', title: 'Old backfill' }) }],
-            }),
+      graphql.query<GraphQLQuery, LibraryPageQueryVariables>(
+        'LibraryPage',
+        async ({ variables }) => {
+          if (variables.before) {
+            backwardRequested = true
+            await pending
+            return HttpResponse.json({
+              data: libraryData({
+                edges: [{ cursor: 'old', node: movieNode({ id: 'old', title: 'Old backfill' }) }],
+              }),
+            })
+          }
+          if (variables.filter?.watchStatus) {
+            return HttpResponse.json({
+              data: libraryData({
+                edges: [
+                  { cursor: 'a', node: movieNode({ id: 'a', title: 'Available Alpha' }) },
+                  { cursor: 'z', node: movieNode({ id: 'z', title: 'Available Zeta' }) },
+                ],
+              }),
+            })
+          }
+          const data = libraryData({
+            edges: [{ cursor: 'n', node: movieNode({ id: 'n', title: 'Northern' }) }],
           })
-        }
-        if (variables.filter?.watchStatus) {
-          return HttpResponse.json({
-            data: libraryData({
-              edges: [
-                { cursor: 'a', node: movieNode({ id: 'a', title: 'Available Alpha' }) },
-                { cursor: 'z', node: movieNode({ id: 'z', title: 'Available Zeta' }) },
-              ],
-            }),
-          })
-        }
-        const data = libraryData({
-          edges: [{ cursor: 'n', node: movieNode({ id: 'n', title: 'Northern' }) }],
-        })
-        data.library.items.pageInfo.hasPreviousPage = true
-        return HttpResponse.json({ data })
-      }),
+          data.library.items.pageInfo.hasPreviousPage = true
+          return HttpResponse.json({ data })
+        },
+      ),
     )
     // jsdom has no layout: model the new result as taller than the old measured grid.
     vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function (
@@ -339,7 +342,7 @@ describe('LibraryScreen', () => {
       ),
     )
     await waitFor(() => expect(backwardRequested).toBe(true))
-    const backwardCompletion = fetchMore.mock.results[0].value
+    const backwardCompletion = fetchMore.mock.results[0].value as Promise<unknown>
 
     await user.click(screen.getByRole('button', { name: 'Unwatched' }))
     await screen.findByText('Available Alpha')
@@ -362,7 +365,7 @@ describe('LibraryScreen', () => {
 
   it('compensates scrollTop when the top sentinel loads more, so it leaves the intersecting zone and the view does not jump', async () => {
     server.use(
-      graphql.query('LibraryPage', ({ variables }) => {
+      graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) => {
         if (variables.before) {
           return HttpResponse.json({
             data: libraryData({
@@ -419,7 +422,7 @@ describe('LibraryScreen', () => {
     const scrollIntoView = vi.fn()
     vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(scrollIntoView)
     server.use(
-      graphql.query('LibraryPage', ({ variables }) => {
+      graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) => {
         if (variables.before) {
           return HttpResponse.json({
             data: libraryData({
