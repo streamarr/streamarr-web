@@ -32,7 +32,13 @@ export function formatYear(iso: string | null | undefined): string | null {
   return Number.isNaN(year) ? null : String(year)
 }
 
-export function formatTimeLeft(progress: { positionSeconds: number; durationSeconds: number }): string {
-  const remainingMinutes = Math.max(0, Math.round((progress.durationSeconds - progress.positionSeconds) / 60))
+export function formatTimeLeft(progress: {
+  positionSeconds: number
+  durationSeconds: number
+}): string {
+  const remainingMinutes = Math.max(
+    0,
+    Math.round((progress.durationSeconds - progress.positionSeconds) / 60),
+  )
   return `${formatRuntime(remainingMinutes)} left`
 }

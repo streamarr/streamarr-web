@@ -32,12 +32,18 @@ export function summarizeMedia(media: MediaSummaryFieldsFragment): MediaSummary 
 }
 
 function movieMeta(movie: Extract<MediaSummaryFieldsFragment, { __typename: 'Movie' }>): string {
-  return joinMeta([formatYear(movie.releaseDate), movie.runtime != null ? formatRuntime(movie.runtime) : null])
+  return joinMeta([
+    formatYear(movie.releaseDate),
+    movie.runtime != null ? formatRuntime(movie.runtime) : null,
+  ])
 }
 
 function seriesMeta(series: Extract<MediaSummaryFieldsFragment, { __typename: 'Series' }>): string {
   const seasonCount = series.seasons.length
-  return joinMeta([formatYear(series.firstAirDate), `${seasonCount} season${seasonCount === 1 ? '' : 's'}`])
+  return joinMeta([
+    formatYear(series.firstAirDate),
+    `${seasonCount} season${seasonCount === 1 ? '' : 's'}`,
+  ])
 }
 
 function joinMeta(parts: (string | null)[]): string {

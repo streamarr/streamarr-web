@@ -1,7 +1,12 @@
 import { Alert, Center, Loader, Text, Title } from '@mantine/core'
 import { useElementSize, useMergedRef } from '@mantine/hooks'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { MediaFilter, MediaSort, OrderMediaBy, SortDirection } from '../graphql/generated/graphql'
+import type {
+  MediaFilter,
+  MediaSort,
+  OrderMediaBy,
+  SortDirection,
+} from '../graphql/generated/graphql'
 import { AlphabetRail } from '../media/AlphabetRail'
 import { formatRelativeTime } from '../media/formatting'
 import { PosterCard } from '../media/PosterCard'
@@ -36,7 +41,7 @@ export function LibraryScreen({
   const canSeekByLetter = trackingLetter && !search.watchStatus
   const filter: MediaFilter = {
     watchStatus: search.watchStatus,
-    startLetter: canSeekByLetter ? search.letter as MediaFilter['startLetter'] : undefined,
+    startLetter: canSeekByLetter ? (search.letter as MediaFilter['startLetter']) : undefined,
   }
 
   const {
@@ -71,9 +76,12 @@ export function LibraryScreen({
   )
 
   const heightBeforePrependRef = useRef<number | null>(null)
-  useLayoutEffect(function resetScrollAnchorForQuery() {
-    heightBeforePrependRef.current = null
-  }, [libraryId, sort.by, sort.direction, filter.watchStatus, filter.startLetter])
+  useLayoutEffect(
+    function resetScrollAnchorForQuery() {
+      heightBeforePrependRef.current = null
+    },
+    [libraryId, sort.by, sort.direction, filter.watchStatus, filter.startLetter],
+  )
 
   const loadPreviousRef = useIntersectionObserver(
     function loadPreviousPageWithScrollAnchor(entries) {
@@ -85,32 +93,42 @@ export function LibraryScreen({
     { root: gridElement, rootMargin: halfViewportPrefetchMargin },
   )
 
-  useLayoutEffect(function restoreScrollAfterPrepend() {
-    const heightBefore = heightBeforePrependRef.current
-    if (heightBefore === null || !gridElement) {
-      return
-    }
-    const addedHeight = gridElement.scrollHeight - heightBefore
-    // A render can occur before the requested page adds any height.
-    if (addedHeight > 0) {
-      gridElement.scrollTop += addedHeight
-      heightBeforePrependRef.current = null
-    }
-  }, [edges.length, edges[0]?.cursor, gridElement])
+  useLayoutEffect(
+    function restoreScrollAfterPrepend() {
+      const heightBefore = heightBeforePrependRef.current
+      if (heightBefore === null || !gridElement) {
+        return
+      }
+      const addedHeight = gridElement.scrollHeight - heightBefore
+      // A render can occur before the requested page adds any height.
+      if (addedHeight > 0) {
+        gridElement.scrollTop += addedHeight
+        heightBeforePrependRef.current = null
+      }
+    },
+    [edges.length, edges[0]?.cursor, gridElement],
+  )
 
-  useEffect(function scrollToLetterLanding() {
-    if (!scrollTarget) {
-      return
-    }
-    const element = itemElementsRef.current.get(scrollTarget)
-    if (element) {
-      element.scrollIntoView({ block: 'start' })
-      clearScrollTarget()
-    }
-  }, [scrollTarget, edges, clearScrollTarget])
+  useEffect(
+    function scrollToLetterLanding() {
+      if (!scrollTarget) {
+        return
+      }
+      const element = itemElementsRef.current.get(scrollTarget)
+      if (element) {
+        element.scrollIntoView({ block: 'start' })
+        clearScrollTarget()
+      }
+    },
+    [scrollTarget, edges, clearScrollTarget],
+  )
 
   function selectFilter(status: WatchStatusFilter) {
-    onSearchChange({ ...search, letter: undefined, watchStatus: status === 'ALL' ? undefined : status })
+    onSearchChange({
+      ...search,
+      letter: undefined,
+      watchStatus: status === 'ALL' ? undefined : status,
+    })
   }
 
   function selectSort(nextSort: MediaSort) {
@@ -124,7 +142,11 @@ export function LibraryScreen({
   }
 
   function selectLetter(letter: string | null) {
-    onSearchChange(letter ? { ...search, by: 'TITLE', direction: 'ASC', letter } : { ...search, letter: undefined })
+    onSearchChange(
+      letter
+        ? { ...search, by: 'TITLE', direction: 'ASC', letter }
+        : { ...search, letter: undefined },
+    )
   }
 
   if (loading) {
@@ -144,7 +166,9 @@ export function LibraryScreen({
   }
 
   const total = library.alphabetIndex.reduce((sum, entry) => sum + entry.count, 0)
-  const scanLabel = library.scanCompletedOn ? `last scan ${formatRelativeTime(library.scanCompletedOn)}` : 'scanning…'
+  const scanLabel = library.scanCompletedOn
+    ? `last scan ${formatRelativeTime(library.scanCompletedOn)}`
+    : 'scanning…'
 
   return (
     <div className={styles.libraryScreen}>
@@ -171,7 +195,9 @@ export function LibraryScreen({
           <Text className={styles.empty}>No items match this filter.</Text>
         ) : (
           <div className={styles.grid} ref={gridRef}>
-            {hasPreviousPage && <div ref={loadPreviousRef} aria-hidden className={styles.sentinel} />}
+            {hasPreviousPage && (
+              <div ref={loadPreviousRef} aria-hidden className={styles.sentinel} />
+            )}
             {edges.map((edge) => {
               const summary = summarizeMedia(edge.node)
               const letter = trackingLetter ? summaryLetter(summary) : null
@@ -215,7 +241,12 @@ export function LibraryScreen({
   )
 }
 
-function buildShowingLabel(loadedCount: number, hasNextPage: boolean, isUnfiltered: boolean, total: number): string {
+function buildShowingLabel(
+  loadedCount: number,
+  hasNextPage: boolean,
+  isUnfiltered: boolean,
+  total: number,
+): string {
   if (loadedCount === 0) {
     return 'No items'
   }

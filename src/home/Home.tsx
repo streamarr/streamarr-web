@@ -2,7 +2,11 @@ import { useQuery } from '@apollo/client/react'
 import { Alert, Center, Loader, Text } from '@mantine/core'
 import { HomeDocument, type HomeQuery } from '../graphql/generated/graphql'
 import { definedEdges } from '../media/edges'
-import { billboardFromContinueWatching, billboardFromRecentlyAdded, type BillboardContent } from './billboardContent'
+import {
+  billboardFromContinueWatching,
+  billboardFromRecentlyAdded,
+  type BillboardContent,
+} from './billboardContent'
 import { BillboardHero } from './BillboardHero'
 import { ContinueWatchingShelf } from './ContinueWatchingShelf'
 import styles from './Home.module.css'
@@ -36,7 +40,9 @@ export function Home() {
     )
   }
 
-  const libraries = data.libraries.filter((library) => library.type === 'MOVIE' || library.type === 'SERIES')
+  const libraries = data.libraries.filter(
+    (library) => library.type === 'MOVIE' || library.type === 'SERIES',
+  )
 
   return (
     <div className={styles.home}>
@@ -44,7 +50,9 @@ export function Home() {
       <ContinueWatchingShelf items={data.continueWatching} />
       {libraries.length > 0 && (
         <div className={styles.recentlyAdded}>
-          {libraries.map((library) => <RecentlyAddedRail key={library.id} library={library} />)}
+          {libraries.map((library) => (
+            <RecentlyAddedRail key={library.id} library={library} />
+          ))}
         </div>
       )}
     </div>
@@ -60,7 +68,11 @@ function billboardContentFor(data: HomeQuery): BillboardContent | null {
 
   const candidates = data.libraries
     .filter((library) => library.type === 'MOVIE' || library.type === 'SERIES')
-    .flatMap((library) => definedEdges(library.items.edges).slice(0, 1).map((edge) => edge.node))
+    .flatMap((library) =>
+      definedEdges(library.items.edges)
+        .slice(0, 1)
+        .map((edge) => edge.node),
+    )
   if (candidates.length === 0) {
     return null
   }

@@ -8,7 +8,12 @@ import styles from './BillboardHero.module.css'
 export function BillboardHero({ content }: { content: BillboardContent }) {
   return (
     <div className={styles.hero}>
-      <MediaImage image={content.backdrop} blurHash={content.blurHash} alt="" className={styles.backdrop} />
+      <MediaImage
+        image={content.backdrop}
+        blurHash={content.blurHash}
+        alt=""
+        className={styles.backdrop}
+      />
       <div className={styles.scrim} aria-hidden />
       <div className={styles.panel}>
         {content.tagline && <p className={styles.tagline}>{content.tagline}</p>}
@@ -23,7 +28,11 @@ export function BillboardHero({ content }: { content: BillboardContent }) {
         </div>
         {content.synopsis && <p className={styles.synopsis}>{content.synopsis}</p>}
         {content.ctaFileId && (
-          <Link to="/play/$mediaFileId" params={{ mediaFileId: content.ctaFileId }} className={styles.cta}>
+          <Link
+            to="/play/$mediaFileId"
+            params={{ mediaFileId: content.ctaFileId }}
+            className={styles.cta}
+          >
             {content.ctaLabel}
           </Link>
         )}

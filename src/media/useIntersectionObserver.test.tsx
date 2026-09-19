@@ -22,11 +22,17 @@ describe('useIntersectionObserver', () => {
     function Harness() {
       const [version, setVersion] = useState('committed')
       change = () => startTransition(() => setVersion('uncommitted'))
-      return <Suspense fallback="pending"><SuspendingSentinel version={version} /></Suspense>
+      return (
+        <Suspense fallback="pending">
+          <SuspendingSentinel version={version} />
+        </Suspense>
+      )
     }
     render(<Harness />)
     const observer = intersectionObserverInstances.at(-1)!
-    await act(async () => { change() })
+    await act(async () => {
+      change()
+    })
     expect(screen.getByText('committed')).toBeInTheDocument()
     act(() => observer.callback([], observer))
     expect(seen).toEqual(['committed'])

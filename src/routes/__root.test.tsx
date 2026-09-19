@@ -21,7 +21,9 @@ describe('the root layout', () => {
     server.use(
       graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
       graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
-      graphql.query('Home', () => HttpResponse.json({ data: { continueWatching: [], libraries: [] } })),
+      graphql.query('Home', () =>
+        HttpResponse.json({ data: { continueWatching: [], libraries: [] } }),
+      ),
     )
     renderAppAt('/')
 

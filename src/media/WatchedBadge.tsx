@@ -1,7 +1,8 @@
 import type { WatchStatus } from '../graphql/generated/graphql'
 import styles from './WatchedBadge.module.css'
 
-export type WatchedBadgeProps = { status: 'watched' } | { status: 'in-progress'; percentComplete: number }
+export type WatchedBadgeProps =
+  { status: 'watched' } | { status: 'in-progress'; percentComplete: number }
 
 export function badgeFromWatchState(
   watchStatus: WatchStatus,

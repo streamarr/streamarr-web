@@ -16,20 +16,33 @@ function Harness({ letters, root = null }: { letters: string[]; root?: Element |
 }
 
 describe('useVisibleLetter', () => {
-  it.each([100, 150])('selects the visually first item despite callback order (first top=%s)', (firstTop) => {
-    const { container, getByTestId } = render(<Harness letters={['A', 'N']} />)
-    const a = container.querySelector('[data-letter="A"]')!
-    const n = container.querySelector('[data-letter="N"]')!
-    vi.spyOn(a, 'getBoundingClientRect').mockReturnValue({ top: firstTop } as DOMRect)
-    vi.spyOn(n, 'getBoundingClientRect').mockReturnValue({ top: 150 } as DOMRect)
-    const aObserver = intersectionObserverInstances.find((o) => o.observe.mock.calls.some((call) => call[0] === a))!
-    const nObserver = intersectionObserverInstances.find((o) => o.observe.mock.calls.some((call) => call[0] === n))!
-    act(() => {
-      nObserver.callback([{ target: n, isIntersecting: true } as IntersectionObserverEntry], nObserver)
-      aObserver.callback([{ target: a, isIntersecting: true } as IntersectionObserverEntry], aObserver)
-    })
-    expect(getByTestId('visible-letter')).toHaveTextContent('A')
-  })
+  it.each([100, 150])(
+    'selects the visually first item despite callback order (first top=%s)',
+    (firstTop) => {
+      const { container, getByTestId } = render(<Harness letters={['A', 'N']} />)
+      const a = container.querySelector('[data-letter="A"]')!
+      const n = container.querySelector('[data-letter="N"]')!
+      vi.spyOn(a, 'getBoundingClientRect').mockReturnValue({ top: firstTop } as DOMRect)
+      vi.spyOn(n, 'getBoundingClientRect').mockReturnValue({ top: 150 } as DOMRect)
+      const aObserver = intersectionObserverInstances.find((o) =>
+        o.observe.mock.calls.some((call) => call[0] === a),
+      )!
+      const nObserver = intersectionObserverInstances.find((o) =>
+        o.observe.mock.calls.some((call) => call[0] === n),
+      )!
+      act(() => {
+        nObserver.callback(
+          [{ target: n, isIntersecting: true } as IntersectionObserverEntry],
+          nObserver,
+        )
+        aObserver.callback(
+          [{ target: a, isIntersecting: true } as IntersectionObserverEntry],
+          aObserver,
+        )
+      })
+      expect(getByTestId('visible-letter')).toHaveTextContent('A')
+    },
+  )
 
   it('starts with no visible letter', () => {
     const { getByTestId } = render(<Harness letters={['A', 'N']} />)
@@ -42,7 +55,10 @@ describe('useVisibleLetter', () => {
     const nElement = nObserver.observe.mock.calls[0][0] as Element
 
     act(() => {
-      nObserver.callback([{ target: nElement, isIntersecting: true } as IntersectionObserverEntry], nObserver)
+      nObserver.callback(
+        [{ target: nElement, isIntersecting: true } as IntersectionObserverEntry],
+        nObserver,
+      )
     })
 
     expect(getByTestId('visible-letter')).toHaveTextContent('N')
@@ -58,12 +74,18 @@ describe('useVisibleLetter', () => {
     const element = observer.observe.mock.calls[0][0] as Element
 
     act(() => {
-      observer.callback([{ target: element, isIntersecting: true } as IntersectionObserverEntry], observer)
+      observer.callback(
+        [{ target: element, isIntersecting: true } as IntersectionObserverEntry],
+        observer,
+      )
     })
     expect(getByTestId('visible-letter')).toHaveTextContent('A')
 
     act(() => {
-      observer.callback([{ target: element, isIntersecting: false } as IntersectionObserverEntry], observer)
+      observer.callback(
+        [{ target: element, isIntersecting: false } as IntersectionObserverEntry],
+        observer,
+      )
     })
     expect(getByTestId('visible-letter')).toHaveTextContent('none')
   })
@@ -73,7 +95,10 @@ describe('useVisibleLetter', () => {
     const hashObserver = intersectionObserverInstances.at(-1)!
     const hashElement = hashObserver.observe.mock.calls[0][0] as Element
     act(() => {
-      hashObserver.callback([{ target: hashElement, isIntersecting: true } as IntersectionObserverEntry], hashObserver)
+      hashObserver.callback(
+        [{ target: hashElement, isIntersecting: true } as IntersectionObserverEntry],
+        hashObserver,
+      )
     })
     expect(getByTestId('visible-letter')).toHaveTextContent('HASH')
 
@@ -83,7 +108,10 @@ describe('useVisibleLetter', () => {
     const jObserver = intersectionObserverInstances.at(-1)!
     const jElement = jObserver.observe.mock.calls[0][0] as Element
     act(() => {
-      jObserver.callback([{ target: jElement, isIntersecting: true } as IntersectionObserverEntry], jObserver)
+      jObserver.callback(
+        [{ target: jElement, isIntersecting: true } as IntersectionObserverEntry],
+        jObserver,
+      )
     })
     expect(getByTestId('visible-letter')).toHaveTextContent('J')
   })

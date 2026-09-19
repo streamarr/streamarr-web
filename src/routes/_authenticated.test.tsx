@@ -9,7 +9,9 @@ import { meFixture, profileFixture } from '../test/meFixture'
 function homeHandlers() {
   return [
     graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
-    graphql.query('Home', () => HttpResponse.json({ data: { continueWatching: [], libraries: [] } })),
+    graphql.query('Home', () =>
+      HttpResponse.json({ data: { continueWatching: [], libraries: [] } }),
+    ),
   ]
 }
 
@@ -69,7 +71,10 @@ describe('the authenticated layout', () => {
   })
 
   it('shouldRenderTheGuardedPageForASignedInVisitor', async () => {
-    server.use(...homeHandlers(), graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })))
+    server.use(
+      ...homeHandlers(),
+      graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
+    )
     const { router } = renderAppAt('/')
 
     expect(await screen.findByRole('banner')).toBeInTheDocument()
@@ -159,7 +164,10 @@ describe('the authenticated layout', () => {
   })
 
   it('shouldRestartProactiveRenewalAfterAuthenticatedHardReload', async () => {
-    server.use(...homeHandlers(), graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })))
+    server.use(
+      ...homeHandlers(),
+      graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
+    )
     const renewal = {
       adoptExpiry: vi.fn(),
       refreshNow: vi.fn(async () => ({

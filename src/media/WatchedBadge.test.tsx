@@ -29,7 +29,10 @@ describe('badgeFromWatchState', () => {
   })
 
   it('maps IN_PROGRESS with a known percentage to the in-progress badge', () => {
-    expect(badgeFromWatchState('IN_PROGRESS', 65)).toEqual({ status: 'in-progress', percentComplete: 65 })
+    expect(badgeFromWatchState('IN_PROGRESS', 65)).toEqual({
+      status: 'in-progress',
+      percentComplete: 65,
+    })
   })
 
   it('renders no badge for UNWATCHED', () => {

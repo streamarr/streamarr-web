@@ -57,7 +57,8 @@ export class MockIntersectionObserver implements IntersectionObserver {
   takeRecords = (): IntersectionObserverEntry[] => []
 }
 export const intersectionObserverInstances: MockIntersectionObserver[] = []
-globalThis.IntersectionObserver ??= MockIntersectionObserver as unknown as typeof IntersectionObserver
+globalThis.IntersectionObserver ??=
+  MockIntersectionObserver as unknown as typeof IntersectionObserver
 
 afterEach(() => {
   intersectionObserverInstances.length = 0

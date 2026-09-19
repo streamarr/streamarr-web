@@ -49,9 +49,15 @@ describe('formatRuntime', () => {
 describe('formatYear', () => {
   it('preserves a January 1 calendar year west of UTC', () => {
     const moduleUrl = pathToFileURL(resolve('src/media/formatting.ts')).href
-    const result = execFileSync(process.execPath, ['--input-type=module', '-e',
-      `import { formatYear } from ${JSON.stringify(moduleUrl)}; process.stdout.write(formatYear('2024-01-01'));`,
-    ], { env: { ...process.env, TZ: 'America/Los_Angeles' }, encoding: 'utf8' })
+    const result = execFileSync(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        `import { formatYear } from ${JSON.stringify(moduleUrl)}; process.stdout.write(formatYear('2024-01-01'));`,
+      ],
+      { env: { ...process.env, TZ: 'America/Los_Angeles' }, encoding: 'utf8' },
+    )
     expect(result).toBe('2024')
   })
 

@@ -105,7 +105,9 @@ function library(overrides: Record<string, unknown> = {}) {
   }
 }
 
-function homeData(overrides: Partial<{ continueWatching: unknown[]; libraries: unknown[] }> = {}): HomeQuery {
+function homeData(
+  overrides: Partial<{ continueWatching: unknown[]; libraries: unknown[] }> = {},
+): HomeQuery {
   return {
     continueWatching: overrides.continueWatching ?? [],
     libraries: overrides.libraries ?? [],
@@ -122,23 +124,40 @@ function serve(data: HomeQuery) {
 
 describe('Home', () => {
   it('omits empty recently-added sections when there is content elsewhere', async () => {
-    serve(homeData({ continueWatching: [continueWatchingMovie()], libraries: [library({ name: 'Empty library' })] }))
+    serve(
+      homeData({
+        continueWatching: [continueWatchingMovie()],
+        libraries: [library({ name: 'Empty library' })],
+      }),
+    )
     renderAppAt('/')
     await screen.findByRole('heading', { name: 'Everlight' })
-    expect(screen.queryByRole('heading', { name: 'Recently added in Empty library' })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: 'Recently added in Empty library' }),
+    ).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'See all' })).not.toBeInTheDocument()
   })
 
   it('shows content from a second library of the same type when the first is empty', async () => {
-    serve(homeData({ libraries: [
-      library({ id: 'empty', name: 'Empty movies' }),
-      library({ id: 'family', name: 'Family movies', items: { edges: [
-        { cursor: 'family-film', node: recentMovie({ title: 'Family Film' }) },
-      ] } }),
-    ] }))
+    serve(
+      homeData({
+        libraries: [
+          library({ id: 'empty', name: 'Empty movies' }),
+          library({
+            id: 'family',
+            name: 'Family movies',
+            items: {
+              edges: [{ cursor: 'family-film', node: recentMovie({ title: 'Family Film' }) }],
+            },
+          }),
+        ],
+      }),
+    )
     renderAppAt('/')
     await screen.findByRole('heading', { name: 'Family Film' })
-    expect(screen.getByRole('heading', { name: 'Recently added in Family movies' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'Recently added in Family movies' }),
+    ).toBeInTheDocument()
     expect(screen.queryByText('Nothing to watch yet.')).not.toBeInTheDocument()
   })
 
@@ -161,13 +180,17 @@ describe('Home', () => {
   it('builds the billboard from a Movie in continueWatching', async () => {
     serve(homeData({ continueWatching: [continueWatchingMovie()] }))
     renderAppAt('/')
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Everlight' })).toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Everlight' })).toBeInTheDocument(),
+    )
   })
 
   it('builds the billboard from an Episode in continueWatching, reading the parent series', async () => {
     serve(homeData({ continueWatching: [continueWatchingEpisode()] }))
     renderAppAt('/')
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Northern Line' })).toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Northern Line' })).toBeInTheDocument(),
+    )
     expect(screen.getByRole('link', { name: 'Continue S2 E5' })).toBeInTheDocument()
   })
 
@@ -175,24 +198,49 @@ describe('Home', () => {
     serve(
       homeData({
         libraries: [
-          library({ items: { edges: [{ cursor: 'c1', node: recentMovie({ title: 'Older Movie', createdOn: '2026-08-01T00:00:00Z' }) }] } }),
+          library({
+            items: {
+              edges: [
+                {
+                  cursor: 'c1',
+                  node: recentMovie({ title: 'Older Movie', createdOn: '2026-08-01T00:00:00Z' }),
+                },
+              ],
+            },
+          }),
           library({
             id: 'lib-series',
             name: 'Series',
             type: 'SERIES',
-            items: { edges: [{ cursor: 'c2', node: recentSeries({ title: 'Fresher Show', createdOn: '2026-08-27T00:00:00Z' }) }] },
+            items: {
+              edges: [
+                {
+                  cursor: 'c2',
+                  node: recentSeries({ title: 'Fresher Show', createdOn: '2026-08-27T00:00:00Z' }),
+                },
+              ],
+            },
           }),
         ],
       }),
     )
     renderAppAt('/')
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Fresher Show' })).toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Fresher Show' })).toBeInTheDocument(),
+    )
   })
 
   it('hides the Continue Watching shelf when it is empty', async () => {
-    serve(homeData({ continueWatching: [], libraries: [library({ items: { edges: [{ cursor: 'c1', node: recentMovie() }] } })] }))
+    serve(
+      homeData({
+        continueWatching: [],
+        libraries: [library({ items: { edges: [{ cursor: 'c1', node: recentMovie() }] } })],
+      }),
+    )
     renderAppAt('/')
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Grid Movie' })).toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Grid Movie' })).toBeInTheDocument(),
+    )
     expect(screen.queryByText('Continue watching')).not.toBeInTheDocument()
   })
 

@@ -113,12 +113,16 @@ function route(request, response, raw) {
     if (operationName === 'Me') return json(response, 200, { data: { me } })
     if (operationName === 'Libraries') return json(response, 200, { data: { libraries } })
     if (operationName === 'Home') {
-      return json(response, 200, { data: {
-        continueWatching: [],
-        libraries: libraries.map((library) => ({ ...library, items: { edges: [] } })),
-      } })
+      return json(response, 200, {
+        data: {
+          continueWatching: [],
+          libraries: libraries.map((library) => ({ ...library, items: { edges: [] } })),
+        },
+      })
     }
-    return json(response, 200, { errors: [{ message: `Unhandled test operation: ${operationName}` }] })
+    return json(response, 200, {
+      errors: [{ message: `Unhandled test operation: ${operationName}` }],
+    })
   }
   json(response, 404, { code: 'NOT_FOUND', message: pathname })
 }

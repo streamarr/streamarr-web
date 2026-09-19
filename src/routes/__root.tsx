@@ -28,7 +28,9 @@ function RootLayout() {
   // would fire its own queries against an unconfirmed session and race the guard's own redirect.
   const signedIn = useRouterState({
     select: (state) =>
-      state.matches.some((match) => match.routeId === '/_authenticated' && match.status === 'success'),
+      state.matches.some(
+        (match) => match.routeId === '/_authenticated' && match.status === 'success',
+      ),
   })
   const ceremony = useRouterState({
     select: (state) => state.matches.some((match) => CEREMONY_ROUTES.has(match.routeId)),

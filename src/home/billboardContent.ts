@@ -31,7 +31,9 @@ export function billboardFromContinueWatching(media: ContinueWatchingItem): Bill
   return media.__typename === 'Movie' ? movieBillboard(media) : episodeBillboard(media)
 }
 
-export function billboardFromRecentlyAdded(media: RecentlyAddedMovie | RecentlyAddedSeries): BillboardContent {
+export function billboardFromRecentlyAdded(
+  media: RecentlyAddedMovie | RecentlyAddedSeries,
+): BillboardContent {
   return media.__typename === 'Movie' ? recentMovieBillboard(media) : recentSeriesBillboard(media)
 }
 
@@ -109,6 +111,8 @@ function recentSeriesBillboard(series: RecentlyAddedSeries): BillboardContent {
 }
 
 function genreLabel(genres: ReadonlyArray<{ name: string } | null>): string {
-  const names = genres.filter((genre): genre is { name: string } => genre !== null).map((genre) => genre.name)
+  const names = genres
+    .filter((genre): genre is { name: string } => genre !== null)
+    .map((genre) => genre.name)
   return names.length > 0 ? names.join(', ') : '—'
 }
