@@ -220,8 +220,11 @@ test('the Library viewport adapts when navigation text makes the header taller',
   const grid = page.locator('[class*="_grid_"]')
   const initialHeight = await grid.evaluate((element) => element.clientHeight)
 
+  // The pills set their own size, so the taller text is applied to them, not inherited from the nav.
   await page.getByRole('navigation', { name: 'Primary' }).evaluate((element) => {
-    element.style.fontSize = '2rem'
+    for (const pill of element.querySelectorAll<HTMLElement>('a, button, span')) {
+      pill.style.fontSize = '2rem'
+    }
   })
 
   await expect
