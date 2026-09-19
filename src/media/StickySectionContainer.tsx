@@ -5,11 +5,11 @@ export function StickySectionContainer({
   title,
   action,
   children,
-}: {
+}: Readonly<{
   title: string
   action?: ReactNode
   children: ReactNode
-}) {
+}>) {
   return (
     <section className={styles.container}>
       <div className={styles.header}>

@@ -130,7 +130,7 @@ test('prefetching follows the visible grid height on a phone and after rotation'
       element.scrollTop = element.scrollHeight - element.clientHeight * 1.75
     })
     // Allow the real observer and its network request to run before asserting their absence.
-    await page.waitForTimeout(200)
+    await page.waitForTimeout(200) // NOSONAR: proving an absence needs a bounded settle, not a condition
     expect(forwardPages).toBe(pagesBefore)
 
     await grid.evaluate((element) => {

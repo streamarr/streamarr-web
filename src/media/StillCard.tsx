@@ -8,13 +8,13 @@ export function StillCard({
   image,
   blurHash,
   progressPercent,
-}: {
+}: Readonly<{
   title: string
   subtitle: string
   image: PickedImage | null
   blurHash: string | null
   progressPercent: number
-}) {
+}>) {
   return (
     <div className={styles.stillCard}>
       <div className={styles.stillArt}>

@@ -8,7 +8,7 @@ import styles from './ContinueWatchingShelf.module.css'
 
 type ContinueWatchingItem = HomeQuery['continueWatching'][number]
 
-export function ContinueWatchingShelf({ items }: { items: ContinueWatchingItem[] }) {
+export function ContinueWatchingShelf({ items }: Readonly<{ items: ContinueWatchingItem[] }>) {
   if (items.length === 0) {
     return null
   }

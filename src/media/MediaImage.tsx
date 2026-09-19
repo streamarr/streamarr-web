@@ -10,12 +10,12 @@ export function MediaImage({
   blurHash,
   alt,
   className,
-}: {
+}: Readonly<{
   image: PickedImage | null
   blurHash: string | null
   alt: string
   className?: string
-}) {
+}>) {
   const [loaded, setLoaded] = useState(false)
   const placeholder = blurHash ? decodeBlurHashToDataUrl(blurHash) : null
 

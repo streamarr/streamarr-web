@@ -11,13 +11,13 @@ export function PosterCard({
   image,
   blurHash,
   badge,
-}: {
+}: Readonly<{
   title: string
   meta: string
   image: PickedImage | null
   blurHash: string | null
   badge?: WatchedBadgeProps
-}) {
+}>) {
   return (
     <div className={styles.posterCard}>
       <div className={styles.posterArt}>

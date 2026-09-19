@@ -12,11 +12,11 @@ export function FilterBar({
   status,
   onChange,
   showing,
-}: {
+}: Readonly<{
   status: WatchStatusFilter
   onChange: (status: WatchStatusFilter) => void
   showing: string
-}) {
+}>) {
   return (
     <div className={styles.filterBar}>
       <div className={styles.chips}>
