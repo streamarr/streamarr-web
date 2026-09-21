@@ -31,7 +31,7 @@ function CheckingSession() {
 }
 
 // A rejected probe is an outage, not a verdict: neither bounce nor waive the gate.
-function EntryUnconfirmed({ error }: { error: unknown }) {
+function EntryUnconfirmed({ error }: Readonly<{ error: unknown }>) {
   if (error instanceof ServerStatusUnavailableError) {
     return (
       <Alert color="red" role="alert">
