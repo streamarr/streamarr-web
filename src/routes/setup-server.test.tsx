@@ -16,12 +16,34 @@ function serverStatus(setupComplete: boolean) {
 const createAccount = () => screen.queryByRole('button', { name: /create account/i })
 
 function serverCreatesTheFirstAccount(scope: 'account' | 'profile') {
-  serverStatus(false)
+  let setupComplete = false
   server.use(
-    http.post('/api/auth/setup', () =>
-      HttpResponse.json({ accessTokenExpiresAt: '2026-08-05T12:00:00Z', scope }, { status: 201 }),
+    http.get('/api/auth/status', () =>
+      HttpResponse.json({ setupComplete, devicePairingEnabled: false }),
     ),
-    graphql.query('Me', () => HttpResponse.json({ data: { me: meFixture({ scope }) } })),
+    http.post('/api/auth/setup', () => {
+      setupComplete = true
+      return HttpResponse.json(
+        { accessTokenExpiresAt: '2026-08-05T12:00:00Z', scope },
+        { status: 201 },
+      )
+    }),
+    graphql.query('Me', () =>
+      setupComplete
+        ? HttpResponse.json({ data: { me: meFixture({ scope }) } })
+        : HttpResponse.json({
+            errors: [
+              {
+                message: 'Authentication is required.',
+                extensions: { code: 'AUTHENTICATION_REQUIRED' },
+              },
+            ],
+          }),
+    ),
+    graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
+    graphql.query('Home', () =>
+      HttpResponse.json({ data: { continueWatching: [], libraries: [] } }),
+    ),
   )
 }
 
@@ -53,14 +75,18 @@ describe('/setup-server', () => {
     expect(createAccount()).not.toBeInTheDocument()
   })
 
-  it('shouldOpenTheAppOnceSetupSignsInWithAProfile', async () => {
-    serverCreatesTheFirstAccount('profile')
-    const { router, user } = renderAppAt('/setup-server')
+  it.each(['/', '/setup-server'])(
+    'shouldOpenTheAppOnceSetupSignsInWithAProfile(%s)',
+    async (path) => {
+      serverCreatesTheFirstAccount('profile')
+      const { router, user } = renderAppAt(path)
 
-    await completeWizard(user)
+      await completeWizard(user)
 
-    await waitFor(() => expect(router.state.location.pathname).toBe('/'))
-  })
+      expect(await screen.findByText(/nothing to watch yet/i)).toBeInTheDocument()
+      expect(router.state.location.pathname).toBe('/')
+    },
+  )
 
   it('shouldAskForAProfileOnceSetupSignsInWithoutOne', async () => {
     serverCreatesTheFirstAccount('account')
@@ -71,8 +97,8 @@ describe('/setup-server', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe('/select-profile'))
   })
 
-  it('shouldFailClosedWhenTheServerStatusCannotBeRead', async () => {
-    server.use(http.get('/api/auth/status', () => HttpResponse.json({}, { status: 500 })))
+  it.each([500, 200])('shouldFailClosedWhenTheServerStatusCannotBeRead(%s)', async (status) => {
+    server.use(http.get('/api/auth/status', () => HttpResponse.json({}, { status })))
     const { router } = renderAppAt('/setup-server')
 
     expect(await screen.findByRole('alert')).toBeInTheDocument()

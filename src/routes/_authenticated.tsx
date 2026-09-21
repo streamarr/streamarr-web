@@ -1,5 +1,6 @@
-import { Alert, Center, Loader } from '@mantine/core'
-import { createFileRoute, redirect } from '@tanstack/react-router'
+import { Alert, Anchor, Center, Loader } from '@mantine/core'
+import { createFileRoute, Link, redirect } from '@tanstack/react-router'
+import { getSetupStatus, ServerStatusUnavailableError } from '../auth/api'
 import { CSRF_REJECTION_MESSAGE, isCsrfRejection } from '../auth/csrf'
 import { extractAuthContext } from '../graphql/errorRouting'
 
@@ -7,14 +8,18 @@ import { extractAuthContext } from '../graphql/errorRouting'
 // mid-session evictions are the Apollo error link's job.
 export const Route = createFileRoute('/_authenticated')({
   beforeLoad: async ({ context, location }) => {
-    if ((await context.session.ensure()) === 'anonymous') {
-      // The full href, so search params like a pairing code survive the round trip.
-      throw redirect({ to: '/login', search: { redirect: location.href } })
+    if ((await context.session.ensure()) === 'authenticated') {
+      return
     }
+    if (location.pathname === '/' && (await getSetupStatus()).setupComplete === false) {
+      throw redirect({ to: '/setup-server' })
+    }
+    // The full href, so search params like a pairing code survive the round trip.
+    throw redirect({ to: '/login', search: { redirect: location.href } })
   },
   pendingMs: 0,
   pendingComponent: CheckingSession,
-  errorComponent: SessionUnconfirmed,
+  errorComponent: EntryUnconfirmed,
 })
 
 function CheckingSession() {
@@ -26,7 +31,17 @@ function CheckingSession() {
 }
 
 // A rejected probe is an outage, not a verdict: neither bounce nor waive the gate.
-function SessionUnconfirmed({ error }: { error: unknown }) {
+function EntryUnconfirmed({ error }: { error: unknown }) {
+  if (error instanceof ServerStatusUnavailableError) {
+    return (
+      <Alert color="red" role="alert">
+        {error.message}{' '}
+        <Anchor component={Link} to="/login">
+          Sign in
+        </Anchor>
+      </Alert>
+    )
+  }
   const context = extractAuthContext(error)
   const message = isCsrfRejection(context.networkStatus, context.networkCode)
     ? CSRF_REJECTION_MESSAGE
