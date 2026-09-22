@@ -23,3 +23,10 @@
   font-size: 13px;
   color: var(--ambient-text-primary, var(--text-primary));
 }
+
+@media (max-width: 48em) {
+  .columns {
+    flex-wrap: wrap;
+    gap: 12px 24px;
+  }
+}

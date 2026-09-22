@@ -39,6 +39,7 @@ export function BackdropHero({
           aria-hidden
         />
       )}
+      <div className={styles.scrim} aria-hidden />
       <div className={styles.fade} aria-hidden />
       {back && <div className={styles.back}>{back}</div>}
       {metadata && <div className={styles.metadata}>{metadata}</div>}

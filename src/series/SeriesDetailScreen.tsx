@@ -3,7 +3,7 @@ import { Alert, Center, Loader } from '@mantine/core'
 import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { SeriesDetailDocument, type SeriesDetailQuery } from '../graphql/generated/graphql'
-import { AmbientScope } from '../media/AmbientScope'
+import { usePublishAmbientTheme } from '../media/ambientThemeContext'
 import { resolveAmbientColors } from '../media/ambientSource'
 import { CastCard } from '../media/CastCard'
 import { ContentShelf } from '../media/ContentShelf'
@@ -30,6 +30,9 @@ export function SeriesDetailScreen({ seriesId }: Readonly<{ seriesId: string }>)
   const { data, loading, error } = useQuery(SeriesDetailDocument, { variables: { id: seriesId } })
   const watched = useWatchedToggle(seriesId, SeriesDetailDocument)
   const [confirming, setConfirming] = useState<BulkVerb | null>(null)
+  const series = data?.series
+  const ambient = series ? resolveAmbientColors(series.backdropImages, series.posterImages) : null
+  usePublishAmbientTheme(ambient?.theme ?? null)
 
   if (loading) {
     return (
@@ -39,7 +42,6 @@ export function SeriesDetailScreen({ seriesId }: Readonly<{ seriesId: string }>)
     )
   }
 
-  const series = data?.series
   if (error || !series) {
     return (
       <Alert color="red" role="alert">
@@ -57,7 +59,6 @@ export function SeriesDetailScreen({ seriesId }: Readonly<{ seriesId: string }>)
   const playable = nextPlayableEpisode(seasons)
   const isWatched = series.watchStatus === 'WATCHED'
   const artwork = series.backdropImages[0] ?? series.posterImages[0] ?? null
-  const ambient = resolveAmbientColors(series.backdropImages, series.posterImages)
   const cast = series.cast.filter(
     (person): person is NonNullable<Series['cast'][number]> => person !== null,
   )
@@ -71,7 +72,7 @@ export function SeriesDetailScreen({ seriesId }: Readonly<{ seriesId: string }>)
   }
 
   return (
-    <AmbientScope theme={ambient?.theme ?? null}>
+    <>
       <DetailHeader
         titleColumn
         backdrop={{
@@ -167,7 +168,7 @@ export function SeriesDetailScreen({ seriesId }: Readonly<{ seriesId: string }>)
         onConfirm={confirmBulk}
         onClose={() => setConfirming(null)}
       />
-    </AmbientScope>
+    </>
   )
 }
 

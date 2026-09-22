@@ -151,3 +151,14 @@
   flex-direction: column;
   gap: var(--spacing-12);
 }
+
+@media (max-width: 48em) {
+  .panel,
+  .split {
+    grid-template-columns: 1fr;
+  }
+
+  .aside {
+    width: auto;
+  }
+}

@@ -2,7 +2,7 @@ import { useQuery } from '@apollo/client/react'
 import { Alert, Center, Loader } from '@mantine/core'
 import { Link } from '@tanstack/react-router'
 import { MovieDetailDocument, type MovieDetailQuery } from '../graphql/generated/graphql'
-import { AmbientScope } from '../media/AmbientScope'
+import { usePublishAmbientTheme } from '../media/ambientThemeContext'
 import { resolveAmbientColors } from '../media/ambientSource'
 import { CastCard } from '../media/CastCard'
 import { ContentShelf } from '../media/ContentShelf'
@@ -20,6 +20,9 @@ type Movie = NonNullable<MovieDetailQuery['movie']>
 export function MovieDetailScreen({ movieId }: Readonly<{ movieId: string }>) {
   const { data, loading, error } = useQuery(MovieDetailDocument, { variables: { id: movieId } })
   const watched = useWatchedToggle(movieId, MovieDetailDocument)
+  const movie = data?.movie
+  const ambient = movie ? resolveAmbientColors(movie.backdropImages, movie.posterImages) : null
+  usePublishAmbientTheme(ambient?.theme ?? null)
 
   if (loading) {
     return (
@@ -29,7 +32,6 @@ export function MovieDetailScreen({ movieId }: Readonly<{ movieId: string }>) {
     )
   }
 
-  const movie = data?.movie
   if (error || !movie) {
     return (
       <Alert color="red" role="alert">
@@ -39,16 +41,18 @@ export function MovieDetailScreen({ movieId }: Readonly<{ movieId: string }>) {
   }
 
   const artwork = movie.backdropImages[0] ?? movie.posterImages[0] ?? null
-  const ambient = resolveAmbientColors(movie.backdropImages, movie.posterImages)
   const position = movie.watchProgress?.positionSeconds || null
   const fileId = movie.files[0]?.id ?? null
   const isWatched = movie.watchStatus === 'WATCHED'
   const cast = movie.cast.filter(
     (person): person is NonNullable<Movie['cast'][number]> => person !== null,
   )
+  const ratings = movie.ratings.filter(
+    (rating): rating is NonNullable<Movie['ratings'][number]> => rating !== null,
+  )
 
   return (
-    <AmbientScope theme={ambient?.theme ?? null}>
+    <>
       <DetailHeader
         backdrop={{
           image: pickImageVariant(artwork, 'LARGE'),
@@ -95,7 +99,7 @@ export function MovieDetailScreen({ movieId }: Readonly<{ movieId: string }>) {
             </button>
           </>
         }
-        aside={<RatingChipRow ratings={movie.ratings} />}
+        aside={ratings.length > 0 && <RatingChipRow ratings={ratings} />}
       />
       {watched.failed && (
         <Alert color="red" role="alert" className={styles.notice}>
@@ -116,7 +120,7 @@ export function MovieDetailScreen({ movieId }: Readonly<{ movieId: string }>) {
           </ContentShelf>
         </div>
       )}
-    </AmbientScope>
+    </>
   )
 }
 

@@ -11,14 +11,16 @@
   flex-shrink: 0;
   height: 30px;
   width: auto;
+  aspect-ratio: 4239 / 1184;
   display: block;
+  color: var(--ambient-text-primary, var(--color-white));
 }
 
 .topBarDivider {
   flex-shrink: 0;
   width: 1px;
   height: 26px;
-  background: var(--color-alpha-16);
+  background: color-mix(in srgb, var(--ambient-text-primary, var(--color-white)) 16%, transparent);
 }
 
 .topBarNav {
@@ -36,18 +38,18 @@
   white-space: nowrap;
   padding: 7px 18px;
   border-radius: var(--radius-sm);
-  background: var(--color-alpha-10);
+  background: color-mix(in srgb, var(--ambient-text-primary, var(--color-white)) 10%, transparent);
   /* Before font-size: the shorthand resets every font longhand declared ahead of it. */
   font: inherit;
   font-size: 15px;
-  color: var(--color-alpha-92);
+  color: var(--ambient-text-primary, var(--color-alpha-92));
   text-decoration: none;
   border: none;
   cursor: pointer;
 }
 
 .navPillActive {
-  background: var(--selection-active);
+  background: var(--ambient-selected, var(--selection-active));
   font-weight: 600;
 }
 

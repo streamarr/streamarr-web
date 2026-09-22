@@ -21,6 +21,21 @@
     linear-gradient(45deg, var(--corner-bottom-left), transparent 50%);
 }
 
+/* The back and metadata slots sit on artwork, which the server's text contrast never covered;
+   the scrim brings that strip back toward the base surface the theme was derived for. */
+.scrim {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 160px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--ambient-base, var(--color-ground)) 85%, transparent),
+    transparent
+  );
+}
+
 .fade {
   position: absolute;
   left: 0;
@@ -48,4 +63,16 @@
   position: absolute;
   right: 36px;
   top: 24px;
+}
+
+@media (max-width: 48em) {
+  .scrim {
+    height: 240px;
+  }
+
+  .metadata {
+    left: 36px;
+    right: 36px;
+    top: 72px;
+  }
 }
