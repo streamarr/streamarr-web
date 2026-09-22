@@ -19,7 +19,7 @@ import { useAdminLibraries, useLibraryCommands } from './useLibraryAdmin'
 import styles from '../Settings.module.css'
 
 /**
- * D3 inventory and selected-library workspace. Selection belongs to the route so reload/back
+ * Library inventory and selected-library workspace. Selection belongs to the route so reload/back
  * restore it. Missing IDs display a recovery state instead of silently acting on another library.
  * New inventories select the first library only when no explicit selection was requested.
  */

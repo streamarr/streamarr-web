@@ -1,4 +1,4 @@
-/* Approved D3 server-settings composition. Values come from streamarr-ux tokens. */
+/* Server-settings layout. Values come from streamarr-ux tokens. */
 .settings {
   color: var(--text-primary);
   font-family: var(--font-family-content);

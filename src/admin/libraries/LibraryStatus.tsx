@@ -4,7 +4,7 @@ import { Icon } from '../../ui/Icon'
 import styles from './LibraryStatus.module.css'
 
 /**
- * D3 library status: a compact system label and one semantic glyph, without a badge surface.
+ * Library status: a compact system label and one semantic glyph, without a badge surface.
  * The four known labels match the server verbatim. Future values receive a neutral fallback.
  * Parents own announcements so only the selected detail status is announced.
  */
