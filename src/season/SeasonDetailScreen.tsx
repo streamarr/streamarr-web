@@ -3,7 +3,7 @@ import { Alert, Center, Loader } from '@mantine/core'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { SeasonDetailDocument, type SeasonDetailQuery } from '../graphql/generated/graphql'
-import { AmbientScope } from '../media/AmbientScope'
+import { usePublishAmbientTheme } from '../media/ambientThemeContext'
 import { resolveAmbientColors } from '../media/ambientSource'
 import { detailBackClass } from '../media/DetailBack'
 import { detailAction, DetailHeader } from '../media/DetailHeader'
@@ -29,6 +29,12 @@ export function SeasonDetailScreen({ seasonId }: Readonly<{ seasonId: string }>)
   const watched = useWatchedToggle(seasonId, SeasonDetailDocument)
   const navigate = useNavigate()
   const [confirming, setConfirming] = useState<BulkVerb | null>(null)
+  const season = data?.season
+  // A season rarely has a backdrop of its own; the series' keeps the tint consistent across pages.
+  const ambient = season
+    ? resolveAmbientColors(season.backdropImages, season.series.backdropImages, season.posterImages)
+    : null
+  usePublishAmbientTheme(ambient?.theme ?? null)
 
   if (loading) {
     return (
@@ -38,7 +44,6 @@ export function SeasonDetailScreen({ seasonId }: Readonly<{ seasonId: string }>)
     )
   }
 
-  const season = data?.season
   if (error || !season) {
     return (
       <Alert color="red" role="alert">
@@ -57,14 +62,8 @@ export function SeasonDetailScreen({ seasonId }: Readonly<{ seasonId: string }>)
     { seasonNumber: season.seasonNumber, episodes: season.episodes },
   ])
   const isWatched = season.watchStatus === 'WATCHED'
-  // A season rarely has a backdrop of its own; the series' keeps the tint consistent across pages.
   const artwork =
     season.backdropImages[0] ?? series.backdropImages[0] ?? season.posterImages[0] ?? null
-  const ambient = resolveAmbientColors(
-    season.backdropImages,
-    series.backdropImages,
-    season.posterImages,
-  )
   const siblings = series.seasons
     .filter((sibling): sibling is Sibling => sibling !== null)
     .toSorted((a, b) => a.seasonNumber - b.seasonNumber)
@@ -83,7 +82,7 @@ export function SeasonDetailScreen({ seasonId }: Readonly<{ seasonId: string }>)
   }
 
   return (
-    <AmbientScope theme={ambient?.theme ?? null}>
+    <>
       <DetailHeader
         titleColumn
         backdrop={{
@@ -187,7 +186,7 @@ export function SeasonDetailScreen({ seasonId }: Readonly<{ seasonId: string }>)
         onConfirm={confirmBulk}
         onClose={() => setConfirming(null)}
       />
-    </AmbientScope>
+    </>
   )
 }
 

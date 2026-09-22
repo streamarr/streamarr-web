@@ -1,6 +1,8 @@
 import { createRootRouteWithContext, Outlet, useRouterState } from '@tanstack/react-router'
 import type { SessionStore } from '../auth/session'
 import type { FileRouteTypes } from '../routeTree.gen'
+import { AmbientScope } from '../media/AmbientScope'
+import { AmbientThemeProvider, useAmbientTheme } from '../media/ambientThemeContext'
 import { HomeShell } from '../ui/HomeShell'
 import { TopBar } from '../ui/TopBar'
 
@@ -22,7 +24,23 @@ const CEREMONY_ROUTES = new Set<FileRouteTypes['id']>([
   '/_authenticated/link',
 ])
 
+// Detail pages belong to the artwork (principle 1): the ambient page is the ground, with no
+// neutral chrome or brand wash around it.
+const AMBIENT_ROUTES = new Set<FileRouteTypes['id']>([
+  '/_authenticated/movie/$movieId',
+  '/_authenticated/series/$seriesId',
+  '/_authenticated/season/$seasonId',
+])
+
 function RootLayout() {
+  return (
+    <AmbientThemeProvider>
+      <RootFrame />
+    </AmbientThemeProvider>
+  )
+}
+
+function RootFrame() {
   // 'success', not just present: the match exists (with a 'pending' status) the instant the path
   // matches, before beforeLoad's session probe has actually vouched for it — chrome mounted then
   // would fire its own queries against an unconfirmed session and race the guard's own redirect.
@@ -35,9 +53,22 @@ function RootLayout() {
   const ceremony = useRouterState({
     select: (state) => state.matches.some((match) => CEREMONY_ROUTES.has(match.routeId)),
   })
+  const ambient = useRouterState({
+    select: (state) => state.matches.some((match) => AMBIENT_ROUTES.has(match.routeId)),
+  })
+  const theme = useAmbientTheme()
 
   if (ceremony) {
     return <Outlet />
+  }
+
+  if (ambient) {
+    return (
+      <AmbientScope theme={theme}>
+        {signedIn && <TopBar />}
+        <Outlet />
+      </AmbientScope>
+    )
   }
 
   return (
