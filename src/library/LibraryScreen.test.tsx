@@ -724,4 +724,75 @@ describe('LibraryScreen', () => {
     })
     expect(screen.getAllByRole('row')).toHaveLength(4)
   })
+
+  it('keeps focus on the same card when a new width re-lays the rows around it', async () => {
+    const columns = rowColumns(2)
+    server.use(
+      graphql.query('LibraryPage', () =>
+        HttpResponse.json({ data: libraryData({ edges: titledEdges(4) }) }),
+      ),
+    )
+    renderWithProviders(<Harness />)
+    // Title 01 ends the first row now and will head a row of its own, keyed by its cursor.
+    const card = await screen.findByRole('link', { name: /Title 01/ })
+    act(() => card.focus())
+    expect(card).toHaveFocus()
+
+    columns.set(1)
+    const grid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
+    const resized = {
+      target: grid,
+      borderBoxSize: [{ inlineSize: 400, blockSize: JSDOM_GRID_HEIGHT }],
+    } as unknown as ResizeObserverEntry
+    act(() => {
+      for (const observer of resizeObserverInstances.filter((instance) =>
+        instance.observe.mock.calls.some((call) => call[0] === grid),
+      )) {
+        observer.callback([resized], observer)
+      }
+    })
+
+    // The card is in a new element under a new row; focus followed it.
+    expect(screen.getAllByRole('row')).toHaveLength(4)
+    expect(screen.getByRole('link', { name: /Title 01/ })).toHaveFocus()
+  })
+
+  it('keeps focus on the landing card when the page before it re-flows the rows', async () => {
+    twoColumnRows()
+    server.use(
+      graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) => {
+        if (variables.before) {
+          return HttpResponse.json({
+            data: libraryData({
+              edges: [{ cursor: 'm', node: movieNode({ id: 'm', title: 'Mountain' }) }],
+            }),
+          })
+        }
+        if (variables.filter?.startLetter === 'N') {
+          const data = libraryData({
+            edges: [{ cursor: 'n', node: movieNode({ id: 'n', title: 'Northern Line' }) }],
+          })
+          data.library.items.pageInfo.hasPreviousPage = true
+          return HttpResponse.json({ data })
+        }
+        return HttpResponse.json({
+          data: libraryData({
+            edges: [{ cursor: 'a', node: movieNode({ id: 'a', title: 'Alright' }) }],
+          }),
+        })
+      }),
+    )
+    const { user } = renderWithProviders(
+      <Harness initialSearch={{ by: 'TITLE', direction: 'ASC' }} />,
+    )
+    await screen.findByText('Alright')
+
+    act(() => screen.getByRole('button', { name: 'N' }).focus())
+    await user.keyboard('{Enter}')
+    await waitFor(() => expect(screen.getByRole('link', { name: /Northern Line/ })).toHaveFocus())
+
+    // Mountain lands in front of Northern Line on the same two-column row.
+    await screen.findByText('Mountain')
+    expect(screen.getByRole('link', { name: /Northern Line/ })).toHaveFocus()
+  })
 })

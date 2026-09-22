@@ -9,6 +9,7 @@ import {
 import type { Store } from '@tanstack/store'
 import { motion, type AnimationDefinition, type Variants } from 'motion/react'
 import {
+  useCallback,
   useEffect,
   useEffectEvent,
   useLayoutEffect,
@@ -94,19 +95,7 @@ export function LibraryGrid({
   const focusedIndex =
     focusedCursor === null ? -1 : edges.findIndex((edge) => edge.cursor === focusedCursor)
   const focusedRow = focusedIndex < 0 ? null : Math.floor(focusedIndex / geometry.columns)
-  // A card asked to take focus does so in the first render that mounts it: after a landing, its
-  // row renders only once the grid has scrolled there.
-  const cardRefs = useRef(new Map<string, HTMLAnchorElement>())
-  const focusRequestRef = useRef<string | null>(null)
-  useLayoutEffect(function focusRequestedCard() {
-    const requested = focusRequestRef.current
-    const card = requested === null ? undefined : cardRefs.current.get(requested)
-    if (!card) {
-      return
-    }
-    focusRequestRef.current = null
-    card.focus()
-  })
+  const cardFocus = useRef<CardFocus>({ cards: new Map(), requested: null })
   // Arrow keys move between cards, Home and End along the row (WAI-ARIA grid).
   function moveFocus(event: KeyboardEvent<HTMLDivElement>) {
     if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
@@ -118,7 +107,7 @@ export function LibraryGrid({
     }
     event.preventDefault()
     const cursor = edges[target].cursor
-    focusRequestRef.current = cursor
+    cardFocus.current.requested = cursor
     setFocusedCursor(cursor)
   }
   const rowCount = Math.ceil(edges.length / geometry.columns)
@@ -256,7 +245,7 @@ export function LibraryGrid({
       grid.scrollTop = rowStart(virtualizer, Math.floor(cursorIndex / geometry.columns))
       // A short page scrolls to the letter's row, through the frame the slide cannot move.
       frameRef.current?.scrollIntoView({ block: 'start' })
-      focusRequestRef.current = focusLanding ? edges[cursorIndex].cursor : null
+      cardFocus.current.requested = focusLanding ? edges[cursorIndex].cursor : null
     },
     [
       landingKey,
@@ -271,6 +260,20 @@ export function LibraryGrid({
       repeatLanding,
     ],
   )
+
+  // A card asked to take focus does so in the first render that mounts it: after a landing, its
+  // row renders only once the grid has scrolled there, and a card focused when its row is
+  // re-keyed returns in a new element. This runs after the effects above have placed the rows,
+  // so focusing scrolls nothing they have already put in view.
+  useLayoutEffect(function focusRequestedCard() {
+    const { cards, requested } = cardFocus.current
+    const card = requested === null ? undefined : cards.get(requested)
+    if (!card) {
+      return
+    }
+    cardFocus.current.requested = null
+    card.focus()
+  })
 
   // The rail follows the row at the top of the grid; only the rail subscribes to the store. A
   // row where the chosen letter begins still belongs to the letter before it on the left, and
@@ -337,7 +340,7 @@ export function LibraryGrid({
                     key={edge.cursor}
                     edge={edge}
                     tabStop={first + column === tabStopIndex}
-                    cards={cardRefs}
+                    focus={cardFocus}
                     onFocus={setFocusedCursor}
                   />
                 ))}
@@ -424,31 +427,44 @@ function cardAfterKey(key: string, index: number, columns: number, count: number
   return target
 }
 
+// The rendered cards by cursor, and the cursor of a card asked to take focus once rendered.
+type CardFocus = { cards: Map<string, HTMLAnchorElement>; requested: string | null }
+
 function LibraryCard({
   edge,
   tabStop,
-  cards,
+  focus,
   onFocus,
 }: Readonly<{
   edge: LibraryEdge
   tabStop: boolean
-  cards: RefObject<Map<string, HTMLAnchorElement>>
+  focus: RefObject<CardFocus>
   onFocus: (cursor: string) => void
 }>) {
   const summary = summarizeMedia(edge.node)
+  // One identity for the card's life: React re-runs a changed ref's cleanup on the mounted node,
+  // which would read as the card unmounting whenever the tab stop moved.
+  const registerCard = useCallback(
+    (node: HTMLAnchorElement | null) => {
+      if (!node) {
+        return
+      }
+      focus.current.cards.set(edge.cursor, node)
+      return () => {
+        focus.current.cards.delete(edge.cursor)
+        // Unmounted while focused: the row was re-keyed, and the card returns in a new element.
+        if (document.activeElement === node) {
+          focus.current.requested = edge.cursor
+        }
+      }
+    },
+    [edge.cursor, focus],
+  )
   const linkProps = {
     className: styles.cardLink,
     tabIndex: tabStop ? 0 : -1,
     onFocus: () => onFocus(edge.cursor),
-    ref: (node: HTMLAnchorElement | null) => {
-      if (!node) {
-        return
-      }
-      cards.current.set(edge.cursor, node)
-      return () => {
-        cards.current.delete(edge.cursor)
-      }
-    },
+    ref: registerCard,
   }
   const card = (
     <PosterCard

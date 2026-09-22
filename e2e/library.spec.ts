@@ -869,12 +869,15 @@ test('a narrower window re-lays the rows before the frame that resized them pain
     )
   await expect.poll(async () => (await seen()).deliveries).toBeGreaterThan(0)
   const deliveriesBefore = (await seen()).deliveries
+  // The third card moves to a row of its own at two columns; focus must move with it.
+  await page.getByRole('link', { name: 'A Title 02' }).focus()
 
   await page.setViewportSize({ width: 375, height: 667 })
 
   await expect.poll(async () => (await seen()).deliveries).toBeGreaterThan(deliveriesBefore)
   await expect.poll(rowsFitTheWidth(page)).toBe(true)
   expect(await seen()).toMatchObject({ overfullRows: 0, overlappingRows: 0 })
+  await expect(page.getByRole('link', { name: 'A Title 02' })).toBeFocused()
 })
 
 // Rows are re-laid for a new width once the grid has measured it.
