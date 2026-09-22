@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import type { LibraryPageQuery, LibraryPageQueryVariables } from '../src/graphql/generated/graphql'
 import { STUB_URL } from './ports'
 
@@ -426,19 +426,13 @@ test('the alphabet highlight follows vertical scrolling on desktop and a phone',
   await page.goto('/library/movies?by=TITLE&direction=ASC')
   await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
   const grid = page.locator('[class*="_grid_"]')
-  // Rows are re-laid for a new width once the grid has measured it.
-  const rowsFitTheWidth = () =>
-    grid.evaluate((element) => {
-      const row = element.querySelector('[data-index]')!
-      return row.children.length === getComputedStyle(row).gridTemplateColumns.split(' ').length
-    })
 
   for (const { viewport, letter } of [
     { viewport: { width: 1440, height: 900 }, letter: 'B' },
     { viewport: { width: 375, height: 667 }, letter: 'C' },
   ]) {
     await page.setViewportSize(viewport)
-    await expect.poll(rowsFitTheWidth).toBe(true)
+    await expect.poll(rowsFitTheWidth(page)).toBe(true)
     // A row that far down is not in the DOM yet, so scroll to it by the grid's row geometry.
     await grid.evaluate(
       (element, index) => {
@@ -828,3 +822,66 @@ test('the grid keeps only the rows near the viewport in the DOM across ten lette
   expect(Math.max(...counts)).toBeLessThanOrEqual(bound)
   expect(Math.max(...counts) - Math.min(...counts)).toBeLessThanOrEqual(2 * columns)
 })
+
+test('a narrower window re-lays the rows before the frame that resized them paints', async ({
+  page,
+  request,
+}) => {
+  await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
+  await request.post(`${STUB_URL}/api/auth/refresh`)
+  await page.route('**/graphql', async (route) => {
+    const operation = route.request().postDataJSON() as {
+      operationName: string
+      variables: LibraryPageQueryVariables
+    }
+    if (operation.operationName !== 'LibraryPage') return route.continue()
+    await route.fulfill({ json: { data: libraryPage(operation.variables) } })
+  })
+  await page.goto('/library/movies?by=TITLE&direction=ASC')
+  await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
+  // Resize observers run after layout and before paint, in the order they were created: one
+  // created now runs after the grid's own, and sees the rows as the frame will paint them.
+  await page.evaluate(() => {
+    const grid = document.querySelector('[class*="_grid_"]')!
+    const seen = { deliveries: 0, overfullRows: 0, overlappingRows: 0 }
+    Object.assign(window, { rowsAtResize: seen })
+    new ResizeObserver(() => {
+      seen.deliveries += 1
+      const rows = [...grid.querySelectorAll<HTMLElement>('[data-index]')]
+      for (const [position, row] of rows.entries()) {
+        const tracks = getComputedStyle(row).gridTemplateColumns.split(' ').length
+        if (row.children.length > tracks) seen.overfullRows += 1
+        const previous = rows[position - 1]
+        if (
+          previous &&
+          row.getBoundingClientRect().top < previous.getBoundingClientRect().bottom - 1
+        ) {
+          seen.overlappingRows += 1
+        }
+      }
+    }).observe(grid)
+  })
+  const seen = () =>
+    page.evaluate(
+      () =>
+        (window as unknown as { rowsAtResize: { deliveries: number; overfullRows: number } })
+          .rowsAtResize,
+    )
+  await expect.poll(async () => (await seen()).deliveries).toBeGreaterThan(0)
+  const deliveriesBefore = (await seen()).deliveries
+
+  await page.setViewportSize({ width: 375, height: 667 })
+
+  await expect.poll(async () => (await seen()).deliveries).toBeGreaterThan(deliveriesBefore)
+  await expect.poll(rowsFitTheWidth(page)).toBe(true)
+  expect(await seen()).toMatchObject({ overfullRows: 0, overlappingRows: 0 })
+})
+
+// Rows are re-laid for a new width once the grid has measured it.
+function rowsFitTheWidth(page: Page) {
+  return () =>
+    page.locator('[class*="_grid_"]').evaluate((element) => {
+      const row = element.querySelector('[data-index]')!
+      return row.children.length === getComputedStyle(row).gridTemplateColumns.split(' ').length
+    })
+}
