@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CheckGlyph, ChevronDownGlyph } from './glyphs'
+import { Icon } from '../ui/Icon'
 import styles from './SeasonSideRail.module.css'
 
 // Long-running shows reach 37+ seasons; the rail shows a handful and a chevron reveals the rest.
@@ -42,7 +42,7 @@ export function SeasonSideRail({
               <span>{season.label}</span>
               {season.watched ? (
                 <span className={styles.check} aria-label="Watched">
-                  <CheckGlyph size={11} />
+                  <Icon name="check" size={14} />
                 </span>
               ) : (
                 <span className={styles.count}>{season.unwatchedCount}</span>
@@ -57,7 +57,7 @@ export function SeasonSideRail({
             aria-label={`Show all ${seasons.length} seasons`}
             onClick={() => setExpanded(true)}
           >
-            <ChevronDownGlyph />
+            <Icon name="chevron-down" size={16} />
           </button>
         )}
       </div>

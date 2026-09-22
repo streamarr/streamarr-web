@@ -1,3 +1,4 @@
+import { Icon } from './Icon'
 import styles from './ProfileTile.module.css'
 
 export function ProfileTile({
@@ -31,7 +32,7 @@ export function ProfileTile({
         {initials(name)}
         {(locked || pinProtected) && (
           <span className={styles.profileTileLock}>
-            <LockGlyph />
+            <Icon name="lock" size={14} />
           </span>
         )}
       </span>
@@ -72,22 +73,4 @@ const TILE_COLORS = [
 
 export function tileColor(index: number) {
   return TILE_COLORS[((index % TILE_COLORS.length) + TILE_COLORS.length) % TILE_COLORS.length]
-}
-
-function LockGlyph() {
-  return (
-    <svg
-      width="13"
-      height="13"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="#fff"
-      strokeWidth="2"
-      strokeLinecap="round"
-      aria-hidden
-    >
-      <rect x="5" y="11" width="14" height="9" rx="2" />
-      <path d="M8 11V8a4 4 0 0 1 8 0v3" />
-    </svg>
-  )
 }

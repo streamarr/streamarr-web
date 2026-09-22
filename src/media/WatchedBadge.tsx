@@ -1,5 +1,5 @@
 import type { WatchStatus } from '../graphql/generated/graphql'
-import { CheckGlyph } from './glyphs'
+import { Icon } from '../ui/Icon'
 import styles from './WatchedBadge.module.css'
 
 export type WatchedBadgeProps =
@@ -24,7 +24,7 @@ export function WatchedBadge(props: WatchedBadgeProps) {
   if (props.status === 'watched') {
     return (
       <span className={styles.watchedCheck} aria-label="Watched">
-        <CheckGlyph />
+        <Icon name="check" size={14} />
       </span>
     )
   }
