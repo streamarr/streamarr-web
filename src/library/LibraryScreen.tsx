@@ -11,7 +11,7 @@ import type {
   OrderMediaBy,
   SortDirection,
 } from '../graphql/generated/graphql'
-import { AlphabetRail } from '../media/AlphabetRail'
+import { AlphabetRail, type SelectionInput } from '../media/AlphabetRail'
 import { formatRelativeTime } from '../media/formatting'
 import { FilterBar, type WatchStatusFilter } from './FilterBar'
 import { LibraryGrid, type JumpDirection, type SlidePhase } from './LibraryGrid'
@@ -69,6 +69,7 @@ export function LibraryScreen({
     setRestoration({ key: locationKey, y: scrollEntry?.scrollY })
   }
   const restoredScrollY = restoration.key === locationKey ? restoration.y : scrollEntry?.scrollY
+  const [repeatFocus, setRepeatFocus] = useState(false)
   const [repeatLanding, setRepeatLanding] = useState(0)
 
   // The letter at the top of the grid lives in a store rather than in state, so only the rail,
@@ -124,16 +125,22 @@ export function LibraryScreen({
     })
   }
 
-  function selectLetter(letter: string | null) {
+  function selectLetter(letter: string | null, input: SelectionInput) {
     if (letter && letter === search.letter && search.direction === 'ASC' && landing?.cursor) {
       beginJump(null)
+      setRepeatFocus(input === 'keyboard')
       setRepeatLanding((request) => request + 1)
       return
     }
     const viewedLetter = visibleLetterStore.state ?? search.letter ?? null
     beginJump(
       letter && library
-        ? { letter, direction: directionOfJump(library.alphabetIndex, viewedLetter, letter) }
+        ? {
+            letter,
+            direction: directionOfJump(library.alphabetIndex, viewedLetter, letter),
+            // Focus travels with a jump made from the keyboard, as it does on tvOS.
+            focusLanding: input === 'keyboard',
+          }
         : null,
     )
     onSearchChange(
@@ -197,6 +204,7 @@ export function LibraryScreen({
             locationKey={locationKey}
             restoredScrollY={restoredScrollY}
             repeatLanding={repeatLanding}
+            focusLanding={jump?.focusLanding ?? repeatFocus}
             selectedLetter={search.letter ?? null}
             visibleLetterStore={visibleLetterStore}
             slide={slide}
@@ -234,7 +242,7 @@ function LibraryRail({
   visibleLetterStore: Store<string | null>
   letter: string | null
   pending: boolean
-  onSelect: (letter: string | null) => void
+  onSelect: (letter: string | null, input: SelectionInput) => void
 }>) {
   const visibleLetter = useStore(visibleLetterStore, (current) => current)
   return (
@@ -246,7 +254,7 @@ function LibraryRail({
   )
 }
 
-type LetterJump = { letter: string; direction: JumpDirection }
+type LetterJump = { letter: string; direction: JumpDirection; focusLanding: boolean }
 
 function directionOfJump(
   index: ReadonlyArray<{ letter: string }>,

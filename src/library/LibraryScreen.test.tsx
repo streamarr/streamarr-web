@@ -642,4 +642,34 @@ describe('LibraryScreen', () => {
     const nineteenth = await screen.findByRole('link', { name: /Title 18/ })
     expect(nineteenth.closest('[role="row"]')).toHaveAttribute('aria-rowindex', '10')
   })
+
+  it('moves focus to the landing card after a letter jump made from the keyboard, and not after a pointer jump', async () => {
+    server.use(
+      graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) =>
+        HttpResponse.json({
+          data: libraryData({
+            edges:
+              variables.filter?.startLetter === 'N'
+                ? [{ cursor: 'n', node: movieNode({ id: 'n', title: 'Northern Line' }) }]
+                : [{ cursor: 'a', node: movieNode({ id: 'a', title: 'Alright' }) }],
+          }),
+        }),
+      ),
+    )
+    const { user } = renderWithProviders(
+      <Harness initialSearch={{ by: 'TITLE', direction: 'ASC' }} />,
+    )
+    await screen.findByRole('link', { name: /Alright/ })
+
+    act(() => screen.getByRole('button', { name: 'N' }).focus())
+    await user.keyboard('{Enter}')
+
+    const landing = await screen.findByRole('link', { name: /Northern Line/ })
+    await waitFor(() => expect(landing).toHaveFocus())
+
+    await user.click(screen.getByRole('button', { name: 'A' }))
+
+    await screen.findByRole('link', { name: /Alright/ })
+    expect(screen.getByRole('button', { name: 'A' })).toHaveFocus()
+  })
 })
