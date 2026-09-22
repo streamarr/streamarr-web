@@ -1,10 +1,12 @@
+import { useStore } from '@tanstack/react-store'
 import { act, render } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { intersectionObserverInstances } from '../../vitest.setup'
 import { useVisibleLetter } from './useVisibleLetter'
 
 function Harness({ letters, root = null }: { letters: string[]; root?: Element | null }) {
-  const { visibleLetter, registerItem } = useVisibleLetter(root)
+  const { visibleLetterStore, registerItem } = useVisibleLetter(root)
+  const visibleLetter = useStore(visibleLetterStore, (letter) => letter)
   return (
     <div>
       <div data-testid="visible-letter">{visibleLetter ?? 'none'}</div>
