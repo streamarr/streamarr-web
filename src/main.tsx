@@ -5,6 +5,7 @@ import './styles/fonts.css'
 import { ApolloProvider } from '@apollo/client/react'
 import { MantineProvider } from '@mantine/core'
 import { RouterProvider } from '@tanstack/react-router'
+import { MotionConfig } from 'motion/react'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { AuthProvider } from './auth/AuthProvider'
@@ -35,11 +36,13 @@ createRoot(document.getElementById('root')!).render(
       theme={theme}
       cssVariablesResolver={cssVariablesResolver}
     >
-      <ApolloProvider client={apolloClient}>
-        <AuthProvider sessionStore={session} renewal={renewal}>
-          <RouterProvider router={router} />
-        </AuthProvider>
-      </ApolloProvider>
+      <MotionConfig reducedMotion="user">
+        <ApolloProvider client={apolloClient}>
+          <AuthProvider sessionStore={session} renewal={renewal}>
+            <RouterProvider router={router} />
+          </AuthProvider>
+        </ApolloProvider>
+      </MotionConfig>
     </MantineProvider>
   </StrictMode>,
 )

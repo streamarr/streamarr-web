@@ -22,7 +22,13 @@ export function createAppRouter(
     }
     return answer
   })
-  const router = createRouter({ routeTree, history, context: { session } })
+  // Back returns to where the reader was: the window on ambient pages and any scrolled panel.
+  const router = createRouter({
+    routeTree,
+    history,
+    context: { session },
+    scrollRestoration: true,
+  })
   apolloClient = createApolloClient((route) => {
     if (route === '/select-profile') {
       void router.navigate({ to: route })
