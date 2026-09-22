@@ -131,7 +131,7 @@ export function useLibraryItems({
     if (!pageInfo?.hasPreviousPage || !pageInfo.startCursor) {
       return
     }
-    // A `before` cursor replaces the letter seek anchor (ADR 0018).
+    // A `before` cursor replaces the letter seek anchor (ADR 0023).
     const { startLetter: _startLetter, ...continuationFilter } = filter
     requestScope.previousRequest = fetchMore({
       variables: {

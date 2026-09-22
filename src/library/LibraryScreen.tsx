@@ -38,7 +38,7 @@ export function LibraryScreen({
 }>) {
   const sort: MediaSort = { by: search.by, direction: search.direction }
   const trackingLetter = sort.by === 'TITLE'
-  // The server's alphabet index is unfiltered, and letter seeking requires TITLE sort (ADR 0018).
+  // The server's alphabet index is unfiltered, and letter seeking requires TITLE sort (ADR 0023).
   const canSeekByLetter = trackingLetter && !search.watchStatus
   const filter: MediaFilter = {
     watchStatus: search.watchStatus,

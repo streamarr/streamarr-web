@@ -241,7 +241,7 @@ describe('LibraryScreen', () => {
     )
   })
 
-  it('hides the alphabet rail when sorted by anything other than TITLE, since a tap would silently shrink the library to one letter (ADR 0018)', async () => {
+  it('hides the alphabet rail when sorted by anything other than TITLE, since a tap would silently shrink the library to one letter (ADR 0023)', async () => {
     server.use(graphql.query('LibraryPage', () => HttpResponse.json({ data: libraryData() })))
     renderWithProviders(<Harness initialSearch={{ by: 'ADDED', direction: 'DESC' }} />)
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Movies' })).toBeInTheDocument())
