@@ -113,3 +113,15 @@ Page size is not what shows blank space on a flick: the viewer never reached the
 ### Verdict
 
 Virtualization pays: the jump's invisible window drops by about 60%, the DOM stays flat as pages accumulate, and the phone layouts, Back and the rail hold. Merge candidate once the focus behaviour has an owner's answer.
+
+## Productionizing the spike (2026-09-22)
+
+The open points above were closed on the same branch, test-first at the agreed seams (`LibraryScreen.test.tsx`, the route test, `e2e/library.spec.ts`).
+
+- **Focus.** The grid follows the WAI-ARIA grid pattern, which agrees with tvOS that focus is the viewer's place and is never lost. The rows are `role="grid"` with `aria-rowcount`, each rendered row carries `aria-rowindex`, and each card sits in a `gridcell`. One tab stop with a roving tabindex: the focused card, else the first card in view; arrow keys move between cards, Home and End along the row, Tab leaves. The focused card's row is added to the virtualizer's range through `rangeExtractor`, so it stays mounted however far the viewer scrolls. A letter chosen from the keyboard (a click with `detail === 0`) moves focus to the landing card, as tvOS focuses the anchor item; a pointer jump leaves focus where it was.
+- **Resize.** The grid observes its own size with a `ResizeObserver` and re-measures the row inside a `flushSync` render there, before paint. The browser spec registers a second observer after the app's, whose callback therefore sees the rows as the frame will paint them, and finds none overfull or overlapping; before the change it saw four overfull and three overlapping rows.
+- **Reload guard.** Removed as unreachable. The router restores an element's position only when the element exists as the route renders; on a reload the grid mounts after the query answers, so a reload lands on the letter or the top, as it did before virtualization. On Back the router's restore runs after the landing effect and wins on its own.
+- **Uniform row height.** Stated where the geometry is measured and proven by a browser spec that lengthens one title: no title grows, every row measures the same, rows sit one pitch apart. Dropping the title's one-line rule fails it.
+- **Coverage.** `LibraryGrid.tsx` at 95% statements / 87% branches from the unit suite; the remaining lines are the zero-height and no-focus guards.
+
+Observed once during manual testing, not reproduced in three further attempts: after a keyboard jump to P, the page before P was requested twice and the grid showed 48 titles for a few seconds before the backfill appeared. Both responses were valid; the cache held the merged page afterwards. Worth watching in the browser suite's jump specs.
