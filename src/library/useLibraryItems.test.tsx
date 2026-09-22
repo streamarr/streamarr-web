@@ -270,7 +270,7 @@ describe('useLibraryItems', () => {
     await waitFor(() => expect(screen.getByText('Alright')).toBeInTheDocument())
     expect(screen.getByText('Northern Line')).toBeInTheDocument()
     expect(backwardFetches).toBe(1)
-    // Once paginating via `before`, the seek anchor has nothing left to do (ADR 0018) — dropped,
+    // Once paginating via `before`, the seek anchor has nothing left to do (ADR 0023) — dropped,
     // matching streamarr-apple's fetchPreviousPage.
     expect(backwardFilter).toEqual({})
   })
