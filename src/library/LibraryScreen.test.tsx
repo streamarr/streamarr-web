@@ -1,5 +1,5 @@
 import { ObservableQuery } from '@apollo/client'
-import { act, fireEvent, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { graphql, HttpResponse, type GraphQLQuery } from 'msw'
 import { useState } from 'react'
@@ -78,6 +78,24 @@ function libraryData(
       },
     },
   }
+}
+
+// One title per row in jsdom, so a row index is a title index.
+function titledEdges(count: number) {
+  return Array.from({ length: count }, (_, index) => {
+    const id = String(index).padStart(2, '0')
+    return { cursor: `c${id}`, node: movieNode({ id, title: `Title ${id}` }) }
+  })
+}
+
+// jsdom lays out no grid tracks; the rows report two columns instead.
+function twoColumnRows() {
+  const computedStyle = window.getComputedStyle.bind(window)
+  vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) =>
+    element.hasAttribute('data-index')
+      ? ({ gridTemplateColumns: '100px 100px', rowGap: '' } as unknown as CSSStyleDeclaration)
+      : computedStyle(element, pseudo),
+  )
 }
 
 const DEFAULT_SEARCH: LibrarySearch = { by: 'ADDED', direction: 'DESC' }
@@ -453,12 +471,7 @@ describe('LibraryScreen', () => {
 
   it('highlights the pressed letter when its first title shares the top row with the letter before it', async () => {
     // Two columns, so the backfilled Ozark and the landing Paddington share the top row.
-    const computedStyle = window.getComputedStyle.bind(window)
-    vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) =>
-      element.hasAttribute('data-index')
-        ? ({ gridTemplateColumns: '100px 100px', rowGap: '' } as unknown as CSSStyleDeclaration)
-        : computedStyle(element, pseudo),
-    )
+    twoColumnRows()
     const withRail = (edges: { cursor: string; node: ReturnType<typeof movieNode> }[]) => {
       const data = libraryData({ edges })
       data.library.alphabetIndex = [
@@ -546,5 +559,87 @@ describe('LibraryScreen', () => {
     // The prepended Alright row sits above Northern Line, which stays at the top of the grid.
     const grid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
     await waitFor(() => expect(grid.scrollTop).toBe(JSDOM_ROW_HEIGHT))
+  })
+
+  it('keeps the focused card mounted, and focused, when its row scrolls out of the rendered range', async () => {
+    server.use(
+      graphql.query('LibraryPage', () =>
+        HttpResponse.json({ data: libraryData({ edges: titledEdges(12) }) }),
+      ),
+    )
+    renderWithProviders(<Harness />)
+    const first = await screen.findByRole('link', { name: /Title 00/ })
+    act(() => first.focus())
+    expect(first).toHaveFocus()
+
+    // Nine rows down, rows 0 to 6 are outside the viewport and its overscan.
+    const grid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
+    grid.scrollTop = 9 * JSDOM_ROW_HEIGHT
+    fireEvent.scroll(grid)
+
+    await screen.findByRole('link', { name: /Title 09/ })
+    expect(screen.queryByRole('link', { name: /Title 01/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Title 00/ })).toBe(first)
+    expect(first).toHaveFocus()
+  })
+
+  it('offers one tab stop into the grid, moves between cards with the arrow keys, and leaves it on Tab', async () => {
+    twoColumnRows()
+    server.use(
+      graphql.query('LibraryPage', () =>
+        HttpResponse.json({ data: libraryData({ edges: titledEdges(4) }) }),
+      ),
+    )
+    const { user } = renderWithProviders(
+      <Harness initialSearch={{ by: 'TITLE', direction: 'ASC' }} />,
+    )
+    await screen.findByRole('link', { name: /Title 03/ })
+    // Two columns: Title 00 and 01 share the first row, 02 and 03 the second.
+    const cards = screen.getAllByRole('link', { name: /Title/ })
+    expect(cards.map((card) => card.tabIndex)).toEqual([0, -1, -1, -1])
+
+    act(() => cards[0].focus())
+    await user.keyboard('{ArrowRight}')
+    expect(cards[1]).toHaveFocus()
+    await user.keyboard('{ArrowDown}')
+    expect(cards[3]).toHaveFocus()
+    await user.keyboard('{ArrowLeft}')
+    expect(cards[2]).toHaveFocus()
+    await user.keyboard('{ArrowUp}')
+    expect(cards[0]).toHaveFocus()
+    await user.keyboard('{End}')
+    expect(cards[1]).toHaveFocus()
+    await user.keyboard('{Home}')
+    expect(cards[0]).toHaveFocus()
+
+    await user.keyboard('{ArrowRight}')
+    await user.tab()
+    expect(screen.getByRole('button', { name: 'A' })).toHaveFocus()
+    // The grid remembers its place: Shift+Tab returns to the card that had focus.
+    await user.tab({ shift: true })
+    expect(cards[1]).toHaveFocus()
+  })
+
+  it('exposes the rows as a grid that announces each rendered row among all the loaded rows', async () => {
+    twoColumnRows()
+    server.use(
+      graphql.query('LibraryPage', () =>
+        HttpResponse.json({ data: libraryData({ edges: titledEdges(24) }) }),
+      ),
+    )
+    renderWithProviders(<Harness />)
+    await screen.findByRole('link', { name: /Title 00/ })
+    const grid = screen.getByRole('grid', { name: 'Items' })
+    expect(grid).toHaveAttribute('aria-rowcount', '12')
+    const firstRow = within(grid).getAllByRole('row')[0]
+    expect(firstRow).toHaveAttribute('aria-rowindex', '1')
+    expect(within(firstRow).getAllByRole('gridcell')).toHaveLength(2)
+
+    const scroller = document.querySelector('[class*="_grid_"]') as HTMLDivElement
+    scroller.scrollTop = 9 * JSDOM_ROW_HEIGHT
+    fireEvent.scroll(scroller)
+
+    const nineteenth = await screen.findByRole('link', { name: /Title 18/ })
+    expect(nineteenth.closest('[role="row"]')).toHaveAttribute('aria-rowindex', '10')
   })
 })

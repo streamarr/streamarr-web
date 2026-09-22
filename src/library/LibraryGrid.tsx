@@ -1,9 +1,21 @@
 import { useElementSize, useMergedRef } from '@mantine/hooks'
 import { Link } from '@tanstack/react-router'
-import { useVirtualizer, type Virtualizer } from '@tanstack/react-virtual'
+import {
+  defaultRangeExtractor,
+  useVirtualizer,
+  type Range,
+  type Virtualizer,
+} from '@tanstack/react-virtual'
 import type { Store } from '@tanstack/store'
 import { motion, type AnimationDefinition, type Variants } from 'motion/react'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type RefObject,
+} from 'react'
 import { PosterCard } from '../media/PosterCard'
 import { summarizeMedia, summaryLetter } from '../media/summarizeMedia'
 import { useIntersectionObserver } from '../media/useIntersectionObserver'
@@ -76,12 +88,47 @@ export function LibraryGrid({
   const probeRowRef = useRef<HTMLDivElement | null>(null)
 
   const [geometry, setGeometry] = useState(UNMEASURED_ROWS)
+  // Focus is the viewer's place in the grid, as on tvOS: the focused card's row stays mounted
+  // however far the viewer scrolls, so focus is never lost to the body.
+  const [focusedCursor, setFocusedCursor] = useState<string | null>(null)
+  const focusedIndex =
+    focusedCursor === null ? -1 : edges.findIndex((edge) => edge.cursor === focusedCursor)
+  const focusedRow = focusedIndex < 0 ? null : Math.floor(focusedIndex / geometry.columns)
+  // A card asked to take focus does so in the first render that mounts it: after a landing, its
+  // row renders only once the grid has scrolled there.
+  const cardRefs = useRef(new Map<string, HTMLAnchorElement>())
+  const focusRequestRef = useRef<string | null>(null)
+  useLayoutEffect(function focusRequestedCard() {
+    const requested = focusRequestRef.current
+    const card = requested === null ? undefined : cardRefs.current.get(requested)
+    if (!card) {
+      return
+    }
+    focusRequestRef.current = null
+    card.focus()
+  })
+  // Arrow keys move between cards, Home and End along the row (WAI-ARIA grid).
+  function moveFocus(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+      return
+    }
+    const target = cardAfterKey(event.key, focusedIndex, geometry.columns, edges.length)
+    if (target === null) {
+      return
+    }
+    event.preventDefault()
+    const cursor = edges[target].cursor
+    focusRequestRef.current = cursor
+    setFocusedCursor(cursor)
+  }
+  const rowCount = Math.ceil(edges.length / geometry.columns)
   const { virtualizer, rows, totalSize, topRow } = useVirtualRows({
-    count: Math.ceil(edges.length / geometry.columns),
+    count: rowCount,
     getScrollElement: () => gridElement,
     estimateSize: () => geometry.rowHeight,
     gap: geometry.rowGap,
     overscan: OVERSCAN_ROWS,
+    rangeExtractor: (range) => rowsNearTheViewport(range, focusedRow),
     // Keyed by first title, so a page prepended in whole rows keeps the rows in view mounted.
     getItemKey: (row) => edges[row * geometry.columns]?.cursor ?? row,
   })
@@ -224,6 +271,8 @@ export function LibraryGrid({
   )
 
   const probeRowIndex = rows[0]?.index
+  // One tab stop: the focused card, else the first card in view.
+  const tabStopIndex = focusedIndex < 0 ? topRow * geometry.columns : focusedIndex
   return (
     <div className={styles.gridFrame} ref={frameRef}>
       <motion.div
@@ -236,7 +285,14 @@ export function LibraryGrid({
         animate={slide}
         onAnimationComplete={onSlideComplete}
       >
-        <div className={styles.rows} style={{ height: totalSize }}>
+        <div
+          role="grid"
+          aria-label="Items"
+          aria-rowcount={rowCount}
+          className={styles.rows}
+          style={{ height: totalSize }}
+          onKeyDown={moveFocus}
+        >
           {hasPreviousPage && (
             <div ref={loadPreviousRef} aria-hidden className={styles.sentinel} data-edge="start" />
           )}
@@ -245,13 +301,21 @@ export function LibraryGrid({
             return (
               <div
                 key={row.key}
+                role="row"
+                aria-rowindex={row.index + 1}
                 data-index={row.index}
                 ref={row.index === probeRowIndex ? probeRowRef : undefined}
                 className={styles.row}
                 style={{ transform: `translateY(${row.start}px)` }}
               >
-                {edges.slice(first, first + geometry.columns).map((edge) => (
-                  <LibraryCard key={edge.cursor} edge={edge} />
+                {edges.slice(first, first + geometry.columns).map((edge, column) => (
+                  <LibraryCard
+                    key={edge.cursor}
+                    edge={edge}
+                    tabStop={first + column === tabStopIndex}
+                    cards={cardRefs}
+                    onFocus={setFocusedCursor}
+                  />
                 ))}
               </div>
             )
@@ -275,6 +339,14 @@ function useVirtualRows(options: Parameters<typeof useVirtualizer<HTMLDivElement
     totalSize: virtualizer.getTotalSize(),
     topRow: virtualizer.range?.startIndex ?? 0,
   }
+}
+
+function rowsNearTheViewport(range: Range, focusedRow: number | null) {
+  const rows = defaultRangeExtractor(range)
+  if (focusedRow === null || focusedRow >= range.count || rows.includes(focusedRow)) {
+    return rows
+  }
+  return [...rows, focusedRow].sort((a, b) => a - b)
 }
 
 function letterAtTheTop(topRow: LibraryEdge[], selectedLetter: string | null) {
@@ -308,8 +380,52 @@ function sameGeometry(a: RowGeometry, b: RowGeometry) {
   return a.columns === b.columns && a.rowHeight === b.rowHeight && a.rowGap === b.rowGap
 }
 
-function LibraryCard({ edge }: Readonly<{ edge: LibraryEdge }>) {
+function cardAfterKey(key: string, index: number, columns: number, count: number) {
+  if (index < 0) {
+    return null
+  }
+  const rowStart = index - (index % columns)
+  const moves: Record<string, number> = {
+    ArrowRight: index + 1,
+    ArrowLeft: index - 1,
+    ArrowDown: index + columns,
+    ArrowUp: index - columns,
+    Home: rowStart,
+    End: Math.min(rowStart + columns - 1, count - 1),
+  }
+  const target = moves[key]
+  if (target === undefined || target === index || target < 0 || target >= count) {
+    return null
+  }
+  return target
+}
+
+function LibraryCard({
+  edge,
+  tabStop,
+  cards,
+  onFocus,
+}: Readonly<{
+  edge: LibraryEdge
+  tabStop: boolean
+  cards: RefObject<Map<string, HTMLAnchorElement>>
+  onFocus: (cursor: string) => void
+}>) {
   const summary = summarizeMedia(edge.node)
+  const linkProps = {
+    className: styles.cardLink,
+    tabIndex: tabStop ? 0 : -1,
+    onFocus: () => onFocus(edge.cursor),
+    ref: (node: HTMLAnchorElement | null) => {
+      if (!node) {
+        return
+      }
+      cards.current.set(edge.cursor, node)
+      return () => {
+        cards.current.delete(edge.cursor)
+      }
+    },
+  }
   const card = (
     <PosterCard
       title={summary.title}
@@ -321,17 +437,18 @@ function LibraryCard({ edge }: Readonly<{ edge: LibraryEdge }>) {
       imageLoading="eager"
     />
   )
-  if (edge.node.__typename === 'Movie') {
-    return (
-      <Link to="/movie/$movieId" params={{ movieId: summary.id }} className={styles.cardLink}>
-        {card}
-      </Link>
-    )
-  }
   return (
-    <Link to="/series/$seriesId" params={{ seriesId: summary.id }} className={styles.cardLink}>
-      {card}
-    </Link>
+    <div role="gridcell">
+      {edge.node.__typename === 'Movie' ? (
+        <Link to="/movie/$movieId" params={{ movieId: summary.id }} {...linkProps}>
+          {card}
+        </Link>
+      ) : (
+        <Link to="/series/$seriesId" params={{ seriesId: summary.id }} {...linkProps}>
+          {card}
+        </Link>
+      )}
+    </div>
   )
 }
 
