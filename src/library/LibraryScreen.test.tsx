@@ -5,7 +5,12 @@ import { graphql, HttpResponse, type GraphQLQuery } from 'msw'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import type { LibraryPageQuery, LibraryPageQueryVariables } from '../graphql/generated/graphql'
-import { intersectionObserverInstances, JSDOM_ROW_HEIGHT } from '../../vitest.setup'
+import {
+  intersectionObserverInstances,
+  JSDOM_GRID_HEIGHT,
+  JSDOM_ROW_HEIGHT,
+  resizeObserverInstances,
+} from '../../vitest.setup'
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
 import { LibraryScreen, type LibrarySearch } from './LibraryScreen'
@@ -88,14 +93,27 @@ function titledEdges(count: number) {
   })
 }
 
-// jsdom lays out no grid tracks; the rows report two columns instead.
-function twoColumnRows() {
+// jsdom lays out no grid tracks; the rows report this many columns instead, until changed.
+function rowColumns(initial: number) {
+  let tracks = initial
   const computedStyle = window.getComputedStyle.bind(window)
   vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) =>
     element.hasAttribute('data-index')
-      ? ({ gridTemplateColumns: '100px 100px', rowGap: '' } as unknown as CSSStyleDeclaration)
+      ? ({
+          gridTemplateColumns: Array.from({ length: tracks }, () => '100px').join(' '),
+          rowGap: '',
+        } as unknown as CSSStyleDeclaration)
       : computedStyle(element, pseudo),
   )
+  return {
+    set(next: number) {
+      tracks = next
+    },
+  }
+}
+
+function twoColumnRows() {
+  rowColumns(2)
 }
 
 const DEFAULT_SEARCH: LibrarySearch = { by: 'ADDED', direction: 'DESC' }
@@ -671,5 +689,39 @@ describe('LibraryScreen', () => {
 
     await screen.findByRole('link', { name: /Alright/ })
     expect(screen.getByRole('button', { name: 'A' })).toHaveFocus()
+  })
+
+  it('re-lays the rows for a new width before the browser paints the frame that resized the grid', async () => {
+    const columns = rowColumns(2)
+    server.use(
+      graphql.query('LibraryPage', () =>
+        HttpResponse.json({ data: libraryData({ edges: titledEdges(4) }) }),
+      ),
+    )
+    renderWithProviders(<Harness />)
+    await screen.findByRole('link', { name: /Title 03/ })
+    const cellsInFirstRow = () =>
+      within(screen.getAllByRole('row')[0]).getAllByRole('gridcell').length
+    expect(cellsInFirstRow()).toBe(2)
+
+    // The grid narrows to one column; every observer of it hears after layout, before paint.
+    columns.set(1)
+    const grid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
+    const observers = resizeObserverInstances.filter((instance) =>
+      instance.observe.mock.calls.some((call) => call[0] === grid),
+    )
+    expect(observers).not.toHaveLength(0)
+    const resized = {
+      target: grid,
+      borderBoxSize: [{ inlineSize: 400, blockSize: JSDOM_GRID_HEIGHT }],
+    } as unknown as ResizeObserverEntry
+    act(() => {
+      for (const observer of observers) {
+        observer.callback([resized], observer)
+      }
+      // Before React flushes anything deferred: the rows already hold one card each.
+      expect(cellsInFirstRow()).toBe(1)
+    })
+    expect(screen.getAllByRole('row')).toHaveLength(4)
   })
 })

@@ -1,4 +1,4 @@
-import { useElementSize, useMergedRef } from '@mantine/hooks'
+import { useMergedRef } from '@mantine/hooks'
 import { Link } from '@tanstack/react-router'
 import {
   defaultRangeExtractor,
@@ -10,12 +10,14 @@ import type { Store } from '@tanstack/store'
 import { motion, type AnimationDefinition, type Variants } from 'motion/react'
 import {
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent,
   type RefObject,
 } from 'react'
+import { flushSync } from 'react-dom'
 import { PosterCard } from '../media/PosterCard'
 import { summarizeMedia, summaryLetter } from '../media/summarizeMedia'
 import { useIntersectionObserver } from '../media/useIntersectionObserver'
@@ -77,15 +79,11 @@ export function LibraryGrid({
   onSlideComplete: (definition: AnimationDefinition) => void
 }>) {
   // State lets observers attach to the grid after it mounts; the ref is the handle the layout
-  // effects scroll; the size feeds the prefetch margin and re-measures rows on a width change.
+  // effects scroll.
   const [gridElement, setGridElement] = useState<HTMLDivElement | null>(null)
   const gridNodeRef = useRef<HTMLDivElement | null>(null)
-  const {
-    ref: measureGrid,
-    width: gridWidth,
-    height: gridHeight,
-  } = useElementSize<HTMLDivElement>()
-  const gridRef = useMergedRef(setGridElement, measureGrid, gridNodeRef)
+  const gridRef = useMergedRef(setGridElement, gridNodeRef)
+  const [gridHeight, setGridHeight] = useState(0)
   const frameRef = useRef<HTMLDivElement>(null)
   const probeRowRef = useRef<HTMLDivElement | null>(null)
 
@@ -135,23 +133,45 @@ export function LibraryGrid({
     getItemKey: (row) => edges[row * geometry.columns]?.cursor ?? row,
   })
 
-  // Measured once rows exist, and again whenever the grid's width changes.
+  // Measured once rows exist, and again whenever the grid's size changes.
+  const measureRows = useEffectEvent(() => {
+    const row = probeRowRef.current
+    if (!row) {
+      return
+    }
+    const next = measureRowGeometry(row)
+    if (!next || sameGeometry(next, geometry)) {
+      return
+    }
+    setGeometry(next)
+    // The virtualizer re-reads the row estimate only after a measure().
+    virtualizer.measure()
+  })
   const hasRows = rows.length > 0
   useLayoutEffect(
-    function measureRows() {
-      const row = probeRowRef.current
-      if (!row) {
-        return
-      }
-      const next = measureRowGeometry(row)
-      if (!next || sameGeometry(next, geometry)) {
-        return
-      }
-      setGeometry(next)
-      // The virtualizer re-reads the row estimate only after a measure().
-      virtualizer.measure()
+    function measureFirstRows() {
+      measureRows()
     },
-    [hasRows, gridWidth, geometry, virtualizer],
+    [hasRows, geometry, virtualizer],
+  )
+  // A resize observer runs after layout and before paint, so a render flushed inside it re-lays
+  // the rows before the frame that resized the grid is painted; a deferred one paints the old
+  // rows, wrapped to the new width, for a frame.
+  useEffect(
+    function relayRowsOnResize() {
+      if (!gridElement) {
+        return
+      }
+      const observer = new ResizeObserver(() => {
+        flushSync(() => {
+          setGridHeight(gridElement.clientHeight)
+          measureRows()
+        })
+      })
+      observer.observe(gridElement)
+      return () => observer.disconnect()
+    },
+    [gridElement],
   )
 
   // IntersectionObserver requires pixels here; vh/dvh units are unsupported.
