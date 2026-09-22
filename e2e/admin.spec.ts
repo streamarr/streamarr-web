@@ -291,7 +291,7 @@ test('ineligible accounts cannot enter via direct URLs or the menu', async ({ pa
   expect(state.calls.filter((call) => call.operationName === 'AdminLibraries')).toHaveLength(0)
 })
 
-test('D3 workspace and creation share a width and fit phone and desktop layouts', async ({
+test('Library workspace and creation share a width and fit phone and desktop layouts', async ({
   page,
 }, testInfo) => {
   await fixture(page)

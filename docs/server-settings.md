@@ -1,6 +1,6 @@
 # Server settings and library administration
 
-The production area implements the selected D3 design inside the normal Streamarr shell.
+Server settings integrates library administration into the normal Streamarr shell.
 Enter through **Server settings** in the profile dropdown or `/settings/server/libraries`.
 Creation lives at `/settings/server/libraries/new`; `?library=<id>` preserves the selected
 library through reloads and browser history. Successful creation stays in settings.
@@ -33,7 +33,7 @@ Uses the existing server pin in `src/graphql/schema.pin.json`. Operations live i
 | `admin/libraries/useLibraryAdmin.ts` | Typed commands, single-request submission guard, inventory loaded on entry, cache invalidation, and request errors. |
 | `admin/libraries/LibraryWorkspace.tsx` | Selection, metadata, grouped actions, inline refresh and confirmed removal. Route owns selected ID; each library owns its transient editor state. |
 | `admin/libraries/CreateLibrary.tsx` | Supported configuration inputs, draft preservation, field errors and confirmed-ID callback. |
-| `admin/libraries/LibraryStatus.tsx` | D3 status rendering, backed by the shared Lucide mapping. |
+| `admin/libraries/LibraryStatus.tsx` | Library status labels and glyphs, backed by the shared Lucide mapping. |
 | `ui/DestructiveButton.tsx` | Reusable contained red action. Callers obtain confirmation before destructive work. |
 | `ui/ConfirmDialog.tsx` | Focus management, explicit confirmation, pending/dismissal rules and inline failure. Callers own execution and close on success. |
 
@@ -66,7 +66,7 @@ reclassify a successful mutation as failed. Late responses do not navigate unmou
 
 ## Approved visual behavior
 
-- D3 uses the section rail, library list/detail workspace, and compact glyph-based statuses.
+- Server settings uses a section rail, a library list/detail workspace, and compact status labels with glyphs.
 - One page title/count; selected library name beside its media icon; status below, aligned with
   that icon. Metadata displays server folder and last scan.
 - View library, Scan library, Refresh metadata and Remove library share Library actions.
