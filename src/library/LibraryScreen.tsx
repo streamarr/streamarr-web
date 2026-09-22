@@ -1,6 +1,8 @@
 import { Alert, Anchor, Center, Loader, Text, Title } from '@mantine/core'
 import { useElementSize, useMergedRef } from '@mantine/hooks'
 import { Link } from '@tanstack/react-router'
+import { useStore } from '@tanstack/react-store'
+import type { Store } from '@tanstack/store'
 import { motion, useReducedMotion, type Variants } from 'motion/react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type {
@@ -71,7 +73,7 @@ export function LibraryScreen({
   // IntersectionObserver requires pixels here; vh/dvh units are unsupported.
   const halfViewportPrefetchMargin = `${gridHeight / 2}px 0px`
   const itemElementsRef = useRef(new Map<string, HTMLElement>())
-  const { visibleLetter, registerItem } = useVisibleLetter(gridElement)
+  const { visibleLetterStore, registerItem } = useVisibleLetter(gridElement)
 
   const loadMoreRef = useIntersectionObserver(
     (entries) => {
@@ -189,7 +191,7 @@ export function LibraryScreen({
   }
 
   function selectLetter(letter: string | null) {
-    const viewedLetter = visibleLetter ?? search.letter ?? null
+    const viewedLetter = visibleLetterStore.state ?? search.letter ?? null
     beginJump(
       letter && library
         ? { letter, direction: directionOfJump(library.alphabetIndex, viewedLetter, letter) }
@@ -314,14 +316,40 @@ export function LibraryScreen({
           </div>
         )}
         {canSeekByLetter && (
-          <AlphabetRail
+          <LibraryRail
             index={library.alphabetIndex}
-            selected={pending ? (search.letter ?? null) : (visibleLetter ?? search.letter ?? null)}
+            visibleLetterStore={visibleLetterStore}
+            letter={search.letter ?? null}
+            pending={pending}
             onSelect={selectLetter}
           />
         )}
       </div>
     </div>
+  )
+}
+
+// While a jump is pending the rail shows the letter asked for; otherwise it follows the grid.
+function LibraryRail({
+  index,
+  visibleLetterStore,
+  letter,
+  pending,
+  onSelect,
+}: Readonly<{
+  index: ReadonlyArray<{ letter: string; count: number }>
+  visibleLetterStore: Store<string | null>
+  letter: string | null
+  pending: boolean
+  onSelect: (letter: string | null) => void
+}>) {
+  const visibleLetter = useStore(visibleLetterStore, (current) => current)
+  return (
+    <AlphabetRail
+      index={index}
+      selected={pending ? letter : (visibleLetter ?? letter)}
+      onSelect={onSelect}
+    />
   )
 }
 
