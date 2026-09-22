@@ -474,22 +474,22 @@ export interface components {
             code: string;
         };
         InvitationLookupResponse: {
-            endingHouseholds?: string[];
             /** Format: date-time */
             expiresAt?: string;
             householdName?: string;
             /** @enum {string} */
             householdRole?: "ADMIN" | "MEMBER";
+            householdsLosingProfileAccess?: string[];
             /** Format: int32 */
-            maximumAllowedRatingAge?: number;
+            maximumAllowedRatingAge?: number | null;
             /** @enum {string} */
-            mode?: "CREATE" | "CONNECT";
+            mode?: "CREATE" | "LINK";
             /** @enum {string} */
             profileKind?: "KID" | "ADULT";
             profileName?: string;
+            profileShareOfferTargets?: string[];
             recipientEmail?: string;
             remainingManagers?: string[];
-            reofferHouseholds?: string[];
         };
         LoginRequest: {
             cookieMode?: boolean;
@@ -1105,8 +1105,29 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": string;
+                    "image/jpeg": string;
                 };
+            };
+            /** @description Not modified */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Image not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Image could not be read */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Refusal: route on `code`, `message` is displayable */
             default: {
@@ -1121,7 +1142,10 @@ export interface operations {
     };
     getInitSegment: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description Playback token bound to this stream session */
+                t: string;
+            };
             header?: never;
             path: {
                 sessionId: string;
@@ -1136,8 +1160,22 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": string;
+                    "video/mp4": string;
                 };
+            };
+            /** @description Stream resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Segment unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Refusal: route on `code`, `message` is displayable */
             default: {
@@ -1152,7 +1190,10 @@ export interface operations {
     };
     getMultivariantPlaylist: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description Playback token bound to this stream session */
+                t: string;
+            };
             header?: never;
             path: {
                 sessionId: string;
@@ -1169,6 +1210,13 @@ export interface operations {
                 content: {
                     "*/*": string;
                 };
+            };
+            /** @description Stream resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Refusal: route on `code`, `message` is displayable */
             default: {
@@ -1183,7 +1231,10 @@ export interface operations {
     };
     getMediaPlaylist: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description Playback token bound to this stream session */
+                t: string;
+            };
             header?: never;
             path: {
                 sessionId: string;
@@ -1200,6 +1251,13 @@ export interface operations {
                 content: {
                     "*/*": string;
                 };
+            };
+            /** @description Stream resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Refusal: route on `code`, `message` is displayable */
             default: {
@@ -1214,7 +1272,10 @@ export interface operations {
     };
     getSegment: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description Playback token bound to this stream session */
+                t: string;
+            };
             header?: never;
             path: {
                 sessionId: string;
@@ -1230,8 +1291,30 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": string;
+                    "video/mp2t": string;
+                    "video/mp4": string;
                 };
+            };
+            /** @description Invalid segment path */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Stream resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Segment unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Refusal: route on `code`, `message` is displayable */
             default: {
@@ -1246,7 +1329,10 @@ export interface operations {
     };
     getVariantInitSegment: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description Playback token bound to this stream session */
+                t: string;
+            };
             header?: never;
             path: {
                 sessionId: string;
@@ -1262,8 +1348,29 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": string;
+                    "video/mp4": string;
                 };
+            };
+            /** @description Invalid segment path */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Stream resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Segment unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Refusal: route on `code`, `message` is displayable */
             default: {
@@ -1278,7 +1385,10 @@ export interface operations {
     };
     getVariantMediaPlaylist: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description Playback token bound to this stream session */
+                t: string;
+            };
             header?: never;
             path: {
                 sessionId: string;
@@ -1297,6 +1407,20 @@ export interface operations {
                     "*/*": string;
                 };
             };
+            /** @description Invalid segment path */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Stream resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Refusal: route on `code`, `message` is displayable */
             default: {
                 headers: {
@@ -1310,7 +1434,10 @@ export interface operations {
     };
     getVariantSegment: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description Playback token bound to this stream session */
+                t: string;
+            };
             header?: never;
             path: {
                 sessionId: string;
@@ -1327,8 +1454,30 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": string;
+                    "video/mp2t": string;
+                    "video/mp4": string;
                 };
+            };
+            /** @description Invalid segment path */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Stream resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Segment unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Refusal: route on `code`, `message` is displayable */
             default: {

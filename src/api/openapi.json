@@ -196,12 +196,6 @@
       },
       "InvitationLookupResponse": {
         "properties": {
-          "endingHouseholds": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
           "expiresAt": {
             "format": "date-time",
             "type": "string"
@@ -216,14 +210,23 @@
             ],
             "type": "string"
           },
+          "householdsLosingProfileAccess": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "maximumAllowedRatingAge": {
             "format": "int32",
-            "type": "integer"
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "mode": {
             "enum": [
               "CREATE",
-              "CONNECT"
+              "LINK"
             ],
             "type": "string"
           },
@@ -237,16 +240,16 @@
           "profileName": {
             "type": "string"
           },
-          "recipientEmail": {
-            "type": "string"
-          },
-          "remainingManagers": {
+          "profileShareOfferTargets": {
             "items": {
               "type": "string"
             },
             "type": "array"
           },
-          "reofferHouseholds": {
+          "recipientEmail": {
+            "type": "string"
+          },
+          "remainingManagers": {
             "items": {
               "type": "string"
             },
@@ -388,6 +391,26 @@
         },
         "type": "object"
       }
+    },
+    "securitySchemes": {
+      "accessCookie": {
+        "description": "JWT access token. Profile tokens also satisfy SCOPE_ACCOUNT requirements. Unsafe cookie-authenticated requests also require the X-XSRF-TOKEN header.",
+        "in": "cookie",
+        "name": "streamarr_access",
+        "type": "apiKey"
+      },
+      "bearerAuth": {
+        "bearerFormat": "JWT",
+        "description": "JWT access token. Profile tokens also satisfy SCOPE_ACCOUNT requirements.",
+        "scheme": "bearer",
+        "type": "http"
+      },
+      "playbackQuery": {
+        "description": "Playback token bound to this stream session. Stream endpoints ignore bearer headers and access cookies.",
+        "in": "query",
+        "name": "t",
+        "type": "apiKey"
+      }
     }
   },
   "info": {
@@ -431,6 +454,18 @@
             "description": "Refusal: route on `code`, `message` is displayable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": [
+              "SCOPE_ACCOUNT"
+            ]
+          },
+          {
+            "accessCookie": [
+              "SCOPE_ACCOUNT"
+            ]
+          }
+        ],
         "tags": [
           "auth-controller"
         ]
@@ -471,6 +506,18 @@
             "description": "Refusal: route on `code`, `message` is displayable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": [
+              "SCOPE_ACCOUNT"
+            ]
+          },
+          {
+            "accessCookie": [
+              "SCOPE_ACCOUNT"
+            ]
+          }
+        ],
         "tags": [
           "device-auth-controller"
         ]
@@ -511,6 +558,18 @@
             "description": "Refusal: route on `code`, `message` is displayable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": [
+              "SCOPE_ACCOUNT"
+            ]
+          },
+          {
+            "accessCookie": [
+              "SCOPE_ACCOUNT"
+            ]
+          }
+        ],
         "tags": [
           "device-auth-controller"
         ]
@@ -550,6 +609,7 @@
             "description": "Refusal: route on `code`, `message` is displayable"
           }
         },
+        "security": [ ],
         "tags": [
           "device-auth-controller"
         ]
@@ -590,6 +650,7 @@
             "description": "Refusal: route on `code`, `message` is displayable"
           }
         },
+        "security": [ ],
         "tags": [
           "device-auth-controller"
         ]
@@ -630,6 +691,7 @@
             "description": "Refusal: route on `code`, `message` is displayable"
           }
         },
+        "security": [ ],
         "tags": [
           "invitation-controller"
         ]
@@ -663,6 +725,7 @@
             "description": "Refusal: route on `code`, `message` is displayable"
           }
         },
+        "security": [ ],
         "tags": [
           "invitation-controller"
         ]
@@ -703,6 +766,7 @@
             "description": "Refusal: route on `code`, `message` is displayable"
           }
         },
+        "security": [ ],
         "tags": [
           "invitation-controller"
         ]
@@ -743,6 +807,7 @@
             "description": "Refusal: route on `code`, `message` is displayable"
           }
         },
+        "security": [ ],
         "tags": [
           "auth-controller"
         ]
@@ -776,6 +841,7 @@
             "description": "Refusal: route on `code`, `message` is displayable"
           }
         },
+        "security": [ ],
         "tags": [
           "password-reset-controller"
         ]
@@ -816,6 +882,18 @@
             "description": "Refusal: route on `code`, `message` is displayable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": [
+              "SCOPE_ACCOUNT"
+            ]
+          },
+          {
+            "accessCookie": [
+              "SCOPE_ACCOUNT"
+            ]
+          }
+        ],
         "tags": [
           "auth-controller"
         ]
@@ -855,6 +933,7 @@
             "description": "Refusal: route on `code`, `message` is displayable"
           }
         },
+        "security": [ ],
         "tags": [
           "auth-controller"
         ]
@@ -887,6 +966,7 @@
             "description": "Refusal: route on `code`, `message` is displayable"
           }
         },
+        "security": [ ],
         "tags": [
           "auth-controller"
         ]
@@ -927,6 +1007,18 @@
             "description": "Refusal: route on `code`, `message` is displayable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": [
+              "SCOPE_ACCOUNT"
+            ]
+          },
+          {
+            "accessCookie": [
+              "SCOPE_ACCOUNT"
+            ]
+          }
+        ],
         "tags": [
           "auth-controller"
         ]
@@ -967,6 +1059,18 @@
             "description": "Refusal: route on `code`, `message` is displayable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": [
+              "SCOPE_ACCOUNT"
+            ]
+          },
+          {
+            "accessCookie": [
+              "SCOPE_ACCOUNT"
+            ]
+          }
+        ],
         "tags": [
           "auth-controller"
         ]
@@ -1007,6 +1111,7 @@
             "description": "Refusal: route on `code`, `message` is displayable"
           }
         },
+        "security": [ ],
         "tags": [
           "auth-controller"
         ]
@@ -1037,6 +1142,7 @@
             "description": "Refusal: route on `code`, `message` is displayable"
           }
         },
+        "security": [ ],
         "tags": [
           "auth-controller"
         ]
@@ -1059,14 +1165,23 @@
         "responses": {
           "200": {
             "content": {
-              "*/*": {
+              "image/jpeg": {
                 "schema": {
-                  "format": "byte",
+                  "format": "binary",
                   "type": "string"
                 }
               }
             },
             "description": "OK"
+          },
+          "304": {
+            "description": "Not modified"
+          },
+          "404": {
+            "description": "Image not found"
+          },
+          "500": {
+            "description": "Image could not be read"
           },
           "default": {
             "content": {
@@ -1079,6 +1194,18 @@
             "description": "Refusal: route on `code`, `message` is displayable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": [
+              "SCOPE_PROFILE"
+            ]
+          },
+          {
+            "accessCookie": [
+              "SCOPE_PROFILE"
+            ]
+          }
+        ],
         "tags": [
           "image-controller"
         ]
@@ -1096,19 +1223,34 @@
               "format": "uuid",
               "type": "string"
             }
+          },
+          {
+            "description": "Playback token bound to this stream session",
+            "in": "query",
+            "name": "t",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
             "content": {
-              "*/*": {
+              "video/mp4": {
                 "schema": {
-                  "format": "byte",
+                  "format": "binary",
                   "type": "string"
                 }
               }
             },
             "description": "OK"
+          },
+          "404": {
+            "description": "Stream resource not found"
+          },
+          "503": {
+            "description": "Segment unavailable"
           },
           "default": {
             "content": {
@@ -1121,6 +1263,13 @@
             "description": "Refusal: route on `code`, `message` is displayable"
           }
         },
+        "security": [
+          {
+            "playbackQuery": [
+              "SCOPE_PLAYBACK"
+            ]
+          }
+        ],
         "tags": [
           "stream-controller"
         ]
@@ -1138,6 +1287,15 @@
               "format": "uuid",
               "type": "string"
             }
+          },
+          {
+            "description": "Playback token bound to this stream session",
+            "in": "query",
+            "name": "t",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -1151,6 +1309,9 @@
             },
             "description": "OK"
           },
+          "404": {
+            "description": "Stream resource not found"
+          },
           "default": {
             "content": {
               "application/json": {
@@ -1162,6 +1323,13 @@
             "description": "Refusal: route on `code`, `message` is displayable"
           }
         },
+        "security": [
+          {
+            "playbackQuery": [
+              "SCOPE_PLAYBACK"
+            ]
+          }
+        ],
         "tags": [
           "stream-controller"
         ]
@@ -1179,6 +1347,15 @@
               "format": "uuid",
               "type": "string"
             }
+          },
+          {
+            "description": "Playback token bound to this stream session",
+            "in": "query",
+            "name": "t",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -1192,6 +1369,9 @@
             },
             "description": "OK"
           },
+          "404": {
+            "description": "Stream resource not found"
+          },
           "default": {
             "content": {
               "application/json": {
@@ -1203,6 +1383,13 @@
             "description": "Refusal: route on `code`, `message` is displayable"
           }
         },
+        "security": [
+          {
+            "playbackQuery": [
+              "SCOPE_PLAYBACK"
+            ]
+          }
+        ],
         "tags": [
           "stream-controller"
         ]
@@ -1228,19 +1415,43 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Playback token bound to this stream session",
+            "in": "query",
+            "name": "t",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
             "content": {
-              "*/*": {
+              "video/mp2t": {
                 "schema": {
-                  "format": "byte",
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "video/mp4": {
+                "schema": {
+                  "format": "binary",
                   "type": "string"
                 }
               }
             },
             "description": "OK"
+          },
+          "400": {
+            "description": "Invalid segment path"
+          },
+          "404": {
+            "description": "Stream resource not found"
+          },
+          "503": {
+            "description": "Segment unavailable"
           },
           "default": {
             "content": {
@@ -1253,6 +1464,13 @@
             "description": "Refusal: route on `code`, `message` is displayable"
           }
         },
+        "security": [
+          {
+            "playbackQuery": [
+              "SCOPE_PLAYBACK"
+            ]
+          }
+        ],
         "tags": [
           "stream-controller"
         ]
@@ -1278,19 +1496,37 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Playback token bound to this stream session",
+            "in": "query",
+            "name": "t",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
             "content": {
-              "*/*": {
+              "video/mp4": {
                 "schema": {
-                  "format": "byte",
+                  "format": "binary",
                   "type": "string"
                 }
               }
             },
             "description": "OK"
+          },
+          "400": {
+            "description": "Invalid segment path"
+          },
+          "404": {
+            "description": "Stream resource not found"
+          },
+          "503": {
+            "description": "Segment unavailable"
           },
           "default": {
             "content": {
@@ -1303,6 +1539,13 @@
             "description": "Refusal: route on `code`, `message` is displayable"
           }
         },
+        "security": [
+          {
+            "playbackQuery": [
+              "SCOPE_PLAYBACK"
+            ]
+          }
+        ],
         "tags": [
           "stream-controller"
         ]
@@ -1328,6 +1571,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Playback token bound to this stream session",
+            "in": "query",
+            "name": "t",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -1341,6 +1593,12 @@
             },
             "description": "OK"
           },
+          "400": {
+            "description": "Invalid segment path"
+          },
+          "404": {
+            "description": "Stream resource not found"
+          },
           "default": {
             "content": {
               "application/json": {
@@ -1352,6 +1610,13 @@
             "description": "Refusal: route on `code`, `message` is displayable"
           }
         },
+        "security": [
+          {
+            "playbackQuery": [
+              "SCOPE_PLAYBACK"
+            ]
+          }
+        ],
         "tags": [
           "stream-controller"
         ]
@@ -1385,19 +1650,43 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Playback token bound to this stream session",
+            "in": "query",
+            "name": "t",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
             "content": {
-              "*/*": {
+              "video/mp2t": {
                 "schema": {
-                  "format": "byte",
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "video/mp4": {
+                "schema": {
+                  "format": "binary",
                   "type": "string"
                 }
               }
             },
             "description": "OK"
+          },
+          "400": {
+            "description": "Invalid segment path"
+          },
+          "404": {
+            "description": "Stream resource not found"
+          },
+          "503": {
+            "description": "Segment unavailable"
           },
           "default": {
             "content": {
@@ -1410,6 +1699,13 @@
             "description": "Refusal: route on `code`, `message` is displayable"
           }
         },
+        "security": [
+          {
+            "playbackQuery": [
+              "SCOPE_PLAYBACK"
+            ]
+          }
+        ],
         "tags": [
           "stream-controller"
         ]

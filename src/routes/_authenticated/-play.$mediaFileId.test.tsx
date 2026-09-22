@@ -35,7 +35,10 @@ function serveApp() {
     graphql.mutation('CreateStreamSession', () =>
       HttpResponse.json({
         data: {
-          createStreamSession: { id: 'sess-1', streamUrl: STREAM_URL, transcodeMode: 'REMUX' },
+          createStreamSession: {
+            session: { id: 'sess-1', streamUrl: STREAM_URL, transcodeMode: 'REMUX' },
+            userErrors: [],
+          },
         },
       }),
     ),

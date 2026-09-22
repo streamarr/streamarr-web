@@ -40,7 +40,7 @@ function serveSession(): TimelineReport[] {
   const reports: TimelineReport[] = []
   server.use(
     graphql.mutation('CreateStreamSession', () =>
-      HttpResponse.json({ data: { createStreamSession: SESSION } }),
+      HttpResponse.json({ data: { createStreamSession: { session: SESSION, userErrors: [] } } }),
     ),
     graphql.mutation('ReportStreamSessionTimeline', ({ variables }) => {
       reports.push(variables as unknown as TimelineReport)
@@ -89,7 +89,9 @@ describe('Player', () => {
     server.use(
       graphql.mutation('CreateStreamSession', ({ variables: v }) => {
         variables = v
-        return HttpResponse.json({ data: { createStreamSession: SESSION } })
+        return HttpResponse.json({
+          data: { createStreamSession: { session: SESSION, userErrors: [] } },
+        })
       }),
     )
 
@@ -97,7 +99,7 @@ describe('Player', () => {
 
     await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(STREAM_URL))
     expect(hls.attachMedia).toHaveBeenCalledOnce()
-    expect(variables).toEqual({ mediaFileId: 'abcd' })
+    expect(variables).toEqual({ input: { mediaFileId: 'abcd' } })
   })
 
   it('shouldShowErrorWhenSessionCreationFails', async () => {
@@ -112,10 +114,37 @@ describe('Player', () => {
     expect(await screen.findByRole('alert')).toBeInTheDocument()
   })
 
+  it('shouldShowTheServersRefusalWhenTheSessionIsRefused', async () => {
+    server.use(
+      graphql.mutation('CreateStreamSession', () =>
+        HttpResponse.json({
+          data: {
+            createStreamSession: {
+              session: null,
+              userErrors: [
+                {
+                  __typename: 'TranscodeCapacityUnavailableError',
+                  message: 'Every transcode slot is busy. Try again in a moment.',
+                },
+              ],
+            },
+          },
+        }),
+      ),
+    )
+
+    renderWithProviders(<Player mediaFileId="abcd" />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Every transcode slot is busy. Try again in a moment.',
+    )
+    expect(hls.loadSource).not.toHaveBeenCalled()
+  })
+
   it('shouldReportAFatalStreamErrorAndTearDownHls', async () => {
     server.use(
       graphql.mutation('CreateStreamSession', () =>
-        HttpResponse.json({ data: { createStreamSession: SESSION } }),
+        HttpResponse.json({ data: { createStreamSession: { session: SESSION, userErrors: [] } } }),
       ),
     )
     renderWithProviders(<Player mediaFileId="abcd" />)
@@ -132,9 +161,11 @@ describe('Player', () => {
   it('shouldRecoverWhenTheNextMediaFileStartsAfterAFailedOne', async () => {
     server.use(
       graphql.mutation('CreateStreamSession', ({ variables }) =>
-        variables.mediaFileId === 'a'
+        (variables as { input: { mediaFileId: string } }).input.mediaFileId === 'a'
           ? HttpResponse.json({ errors: [{ message: 'boom' }] }, { status: 200 })
-          : HttpResponse.json({ data: { createStreamSession: SESSION } }),
+          : HttpResponse.json({
+              data: { createStreamSession: { session: SESSION, userErrors: [] } },
+            }),
       ),
     )
     const { user } = renderWithProviders(<Harness />)

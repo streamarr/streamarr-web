@@ -4,14 +4,19 @@ import Hls from 'hls.js'
 import { useEffect, useRef, useState } from 'react'
 import {
   CreateStreamSessionDocument,
+  type CreateStreamSessionMutation,
   ReportStreamSessionTimelineDocument,
   type ReportStreamSessionTimelineMutationVariables,
 } from '../graphql/generated/graphql'
+import { userErrorMessage } from '../graphql/userErrors'
 
 // Progress is only worth a round trip once the playhead has moved this far since the last report.
 const TIMELINE_REPORT_INTERVAL_SECONDS = 10
 
+const PLAYBACK_FAILURE_MESSAGE = "Playback couldn't start. Try again."
+
 type PlaybackState = ReportStreamSessionTimelineMutationVariables['state']
+type StreamSessionPayload = CreateStreamSessionMutation['createStreamSession']
 
 export function Player({
   mediaFileId,
@@ -23,14 +28,14 @@ export function Player({
   const videoRef = useRef<HTMLVideoElement>(null)
   const [createStreamSession] = useMutation(CreateStreamSessionDocument)
   const client = useApolloClient()
-  const [failed, setFailed] = useState(false)
+  const [failure, setFailure] = useState<string | null>(null)
 
   useEffect(() => {
     const video = videoRef.current
     if (!video) {
       return undefined
     }
-    setFailed(false)
+    setFailure(null)
 
     let hls: Hls | null = null
     let cancelled = false
@@ -73,21 +78,26 @@ export function Player({
       },
     })
 
-    createStreamSession({ variables: { mediaFileId } })
+    createStreamSession({ variables: { input: { mediaFileId } } })
       .then((result) => {
-        const session = result.data?.createStreamSession
-        if (cancelled || !session) {
+        if (cancelled) {
+          return
+        }
+        const payload = result.data?.createStreamSession
+        const session = payload?.session
+        if (!session) {
+          setFailure(refusalMessage(payload))
           return
         }
         sessionId = session.id
         hls = attach(video, session.streamUrl, () => {
           hls = null
-          setFailed(true)
+          setFailure(PLAYBACK_FAILURE_MESSAGE)
         })
       })
       .catch(() => {
         if (!cancelled) {
-          setFailed(true)
+          setFailure(PLAYBACK_FAILURE_MESSAGE)
         }
       })
 
@@ -103,9 +113,9 @@ export function Player({
 
   return (
     <Stack maw={960}>
-      {failed && (
+      {failure && (
         <Alert color="red" role="alert">
-          Playback couldn't start. Try again.
+          {failure}
         </Alert>
       )}
       <AspectRatio ratio={16 / 9}>
@@ -138,6 +148,11 @@ function attachTimeline(
       video.removeEventListener('pause', onPause)
     },
   }
+}
+
+function refusalMessage(payload: StreamSessionPayload | undefined): string {
+  const refusal = payload?.userErrors[0]
+  return refusal ? userErrorMessage(refusal) : PLAYBACK_FAILURE_MESSAGE
 }
 
 function ignoreTimelineReportFailure() {
