@@ -57,15 +57,204 @@ function libraryPage(variables: LibraryPageQueryVariables): LibraryPageQuery {
   }
 }
 
-test('a letter jump stays on its target when the earlier page arrives', async ({
+// The detail answer for a library card: same id and title, so the normalized cache stays coherent.
+const movieDetail = (id: string) => ({
+  movie: {
+    __typename: 'Movie',
+    id,
+    title: movies[Number(id)].title,
+    tagline: null,
+    summary: null,
+    runtime: 142,
+    releaseDate: '2024-05-10',
+    contentRating: null,
+    genres: [],
+    directors: [],
+    cast: [],
+    ratings: [],
+    files: [],
+    watchStatus: 'UNWATCHED',
+    watchProgress: null,
+    backdropImages: [],
+    posterImages: [],
+  },
+})
+
+test('the grid keeps its place when returning from a title', async ({ page, request }) => {
+  await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
+  await request.post(`${STUB_URL}/api/auth/refresh`)
+  await page.route('**/graphql', async (route) => {
+    const operation = route.request().postDataJSON() as {
+      operationName: string
+      variables: LibraryPageQueryVariables & { id?: string }
+    }
+    if (operation.operationName === 'LibraryPage') {
+      return route.fulfill({ json: { data: libraryPage(operation.variables) } })
+    }
+    if (operation.operationName === 'MovieDetail') {
+      return route.fulfill({ json: { data: movieDetail(operation.variables.id!) } })
+    }
+    return route.continue()
+  })
+  await page.goto('/library/movies?by=TITLE&direction=ASC')
+  await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
+  const grid = page.locator('[class*="_grid_"]')
+  // Scroll three rows down, to the row's measured top, so a whole row sits in view.
+  const target = await grid.evaluate((element) => {
+    const gridTop = element.getBoundingClientRect().top
+    const rowTops = [...element.children]
+      .map((child) => child.getBoundingClientRect().top)
+      .filter((top, index, all) => all.indexOf(top) === index)
+    element.scrollTop = Math.round(rowTops[3] - gridTop)
+    return element.scrollTop
+  })
+  expect(target).toBeGreaterThan(0)
+  const href = await grid.evaluate((element) => {
+    const bounds = element.getBoundingClientRect()
+    const item = [...element.children].find((candidate) => {
+      const box = candidate.getBoundingClientRect()
+      return box.top >= bounds.top - 1 && box.bottom <= bounds.bottom
+    })
+    return item?.querySelector('a')?.getAttribute('href') ?? null
+  })
+  expect(href).not.toBeNull()
+  // Dispatched rather than clicked: a pointer click would first scroll the card into view.
+  await page.locator(`a[href="${href}"]`).dispatchEvent('click')
+  const opened = movies[Number(href!.split('/').at(-1))].title
+  await expect(page.getByRole('heading', { level: 1, name: opened })).toBeVisible()
+
+  await page.goBack()
+
+  await expect(page.getByText('A Title 00', { exact: true })).toBeAttached()
+  await expect.poll(() => grid.evaluate((element) => element.scrollTop)).toBe(target)
+})
+
+for (const viewport of [
+  { width: 1440, height: 900 },
+  { width: 375, height: 667 },
+  { width: 812, height: 375 },
+]) {
+  test(`a letter jump keeps the grid on screen and lands its first title at the top at ${viewport.width}x${viewport.height}`, async ({
+    page,
+    request,
+  }) => {
+    await page.setViewportSize(viewport)
+    await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
+    await request.post(`${STUB_URL}/api/auth/refresh`)
+    let releaseSeek!: () => void
+    const seek = new Promise<void>((resolve) => {
+      releaseSeek = resolve
+    })
+    let releaseBackfill!: () => void
+    const backfill = new Promise<void>((resolve) => {
+      releaseBackfill = resolve
+    })
+    await page.route('**/graphql', async (route) => {
+      const operation = route.request().postDataJSON() as {
+        operationName: string
+        variables: LibraryPageQueryVariables
+      }
+      if (operation.operationName !== 'LibraryPage') return route.continue()
+      if (operation.variables.filter?.startLetter === 'N') await seek
+      if (operation.variables.before) await backfill
+      await route.fulfill({ json: { data: libraryPage(operation.variables) } })
+    })
+    await page.goto('/library/movies?by=TITLE&direction=ASC')
+    await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
+    const grid = page.locator('[class*="_grid_"]')
+    const gridNode = await grid.elementHandle()
+    // Start away from the top, so the landing offset cannot be mistaken for a fresh grid.
+    await grid.evaluate((element) => {
+      element.scrollTop = 600
+    })
+    const gridStillMounted = () => gridNode.evaluate((element) => element.isConnected)
+    const cardTopOffset = (title: string) =>
+      page.getByText(title, { exact: true }).evaluate((element) => {
+        const card = element.closest('a')!.parentElement!
+        const gridElement = card.parentElement!
+        return Math.abs(card.getBoundingClientRect().top - gridElement.getBoundingClientRect().top)
+      })
+    // Counts animation frames painted without a grid from here on, and watches the page for
+    // overflow and the rail for movement: a jump must never change the layout around the grid.
+    await page.evaluate(() => {
+      const main = document.querySelector('main')!
+      const rail = document.querySelector('nav[aria-label="Jump to letter"]')!
+      const frames = {
+        missing: 0,
+        initialOverflow: main.scrollHeight - main.clientHeight,
+        pageOverflow: main.scrollHeight - main.clientHeight,
+        railLefts: new Set<number>([Math.round(rail.getBoundingClientRect().left)]),
+        sampling: true,
+      }
+      Object.assign(window, { gridFrames: frames })
+      const sample = () => {
+        if (!document.querySelector('[class*="_grid_"]')) frames.missing += 1
+        frames.pageOverflow = Math.max(frames.pageOverflow, main.scrollHeight - main.clientHeight)
+        frames.railLefts.add(Math.round(rail.getBoundingClientRect().left))
+        if (frames.sampling) requestAnimationFrame(sample)
+      }
+      requestAnimationFrame(sample)
+    })
+
+    await page.getByRole('button', { name: 'N', exact: true }).click()
+
+    await expect(page.getByRole('button', { name: 'N', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    await expect(page.getByText('A Title 00', { exact: true })).toBeAttached()
+    expect(await gridStillMounted()).toBe(true)
+    releaseSeek()
+    await expect(page.getByText('N Title 00', { exact: true })).toBeAttached()
+    expect(await gridStillMounted()).toBe(true)
+    await expect.poll(() => cardTopOffset('N Title 00')).toBeLessThanOrEqual(1)
+    releaseBackfill()
+    await expect(page.getByText('J Title 00', { exact: true })).toBeAttached()
+    expect(await gridStillMounted()).toBe(true)
+    await expect.poll(() => cardTopOffset('N Title 00')).toBeLessThanOrEqual(1)
+    const frames = await page.evaluate(() => {
+      const { gridFrames } = window as unknown as {
+        gridFrames: {
+          missing: number
+          initialOverflow: number
+          pageOverflow: number
+          railLefts: Set<number>
+          sampling: boolean
+        }
+      }
+      gridFrames.sampling = false
+      return {
+        missing: gridFrames.missing,
+        initialOverflow: gridFrames.initialOverflow,
+        pageOverflow: gridFrames.pageOverflow,
+        railLefts: [...gridFrames.railLefts],
+      }
+    })
+    expect(frames.missing).toBe(0)
+    // A short page may scroll, but a jump never adds to it or moves the rail.
+    expect(frames.pageOverflow).toBe(frames.initialOverflow)
+    expect(frames.railLefts).toHaveLength(1)
+
+    await page.getByRole('button', { name: 'T', exact: true }).click()
+    await expect(page.getByText('P Title 00', { exact: true })).toBeAttached()
+    await expect.poll(() => cardTopOffset('T Title 00')).toBeLessThanOrEqual(1)
+    // A revisit is a cache hit and must land the same way.
+    await page.getByRole('button', { name: 'N', exact: true }).click()
+    await expect(page.getByText('F Title 00', { exact: true })).toBeAttached()
+    await expect.poll(() => cardTopOffset('N Title 00')).toBeLessThanOrEqual(1)
+    expect(await gridStillMounted()).toBe(true)
+  })
+}
+
+test('a letter jump slides the grid out at the press and back in when the page lands, unless motion is reduced', async ({
   page,
   request,
 }) => {
   await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
   await request.post(`${STUB_URL}/api/auth/refresh`)
-  let releaseBackfill!: () => void
-  const backfill = new Promise<void>((resolve) => {
-    releaseBackfill = resolve
+  let releaseSeek!: () => void
+  const seek = new Promise<void>((resolve) => {
+    releaseSeek = resolve
   })
   await page.route('**/graphql', async (route) => {
     const operation = route.request().postDataJSON() as {
@@ -73,22 +262,77 @@ test('a letter jump stays on its target when the earlier page arrives', async ({
       variables: LibraryPageQueryVariables
     }
     if (operation.operationName !== 'LibraryPage') return route.continue()
-    if (operation.variables.before) await backfill
+    if (operation.variables.filter?.startLetter === 'N') await seek
     await route.fulfill({ json: { data: libraryPage(operation.variables) } })
   })
   await page.goto('/library/movies?by=TITLE&direction=ASC')
   await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
+  // Samples what the viewer sees each frame: the grid's vertical offset and opacity, and the
+  // first title rendered in it.
+  await page.evaluate(() => {
+    const frames: { ty: number; opacity: number; first: string | null }[] = []
+    Object.assign(window, { frames })
+    const sample = () => {
+      const grid = document.querySelector<HTMLElement>('[class*="_grid_"]')
+      if (grid) {
+        const { transform, opacity } = getComputedStyle(grid)
+        const ty = transform === 'none' ? 0 : Number(transform.split(',').at(-1)?.slice(0, -1))
+        frames.push({
+          ty,
+          opacity: Number(opacity),
+          first: grid.querySelector('[class*="_posterTitle_"]')?.textContent ?? null,
+        })
+      }
+      requestAnimationFrame(sample)
+    }
+    requestAnimationFrame(sample)
+  })
+  type Frame = { ty: number; opacity: number; first: string | null }
+  const frames = () => page.evaluate(() => (window as unknown as { frames: Frame[] }).frames)
+  const sawFrame = (matches: (frame: Frame) => boolean) => async () =>
+    (await frames()).some(matches)
+  const oldRows = (frame: Frame) => frame.first === 'A Title 00'
+
   await page.getByRole('button', { name: 'N', exact: true }).click()
+  // The old rows leave upward at the press, before the letter's page has arrived.
+  await expect
+    .poll(sawFrame((frame) => oldRows(frame) && frame.ty < -5 && frame.opacity < 0.9))
+    .toBe(true)
+  await expect(page.getByText('A Title 00', { exact: true })).toBeAttached()
+  expect((await frames()).some((frame) => !oldRows(frame))).toBe(false)
+  releaseSeek()
   await expect(page.getByText('N Title 00', { exact: true })).toBeInViewport()
-  releaseBackfill()
-  await expect(page.getByText('J Title 00', { exact: true })).toBeAttached()
-  await expect(page.getByText('N Title 00', { exact: true })).toBeInViewport()
+  // The new rows enter from below.
+  await expect.poll(sawFrame((frame) => !oldRows(frame) && frame.ty > 5)).toBe(true)
+
+  await page.getByRole('button', { name: 'A', exact: true }).click()
+  await expect(page.getByText('A Title 00', { exact: true })).toBeInViewport()
+  // Backward: the rows leave downward and the new ones enter from above.
+  await expect
+    .poll(sawFrame((frame) => !oldRows(frame) && frame.ty > 5 && frame.opacity < 0.9))
+    .toBe(true)
+  await expect.poll(sawFrame((frame) => oldRows(frame) && frame.ty < -5)).toBe(true)
+
+  // A viewer who prefers reduced motion arrives with the setting on, so the page loads under it.
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.goto('/library/movies?by=TITLE&direction=ASC')
+  await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
+  await page.evaluate(() => {
+    const moved: number[] = []
+    Object.assign(window, { moved })
+    const sample = () => {
+      const grid = document.querySelector<HTMLElement>('[class*="_grid_"]')
+      const transform = grid ? getComputedStyle(grid).transform : 'none'
+      const ty = transform === 'none' ? 0 : Number(transform.split(',').at(-1)?.slice(0, -1))
+      if (Math.abs(ty) > 1) moved.push(ty)
+      requestAnimationFrame(sample)
+    }
+    requestAnimationFrame(sample)
+  })
   await page.getByRole('button', { name: 'T', exact: true }).click()
-  await expect(page.getByText('P Title 00', { exact: true })).toBeAttached()
   await expect(page.getByText('T Title 00', { exact: true })).toBeInViewport()
-  await page.getByRole('button', { name: 'N', exact: true }).click()
-  await expect(page.getByText('F Title 00', { exact: true })).toBeAttached()
-  await expect(page.getByText('N Title 00', { exact: true })).toBeInViewport()
+  await page.waitForTimeout(400) // NOSONAR: proving an absence needs a bounded settle, not a condition
+  expect(await page.evaluate(() => (window as unknown as { moved: number[] }).moved)).toEqual([])
 })
 
 test('prefetching follows the visible grid height on a phone and after rotation', async ({

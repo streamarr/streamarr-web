@@ -1,7 +1,7 @@
 import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { graphql, HttpResponse, type GraphQLQuery } from 'msw'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { describe, expect, it } from 'vitest'
 import type {
   LibraryPageQuery,
@@ -64,12 +64,17 @@ function libraryResponse(overrides: {
 function Harness({ initialFilter = {} }: { initialFilter?: MediaFilter }) {
   const [filter, setFilter] = useState<MediaFilter>(initialFilter)
   const result = useLibraryItems({ libraryId: LIBRARY_ID, sort: TITLE_ASC, filter })
+  // A screen without motion: every staged result is shown as soon as it arrives.
+  const { staged, accept } = result
+  useEffect(() => {
+    if (staged) accept()
+  }, [staged, accept])
   return (
     <div>
       <div data-testid="loading">{String(result.loading)}</div>
       <div data-testid="hasNextPage">{String(result.hasNextPage)}</div>
       <div data-testid="hasPreviousPage">{String(result.hasPreviousPage)}</div>
-      <div data-testid="scrollTarget">{result.scrollTarget ?? ''}</div>
+      <div data-testid="landing">{result.landing?.cursor ?? ''}</div>
       <ul>
         {result.edges.map((edge) => (
           <li key={edge.cursor}>{edge.node.title}</li>
@@ -106,7 +111,7 @@ describe('useLibraryItems', () => {
     server.use(graphql.query('LibraryPage', () => HttpResponse.json({ data: response })))
     renderWithProviders(<Harness initialFilter={{ startLetter: 'N' }} />)
     await screen.findByText('Ocean')
-    await waitFor(() => expect(screen.getByTestId('scrollTarget')).toHaveTextContent('o'))
+    await waitFor(() => expect(screen.getByTestId('landing')).toHaveTextContent('o'))
   })
 
   it('returns to the requested letter after revisiting a cached, backfilled page', async () => {
@@ -133,7 +138,7 @@ describe('useLibraryItems', () => {
     await screen.findByText('Alpha', { selector: 'li' })
     await user.click(screen.getByText('Jump to N'))
     await screen.findByText('Middle', { selector: 'li' })
-    expect(screen.getByTestId('scrollTarget')).toHaveTextContent('Northern')
+    expect(screen.getByTestId('landing')).toHaveTextContent('Northern')
   })
 
   it.each(['forward', 'backward'])(
@@ -266,7 +271,7 @@ describe('useLibraryItems', () => {
     await user.click(screen.getByText('Jump to N'))
 
     // The seek node remains the landing target once the continuity page has rendered above it.
-    await waitFor(() => expect(screen.getByTestId('scrollTarget')).toHaveTextContent('c-n'))
+    await waitFor(() => expect(screen.getByTestId('landing')).toHaveTextContent('c-n'))
     await waitFor(() => expect(screen.getByText('Alright')).toBeInTheDocument())
     expect(screen.getByText('Northern Line')).toBeInTheDocument()
     expect(backwardFetches).toBe(1)

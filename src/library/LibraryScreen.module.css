@@ -37,10 +37,21 @@
   gap: var(--spacing-16);
 }
 
+.gridFrame {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  /* The grid slides within its own box during a letter jump; nothing around it may move. */
+  overflow: clip;
+}
+
 .grid {
   composes: thin from '../styles/scrollbar.module.css';
   flex: 1;
   min-height: 0;
+  /* Rows report offsetTop against the grid, which its slide transform leaves untouched. */
+  position: relative;
   overflow-y: auto;
   /* LibraryScreen preserves scroll position when prepending; native anchoring would add it twice. */
   overflow-anchor: none;

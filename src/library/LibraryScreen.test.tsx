@@ -369,12 +369,6 @@ describe('LibraryScreen', () => {
         },
       ),
     )
-    // jsdom has no layout: model the new result as taller than the old measured grid.
-    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function (
-      this: HTMLElement,
-    ) {
-      return this.textContent?.includes('Available Alpha') ? 700 : 300
-    })
     const { user } = renderWithProviders(
       <Harness initialSearch={{ by: 'TITLE', direction: 'ASC', letter: 'N' }} />,
     )
@@ -447,10 +441,12 @@ describe('LibraryScreen', () => {
 
     const grid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
     const sentinel = grid.firstElementChild as HTMLDivElement
-    // Tied to real DOM state so it reads 300 before the fetch resolves, 700 once rendered.
-    Object.defineProperty(grid, 'scrollHeight', {
-      configurable: true,
-      get: () => (document.body.textContent?.includes('Aardvark') ? 700 : 300),
+    // jsdom has no layout: model the prepended page as 400px tall by placing Beta below it.
+    vi.spyOn(HTMLElement.prototype, 'offsetTop', 'get').mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      const text = this.textContent ?? ''
+      return text.includes('Beta') && !text.includes('Aardvark') ? 400 : 0
     })
     grid.scrollTop = 50
 
@@ -467,9 +463,16 @@ describe('LibraryScreen', () => {
     await waitFor(() => expect(grid.scrollTop).toBe(450))
   })
 
-  it('scrolls the actual jump target into view, not the backward-continuity items prepended above it', async () => {
-    const scrollIntoView = vi.fn()
-    vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(scrollIntoView)
+  it('lands the grid on the jump target and keeps it there when the continuity page is prepended above', async () => {
+    // jsdom has no layout: the prepended Alright row is 400px tall, so Northern Line sits at 400
+    // once it renders.
+    vi.spyOn(HTMLElement.prototype, 'offsetTop', 'get').mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      const text = this.textContent ?? ''
+      const isNorthernRow = text.includes('Northern Line') && !text.includes('Alright')
+      return isNorthernRow && document.body.textContent?.includes('Alright') ? 400 : 0
+    })
     server.use(
       graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) => {
         if (variables.before) {
@@ -511,11 +514,7 @@ describe('LibraryScreen', () => {
 
     await waitFor(() => expect(screen.getByText('Alright')).toBeInTheDocument())
     expect(screen.getByText('Northern Line')).toBeInTheDocument()
-    // The alphabet button is also revealed within its scrollable rail.
-    const scrolledText = scrollIntoView.mock.instances.map(
-      (element) => (element as Element).textContent,
-    )
-    expect(scrolledText).toContainEqual(expect.stringContaining('Northern Line'))
-    expect(scrolledText).not.toContainEqual(expect.stringContaining('Alright'))
+    const grid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
+    await waitFor(() => expect(grid.scrollTop).toBe(400))
   })
 })

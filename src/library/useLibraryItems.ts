@@ -1,5 +1,5 @@
 import { useQuery } from '@apollo/client/react'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   LibraryPageDocument,
   type LibraryPageQuery,
@@ -21,9 +21,21 @@ export function useLibraryItems({
   sort: MediaSort
   filter: MediaFilter
 }) {
-  const { data, loading, error, fetchMore } = useQuery(LibraryPageDocument, {
+  const { data, previousData, loading, error, fetchMore, refetch } = useQuery(LibraryPageDocument, {
     variables: { libraryId, first: PAGE_SIZE, sort, filter },
   })
+
+  const queryKey = JSON.stringify({ libraryId, sort, filter })
+  // A new query renders its predecessor's page until its own arrives and the screen accepts it,
+  // so a letter jump never blanks the grid and the screen can animate the swap. The first result
+  // has no predecessor and shows at once.
+  const [shownKey, setShownKey] = useState<string | null>(null)
+  const staged = !!data && !!previousData && shownKey !== queryKey
+  if (data && !previousData && shownKey !== queryKey) {
+    setShownKey(queryKey)
+  }
+  const accept = useCallback(() => setShownKey(queryKey), [queryKey])
+  const rendered = staged ? previousData : (data ?? previousData)
 
   const letter = filter.startLetter ?? null
   const pageInfo = data?.library.items.pageInfo
@@ -51,11 +63,6 @@ export function useLibraryItems({
   )
 
   const [centering, setCentering] = useState(false)
-  const [landing, setLanding] = useState<{
-    cursor: string | null
-    precedingCursor?: string | null
-    scope: typeof requestScope
-  } | null>(null)
   const previousLetterRef = useRef<typeof letter>(undefined as unknown as typeof letter)
 
   useEffect(
@@ -77,17 +84,7 @@ export function useLibraryItems({
       // Centering is a one-shot request; consuming it here is what keeps the jump from repeating.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setCentering(false)
-      const target = findLetterLandingCursor(data?.library.items.edges, letter)
-      const revealLanding = (precedingCursor?: string | null) => {
-        if (requestScope.active)
-          setLanding({ cursor: target, precedingCursor, scope: requestScope })
-      }
-      const previousPage = loadPrevious()
-      if (previousPage) {
-        void previousPage.then(revealLanding, () => revealLanding())
-      } else {
-        revealLanding()
-      }
+      void loadPrevious()
     },
     // Runs when a jump is requested or its page settles. The rest is read fresh and must not
     // retrigger the jump.
@@ -160,34 +157,33 @@ export function useLibraryItems({
     return requestScope.previousRequest
   }
 
-  function clearScrollTarget() {
-    setLanding(null)
-  }
-
-  function getReadyScrollTarget() {
-    if (landing?.scope !== requestScope) return null
-    // A completed request may still be waiting for its rows to render.
-    const precedingPageHasRendered =
-      !landing.precedingCursor ||
-      data?.library.items.edges?.some((edge) => edge?.cursor === landing.precedingCursor)
-    return precedingPageHasRendered ? landing.cursor : null
-  }
+  // Where a query's own result belongs once it renders: its letter's first title, or the top.
+  // Later pages merge into the same result without moving it.
+  const landing =
+    data && !staged
+      ? { key: queryKey, cursor: findLetterLandingCursor(data.library.items.edges, letter) }
+      : null
 
   return {
-    loading: loading && !data,
+    loading: loading && !rendered,
+    pending: (loading && !data && !!previousData) || staged,
+    staged,
+    accept,
     error,
-    library: data?.library ?? null,
-    edges: definedEdges(data?.library.items.edges ?? null),
-    hasNextPage: pageInfo?.hasNextPage ?? false,
-    hasPreviousPage: pageInfo?.hasPreviousPage ?? false,
+    library: rendered?.library ?? null,
+    edges: definedEdges(rendered?.library.items.edges ?? null),
+    hasNextPage: rendered?.library.items.pageInfo.hasNextPage ?? false,
+    hasPreviousPage: rendered?.library.items.pageInfo.hasPreviousPage ?? false,
     loadMore,
     loadPrevious,
-    scrollTarget: getReadyScrollTarget(),
-    clearScrollTarget,
+    // The outcome arrives through `error` and `data`; the promise only duplicates it.
+    retry: () => void refetch().catch(() => undefined),
+    landing,
   }
 }
 
 function findLetterLandingCursor(edges: LibraryItems['edges'] | undefined, letter: string | null) {
+  if (!letter) return null
   const resolvedEdges = definedEdges(edges)
   const landingEdge = resolvedEdges.find(
     (edge) => alphabetLetterFromTitle(edge.node.titleSort ?? edge.node.title ?? '') === letter,
