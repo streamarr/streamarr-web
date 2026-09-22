@@ -176,7 +176,7 @@ function InvitationReview({
               <Text fw={600}>{preview.profileName}</Text>
               {preview.profileKind === 'KID' && <Badge color="teal">Kid</Badge>}
               <Badge variant="light">{preview.householdRole}</Badge>
-              {preview.mode === 'CONNECT' && <Badge color="grape">Your existing Profile</Badge>}
+              {preview.mode === 'LINK' && <Badge color="grape">Your existing Profile</Badge>}
             </Group>
             <Text size="sm" c="dimmed">
               Your account will use {preview.recipientEmail}. The invitation expires{' '}
@@ -184,7 +184,7 @@ function InvitationReview({
             </Text>
           </Stack>
         </Card>
-        {preview.mode === 'CONNECT' && <ConnectReview preview={preview} />}
+        {preview.mode === 'LINK' && <ConnectReview preview={preview} />}
         {failure && (
           <Alert color="red" role="alert">
             {failure}
@@ -249,12 +249,12 @@ function ConnectReview({ preview }: { preview: InvitationPreview }) {
         />
         <ConsequenceList
           title="These Households lose it when you accept"
-          items={preview.endingHouseholds}
+          items={preview.householdsLosingProfileAccess}
           empty="It isn't visiting any other Household."
         />
         <ConsequenceList
           title="These Households will be offered it afresh"
-          items={preview.reofferHouseholds}
+          items={preview.profileShareOfferTargets}
           empty="No Household will be offered it again."
         />
       </Stack>

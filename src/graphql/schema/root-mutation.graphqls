@@ -4,7 +4,7 @@ type Mutation {
     removeLibrary(id: ID!): Boolean!
     scanLibrary(id: ID!): Boolean!
     refreshLibrary(id: ID!, imageRefreshMode: ImageRefreshMode! = PRESERVE): Boolean!
-    createStreamSession(mediaFileId: ID!, options: StreamingOptionsInput): StreamSession!
+    createStreamSession(input: CreateStreamSessionInput!): CreateStreamSessionPayload
     destroyStreamSession(sessionId: ID!): Boolean!
     reportStreamSessionTimeline(sessionId: ID!, positionSeconds: Int!, state: PlaybackState!): Boolean!
     markWatched(id: ID!): Boolean!
@@ -28,7 +28,8 @@ type Mutation {
     removeProfilePin(input: RemoveProfilePinInput!): RemoveProfilePinPayload
     administrativelyResetProfilePin(input: AdministrativelyResetProfilePinInput!): AdministrativelyResetProfilePinPayload
     deleteProfile(input: DeleteProfileInput!): DeleteProfilePayload
-    issueAccountInvitation(input: IssueAccountInvitationInput!): IssueAccountInvitationPayload
+    issueAccountInvitationWithNewProfile(input: IssueAccountInvitationWithNewProfileInput!): IssueAccountInvitationWithNewProfilePayload
+    issueAccountInvitationForExistingProfile(input: IssueAccountInvitationForExistingProfileInput!): IssueAccountInvitationForExistingProfilePayload
     cancelAccountInvitation(input: CancelAccountInvitationInput!): CancelAccountInvitationPayload
     issuePasswordReset(input: IssuePasswordResetInput!): IssuePasswordResetPayload
     offerProfileShare(input: OfferProfileShareInput!): OfferProfileSharePayload
@@ -43,19 +44,22 @@ type Mutation {
     declineManagerInvitation(input: DeclineManagerInvitationInput!): DeclineManagerInvitationPayload
     relinquishProfileManagement(input: RelinquishProfileManagementInput!): RelinquishProfileManagementPayload
     removeProfileManager(input: RemoveProfileManagerInput!): RemoveProfileManagerPayload
-    grantProfileManagerOverride(input: GrantProfileManagerOverrideInput!): GrantProfileManagerOverridePayload
-    removeProfileManagerOverride(input: RemoveProfileManagerOverrideInput!): RemoveProfileManagerOverridePayload
+    administrativelyGrantProfileManager(input: AdministrativelyGrantProfileManagerInput!): AdministrativelyGrantProfileManagerPayload
+    administrativelyRemoveProfileManager(input: AdministrativelyRemoveProfileManagerInput!): AdministrativelyRemoveProfileManagerPayload
     revokeDeviceRegistration(input: RevokeDeviceRegistrationInput!): RevokeDeviceRegistrationPayload
     blockEsn(input: BlockEsnInput!): BlockEsnPayload
     blockEsnServerWide(input: BlockEsnServerWideInput!): BlockEsnServerWidePayload
     unblockEsn(input: UnblockEsnInput!): UnblockEsnPayload
     unblockEsnServerWide(input: UnblockEsnServerWideInput!): UnblockEsnServerWidePayload
     transferAccount(input: TransferAccountInput!): TransferAccountPayload
-    deleteAccount(input: DeleteAccountInput!): DeleteAccountPayload
+    administrativelyDeleteAccount(input: AdministrativelyDeleteAccountInput!): AdministrativelyDeleteAccountPayload
     deleteMyAccount(input: DeleteMyAccountInput!): DeleteMyAccountPayload
     transferProfile(input: TransferProfileInput!): TransferProfilePayload
     administrativelyDeleteProfile(input: AdministrativelyDeleteProfileInput!): AdministrativelyDeleteProfilePayload
-    tearDownHousehold(input: TearDownHouseholdInput!): TearDownHouseholdPayload
+    deleteEmptyHousehold(input: DeleteEmptyHouseholdInput!): DeleteEmptyHouseholdPayload
+    transferLastAccountAndDeleteHousehold(input: TransferLastAccountAndDeleteHouseholdInput!): TransferLastAccountAndDeleteHouseholdPayload
+    deleteLastAccountAndHousehold(input: DeleteLastAccountAndHouseholdInput!): DeleteLastAccountAndHouseholdPayload
+    deleteLastAccountAndHouseholdPreservingPersonalProfile(input: DeleteLastAccountAndHouseholdPreservingPersonalProfileInput!): DeleteLastAccountAndHouseholdPreservingPersonalProfilePayload
 }
 
 enum ImageRefreshMode {

@@ -1,7 +1,15 @@
-mutation CreateStreamSession($mediaFileId: ID!) {
-  createStreamSession(mediaFileId: $mediaFileId) {
-    id
-    streamUrl
-    transcodeMode
+mutation CreateStreamSession($input: CreateStreamSessionInput!) {
+  createStreamSession(input: $input) {
+    session {
+      id
+      streamUrl
+      transcodeMode
+    }
+    userErrors {
+      __typename
+      ... on MutationError {
+        message
+      }
+    }
   }
 }

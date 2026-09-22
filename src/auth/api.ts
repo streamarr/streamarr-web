@@ -80,10 +80,7 @@ export async function logout(): Promise<void> {
   await request('/api/auth/refresh/revoke', { method: 'POST' })
 }
 
-// maximumAllowedRatingAge is null for an ADULT Profile; the document does not yet say so.
-export type InvitationPreview = Required<Omit<InvitationLookup, 'maximumAllowedRatingAge'>> & {
-  maximumAllowedRatingAge: number | null
-}
+export type InvitationPreview = Required<InvitationLookup>
 
 export type AcceptInvitationInput = Omit<AcceptInvitationRequest, 'cookieMode'>
 
