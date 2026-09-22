@@ -1,5 +1,5 @@
 import { useQuery } from '@apollo/client/react'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react'
 import {
   LibraryPageDocument,
   type LibraryPageQuery,
@@ -11,6 +11,12 @@ import { alphabetLetterFromTitle } from '../media/alphabetLetter'
 
 const PAGE_SIZE = 48
 type LibraryItems = LibraryPageQuery['library']['items']
+type RequestScope = {
+  query: string
+  active: boolean
+  fetchingNext: boolean
+  previousRequest: Promise<string | null> | null
+}
 
 export function useLibraryItems({
   libraryId,
@@ -41,62 +47,33 @@ export function useLibraryItems({
   const pageInfo = data?.library.items.pageInfo
   // Each committed query owns its in-flight pages. Apollo applies updateQuery to the current
   // variables, so a response from an earlier query must not write into the new result.
-  const requestScope = useMemo(
-    () => ({
-      active: false,
-      fetchingNext: false,
-      previousRequest: null as Promise<string | null> | null,
-    }),
-    // The scope is an identity per committed query: its dependencies are the query's variables by
-    // value, not what the factory reads.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [libraryId, JSON.stringify(sort), JSON.stringify(filter)],
-  )
+  const scopeRef = useRef<RequestScope | null>(null)
   useLayoutEffect(
     function activateCommittedQuery() {
-      requestScope.active = true
+      const scope: RequestScope = {
+        query: queryKey,
+        active: true,
+        fetchingNext: false,
+        previousRequest: null,
+      }
+      scopeRef.current = scope
       return () => {
-        requestScope.active = false
+        scope.active = false
       }
     },
-    [requestScope],
+    [queryKey],
   )
-
-  const [centering, setCentering] = useState(false)
-  const previousLetterRef = useRef<typeof letter>(undefined as unknown as typeof letter)
-
-  useEffect(
-    function beginLetterJump() {
-      const previousLetter = previousLetterRef.current
-      previousLetterRef.current = letter
-      if (letter && letter !== previousLetter) {
-        setCentering(true)
-      }
-    },
-    [letter],
-  )
-
-  useEffect(
-    function loadPrecedingPageForLetterJump() {
-      if (!centering || loading || !pageInfo) {
-        return
-      }
-      // Centering is a one-shot request; consuming it here is what keeps the jump from repeating.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setCentering(false)
-      void loadPrevious()
-    },
-    // Runs when a jump is requested or its page settles. The rest is read fresh and must not
-    // retrigger the jump.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [centering, loading, pageInfo],
-  )
+  function committedScope() {
+    const scope = scopeRef.current
+    return scope?.query === queryKey && scope.active ? scope : null
+  }
 
   function loadMore() {
-    if (!requestScope.active || !pageInfo?.hasNextPage || requestScope.fetchingNext) {
+    const scope = committedScope()
+    if (!scope || !pageInfo?.hasNextPage || scope.fetchingNext) {
       return
     }
-    requestScope.fetchingNext = true
+    scope.fetchingNext = true
     void fetchMore({
       // fetchMore merges onto the current variables — last/before must be cleared explicitly.
       variables: {
@@ -109,7 +86,7 @@ export function useLibraryItems({
         filter,
       },
       updateQuery: (previous, { fetchMoreResult }) =>
-        !requestScope.active || previous.library.items.pageInfo.endCursor !== pageInfo.endCursor
+        !scope.active || previous.library.items.pageInfo.endCursor !== pageInfo.endCursor
           ? previous
           : {
               library: {
@@ -118,19 +95,20 @@ export function useLibraryItems({
               },
             },
     }).finally(() => {
-      requestScope.fetchingNext = false
+      scope.fetchingNext = false
     })
   }
 
   function loadPrevious() {
-    if (!requestScope.active) return
-    if (requestScope.previousRequest) return requestScope.previousRequest
+    const scope = committedScope()
+    if (!scope) return
+    if (scope.previousRequest) return scope.previousRequest
     if (!pageInfo?.hasPreviousPage || !pageInfo.startCursor) {
       return
     }
     // A `before` cursor replaces the letter seek anchor (ADR 0023).
     const { startLetter: _startLetter, ...continuationFilter } = filter
-    requestScope.previousRequest = fetchMore({
+    scope.previousRequest = fetchMore({
       variables: {
         libraryId,
         first: undefined,
@@ -141,7 +119,7 @@ export function useLibraryItems({
         filter: continuationFilter,
       },
       updateQuery: (previous, { fetchMoreResult }) =>
-        !requestScope.active || previous.library.items.pageInfo.startCursor !== pageInfo.startCursor
+        !scope.active || previous.library.items.pageInfo.startCursor !== pageInfo.startCursor
           ? previous
           : {
               library: {
@@ -152,10 +130,27 @@ export function useLibraryItems({
     })
       .then((result) => result.data?.library.items.pageInfo.startCursor ?? null)
       .finally(() => {
-        requestScope.previousRequest = null
+        scope.previousRequest = null
       })
-    return requestScope.previousRequest
+    return scope.previousRequest
   }
+
+  // A letter's page is followed once by the page before it, so the viewer can scroll up across
+  // the letter boundary without a gap.
+  const backfilledQueryRef = useRef<string | null>(null)
+  const loadPageBehindTheLetter = useEffectEvent(() => {
+    void loadPrevious()
+  })
+  useEffect(
+    function loadPageBehindTheLetterOnce() {
+      if (!letter || !data || backfilledQueryRef.current === queryKey) {
+        return
+      }
+      backfilledQueryRef.current = queryKey
+      loadPageBehindTheLetter()
+    },
+    [letter, data, queryKey],
+  )
 
   // Where a query's own result belongs once it renders: its letter's first title, or the top.
   // Later pages merge into the same result without moving it.

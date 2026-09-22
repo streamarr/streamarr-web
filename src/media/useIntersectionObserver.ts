@@ -15,20 +15,21 @@ export function useIntersectionObserver(
     [onChange],
   )
 
+  // Callers pass a fresh options object each render, so the observer is keyed by its fields.
+  const { root, rootMargin, threshold } = options ?? {}
   return useCallback(
     function observeElement(element: Element | null) {
       if (!element) {
         return undefined
       }
-      const observer = new IntersectionObserver(
-        (entries) => committedHandlerRef.current(entries),
-        options,
-      )
+      const observer = new IntersectionObserver((entries) => committedHandlerRef.current(entries), {
+        root,
+        rootMargin,
+        threshold,
+      })
       observer.observe(element)
       return () => observer.disconnect()
     },
-    // Callers pass a fresh options object each render, so the observer is keyed by its fields.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [options?.root, options?.rootMargin, options?.threshold],
+    [root, rootMargin, threshold],
   )
 }

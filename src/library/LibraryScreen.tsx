@@ -62,10 +62,12 @@ export function LibraryScreen({
     landing,
   } = useLibraryItems({ libraryId, sort, filter })
 
-  // State lets observers attach to the grid after it mounts.
+  // State lets observers attach to the grid after it mounts; the ref is the handle the layout
+  // effects scroll.
   const [gridElement, setGridElement] = useState<HTMLDivElement | null>(null)
+  const gridNodeRef = useRef<HTMLDivElement | null>(null)
   const { ref: measureGrid, height: gridHeight } = useElementSize<HTMLDivElement>()
-  const gridRef = useMergedRef(setGridElement, measureGrid)
+  const gridRef = useMergedRef(setGridElement, measureGrid, gridNodeRef)
   // IntersectionObserver requires pixels here; vh/dvh units are unsupported.
   const halfViewportPrefetchMargin = `${gridHeight / 2}px 0px`
   const itemElementsRef = useRef(new Map<string, HTMLElement>())
@@ -92,45 +94,46 @@ export function LibraryScreen({
   const frameRef = useRef<HTMLDivElement>(null)
   const firstCursor = edges[0]?.cursor
   const firstRowRef = useRef<{ cursor: string; element: HTMLElement } | null>(null)
-  // gridElement is the DOM node held in state; moving its scroll position is these effects' job.
-  // Rows are measured by offsetTop, which the grid's slide transform does not disturb.
-  /* eslint-disable react-hooks/immutability */
+  // Rows are measured by offsetTop, which the grid's slide transform does not disturb. Both
+  // effects list gridElement so they run again once the grid has mounted.
   useLayoutEffect(
     function keepRowsInPlaceAcrossPrepend() {
       const previousFirst = firstRowRef.current
       const first = firstCursor ? itemElementsRef.current.get(firstCursor) : undefined
       firstRowRef.current = first && firstCursor ? { cursor: firstCursor, element: first } : null
+      const grid = gridNodeRef.current
       const prepended =
         previousFirst &&
         first &&
         previousFirst.cursor !== firstCursor &&
         previousFirst.element.isConnected
-      if (!prepended || !gridElement) {
+      if (!prepended || !grid) {
         return
       }
-      gridElement.scrollTop += previousFirst.element.offsetTop - first.offsetTop
+      grid.scrollTop += previousFirst.element.offsetTop - first.offsetTop
     },
     [firstCursor, gridElement],
   )
 
-  // Before paint, because the grid keeps its previous scroll position across a new result.
+  // Before paint, because the grid keeps its previous scroll position across a new result. Once
+  // per result: later pages merge into the same result without moving it.
+  const landingKey = landing?.key
+  const landingCursor = landing?.cursor
   useLayoutEffect(
     function placeLandingRow() {
-      if (!landing || !gridElement) {
+      const grid = gridNodeRef.current
+      if (landingKey === undefined || !grid) {
         return
       }
-      const row = landing.cursor ? itemElementsRef.current.get(landing.cursor) : undefined
-      gridElement.scrollTop = row?.offsetTop ?? 0
+      const row = landingCursor ? itemElementsRef.current.get(landingCursor) : undefined
+      grid.scrollTop = row?.offsetTop ?? 0
       // A short page scrolls to the letter's row, through the frame the slide cannot move.
       if (row) {
         frameRef.current?.scrollIntoView({ block: 'start' })
       }
     },
-    // Once per result: later pages merge into the same result and must not move it.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [landing?.key, gridElement],
+    [landingKey, landingCursor, gridElement],
   )
-  /* eslint-enable react-hooks/immutability */
 
   // A letter jump moves like the tvOS library: the grid leaves in the direction of travel at the
   // press, the rows swap while it is away, and it re-enters from the other side. A failed jump
