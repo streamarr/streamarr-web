@@ -451,6 +451,56 @@ describe('LibraryScreen', () => {
     await waitFor(() => expect(grid.scrollTop).toBe(50 + JSDOM_ROW_HEIGHT))
   })
 
+  it('highlights the pressed letter when its first title shares the top row with the letter before it', async () => {
+    // Two columns, so the backfilled Ozark and the landing Paddington share the top row.
+    const computedStyle = window.getComputedStyle.bind(window)
+    vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) =>
+      element.hasAttribute('data-index')
+        ? ({ gridTemplateColumns: '100px 100px', rowGap: '' } as unknown as CSSStyleDeclaration)
+        : computedStyle(element, pseudo),
+    )
+    const withRail = (edges: { cursor: string; node: ReturnType<typeof movieNode> }[]) => {
+      const data = libraryData({ edges })
+      data.library.alphabetIndex = [
+        { letter: 'A', count: 1 },
+        { letter: 'O', count: 1 },
+        { letter: 'P', count: 1 },
+      ]
+      return data
+    }
+    server.use(
+      graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) => {
+        if (variables.before) {
+          return HttpResponse.json({
+            data: withRail([{ cursor: 'o', node: movieNode({ id: 'o', title: 'Ozark' }) }]),
+          })
+        }
+        if (variables.filter?.startLetter === 'P') {
+          const data = withRail([
+            { cursor: 'p', node: movieNode({ id: 'p', title: 'Paddington' }) },
+          ])
+          data.library.items.pageInfo.hasPreviousPage = true
+          return HttpResponse.json({ data })
+        }
+        return HttpResponse.json({
+          data: withRail([{ cursor: 'a', node: movieNode({ id: 'a', title: 'Alright' }) }]),
+        })
+      }),
+    )
+    const user = userEvent.setup()
+    renderWithProviders(<Harness initialSearch={{ by: 'TITLE', direction: 'ASC' }} />)
+    await screen.findByText('Alright')
+
+    await user.click(screen.getByRole('button', { name: 'P' }))
+
+    await screen.findByText('Ozark')
+    expect(screen.getByText('Paddington')).toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'P' })).toHaveAttribute('aria-pressed', 'true'),
+    )
+    expect(screen.getByRole('button', { name: 'O' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
   it('lands the grid on the jump target and keeps it there when the continuity page is prepended above', async () => {
     server.use(
       graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) => {

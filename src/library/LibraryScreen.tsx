@@ -197,6 +197,7 @@ export function LibraryScreen({
             locationKey={locationKey}
             restoredScrollY={restoredScrollY}
             repeatLanding={repeatLanding}
+            selectedLetter={search.letter ?? null}
             visibleLetterStore={visibleLetterStore}
             slide={slide}
             direction={jump?.direction}

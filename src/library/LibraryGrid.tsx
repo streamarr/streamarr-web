@@ -38,6 +38,7 @@ export function LibraryGrid({
   locationKey,
   restoredScrollY,
   repeatLanding,
+  selectedLetter,
   visibleLetterStore,
   slide,
   direction,
@@ -54,6 +55,7 @@ export function LibraryGrid({
   restoredScrollY: number | undefined
   repeatLanding: number
   landing: LibraryItems['landing']
+  selectedLetter: string | null
   visibleLetterStore: Store<string | null>
   slide: SlidePhase
   direction: JumpDirection | undefined
@@ -199,10 +201,15 @@ export function LibraryGrid({
     ],
   )
 
-  // The rail follows the row at the top of the grid; only the rail subscribes to the store.
-  const topEdge = edges[topRow * geometry.columns]
-  const topLetter = trackingLetter && topEdge ? summaryLetter(summarizeMedia(topEdge.node)) : null
-
+  // The rail follows the row at the top of the grid; only the rail subscribes to the store. A
+  // row where the chosen letter begins still belongs to the letter before it on the left, and
+  // the rail shows the letter the viewer asked for, as tvOS does through the focused title.
+  const topLetter = trackingLetter
+    ? letterAtTheTop(
+        edges.slice(topRow * geometry.columns, (topRow + 1) * geometry.columns),
+        selectedLetter,
+      )
+    : null
   useEffect(
     function publishVisibleLetter() {
       visibleLetterStore.setState(() => topLetter)
@@ -268,6 +275,14 @@ function useVirtualRows(options: Parameters<typeof useVirtualizer<HTMLDivElement
     totalSize: virtualizer.getTotalSize(),
     topRow: virtualizer.range?.startIndex ?? 0,
   }
+}
+
+function letterAtTheTop(topRow: LibraryEdge[], selectedLetter: string | null) {
+  const letters = topRow.map((edge) => summaryLetter(summarizeMedia(edge.node)))
+  if (selectedLetter && letters.includes(selectedLetter)) {
+    return selectedLetter
+  }
+  return letters[0] ?? null
 }
 
 function rowStart(virtualizer: Virtualizer<HTMLDivElement, Element>, row: number) {
