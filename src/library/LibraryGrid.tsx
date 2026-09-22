@@ -388,8 +388,10 @@ function rowStart(virtualizer: Virtualizer<HTMLDivElement, Element>, row: number
   return virtualizer.measurementsCache[row]?.start ?? 0
 }
 
+// A cell is measured rather than the row: as the grid narrows, a row laid out for more columns
+// wraps its cards for a moment, and its height is then that of several rows.
 function measureRowGeometry(row: HTMLElement): RowGeometry | null {
-  const rowHeight = Math.ceil(row.getBoundingClientRect().height)
+  const rowHeight = Math.ceil(row.firstElementChild?.getBoundingClientRect().height ?? 0)
   if (rowHeight === 0) {
     return null
   }

@@ -878,6 +878,8 @@ test('a narrower window re-lays the rows before the frame that resized them pain
   await expect.poll(rowsFitTheWidth(page)).toBe(true)
   expect(await seen()).toMatchObject({ overfullRows: 0, overlappingRows: 0 })
   await expect(page.getByRole('link', { name: 'A Title 02' })).toBeFocused()
+  // Re-focusing scrolls the card into view only if needed, by the rows' final positions.
+  await expect(page.getByRole('link', { name: 'A Title 02' })).toBeInViewport({ ratio: 1 })
 })
 
 // Rows are re-laid for a new width once the grid has measured it.
