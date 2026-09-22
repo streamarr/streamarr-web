@@ -1,4 +1,5 @@
 import { useRef, type ReactNode } from 'react'
+import { Icon } from '../ui/Icon'
 import styles from './ContentShelf.module.css'
 
 export function ContentShelf({
@@ -31,7 +32,7 @@ export function ContentShelf({
             aria-label="Scroll left"
             onClick={() => scroll(-1)}
           >
-            <ChevronGlyph direction="left" />
+            <Icon name="chevron-left" size={16} />
           </button>
           <button
             type="button"
@@ -39,7 +40,7 @@ export function ContentShelf({
             aria-label="Scroll right"
             onClick={() => scroll(1)}
           >
-            <ChevronGlyph direction="right" />
+            <Icon name="chevron-right" size={16} />
           </button>
         </div>
       </div>
@@ -47,25 +48,5 @@ export function ContentShelf({
         {children}
       </div>
     </section>
-  )
-}
-
-function ChevronGlyph({ direction }: Readonly<{ direction: 'left' | 'right' }>) {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      aria-hidden
-    >
-      <path
-        d={direction === 'left' ? 'M15 6l-6 6 6 6' : 'M9 6l6 6-6 6'}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
   )
 }

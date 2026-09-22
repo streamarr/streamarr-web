@@ -7,7 +7,7 @@ import { resolveAmbientColors } from '../media/ambientSource'
 import { detailBackClass } from '../media/DetailBack'
 import { detailAction, DetailHeader } from '../media/DetailHeader'
 import { formatRuntime, formatTimeLeft, formatYear } from '../media/formatting'
-import { BackGlyph, PlayGlyph } from '../media/glyphs'
+import { Icon } from '../ui/Icon'
 import { pickImageVariant } from '../media/images'
 import { nextPlayableEpisode } from '../media/nextPlayableEpisode'
 import { ProgressDivider } from '../media/ProgressDivider'
@@ -82,7 +82,7 @@ export function SeasonDetailScreen({ seasonId }: Readonly<{ seasonId: string }>)
         }}
         back={
           <Link to="/series/$seriesId" params={{ seriesId: series.id }} className={detailBackClass}>
-            <BackGlyph />
+            <Icon name="arrow-left" size={16} />
             {series.title ?? 'Series'}
           </Link>
         }
@@ -104,7 +104,7 @@ export function SeasonDetailScreen({ seasonId }: Readonly<{ seasonId: string }>)
                 search={{ position: playable.positionSeconds ?? undefined }}
                 className={detailAction.primary}
               >
-                <PlayGlyph />
+                <Icon name="play" size={14} />
                 {playable.verb} E{playable.episodeNumber}
               </Link>
             )}

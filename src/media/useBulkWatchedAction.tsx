@@ -8,7 +8,7 @@ import {
 } from '../graphql/generated/graphql'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { detailAction } from './DetailHeader'
-import { CheckCircleGlyph } from './glyphs'
+import { Icon } from '../ui/Icon'
 import { useWatchedToggle } from './useWatchedToggle'
 import styles from './useBulkWatchedAction.module.css'
 
@@ -47,7 +47,7 @@ export function useBulkWatchedAction(target: BulkWatchedTarget) {
         disabled={watched.pending}
         onClick={() => setConfirming(subject.isWatched ? 'unwatched' : 'watched')}
       >
-        <CheckCircleGlyph />
+        <Icon name="watched-action" size={16} />
         Mark {target.kind} {subject.isWatched ? 'unwatched' : 'watched'}
       </button>
     ),

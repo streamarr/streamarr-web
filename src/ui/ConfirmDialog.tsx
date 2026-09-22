@@ -1,5 +1,5 @@
 import { Modal } from '@mantine/core'
-import { CheckCircleGlyph } from '../media/glyphs'
+import { Icon } from './Icon'
 import styles from './ConfirmDialog.module.css'
 
 // The one sanctioned modal: a bulk or one-way action confirms before it runs (principle 11.1).
@@ -42,7 +42,7 @@ export function ConfirmDialog({
           Cancel
         </button>
         <button type="button" className={styles.confirm} onClick={onConfirm}>
-          <CheckCircleGlyph />
+          <Icon name="watched-action" size={16} />
           {confirmLabel}
         </button>
       </div>

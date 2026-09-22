@@ -3,6 +3,7 @@ import { AuthApiError } from '../auth/api'
 import { useAuth } from '../auth/AuthProvider'
 import type { MeQuery } from '../graphql/generated/graphql'
 import { initials, tileColor } from './ProfileTile'
+import { Icon } from './Icon'
 import styles from './ProfileMenu.module.css'
 
 type Me = MeQuery['me']
@@ -143,7 +144,9 @@ export function ProfileMenu({
                   <span className={styles.profileMenuRole}>{roleLabel(me)}</span>
                 )}
               </span>
-              {profile.selected && <CheckGlyph />}
+              {profile.selected && (
+                <Icon name="check" size={16} className={styles.profileMenuCheck} />
+              )}
             </button>
           ))}
           {failure && (
@@ -153,7 +156,7 @@ export function ProfileMenu({
           )}
           <div className={styles.profileMenuDivider} aria-hidden />
           <button type="button" className={styles.profileMenuRow} onClick={signOut}>
-            <SignOutGlyph />
+            <Icon name="sign-out" size={20} />
             <span>Sign out</span>
           </button>
         </div>
@@ -188,42 +191,4 @@ function roleLabel(me: Me): string | null {
   if (me.serverAdmin) return 'Server owner'
   if (me.householdRole === 'ADMIN') return 'Household admin'
   return null
-}
-
-function CheckGlyph() {
-  return (
-    <svg
-      className={styles.profileMenuCheck}
-      width="15"
-      height="15"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.2"
-      strokeLinecap="round"
-      aria-hidden
-    >
-      <path d="M5 12.5l4.5 4.5L19 7.5" />
-    </svg>
-  )
-}
-
-function SignOutGlyph() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-      <path d="M16 17l5-5-5-5" />
-      <line x1="21" y1="12" x2="9" y2="12" />
-    </svg>
-  )
 }

@@ -1,6 +1,6 @@
 import { useNavigate, useRouter } from '@tanstack/react-router'
 import styles from './DetailBack.module.css'
-import { BackGlyph } from './glyphs'
+import { Icon } from '../ui/Icon'
 
 export const detailBackClass = styles.back
 
@@ -19,7 +19,7 @@ export function DetailBackButton() {
 
   return (
     <button type="button" className={styles.back} onClick={goBack}>
-      <BackGlyph />
+      <Icon name="arrow-left" size={16} />
       Back
     </button>
   )
