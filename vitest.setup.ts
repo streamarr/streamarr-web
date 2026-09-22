@@ -54,13 +54,23 @@ Element.prototype.getBoundingClientRect = function getBoundingClientRect(this: E
 // eslint-disable-next-line @typescript-eslint/unbound-method -- a polyfill check reads the method without calling it
 Element.prototype.scrollIntoView ??= function scrollIntoView() {}
 
-// Mantine's SegmentedControl positions its indicator with ResizeObserver, which jsdom lacks.
-class QuietResizeObserver {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
+// jsdom has no ResizeObserver. Mantine's SegmentedControl positions its indicator with one, and
+// the library grid re-lays its rows from one, so each instance is kept reachable through
+// `resizeObserverInstances` for a test to fire by hand.
+export class MockResizeObserver implements ResizeObserver {
+  readonly callback: ResizeObserverCallback
+
+  constructor(callback: ResizeObserverCallback) {
+    this.callback = callback
+    resizeObserverInstances.push(this)
+  }
+
+  observe = vi.fn()
+  unobserve = vi.fn()
+  disconnect = vi.fn()
 }
-globalThis.ResizeObserver ??= QuietResizeObserver as unknown as typeof ResizeObserver
+export const resizeObserverInstances: MockResizeObserver[] = []
+globalThis.ResizeObserver ??= MockResizeObserver as unknown as typeof ResizeObserver
 
 // jsdom has no IntersectionObserver either. Unlike ResizeObserver this one isn't fire-and-forget:
 // infinite-scroll and alphabet-rail tests need to trigger it manually, so each instance is kept
@@ -91,4 +101,5 @@ globalThis.IntersectionObserver ??=
 
 afterEach(() => {
   intersectionObserverInstances.length = 0
+  resizeObserverInstances.length = 0
 })
