@@ -218,7 +218,7 @@ export function LibraryGrid({
   )
 
   // Before paint, once per result: later pages merge into the same result without moving it. A
-  // letter's row needs measured geometry; the top does not.
+  // measured geometry must be ready before restoring a saved position or seeking a letter.
   const placedResult = useRef<{
     locationKey: string | undefined
     landingKey: string
