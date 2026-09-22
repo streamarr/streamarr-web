@@ -4,6 +4,9 @@ Browser client for [streamarr-server](https://github.com/streamarr/streamarr-ser
 Authentication and session security follow server ADRs 0015/0016 — `httpOnly` cookies plus a
 service worker that owns silent token renewal.
 
+Server admins can manage libraries through **Profile menu → Server settings**. See
+[Server settings](docs/server-settings.md) for the design, module interfaces, API scope and tests.
+
 ## Development
 
 Requires the server running on :8080 (`docker compose up -d && ./mvnw spring-boot:run`).

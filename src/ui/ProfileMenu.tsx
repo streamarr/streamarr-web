@@ -4,6 +4,7 @@ import { useAuth } from '../auth/AuthProvider'
 import type { MeQuery } from '../graphql/generated/graphql'
 import { initials, tileColor } from './ProfileTile'
 import { Icon } from './Icon'
+import { canManageServer } from '../admin/access'
 import styles from './ProfileMenu.module.css'
 
 type Me = MeQuery['me']
@@ -21,11 +22,14 @@ export function ProfileMenu({
   onPinRequired,
   onSignedOut,
   onUnauthenticated,
+  onServerSettings,
 }: {
   me: Me
   onPinRequired: (profileId: string) => void
   onSignedOut: () => void
   onUnauthenticated: () => void
+  /** Opens the integrated settings route; only exposed for eligible account sessions. */
+  onServerSettings?: () => void
 }) {
   const { selectProfile, logout } = useAuth()
   const [opened, setOpened] = useState(false)
@@ -155,6 +159,19 @@ export function ProfileMenu({
             </div>
           )}
           <div className={styles.profileMenuDivider} aria-hidden />
+          {canManageServer(me) && onServerSettings && (
+            <button
+              type="button"
+              className={styles.profileMenuRow}
+              onClick={() => {
+                close()
+                onServerSettings()
+              }}
+            >
+              <Icon name="settings" size={20} />
+              <span>Server settings</span>
+            </button>
+          )}
           <button type="button" className={styles.profileMenuRow} onClick={signOut}>
             <Icon name="sign-out" size={20} />
             <span>Sign out</span>
@@ -188,7 +205,7 @@ function rowLabel(profile: SelectableProfile) {
 }
 
 function roleLabel(me: Me): string | null {
-  if (me.serverAdmin) return 'Server owner'
+  if (me.serverAdmin) return 'Server admin'
   if (me.householdRole === 'ADMIN') return 'Household admin'
   return null
 }

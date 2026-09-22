@@ -1,0 +1,46 @@
+fragment ManagedLibraryFields on Library {
+  __typename
+  id
+  name
+  type
+  backend
+  filepathUri
+  status
+  scanStartedOn
+  scanCompletedOn
+}
+
+query AdminLibraries {
+  libraries {
+    ...ManagedLibraryFields
+  }
+}
+
+mutation AddLibrary($input: AddLibraryInput!) {
+  addLibrary(input: $input) {
+    library {
+      ...ManagedLibraryFields
+    }
+    userErrors {
+      __typename
+      ... on MutationError {
+        message
+      }
+      ... on InputMutationError {
+        inputPath
+      }
+    }
+  }
+}
+
+mutation ScanLibrary($id: ID!) {
+  scanLibrary(id: $id)
+}
+
+mutation RefreshLibrary($id: ID!, $imageRefreshMode: ImageRefreshMode!) {
+  refreshLibrary(id: $id, imageRefreshMode: $imageRefreshMode)
+}
+
+mutation RemoveLibrary($id: ID!) {
+  removeLibrary(id: $id)
+}

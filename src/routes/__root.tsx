@@ -57,6 +57,10 @@ function RootFrame() {
     select: (state) => state.matches.some((match) => AMBIENT_ROUTES.has(match.routeId)),
   })
   const theme = useAmbientTheme()
+  const settings = useRouterState({
+    select: (state) =>
+      state.matches.some((match) => match.routeId === '/_authenticated/settings/server'),
+  })
 
   if (ceremony) {
     return <Outlet />
@@ -72,7 +76,7 @@ function RootFrame() {
   }
 
   return (
-    <HomeShell chrome={signedIn && <TopBar />}>
+    <HomeShell chrome={signedIn && <TopBar />} ambient={!settings}>
       <Outlet />
     </HomeShell>
   )

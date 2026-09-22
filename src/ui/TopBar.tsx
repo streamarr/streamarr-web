@@ -45,6 +45,7 @@ export function TopBar() {
       <div className={styles.topBarTrail}>
         <ProfileMenu
           me={data.me}
+          onServerSettings={() => navigate({ to: '/settings/server/libraries' })}
           onPinRequired={(profileId) =>
             navigate({ to: '/select-profile', search: { profile: profileId } })
           }
