@@ -7,8 +7,7 @@ import {
   type SeriesDetailQuery,
 } from '../graphql/generated/graphql'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
-import { detailAction } from './DetailHeader'
-import { Icon } from '../ui/Icon'
+import { WatchedActionButton } from './WatchedActionButton'
 import { useWatchedToggle } from './useWatchedToggle'
 import styles from './useBulkWatchedAction.module.css'
 
@@ -41,15 +40,12 @@ export function useBulkWatchedAction(target: BulkWatchedTarget) {
   const verb = confirming ?? 'watched'
   return {
     action: (
-      <button
-        type="button"
-        className={detailAction.outline}
-        disabled={watched.pending}
+      <WatchedActionButton
+        subject={target.kind}
+        isWatched={subject.isWatched}
+        pending={watched.pending}
         onClick={() => setConfirming(subject.isWatched ? 'unwatched' : 'watched')}
-      >
-        <Icon name="watched-action" size={16} />
-        Mark {target.kind} {subject.isWatched ? 'unwatched' : 'watched'}
-      </button>
+      />
     ),
     feedback: watched.failed && (
       <Alert color="red" role="alert" className={styles.notice}>

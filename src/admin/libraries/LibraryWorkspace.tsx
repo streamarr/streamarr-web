@@ -13,6 +13,7 @@ import {
   lastScanLabel,
   libraryIcon,
   libraryName,
+  libraryTypeLabel,
   type ManagedLibrary,
 } from './libraryModel'
 import { useAdminLibraries, useLibraryCommands } from './useLibraryAdmin'
@@ -34,9 +35,6 @@ export function LibraryWorkspace({
   const [notice, setNotice] = useState('')
   const heading = useRef<HTMLHeadingElement>(null)
   const libraries = query.data?.libraries
-  const current = selectedId
-    ? libraries?.find((library) => library.id === selectedId)
-    : libraries?.[0]
   useEffect(() => {
     heading.current?.focus({ preventScroll: true })
   }, [notice])
@@ -58,12 +56,12 @@ export function LibraryWorkspace({
         )}
       </div>
       {notice && (
-        <p className={styles.notice} role="status">
+        <output className={styles.notice}>
           {notice}
           <button type="button" aria-label="Dismiss notification" onClick={() => setNotice('')}>
             <Icon name="close" size={16} />
           </button>
-        </p>
+        </output>
       )}
       {query.error && (
         <Alert role="alert" color="red" mb="md">
@@ -73,59 +71,82 @@ export function LibraryWorkspace({
           </Button>
         </Alert>
       )}
-      {!libraries ? (
-        !query.error && (
-          <Center h={200}>
-            <Loader role="status" aria-label="Loading libraries" />
-          </Center>
-        )
-      ) : libraries.length === 0 ? (
-        !query.error && <EmptyLibraries canCreate />
-      ) : (
-        <div className={styles.splitPanel}>
-          <nav className={styles.libraryList} aria-label="Libraries to manage">
-            {libraries.map((library) => (
-              <button
-                type="button"
-                key={library.id}
-                className={
-                  library.id === current?.id ? styles.selectedLibrary : styles.libraryChoice
-                }
-                aria-current={library.id === current?.id ? 'true' : undefined}
-                onClick={() => {
-                  setNotice('')
-                  onSelect(library.id)
-                }}
-              >
-                <Icon name={libraryIcon(library.type)} />
-                <div>
-                  <strong>{libraryName(library)}</strong>
-                  <LibraryStatus status={library.status} />
-                </div>
-                <Icon name="chevron-right" size={14} />
-              </button>
-            ))}
-          </nav>
-          {current ? (
-            <LibraryDetails
-              key={current.id}
-              library={current}
-              stale={!!query.error}
-              onRemoved={() => {
-                setNotice(`${libraryName(current)} removed. Files were kept on disk.`)
-                const next = libraries.find((library) => library.id !== current.id)
-                onSelect(next?.id ?? '')
-              }}
-            />
-          ) : (
-            <div className={styles.empty}>
-              <h2>Library unavailable</h2>
-              <p>It may have been removed. Select another library.</p>
+      <LibraryInventory
+        libraries={libraries}
+        selectedId={selectedId}
+        stale={!!query.error}
+        onSelect={(id) => {
+          setNotice('')
+          onSelect(id)
+        }}
+        onRemoved={(removed) => {
+          setNotice(`${libraryName(removed)} removed. Files were kept on disk.`)
+          const next = libraries?.find((library) => library.id !== removed.id)
+          onSelect(next?.id ?? '')
+        }}
+      />
+    </>
+  )
+}
+
+function LibraryInventory({
+  libraries,
+  selectedId,
+  stale,
+  onSelect,
+  onRemoved,
+}: Readonly<{
+  libraries: readonly ManagedLibrary[] | undefined
+  selectedId?: string
+  stale: boolean
+  onSelect: (id: string) => void
+  onRemoved: (library: ManagedLibrary) => void
+}>) {
+  if (!libraries) {
+    if (stale) return null
+    return (
+      <Center h={200}>
+        <Loader role="status" aria-label="Loading libraries" />
+      </Center>
+    )
+  }
+  if (libraries.length === 0) return stale ? null : <EmptyLibraries canCreate />
+
+  const current = selectedId ? libraries.find((library) => library.id === selectedId) : libraries[0]
+  return (
+    <div className={styles.splitPanel}>
+      <nav className={styles.libraryList} aria-label="Libraries to manage">
+        {libraries.map((library) => (
+          <button
+            type="button"
+            key={library.id}
+            className={library.id === current?.id ? styles.selectedLibrary : styles.libraryChoice}
+            aria-current={library.id === current?.id ? 'true' : undefined}
+            onClick={() => onSelect(library.id)}
+          >
+            <Icon name={libraryIcon(library.type)} />
+            <div>
+              <strong>{libraryName(library)}</strong>
+              <LibraryStatus status={library.status} />
             </div>
-          )}
+            <Icon name="chevron-right" size={14} />
+          </button>
+        ))}
+      </nav>
+      {current ? (
+        <LibraryDetails
+          key={current.id}
+          library={current}
+          stale={stale}
+          onRemoved={() => onRemoved(current)}
+        />
+      ) : (
+        <div className={styles.empty}>
+          <h2>Library unavailable</h2>
+          <p>It may have been removed. Select another library.</p>
         </div>
       )}
-    </>
+    </div>
   )
 }
 
@@ -150,6 +171,10 @@ function LibraryDetails({
   const disabled = stale || !maintainable || commands.pending
   const name = libraryName(library)
   const refreshId = `refresh-${library.id}`
+  let removalError = commands.error
+  if (!removalError && stale) removalError = 'Refresh the library state before removing it.'
+  if (!removalError && !maintainable)
+    removalError = 'This library cannot be removed while maintenance is in progress.'
 
   const [previousStatus, setPreviousStatus] = useState(library.status)
   if (previousStatus !== library.status) {
@@ -174,21 +199,12 @@ function LibraryDetails({
     <article className={styles.detailPane} aria-label={`${name} settings`}>
       <div className={styles.detailHeading}>
         <div className={styles.typeIcon}>
-          <Icon
-            name={libraryIcon(library.type)}
-            label={
-              library.type === 'MOVIE'
-                ? 'Movies'
-                : library.type === 'SERIES'
-                  ? 'TV shows'
-                  : 'Library'
-            }
-          />
+          <Icon name={libraryIcon(library.type)} label={libraryTypeLabel(library.type)} />
         </div>
         <h2>{name}</h2>
-        <div className={styles.detailStatus} role="status">
+        <output className={styles.detailStatus}>
           <LibraryStatus status={library.status} />
-        </div>
+        </output>
       </div>
       <dl className={styles.metadata}>
         <div className={styles.metadataFolder}>
@@ -331,11 +347,7 @@ function LibraryDetails({
             </p>
           )}
         </div>
-        {notice && (
-          <p className={styles.actionNotice} role="status">
-            {notice}
-          </p>
-        )}
+        {notice && <output className={styles.actionNotice}>{notice}</output>}
         {commands.error && !removing && (
           <Alert role="alert" color="red" mt="md">
             {commands.error}
@@ -351,14 +363,7 @@ function LibraryDetails({
         icon={null}
         pending={commands.pending}
         disabled={disabled}
-        error={
-          commands.error ||
-          (stale
-            ? 'Refresh the library state before removing it.'
-            : !maintainable
-              ? 'This library cannot be removed while maintenance is in progress.'
-              : null)
-        }
+        error={removalError}
         onClose={() => {
           setRemoving(false)
           commands.clearError()

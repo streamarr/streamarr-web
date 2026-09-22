@@ -11,8 +11,9 @@ import styles from './LibraryStatus.module.css'
 export function LibraryStatus({ status }: Readonly<{ status: ManagedLibrary['status'] }>) {
   const known = Object.hasOwn(LIBRARY_STATUS_ICONS, status)
   const icon = known ? LIBRARY_STATUS_ICONS[status as keyof typeof LIBRARY_STATUS_ICONS] : 'alert'
-  const tone =
-    status === 'HEALTHY' ? styles.healthy : status === 'UNHEALTHY' ? styles.unhealthy : ''
+  let tone = ''
+  if (status === 'HEALTHY') tone = styles.healthy
+  if (status === 'UNHEALTHY') tone = styles.unhealthy
   return (
     <span data-library-status className={`${styles.status} ${tone}`}>
       <Icon name={icon} size={14} />
