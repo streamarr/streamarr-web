@@ -1,0 +1,23 @@
+.status {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-6);
+  width: fit-content;
+  max-width: 100%;
+  font-family: var(--font-family-system);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-regular);
+  line-height: var(--line-height-prose);
+  text-transform: uppercase;
+  letter-spacing: var(--letter-spacing-system);
+  color: var(--text-primary);
+}
+.healthy {
+  color: var(--color-alpha-60);
+}
+.healthy > svg {
+  color: var(--semantic-success);
+}
+.unhealthy > svg {
+  color: var(--semantic-error-text);
+}

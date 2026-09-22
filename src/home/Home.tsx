@@ -11,9 +11,13 @@ import { BillboardHero } from './BillboardHero'
 import { ContinueWatchingShelf } from './ContinueWatchingShelf'
 import styles from './Home.module.css'
 import { RecentlyAddedRail } from './RecentlyAddedRail'
+import { useMe } from '../identity/useMe'
+import { canManageServer } from '../admin/access'
+import { EmptyLibraries } from '../admin/libraries/EmptyLibraries'
 
 export function Home() {
   const { data, loading, error } = useQuery(HomeDocument)
+  const { data: identity } = useMe()
 
   if (loading) {
     return (
@@ -33,6 +37,8 @@ export function Home() {
 
   const billboard = billboardContentFor(data)
   if (!billboard) {
+    if (data.libraries.length === 0)
+      return <EmptyLibraries canCreate={canManageServer(identity?.me)} />
     return (
       <Center h={200}>
         <Text c="dimmed">Nothing to watch yet.</Text>

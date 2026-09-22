@@ -1,0 +1,28 @@
+.button {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--spacing-8);
+  min-height: 40px;
+  padding: 9px var(--spacing-14);
+  border: 0;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  background: color-mix(in srgb, var(--semantic-error) 12%, var(--color-ground));
+  color: var(--semantic-error-text);
+}
+.button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--semantic-error) 18%, var(--color-ground));
+}
+.button:disabled {
+  background: var(--surface-panel);
+  color: var(--text-tertiary);
+  cursor: default;
+}
+.button:focus-visible {
+  outline: 2px solid var(--indicator-active-track);
+  outline-offset: 4px;
+}
