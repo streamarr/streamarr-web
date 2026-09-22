@@ -27,7 +27,7 @@ afterAll(() => server.close())
 
 // jsdom lays nothing out, so the virtualized library grid would see a 0px viewport and render no
 // rows: its scroll container is this tall (offsetHeight, which the virtualizer reads) and each of
-// its rows and cells this high (their bounding rects, which the grid measures), one title per row.
+// its cells this high (the bounding rect the grid measures a row by), one title per row.
 export const JSDOM_GRID_HEIGHT = 800
 export const JSDOM_ROW_HEIGHT = 300
 function jsdomOffsetHeight(this: HTMLElement) {
@@ -41,7 +41,7 @@ Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
 const nativeGetBoundingClientRect = Element.prototype.getBoundingClientRect
 Element.prototype.getBoundingClientRect = function getBoundingClientRect(this: Element) {
   const rect = nativeGetBoundingClientRect.call(this)
-  if (!this.hasAttribute('data-index') && this.getAttribute('role') !== 'gridcell') {
+  if (this.getAttribute('role') !== 'gridcell') {
     return rect
   }
   const { x, y, top, left, right, width } = rect
