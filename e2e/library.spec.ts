@@ -885,3 +885,54 @@ function rowsFitTheWidth(page: Page) {
       return row.children.length === getComputedStyle(row).gridTemplateColumns.split(' ').length
     })
 }
+
+test('every row is the same height, however long the titles in it run', async ({
+  page,
+  request,
+}) => {
+  await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
+  await request.post(`${STUB_URL}/api/auth/refresh`)
+  const longTitle = (title: string) =>
+    `${title} and a subtitle long enough to wrap onto a second and a third line in any column`
+  await page.route('**/graphql', async (route) => {
+    const operation = route.request().postDataJSON() as {
+      operationName: string
+      variables: LibraryPageQueryVariables
+    }
+    if (operation.operationName !== 'LibraryPage') return route.continue()
+    const data = libraryPage(operation.variables)
+    // One title in the first row runs long; the rows below it must not move.
+    const [first, ...rest] = data.library.items.edges ?? []
+    if (first?.node) {
+      const node = { ...first.node, title: longTitle(first.node.title ?? '') }
+      data.library.items.edges = [{ ...first, node }, ...rest]
+    }
+    await route.fulfill({ json: { data } })
+  })
+  await page.setViewportSize({ width: 375, height: 667 })
+  await page.goto('/library/movies?by=TITLE&direction=ASC')
+  await expect(page.getByText(longTitle('A Title 00'), { exact: true })).toBeVisible()
+  const grid = page.locator('[class*="_grid_"]')
+  const rows = await grid.evaluate((element) =>
+    [...element.querySelectorAll<HTMLElement>('[data-index]')].map((row) => {
+      const box = row.getBoundingClientRect()
+      const titles = [...row.querySelectorAll<HTMLElement>('[class*="_posterTitle_"]')]
+      return {
+        top: Math.round(box.top),
+        height: Math.round(box.height),
+        titleHeights: titles.map((title) => Math.round(title.getBoundingClientRect().height)),
+      }
+    }),
+  )
+  expect(rows.length).toBeGreaterThan(2)
+  const [first, second] = rows
+  const oneLine = first.titleHeights[0]
+  expect(rows.map((row) => row.titleHeights)).toEqual(
+    rows.map((row) => row.titleHeights.map(() => oneLine)),
+  )
+  expect(rows.map((row) => row.height)).toEqual(rows.map(() => first.height))
+  // Rows are placed by the measured pitch, so a taller first row would overlap the second.
+  const pitch = second.top - first.top
+  expect(pitch).toBeGreaterThanOrEqual(first.height)
+  expect(rows.map((row) => row.top - first.top)).toEqual(rows.map((_, index) => index * pitch))
+})
