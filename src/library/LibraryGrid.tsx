@@ -50,6 +50,7 @@ export function LibraryGrid({
   locationKey,
   restoredScrollY,
   repeatLanding,
+  focusLanding,
   selectedLetter,
   visibleLetterStore,
   slide,
@@ -67,6 +68,7 @@ export function LibraryGrid({
   restoredScrollY: number | undefined
   repeatLanding: number
   landing: LibraryItems['landing']
+  focusLanding: boolean
   selectedLetter: string | null
   visibleLetterStore: Store<string | null>
   slide: SlidePhase
@@ -234,10 +236,12 @@ export function LibraryGrid({
       grid.scrollTop = rowStart(virtualizer, Math.floor(cursorIndex / geometry.columns))
       // A short page scrolls to the letter's row, through the frame the slide cannot move.
       frameRef.current?.scrollIntoView({ block: 'start' })
+      focusRequestRef.current = focusLanding ? edges[cursorIndex].cursor : null
     },
     [
       landingKey,
       landingCursor,
+      focusLanding,
       gridElement,
       geometry,
       edges,
