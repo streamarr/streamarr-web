@@ -56,8 +56,8 @@ export function useLibraryCommands() {
     try {
       const result = await operation()
       return active.current ? result : null
-    } catch (caught) {
-      const context = extractAuthContext(caught)
+    } catch (error_) {
+      const context = extractAuthContext(error_)
       const denied =
         context.graphqlCodes?.includes('FORBIDDEN') || context.networkCode === 'FORBIDDEN'
       if (active.current)

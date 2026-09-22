@@ -13,6 +13,7 @@ import { Icon } from '../ui/Icon'
 import { pickImageVariant } from '../media/images'
 import { RatingChipRow } from '../media/RatingChipRow'
 import { useWatchedToggle } from '../media/useWatchedToggle'
+import { WatchedActionButton } from '../media/WatchedActionButton'
 import styles from './MovieDetailScreen.module.css'
 
 type Movie = NonNullable<MovieDetailQuery['movie']>
@@ -88,15 +89,11 @@ export function MovieDetailScreen({ movieId }: Readonly<{ movieId: string }>) {
                 {position ? 'Resume' : 'Play'}
               </Link>
             )}
-            <button
-              type="button"
-              className={detailAction.outline}
-              disabled={watched.pending}
+            <WatchedActionButton
+              isWatched={isWatched}
+              pending={watched.pending}
               onClick={isWatched ? watched.markUnwatched : watched.markWatched}
-            >
-              <Icon name="watched-action" size={16} />
-              {isWatched ? 'Mark unwatched' : 'Mark watched'}
-            </button>
+            />
           </>
         }
         aside={ratings.length > 0 && <RatingChipRow ratings={ratings} />}

@@ -24,7 +24,16 @@ export function libraryName(library: Pick<ManagedLibrary, 'name'>): string {
 
 /** Unknown media types remain representable without impersonating a movie or TV library. */
 export function libraryIcon(type: ManagedLibrary['type']): IconName {
-  return type === 'MOVIE' ? 'movie' : type === 'SERIES' ? 'series' : 'folder'
+  if (type === 'MOVIE') return 'movie'
+  if (type === 'SERIES') return 'series'
+  return 'folder'
+}
+
+/** Accessible media-type label, including a neutral fallback for future server types. */
+export function libraryTypeLabel(type: ManagedLibrary['type']): string {
+  if (type === 'MOVIE') return 'Movies'
+  if (type === 'SERIES') return 'TV shows'
+  return 'Library'
 }
 
 /** Last completed scan attempt, not a claim of success; absent and invalid values are explicit. */

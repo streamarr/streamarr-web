@@ -223,6 +223,7 @@
   font-weight: 500;
   display: block;
   margin-bottom: 7px;
+  overflow-wrap: anywhere;
 }
 .libraryChoice > div,
 .selectedLibrary > div {
@@ -353,6 +354,8 @@
 }
 .typeOption,
 .typeSelected {
+  position: relative;
+  cursor: pointer;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -574,19 +577,11 @@
   outline: 2px solid var(--indicator-active-track);
   outline-offset: 4px;
 }
-.libraryChoice strong,
-.selectedLibrary strong {
-  overflow-wrap: anywhere;
-}
 .actionNotice {
+  display: block;
   margin-top: var(--spacing-14) !important;
   color: var(--text-secondary);
   font-size: var(--font-size-body);
-}
-.typeOption,
-.typeSelected {
-  position: relative;
-  cursor: pointer;
 }
 .typeOption input,
 .typeSelected input {
