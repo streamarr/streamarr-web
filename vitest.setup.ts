@@ -25,6 +25,30 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
 
+// jsdom lays nothing out, so the virtualized library grid would see a 0px viewport and render no
+// rows: its scroll container is this tall (offsetHeight, which the virtualizer reads) and each of
+// its rows this high (its bounding rect, which the grid measures), one title per row.
+export const JSDOM_GRID_HEIGHT = 800
+export const JSDOM_ROW_HEIGHT = 300
+function jsdomOffsetHeight(this: HTMLElement) {
+  return this.hasAttribute('data-scroll-restoration-id') ? JSDOM_GRID_HEIGHT : 0
+}
+Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+  configurable: true,
+  get: jsdomOffsetHeight,
+})
+// eslint-disable-next-line @typescript-eslint/unbound-method -- kept to call with the element as `this`
+const nativeGetBoundingClientRect = Element.prototype.getBoundingClientRect
+Element.prototype.getBoundingClientRect = function getBoundingClientRect(this: Element) {
+  const rect = nativeGetBoundingClientRect.call(this)
+  if (!this.hasAttribute('data-index')) {
+    return rect
+  }
+  const { x, y, top, left, right, width } = rect
+  const bottom = top + JSDOM_ROW_HEIGHT
+  return { x, y, top, left, right, bottom, width, height: JSDOM_ROW_HEIGHT, toJSON: () => ({}) }
+}
+
 // jsdom has no scroll layout, so it implements neither this nor a meaningful scroll position;
 // tests that care about scrolling assert against the mocked IntersectionObserver instead.
 // eslint-disable-next-line @typescript-eslint/unbound-method -- a polyfill check reads the method without calling it
