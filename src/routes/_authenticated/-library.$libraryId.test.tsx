@@ -7,7 +7,6 @@ import type {
   MediaSort,
   MovieDetailQuery,
 } from '../../graphql/generated/graphql'
-import { intersectionObserverInstances } from '../../../vitest.setup'
 import styles from '../../library/LibraryScreen.module.css'
 import { meFixture } from '../../test/meFixture'
 import { renderAppAt } from '../../test/render'
@@ -282,16 +281,7 @@ describe('/library/$libraryId', () => {
     const alright = await screen.findByRole('link', { name: /Alright/ })
     const grid = document.querySelector(`.${styles.grid}`)
     // The A row is the topmost row in view, so the rail highlights A.
-    const row = alright.parentElement!
-    const observer = intersectionObserverInstances.find((instance) =>
-      instance.observe.mock.calls.some((call) => call[0] === row),
-    )!
-    act(() =>
-      observer.callback(
-        [{ target: row, isIntersecting: true } as unknown as IntersectionObserverEntry],
-        observer,
-      ),
-    )
+    expect(grid).toContainElement(alright)
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'A' })).toHaveAttribute('aria-pressed', 'true'),
     )

@@ -1,11 +1,11 @@
 import { ObservableQuery } from '@apollo/client'
-import { act, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { graphql, HttpResponse, type GraphQLQuery } from 'msw'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import type { LibraryPageQuery, LibraryPageQueryVariables } from '../graphql/generated/graphql'
-import { intersectionObserverInstances } from '../../vitest.setup'
+import { intersectionObserverInstances, JSDOM_ROW_HEIGHT } from '../../vitest.setup'
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
 import { LibraryScreen, type LibrarySearch } from './LibraryScreen'
@@ -314,18 +314,13 @@ describe('LibraryScreen', () => {
     )
     renderWithProviders(<Harness initialSearch={{ by: 'TITLE', direction: 'ASC' }} />)
     await waitFor(() => expect(screen.getByText('Northern Line')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('A')).toHaveAttribute('aria-pressed', 'true'))
     const queriesAfterLoad = queryCount
 
-    const observer = intersectionObserverInstances.find((instance) =>
-      instance.observe.mock.calls.some((call) =>
-        (call[0] as Element).textContent?.includes('Northern Line'),
-      ),
-    )!
-    const target = observer.observe.mock.calls.find((call) =>
-      (call[0] as Element).textContent?.includes('Northern Line'),
-    )![0] as Element
-
-    observer.callback([{ target, isIntersecting: true } as IntersectionObserverEntry], observer)
+    // The second row tops the grid once the first has scrolled away.
+    const grid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
+    grid.scrollTop = JSDOM_ROW_HEIGHT
+    fireEvent.scroll(grid)
 
     await waitFor(() => expect(screen.getByText('N')).toHaveAttribute('aria-pressed', 'true'))
     expect(queryCount).toBe(queriesAfterLoad)
@@ -374,7 +369,7 @@ describe('LibraryScreen', () => {
     )
     await screen.findByText('Northern')
     const oldGrid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
-    const sentinel = oldGrid.firstElementChild!
+    const sentinel = oldGrid.querySelector('[data-edge="start"]')!
     const observer = intersectionObserverInstances.find((instance) =>
       instance.observe.mock.calls.some((call) => call[0] === sentinel),
     )!
@@ -440,14 +435,7 @@ describe('LibraryScreen', () => {
     await waitFor(() => expect(screen.getByText('Beta')).toBeInTheDocument())
 
     const grid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
-    const sentinel = grid.firstElementChild as HTMLDivElement
-    // jsdom has no layout: model the prepended page as 400px tall by placing Beta below it.
-    vi.spyOn(HTMLElement.prototype, 'offsetTop', 'get').mockImplementation(function (
-      this: HTMLElement,
-    ) {
-      const text = this.textContent ?? ''
-      return text.includes('Beta') && !text.includes('Aardvark') ? 400 : 0
-    })
+    const sentinel = grid.querySelector('[data-edge="start"]') as HTMLDivElement
     grid.scrollTop = 50
 
     const observer = intersectionObserverInstances.find((instance) =>
@@ -459,20 +447,11 @@ describe('LibraryScreen', () => {
     )
 
     await waitFor(() => expect(screen.getByText('Aardvark')).toBeInTheDocument())
-    // scrollTop should track the 400px of growth exactly.
-    await waitFor(() => expect(grid.scrollTop).toBe(450))
+    // scrollTop should track the prepended row exactly.
+    await waitFor(() => expect(grid.scrollTop).toBe(50 + JSDOM_ROW_HEIGHT))
   })
 
   it('lands the grid on the jump target and keeps it there when the continuity page is prepended above', async () => {
-    // jsdom has no layout: the prepended Alright row is 400px tall, so Northern Line sits at 400
-    // once it renders.
-    vi.spyOn(HTMLElement.prototype, 'offsetTop', 'get').mockImplementation(function (
-      this: HTMLElement,
-    ) {
-      const text = this.textContent ?? ''
-      const isNorthernRow = text.includes('Northern Line') && !text.includes('Alright')
-      return isNorthernRow && document.body.textContent?.includes('Alright') ? 400 : 0
-    })
     server.use(
       graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) => {
         if (variables.before) {
@@ -514,7 +493,8 @@ describe('LibraryScreen', () => {
 
     await waitFor(() => expect(screen.getByText('Alright')).toBeInTheDocument())
     expect(screen.getByText('Northern Line')).toBeInTheDocument()
+    // The prepended Alright row sits above Northern Line, which stays at the top of the grid.
     const grid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
-    await waitFor(() => expect(grid.scrollTop).toBe(400))
+    await waitFor(() => expect(grid.scrollTop).toBe(JSDOM_ROW_HEIGHT))
   })
 })

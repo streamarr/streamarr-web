@@ -102,20 +102,20 @@ test('the grid keeps its place when returning from a title', async ({ page, requ
   // Scroll three rows down, to the row's measured top, so a whole row sits in view.
   const target = await grid.evaluate((element) => {
     const gridTop = element.getBoundingClientRect().top
-    const rowTops = [...element.children]
-      .map((child) => child.getBoundingClientRect().top)
-      .filter((top, index, all) => all.indexOf(top) === index)
+    const rowTops = [...element.querySelectorAll('[data-index]')].map(
+      (row) => row.getBoundingClientRect().top,
+    )
     element.scrollTop = Math.round(rowTops[3] - gridTop)
     return element.scrollTop
   })
   expect(target).toBeGreaterThan(0)
   const href = await grid.evaluate((element) => {
     const bounds = element.getBoundingClientRect()
-    const item = [...element.children].find((candidate) => {
+    const item = [...element.querySelectorAll('a')].find((candidate) => {
       const box = candidate.getBoundingClientRect()
       return box.top >= bounds.top - 1 && box.bottom <= bounds.bottom
     })
-    return item?.querySelector('a')?.getAttribute('href') ?? null
+    return item?.getAttribute('href') ?? null
   })
   expect(href).not.toBeNull()
   // Dispatched rather than clicked: a pointer click would first scroll the card into view.
@@ -125,7 +125,8 @@ test('the grid keeps its place when returning from a title', async ({ page, requ
 
   await page.goBack()
 
-  await expect(page.getByText('A Title 00', { exact: true })).toBeAttached()
+  // Only the rows near the restored position exist, so wait for any card rather than the first.
+  await expect(grid.locator('a').first()).toBeAttached()
   await expect.poll(() => grid.evaluate((element) => element.scrollTop)).toBe(target)
 })
 
@@ -170,10 +171,23 @@ for (const viewport of [
     const gridStillMounted = () => gridNode.evaluate((element) => element.isConnected)
     const cardTopOffset = (title: string) =>
       page.getByText(title, { exact: true }).evaluate((element) => {
-        const card = element.closest('a')!.parentElement!
-        const gridElement = card.parentElement!
+        const card = element.closest('a')!
+        // A virtual row can be between removal and re-render for an instant; poll again then.
+        const gridElement = card.closest('[class*="_grid_"]')
+        if (!gridElement) return Number.POSITIVE_INFINITY
         return Math.abs(card.getBoundingClientRect().top - gridElement.getBoundingClientRect().top)
       })
+    // Only the rows near the viewport exist, so a page that lands above the letter shows through
+    // the row before it, and the old rows are whichever were rendered at the press.
+    const backfillResponse = () =>
+      page.waitForResponse((response) => {
+        const body = response.request().postDataJSON() as {
+          operationName?: string
+          variables?: LibraryPageQueryVariables
+        } | null
+        return body?.operationName === 'LibraryPage' && body.variables?.before != null
+      })
+    const oldTitle = (await grid.locator('[class*="_posterTitle_"]').first().textContent())!
     // Counts animation frames painted without a grid from here on, and watches the page for
     // overflow and the rail for movement: a jump must never change the layout around the grid.
     await page.evaluate(() => {
@@ -196,20 +210,22 @@ for (const viewport of [
       requestAnimationFrame(sample)
     })
 
+    const firstBackfill = backfillResponse()
     await page.getByRole('button', { name: 'N', exact: true }).click()
 
     await expect(page.getByRole('button', { name: 'N', exact: true })).toHaveAttribute(
       'aria-pressed',
       'true',
     )
-    await expect(page.getByText('A Title 00', { exact: true })).toBeAttached()
+    await expect(page.getByText(oldTitle, { exact: true })).toBeAttached()
     expect(await gridStillMounted()).toBe(true)
     releaseSeek()
     await expect(page.getByText('N Title 00', { exact: true })).toBeAttached()
     expect(await gridStillMounted()).toBe(true)
     await expect.poll(() => cardTopOffset('N Title 00')).toBeLessThanOrEqual(1)
     releaseBackfill()
-    await expect(page.getByText('J Title 00', { exact: true })).toBeAttached()
+    await firstBackfill
+    await expect(page.getByText('M Title 11', { exact: true })).toBeAttached()
     expect(await gridStillMounted()).toBe(true)
     await expect.poll(() => cardTopOffset('N Title 00')).toBeLessThanOrEqual(1)
     const frames = await page.evaluate(() => {
@@ -235,12 +251,16 @@ for (const viewport of [
     expect(frames.pageOverflow).toBe(frames.initialOverflow)
     expect(frames.railLefts).toHaveLength(1)
 
+    const secondBackfill = backfillResponse()
     await page.getByRole('button', { name: 'T', exact: true }).click()
-    await expect(page.getByText('P Title 00', { exact: true })).toBeAttached()
+    await secondBackfill
+    await expect(page.getByText('S Title 11', { exact: true })).toBeAttached()
     await expect.poll(() => cardTopOffset('T Title 00')).toBeLessThanOrEqual(1)
     // A revisit is a cache hit and must land the same way.
+    const revisitBackfill = backfillResponse()
     await page.getByRole('button', { name: 'N', exact: true }).click()
-    await expect(page.getByText('F Title 00', { exact: true })).toBeAttached()
+    await revisitBackfill
+    await expect(page.getByText('M Title 11', { exact: true })).toBeAttached()
     await expect.poll(() => cardTopOffset('N Title 00')).toBeLessThanOrEqual(1)
     expect(await gridStillMounted()).toBe(true)
   })
@@ -405,15 +425,29 @@ test('the alphabet highlight follows vertical scrolling on desktop and a phone',
   })
   await page.goto('/library/movies?by=TITLE&direction=ASC')
   await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
+  const grid = page.locator('[class*="_grid_"]')
+  // Rows are re-laid for a new width once the grid has measured it.
+  const rowsFitTheWidth = () =>
+    grid.evaluate((element) => {
+      const row = element.querySelector('[data-index]')!
+      return row.children.length === getComputedStyle(row).gridTemplateColumns.split(' ').length
+    })
 
   for (const { viewport, letter } of [
     { viewport: { width: 1440, height: 900 }, letter: 'B' },
     { viewport: { width: 375, height: 667 }, letter: 'C' },
   ]) {
     await page.setViewportSize(viewport)
-    await page.getByText(`${letter} Title 00`, { exact: true }).evaluate((element) => {
-      element.scrollIntoView({ block: 'start' })
-    })
+    await expect.poll(rowsFitTheWidth).toBe(true)
+    // A row that far down is not in the DOM yet, so scroll to it by the grid's row geometry.
+    await grid.evaluate(
+      (element, index) => {
+        const rows = [...element.querySelectorAll('[data-index]')]
+        const pitch = rows[1].getBoundingClientRect().top - rows[0].getBoundingClientRect().top
+        element.scrollTop = Math.floor(index / rows[0].children.length) * pitch
+      },
+      (letter.charCodeAt(0) - 65) * 12,
+    )
     await expect(page.getByRole('button', { name: letter, exact: true })).toHaveAttribute(
       'aria-pressed',
       'true',
@@ -747,3 +781,50 @@ for (const { seek, failRecovery } of [
     await expect.poll(() => grid.evaluate((element) => element.scrollTop)).toBe(savedPosition)
   })
 }
+
+test('the grid keeps only the rows near the viewport in the DOM across ten letter jumps', async ({
+  page,
+  request,
+}) => {
+  await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
+  await request.post(`${STUB_URL}/api/auth/refresh`)
+  await page.route('**/graphql', async (route) => {
+    const operation = route.request().postDataJSON() as {
+      operationName: string
+      variables: LibraryPageQueryVariables
+    }
+    if (operation.operationName !== 'LibraryPage') return route.continue()
+    await route.fulfill({ json: { data: libraryPage(operation.variables) } })
+  })
+  await page.goto('/library/movies?by=TITLE&direction=ASC')
+  await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
+  const grid = page.locator('[class*="_grid_"]')
+  // The rows that fit the grid, a partial row at each edge, and two rows of overscan each way.
+  const { columns, bound } = await grid.evaluate((element) => {
+    const tops = [...element.querySelectorAll('a')].map((card) => card.getBoundingClientRect().top)
+    const distinct = [...new Set(tops)].sort((a, b) => a - b)
+    const columnCount = tops.filter((top) => top === distinct[0]).length
+    const rowsThatFit = Math.ceil(element.clientHeight / (distinct[1] - distinct[0])) + 2
+    return { columns: columnCount, bound: (rowsThatFit + 4) * columnCount }
+  })
+  const backfill = () =>
+    page.waitForResponse((response) => {
+      const body = response.request().postDataJSON() as {
+        operationName?: string
+        variables?: LibraryPageQueryVariables
+      } | null
+      return body?.operationName === 'LibraryPage' && body.variables?.before != null
+    })
+
+  const counts: number[] = []
+  for (const letter of ['N', 'T', 'C', 'X', 'G', 'Q', 'B', 'V', 'K', 'E']) {
+    const backfilled = backfill()
+    await page.getByRole('button', { name: letter, exact: true }).click()
+    await expect(page.getByText(`${letter} Title 00`, { exact: true })).toBeInViewport()
+    await backfilled
+    await expect(page.getByText(`${letter} Title 00`, { exact: true })).toBeInViewport()
+    counts.push(await grid.locator('a').count())
+  }
+  expect(Math.max(...counts)).toBeLessThanOrEqual(bound)
+  expect(Math.max(...counts) - Math.min(...counts)).toBeLessThanOrEqual(2 * columns)
+})

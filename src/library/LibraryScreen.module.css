@@ -50,22 +50,43 @@
   composes: thin from '../styles/scrollbar.module.css';
   flex: 1;
   min-height: 0;
-  /* Rows report offsetTop against the grid, which its slide transform leaves untouched. */
   position: relative;
   overflow-y: auto;
-  /* LibraryScreen preserves scroll position when prepending; native anchoring would add it twice. */
+  /* LibraryGrid preserves scroll position when prepending; native anchoring would add it twice. */
   overflow-anchor: none;
+  padding-right: var(--spacing-8);
+}
+
+/* The spacer is as tall as every row; only the rows near the viewport are its children. */
+.rows {
+  position: relative;
+  width: 100%;
+}
+
+.row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
   display: grid;
   /* Fit the available width, with rem bounds keeping posters readable as text scales. */
   grid-template-columns: repeat(auto-fill, minmax(min(100%, clamp(7rem, 18vw, 12rem)), 1fr));
   gap: var(--spacing-20);
-  align-content: start;
-  padding-right: var(--spacing-8);
 }
 
 .sentinel {
-  grid-column: 1 / -1;
+  position: absolute;
+  left: 0;
+  right: 0;
   height: 1px;
+}
+
+.sentinel[data-edge='start'] {
+  top: 0;
+}
+
+.sentinel[data-edge='end'] {
+  bottom: 0;
 }
 
 .empty {
