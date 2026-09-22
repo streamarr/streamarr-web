@@ -1,11 +1,10 @@
 import { CombinedGraphQLErrors } from '@apollo/client/errors'
 import { Alert, Anchor, Center, Loader, Text, Title } from '@mantine/core'
-import { useElementSize, useMergedRef } from '@mantine/hooks'
-import { Link, useElementScrollRestoration, useLocation } from '@tanstack/react-router'
+import { useElementScrollRestoration, useLocation } from '@tanstack/react-router'
 import { useStore } from '@tanstack/react-store'
-import type { Store } from '@tanstack/store'
-import { motion, useReducedMotion, type Variants } from 'motion/react'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Store } from '@tanstack/store'
+import { useReducedMotion } from 'motion/react'
+import { useEffect, useState } from 'react'
 import type {
   MediaFilter,
   MediaSort,
@@ -14,15 +13,11 @@ import type {
 } from '../graphql/generated/graphql'
 import { AlphabetRail } from '../media/AlphabetRail'
 import { formatRelativeTime } from '../media/formatting'
-import { PosterCard } from '../media/PosterCard'
-import { summarizeMedia, summaryLetter } from '../media/summarizeMedia'
-import { useIntersectionObserver } from '../media/useIntersectionObserver'
-import { badgeFromWatchState } from '../media/WatchedBadge'
 import { FilterBar, type WatchStatusFilter } from './FilterBar'
+import { LibraryGrid, type JumpDirection, type SlidePhase } from './LibraryGrid'
 import styles from './LibraryScreen.module.css'
 import { SortMenu } from './SortMenu'
 import { useLibraryItems } from './useLibraryItems'
-import { useVisibleLetter } from './useVisibleLetter'
 
 export interface LibrarySearch {
   by: OrderMediaBy
@@ -65,63 +60,6 @@ export function LibraryScreen({
     landing,
   } = useLibraryItems({ libraryId, sort, filter })
 
-  // State lets observers attach to the grid after it mounts; the ref is the handle the layout
-  // effects scroll.
-  const [gridElement, setGridElement] = useState<HTMLDivElement | null>(null)
-  const gridNodeRef = useRef<HTMLDivElement | null>(null)
-  const { ref: measureGrid, height: gridHeight } = useElementSize<HTMLDivElement>()
-  const gridRef = useMergedRef(setGridElement, measureGrid, gridNodeRef)
-  // IntersectionObserver requires pixels here; vh/dvh units are unsupported.
-  const halfViewportPrefetchMargin = `${gridHeight / 2}px 0px`
-  const itemElementsRef = useRef(new Map<string, HTMLElement>())
-  const { visibleLetterStore, registerItem } = useVisibleLetter(gridElement)
-
-  const loadMoreRef = useIntersectionObserver(
-    (entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) {
-        loadMore()
-      }
-    },
-    { root: gridElement, rootMargin: halfViewportPrefetchMargin },
-  )
-
-  const loadPreviousRef = useIntersectionObserver(
-    function loadPreviousPage(entries) {
-      if (entries.some((entry) => entry.isIntersecting)) {
-        void loadPrevious()
-      }
-    },
-    { root: gridElement, rootMargin: halfViewportPrefetchMargin },
-  )
-
-  const frameRef = useRef<HTMLDivElement>(null)
-  const firstCursor = edges[0]?.cursor
-  const firstRowRef = useRef<{ cursor: string; element: HTMLElement } | null>(null)
-  // Rows are measured by offsetTop, which the grid's slide transform does not disturb. Both
-  // effects list gridElement so they run again once the grid has mounted.
-  useLayoutEffect(
-    function keepRowsInPlaceAcrossPrepend() {
-      const previousFirst = firstRowRef.current
-      const first = firstCursor ? itemElementsRef.current.get(firstCursor) : undefined
-      firstRowRef.current = first && firstCursor ? { cursor: firstCursor, element: first } : null
-      const grid = gridNodeRef.current
-      const prepended =
-        previousFirst &&
-        first &&
-        previousFirst.cursor !== firstCursor &&
-        previousFirst.element.isConnected
-      if (!prepended || !grid) {
-        return
-      }
-      grid.scrollTop += previousFirst.element.offsetTop - first.offsetTop
-    },
-    [firstCursor, gridElement],
-  )
-
-  // Before paint, because the grid keeps its previous scroll position across a new result. Once
-  // per result: later pages merge into the same result without moving it.
-  const landingKey = landing?.key
-  const landingCursor = landing?.cursor
   const locationKey = useLocation({ select: (location) => location.state.__TSR_key })
   const scrollEntry = useElementScrollRestoration({ id: 'library-grid' })
   // Capture only the entry that existed on arrival. The router also records/copies offsets
@@ -131,29 +69,11 @@ export function LibraryScreen({
     setRestoration({ key: locationKey, y: scrollEntry?.scrollY })
   }
   const restoredScrollY = restoration.key === locationKey ? restoration.y : scrollEntry?.scrollY
-  const placedResult = useRef<{ locationKey: string | undefined; landingKey: string } | null>(null)
-  useLayoutEffect(
-    function placeLandingRow() {
-      const grid = gridNodeRef.current
-      if (landingKey === undefined || !grid) {
-        return
-      }
-      if (
-        placedResult.current?.locationKey === locationKey &&
-        placedResult.current?.landingKey === landingKey
-      ) {
-        return
-      }
-      placedResult.current = { locationKey, landingKey }
-      const row = landingCursor ? itemElementsRef.current.get(landingCursor) : undefined
-      grid.scrollTop = restoredScrollY ?? row?.offsetTop ?? 0
-      // A short page scrolls to the letter's row, through the frame the slide cannot move.
-      if (row && restoredScrollY === undefined) {
-        frameRef.current?.scrollIntoView({ block: 'start' })
-      }
-    },
-    [landingKey, landingCursor, gridElement, restoredScrollY, locationKey],
-  )
+  const [repeatLanding, setRepeatLanding] = useState(0)
+
+  // The letter at the top of the grid lives in a store rather than in state, so only the rail,
+  // which subscribes to it, re-renders as the viewer scrolls.
+  const [visibleLetterStore] = useState(() => new Store<string | null>(null))
 
   // Keep the old rows visible during the request, then swap them between exit and entry.
   const [jump, setJump] = useState<LetterJump | null>(null)
@@ -205,9 +125,9 @@ export function LibraryScreen({
   }
 
   function selectLetter(letter: string | null) {
-    if (letter && letter === search.letter && search.direction === 'ASC' && landingCursor) {
+    if (letter && letter === search.letter && search.direction === 'ASC' && landing?.cursor) {
       beginJump(null)
-      itemElementsRef.current.get(landingCursor)?.scrollIntoView({ block: 'start' })
+      setRepeatLanding((request) => request + 1)
       return
     }
     const viewedLetter = visibleLetterStore.state ?? search.letter ?? null
@@ -266,73 +186,26 @@ export function LibraryScreen({
         {edges.length === 0 ? (
           <Text className={styles.empty}>No items match this filter.</Text>
         ) : (
-          <div className={styles.gridFrame} ref={frameRef}>
-            <motion.div
-              className={styles.grid}
-              ref={gridRef}
-              data-scroll-restoration-id="library-grid"
-              variants={slideVariants}
-              custom={{ direction: jump?.direction, reduceMotion } satisfies SlideCustom}
-              initial={false}
-              animate={slide}
-              onAnimationComplete={(completed) => {
-                if (completed === 'exit') setGridHasLeft(true)
-                if (completed === 'enter') beginJump(null)
-              }}
-            >
-              {hasPreviousPage && (
-                <div ref={loadPreviousRef} aria-hidden className={styles.sentinel} />
-              )}
-              {edges.map((edge) => {
-                const summary = summarizeMedia(edge.node)
-                const letter = trackingLetter ? summaryLetter(summary) : null
-                const card = (
-                  <PosterCard
-                    title={summary.title}
-                    meta={summary.meta}
-                    image={summary.poster}
-                    blurHash={summary.blurHash}
-                    badge={badgeFromWatchState(summary.watchStatus, summary.percentComplete)}
-                  />
-                )
-                return (
-                  <div
-                    key={edge.cursor}
-                    ref={(element: HTMLDivElement | null) => {
-                      if (!element) {
-                        return undefined
-                      }
-                      itemElementsRef.current.set(edge.cursor, element)
-                      const disconnectObserver = letter ? registerItem(letter)(element) : undefined
-                      return () => {
-                        itemElementsRef.current.delete(edge.cursor)
-                        disconnectObserver?.()
-                      }
-                    }}
-                  >
-                    {edge.node.__typename === 'Movie' ? (
-                      <Link
-                        to="/movie/$movieId"
-                        params={{ movieId: summary.id }}
-                        className={styles.cardLink}
-                      >
-                        {card}
-                      </Link>
-                    ) : (
-                      <Link
-                        to="/series/$seriesId"
-                        params={{ seriesId: summary.id }}
-                        className={styles.cardLink}
-                      >
-                        {card}
-                      </Link>
-                    )}
-                  </div>
-                )
-              })}
-              {hasNextPage && <div ref={loadMoreRef} aria-hidden className={styles.sentinel} />}
-            </motion.div>
-          </div>
+          <LibraryGrid
+            edges={edges}
+            trackingLetter={trackingLetter}
+            hasPreviousPage={hasPreviousPage}
+            hasNextPage={hasNextPage}
+            loadMore={loadMore}
+            loadPrevious={loadPrevious}
+            landing={landing}
+            locationKey={locationKey}
+            restoredScrollY={restoredScrollY}
+            repeatLanding={repeatLanding}
+            visibleLetterStore={visibleLetterStore}
+            slide={slide}
+            direction={jump?.direction}
+            reduceMotion={reduceMotion}
+            onSlideComplete={(completed) => {
+              if (completed === 'exit') setGridHasLeft(true)
+              if (completed === 'enter') beginJump(null)
+            }}
+          />
         )}
         {canSeekByLetter && (
           <LibraryRail
@@ -372,29 +245,7 @@ function LibraryRail({
   )
 }
 
-type JumpDirection = 'forward' | 'backward'
 type LetterJump = { letter: string; direction: JumpDirection }
-type SlidePhase = 'idle' | 'exit' | 'enter'
-type SlideCustom = { direction: JumpDirection | undefined; reduceMotion: boolean }
-
-// The tvOS library's travel and timings.
-const JUMP_TRAVEL = 120
-const slideVariants: Variants = {
-  idle: { opacity: 1, y: 0, transition: { duration: 0.15 } },
-  exit: ({ direction, reduceMotion }: SlideCustom) => {
-    const distance = direction === 'forward' ? -JUMP_TRAVEL : JUMP_TRAVEL
-    return {
-      opacity: 0,
-      y: reduceMotion ? 0 : distance,
-      transition: { duration: 0.15, ease: 'easeIn' },
-    }
-  },
-  enter: ({ direction, reduceMotion }: SlideCustom) => ({
-    opacity: [0, 1],
-    y: reduceMotion ? 0 : [direction === 'forward' ? JUMP_TRAVEL : -JUMP_TRAVEL, 0],
-    transition: { duration: 0.2, ease: 'easeOut' },
-  }),
-}
 
 function directionOfJump(
   index: ReadonlyArray<{ letter: string }>,
