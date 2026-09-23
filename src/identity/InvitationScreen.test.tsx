@@ -16,8 +16,8 @@ const PREVIEW = {
   maximumAllowedRatingAge: null,
   expiresAt: '2026-08-27T12:00:00Z',
   remainingManagers: [],
-  endingHouseholds: [],
-  reofferHouseholds: [],
+  householdsLosingProfileAccess: [],
+  profileShareOfferTargets: [],
 }
 const TOKENS = { accessTokenExpiresAt: '2026-08-20T12:10:00Z', scope: 'account' }
 
@@ -32,11 +32,11 @@ function serverKnowsTheCode() {
 
 const CONNECT_PREVIEW = {
   ...PREVIEW,
-  mode: 'CONNECT',
+  mode: 'LINK',
   profileName: 'Grandpa Joe',
   remainingManagers: ['Nina'],
-  endingHouseholds: ['Cabin', 'Lake House'],
-  reofferHouseholds: ['Cabin'],
+  householdsLosingProfileAccess: ['Cabin', 'Lake House'],
+  profileShareOfferTargets: ['Cabin'],
 }
 
 describe('InvitationScreen', () => {

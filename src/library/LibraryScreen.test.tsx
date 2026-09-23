@@ -34,9 +34,23 @@ function movieNode(
   }
 }
 
+function seriesNode(overrides: Partial<{ id: string; title: string }> = {}) {
+  return {
+    __typename: 'Series' as const,
+    id: overrides.id ?? 's-1',
+    title: overrides.title ?? 'Northern Line',
+    titleSort: overrides.title ?? 'Northern Line',
+    firstAirDate: '2017-07-21',
+    seasons: [{ id: 'season-1' }],
+    watchStatus: 'UNWATCHED' as const,
+    watchProgress: null,
+    images: [],
+  }
+}
+
 function libraryData(
   overrides: {
-    edges?: { cursor: string; node: ReturnType<typeof movieNode> }[]
+    edges?: { cursor: string; node: ReturnType<typeof movieNode> | ReturnType<typeof seriesNode> }[]
     hasNextPage?: boolean
     scanCompletedOn?: string | null
   } = {},
@@ -192,7 +206,42 @@ describe('LibraryScreen', () => {
     expect(screen.getByRole('navigation', { name: 'Jump to letter' })).toBeInTheDocument()
   })
 
-  it('hides the alphabet rail when sorted by anything other than TITLE, since a tap would silently shrink the library to one letter (ADR 0018)', async () => {
+  it('links each movie card to its detail page', async () => {
+    server.use(
+      graphql.query('LibraryPage', () =>
+        HttpResponse.json({
+          data: libraryData({
+            edges: [{ cursor: 'c1', node: movieNode({ id: 'm-1', title: 'Alright' }) }],
+          }),
+        }),
+      ),
+    )
+    renderWithProviders(<Harness />)
+    await waitFor(() =>
+      expect(screen.getByRole('link', { name: /Alright/ })).toHaveAttribute('href', '/movie/m-1'),
+    )
+  })
+
+  it('links each series card to its detail page', async () => {
+    server.use(
+      graphql.query('LibraryPage', () =>
+        HttpResponse.json({
+          data: libraryData({
+            edges: [{ cursor: 'c1', node: seriesNode({ id: 's-9', title: 'Northern Line' }) }],
+          }),
+        }),
+      ),
+    )
+    renderWithProviders(<Harness />)
+    await waitFor(() =>
+      expect(screen.getByRole('link', { name: /Northern Line/ })).toHaveAttribute(
+        'href',
+        '/series/s-9',
+      ),
+    )
+  })
+
+  it('hides the alphabet rail when sorted by anything other than TITLE, since a tap would silently shrink the library to one letter (ADR 0023)', async () => {
     server.use(graphql.query('LibraryPage', () => HttpResponse.json({ data: libraryData() })))
     renderWithProviders(<Harness initialSearch={{ by: 'ADDED', direction: 'DESC' }} />)
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Movies' })).toBeInTheDocument())
@@ -320,12 +369,6 @@ describe('LibraryScreen', () => {
         },
       ),
     )
-    // jsdom has no layout: model the new result as taller than the old measured grid.
-    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function (
-      this: HTMLElement,
-    ) {
-      return this.textContent?.includes('Available Alpha') ? 700 : 300
-    })
     const { user } = renderWithProviders(
       <Harness initialSearch={{ by: 'TITLE', direction: 'ASC', letter: 'N' }} />,
     )
@@ -398,10 +441,12 @@ describe('LibraryScreen', () => {
 
     const grid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
     const sentinel = grid.firstElementChild as HTMLDivElement
-    // Tied to real DOM state so it reads 300 before the fetch resolves, 700 once rendered.
-    Object.defineProperty(grid, 'scrollHeight', {
-      configurable: true,
-      get: () => (document.body.textContent?.includes('Aardvark') ? 700 : 300),
+    // jsdom has no layout: model the prepended page as 400px tall by placing Beta below it.
+    vi.spyOn(HTMLElement.prototype, 'offsetTop', 'get').mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      const text = this.textContent ?? ''
+      return text.includes('Beta') && !text.includes('Aardvark') ? 400 : 0
     })
     grid.scrollTop = 50
 
@@ -418,9 +463,16 @@ describe('LibraryScreen', () => {
     await waitFor(() => expect(grid.scrollTop).toBe(450))
   })
 
-  it('scrolls the actual jump target into view, not the backward-continuity items prepended above it', async () => {
-    const scrollIntoView = vi.fn()
-    vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(scrollIntoView)
+  it('lands the grid on the jump target and keeps it there when the continuity page is prepended above', async () => {
+    // jsdom has no layout: the prepended Alright row is 400px tall, so Northern Line sits at 400
+    // once it renders.
+    vi.spyOn(HTMLElement.prototype, 'offsetTop', 'get').mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      const text = this.textContent ?? ''
+      const isNorthernRow = text.includes('Northern Line') && !text.includes('Alright')
+      return isNorthernRow && document.body.textContent?.includes('Alright') ? 400 : 0
+    })
     server.use(
       graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) => {
         if (variables.before) {
@@ -462,11 +514,7 @@ describe('LibraryScreen', () => {
 
     await waitFor(() => expect(screen.getByText('Alright')).toBeInTheDocument())
     expect(screen.getByText('Northern Line')).toBeInTheDocument()
-    // The alphabet button is also revealed within its scrollable rail.
-    const scrolledText = scrollIntoView.mock.instances.map(
-      (element) => (element as Element).textContent,
-    )
-    expect(scrolledText).toContainEqual(expect.stringContaining('Northern Line'))
-    expect(scrolledText).not.toContainEqual(expect.stringContaining('Alright'))
+    const grid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
+    await waitFor(() => expect(grid.scrollTop).toBe(400))
   })
 })

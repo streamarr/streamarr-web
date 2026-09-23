@@ -1,6 +1,10 @@
 import '@testing-library/jest-dom/vitest'
+import { MotionGlobalConfig } from 'motion'
 import { afterAll, afterEach, beforeAll, vi } from 'vitest'
 import { server } from './src/test/server'
+
+// Motion completes every animation at once, so choreography that waits on one settles in a test.
+MotionGlobalConfig.skipAnimations = true
 
 // jsdom has no matchMedia; Mantine's color-scheme provider needs it.
 Object.defineProperty(window, 'matchMedia', {
