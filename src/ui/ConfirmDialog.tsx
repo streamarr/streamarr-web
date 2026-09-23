@@ -60,6 +60,7 @@ export function ConfirmDialog({
       size={440}
       transitionProps={{ duration: 0 }}
       classNames={{
+        inner: styles.inner,
         content: styles.content,
         header: styles.header,
         title: styles.title,
