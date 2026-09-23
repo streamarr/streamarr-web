@@ -816,4 +816,33 @@ describe('LibraryScreen', () => {
     // The row below was not rendered; it is now, and holds focus.
     expect(screen.getByRole('link', { name: /Title 01/ })).toHaveFocus()
   })
+
+  it('claims a navigation key at the edge of a row, so the browser does not scroll instead', async () => {
+    twoColumnRows()
+    server.use(
+      graphql.query('LibraryPage', () =>
+        HttpResponse.json({ data: libraryData({ edges: titledEdges(4) }) }),
+      ),
+    )
+    const { user } = renderWithProviders(<Harness />)
+    await screen.findByRole('link', { name: /Title 03/ })
+    const cards = screen.getAllByRole('link', { name: /Title/ })
+    const claimed: string[] = []
+    document.addEventListener('keydown', (event) => {
+      if (event.defaultPrevented) claimed.push(event.key)
+    })
+
+    // The last row's first card: Home and ArrowDown have nowhere to go, End moves once.
+    act(() => cards[2].focus())
+    await user.keyboard('{Home}')
+    expect(cards[2]).toHaveFocus()
+    await user.keyboard('{ArrowDown}')
+    expect(cards[2]).toHaveFocus()
+    await user.keyboard('{End}')
+    expect(cards[3]).toHaveFocus()
+    await user.keyboard('{End}')
+    expect(cards[3]).toHaveFocus()
+
+    expect(claimed).toEqual(['Home', 'ArrowDown', 'End', 'End'])
+  })
 })

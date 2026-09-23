@@ -105,7 +105,11 @@ export function LibraryGrid({
     if (target === null) {
       return
     }
+    // The grid owns these keys even at an edge; the browser would otherwise scroll on them.
     event.preventDefault()
+    if (target === focusedIndex) {
+      return
+    }
     const cursor = edges[target].cursor
     cardFocus.current.requested = cursor
     setFocusedCursor(cursor)
@@ -409,6 +413,7 @@ function sameGeometry(a: RowGeometry, b: RowGeometry) {
   return a.columns === b.columns && a.rowHeight === b.rowHeight && a.rowGap === b.rowGap
 }
 
+// The card a navigation key lands on: the same card at an edge, null for any other key.
 function cardAfterKey(key: string, index: number, columns: number, count: number) {
   if (index < 0) {
     return null
@@ -423,10 +428,10 @@ function cardAfterKey(key: string, index: number, columns: number, count: number
     End: Math.min(rowStart + columns - 1, count - 1),
   }
   const target = moves[key]
-  if (target === undefined || target === index || target < 0 || target >= count) {
+  if (target === undefined) {
     return null
   }
-  return target
+  return target < 0 || target >= count ? index : target
 }
 
 // The rendered cards by cursor, and the cursor of a card asked to take focus once rendered.
