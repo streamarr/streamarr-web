@@ -385,6 +385,18 @@ describe('library administration', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Scan library' })).toBeEnabled())
   })
 
+  it('shouldDrawDisclosureAndGuidanceGlyphsAtSixteenPixels', async () => {
+    serve()
+    const { router } = renderAppAt(SETTINGS)
+    const row = within(
+      await screen.findByRole('navigation', { name: 'Libraries to manage' }),
+    ).getByRole('button', { name: /TV shows/ })
+    expect(row.lastElementChild).toHaveAttribute('width', '16')
+    await act(() => router.navigate({ to: `${SETTINGS}/new` }))
+    const guidance = await screen.findByText('The initial scan starts automatically.')
+    expect(guidance.querySelector('svg')).toHaveAttribute('width', '16')
+  })
+
   it('shouldShowUnavailableLibraryForRemovedDeepLinks', async () => {
     serve()
     renderAppAt(`${SETTINGS}?library=gone`)
