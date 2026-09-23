@@ -210,8 +210,8 @@ export function LibraryGrid({
     [landingKey, firstCursor, edges, gridElement, geometry.columns, virtualizer],
   )
 
-  // Before paint, once per result: later pages merge into the same result without moving it. A
-  // measured geometry must be ready before restoring a saved position or seeking a letter.
+  // Before paint, once per result: later pages merge into the same result without moving it.
+  // Measured geometry must be ready before restoring a saved position or seeking a letter.
   const placedResult = useRef<{
     locationKey: string | undefined
     landingKey: string
@@ -363,6 +363,9 @@ export function LibraryGrid({
 // The React Compiler skips any function that calls useVirtualizer, whose instance keeps one
 // identity while its range changes; kept apart so the grid itself still compiles.
 function useVirtualRows(options: Parameters<typeof useVirtualizer<HTMLDivElement, Element>>[0]) {
+  'use no memo'
+  // This uncompiled adapter reads fresh snapshots from the virtualizer's mutable instance.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer(options)
   return {
     virtualizer,

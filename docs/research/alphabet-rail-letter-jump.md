@@ -127,3 +127,16 @@ The open points above were closed on the same branch, test-first at the agreed s
 - **Adversarial review (Codex).** Two keyboard defects, fixed test-first: an arrow key from a row kept mounted only for its focus let the unmount fallback overwrite the pending request, dropping focus to the body; and a navigation key with nowhere to go (Home on a row's first card, End on its last, an arrow at an edge) was left to the browser, which scrolled the grid while focus stayed behind. The grid now owns every navigation key it recognises.
 
 Observed once during manual testing, not reproduced in three further attempts: after a keyboard jump to P, the page before P was requested twice and the grid showed 48 titles for a few seconds before the backfill appeared. Both responses were valid; the cache held the merged page afterwards. Worth watching in the browser suite's jump specs.
+
+## Integration with merged detail pages (2026-09-23)
+
+The rebase onto `main` preserves the later detail-page navigation fixes. The reload-guard conclusion
+above is superseded: the screen captures the router's saved offset on arrival, and the grid places
+it once both the reconstructed page window and measured virtual rows are ready. A letter already
+in the URL has an explicit placement request, so choosing it after scrolling returns to its first
+row without another query or slide animation. Slow seeks keep the previous rows visible.
+
+The merged browser regressions now scroll using rendered row geometry when their target card is
+virtualized away. They still assert the visible landing and exact saved offset after Back, including
+watched-state invalidation and a failed recovery page. The virtualizer adapter explicitly opts out
+of React Compiler memoization and returns fresh snapshots to the compiled grid.
