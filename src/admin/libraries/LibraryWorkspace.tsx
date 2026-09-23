@@ -368,7 +368,7 @@ function LibraryDetails({
         }}
         onConfirm={async () => {
           if (disabled) return
-          await commands.remove(library.id, onRemoved)
+          if (await commands.remove(library.id, onRemoved)) setRemoving(false)
         }}
       />
     </article>

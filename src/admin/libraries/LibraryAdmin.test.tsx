@@ -364,6 +364,33 @@ describe('library administration', () => {
     expect(requests).toBe(2)
   })
 
+  it('shouldRemoveTheLastLibraryAtOnceAndOfferCreation', async () => {
+    const state = serve([MOVIES])
+    server.use(
+      graphql.mutation('RemoveLibrary', () => {
+        state.libraries = []
+        return HttpResponse.json({ data: { removeLibrary: true } })
+      }),
+    )
+    const { user, router } = renderAppAt(SETTINGS)
+    await user.click(await screen.findByRole('button', { name: 'Remove library' }))
+    // Neither refetch answers: what the admin sees comes from the removal itself.
+    server.use(
+      graphql.query('AdminLibraries', () => delay('infinite')),
+      graphql.query('Libraries', () => delay('infinite')),
+    )
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove library' }),
+    )
+    await screen.findByRole('heading', { name: 'Add your first library' })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('navigation', { name: 'Libraries to manage' }),
+    ).not.toBeInTheDocument()
+    await act(() => router.navigate({ to: '/' }))
+    await screen.findByRole('link', { name: 'Add library' })
+  })
+
   it('shouldDisableMaintenanceAfterFailedInventoryLoadAndRecoverOnRetry', async () => {
     serve()
     const { user, router } = renderAppAt(SETTINGS)

@@ -1,4 +1,4 @@
-import type { ApolloClient } from '@apollo/client'
+import type { ApolloCache, ApolloClient, Reference } from '@apollo/client'
 import { useApolloClient, useQuery } from '@apollo/client/react'
 import { useEffect, useRef, useState } from 'react'
 import {
@@ -110,19 +110,24 @@ function refreshLibraryViews(client: ApolloClient, removedId?: string) {
   void client
     .refetchQueries({
       updateCache(cache) {
-        for (const fieldName of [
-          'libraries',
-          'library',
-          'continueWatching',
-          'movie',
-          'series',
-          'season',
-        ]) {
+        if (removedId) dropLibrary(cache, removedId)
+        else cache.evict({ id: 'ROOT_QUERY', fieldName: 'libraries' })
+        for (const fieldName of ['library', 'continueWatching', 'movie', 'series', 'season']) {
           cache.evict({ id: 'ROOT_QUERY', fieldName })
         }
-        if (removedId) cache.evict({ id: cache.identify({ __typename: 'Library', id: removedId }) })
         cache.gc()
       },
     })
     .catch(() => {})
+}
+
+// Every cached library list drops the library at once; the refetch then confirms the inventory.
+function dropLibrary(cache: ApolloCache, id: string) {
+  cache.modify<{ libraries: readonly Reference[] }>({
+    fields: {
+      libraries: (existing, { readField }) =>
+        existing.filter((library) => readField('id', library) !== id),
+    },
+  })
+  cache.evict({ id: cache.identify({ __typename: 'Library', id }) })
 }
