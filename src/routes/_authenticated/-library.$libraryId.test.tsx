@@ -11,6 +11,7 @@ import styles from '../../library/LibraryScreen.module.css'
 import { meFixture } from '../../test/meFixture'
 import { renderAppAt } from '../../test/render'
 import { server } from '../../test/server'
+import { JSDOM_ROW_HEIGHT } from '../../../vitest.setup'
 
 const LIBRARY_ID = '44444444-4444-4444-4444-444444444444'
 // alphabetIndex offers only these letters, so the rail renders exactly these buttons.
@@ -339,6 +340,39 @@ describe('/library/$libraryId', () => {
     expect(grid).toContainElement(landing)
     expect(screen.queryByRole('link', { name: /Northern Line/ })).not.toBeInTheDocument()
     expect(router.state.location.search).toMatchObject({ letter: 'T' })
+  })
+
+  it('returns focus to the letter on a keyboard repeat-press, and leaves it with the pointer afterwards', async () => {
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
+      graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
+      graphql.query('LibraryPage', () =>
+        HttpResponse.json({
+          data: titlePage([titleCard('m-a', 'Apple'), titleCard('m-n', 'Northern')]),
+        }),
+      ),
+    )
+    const { user } = renderAppAt(`/library/${LIBRARY_ID}?by=TITLE&direction=ASC&letter=A`)
+    const apple = await screen.findByRole('link', { name: /Apple/ })
+    // Scrolled to Northern's row, the rail follows the grid, and A is a letter to return to.
+    const grid = document.querySelector(`.${styles.grid}`) as HTMLElement
+    grid.scrollTop = JSDOM_ROW_HEIGHT
+    fireEvent.scroll(grid)
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'N' })).toHaveAttribute('aria-pressed', 'true'),
+    )
+
+    act(() => screen.getByRole('button', { name: 'A' }).focus())
+    await user.keyboard('{Enter}')
+    await waitFor(() => expect(apple).toHaveFocus())
+
+    await user.click(screen.getByRole('button', { name: /Sort:/ }))
+    await user.click(screen.getByRole('menuitemradio', { name: 'Title' }))
+    await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument())
+    await act(async () => {})
+
+    expect(screen.getByRole('link', { name: /Apple/ })).not.toHaveFocus()
+    expect(document.body).toHaveFocus()
   })
 
   it('starts the grid at the top when the sort changes', async () => {
