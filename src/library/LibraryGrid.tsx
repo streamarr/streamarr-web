@@ -101,7 +101,12 @@ export function LibraryGrid({
     if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
       return
     }
-    const target = cardAfterKey(event.key, focusedIndex, geometry.columns, edges.length)
+    const target = cardAfterKey({
+      key: event.key,
+      index: focusedIndex,
+      columns: geometry.columns,
+      count: edges.length,
+    })
     if (target === null) {
       return
     }
@@ -419,7 +424,17 @@ function sameGeometry(a: RowGeometry, b: RowGeometry) {
 }
 
 // The card a navigation key lands on: the same card at an edge, null for any other key.
-function cardAfterKey(key: string, index: number, columns: number, count: number) {
+function cardAfterKey({
+  key,
+  index,
+  columns,
+  count,
+}: {
+  key: string
+  index: number
+  columns: number
+  count: number
+}) {
   if (index < 0) {
     return null
   }
