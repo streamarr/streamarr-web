@@ -5,10 +5,8 @@ import { DestructiveButton } from './DestructiveButton'
 import styles from './ConfirmDialog.module.css'
 
 /**
- * Explicit confirmation for a bulk or destructive action. The caller owns request execution
- * and closing on success. Pending requests prevent dismissal and duplicate confirmation;
- * failures remain in the dialog. Cancel receives initial focus and closing restores focus.
- * Renders in place to retain the page's ambient theme. Existing watched actions keep their icon.
+ * The one sanctioned modal: a bulk or destructive action confirms before it runs (principle 11.1).
+ * The caller runs the request and closes on success; a pending request cannot be dismissed.
  */
 export function ConfirmDialog({
   opened,
@@ -46,6 +44,7 @@ export function ConfirmDialog({
       {pending ? 'Working…' : confirmLabel}
     </>
   )
+  // In place rather than in a portal, so a page's ambient theme still reaches it.
   return (
     <Modal
       opened={opened}

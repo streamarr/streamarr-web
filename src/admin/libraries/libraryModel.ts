@@ -4,7 +4,7 @@ import type { IconName } from '../../ui/Icon'
 /** Library configuration and maintenance state selected by the pinned GraphQL operation. */
 export type ManagedLibrary = ManagedLibraryFieldsFragment
 
-/** One semantic icon per server status; shared by labels and the corresponding actions. */
+/** One semantic icon per server status. */
 export const LIBRARY_STATUS_ICONS = {
   HEALTHY: 'check',
   SCANNING: 'scan',

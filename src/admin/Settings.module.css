@@ -405,7 +405,6 @@
   margin-left: auto;
   font-size: var(--font-size-title);
 }
-/* Preserve the mock's in-place workflow and compact controls within the existing detail surface. */
 .refreshEditor {
   padding-bottom: 28px;
   min-width: 0;

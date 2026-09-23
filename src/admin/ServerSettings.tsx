@@ -6,12 +6,7 @@ import { Icon } from '../ui/Icon'
 import { canManageServer } from './access'
 import styles from './Settings.module.css'
 
-/**
- * Server-settings entry guard and section shell inside the normal application chrome.
- * Children mount only after an identity check on entry. No polling or focus refresh runs;
- * failures close the gate without treating an outage as a denial. The server still authorizes
- * every mutation. Library reads require the normal selected-profile ceremony.
- */
+/** The settings shell: sections mount only after the server confirms the admin's access on entry. */
 export function ServerSettings() {
   const { data, error, refetch } = useQuery(MeDocument, {
     fetchPolicy: 'network-only',

@@ -62,13 +62,7 @@ export interface IconProps {
   className?: string
 }
 
-/**
- * Renders an unmodified Lucide glyph with a 1.75px non-scaling stroke and square bounds.
- * Play retains the filled transport-control treatment; other glyphs remain outlined.
- * Icons never shrink in flex layouts. Set size here rather than resizing with CSS.
- * Decorative icons are hidden from assistive technology; label icon-only buttons on
- * the button itself. A supplied label makes a standalone icon an accessible image.
- */
+/** A Lucide glyph in the approved geometry: decorative unless `label` makes it an image. */
 export function Icon({ name, size = 20, label, className }: Readonly<IconProps>) {
   const Glyph = icons[name]
   return (
