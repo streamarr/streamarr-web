@@ -638,6 +638,27 @@ describe('LibraryScreen', () => {
     expect(cards[1]).toHaveFocus()
   })
 
+  it('keeps the arrow keys moving between cards after a click on the grid itself', async () => {
+    twoColumnRows()
+    server.use(
+      graphql.query('LibraryPage', () =>
+        HttpResponse.json({ data: libraryData({ edges: titledEdges(4) }) }),
+      ),
+    )
+    const { user } = renderWithProviders(
+      <Harness initialSearch={{ by: 'TITLE', direction: 'ASC' }} />,
+    )
+    await screen.findByRole('link', { name: /Title 03/ })
+    const cards = screen.getAllByRole('link', { name: /Title/ })
+    act(() => cards[0].focus())
+
+    // The space between the cards belongs to the grid, so a click there keeps focus in it.
+    await user.click(screen.getByRole('grid', { name: 'Items' }))
+    expect(screen.getByRole('grid', { name: 'Items' })).toHaveFocus()
+    await user.keyboard('{ArrowRight}')
+    expect(cards[1]).toHaveFocus()
+  })
+
   it('exposes the rows as a grid that announces each rendered row among all the loaded rows', async () => {
     twoColumnRows()
     server.use(
