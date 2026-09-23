@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { groupByInputPath, userErrorMessage } from '../../graphql/userErrors'
 import { Icon } from '../../ui/Icon'
+import { libraryIcon, libraryTypeLabel } from './libraryModel'
 import { useLibraryCommands } from './useLibraryAdmin'
 import styles from '../Settings.module.css'
 
@@ -93,8 +94,8 @@ export function CreateLibrary({ onCreated }: Readonly<{ onCreated: (id: string) 
                         setName(value === 'MOVIE' ? 'Movies' : 'TV shows')
                     }}
                   />
-                  <Icon name={value === 'MOVIE' ? 'movie' : 'series'} />
-                  {value === 'MOVIE' ? 'Movies' : 'TV shows'}
+                  <Icon name={libraryIcon(value)} />
+                  {libraryTypeLabel(value)}
                   {type === value && <Icon name="check" size={16} />}
                 </label>
               ))}
