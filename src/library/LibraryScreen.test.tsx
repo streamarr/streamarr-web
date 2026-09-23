@@ -652,7 +652,6 @@ describe('LibraryScreen', () => {
     const cards = screen.getAllByRole('link', { name: /Title/ })
     act(() => cards[0].focus())
 
-    // The space between the cards belongs to the grid, so a click there keeps focus in it.
     await user.click(screen.getByRole('grid', { name: 'Items' }))
     expect(screen.getByRole('grid', { name: 'Items' })).toHaveFocus()
     await user.keyboard('{ArrowRight}')
@@ -773,7 +772,6 @@ describe('LibraryScreen', () => {
       }
     })
 
-    // The card is in a new element under a new row; focus followed it.
     expect(screen.getAllByRole('row')).toHaveLength(4)
     expect(screen.getByRole('link', { name: /Title 01/ })).toHaveFocus()
   })
@@ -834,7 +832,6 @@ describe('LibraryScreen', () => {
 
     await user.keyboard('{ArrowDown}')
 
-    // The row below was not rendered; it is now, and holds focus.
     expect(screen.getByRole('link', { name: /Title 01/ })).toHaveFocus()
   })
 
