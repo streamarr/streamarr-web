@@ -11,6 +11,7 @@ import {
 import { createElement, Fragment } from 'react'
 import buttonStyles from './styles/button.module.css'
 import styles from './styles/field.module.css'
+import focusStyles from './styles/focus.module.css'
 import { Icon } from './ui/Icon'
 
 // Values reference the generated tokens (src/styles/tokens.generated.css) as CSS custom
@@ -61,6 +62,7 @@ export const theme = createTheme({
       },
     }),
   },
+  focusClassName: focusStyles.focusRing,
   fontFamily: "'Space Grotesk', var(--font-family-content)",
   fontFamilyMonospace: "'JetBrains Mono', var(--font-family-system)",
   defaultRadius: 'md',

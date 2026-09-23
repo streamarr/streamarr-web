@@ -240,6 +240,27 @@ test('refresh expands in place with aligned controls and returns focus', async (
   await expect(page.getByRole('article').locator('[data-library-status]')).toHaveText('REFRESHING')
 })
 
+test("keyboard focus draws the theme ring on the page's own controls", async ({ page }) => {
+  await fixture(page)
+  await page.goto(SETTINGS)
+  await page.getByRole('button', { name: 'Refresh metadata', exact: true }).focus()
+  await page.keyboard.press('Tab')
+  const ring = await page.evaluate(() => {
+    const active = document.activeElement as HTMLElement
+    const style = getComputedStyle(active)
+    return {
+      name: active.textContent?.trim(),
+      outline: `${style.outlineWidth} ${style.outlineStyle} ${style.outlineColor}`,
+      offset: style.outlineOffset,
+    }
+  })
+  expect(ring).toEqual({
+    name: 'Remove library',
+    outline: '2px solid rgb(92, 192, 232)',
+    offset: '2px',
+  })
+})
+
 test('Library workspace and creation share a width and fit phone and desktop layouts', async ({
   page,
 }, testInfo) => {
