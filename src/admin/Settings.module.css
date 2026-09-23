@@ -571,7 +571,7 @@
 }
 .actionNotice {
   display: block;
-  margin-top: var(--spacing-14) !important;
+  margin-top: var(--spacing-14);
   color: var(--text-secondary);
   font-size: var(--font-size-body);
 }
