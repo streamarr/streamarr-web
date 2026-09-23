@@ -364,6 +364,32 @@ describe('library administration', () => {
     expect(requests).toBe(2)
   })
 
+  it('shouldMoveFocusToTheHeadingOnlyWhenANoticeAppears', async () => {
+    const state = serve()
+    server.use(
+      graphql.mutation('RemoveLibrary', () => {
+        state.libraries = [SHOWS]
+        return HttpResponse.json({ data: { removeLibrary: true } })
+      }),
+    )
+    const { user } = renderAppAt(SETTINGS)
+    await screen.findByRole('article', { name: 'Movies settings' })
+    expect(screen.getByRole('heading', { level: 1 })).not.toHaveFocus()
+    await user.click(screen.getByRole('button', { name: 'Remove library' }))
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove library' }),
+    )
+    await screen.findByText('Movies removed. Files were kept on disk.')
+    expect(screen.getByRole('heading', { level: 1 })).toHaveFocus()
+    const row = within(screen.getByRole('navigation', { name: 'Libraries to manage' })).getByRole(
+      'button',
+      { name: /TV shows/ },
+    )
+    await user.click(row)
+    expect(screen.queryByText('Movies removed. Files were kept on disk.')).not.toBeInTheDocument()
+    expect(row).toHaveFocus()
+  })
+
   it('shouldRemoveTheLastLibraryAtOnceAndOfferCreation', async () => {
     const state = serve([MOVIES])
     server.use(
