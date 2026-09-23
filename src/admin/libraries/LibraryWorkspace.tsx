@@ -46,7 +46,7 @@ export function LibraryWorkspace({
   const heading = useRef<HTMLHeadingElement>(null)
   const libraries = query.data?.libraries
   useEffect(() => {
-    heading.current?.focus({ preventScroll: true })
+    if (notice) heading.current?.focus({ preventScroll: true })
   }, [notice])
 
   return (
