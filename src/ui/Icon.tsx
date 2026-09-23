@@ -23,7 +23,7 @@ import {
 } from 'lucide-react'
 
 // Import only the approved glyphs; never bundle Lucide's dynamic icon registry. The package's
-// license notice ships beside the fonts' as public/lucide-ISC.txt.
+// license notice is served from public/licenses/, as THIRD_PARTY_NOTICES.md records.
 const icons = {
   movie: Clapperboard,
   series: TvMinimal,
