@@ -1,0 +1,8 @@
+/* The one keyboard focus ring. theme.ts hands it to Mantine's controls as focusClassName; the
+   app's own surfaces compose it, so their buttons, links and labelled radios draw the same ring. */
+.focusRing:focus-visible,
+.focusRing :is(button, a):focus-visible,
+.focusRing label:focus-within {
+  outline: 2px solid var(--indicator-active-track);
+  outline-offset: 2px;
+}

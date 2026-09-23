@@ -9,10 +9,11 @@ import { ContentShelf } from '../media/ContentShelf'
 import { DetailBackButton } from '../media/DetailBack'
 import { detailAction, DetailHeader } from '../media/DetailHeader'
 import { formatLongDate, formatRuntime, formatYear } from '../media/formatting'
-import { CheckCircleGlyph, PlayGlyph } from '../media/glyphs'
+import { Icon } from '../ui/Icon'
 import { pickImageVariant } from '../media/images'
 import { RatingChipRow } from '../media/RatingChipRow'
 import { useWatchedToggle } from '../media/useWatchedToggle'
+import { WatchedActionButton } from '../media/WatchedActionButton'
 import styles from './MovieDetailScreen.module.css'
 
 type Movie = NonNullable<MovieDetailQuery['movie']>
@@ -84,19 +85,15 @@ export function MovieDetailScreen({ movieId }: Readonly<{ movieId: string }>) {
                 search={{ position: position ?? undefined }}
                 className={detailAction.primary}
               >
-                <PlayGlyph />
+                <Icon name="play" size={14} />
                 {position ? 'Resume' : 'Play'}
               </Link>
             )}
-            <button
-              type="button"
-              className={detailAction.outline}
-              disabled={watched.pending}
+            <WatchedActionButton
+              isWatched={isWatched}
+              pending={watched.pending}
               onClick={isWatched ? watched.markUnwatched : watched.markWatched}
-            >
-              <CheckCircleGlyph />
-              {isWatched ? 'Mark unwatched' : 'Mark watched'}
-            </button>
+            />
           </>
         }
         aside={ratings.length > 0 && <RatingChipRow ratings={ratings} />}

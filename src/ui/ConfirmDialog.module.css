@@ -1,6 +1,13 @@
+/* Rendered in place, Mantine's fixed layer has no left edge of its own and takes the static
+   position of whatever pane opened the dialog. Pin it to the viewport. */
+.inner {
+  inset-inline: 0;
+}
+
 .content {
+  composes: focusRing from '../styles/focus.module.css';
   border: 1px solid var(--color-alpha-16);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   background: var(--surface-raised);
   color: var(--text-primary);
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
@@ -42,12 +49,36 @@
   display: inline-flex;
   align-items: center;
   gap: var(--spacing-8);
-  padding: 9px 18px;
+  /* Mantine's md button metrics, so the pair matches the theme's buttons. */
+  min-height: 42px;
+  padding: 0 22px;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   font: inherit;
-  font-size: 14px;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   cursor: pointer;
+}
+
+/* Heard, not seen: the pending state has no visual beyond the disabled pair. */
+.status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.error {
+  margin: 0;
+  color: var(--semantic-error-text);
+  font-size: var(--font-size-body);
+}
+.actions button:disabled {
+  cursor: default;
+  opacity: 0.6;
 }
 
 .cancel {

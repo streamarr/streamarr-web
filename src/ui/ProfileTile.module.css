@@ -10,10 +10,13 @@
   color: var(--color-alpha-92);
   font: inherit;
 
-  &:hover .profileTileAvatar,
-  &:focus-visible .profileTileAvatar {
+  &:hover .profileTileAvatar {
     outline: 2px solid var(--selection-active);
     outline-offset: 3px;
+  }
+  &:focus-visible .profileTileAvatar {
+    outline: 2px solid var(--indicator-active-track);
+    outline-offset: 2px;
   }
 
   &:disabled {

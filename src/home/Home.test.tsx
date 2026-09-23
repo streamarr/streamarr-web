@@ -158,6 +158,38 @@ describe('Home', () => {
     },
   )
 
+  it('guides an eligible admin to creation only for a successfully empty inventory', async () => {
+    serve(homeData())
+    server.use(
+      graphql.query('Me', () =>
+        HttpResponse.json({ data: { me: meFixture({ scope: 'profile', serverAdmin: true }) } }),
+      ),
+    )
+    renderAppAt('/')
+    expect(await screen.findByRole('link', { name: 'Add library' })).toHaveAttribute(
+      'href',
+      '/settings/server/libraries/new',
+    )
+  })
+
+  it('does not mistake existing libraries with no indexed media for a new server', async () => {
+    serve(homeData({ libraries: [library()] }))
+    server.use(
+      graphql.query('Me', () =>
+        HttpResponse.json({ data: { me: meFixture({ scope: 'profile', serverAdmin: true }) } }),
+      ),
+    )
+    renderAppAt('/')
+    await screen.findByText('Nothing to watch yet.')
+    expect(screen.queryByRole('link', { name: 'Add library' })).not.toBeInTheDocument()
+  })
+
+  it('gives regular users helpful empty-state copy without admin actions', async () => {
+    serve(homeData())
+    renderAppAt('/')
+    await screen.findByText('Ask your server admin to add a library.')
+    expect(screen.queryByRole('link', { name: 'Add library' })).not.toBeInTheDocument()
+  })
   it('omits empty recently-added sections when there is content elsewhere', async () => {
     serve(
       homeData({
@@ -209,7 +241,9 @@ describe('Home', () => {
   it('shows a full empty state when there is nothing anywhere', async () => {
     serve(homeData())
     renderAppAt('/')
-    await waitFor(() => expect(screen.getByText('Nothing to watch yet.')).toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Nothing to watch yet' })).toBeInTheDocument(),
+    )
   })
 
   it('builds the billboard from a Movie in continueWatching, resuming at its saved position', async () => {

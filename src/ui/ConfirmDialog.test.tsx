@@ -1,4 +1,5 @@
 import { screen } from '@testing-library/react'
+import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { renderWithProviders } from '../test/render'
 import { ConfirmDialog } from './ConfirmDialog'
@@ -12,6 +13,7 @@ function renderDialog(overrides: Partial<Parameters<typeof ConfirmDialog>[0]> = 
       title="Mark Northern Line as watched?"
       body="Every episode across 12 seasons will be marked watched."
       confirmLabel="Mark watched"
+      icon="watched-action"
       onConfirm={onConfirm}
       onClose={onClose}
       {...overrides}
@@ -41,6 +43,42 @@ describe('ConfirmDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(onClose).toHaveBeenCalledOnce()
     expect(onConfirm).not.toHaveBeenCalled()
+  })
+
+  it("keeps the confirm button's name while a request is pending", () => {
+    renderDialog({ pending: true })
+    const confirm = screen.getByRole('button', { name: 'Mark watched' })
+    expect(confirm).toBeDisabled()
+    expect(confirm).toHaveAttribute('aria-busy', 'true')
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
+  })
+
+  it('announces a pending request through a live region that is already mounted', async () => {
+    function Harness() {
+      const [pending, setPending] = useState(false)
+      return (
+        <>
+          <button type="button" onClick={() => setPending(true)}>
+            Start
+          </button>
+          <ConfirmDialog
+            opened
+            title="Remove Movies?"
+            body="Your files stay on disk."
+            confirmLabel="Remove library"
+            icon={null}
+            pending={pending}
+            onConfirm={vi.fn()}
+            onClose={vi.fn()}
+          />
+        </>
+      )
+    }
+    const { user } = renderWithProviders(<Harness />)
+    expect(screen.getByRole('status')).toBeEmptyDOMElement()
+    await user.click(screen.getByRole('button', { name: 'Start' }))
+    expect(screen.getByRole('status')).toHaveTextContent('Working…')
+    expect(screen.getByRole('button', { name: 'Remove library' })).toBeDisabled()
   })
 
   it('renders nothing while closed', () => {
