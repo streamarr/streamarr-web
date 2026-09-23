@@ -1,0 +1,24 @@
+/* Bound to Mantine's Button root through theme.ts: one look for every screen. Mantine sets the
+   variant as a data attribute, which also lifts these rules above its own single-class ones. */
+.button[data-variant] {
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
+}
+.button[data-variant='filled'] {
+  background: var(--selection-active);
+  color: var(--color-white);
+  border: none;
+  font-weight: var(--font-weight-semibold);
+}
+.button[data-variant='default'] {
+  border: none;
+  background: var(--surface-panel-strong);
+  color: var(--text-primary);
+}
+.button[data-variant='default']:hover:not(:disabled) {
+  background: var(--surface-panel-heavy);
+}
+.button:is(:disabled, [data-disabled]) {
+  background: var(--surface-panel);
+  color: var(--text-tertiary);
+}

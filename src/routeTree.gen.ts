@@ -23,6 +23,10 @@ import { Route as AuthenticatedMovieMovieIdRouteImport } from './routes/_authent
 import { Route as AuthenticatedPlayMediaFileIdRouteImport } from './routes/_authenticated/play.$mediaFileId'
 import { Route as AuthenticatedSeasonSeasonIdRouteImport } from './routes/_authenticated/season.$seasonId'
 import { Route as AuthenticatedSeriesSeriesIdRouteImport } from './routes/_authenticated/series.$seriesId'
+import { Route as AuthenticatedSettingsServerRouteImport } from './routes/_authenticated/settings.server'
+import { Route as AuthenticatedSettingsServerIndexRouteImport } from './routes/_authenticated/settings.server.index'
+import { Route as AuthenticatedSettingsServerLibrariesRouteImport } from './routes/_authenticated/settings.server.libraries'
+import { Route as AuthenticatedSettingsServerLibrariesNewRouteImport } from './routes/_authenticated/settings.server.libraries_.new'
 
 const AuthenticatedRoute = AuthenticatedRouteImport.update({
   id: '/_authenticated',
@@ -99,6 +103,30 @@ const AuthenticatedSeriesSeriesIdRoute =
     path: '/series/$seriesId',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedSettingsServerRoute =
+  AuthenticatedSettingsServerRouteImport.update({
+    id: '/settings/server',
+    path: '/settings/server',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedSettingsServerIndexRoute =
+  AuthenticatedSettingsServerIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedSettingsServerRoute,
+  } as any)
+const AuthenticatedSettingsServerLibrariesRoute =
+  AuthenticatedSettingsServerLibrariesRouteImport.update({
+    id: '/libraries',
+    path: '/libraries',
+    getParentRoute: () => AuthenticatedSettingsServerRoute,
+  } as any)
+const AuthenticatedSettingsServerLibrariesNewRoute =
+  AuthenticatedSettingsServerLibrariesNewRouteImport.update({
+    id: '/libraries_/new',
+    path: '/libraries/new',
+    getParentRoute: () => AuthenticatedSettingsServerRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
@@ -114,6 +142,10 @@ export interface FileRoutesByFullPath {
   '/play/$mediaFileId': typeof AuthenticatedPlayMediaFileIdRoute
   '/season/$seasonId': typeof AuthenticatedSeasonSeasonIdRoute
   '/series/$seriesId': typeof AuthenticatedSeriesSeriesIdRoute
+  '/settings/server': typeof AuthenticatedSettingsServerRouteWithChildren
+  '/settings/server/libraries': typeof AuthenticatedSettingsServerLibrariesRoute
+  '/settings/server/': typeof AuthenticatedSettingsServerIndexRoute
+  '/settings/server/libraries/new': typeof AuthenticatedSettingsServerLibrariesNewRoute
 }
 export interface FileRoutesByTo {
   '/invite': typeof InviteRoute
@@ -129,6 +161,9 @@ export interface FileRoutesByTo {
   '/play/$mediaFileId': typeof AuthenticatedPlayMediaFileIdRoute
   '/season/$seasonId': typeof AuthenticatedSeasonSeasonIdRoute
   '/series/$seriesId': typeof AuthenticatedSeriesSeriesIdRoute
+  '/settings/server/libraries': typeof AuthenticatedSettingsServerLibrariesRoute
+  '/settings/server': typeof AuthenticatedSettingsServerIndexRoute
+  '/settings/server/libraries/new': typeof AuthenticatedSettingsServerLibrariesNewRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -146,6 +181,10 @@ export interface FileRoutesById {
   '/_authenticated/play/$mediaFileId': typeof AuthenticatedPlayMediaFileIdRoute
   '/_authenticated/season/$seasonId': typeof AuthenticatedSeasonSeasonIdRoute
   '/_authenticated/series/$seriesId': typeof AuthenticatedSeriesSeriesIdRoute
+  '/_authenticated/settings/server': typeof AuthenticatedSettingsServerRouteWithChildren
+  '/_authenticated/settings/server/libraries': typeof AuthenticatedSettingsServerLibrariesRoute
+  '/_authenticated/settings/server/': typeof AuthenticatedSettingsServerIndexRoute
+  '/_authenticated/settings/server/libraries_/new': typeof AuthenticatedSettingsServerLibrariesNewRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -163,6 +202,10 @@ export interface FileRouteTypes {
     | '/play/$mediaFileId'
     | '/season/$seasonId'
     | '/series/$seriesId'
+    | '/settings/server'
+    | '/settings/server/libraries'
+    | '/settings/server/'
+    | '/settings/server/libraries/new'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/invite'
@@ -178,6 +221,9 @@ export interface FileRouteTypes {
     | '/play/$mediaFileId'
     | '/season/$seasonId'
     | '/series/$seriesId'
+    | '/settings/server/libraries'
+    | '/settings/server'
+    | '/settings/server/libraries/new'
   id:
     | '__root__'
     | '/_authenticated'
@@ -194,6 +240,10 @@ export interface FileRouteTypes {
     | '/_authenticated/play/$mediaFileId'
     | '/_authenticated/season/$seasonId'
     | '/_authenticated/series/$seriesId'
+    | '/_authenticated/settings/server'
+    | '/_authenticated/settings/server/libraries'
+    | '/_authenticated/settings/server/'
+    | '/_authenticated/settings/server/libraries_/new'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -304,8 +354,57 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSeriesSeriesIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/settings/server': {
+      id: '/_authenticated/settings/server'
+      path: '/settings/server'
+      fullPath: '/settings/server'
+      preLoaderRoute: typeof AuthenticatedSettingsServerRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/settings/server/': {
+      id: '/_authenticated/settings/server/'
+      path: '/'
+      fullPath: '/settings/server/'
+      preLoaderRoute: typeof AuthenticatedSettingsServerIndexRouteImport
+      parentRoute: typeof AuthenticatedSettingsServerRoute
+    }
+    '/_authenticated/settings/server/libraries': {
+      id: '/_authenticated/settings/server/libraries'
+      path: '/libraries'
+      fullPath: '/settings/server/libraries'
+      preLoaderRoute: typeof AuthenticatedSettingsServerLibrariesRouteImport
+      parentRoute: typeof AuthenticatedSettingsServerRoute
+    }
+    '/_authenticated/settings/server/libraries_/new': {
+      id: '/_authenticated/settings/server/libraries_/new'
+      path: '/libraries/new'
+      fullPath: '/settings/server/libraries/new'
+      preLoaderRoute: typeof AuthenticatedSettingsServerLibrariesNewRouteImport
+      parentRoute: typeof AuthenticatedSettingsServerRoute
+    }
   }
 }
+
+interface AuthenticatedSettingsServerRouteChildren {
+  AuthenticatedSettingsServerLibrariesRoute: typeof AuthenticatedSettingsServerLibrariesRoute
+  AuthenticatedSettingsServerIndexRoute: typeof AuthenticatedSettingsServerIndexRoute
+  AuthenticatedSettingsServerLibrariesNewRoute: typeof AuthenticatedSettingsServerLibrariesNewRoute
+}
+
+const AuthenticatedSettingsServerRouteChildren: AuthenticatedSettingsServerRouteChildren =
+  {
+    AuthenticatedSettingsServerLibrariesRoute:
+      AuthenticatedSettingsServerLibrariesRoute,
+    AuthenticatedSettingsServerIndexRoute:
+      AuthenticatedSettingsServerIndexRoute,
+    AuthenticatedSettingsServerLibrariesNewRoute:
+      AuthenticatedSettingsServerLibrariesNewRoute,
+  }
+
+const AuthenticatedSettingsServerRouteWithChildren =
+  AuthenticatedSettingsServerRoute._addFileChildren(
+    AuthenticatedSettingsServerRouteChildren,
+  )
 
 interface AuthenticatedRouteChildren {
   AuthenticatedLinkRoute: typeof AuthenticatedLinkRoute
@@ -317,6 +416,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedPlayMediaFileIdRoute: typeof AuthenticatedPlayMediaFileIdRoute
   AuthenticatedSeasonSeasonIdRoute: typeof AuthenticatedSeasonSeasonIdRoute
   AuthenticatedSeriesSeriesIdRoute: typeof AuthenticatedSeriesSeriesIdRoute
+  AuthenticatedSettingsServerRoute: typeof AuthenticatedSettingsServerRouteWithChildren
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
@@ -329,6 +429,8 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedPlayMediaFileIdRoute: AuthenticatedPlayMediaFileIdRoute,
   AuthenticatedSeasonSeasonIdRoute: AuthenticatedSeasonSeasonIdRoute,
   AuthenticatedSeriesSeriesIdRoute: AuthenticatedSeriesSeriesIdRoute,
+  AuthenticatedSettingsServerRoute:
+    AuthenticatedSettingsServerRouteWithChildren,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(

@@ -25,7 +25,7 @@ function household(): MeQuery['me'] {
     profileFixture({ id: 'p-toni', name: 'Toni', personal: false, pinConfigured: true }),
     profileFixture({ id: 'p-rob', name: 'Rob', personal: false, locked: true }),
   ]
-  return { ...meFixture({ profiles }), serverAdmin: true }
+  return meFixture({ profiles, serverAdmin: true })
 }
 
 type MenuProps = Parameters<typeof ProfileMenu>[0]
@@ -57,7 +57,7 @@ describe('ProfileMenu', () => {
     // The current profile is marked, carries its role, and is not a button to press again.
     const current = await screen.findByRole('button', { name: 'Alex' })
     expect(current).toBeDisabled()
-    expect(screen.getByText('Server owner')).toBeInTheDocument()
+    expect(screen.getByText('Server admin')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Sam' })).toBeEnabled()
     expect(screen.getByRole('button', { name: /toni \(pin protected\)/i })).toBeEnabled()
     expect(screen.getByRole('button', { name: /rob \(locked\)/i })).toBeDisabled()

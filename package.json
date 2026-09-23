@@ -2,6 +2,7 @@
   "name": "streamarr-web",
   "version": "0.1.0",
   "description": "Browser client for streamarr-server",
+  "license": "GPL-3.0-only",
   "scripts": {
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
@@ -52,6 +53,7 @@
     "graphql-ws": "^6.0.8",
     "hls.js": "^1.6.16",
     "motion": "^13.4.1",
+    "lucide-react": "^1.47.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },

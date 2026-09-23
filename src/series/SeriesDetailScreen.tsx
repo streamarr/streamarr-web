@@ -9,7 +9,7 @@ import { ContentShelf } from '../media/ContentShelf'
 import { DetailBackButton } from '../media/DetailBack'
 import { detailAction, DetailHeader } from '../media/DetailHeader'
 import { formatEpisodeLabel, formatLongDate, formatYear } from '../media/formatting'
-import { PlayGlyph } from '../media/glyphs'
+import { Icon } from '../ui/Icon'
 import { pickImageVariant } from '../media/images'
 import { nextPlayableEpisode } from '../media/nextPlayableEpisode'
 import { PosterCard } from '../media/PosterCard'
@@ -86,7 +86,7 @@ export function SeriesDetailScreen({ seriesId }: Readonly<{ seriesId: string }>)
                 search={{ position: playable.positionSeconds ?? undefined }}
                 className={detailAction.primary}
               >
-                <PlayGlyph />
+                <Icon name="play" size={14} />
                 {playable.verb} {formatEpisodeLabel(playable.seasonNumber, playable.episodeNumber)}
               </Link>
             )}

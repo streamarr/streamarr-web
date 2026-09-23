@@ -212,7 +212,7 @@ describe('watched state across routes', () => {
       }),
     )
     const { user, router } = renderAppAt('/')
-    await screen.findByText('Nothing to watch yet.')
+    await screen.findByRole('heading', { name: 'Nothing to watch yet' })
     await act(async () => {
       await router.navigate({ to: '/movie/$movieId', params: { movieId: 'm1' } })
     })
