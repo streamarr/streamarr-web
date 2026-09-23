@@ -1,0 +1,147 @@
+query Home {
+  continueWatching(first: 12) {
+    __typename
+    ... on Movie {
+      id
+      title
+      tagline
+      summary
+      runtime
+      createdOn
+      genres {
+        id
+        name
+      }
+      images(type: BACKDROP) {
+        aspectRatio
+        blurHash
+        variants {
+          id
+          size
+          width
+          height
+          url
+        }
+      }
+      watchProgress {
+        positionSeconds
+        percentComplete
+        durationSeconds
+      }
+      files {
+        id
+      }
+    }
+    ... on Episode {
+      id
+      title
+      episodeNumber
+      overview
+      runtime
+      images(type: STILL) {
+        aspectRatio
+        blurHash
+        variants {
+          id
+          size
+          width
+          height
+          url
+        }
+      }
+      watchProgress {
+        positionSeconds
+        percentComplete
+        durationSeconds
+      }
+      files {
+        id
+      }
+      season {
+        id
+        seasonNumber
+        series {
+          id
+          title
+          tagline
+          summary
+          createdOn
+          genres {
+            id
+            name
+          }
+          seasons {
+            id
+          }
+          images(type: BACKDROP) {
+            aspectRatio
+            blurHash
+            variants {
+              id
+              size
+              width
+              height
+              url
+            }
+          }
+        }
+      }
+    }
+  }
+  libraries {
+    id
+    name
+    type
+    items(first: 18, sort: { by: ADDED, direction: DESC }) {
+      edges {
+        cursor
+        node {
+          ...MediaSummaryFields
+          ... on Movie {
+            tagline
+            summary
+            createdOn
+            genres {
+              id
+              name
+            }
+            files {
+              id
+            }
+            backdropImages: images(type: BACKDROP) {
+              aspectRatio
+              blurHash
+              variants {
+                id
+                size
+                width
+                height
+                url
+              }
+            }
+          }
+          ... on Series {
+            tagline
+            summary
+            createdOn
+            genres {
+              id
+              name
+            }
+            backdropImages: images(type: BACKDROP) {
+              aspectRatio
+              blurHash
+              variants {
+                id
+                size
+                width
+                height
+                url
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

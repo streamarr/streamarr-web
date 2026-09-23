@@ -1,7 +1,9 @@
 /* Home: the ambient wash over the ground. */
 .homeShell {
   position: relative;
-  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
   background: var(--color-ground);
 }
 
@@ -10,7 +12,7 @@
   left: 0;
   right: 0;
   top: 0;
-  height: min(900px, 100%);
+  height: 100%;
   background:
     radial-gradient(
       80% 60% at 75% 0%,
@@ -27,5 +29,8 @@
 
 .homeContent {
   position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   padding: 14px clamp(24px, 3.3vw, 50px) 40px;
 }

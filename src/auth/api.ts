@@ -24,8 +24,25 @@ export type SetupInput = Omit<SetupRequest, 'cookieMode'>
 
 export type ServerStatus = Required<Response2xx<'/api/auth/status', 'get'>>
 
-export function getSetupStatus(): Promise<ServerStatus> {
-  return getJson<ServerStatus>('/api/auth/status')
+export class ServerStatusUnavailableError extends Error {
+  constructor(cause: unknown) {
+    super("Couldn't check whether this server is set up. Reload the page to try again.", {
+      cause,
+    })
+    this.name = 'ServerStatusUnavailableError'
+  }
+}
+
+export async function getSetupStatus(): Promise<ServerStatus> {
+  try {
+    const status = await getJson<ServerStatus>('/api/auth/status')
+    if (typeof status?.setupComplete !== 'boolean') {
+      throw new TypeError('Server status must include a boolean setupComplete')
+    }
+    return status
+  } catch (cause) {
+    throw new ServerStatusUnavailableError(cause)
+  }
 }
 
 // A stale access cookie or CSRF marker rides along with sign-in, and the server's CSRF matcher

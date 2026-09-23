@@ -29,6 +29,9 @@ export default defineConfig(
       parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
     },
     rules: {
+      // Omitting a key with `const { dropped: _dropped, ...rest } = value` leaves `_dropped` unused
+      // on purpose; TypeScript's noUnusedLocals already allows it.
+      '@typescript-eslint/no-unused-vars': ['error', { ignoreRestSiblings: true }],
       // An async function without await is how a fake or a no-op satisfies a Promise-returning type.
       '@typescript-eslint/require-await': 'off',
       // React calls event-handler props and ignores what they return.

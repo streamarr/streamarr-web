@@ -1,0 +1,23 @@
+/* Transparent track, not a hidden scrollbar: the thumb stays for a working drag handle, the
+   track just stops reading as a second panel running the container's full height. */
+.thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-alpha-16) transparent;
+}
+
+.thin::-webkit-scrollbar {
+  width: 8px;
+}
+
+.thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.thin::-webkit-scrollbar-thumb {
+  background: var(--color-alpha-16);
+  border-radius: var(--radius-sm);
+}
+
+.thin::-webkit-scrollbar-thumb:hover {
+  background: var(--color-alpha-32);
+}
