@@ -1,0 +1,7 @@
+/* One keyboard focus ring for the settings surfaces, their dialogs, and destructive buttons. */
+.focusRing:focus-visible,
+.focusRing :is(button, a):focus-visible,
+.focusRing label:focus-within {
+  outline: 2px solid var(--indicator-active-track);
+  outline-offset: 4px;
+}

@@ -1,4 +1,5 @@
 .button {
+  composes: focusRing from '../styles/focus.module.css';
   display: inline-flex;
   justify-content: center;
   align-items: center;
@@ -21,8 +22,4 @@
   background: var(--surface-panel);
   color: var(--text-tertiary);
   cursor: default;
-}
-.button:focus-visible {
-  outline: 2px solid var(--indicator-active-track);
-  outline-offset: 4px;
 }
