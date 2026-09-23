@@ -408,7 +408,8 @@ describe('library administration', () => {
     await user.click(
       within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove library' }),
     )
-    await screen.findByRole('heading', { name: 'Add your first library' })
+    const heading = await screen.findByRole('heading', { name: 'Add your first library' })
+    expect(heading).toHaveFocus()
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(
       screen.queryByRole('navigation', { name: 'Libraries to manage' }),
