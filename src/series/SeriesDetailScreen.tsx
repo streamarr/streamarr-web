@@ -1,7 +1,6 @@
 import { useQuery } from '@apollo/client/react'
 import { Alert, Center, Loader } from '@mantine/core'
 import { Link } from '@tanstack/react-router'
-import { useState } from 'react'
 import { SeriesDetailDocument, type SeriesDetailQuery } from '../graphql/generated/graphql'
 import { usePublishAmbientTheme } from '../media/ambientThemeContext'
 import { resolveAmbientColors } from '../media/ambientSource'
@@ -10,26 +9,22 @@ import { ContentShelf } from '../media/ContentShelf'
 import { DetailBackButton } from '../media/DetailBack'
 import { detailAction, DetailHeader } from '../media/DetailHeader'
 import { formatEpisodeLabel, formatLongDate, formatYear } from '../media/formatting'
-import { CheckCircleGlyph, PlayGlyph } from '../media/glyphs'
+import { PlayGlyph } from '../media/glyphs'
 import { pickImageVariant } from '../media/images'
 import { nextPlayableEpisode } from '../media/nextPlayableEpisode'
 import { PosterCard } from '../media/PosterCard'
 import { ProgressDivider } from '../media/ProgressDivider'
-import { useWatchedToggle } from '../media/useWatchedToggle'
+import { useBulkWatchedAction } from '../media/useBulkWatchedAction'
 import type { WatchedBadgeProps } from '../media/WatchedBadge'
-import { ConfirmDialog } from '../ui/ConfirmDialog'
 import styles from './SeriesDetailScreen.module.css'
 
 type Series = NonNullable<SeriesDetailQuery['series']>
 type Season = NonNullable<Series['seasons'][number]>
 type Episode = NonNullable<Season['episodes'][number]>
 
-type BulkVerb = 'watched' | 'unwatched'
-
 export function SeriesDetailScreen({ seriesId }: Readonly<{ seriesId: string }>) {
   const { data, loading, error } = useQuery(SeriesDetailDocument, { variables: { id: seriesId } })
-  const watched = useWatchedToggle(seriesId, SeriesDetailDocument)
-  const [confirming, setConfirming] = useState<BulkVerb | null>(null)
+  const bulkWatched = useBulkWatchedAction({ kind: 'series', id: seriesId, detail: data?.series })
   const series = data?.series
   const ambient = series ? resolveAmbientColors(series.backdropImages, series.posterImages) : null
   usePublishAmbientTheme(ambient?.theme ?? null)
@@ -57,19 +52,10 @@ export function SeriesDetailScreen({ seriesId }: Readonly<{ seriesId: string }>)
   )
   const watchedCount = episodes.filter((episode) => episode.watchStatus === 'WATCHED').length
   const playable = nextPlayableEpisode(seasons)
-  const isWatched = series.watchStatus === 'WATCHED'
   const artwork = series.backdropImages[0] ?? series.posterImages[0] ?? null
   const cast = series.cast.filter(
     (person): person is NonNullable<Series['cast'][number]> => person !== null,
   )
-
-  // A bulk action confirms before it runs (principle 11.1) — in both directions, since
-  // unmarking wipes progress across every episode just as marking sets it.
-  function confirmBulk() {
-    const action = confirming === 'unwatched' ? watched.markUnwatched : watched.markWatched
-    setConfirming(null)
-    void action()
-  }
 
   return (
     <>
@@ -104,23 +90,11 @@ export function SeriesDetailScreen({ seriesId }: Readonly<{ seriesId: string }>)
                 {playable.verb} {formatEpisodeLabel(playable.seasonNumber, playable.episodeNumber)}
               </Link>
             )}
-            <button
-              type="button"
-              className={detailAction.outline}
-              disabled={watched.pending}
-              onClick={() => setConfirming(isWatched ? 'unwatched' : 'watched')}
-            >
-              <CheckCircleGlyph />
-              {isWatched ? 'Mark series unwatched' : 'Mark series watched'}
-            </button>
+            {bulkWatched.action}
           </>
         }
       />
-      {watched.failed && (
-        <Alert color="red" role="alert" className={styles.notice}>
-          Couldn't update the watched state. Try again.
-        </Alert>
-      )}
+      {bulkWatched.feedback}
       <ProgressDivider watched={watchedCount} total={episodes.length} />
       {seasons.length > 0 && (
         <section className={styles.section}>
@@ -160,14 +134,7 @@ export function SeriesDetailScreen({ seriesId }: Readonly<{ seriesId: string }>)
           </ContentShelf>
         </div>
       )}
-      <ConfirmDialog
-        opened={confirming !== null}
-        title={`Mark ${title} as ${confirming ?? 'watched'}?`}
-        body={`All ${seasons.length} seasons — ${episodes.length} episodes — will be marked ${confirming ?? 'watched'}.`}
-        confirmLabel={confirming === 'unwatched' ? 'Mark unwatched' : 'Mark watched'}
-        onConfirm={confirmBulk}
-        onClose={() => setConfirming(null)}
-      />
+      {bulkWatched.dialog}
     </>
   )
 }

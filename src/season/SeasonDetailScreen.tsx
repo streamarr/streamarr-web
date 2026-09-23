@@ -1,34 +1,29 @@
 import { useQuery } from '@apollo/client/react'
 import { Alert, Center, Loader } from '@mantine/core'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { useState } from 'react'
 import { SeasonDetailDocument, type SeasonDetailQuery } from '../graphql/generated/graphql'
 import { usePublishAmbientTheme } from '../media/ambientThemeContext'
 import { resolveAmbientColors } from '../media/ambientSource'
 import { detailBackClass } from '../media/DetailBack'
 import { detailAction, DetailHeader } from '../media/DetailHeader'
 import { formatRuntime, formatTimeLeft, formatYear } from '../media/formatting'
-import { BackGlyph, CheckCircleGlyph, PlayGlyph } from '../media/glyphs'
+import { BackGlyph, PlayGlyph } from '../media/glyphs'
 import { pickImageVariant } from '../media/images'
 import { nextPlayableEpisode } from '../media/nextPlayableEpisode'
 import { ProgressDivider } from '../media/ProgressDivider'
 import { SeasonSideRail } from '../media/SeasonSideRail'
 import { StillCard } from '../media/StillCard'
-import { useWatchedToggle } from '../media/useWatchedToggle'
-import { ConfirmDialog } from '../ui/ConfirmDialog'
+import { useBulkWatchedAction } from '../media/useBulkWatchedAction'
 import styles from './SeasonDetailScreen.module.css'
 
 type Season = NonNullable<SeasonDetailQuery['season']>
 type Episode = NonNullable<Season['episodes'][number]>
 type Sibling = NonNullable<Season['series']['seasons'][number]>
 
-type BulkVerb = 'watched' | 'unwatched'
-
 export function SeasonDetailScreen({ seasonId }: Readonly<{ seasonId: string }>) {
   const { data, loading, error } = useQuery(SeasonDetailDocument, { variables: { id: seasonId } })
-  const watched = useWatchedToggle(seasonId, SeasonDetailDocument)
+  const bulkWatched = useBulkWatchedAction({ kind: 'season', id: seasonId, detail: data?.season })
   const navigate = useNavigate()
-  const [confirming, setConfirming] = useState<BulkVerb | null>(null)
   const season = data?.season
   // A season rarely has a backdrop of its own; the series' keeps the tint consistent across pages.
   const ambient = season
@@ -61,7 +56,6 @@ export function SeasonDetailScreen({ seasonId }: Readonly<{ seasonId: string }>)
   const playable = nextPlayableEpisode([
     { seasonNumber: season.seasonNumber, episodes: season.episodes },
   ])
-  const isWatched = season.watchStatus === 'WATCHED'
   const artwork =
     season.backdropImages[0] ?? series.backdropImages[0] ?? season.posterImages[0] ?? null
   const siblings = series.seasons
@@ -75,12 +69,6 @@ export function SeasonDetailScreen({ seasonId }: Readonly<{ seasonId: string }>)
         (episode) => episode && episode.watchStatus !== 'WATCHED',
       ).length,
     }))
-
-  function confirmBulk() {
-    const action = confirming === 'unwatched' ? watched.markUnwatched : watched.markWatched
-    setConfirming(null)
-    void action()
-  }
 
   return (
     <>
@@ -120,23 +108,11 @@ export function SeasonDetailScreen({ seasonId }: Readonly<{ seasonId: string }>)
                 {playable.verb} E{playable.episodeNumber}
               </Link>
             )}
-            <button
-              type="button"
-              className={detailAction.outline}
-              disabled={watched.pending}
-              onClick={() => setConfirming(isWatched ? 'unwatched' : 'watched')}
-            >
-              <CheckCircleGlyph />
-              {isWatched ? 'Mark season unwatched' : 'Mark season watched'}
-            </button>
+            {bulkWatched.action}
           </>
         }
       />
-      {watched.failed && (
-        <Alert color="red" role="alert" className={styles.notice}>
-          Couldn't update the watched state. Try again.
-        </Alert>
-      )}
+      {bulkWatched.feedback}
       <ProgressDivider watched={watchedCount} total={episodes.length} />
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Episodes</h2>
@@ -179,14 +155,7 @@ export function SeasonDetailScreen({ seasonId }: Readonly<{ seasonId: string }>)
           </div>
         </div>
       </section>
-      <ConfirmDialog
-        opened={confirming !== null}
-        title={`Mark ${title} as ${confirming ?? 'watched'}?`}
-        body={`All ${episodes.length} episodes will be marked ${confirming ?? 'watched'}.`}
-        confirmLabel={confirming === 'unwatched' ? 'Mark unwatched' : 'Mark watched'}
-        onConfirm={confirmBulk}
-        onClose={() => setConfirming(null)}
-      />
+      {bulkWatched.dialog}
     </>
   )
 }
