@@ -106,6 +106,7 @@ export function LibraryGrid({
     const target = cardAfterKey({
       key: event.key,
       index: focusedIndex,
+      entry: tabStopIndex,
       columns: geometry.columns,
       count: edges.length,
     })
@@ -434,21 +435,21 @@ function sameGeometry(a: RowGeometry, b: RowGeometry) {
   return a.columns === b.columns && a.rowHeight === b.rowHeight && a.rowGap === b.rowGap
 }
 
-// The card a navigation key lands on: the same card at an edge, null for any other key.
+// The card a navigation key lands on: the entry card while none is focused, the same card at an
+// edge, null for any other key.
 function cardAfterKey({
   key,
   index,
+  entry,
   columns,
   count,
 }: {
   key: string
   index: number
+  entry: number
   columns: number
   count: number
 }) {
-  if (index < 0) {
-    return null
-  }
   const rowStart = index - (index % columns)
   const moves: Record<string, number> = {
     ArrowRight: index + 1,
@@ -461,6 +462,9 @@ function cardAfterKey({
   const target = moves[key]
   if (target === undefined) {
     return null
+  }
+  if (index < 0) {
+    return entry
   }
   return target < 0 || target >= count ? index : target
 }

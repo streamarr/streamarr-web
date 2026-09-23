@@ -658,6 +658,29 @@ describe('LibraryScreen', () => {
     expect(cards[1]).toHaveFocus()
   })
 
+  it('enters the grid at its tab stop when a navigation key arrives with the grid itself focused', async () => {
+    twoColumnRows()
+    server.use(
+      graphql.query('LibraryPage', () =>
+        HttpResponse.json({ data: libraryData({ edges: titledEdges(4) }) }),
+      ),
+    )
+    const { user } = renderWithProviders(
+      <Harness initialSearch={{ by: 'TITLE', direction: 'ASC' }} />,
+    )
+    await screen.findByRole('link', { name: /Title 03/ })
+    const claimed: string[] = []
+    document.addEventListener('keydown', (event) => {
+      if (event.defaultPrevented) claimed.push(event.key)
+    })
+
+    await user.click(screen.getByRole('grid', { name: 'Items' }))
+    await user.keyboard('{ArrowDown}')
+
+    expect(screen.getByRole('link', { name: /Title 00/ })).toHaveFocus()
+    expect(claimed).toEqual(['ArrowDown'])
+  })
+
   it('exposes the rows as a grid that announces each rendered row among all the loaded rows', async () => {
     twoColumnRows()
     server.use(
