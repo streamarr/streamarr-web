@@ -10,7 +10,7 @@ import type {
 } from '../../graphql/generated/graphql'
 import type { ManagedLibrary } from './libraryModel'
 
-const ADMIN = { ...meFixture({ scope: 'profile' }), serverAdmin: true }
+const ADMIN = meFixture({ scope: 'profile', serverAdmin: true })
 const MOVIES: ManagedLibrary = {
   __typename: 'Library',
   id: 'movies',

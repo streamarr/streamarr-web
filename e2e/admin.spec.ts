@@ -30,10 +30,11 @@ const shows: ManagedLibraryFieldsFragment = {
 async function fixture(page: Page, libraries = [movie, shows]) {
   const state = {
     libraries,
-    me: {
-      ...meFixture({ scope: 'profile', profiles: [profileFixture({ selected: true })] }),
+    me: meFixture({
+      scope: 'profile',
+      profiles: [profileFixture({ selected: true })],
       serverAdmin: true,
-    },
+    }),
     calls: [] as { operationName: string; variables: Record<string, unknown> }[],
     inventoryFails: false,
     removalFails: false,
