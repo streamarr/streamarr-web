@@ -6,6 +6,7 @@ import type { ImageRefreshMode } from '../../graphql/generated/graphql'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { DestructiveButton } from '../../ui/DestructiveButton'
 import { Icon } from '../../ui/Icon'
+import { RetryAlert } from '../../ui/RetryAlert'
 import { EmptyLibraries } from './EmptyLibraries'
 import { LibraryStatus } from './LibraryStatus'
 import {
@@ -73,12 +74,9 @@ export function LibraryWorkspace({
         </output>
       )}
       {query.error && (
-        <Alert role="alert" color="red" mb="md">
-          Couldn't load the latest library state.{' '}
-          <Button variant="default" onClick={() => void query.refetch().catch(() => {})}>
-            Try again
-          </Button>
-        </Alert>
+        <RetryAlert mb="md" onRetry={query.refetch}>
+          Couldn't load the latest library state.
+        </RetryAlert>
       )}
       <LibraryInventory
         libraries={libraries}
