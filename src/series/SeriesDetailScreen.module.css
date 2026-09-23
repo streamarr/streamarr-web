@@ -19,10 +19,6 @@
   padding: 44px var(--spacing-page) 60px;
 }
 
-.notice {
-  margin: var(--spacing-16) var(--spacing-page) 0;
-}
-
 .cardLink {
   display: block;
   color: inherit;

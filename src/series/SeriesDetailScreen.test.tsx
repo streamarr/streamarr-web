@@ -2,6 +2,7 @@ import { screen, waitFor } from '@testing-library/react'
 import { graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { SeriesDetailQuery } from '../graphql/generated/graphql'
+import { deferred } from '../test/deferred'
 import { meFixture } from '../test/meFixture'
 import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
@@ -299,6 +300,31 @@ describe('SeriesDetailScreen', () => {
     await user.click(screen.getByRole('button', { name: 'Mark series unwatched' }))
     await user.click(screen.getByRole('button', { name: 'Mark unwatched' }))
     await waitFor(() => expect(markedIds).toEqual(['series-1']))
+  })
+
+  it('shouldDisableTheBulkActionWhilePendingAndShowAFailureWithoutChangingItsVerb', async () => {
+    const response = deferred()
+    server.use(
+      graphql.mutation('MarkWatched', async () => {
+        await response.promise
+        return HttpResponse.json({ errors: [{ message: 'Could not save watched state.' }] })
+      }),
+    )
+    const { user } = await renderSeries(seriesData())
+    await user.click(screen.getByRole('button', { name: 'Mark series watched' }))
+    expect(screen.getByRole('dialog')).toHaveTextContent(
+      'All 2 seasons — 5 episodes — will be marked watched.',
+    )
+    await user.click(screen.getByRole('button', { name: 'Mark watched' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Mark series watched' })).toBeDisabled()
+    response.resolve()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "Couldn't update the watched state. Try again.",
+    )
+    expect(screen.getByRole('button', { name: 'Mark series watched' })).toBeEnabled()
   })
 
   it('links each season card to its page', async () => {
