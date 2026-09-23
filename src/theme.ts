@@ -7,6 +7,7 @@ import {
   type CSSVariablesResolver,
 } from '@mantine/core'
 import { createElement, Fragment } from 'react'
+import buttonStyles from './styles/button.module.css'
 import styles from './styles/field.module.css'
 import { Icon } from './ui/Icon'
 
@@ -19,6 +20,9 @@ export const theme = createTheme({
   },
   primaryColor: 'streamarr',
   components: {
+    Button: {
+      classNames: { root: buttonStyles.button },
+    },
     InputWrapper: {
       classNames: { label: styles.fieldLabel, required: styles.fieldRequired },
     },
