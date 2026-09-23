@@ -1,8 +1,9 @@
 import { useQuery } from '@apollo/client/react'
-import { Alert, Button, Center, Loader } from '@mantine/core'
+import { Alert, Center, Loader } from '@mantine/core'
 import { Link, Navigate, Outlet } from '@tanstack/react-router'
 import { MeDocument } from '../graphql/generated/graphql'
 import { Icon } from '../ui/Icon'
+import { RetryAlert } from '../ui/RetryAlert'
 import { canManageServer } from './access'
 import styles from './Settings.module.css'
 
@@ -14,12 +15,7 @@ export function ServerSettings() {
 
   if (error)
     return (
-      <Alert color="red" role="alert">
-        Couldn't confirm your access to server settings.{' '}
-        <Button variant="default" onClick={() => void refetch().catch(() => {})}>
-          Try again
-        </Button>
-      </Alert>
+      <RetryAlert onRetry={refetch}>Couldn't confirm your access to server settings.</RetryAlert>
     )
   if (!data)
     return (
