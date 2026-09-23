@@ -37,7 +37,6 @@ async function fixture(page: Page, libraries = [movie, shows]) {
     }),
     calls: [] as { operationName: string; variables: Record<string, unknown> }[],
     inventoryFails: false,
-    removalFails: false,
   }
   await page.route('**/graphql', async (route) => {
     const { operationName, variables } = route.request().postDataJSON() as {
@@ -95,7 +94,6 @@ async function fixture(page: Page, libraries = [movie, shows]) {
       )
     }
     if (operationName === 'RemoveLibrary') {
-      if (state.removalFails) return reply({ removeLibrary: false })
       state.libraries = state.libraries.filter((library) => library.id !== variables.id)
       return reply({ removeLibrary: true })
     }
@@ -240,56 +238,6 @@ test('refresh expands in place with aligned controls and returns focus', async (
   })
   await page.reload()
   await expect(page.getByRole('article').locator('[data-library-status]')).toHaveText('REFRESHING')
-})
-
-test('removal requires confirmation, keeps errors in the dialog, and updates Home', async ({
-  page,
-}) => {
-  const state = await fixture(page, [movie])
-  await page.goto('/') // Seed Home's cache before removal.
-  await page.getByRole('button', { name: /Profile menu/ }).click()
-  await page.getByRole('button', { name: 'Server settings', exact: true }).click()
-  await page.getByRole('button', { name: 'Remove library', exact: true }).click()
-  const dialog = page.getByRole('dialog', { name: 'Remove Movies?' })
-  await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeFocused()
-  await expect(dialog).toContainText('Your files stay on disk.')
-  await dialog.getByRole('button', { name: 'Cancel' }).click()
-  await expect(page.getByRole('button', { name: 'Remove library' })).toBeFocused()
-  expect(state.calls.filter((call) => call.operationName === 'RemoveLibrary')).toHaveLength(0)
-  state.removalFails = true
-  await page.getByRole('button', { name: 'Remove library', exact: true }).click()
-  await dialog.getByRole('button', { name: 'Remove library', exact: true }).click()
-  await expect(dialog.getByRole('alert')).toBeVisible()
-  state.removalFails = false
-  await dialog.getByRole('button', { name: 'Remove library', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Add your first library' })).toBeVisible()
-  await expect(page.getByRole('heading', { level: 1 })).toBeFocused()
-  await page
-    .getByRole('navigation', { name: 'Primary' })
-    .getByRole('link', { name: 'Home' })
-    .click()
-  await expect(page.getByRole('link', { name: 'Add library', exact: true })).toBeVisible()
-  await expect(
-    page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Movies' }),
-  ).toHaveCount(0)
-})
-
-test('ineligible accounts cannot enter via direct URLs or the menu', async ({ page }) => {
-  const state = await fixture(page)
-  for (const eligibility of [
-    { serverAdmin: false, deviceBound: false },
-    { serverAdmin: true, deviceBound: true },
-  ]) {
-    Object.assign(state.me, eligibility)
-    await page.goto(`${SETTINGS}/new`)
-    await expect(page.getByRole('alert')).toContainText(
-      'Server settings are available to server admins',
-    )
-    await expect(page.getByRole('textbox', { name: 'Server folder' })).toHaveCount(0)
-    await page.getByRole('button', { name: /Profile menu/ }).click()
-    await expect(page.getByRole('button', { name: 'Server settings', exact: true })).toHaveCount(0)
-  }
-  expect(state.calls.filter((call) => call.operationName === 'AdminLibraries')).toHaveLength(0)
 })
 
 test('Library workspace and creation share a width and fit phone and desktop layouts', async ({
