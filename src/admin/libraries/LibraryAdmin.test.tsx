@@ -67,6 +67,21 @@ describe('library administration', () => {
     expect(screen.queryByRole('button', { name: 'Server settings' })).not.toBeInTheDocument()
   })
 
+  it('shouldLetTheServerRequireAProfileInsteadOfDecidingScopeItself', async () => {
+    const state = serve(undefined, meFixture({ scope: 'account', serverAdmin: true }))
+    server.use(
+      graphql.query('AdminLibraries', () => {
+        state.inventoryRequests++
+        return HttpResponse.json({
+          errors: [{ message: 'profile required', extensions: { code: 'PROFILE_REQUIRED' } }],
+        })
+      }),
+    )
+    const { router } = renderAppAt(SETTINGS)
+    await waitFor(() => expect(router.state.location.pathname).toBe('/select-profile'))
+    expect(state.inventoryRequests).toBe(1)
+  })
+
   it('shouldRestoreLibrarySelectionFromHistoryAfterProfileMenuEntry', async () => {
     serve()
     const { user, router } = renderAppAt('/')
