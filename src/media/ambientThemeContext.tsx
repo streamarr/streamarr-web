@@ -18,8 +18,8 @@ const AmbientThemeContext = createContext<AmbientThemeStore | null>(null)
 // The page ground belongs to the root layout, but only a detail page knows its title's theme:
 // the page publishes it here and the layout paints it around both the chrome and the page.
 export function AmbientThemeProvider({ children }: Readonly<{ children: ReactNode }>) {
-  const [theme, publish] = useState<AmbientTheme | null>(null)
-  const store = useMemo(() => ({ theme, publish }), [theme])
+  const [theme, setTheme] = useState<AmbientTheme | null>(null)
+  const store = useMemo(() => ({ theme, publish: setTheme }), [theme])
   return <AmbientThemeContext.Provider value={store}>{children}</AmbientThemeContext.Provider>
 }
 

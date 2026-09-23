@@ -172,7 +172,7 @@ describe('/library/$libraryId', () => {
     await act(async () => {
       router.history.back()
     })
-    await screen.findByRole('link', { name: /Everlight/ })
+    expect(await screen.findByRole('link', { name: /Everlight/ })).toBeVisible()
   })
 
   it('queries the id from the route param with the default sort when no search params are given', async () => {

@@ -53,8 +53,11 @@ export function useLibraryItems({
 
   const queryKey = JSON.stringify({ libraryId, sort, filter })
   const [pageFailure, setPageFailure] = useState<PageFailure | null>(null)
-  if (pageFailure && pageFailure.query !== queryKey) setPageFailure(null)
-  const currentPageFailure = pageFailure?.query === queryKey ? pageFailure : null
+  let currentPageFailure = pageFailure
+  if (pageFailure && pageFailure.query !== queryKey) {
+    setPageFailure(null)
+    currentPageFailure = null
+  }
   // A new query renders its predecessor's page until its own arrives and the screen accepts it,
   // so a letter jump never blanks the grid and the screen can animate the swap. The first result
   // has no predecessor and shows at once.
