@@ -41,7 +41,7 @@ export function ConfirmDialog({
   const content = (
     <>
       {icon && <Icon name={icon} size={16} />}
-      {pending ? 'Working…' : confirmLabel}
+      {confirmLabel}
     </>
   )
   // In place rather than in a portal, so a page's ambient theme still reaches it.

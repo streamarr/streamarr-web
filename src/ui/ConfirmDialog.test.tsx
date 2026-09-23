@@ -43,6 +43,14 @@ describe('ConfirmDialog', () => {
     expect(onConfirm).not.toHaveBeenCalled()
   })
 
+  it("keeps the confirm button's name while a request is pending", () => {
+    renderDialog({ pending: true })
+    const confirm = screen.getByRole('button', { name: 'Mark watched' })
+    expect(confirm).toBeDisabled()
+    expect(confirm).toHaveAttribute('aria-busy', 'true')
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
+  })
+
   it('renders nothing while closed', () => {
     renderDialog({ opened: false })
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
