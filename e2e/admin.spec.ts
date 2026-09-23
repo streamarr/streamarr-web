@@ -261,6 +261,21 @@ test("keyboard focus draws the theme ring on the page's own controls", async ({ 
   })
 })
 
+test('the confirm dialog centers in the viewport, not in the pane that opened it', async ({
+  page,
+}) => {
+  await fixture(page)
+  await page.goto(SETTINGS)
+  await page.getByRole('button', { name: 'Remove library', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Remove Movies?' })
+  await expect(dialog).toBeVisible()
+  const box = (await dialog.boundingBox())!
+  const viewport = page.viewportSize()!
+  expect(box.x).toBeGreaterThanOrEqual(0)
+  expect(box.x + box.width).toBeLessThanOrEqual(viewport.width)
+  expect(Math.abs(box.x + box.width / 2 - viewport.width / 2)).toBeLessThan(2)
+})
+
 test('Library workspace and creation share a width and fit phone and desktop layouts', async ({
   page,
 }, testInfo) => {
