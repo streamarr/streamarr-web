@@ -5,10 +5,12 @@ import { useEffect, useRef, useState } from 'react'
 import {
   CreateStreamSessionDocument,
   type CreateStreamSessionMutation,
+  DestroyStreamSessionDocument,
   ReportStreamSessionTimelineDocument,
   type ReportStreamSessionTimelineMutationVariables,
 } from '../graphql/generated/graphql'
 import { userErrorMessage } from '../graphql/userErrors'
+import { invalidateWatchedState } from '../media/watchedState'
 
 // Progress is only worth a round trip once the playhead has moved this far since the last report.
 const TIMELINE_REPORT_INTERVAL_SECONDS = 10
@@ -42,15 +44,39 @@ export function Player({
     let sessionId: string | null = null
     let lastReportedPosition = startPositionSeconds ?? 0
     let lastKnownPosition: number | null = null
+    let timelineReports = Promise.resolve()
+
+    async function destroySession(id: string) {
+      await client
+        .mutate({
+          mutation: DestroyStreamSessionDocument,
+          variables: { sessionId: id },
+        })
+        .catch(() => {
+          // The server's idle reaper owns cleanup if the connection has already gone away.
+        })
+    }
 
     function report(state: PlaybackState, positionSeconds: number) {
       if (!sessionId) {
         return
       }
-      client
-        .mutate({
-          mutation: ReportStreamSessionTimelineDocument,
-          variables: { sessionId, positionSeconds: Math.floor(positionSeconds), state },
+      const variables = { sessionId, positionSeconds: Math.floor(positionSeconds), state }
+      // The server accepts arrival order, including reports that precede the final STOPPED.
+      timelineReports = timelineReports
+        .then(async () => {
+          await client.mutate({
+            mutation: ReportStreamSessionTimelineDocument,
+            variables,
+            update: (cache, { data }) => {
+              if (data?.reportStreamSessionTimeline) invalidateWatchedState(cache)
+            },
+            onQueryUpdated: (query) => {
+              // UI refreshes must not hold the report queue or session disposal open.
+              void query.refetch().catch(() => undefined)
+              return false
+            },
+          })
         })
         .catch(ignoreTimelineReportFailure)
     }
@@ -80,11 +106,11 @@ export function Player({
 
     createStreamSession({ variables: { input: { mediaFileId } } })
       .then((result) => {
-        if (cancelled) {
-          return
-        }
         const payload = result.data?.createStreamSession
         const session = payload?.session
+        if (cancelled) {
+          return session ? destroySession(session.id) : undefined
+        }
         if (!session) {
           setFailure(refusalMessage(payload))
           return
@@ -108,6 +134,10 @@ export function Player({
         report('STOPPED', lastKnownPosition)
       }
       hls?.destroy()
+      const closingSessionId = sessionId
+      if (closingSessionId) {
+        void timelineReports.then(() => destroySession(closingSessionId))
+      }
     }
   }, [mediaFileId, startPositionSeconds, createStreamSession, client])
 
