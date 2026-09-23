@@ -276,12 +276,20 @@ export function LibraryGrid({
   // so focusing scrolls nothing they have already put in view.
   useLayoutEffect(function focusRequestedCard() {
     const { cards, requested } = cardFocus.current
-    const card = requested === null ? undefined : cards.get(requested)
-    if (!card) {
+    if (requested === null) {
       return
     }
-    cardFocus.current.requested = null
-    card.focus()
+    const card = cards.get(requested)
+    if (card) {
+      cardFocus.current.requested = null
+      card.focus()
+      return
+    }
+    // A card that left with its result will never mount again; its request must not stand in
+    // for the next card unmounted while focused.
+    if (!edges.some((edge) => edge.cursor === requested)) {
+      cardFocus.current.requested = null
+    }
   })
 
   // The rail follows the row at the top of the grid; only the rail subscribes to the store. A
