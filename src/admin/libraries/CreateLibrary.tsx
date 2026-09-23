@@ -30,8 +30,11 @@ export function CreateLibrary({ onCreated }: Readonly<{ onCreated: (id: string) 
   // Request completion must re-enable the inputs before focus can move to a rejected field.
   useEffect(() => {
     if (commands.pending) return
-    if (errors.name) nameInput.current?.focus()
-    else if (errors.filepath) pathInput.current?.focus()
+    if (errors.name) {
+      nameInput.current?.focus()
+      return
+    }
+    if (errors.filepath) pathInput.current?.focus()
   }, [errors, commands.pending])
 
   async function submit(event: React.SubmitEvent) {
@@ -62,11 +65,13 @@ export function CreateLibrary({ onCreated }: Readonly<{ onCreated: (id: string) 
       setErrors(next)
       return
     }
-    if (result.library) onCreated(result.library.id)
-    else
+    if (!result.library) {
       setErrors({
         form: "The server didn't return the new library. Check the library list before trying again.",
       })
+      return
+    }
+    onCreated(result.library.id)
   }
 
   return (

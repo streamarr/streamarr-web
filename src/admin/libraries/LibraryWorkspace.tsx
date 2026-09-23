@@ -319,11 +319,12 @@ function LibraryDetails({
             aria-controls={refreshOpen ? refreshId : undefined}
             onClick={() => {
               commands.clearError()
-              if (refreshOpen) closeRefresh()
-              else {
-                setImageMode('PRESERVE')
-                setRefreshOpen(true)
+              if (refreshOpen) {
+                closeRefresh()
+                return
               }
+              setImageMode('PRESERVE')
+              setRefreshOpen(true)
             }}
           >
             Refresh metadata
