@@ -32,6 +32,9 @@ const AMBIENT_ROUTES = new Set<FileRouteTypes['id']>([
   '/_authenticated/season/$seasonId',
 ])
 
+// Settings are neutral pages: the chrome stays, the browsing wash behind it does not.
+const SETTINGS_ROUTES = new Set<FileRouteTypes['id']>(['/_authenticated/settings/server'])
+
 function RootLayout() {
   return (
     <AmbientThemeProvider>
@@ -58,8 +61,7 @@ function RootFrame() {
   })
   const theme = useAmbientTheme()
   const settings = useRouterState({
-    select: (state) =>
-      state.matches.some((match) => match.routeId === '/_authenticated/settings/server'),
+    select: (state) => state.matches.some((match) => SETTINGS_ROUTES.has(match.routeId)),
   })
 
   if (ceremony) {
