@@ -1,5 +1,6 @@
 /* Server-settings layout, measured from the streamarr-ux mock. */
 .settings {
+  composes: focusRing from '../styles/focus.module.css';
   color: var(--text-primary);
   font-family: var(--font-family-content);
 
@@ -9,10 +10,6 @@
   }
   & button:disabled {
     cursor: default;
-  }
-  & button:focus-visible {
-    outline: 2px solid var(--indicator-active-track);
-    outline-offset: 4px;
   }
   & h1,
   & h2,
@@ -573,10 +570,6 @@
 .settings a {
   text-decoration: none;
 }
-.settings a:focus-visible {
-  outline: 2px solid var(--indicator-active-track);
-  outline-offset: 4px;
-}
 .actionNotice {
   display: block;
   margin-top: var(--spacing-14) !important;
@@ -589,11 +582,6 @@
   width: 1px;
   height: 1px;
   opacity: 0;
-}
-.typeOption:focus-within,
-.typeSelected:focus-within {
-  outline: 2px solid var(--indicator-active-track);
-  outline-offset: 4px;
 }
 .typeField:disabled label {
   cursor: default;
