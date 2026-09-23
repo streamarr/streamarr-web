@@ -12,6 +12,7 @@ function renderDialog(overrides: Partial<Parameters<typeof ConfirmDialog>[0]> = 
       title="Mark Northern Line as watched?"
       body="Every episode across 12 seasons will be marked watched."
       confirmLabel="Mark watched"
+      icon="watched-action"
       onConfirm={onConfirm}
       onClose={onClose}
       {...overrides}
