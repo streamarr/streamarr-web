@@ -9,7 +9,8 @@ export function HomeShell({
 }: {
   chrome?: ReactNode
   children: ReactNode
-  /** Neutral settings pages omit the browsing wash. */ ambient?: boolean
+  /** Neutral settings pages omit the browsing wash. */
+  ambient?: boolean
 }) {
   return (
     <div className={styles.homeShell}>

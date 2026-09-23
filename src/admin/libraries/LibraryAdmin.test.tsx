@@ -52,7 +52,7 @@ function serve(libraries = [MOVIES, SHOWS], me = ADMIN) {
   return state
 }
 
-describe('production library administration', () => {
+describe('library administration', () => {
   it.each([
     { ...ADMIN, serverAdmin: false },
     { ...ADMIN, deviceBound: true },

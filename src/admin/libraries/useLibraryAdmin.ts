@@ -13,10 +13,8 @@ import {
 import { extractAuthContext } from '../../graphql/errorRouting'
 
 /**
- * Library inventory fetched on workspace entry. Status changes require a page reload;
- * there is no polling, focus refresh, or subscription. Confirmed creation/removal separately
- * synchronizes the inventory. Failed requests retain the last inventory for context;
- * callers must disable maintenance until a successful explicit retry.
+ * The inventory as of entry or reload: no polling and no refetch on focus. A failed refetch
+ * keeps the last inventory, so callers disable maintenance while `error` is set.
  */
 export function useAdminLibraries() {
   const query = useQuery(AdminLibrariesDocument, {
@@ -26,14 +24,9 @@ export function useAdminLibraries() {
 }
 
 /**
- * Library commands with one in-flight request per mounted caller. No optimistic server status
- * or removal is invented. A null result means failure, duplicate submission, or an unmounted
- * caller; creation userErrors remain in the returned payload for field-level rendering.
- * Scan/refresh success means accepted, not completed; neither command refetches status.
- * Creation/removal synchronize cached lists. Cache refresh failure never turns an acknowledged
- * mutation into a reported mutation failure (which could encourage a duplicate).
- * Removal calls onRemoved before invalidating inventory, since that invalidation may unmount
- * the selected detail pane. Callers must not start another mutation from that callback.
+ * One in-flight library command per caller. A null result means the request failed, was a
+ * duplicate, or outlived the caller; creation's userErrors ride the returned payload. Scan and
+ * refresh success means the server accepted the request, not that it finished.
  */
 export function useLibraryCommands() {
   const client = useApolloClient()
@@ -56,8 +49,8 @@ export function useLibraryCommands() {
     try {
       const result = await operation()
       return active.current ? result : null
-    } catch (error_) {
-      const context = extractAuthContext(error_)
+    } catch (caught) {
+      const context = extractAuthContext(caught)
       const denied =
         context.graphqlCodes?.includes('FORBIDDEN') || context.networkCode === 'FORBIDDEN'
       if (active.current)
