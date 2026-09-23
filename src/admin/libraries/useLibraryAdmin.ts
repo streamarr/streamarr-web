@@ -33,7 +33,7 @@ export function useLibraryCommands() {
   const active = useRef(true)
   const inFlight = useRef(false)
   const [pending, setPending] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [failure, setFailure] = useState<string | null>(null)
   useEffect(() => {
     active.current = true
     return () => {
@@ -45,16 +45,16 @@ export function useLibraryCommands() {
     if (inFlight.current) return null
     inFlight.current = true
     setPending(true)
-    setError(null)
+    setFailure(null)
     try {
       const result = await operation()
       return active.current ? result : null
-    } catch (caught) {
-      const context = extractAuthContext(caught)
+    } catch (error) {
+      const context = extractAuthContext(error)
       const denied =
         context.graphqlCodes?.includes('FORBIDDEN') || context.networkCode === 'FORBIDDEN'
       if (active.current)
-        setError(
+        setFailure(
           denied
             ? 'You no longer have permission to manage libraries.'
             : "Couldn't confirm the operation. Refresh the page to check the library state before trying again.",
@@ -68,8 +68,8 @@ export function useLibraryCommands() {
 
   return {
     pending,
-    error,
-    clearError: () => setError(null),
+    error: failure,
+    clearError: () => setFailure(null),
     create: (input: AddLibraryInput) =>
       execute(async () => {
         const { data } = await client.mutate({ mutation: AddLibraryDocument, variables: { input } })
