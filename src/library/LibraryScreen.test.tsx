@@ -776,6 +776,49 @@ describe('LibraryScreen', () => {
     expect(screen.getByRole('link', { name: /Title 01/ })).toHaveFocus()
   })
 
+  it('keeps focus on a re-keyed card after an earlier focused card left with its result', async () => {
+    const columns = rowColumns(2)
+    const unseen = Array.from({ length: 4 }, (_, index) => ({
+      cursor: `u${index}`,
+      node: movieNode({ id: `u${index}`, title: `Unseen 0${index}` }),
+    }))
+    server.use(
+      graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) =>
+        HttpResponse.json({
+          data: libraryData({
+            edges: variables.filter?.watchStatus ? unseen : titledEdges(4),
+          }),
+        }),
+      ),
+    )
+    renderWithProviders(<Harness />)
+    const card = await screen.findByRole('link', { name: /Title 00/ })
+    act(() => card.focus())
+    // A filter chosen without moving focus, as Safari leaves it on a click: the focused card
+    // leaves with its result while it is still the active element.
+    fireEvent.click(screen.getByRole('button', { name: 'Unwatched' }))
+    const next = await screen.findByRole('link', { name: /Unseen 01/ })
+    act(() => next.focus())
+    expect(next).toHaveFocus()
+
+    columns.set(1)
+    const grid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
+    const resized = {
+      target: grid,
+      borderBoxSize: [{ inlineSize: 400, blockSize: JSDOM_GRID_HEIGHT }],
+    } as unknown as ResizeObserverEntry
+    act(() => {
+      for (const observer of resizeObserverInstances.filter((instance) =>
+        instance.observe.mock.calls.some((call) => call[0] === grid),
+      )) {
+        observer.callback([resized], observer)
+      }
+    })
+
+    expect(screen.getAllByRole('row')).toHaveLength(4)
+    expect(screen.getByRole('link', { name: /Unseen 01/ })).toHaveFocus()
+  })
+
   it('keeps focus on the landing card when the page before it re-flows the rows', async () => {
     twoColumnRows()
     server.use(
