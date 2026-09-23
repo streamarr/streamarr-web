@@ -69,7 +69,7 @@ Adopt **(a)**. It matches what tvOS actually does (data swap under a still-mount
 
 ## Spike: row virtualization (2026-09-22)
 
-Branch `spike/library-virtual-grid`, worktree `../streamarr-web-virtual-spike`, on top of `feat/web-12-detail-pages` at 5a6a4b3. Question: does virtualizing the grid with TanStack Virtual make a letter jump cheaper without losing the landing, the backfill, Back, the rail, or the phone layouts?
+Branch `feat/library-virtual-grid` (spiked as `spike/library-virtual-grid`), worktree `../streamarr-web-virtual-spike`, on top of `feat/web-12-detail-pages` at 5a6a4b3. Question: does virtualizing the grid with TanStack Virtual make a letter jump cheaper without losing the landing, the backfill, Back, the rail, or the phone layouts?
 
 ### What was built
 
