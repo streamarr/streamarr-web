@@ -446,8 +446,10 @@ describe('library administration', () => {
     )
     await act(() => router.navigate({ to: SETTINGS }))
     await screen.findByRole('alert')
-    // Apollo may discard failed-query data; neither a stale action nor a setup CTA is permitted.
-    expect(screen.queryByRole('button', { name: 'Scan library' })).not.toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Scan library' })).toBeDisabled()
+    expect(
+      screen.queryByRole('heading', { name: 'Add your first library' }),
+    ).not.toBeInTheDocument()
     server.use(
       graphql.query('AdminLibraries', () => HttpResponse.json({ data: { libraries: [MOVIES] } })),
     )
