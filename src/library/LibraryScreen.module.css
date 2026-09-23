@@ -1,0 +1,92 @@
+.libraryScreen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-16);
+  height: 100%;
+  min-height: 0;
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-16);
+}
+
+.libraryName {
+  font-size: var(--font-size-display);
+  font-weight: 700;
+  margin: 0;
+}
+
+.scanStatus {
+  font-family: var(--font-family-system);
+  font-size: var(--font-size-caption);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: var(--letter-spacing-system);
+}
+
+.sortSlot {
+  margin-left: auto;
+}
+
+.body {
+  flex: 1;
+  min-height: 22rem;
+  display: flex;
+  gap: var(--spacing-16);
+}
+
+.grid {
+  composes: thin from '../styles/scrollbar.module.css';
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* LibraryScreen preserves scroll position when prepending; native anchoring would add it twice. */
+  overflow-anchor: none;
+  display: grid;
+  /* Fit the available width, with rem bounds keeping posters readable as text scales. */
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, clamp(7rem, 18vw, 12rem)), 1fr));
+  gap: var(--spacing-20);
+  align-content: start;
+  padding-right: var(--spacing-8);
+}
+
+.sentinel {
+  grid-column: 1 / -1;
+  height: 1px;
+}
+
+.empty {
+  /* Matches .grid's flex: 1, or it leaves the alphabet rail wherever the text ends. */
+  flex: 1;
+  color: var(--text-secondary);
+  padding: var(--spacing-24) 0;
+}
+
+@media (max-width: 48em) {
+  .header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--spacing-6) var(--spacing-12);
+  }
+
+  .libraryName {
+    overflow-wrap: anywhere;
+  }
+
+  .scanStatus {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .sortSlot {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    align-self: center;
+  }
+
+  .body {
+    flex-direction: column-reverse;
+  }
+}

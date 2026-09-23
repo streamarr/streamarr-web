@@ -19,6 +19,17 @@ describe('auth api', () => {
     await expect(getSetupStatus()).resolves.toEqual({ setupComplete: true })
   })
 
+  it.each([{}, { setupComplete: null }, { setupComplete: 'false' }, null])(
+    'shouldRejectAnIndeterminateSetupStatus(%j)',
+    async (body) => {
+      server.use(http.get('/api/auth/status', () => HttpResponse.json(body)))
+
+      await expect(getSetupStatus()).rejects.toThrow(
+        /couldn't check whether this server is set up/i,
+      )
+    },
+  )
+
   it('shouldReturnTokensAndRequestCookieModeOnLogin', async () => {
     let sentBody: unknown
     server.use(

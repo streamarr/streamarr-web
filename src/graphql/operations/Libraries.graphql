@@ -1,0 +1,7 @@
+query Libraries {
+  libraries {
+    id
+    name
+    type
+  }
+}

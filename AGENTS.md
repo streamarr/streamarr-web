@@ -230,7 +230,7 @@ race. Re-check the generation — or the `isCurrent()` callback a caller was han
 ### Conventions
 - Unit tests: `*.test.ts` / `*.test.tsx` beside the code; browser specs: `e2e/*.spec.ts`
 - Import `describe`, `it`, `expect`, and `vi` from `vitest` explicitly; globals are enabled only so Testing Library can register its cleanup
-- Wait on conditions with `findBy*`, `waitFor`, or `expect.poll`, and drive time with `vi.useFakeTimers()` — never a bare `setTimeout` sleep or `page.waitForTimeout`
+- Wait on conditions with `findBy*`, `waitFor`, or `expect.poll`, and drive time with `vi.useFakeTimers()` — never a bare `setTimeout` sleep. `page.waitForTimeout` is reserved for a bounded settle before asserting that something did not happen (`e2e/library.spec.ts`)
 - Test naming: `it('shouldExpectedBehaviorWhenCondition', …)` inside a `describe` named for the unit; Playwright specs and the contract test use plain sentences
 - The session-renewal core (`src/auth/renewal{Bridge,Protocol,Scheduler,SharedWorker}.ts`, `src/sw/{decisions,sessionRenewal,worker}.ts`) is held at 95% per file by Vitest; everything else reports to SonarCloud, whose gate applies to new code
 

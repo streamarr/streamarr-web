@@ -1,0 +1,12 @@
+.seeAll {
+  font-size: var(--font-size-caption);
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 7rem), 1fr));
+  gap: var(--spacing-16);
+  align-content: start;
+}

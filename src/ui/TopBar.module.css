@@ -1,5 +1,6 @@
 .topBar {
   position: relative;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: clamp(12px, 3vw, 24px);
@@ -7,24 +8,32 @@
 }
 
 .topBarLockup {
+  flex-shrink: 0;
   height: 30px;
   width: auto;
   display: block;
 }
 
 .topBarDivider {
+  flex-shrink: 0;
   width: 1px;
   height: 26px;
   background: var(--color-alpha-16);
 }
 
 .topBarNav {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
 .navPill {
+  flex-shrink: 0;
+  white-space: nowrap;
   padding: 7px 18px;
   border-radius: var(--radius-sm);
   background: var(--color-alpha-10);
@@ -43,6 +52,7 @@
 }
 
 .topBarTrail {
+  flex-shrink: 0;
   margin-left: auto;
   display: flex;
   align-items: center;

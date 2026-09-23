@@ -1,0 +1,27 @@
+.mediaImage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background:
+    repeating-linear-gradient(135deg, var(--color-alpha-07) 0 8px, var(--color-alpha-05) 8px 16px),
+    var(--surface-panel);
+}
+
+.placeholder,
+.image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.image {
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+
+.imageLoaded {
+  opacity: 1;
+}

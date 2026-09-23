@@ -36,7 +36,12 @@ test('the service worker takes control of the dev-served app', async ({ page }) 
 test('an expired session renews and replays into the signed-in shell', async ({ page }) => {
   await navigateUnderServiceWorkerControl(page)
 
-  await expect(page.getByRole('heading', { name: 'Welcome, Dev Admin' })).toBeVisible()
+  await expect(page.getByText('Nothing to watch yet.')).toBeVisible()
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Primary' })
+      .getByRole('link', { name: 'Movies', exact: true }),
+  ).toBeVisible()
   await expect(page.getByRole('alert')).toHaveCount(0)
 })
 
