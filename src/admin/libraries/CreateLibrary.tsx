@@ -1,11 +1,17 @@
 import { Alert, Button, TextInput } from '@mantine/core'
 import { useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
+import type { MediaType } from '../../graphql/generated/graphql'
 import { groupByInputPath, userErrorMessage } from '../../graphql/userErrors'
 import { Icon } from '../../ui/Icon'
 import { libraryIcon, libraryTypeLabel } from './libraryModel'
 import { useLibraryCommands } from './useLibraryAdmin'
 import styles from '../Settings.module.css'
+
+type LibraryType = Extract<MediaType, 'MOVIE' | 'SERIES'>
+const LIBRARY_TYPES: readonly LibraryType[] = ['MOVIE', 'SERIES']
+
+type DraftErrors = { name?: string; filepath?: string; form?: string }
 
 /**
  * Creates LOCAL movie or series libraries with TMDB metadata through the pinned server API.
@@ -15,8 +21,8 @@ import styles from '../Settings.module.css'
 export function CreateLibrary({ onCreated }: Readonly<{ onCreated: (id: string) => void }>) {
   const [name, setName] = useState('Movies')
   const [filepath, setFilepath] = useState('')
-  const [type, setType] = useState<'MOVIE' | 'SERIES'>('MOVIE')
-  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [type, setType] = useState<LibraryType>('MOVIE')
+  const [errors, setErrors] = useState<DraftErrors>({})
   const nameInput = useRef<HTMLInputElement>(null)
   const pathInput = useRef<HTMLInputElement>(null)
   const commands = useLibraryCommands()
@@ -32,7 +38,7 @@ export function CreateLibrary({ onCreated }: Readonly<{ onCreated: (id: string) 
     event.preventDefault()
     if (commands.pending) return
     commands.clearError()
-    const validation: Record<string, string> = {}
+    const validation: DraftErrors = {}
     if (!name.trim()) validation.name = 'Enter a library name.'
     if (!filepath.trim()) validation.filepath = 'Enter a folder on your server.'
     setErrors(validation)
@@ -48,7 +54,7 @@ export function CreateLibrary({ onCreated }: Readonly<{ onCreated: (id: string) 
     })
     if (!result) return
     if (result.userErrors.length) {
-      const next: Record<string, string> = {}
+      const next: DraftErrors = {}
       for (const [path, messages] of groupByInputPath(result.userErrors)) {
         const key = path === 'name' || path === 'filepath' ? path : 'form'
         next[key] = [next[key], ...messages.map(userErrorMessage)].filter(Boolean).join(' ')
@@ -78,7 +84,7 @@ export function CreateLibrary({ onCreated }: Readonly<{ onCreated: (id: string) 
           <fieldset className={styles.typeField} disabled={commands.pending}>
             <legend>Content type</legend>
             <div className={styles.typeOptions}>
-              {(['MOVIE', 'SERIES'] as const).map((value) => (
+              {LIBRARY_TYPES.map((value) => (
                 <label
                   key={value}
                   className={type === value ? styles.typeSelected : styles.typeOption}
