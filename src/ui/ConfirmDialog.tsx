@@ -69,9 +69,7 @@ export function ConfirmDialog({
     >
       <p className={styles.consequence}>{body}</p>
       {/* Mounted before the request starts, so the change of text is what gets announced. */}
-      <p role="status" className={styles.status}>
-        {pending ? 'Working…' : ''}
-      </p>
+      <output className={styles.status}>{pending ? 'Working…' : ''}</output>
       {error && (
         <p className={styles.error} role="alert">
           {error}
