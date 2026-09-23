@@ -14,7 +14,7 @@ import type {
 import { AlphabetRail, type SelectionInput } from '../media/AlphabetRail'
 import { formatRelativeTime } from '../media/formatting'
 import { FilterBar, type WatchStatusFilter } from './FilterBar'
-import { LibraryGrid, type JumpDirection, type SlidePhase } from './LibraryGrid'
+import { LibraryGrid, type JumpDirection, type LandingRepeat, type SlidePhase } from './LibraryGrid'
 import styles from './LibraryScreen.module.css'
 import { SortMenu } from './SortMenu'
 import { useLibraryItems } from './useLibraryItems'
@@ -69,8 +69,7 @@ export function LibraryScreen({
     setRestoration({ key: locationKey, y: scrollEntry?.scrollY })
   }
   const restoredScrollY = restoration.key === locationKey ? restoration.y : scrollEntry?.scrollY
-  const [repeatFocus, setRepeatFocus] = useState(false)
-  const [repeatLanding, setRepeatLanding] = useState(0)
+  const [repeat, setRepeat] = useState<LandingRepeat>({ request: 0, focus: false })
 
   // The letter at the top of the grid lives in a store rather than in state, so only the rail,
   // which subscribes to it, re-renders as the viewer scrolls.
@@ -128,8 +127,7 @@ export function LibraryScreen({
   function selectLetter(letter: string | null, input: SelectionInput) {
     if (letter && letter === search.letter && search.direction === 'ASC' && landing?.cursor) {
       beginJump(null)
-      setRepeatFocus(input === 'keyboard')
-      setRepeatLanding((request) => request + 1)
+      setRepeat((current) => ({ request: current.request + 1, focus: input === 'keyboard' }))
       return
     }
     const viewedLetter = visibleLetterStore.state ?? search.letter ?? null
@@ -203,8 +201,8 @@ export function LibraryScreen({
             landing={landing}
             locationKey={locationKey}
             restoredScrollY={restoredScrollY}
-            repeatLanding={repeatLanding}
-            focusLanding={jump?.focusLanding ?? repeatFocus}
+            repeat={repeat}
+            focusLanding={jump?.focusLanding ?? false}
             selectedLetter={search.letter ?? null}
             visibleLetterStore={visibleLetterStore}
             slide={slide}
