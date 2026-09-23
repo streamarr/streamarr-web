@@ -80,6 +80,15 @@ function serve(data: MovieDetailQuery, requestedIds: string[] = []) {
 }
 
 describe('MovieDetailScreen', () => {
+  it('shouldPlayTheFirstAvailableFileWhenTheFileListStartsWithNull', async () => {
+    serve(movieData({ files: [null, { id: 'file-1' }] }))
+    renderAppAt('/movie/m1')
+    expect(await screen.findByRole('link', { name: 'Play' })).toHaveAttribute(
+      'href',
+      '/play/file-1',
+    )
+  })
+
   it('shows an error state when the query fails', async () => {
     server.use(
       graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),

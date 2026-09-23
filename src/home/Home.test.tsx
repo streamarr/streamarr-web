@@ -123,6 +123,41 @@ function serve(data: HomeQuery) {
 }
 
 describe('Home', () => {
+  it('shouldPlayARecentMovieWhenItsFirstFileIsNull', async () => {
+    serve(
+      homeData({
+        libraries: [
+          library({
+            items: {
+              edges: [
+                { cursor: 'movie', node: recentMovie({ files: [null, { id: 'available' }] }) },
+              ],
+            },
+          }),
+        ],
+      }),
+    )
+    renderAppAt('/')
+    expect(await screen.findByRole('link', { name: 'Play' })).toHaveAttribute(
+      'href',
+      '/play/available',
+    )
+  })
+
+  it.each([
+    { make: continueWatchingMovie, title: 'Everlight', action: 'Resume', position: 10 },
+    { make: continueWatchingEpisode, title: 'Breakage', action: 'Resume S2 E5', position: 600 },
+  ])(
+    'shouldLinkTheBillboardAndShelfToAnAvailableFileFor$action',
+    async ({ make, title, action, position }) => {
+      serve(homeData({ continueWatching: [make({ files: [null, { id: 'available' }] })] }))
+      renderAppAt('/')
+      const href = `/play/available?position=${position}`
+      expect(await screen.findByRole('link', { name: action })).toHaveAttribute('href', href)
+      expect(screen.getByRole('link', { name: new RegExp(title) })).toHaveAttribute('href', href)
+    },
+  )
+
   it('omits empty recently-added sections when there is content elsewhere', async () => {
     serve(
       homeData({

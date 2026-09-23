@@ -34,11 +34,12 @@ export function nextPlayableEpisode(
         .toSorted((a, b) => a.episodeNumber - b.episodeNumber)
         .map((episode) => ({ season, episode })),
     )
-  if (ordered.length === 0) {
+  const available = ordered.filter(({ episode }) => episode.files.some((file) => file !== null))
+  if (available.length === 0) {
     return null
   }
 
-  const inProgress = ordered.find(
+  const inProgress = available.find(
     ({ episode }) =>
       episode.watchStatus === 'IN_PROGRESS' || (episode.watchProgress?.positionSeconds ?? 0) > 0,
   )
@@ -46,13 +47,13 @@ export function nextPlayableEpisode(
     return playable(inProgress, 'Resume')
   }
 
-  const unwatched = ordered.find(({ episode }) => episode.watchStatus !== 'WATCHED')
+  const unwatched = available.find(({ episode }) => episode.watchStatus !== 'WATCHED')
   if (unwatched) {
     const anyWatched = ordered.some(({ episode }) => episode.watchStatus === 'WATCHED')
     return playable(unwatched, anyWatched ? 'Continue' : 'Play')
   }
 
-  return playable(ordered[0], 'Play')
+  return playable(available[0], 'Play')
 }
 
 function playable(

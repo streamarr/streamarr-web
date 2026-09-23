@@ -4,10 +4,26 @@ import { describe, expect, it, vi } from 'vitest'
 import { SeasonSideRail } from './SeasonSideRail'
 
 function season(number: number, unwatched: number) {
-  return { id: `s${number}`, label: `Season ${number}`, unwatchedCount: unwatched }
+  return {
+    id: `s${number}`,
+    label: `Season ${number}`,
+    unwatchedCount: unwatched,
+    watched: unwatched === 0,
+  }
 }
 
 describe('SeasonSideRail', () => {
+  it('shouldUseTheExplicitWatchedStateForAnEmptySeason', () => {
+    render(
+      <SeasonSideRail
+        seasons={[{ ...season(1, 0), watched: false }]}
+        selectedId="s1"
+        onSelect={() => {}}
+      />,
+    )
+    expect(screen.queryByLabelText('Watched')).not.toBeInTheDocument()
+  })
+
   it('lists each season with its unwatched count, or a check once fully watched', () => {
     render(
       <SeasonSideRail seasons={[season(1, 0), season(2, 3)]} selectedId="s2" onSelect={() => {}} />,

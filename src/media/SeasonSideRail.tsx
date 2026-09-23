@@ -9,6 +9,7 @@ export interface SeasonRailEntry {
   id: string
   label: string
   unwatchedCount: number
+  watched: boolean
 }
 
 export function SeasonSideRail({
@@ -39,7 +40,7 @@ export function SeasonSideRail({
               onClick={() => onSelect(season.id)}
             >
               <span>{season.label}</span>
-              {season.unwatchedCount === 0 ? (
+              {season.watched ? (
                 <span className={styles.check} aria-label="Watched">
                   <CheckGlyph size={11} />
                 </span>

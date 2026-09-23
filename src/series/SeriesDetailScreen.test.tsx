@@ -132,6 +132,28 @@ async function renderSeries(data: SeriesDetailQuery) {
 }
 
 describe('SeriesDetailScreen', () => {
+  it('shouldContinueWithAnAvailableEpisodeWhenEarlierEpisodesHaveNoFiles', async () => {
+    serve(
+      seriesData({
+        seasons: [
+          season(1, [], {
+            episodes: [
+              { ...episode(1, 'WATCHED'), files: [] },
+              { ...episode(2, 'IN_PROGRESS', 30), files: [null] },
+              episode(3),
+            ],
+          }),
+        ],
+      }),
+    )
+    renderAppAt('/series/series-1')
+
+    expect(await screen.findByRole('link', { name: 'Continue S1 E3' })).toHaveAttribute(
+      'href',
+      '/play/file-e3',
+    )
+  })
+
   it('shows an error state when the query fails', async () => {
     server.use(
       graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
