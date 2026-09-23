@@ -19,7 +19,7 @@ export function ConfirmDialog({
   pending = false,
   disabled = false,
   error,
-  icon = 'watched-action',
+  icon,
 }: Readonly<{
   opened: boolean
   title: string
@@ -35,8 +35,8 @@ export function ConfirmDialog({
   disabled?: boolean
   /** Recoverable operation error, announced without closing the dialog. */
   error?: string | null
-  /** Null omits the action icon. Defaults to the existing watched-action glyph. */
-  icon?: IconName | null
+  /** The glyph beside the confirm label, or null for none. */
+  icon: IconName | null
 }>) {
   const content = (
     <>

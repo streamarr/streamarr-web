@@ -58,6 +58,7 @@ export function useBulkWatchedAction(target: BulkWatchedTarget) {
         title={`Mark ${subject.title} as ${verb}?`}
         body={`${subject.consequence} will be marked ${verb}.`}
         confirmLabel={confirming === 'unwatched' ? 'Mark unwatched' : 'Mark watched'}
+        icon="watched-action"
         onConfirm={confirmBulk}
         onClose={() => setConfirming(null)}
       />
