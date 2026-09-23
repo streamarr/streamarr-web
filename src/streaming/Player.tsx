@@ -1,3 +1,4 @@
+import type { ObservableQuery } from '@apollo/client'
 import { useApolloClient, useMutation } from '@apollo/client/react'
 import { Alert, AspectRatio, Stack } from '@mantine/core'
 import Hls from 'hls.js'
@@ -71,11 +72,7 @@ export function Player({
             update: (cache, { data }) => {
               if (data?.reportStreamSessionTimeline) invalidateWatchedState(cache)
             },
-            onQueryUpdated: (query) => {
-              // UI refreshes must not hold the report queue or session disposal open.
-              void query.refetch().catch(() => undefined)
-              return false
-            },
+            onQueryUpdated: refetchWatchedQuery,
           })
         })
         .catch(ignoreTimelineReportFailure)
@@ -156,6 +153,12 @@ export function Player({
 }
 
 type TimelineHandler = (video: HTMLVideoElement) => void
+
+function refetchWatchedQuery(query: ObservableQuery) {
+  // UI refreshes must not hold the report queue or session disposal open.
+  void query.refetch().catch(() => undefined)
+  return false
+}
 
 function attachTimeline(
   video: HTMLVideoElement,

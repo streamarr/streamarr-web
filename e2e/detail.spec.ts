@@ -79,7 +79,7 @@ test('the detail page is ambient edge to edge with the signed-in chrome on it', 
   const hero = await page.getByTestId('backdrop-hero').boundingBox()
   expect(nav!.y).toBeLessThan(hero!.y)
   expect(hero).toEqual(expect.objectContaining({ x: 0, width: 1440 }))
-  expect(await page.locator('[class*="homeShell"]').count()).toBe(0)
+  await expect(page.locator('[class*="homeShell"]')).toHaveCount(0)
 })
 
 test('the signed-in chrome takes the artwork text color on a bright theme', async ({

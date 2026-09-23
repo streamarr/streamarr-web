@@ -381,11 +381,14 @@ type SlideCustom = { direction: JumpDirection | undefined; reduceMotion: boolean
 const JUMP_TRAVEL = 120
 const slideVariants: Variants = {
   idle: { opacity: 1, y: 0, transition: { duration: 0.15 } },
-  exit: ({ direction, reduceMotion }: SlideCustom) => ({
-    opacity: 0,
-    y: reduceMotion ? 0 : direction === 'forward' ? -JUMP_TRAVEL : JUMP_TRAVEL,
-    transition: { duration: 0.15, ease: 'easeIn' },
-  }),
+  exit: ({ direction, reduceMotion }: SlideCustom) => {
+    const distance = direction === 'forward' ? -JUMP_TRAVEL : JUMP_TRAVEL
+    return {
+      opacity: 0,
+      y: reduceMotion ? 0 : distance,
+      transition: { duration: 0.15, ease: 'easeIn' },
+    }
+  },
   enter: ({ direction, reduceMotion }: SlideCustom) => ({
     opacity: [0, 1],
     y: reduceMotion ? 0 : [direction === 'forward' ? JUMP_TRAVEL : -JUMP_TRAVEL, 0],
