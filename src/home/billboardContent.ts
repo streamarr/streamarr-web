@@ -53,7 +53,7 @@ function movieBillboard(movie: ContinueWatchingMovie): BillboardContent {
       { label: 'Added', value: formatRelativeTime(movie.createdOn) },
     ],
     ctaLabel: position ? 'Resume' : 'Play',
-    ctaFileId: movie.files[0]?.id ?? null,
+    ctaFileId: movie.files.find((file) => file !== null)?.id ?? null,
     ctaPositionSeconds: position,
   }
 }
@@ -75,7 +75,7 @@ function episodeBillboard(episode: ContinueWatchingEpisode): BillboardContent {
     ],
     // Resume = mid-watch stream, Continue = next unwatched episode (principle 14).
     ctaLabel: `${position ? 'Resume' : 'Continue'} S${episode.season.seasonNumber} E${episode.episodeNumber}`,
-    ctaFileId: episode.files[0]?.id ?? null,
+    ctaFileId: episode.files.find((file) => file !== null)?.id ?? null,
     ctaPositionSeconds: position,
   }
 }
@@ -94,7 +94,7 @@ function recentMovieBillboard(movie: RecentlyAddedMovie): BillboardContent {
       { label: 'Added', value: formatRelativeTime(movie.createdOn) },
     ],
     ctaLabel: 'Play',
-    ctaFileId: movie.files[0]?.id ?? null,
+    ctaFileId: movie.files.find((file) => file !== null)?.id ?? null,
     ctaPositionSeconds: null,
   }
 }

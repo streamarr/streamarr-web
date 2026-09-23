@@ -20,6 +20,20 @@ function episode(
 }
 
 describe('nextPlayableEpisode', () => {
+  it('shouldSkipUnavailableEpisodesWhileKeepingTheWatchedHistory', () => {
+    const result = nextPlayableEpisode([
+      {
+        seasonNumber: 1,
+        episodes: [
+          episode(1, { watchStatus: 'WATCHED', fileId: null }),
+          episode(2, { watchStatus: 'IN_PROGRESS', positionSeconds: 30, fileId: null }),
+          episode(3),
+        ],
+      },
+    ])
+    expect(result).toMatchObject({ id: 'e3', fileId: 'file-e3', verb: 'Continue' })
+  })
+
   it('resumes an in-progress episode ahead of any earlier unwatched one', () => {
     const playable = nextPlayableEpisode([
       {
@@ -72,10 +86,10 @@ describe('nextPlayableEpisode', () => {
     expect(nextPlayableEpisode([])).toBeNull()
   })
 
-  it('carries a null file id when the episode has no media file', () => {
+  it('shouldReturnNullWhenNoEpisodeHasAMediaFile', () => {
     const playable = nextPlayableEpisode([
       { seasonNumber: 1, episodes: [episode(1, { fileId: null })] },
     ])
-    expect(playable?.fileId).toBeNull()
+    expect(playable).toBeNull()
   })
 })

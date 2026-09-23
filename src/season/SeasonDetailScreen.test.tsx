@@ -137,6 +137,23 @@ async function renderSeason(data: SeasonDetailQuery = seasonData()) {
 }
 
 describe('SeasonDetailScreen', () => {
+  it('shouldNotLabelAnEmptyUnwatchedSeasonAsWatched', async () => {
+    const data = seasonData()
+    data.season!.series.seasons.push(siblingSeason(4, 'UNWATCHED', []))
+    await renderSeason(data)
+    const emptySeason = screen.getByRole('button', { name: /Season 4/ })
+    expect(within(emptySeason).queryByLabelText('Watched')).not.toBeInTheDocument()
+  })
+
+  it('shouldPlayAnEpisodeWhenItsFirstFileIsNull', async () => {
+    await renderSeason(
+      seasonData({
+        episodes: [{ ...episode(4, 'Cold Open'), files: [null, { id: 'file-e4' }] }],
+      }),
+    )
+    expect(screen.getByRole('link', { name: /Cold Open/ })).toHaveAttribute('href', '/play/file-e4')
+  })
+
   it('shows an error state when the query fails', async () => {
     server.use(
       graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),

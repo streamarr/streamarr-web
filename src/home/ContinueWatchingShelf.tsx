@@ -66,7 +66,7 @@ function summarize(item: ContinueWatchingItem): {
       image: pickImageVariant(backdrop, 'MEDIUM'),
       blurHash: backdrop?.blurHash ?? null,
       progressPercent: item.watchProgress?.percentComplete ?? 0,
-      ctaFileId: item.files[0]?.id ?? null,
+      ctaFileId: item.files.find((file) => file !== null)?.id ?? null,
       ctaPositionSeconds,
     }
   }
@@ -78,7 +78,7 @@ function summarize(item: ContinueWatchingItem): {
     image: pickImageVariant(still, 'MEDIUM'),
     blurHash: still?.blurHash ?? null,
     progressPercent: item.watchProgress?.percentComplete ?? 0,
-    ctaFileId: item.files[0]?.id ?? null,
+    ctaFileId: item.files.find((file) => file !== null)?.id ?? null,
     ctaPositionSeconds,
   }
 }

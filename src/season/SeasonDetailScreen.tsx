@@ -70,6 +70,7 @@ export function SeasonDetailScreen({ seasonId }: Readonly<{ seasonId: string }>)
     .map((sibling) => ({
       id: sibling.id,
       label: sibling.title ?? `Season ${sibling.seasonNumber}`,
+      watched: sibling.watchStatus === 'WATCHED',
       unwatchedCount: sibling.episodes.filter(
         (episode) => episode && episode.watchStatus !== 'WATCHED',
       ).length,
@@ -148,7 +149,7 @@ export function SeasonDetailScreen({ seasonId }: Readonly<{ seasonId: string }>)
           <div className={styles.grid}>
             {episodes.map((episode) => {
               const still = episode.stillImages[0] ?? null
-              const fileId = episode.files[0]?.id ?? null
+              const fileId = episode.files.find((file) => file !== null)?.id ?? null
               const card = (
                 <StillCard
                   layout="grid"

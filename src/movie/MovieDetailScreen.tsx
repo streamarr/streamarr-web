@@ -42,7 +42,7 @@ export function MovieDetailScreen({ movieId }: Readonly<{ movieId: string }>) {
 
   const artwork = movie.backdropImages[0] ?? movie.posterImages[0] ?? null
   const position = movie.watchProgress?.positionSeconds || null
-  const fileId = movie.files[0]?.id ?? null
+  const fileId = movie.files.find((file) => file !== null)?.id ?? null
   const isWatched = movie.watchStatus === 'WATCHED'
   const cast = movie.cast.filter(
     (person): person is NonNullable<Movie['cast'][number]> => person !== null,
