@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import type { LibraryPageQuery, LibraryPageQueryVariables } from '../src/graphql/generated/graphql'
 import { STUB_URL } from './ports'
 
@@ -80,54 +80,65 @@ const movieDetail = (id: string) => ({
   },
 })
 
-test('the grid keeps its place when returning from a title', async ({ page, request }) => {
-  await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
-  await request.post(`${STUB_URL}/api/auth/refresh`)
-  await page.route('**/graphql', async (route) => {
-    const operation = route.request().postDataJSON() as {
-      operationName: string
-      variables: LibraryPageQueryVariables & { id?: string }
-    }
-    if (operation.operationName === 'LibraryPage') {
-      return route.fulfill({ json: { data: libraryPage(operation.variables) } })
-    }
-    if (operation.operationName === 'MovieDetail') {
-      return route.fulfill({ json: { data: movieDetail(operation.variables.id!) } })
-    }
-    return route.continue()
-  })
-  await page.goto('/library/movies?by=TITLE&direction=ASC')
-  await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
-  const grid = page.locator('[class*="_grid_"]')
-  // Scroll three rows down, to the row's measured top, so a whole row sits in view.
-  const target = await grid.evaluate((element) => {
-    const gridTop = element.getBoundingClientRect().top
-    const rowTops = [...element.children]
-      .map((child) => child.getBoundingClientRect().top)
-      .filter((top, index, all) => all.indexOf(top) === index)
-    element.scrollTop = Math.round(rowTops[3] - gridTop)
-    return element.scrollTop
-  })
-  expect(target).toBeGreaterThan(0)
-  const href = await grid.evaluate((element) => {
-    const bounds = element.getBoundingClientRect()
-    const item = [...element.children].find((candidate) => {
-      const box = candidate.getBoundingClientRect()
-      return box.top >= bounds.top - 1 && box.bottom <= bounds.bottom
+for (const viewport of [
+  { width: 1440, height: 900 },
+  { width: 375, height: 667 },
+  { width: 812, height: 375 },
+]) {
+  test(`the grid keeps its place when returning from a title at ${viewport.width}x${viewport.height}`, async ({
+    page,
+    request,
+  }) => {
+    await page.setViewportSize(viewport)
+    await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
+    await request.post(`${STUB_URL}/api/auth/refresh`)
+    await page.route('**/graphql', async (route) => {
+      const operation = route.request().postDataJSON() as {
+        operationName: string
+        variables: LibraryPageQueryVariables & { id?: string }
+      }
+      if (operation.operationName === 'LibraryPage') {
+        return route.fulfill({ json: { data: libraryPage(operation.variables) } })
+      }
+      if (operation.operationName === 'MovieDetail') {
+        return route.fulfill({ json: { data: movieDetail(operation.variables.id!) } })
+      }
+      return route.continue()
     })
-    return item?.querySelector('a')?.getAttribute('href') ?? null
+    await page.goto('/library/movies?by=TITLE&direction=ASC')
+    await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
+    const grid = page.locator('[class*="_grid_"]')
+    // Scroll three rows down, to the row's measured top, so a whole row sits in view.
+    const target = await grid.evaluate((element) => {
+      const gridTop = element.getBoundingClientRect().top
+      const rowTops = [...element.querySelectorAll('[data-index]')].map(
+        (row) => row.getBoundingClientRect().top,
+      )
+      element.scrollTop = Math.round(rowTops[3] - gridTop)
+      return element.scrollTop
+    })
+    expect(target).toBeGreaterThan(0)
+    const href = await grid.evaluate((element) => {
+      const bounds = element.getBoundingClientRect()
+      const item = [...element.querySelectorAll('a')].find((candidate) => {
+        const box = candidate.getBoundingClientRect()
+        return box.top >= bounds.top - 1 && box.bottom <= bounds.bottom
+      })
+      return item?.getAttribute('href') ?? null
+    })
+    expect(href).not.toBeNull()
+    // Dispatched rather than clicked: a pointer click would first scroll the card into view.
+    await page.locator(`a[href="${href}"]`).dispatchEvent('click')
+    const opened = movies[Number(href!.split('/').at(-1))].title
+    await expect(page.getByRole('heading', { level: 1, name: opened })).toBeVisible()
+
+    await page.goBack()
+
+    // Only the rows near the restored position exist, so wait for any card rather than the first.
+    await expect(grid.locator('a').first()).toBeAttached()
+    await expect.poll(() => grid.evaluate((element) => element.scrollTop)).toBe(target)
   })
-  expect(href).not.toBeNull()
-  // Dispatched rather than clicked: a pointer click would first scroll the card into view.
-  await page.locator(`a[href="${href}"]`).dispatchEvent('click')
-  const opened = movies[Number(href!.split('/').at(-1))].title
-  await expect(page.getByRole('heading', { level: 1, name: opened })).toBeVisible()
-
-  await page.goBack()
-
-  await expect(page.getByText('A Title 00', { exact: true })).toBeAttached()
-  await expect.poll(() => grid.evaluate((element) => element.scrollTop)).toBe(target)
-})
+}
 
 for (const viewport of [
   { width: 1440, height: 900 },
@@ -170,10 +181,23 @@ for (const viewport of [
     const gridStillMounted = () => gridNode.evaluate((element) => element.isConnected)
     const cardTopOffset = (title: string) =>
       page.getByText(title, { exact: true }).evaluate((element) => {
-        const card = element.closest('a')!.parentElement!
-        const gridElement = card.parentElement!
+        const card = element.closest('a')!
+        // A virtual row can be between removal and re-render for an instant; poll again then.
+        const gridElement = card.closest('[class*="_grid_"]')
+        if (!gridElement) return Number.POSITIVE_INFINITY
         return Math.abs(card.getBoundingClientRect().top - gridElement.getBoundingClientRect().top)
       })
+    // Only the rows near the viewport exist, so a page that lands above the letter shows through
+    // the row before it, and the old rows are whichever were rendered at the press.
+    const backfillResponse = () =>
+      page.waitForResponse((response) => {
+        const body = response.request().postDataJSON() as {
+          operationName?: string
+          variables?: LibraryPageQueryVariables
+        } | null
+        return body?.operationName === 'LibraryPage' && body.variables?.before != null
+      })
+    const oldTitle = (await grid.locator('[class*="_posterTitle_"]').first().textContent())!
     // Counts animation frames painted without a grid from here on, and watches the page for
     // overflow and the rail for movement: a jump must never change the layout around the grid.
     await page.evaluate(() => {
@@ -196,20 +220,22 @@ for (const viewport of [
       requestAnimationFrame(sample)
     })
 
+    const firstBackfill = backfillResponse()
     await page.getByRole('button', { name: 'N', exact: true }).click()
 
     await expect(page.getByRole('button', { name: 'N', exact: true })).toHaveAttribute(
       'aria-pressed',
       'true',
     )
-    await expect(page.getByText('A Title 00', { exact: true })).toBeAttached()
+    await expect(page.getByText(oldTitle, { exact: true })).toBeAttached()
     expect(await gridStillMounted()).toBe(true)
     releaseSeek()
     await expect(page.getByText('N Title 00', { exact: true })).toBeAttached()
     expect(await gridStillMounted()).toBe(true)
     await expect.poll(() => cardTopOffset('N Title 00')).toBeLessThanOrEqual(1)
     releaseBackfill()
-    await expect(page.getByText('J Title 00', { exact: true })).toBeAttached()
+    await firstBackfill
+    await expect(page.getByText('M Title 11', { exact: true })).toBeAttached()
     expect(await gridStillMounted()).toBe(true)
     await expect.poll(() => cardTopOffset('N Title 00')).toBeLessThanOrEqual(1)
     const frames = await page.evaluate(() => {
@@ -235,12 +261,16 @@ for (const viewport of [
     expect(frames.pageOverflow).toBe(frames.initialOverflow)
     expect(frames.railLefts).toHaveLength(1)
 
+    const secondBackfill = backfillResponse()
     await page.getByRole('button', { name: 'T', exact: true }).click()
-    await expect(page.getByText('P Title 00', { exact: true })).toBeAttached()
+    await secondBackfill
+    await expect(page.getByText('S Title 11', { exact: true })).toBeAttached()
     await expect.poll(() => cardTopOffset('T Title 00')).toBeLessThanOrEqual(1)
     // A revisit is a cache hit and must land the same way.
+    const revisitBackfill = backfillResponse()
     await page.getByRole('button', { name: 'N', exact: true }).click()
-    await expect(page.getByText('F Title 00', { exact: true })).toBeAttached()
+    await revisitBackfill
+    await expect(page.getByText('M Title 11', { exact: true })).toBeAttached()
     await expect.poll(() => cardTopOffset('N Title 00')).toBeLessThanOrEqual(1)
     expect(await gridStillMounted()).toBe(true)
   })
@@ -405,15 +435,23 @@ test('the alphabet highlight follows vertical scrolling on desktop and a phone',
   })
   await page.goto('/library/movies?by=TITLE&direction=ASC')
   await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
+  const grid = page.locator('[class*="_grid_"]')
 
   for (const { viewport, letter } of [
     { viewport: { width: 1440, height: 900 }, letter: 'B' },
     { viewport: { width: 375, height: 667 }, letter: 'C' },
   ]) {
     await page.setViewportSize(viewport)
-    await page.getByText(`${letter} Title 00`, { exact: true }).evaluate((element) => {
-      element.scrollIntoView({ block: 'start' })
-    })
+    await expect.poll(rowsFitTheWidth(page)).toBe(true)
+    // A row that far down is not in the DOM yet, so scroll to it by the grid's row geometry.
+    await grid.evaluate(
+      (element, index) => {
+        const rows = [...element.querySelectorAll('[data-index]')]
+        const pitch = rows[1].getBoundingClientRect().top - rows[0].getBoundingClientRect().top
+        element.scrollTop = Math.floor(index / rows[0].children.length) * pitch
+      },
+      (letter.charCodeAt(0) - 65) * 12,
+    )
     await expect(page.getByRole('button', { name: letter, exact: true })).toHaveAttribute(
       'aria-pressed',
       'true',
@@ -619,18 +657,12 @@ test('selecting the URL letter again returns to its first title after scrolling'
     return route.fulfill({ json: { data: libraryPage(op.variables) } })
   })
   await page.goto('/library/movies?by=TITLE&direction=ASC&letter=N')
-  const grid = page.locator('[data-scroll-restoration-id="library-grid"]')
   const landing = page.getByText('N Title 00', { exact: true })
   const nButton = page.getByRole('button', { name: 'N', exact: true })
   const pButton = page.getByRole('button', { name: 'P', exact: true })
   await expect(landing).toBeInViewport()
   await expect(nButton).toHaveAttribute('aria-pressed', 'true')
-  const pOffset = await page
-    .getByText('P Title 00', { exact: true })
-    .evaluate((el) => el.closest('a')!.parentElement!.offsetTop)
-  await grid.evaluate((el, offset) => {
-    el.scrollTop = offset
-  }, pOffset)
+  await scrollToMovie(page, 180)
   await expect(pButton).toHaveAttribute('aria-pressed', 'true')
   await expect(nButton).toHaveAttribute('aria-pressed', 'false')
   expect(new URL(page.url()).searchParams.get('letter')).toBe('N')
@@ -639,8 +671,10 @@ test('selecting the URL letter again returns to its first title after scrolling'
   await expect
     .poll(() =>
       landing.evaluate((el) => {
-        const row = el.closest('a')!.parentElement!
-        return Math.abs(row.offsetTop - row.parentElement!.scrollTop)
+        const card = el.closest('a')!
+        const gridElement = card.closest('[data-scroll-restoration-id="library-grid"]')
+        if (!gridElement) return Number.POSITIVE_INFINITY
+        return Math.abs(card.getBoundingClientRect().top - gridElement.getBoundingClientRect().top)
       }),
     )
     .toBeLessThanOrEqual(1)
@@ -686,6 +720,8 @@ for (const { seek, failRecovery } of [
     let watched = false
     let allowRecovery = !failRecovery
     let failedPages = 0
+    let firstLoaded = 312
+    let lastLoaded = -1
     await page.route('**/graphql', async (route) => {
       const operation = route.request().postDataJSON() as {
         operationName: string
@@ -696,7 +732,16 @@ for (const { seek, failRecovery } of [
           failedPages += 1
           return route.fulfill({ json: { errors: [{ message: 'Page temporarily unavailable' }] } })
         }
-        return route.fulfill({ json: { data: libraryPage(operation.variables) } })
+        const data = libraryPage(operation.variables)
+        const nodes = data.library.items.edges ?? []
+        if (!operation.variables.before && !operation.variables.after) {
+          firstLoaded = Number(nodes[0]?.cursor)
+          lastLoaded = Number(nodes.at(-1)?.cursor)
+        } else {
+          firstLoaded = Math.min(firstLoaded, Number(nodes[0]?.cursor))
+          lastLoaded = Math.max(lastLoaded, Number(nodes.at(-1)?.cursor))
+        }
+        return route.fulfill({ json: { data } })
       }
       if (operation.operationName === 'MovieDetail') {
         const data = movieDetail(operation.variables.id)
@@ -714,20 +759,22 @@ for (const { seek, failRecovery } of [
     const grid = page.locator('[data-scroll-restoration-id="library-grid"]')
     if (seek) {
       await page.getByRole('button', { name: 'N', exact: true }).click()
-      await expect(page.getByText('J Title 00', { exact: true })).toBeAttached()
+      await expect.poll(() => firstLoaded).toBe(108)
+      await expect(page.getByText('Showing 1–96 of 312', { exact: true })).toBeVisible()
+      await expect.poll(() => grid.evaluate((el) => getComputedStyle(el).opacity)).toBe('1')
       await grid.evaluate((element) => {
         element.scrollTop = 0
       })
-      await expect(page.getByText('F Title 00', { exact: true })).toBeAttached()
+      await expect.poll(() => firstLoaded).toBe(60)
     } else {
       await grid.evaluate((element) => {
         element.scrollTop = element.scrollHeight
       })
-      await expect(page.getByText('E Title 00', { exact: true })).toBeAttached()
+      await expect.poll(() => lastLoaded).toBe(95)
     }
     const titleName = seek ? 'P Title 00' : 'G Title 00'
     const title = page.getByRole('link', { name: `${titleName} 2024 · 1h 30m`, exact: true })
-    await title.evaluate((element) => element.scrollIntoView({ block: 'start' }))
+    await scrollToMovie(page, seek ? 180 : 72)
     await expect(title).toBeInViewport()
     const savedPosition = await grid.evaluate((element) => element.scrollTop)
     await title.dispatchEvent('click')
@@ -746,4 +793,185 @@ for (const { seek, failRecovery } of [
     await expect(page.getByText(titleName, { exact: true })).toBeInViewport()
     await expect.poll(() => grid.evaluate((element) => element.scrollTop)).toBe(savedPosition)
   })
+}
+
+test('the grid keeps only the rows near the viewport in the DOM across ten letter jumps', async ({
+  page,
+  request,
+}) => {
+  await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
+  await request.post(`${STUB_URL}/api/auth/refresh`)
+  await page.route('**/graphql', async (route) => {
+    const operation = route.request().postDataJSON() as {
+      operationName: string
+      variables: LibraryPageQueryVariables
+    }
+    if (operation.operationName !== 'LibraryPage') return route.continue()
+    await route.fulfill({ json: { data: libraryPage(operation.variables) } })
+  })
+  await page.goto('/library/movies?by=TITLE&direction=ASC')
+  await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
+  const grid = page.locator('[class*="_grid_"]')
+  // The rows that fit the grid, a partial row at each edge, and two rows of overscan each way.
+  const { columns, bound } = await grid.evaluate((element) => {
+    const tops = [...element.querySelectorAll('a')].map((card) => card.getBoundingClientRect().top)
+    const distinct = [...new Set(tops)].sort((a, b) => a - b)
+    const columnCount = tops.filter((top) => top === distinct[0]).length
+    const rowsThatFit = Math.ceil(element.clientHeight / (distinct[1] - distinct[0])) + 2
+    return { columns: columnCount, bound: (rowsThatFit + 4) * columnCount }
+  })
+  const backfill = () =>
+    page.waitForResponse((response) => {
+      const body = response.request().postDataJSON() as {
+        operationName?: string
+        variables?: LibraryPageQueryVariables
+      } | null
+      return body?.operationName === 'LibraryPage' && body.variables?.before != null
+    })
+
+  const counts: number[] = []
+  for (const letter of ['N', 'T', 'C', 'X', 'G', 'Q', 'B', 'V', 'K', 'E']) {
+    const backfilled = backfill()
+    await page.getByRole('button', { name: letter, exact: true }).click()
+    await expect(page.getByText(`${letter} Title 00`, { exact: true })).toBeInViewport()
+    await backfilled
+    await expect(page.getByText(`${letter} Title 00`, { exact: true })).toBeInViewport()
+    counts.push(await grid.locator('a').count())
+  }
+  expect(Math.max(...counts)).toBeLessThanOrEqual(bound)
+  expect(Math.max(...counts) - Math.min(...counts)).toBeLessThanOrEqual(2 * columns)
+})
+
+test('a narrower window re-lays the rows before the frame that resized them paints', async ({
+  page,
+  request,
+}) => {
+  await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
+  await request.post(`${STUB_URL}/api/auth/refresh`)
+  await page.route('**/graphql', async (route) => {
+    const operation = route.request().postDataJSON() as {
+      operationName: string
+      variables: LibraryPageQueryVariables
+    }
+    if (operation.operationName !== 'LibraryPage') return route.continue()
+    await route.fulfill({ json: { data: libraryPage(operation.variables) } })
+  })
+  await page.goto('/library/movies?by=TITLE&direction=ASC')
+  await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
+  // Resize observers run after layout and before paint, in the order they were created: one
+  // created now runs after the grid's own, and sees the rows as the frame will paint them.
+  await page.evaluate(() => {
+    const grid = document.querySelector('[class*="_grid_"]')!
+    const seen = { deliveries: 0, overfullRows: 0, overlappingRows: 0 }
+    Object.assign(window, { rowsAtResize: seen })
+    new ResizeObserver(() => {
+      seen.deliveries += 1
+      const rows = [...grid.querySelectorAll<HTMLElement>('[data-index]')]
+      for (const [position, row] of rows.entries()) {
+        const tracks = getComputedStyle(row).gridTemplateColumns.split(' ').length
+        if (row.children.length > tracks) seen.overfullRows += 1
+        const previous = rows[position - 1]
+        if (
+          previous &&
+          row.getBoundingClientRect().top < previous.getBoundingClientRect().bottom - 1
+        ) {
+          seen.overlappingRows += 1
+        }
+      }
+    }).observe(grid)
+  })
+  const seen = () =>
+    page.evaluate(
+      () =>
+        (window as unknown as { rowsAtResize: { deliveries: number; overfullRows: number } })
+          .rowsAtResize,
+    )
+  await expect.poll(async () => (await seen()).deliveries).toBeGreaterThan(0)
+  const deliveriesBefore = (await seen()).deliveries
+  // The third card moves to a row of its own at two columns; focus must move with it.
+  await page.getByRole('link', { name: 'A Title 02' }).focus()
+
+  await page.setViewportSize({ width: 375, height: 667 })
+
+  await expect.poll(async () => (await seen()).deliveries).toBeGreaterThan(deliveriesBefore)
+  await expect.poll(rowsFitTheWidth(page)).toBe(true)
+  expect(await seen()).toMatchObject({ overfullRows: 0, overlappingRows: 0 })
+  await expect(page.getByRole('link', { name: 'A Title 02' })).toBeFocused()
+  // Re-focusing scrolls the card into view only if needed, by the rows' final positions.
+  await expect(page.getByRole('link', { name: 'A Title 02' })).toBeInViewport({ ratio: 1 })
+})
+
+// Rows are re-laid for a new width once the grid has measured it.
+function rowsFitTheWidth(page: Page) {
+  return () =>
+    page.locator('[class*="_grid_"]').evaluate((element) => {
+      const row = element.querySelector('[data-index]')!
+      return row.children.length === getComputedStyle(row).gridTemplateColumns.split(' ').length
+    })
+}
+
+test('every row is the same height, however long the titles in it run', async ({
+  page,
+  request,
+}) => {
+  await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
+  await request.post(`${STUB_URL}/api/auth/refresh`)
+  const longTitle = (title: string) =>
+    `${title} and a subtitle long enough to wrap onto a second and a third line in any column`
+  await page.route('**/graphql', async (route) => {
+    const operation = route.request().postDataJSON() as {
+      operationName: string
+      variables: LibraryPageQueryVariables
+    }
+    if (operation.operationName !== 'LibraryPage') return route.continue()
+    const data = libraryPage(operation.variables)
+    // One title in the first row runs long; the rows below it must not move.
+    const [first, ...rest] = data.library.items.edges ?? []
+    if (first?.node) {
+      const node = { ...first.node, title: longTitle(first.node.title ?? '') }
+      data.library.items.edges = [{ ...first, node }, ...rest]
+    }
+    await route.fulfill({ json: { data } })
+  })
+  await page.setViewportSize({ width: 375, height: 667 })
+  await page.goto('/library/movies?by=TITLE&direction=ASC')
+  await expect(page.getByText(longTitle('A Title 00'), { exact: true })).toBeVisible()
+  const grid = page.locator('[class*="_grid_"]')
+  const rows = await grid.evaluate((element) =>
+    [...element.querySelectorAll<HTMLElement>('[data-index]')].map((row) => {
+      const box = row.getBoundingClientRect()
+      const titles = [...row.querySelectorAll<HTMLElement>('[class*="_posterTitle_"]')]
+      return {
+        top: Math.round(box.top),
+        height: Math.round(box.height),
+        titleHeights: titles.map((title) => Math.round(title.getBoundingClientRect().height)),
+      }
+    }),
+  )
+  expect(rows.length).toBeGreaterThan(2)
+  const [first, second] = rows
+  const oneLine = first.titleHeights[0]
+  expect(rows.map((row) => row.titleHeights)).toEqual(
+    rows.map((row) => row.titleHeights.map(() => oneLine)),
+  )
+  expect(rows.map((row) => row.height)).toEqual(rows.map(() => first.height))
+  // Rows are placed by the measured pitch, so a taller first row would overlap the second.
+  const pitch = second.top - first.top
+  expect(pitch).toBeGreaterThanOrEqual(first.height)
+  expect(rows.map((row) => row.top - first.top)).toEqual(rows.map((_, index) => index * pitch))
+})
+
+// Scroll from the rendered row's known movie to a loaded movie that may not be mounted yet.
+async function scrollToMovie(page: Page, movieIndex: number) {
+  await page.locator('[data-scroll-restoration-id="library-grid"]').evaluate((grid, index) => {
+    const rows = [...grid.querySelectorAll<HTMLElement>('[data-index]')]
+    const first = rows[0]
+    const firstLink = first.querySelector('a')!
+    const firstId = Number(new URL(firstLink.href).pathname.split('/').at(-1))
+    const columns = first.children.length
+    const pitch = rows[1].getBoundingClientRect().top - first.getBoundingClientRect().top
+    const rowTop =
+      first.getBoundingClientRect().top - grid.getBoundingClientRect().top + grid.scrollTop
+    grid.scrollTop = rowTop + Math.floor((index - firstId) / columns) * pitch
+  }, movieIndex)
 }

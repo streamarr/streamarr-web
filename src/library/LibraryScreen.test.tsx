@@ -1,11 +1,16 @@
 import { ObservableQuery } from '@apollo/client'
-import { act, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { graphql, HttpResponse, type GraphQLQuery } from 'msw'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import type { LibraryPageQuery, LibraryPageQueryVariables } from '../graphql/generated/graphql'
-import { intersectionObserverInstances } from '../../vitest.setup'
+import {
+  intersectionObserverInstances,
+  JSDOM_GRID_HEIGHT,
+  JSDOM_ROW_HEIGHT,
+  resizeObserverInstances,
+} from '../../vitest.setup'
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
 import { LibraryScreen, type LibrarySearch } from './LibraryScreen'
@@ -78,6 +83,37 @@ function libraryData(
       },
     },
   }
+}
+
+// One title per row in jsdom, so a row index is a title index.
+function titledEdges(count: number) {
+  return Array.from({ length: count }, (_, index) => {
+    const id = String(index).padStart(2, '0')
+    return { cursor: `c${id}`, node: movieNode({ id, title: `Title ${id}` }) }
+  })
+}
+
+// jsdom lays out no grid tracks; the rows report this many columns instead, until changed.
+function rowColumns(initial: number) {
+  let tracks = initial
+  const computedStyle = window.getComputedStyle.bind(window)
+  vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) =>
+    element.hasAttribute('data-index')
+      ? ({
+          gridTemplateColumns: Array.from({ length: tracks }, () => '100px').join(' '),
+          rowGap: '',
+        } as unknown as CSSStyleDeclaration)
+      : computedStyle(element, pseudo),
+  )
+  return {
+    set(next: number) {
+      tracks = next
+    },
+  }
+}
+
+function twoColumnRows() {
+  rowColumns(2)
 }
 
 const DEFAULT_SEARCH: LibrarySearch = { by: 'ADDED', direction: 'DESC' }
@@ -314,18 +350,13 @@ describe('LibraryScreen', () => {
     )
     renderWithProviders(<Harness initialSearch={{ by: 'TITLE', direction: 'ASC' }} />)
     await waitFor(() => expect(screen.getByText('Northern Line')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('A')).toHaveAttribute('aria-pressed', 'true'))
     const queriesAfterLoad = queryCount
 
-    const observer = intersectionObserverInstances.find((instance) =>
-      instance.observe.mock.calls.some((call) =>
-        (call[0] as Element).textContent?.includes('Northern Line'),
-      ),
-    )!
-    const target = observer.observe.mock.calls.find((call) =>
-      (call[0] as Element).textContent?.includes('Northern Line'),
-    )![0] as Element
-
-    observer.callback([{ target, isIntersecting: true } as IntersectionObserverEntry], observer)
+    // The second row tops the grid once the first has scrolled away.
+    const grid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
+    grid.scrollTop = JSDOM_ROW_HEIGHT
+    fireEvent.scroll(grid)
 
     await waitFor(() => expect(screen.getByText('N')).toHaveAttribute('aria-pressed', 'true'))
     expect(queryCount).toBe(queriesAfterLoad)
@@ -374,7 +405,7 @@ describe('LibraryScreen', () => {
     )
     await screen.findByText('Northern')
     const oldGrid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
-    const sentinel = oldGrid.firstElementChild!
+    const sentinel = oldGrid.querySelector('[data-edge="start"]')!
     const observer = intersectionObserverInstances.find((instance) =>
       instance.observe.mock.calls.some((call) => call[0] === sentinel),
     )!
@@ -440,14 +471,7 @@ describe('LibraryScreen', () => {
     await waitFor(() => expect(screen.getByText('Beta')).toBeInTheDocument())
 
     const grid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
-    const sentinel = grid.firstElementChild as HTMLDivElement
-    // jsdom has no layout: model the prepended page as 400px tall by placing Beta below it.
-    vi.spyOn(HTMLElement.prototype, 'offsetTop', 'get').mockImplementation(function (
-      this: HTMLElement,
-    ) {
-      const text = this.textContent ?? ''
-      return text.includes('Beta') && !text.includes('Aardvark') ? 400 : 0
-    })
+    const sentinel = grid.querySelector('[data-edge="start"]') as HTMLDivElement
     grid.scrollTop = 50
 
     const observer = intersectionObserverInstances.find((instance) =>
@@ -459,20 +483,56 @@ describe('LibraryScreen', () => {
     )
 
     await waitFor(() => expect(screen.getByText('Aardvark')).toBeInTheDocument())
-    // scrollTop should track the 400px of growth exactly.
-    await waitFor(() => expect(grid.scrollTop).toBe(450))
+    // scrollTop should track the prepended row exactly.
+    await waitFor(() => expect(grid.scrollTop).toBe(50 + JSDOM_ROW_HEIGHT))
+  })
+
+  it('highlights the pressed letter when its first title shares the top row with the letter before it', async () => {
+    // Two columns, so the backfilled Ozark and the landing Paddington share the top row.
+    twoColumnRows()
+    const withRail = (edges: { cursor: string; node: ReturnType<typeof movieNode> }[]) => {
+      const data = libraryData({ edges })
+      data.library.alphabetIndex = [
+        { letter: 'A', count: 1 },
+        { letter: 'O', count: 1 },
+        { letter: 'P', count: 1 },
+      ]
+      return data
+    }
+    server.use(
+      graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) => {
+        if (variables.before) {
+          return HttpResponse.json({
+            data: withRail([{ cursor: 'o', node: movieNode({ id: 'o', title: 'Ozark' }) }]),
+          })
+        }
+        if (variables.filter?.startLetter === 'P') {
+          const data = withRail([
+            { cursor: 'p', node: movieNode({ id: 'p', title: 'Paddington' }) },
+          ])
+          data.library.items.pageInfo.hasPreviousPage = true
+          return HttpResponse.json({ data })
+        }
+        return HttpResponse.json({
+          data: withRail([{ cursor: 'a', node: movieNode({ id: 'a', title: 'Alright' }) }]),
+        })
+      }),
+    )
+    const user = userEvent.setup()
+    renderWithProviders(<Harness initialSearch={{ by: 'TITLE', direction: 'ASC' }} />)
+    await screen.findByText('Alright')
+
+    await user.click(screen.getByRole('button', { name: 'P' }))
+
+    await screen.findByText('Ozark')
+    expect(screen.getByText('Paddington')).toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'P' })).toHaveAttribute('aria-pressed', 'true'),
+    )
+    expect(screen.getByRole('button', { name: 'O' })).toHaveAttribute('aria-pressed', 'false')
   })
 
   it('lands the grid on the jump target and keeps it there when the continuity page is prepended above', async () => {
-    // jsdom has no layout: the prepended Alright row is 400px tall, so Northern Line sits at 400
-    // once it renders.
-    vi.spyOn(HTMLElement.prototype, 'offsetTop', 'get').mockImplementation(function (
-      this: HTMLElement,
-    ) {
-      const text = this.textContent ?? ''
-      const isNorthernRow = text.includes('Northern Line') && !text.includes('Alright')
-      return isNorthernRow && document.body.textContent?.includes('Alright') ? 400 : 0
-    })
     server.use(
       graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) => {
         if (variables.before) {
@@ -514,7 +574,359 @@ describe('LibraryScreen', () => {
 
     await waitFor(() => expect(screen.getByText('Alright')).toBeInTheDocument())
     expect(screen.getByText('Northern Line')).toBeInTheDocument()
+    // The prepended Alright row sits above Northern Line, which stays at the top of the grid.
     const grid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
-    await waitFor(() => expect(grid.scrollTop).toBe(400))
+    await waitFor(() => expect(grid.scrollTop).toBe(JSDOM_ROW_HEIGHT))
+  })
+
+  it('keeps the focused card mounted, and focused, when its row scrolls out of the rendered range', async () => {
+    server.use(
+      graphql.query('LibraryPage', () =>
+        HttpResponse.json({ data: libraryData({ edges: titledEdges(12) }) }),
+      ),
+    )
+    renderWithProviders(<Harness />)
+    const first = await screen.findByRole('link', { name: /Title 00/ })
+    act(() => first.focus())
+    expect(first).toHaveFocus()
+
+    // Nine rows down, rows 0 to 6 are outside the viewport and its overscan.
+    const grid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
+    grid.scrollTop = 9 * JSDOM_ROW_HEIGHT
+    fireEvent.scroll(grid)
+
+    await screen.findByRole('link', { name: /Title 09/ })
+    expect(screen.queryByRole('link', { name: /Title 01/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Title 00/ })).toBe(first)
+    expect(first).toHaveFocus()
+  })
+
+  it('offers one tab stop into the grid, moves between cards with the arrow keys, and leaves it on Tab', async () => {
+    twoColumnRows()
+    server.use(
+      graphql.query('LibraryPage', () =>
+        HttpResponse.json({ data: libraryData({ edges: titledEdges(4) }) }),
+      ),
+    )
+    const { user } = renderWithProviders(
+      <Harness initialSearch={{ by: 'TITLE', direction: 'ASC' }} />,
+    )
+    await screen.findByRole('link', { name: /Title 03/ })
+    // Two columns: Title 00 and 01 share the first row, 02 and 03 the second.
+    const cards = screen.getAllByRole('link', { name: /Title/ })
+    expect(cards.map((card) => card.tabIndex)).toEqual([0, -1, -1, -1])
+
+    act(() => cards[0].focus())
+    await user.keyboard('{ArrowRight}')
+    expect(cards[1]).toHaveFocus()
+    await user.keyboard('{ArrowDown}')
+    expect(cards[3]).toHaveFocus()
+    await user.keyboard('{ArrowLeft}')
+    expect(cards[2]).toHaveFocus()
+    await user.keyboard('{ArrowUp}')
+    expect(cards[0]).toHaveFocus()
+    await user.keyboard('{End}')
+    expect(cards[1]).toHaveFocus()
+    await user.keyboard('{Home}')
+    expect(cards[0]).toHaveFocus()
+
+    await user.keyboard('{ArrowRight}')
+    await user.tab()
+    expect(screen.getByRole('button', { name: 'A' })).toHaveFocus()
+    // The grid remembers its place: Shift+Tab returns to the card that had focus.
+    await user.tab({ shift: true })
+    expect(cards[1]).toHaveFocus()
+  })
+
+  it('keeps the arrow keys moving between cards after a click on the grid itself', async () => {
+    twoColumnRows()
+    server.use(
+      graphql.query('LibraryPage', () =>
+        HttpResponse.json({ data: libraryData({ edges: titledEdges(4) }) }),
+      ),
+    )
+    const { user } = renderWithProviders(
+      <Harness initialSearch={{ by: 'TITLE', direction: 'ASC' }} />,
+    )
+    await screen.findByRole('link', { name: /Title 03/ })
+    const cards = screen.getAllByRole('link', { name: /Title/ })
+    act(() => cards[0].focus())
+
+    await user.click(screen.getByRole('grid', { name: 'Items' }))
+    expect(screen.getByRole('grid', { name: 'Items' })).toHaveFocus()
+    await user.keyboard('{ArrowRight}')
+    expect(cards[1]).toHaveFocus()
+  })
+
+  it('enters the grid at its tab stop when a navigation key arrives with the grid itself focused', async () => {
+    twoColumnRows()
+    server.use(
+      graphql.query('LibraryPage', () =>
+        HttpResponse.json({ data: libraryData({ edges: titledEdges(4) }) }),
+      ),
+    )
+    const { user } = renderWithProviders(
+      <Harness initialSearch={{ by: 'TITLE', direction: 'ASC' }} />,
+    )
+    await screen.findByRole('link', { name: /Title 03/ })
+    const claimed: string[] = []
+    document.addEventListener('keydown', (event) => {
+      if (event.defaultPrevented) claimed.push(event.key)
+    })
+
+    await user.click(screen.getByRole('grid', { name: 'Items' }))
+    await user.keyboard('{ArrowDown}')
+
+    expect(screen.getByRole('link', { name: /Title 00/ })).toHaveFocus()
+    expect(claimed).toEqual(['ArrowDown'])
+  })
+
+  it('exposes the rows as a grid whose total the client does not know, each rendered row carrying its index', async () => {
+    twoColumnRows()
+    server.use(
+      graphql.query('LibraryPage', () =>
+        HttpResponse.json({ data: libraryData({ edges: titledEdges(24) }) }),
+      ),
+    )
+    renderWithProviders(<Harness />)
+    await screen.findByRole('link', { name: /Title 00/ })
+    const grid = screen.getByRole('grid', { name: 'Items' })
+    expect(grid).toHaveAttribute('aria-rowcount', '-1')
+    const firstRow = within(grid).getAllByRole('row')[0]
+    expect(firstRow).toHaveAttribute('aria-rowindex', '1')
+    expect(within(firstRow).getAllByRole('gridcell')).toHaveLength(2)
+
+    const scroller = document.querySelector('[class*="_grid_"]') as HTMLDivElement
+    scroller.scrollTop = 9 * JSDOM_ROW_HEIGHT
+    fireEvent.scroll(scroller)
+
+    const nineteenth = await screen.findByRole('link', { name: /Title 18/ })
+    expect(nineteenth.closest('[role="row"]')).toHaveAttribute('aria-rowindex', '10')
+  })
+
+  it('moves focus to the landing card after a letter jump made from the keyboard, and not after a pointer jump', async () => {
+    server.use(
+      graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) =>
+        HttpResponse.json({
+          data: libraryData({
+            edges:
+              variables.filter?.startLetter === 'N'
+                ? [{ cursor: 'n', node: movieNode({ id: 'n', title: 'Northern Line' }) }]
+                : [{ cursor: 'a', node: movieNode({ id: 'a', title: 'Alright' }) }],
+          }),
+        }),
+      ),
+    )
+    const { user } = renderWithProviders(
+      <Harness initialSearch={{ by: 'TITLE', direction: 'ASC' }} />,
+    )
+    await screen.findByRole('link', { name: /Alright/ })
+
+    act(() => screen.getByRole('button', { name: 'N' }).focus())
+    await user.keyboard('{Enter}')
+
+    const landing = await screen.findByRole('link', { name: /Northern Line/ })
+    await waitFor(() => expect(landing).toHaveFocus())
+
+    await user.click(screen.getByRole('button', { name: 'A' }))
+
+    await screen.findByRole('link', { name: /Alright/ })
+    expect(screen.getByRole('button', { name: 'A' })).toHaveFocus()
+  })
+
+  it('re-lays the rows for a new width before the browser paints the frame that resized the grid', async () => {
+    const columns = rowColumns(2)
+    server.use(
+      graphql.query('LibraryPage', () =>
+        HttpResponse.json({ data: libraryData({ edges: titledEdges(4) }) }),
+      ),
+    )
+    renderWithProviders(<Harness />)
+    await screen.findByRole('link', { name: /Title 03/ })
+    const cellsInFirstRow = () =>
+      within(screen.getAllByRole('row')[0]).getAllByRole('gridcell').length
+    expect(cellsInFirstRow()).toBe(2)
+
+    // The grid narrows to one column; every observer of it hears after layout, before paint.
+    columns.set(1)
+    const grid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
+    const observers = resizeObserverInstances.filter((instance) =>
+      instance.observe.mock.calls.some((call) => call[0] === grid),
+    )
+    expect(observers).not.toHaveLength(0)
+    const resized = {
+      target: grid,
+      borderBoxSize: [{ inlineSize: 400, blockSize: JSDOM_GRID_HEIGHT }],
+    } as unknown as ResizeObserverEntry
+    act(() => {
+      for (const observer of observers) {
+        observer.callback([resized], observer)
+      }
+      // Before React flushes anything deferred: the rows already hold one card each.
+      expect(cellsInFirstRow()).toBe(1)
+    })
+    expect(screen.getAllByRole('row')).toHaveLength(4)
+  })
+
+  it('keeps focus on the same card when a new width re-lays the rows around it', async () => {
+    const columns = rowColumns(2)
+    server.use(
+      graphql.query('LibraryPage', () =>
+        HttpResponse.json({ data: libraryData({ edges: titledEdges(4) }) }),
+      ),
+    )
+    renderWithProviders(<Harness />)
+    // Title 01 ends the first row now and will head a row of its own, keyed by its cursor.
+    const card = await screen.findByRole('link', { name: /Title 01/ })
+    act(() => card.focus())
+    expect(card).toHaveFocus()
+
+    columns.set(1)
+    const grid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
+    const resized = {
+      target: grid,
+      borderBoxSize: [{ inlineSize: 400, blockSize: JSDOM_GRID_HEIGHT }],
+    } as unknown as ResizeObserverEntry
+    act(() => {
+      for (const observer of resizeObserverInstances.filter((instance) =>
+        instance.observe.mock.calls.some((call) => call[0] === grid),
+      )) {
+        observer.callback([resized], observer)
+      }
+    })
+
+    expect(screen.getAllByRole('row')).toHaveLength(4)
+    expect(screen.getByRole('link', { name: /Title 01/ })).toHaveFocus()
+  })
+
+  it('keeps focus on a re-keyed card after an earlier focused card left with its result', async () => {
+    const columns = rowColumns(2)
+    const unseen = Array.from({ length: 4 }, (_, index) => ({
+      cursor: `u${index}`,
+      node: movieNode({ id: `u${index}`, title: `Unseen 0${index}` }),
+    }))
+    server.use(
+      graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) =>
+        HttpResponse.json({
+          data: libraryData({
+            edges: variables.filter?.watchStatus ? unseen : titledEdges(4),
+          }),
+        }),
+      ),
+    )
+    renderWithProviders(<Harness />)
+    const card = await screen.findByRole('link', { name: /Title 00/ })
+    act(() => card.focus())
+    // A filter chosen without moving focus, as Safari leaves it on a click: the focused card
+    // leaves with its result while it is still the active element.
+    fireEvent.click(screen.getByRole('button', { name: 'Unwatched' }))
+    const next = await screen.findByRole('link', { name: /Unseen 01/ })
+    act(() => next.focus())
+    expect(next).toHaveFocus()
+
+    columns.set(1)
+    const grid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
+    const resized = {
+      target: grid,
+      borderBoxSize: [{ inlineSize: 400, blockSize: JSDOM_GRID_HEIGHT }],
+    } as unknown as ResizeObserverEntry
+    act(() => {
+      for (const observer of resizeObserverInstances.filter((instance) =>
+        instance.observe.mock.calls.some((call) => call[0] === grid),
+      )) {
+        observer.callback([resized], observer)
+      }
+    })
+
+    expect(screen.getAllByRole('row')).toHaveLength(4)
+    expect(screen.getByRole('link', { name: /Unseen 01/ })).toHaveFocus()
+  })
+
+  it('keeps focus on the landing card when the page before it re-flows the rows', async () => {
+    twoColumnRows()
+    server.use(
+      graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) => {
+        if (variables.before) {
+          return HttpResponse.json({
+            data: libraryData({
+              edges: [{ cursor: 'm', node: movieNode({ id: 'm', title: 'Mountain' }) }],
+            }),
+          })
+        }
+        if (variables.filter?.startLetter === 'N') {
+          const data = libraryData({
+            edges: [{ cursor: 'n', node: movieNode({ id: 'n', title: 'Northern Line' }) }],
+          })
+          data.library.items.pageInfo.hasPreviousPage = true
+          return HttpResponse.json({ data })
+        }
+        return HttpResponse.json({
+          data: libraryData({
+            edges: [{ cursor: 'a', node: movieNode({ id: 'a', title: 'Alright' }) }],
+          }),
+        })
+      }),
+    )
+    const { user } = renderWithProviders(
+      <Harness initialSearch={{ by: 'TITLE', direction: 'ASC' }} />,
+    )
+    await screen.findByText('Alright')
+
+    act(() => screen.getByRole('button', { name: 'N' }).focus())
+    await user.keyboard('{Enter}')
+    await waitFor(() => expect(screen.getByRole('link', { name: /Northern Line/ })).toHaveFocus())
+
+    // Mountain lands in front of Northern Line on the same two-column row.
+    await screen.findByText('Mountain')
+    expect(screen.getByRole('link', { name: /Northern Line/ })).toHaveFocus()
+  })
+
+  it('moves focus down from a card whose row is kept only for its focus, after scrolling away', async () => {
+    server.use(
+      graphql.query('LibraryPage', () =>
+        HttpResponse.json({ data: libraryData({ edges: titledEdges(12) }) }),
+      ),
+    )
+    const { user } = renderWithProviders(<Harness />)
+    const first = await screen.findByRole('link', { name: /Title 00/ })
+    act(() => first.focus())
+    const grid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
+    grid.scrollTop = 9 * JSDOM_ROW_HEIGHT
+    fireEvent.scroll(grid)
+    await screen.findByRole('link', { name: /Title 09/ })
+    expect(screen.queryByRole('link', { name: /Title 01/ })).not.toBeInTheDocument()
+
+    await user.keyboard('{ArrowDown}')
+
+    expect(screen.getByRole('link', { name: /Title 01/ })).toHaveFocus()
+  })
+
+  it('claims a navigation key at the edge of a row, so the browser does not scroll instead', async () => {
+    twoColumnRows()
+    server.use(
+      graphql.query('LibraryPage', () =>
+        HttpResponse.json({ data: libraryData({ edges: titledEdges(4) }) }),
+      ),
+    )
+    const { user } = renderWithProviders(<Harness />)
+    await screen.findByRole('link', { name: /Title 03/ })
+    const cards = screen.getAllByRole('link', { name: /Title/ })
+    const claimed: string[] = []
+    document.addEventListener('keydown', (event) => {
+      if (event.defaultPrevented) claimed.push(event.key)
+    })
+
+    // The last row's first card: Home and ArrowDown have nowhere to go, End moves once.
+    act(() => cards[2].focus())
+    await user.keyboard('{Home}')
+    expect(cards[2]).toHaveFocus()
+    await user.keyboard('{ArrowDown}')
+    expect(cards[2]).toHaveFocus()
+    await user.keyboard('{End}')
+    expect(cards[3]).toHaveFocus()
+    await user.keyboard('{End}')
+    expect(cards[3]).toHaveFocus()
+
+    expect(claimed).toEqual(['Home', 'ArrowDown', 'End', 'End'])
   })
 })

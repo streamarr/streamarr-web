@@ -11,6 +11,7 @@ export function PosterCard({
   blurHash,
   badge,
   progressPercent,
+  imageLoading,
 }: Readonly<{
   title: string
   meta: string
@@ -18,11 +19,12 @@ export function PosterCard({
   blurHash: string | null
   badge?: WatchedBadgeProps
   progressPercent?: number
+  imageLoading?: 'lazy' | 'eager'
 }>) {
   return (
     <div className={styles.posterCard}>
       <div className={styles.posterArt}>
-        <MediaImage image={image} blurHash={blurHash} alt={title} />
+        <MediaImage image={image} blurHash={blurHash} alt={title} loading={imageLoading} />
         {badge && <WatchedBadge {...badge} />}
         {progressPercent != null && progressPercent > 0 && (
           <WatchedBadge status="in-progress" percentComplete={progressPercent} />

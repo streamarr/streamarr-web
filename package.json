@@ -47,6 +47,7 @@
     "@mantine/hooks": "^9.4.1",
     "@tanstack/react-router": "^1.170.17",
     "@tanstack/react-store": "^0.9.3",
+    "@tanstack/react-virtual": "^3.14.13",
     "@tanstack/store": "^0.9.3",
     "blurhash": "^2.0.5",
     "graphql": "^16.14.2",

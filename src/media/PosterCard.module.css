@@ -23,4 +23,8 @@
 .posterMeta {
   font-size: var(--font-size-caption);
   color: var(--text-secondary);
+  /* One line, like the title: the library's virtual rows rely on every card being the same height. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
