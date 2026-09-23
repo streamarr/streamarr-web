@@ -4,10 +4,11 @@
   justify-content: center;
   align-items: center;
   gap: var(--spacing-8);
-  min-height: 40px;
-  padding: 9px var(--spacing-14);
+  /* Mantine's md button metrics, so it lines up with the theme's buttons. */
+  min-height: 42px;
+  padding: 0 22px;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   font: inherit;
   font-size: var(--font-size-body);
   font-weight: var(--font-weight-medium);

@@ -195,7 +195,7 @@ test('refresh expands in place with aligned controls and returns focus', async (
         .getByRole('combobox', { name: 'Images' })
         .evaluate((node) => node.getBoundingClientRect().height),
     )
-    .toBe(40)
+    .toBe(42)
   const heights = await editor
     .locator('input:not([type=hidden]), button')
     .evaluateAll((nodes) =>
@@ -203,7 +203,7 @@ test('refresh expands in place with aligned controls and returns focus', async (
         .filter((node) => node.getBoundingClientRect().height > 0)
         .map((node) => node.getBoundingClientRect().height),
     )
-  expect(heights.every((height) => height === 40)).toBe(true)
+  expect(heights.every((height) => height === 42)).toBe(true)
   const metadata = await page.locator('dl').boundingBox()
   expect((await editor.boundingBox())!.y).toBeGreaterThan(metadata!.y)
   // Wait for the height transition before comparing the final document flow.
