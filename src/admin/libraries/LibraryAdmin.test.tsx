@@ -185,6 +185,7 @@ describe('library administration', () => {
     expect(screen.getByRole('textbox', { name: /Server folder/ })).toHaveFocus()
     await user.clear(screen.getByRole('textbox', { name: /Server folder/ }))
     await user.type(screen.getByRole('textbox', { name: /Server folder/ }), '/media/family')
+    expect(screen.queryByText('This folder does not exist.')).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Add library' }))
     const detail = await screen.findByRole('article', { name: 'Family settings' })
     expect(detail).toHaveTextContent('SCANNING')

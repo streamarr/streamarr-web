@@ -37,6 +37,13 @@ export function CreateLibrary({ onCreated }: Readonly<{ onCreated: (id: string) 
     if (errors.filepath) pathInput.current?.focus()
   }, [errors, commands.pending])
 
+  // A correction being typed should not sit under the rejection it answers.
+  function edit(field: 'name' | 'filepath', value: string) {
+    if (field === 'name') setName(value)
+    else setFilepath(value)
+    if (errors[field]) setErrors((current) => ({ ...current, [field]: undefined }))
+  }
+
   async function submit(event: React.SubmitEvent) {
     event.preventDefault()
     if (commands.pending) return
@@ -114,7 +121,7 @@ export function CreateLibrary({ onCreated }: Readonly<{ onCreated: (id: string) 
             required
             value={name}
             placeholder="Movies"
-            onChange={(event) => setName(event.currentTarget.value)}
+            onChange={(event) => edit('name', event.currentTarget.value)}
             error={errors.name}
             disabled={commands.pending}
             autoComplete="off"
@@ -125,7 +132,7 @@ export function CreateLibrary({ onCreated }: Readonly<{ onCreated: (id: string) 
             description="Enter the folder path as it appears on your server."
             required
             value={filepath}
-            onChange={(event) => setFilepath(event.currentTarget.value)}
+            onChange={(event) => edit('filepath', event.currentTarget.value)}
             placeholder="/media/movies"
             error={errors.filepath}
             disabled={commands.pending}
