@@ -45,9 +45,11 @@ export function LibraryWorkspace({
   const [notice, setNotice] = useState('')
   const heading = useRef<HTMLHeadingElement>(null)
   const libraries = query.data?.libraries
+  const empty = libraries?.length === 0
+  // After the last removal the empty state takes focus instead.
   useEffect(() => {
-    if (notice) heading.current?.focus({ preventScroll: true })
-  }, [notice])
+    if (notice && !empty) heading.current?.focus({ preventScroll: true })
+  }, [notice, empty])
 
   return (
     <>
@@ -82,6 +84,7 @@ export function LibraryWorkspace({
         libraries={libraries}
         selectedId={selectedId}
         stale={!!query.error}
+        focusEmptyHeading={!!notice}
         onSelect={(id) => {
           setNotice('')
           onSelect(id)
@@ -100,12 +103,14 @@ function LibraryInventory({
   libraries,
   selectedId,
   stale,
+  focusEmptyHeading,
   onSelect,
   onRemoved,
 }: Readonly<{
   libraries: readonly ManagedLibrary[] | undefined
   selectedId?: string
   stale: boolean
+  focusEmptyHeading: boolean
   onSelect: (id: string) => void
   onRemoved: (library: ManagedLibrary) => void
 }>) {
@@ -117,7 +122,8 @@ function LibraryInventory({
       </Center>
     )
   }
-  if (libraries.length === 0) return stale ? null : <EmptyLibraries canCreate />
+  if (libraries.length === 0)
+    return stale ? null : <EmptyLibraries canCreate focusHeading={focusEmptyHeading} />
 
   const current = selectedId ? libraries.find((library) => library.id === selectedId) : libraries[0]
   return (
