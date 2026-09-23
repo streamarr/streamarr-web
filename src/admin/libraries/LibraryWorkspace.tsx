@@ -22,6 +22,12 @@ import styles from '../Settings.module.css'
 // Until #32 delivers live status, every acknowledgement points at a reload.
 const REFRESH_PAGE_FOR_STATUS = 'Refresh the page to see the latest status.'
 
+const IMAGE_REFRESH_OPTIONS = [
+  { value: 'PRESERVE', label: 'Keep existing images' },
+  { value: 'REFRESH_IF_CHANGED', label: 'Update changed images' },
+  { value: 'FORCE_REFRESH', label: 'Download all images again' },
+] satisfies { value: ImageRefreshMode; label: string }[]
+
 /**
  * Library inventory and selected-library workspace. Selection belongs to the route so reload/back
  * restore it. Missing IDs display a recovery state instead of silently acting on another library.
@@ -249,18 +255,10 @@ function LibraryDetails({
               allowDeselect={false}
               disabled={disabled}
               onChange={(value) => {
-                if (
-                  value === 'PRESERVE' ||
-                  value === 'REFRESH_IF_CHANGED' ||
-                  value === 'FORCE_REFRESH'
-                )
-                  setImageMode(value)
+                const option = IMAGE_REFRESH_OPTIONS.find((candidate) => candidate.value === value)
+                if (option) setImageMode(option.value)
               }}
-              data={[
-                { value: 'PRESERVE', label: 'Keep existing images' },
-                { value: 'REFRESH_IF_CHANGED', label: 'Update changed images' },
-                { value: 'FORCE_REFRESH', label: 'Download all images again' },
-              ]}
+              data={IMAGE_REFRESH_OPTIONS}
             />
             <div className={styles.refreshActions}>
               <Button
