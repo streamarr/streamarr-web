@@ -141,6 +141,40 @@ function mockLibraryPage(
 }
 
 describe('/library/$libraryId', () => {
+  it('shouldRefreshAnEmptyFilteredLibraryAfterMarkingATitleUnwatched', async () => {
+    let watched = true
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
+      graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
+      graphql.query('LibraryPage', () => {
+        const data = watched ? libraryData() : libraryWithEverlight()
+        return HttpResponse.json({ data: { library: { ...data.library, __typename: 'Library' } } })
+      }),
+      graphql.query('MovieDetail', () =>
+        HttpResponse.json({
+          data: {
+            movie: { ...EVERLIGHT_DETAIL.movie, watchStatus: watched ? 'WATCHED' : 'UNWATCHED' },
+          },
+        }),
+      ),
+      graphql.mutation('MarkUnwatched', () => {
+        watched = false
+        return HttpResponse.json({ data: { markUnwatched: true } })
+      }),
+    )
+    const { user, router } = renderAppAt(`/library/${LIBRARY_ID}?watchStatus=UNWATCHED`)
+    await screen.findByText('No items match this filter.')
+    await act(async () => {
+      await router.navigate({ to: '/movie/$movieId', params: { movieId: 'm1' } })
+    })
+    await user.click(await screen.findByRole('button', { name: 'Mark unwatched' }))
+    await screen.findByRole('button', { name: 'Mark watched' })
+    await act(async () => {
+      router.history.back()
+    })
+    await screen.findByRole('link', { name: /Everlight/ })
+  })
+
   it('queries the id from the route param with the default sort when no search params are given', async () => {
     const requests: { libraryId?: string; sort?: MediaSort; filter?: MediaFilter }[] = []
     mockLibraryPage(requests)
@@ -265,7 +299,7 @@ describe('/library/$libraryId', () => {
     await user.click(screen.getByRole('button', { name: 'N' }))
 
     const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent("Couldn't load this library.")
+    expect(alert).toHaveTextContent('Library unavailable')
     expect(grid).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Alright/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'A' })).toHaveAttribute('aria-pressed', 'true')

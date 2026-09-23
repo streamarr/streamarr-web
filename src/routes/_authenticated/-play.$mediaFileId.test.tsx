@@ -1,6 +1,6 @@
-import { fireEvent, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { HttpResponse, graphql } from 'msw'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { meFixture } from '../../test/meFixture'
 import { renderAppAt } from '../../test/render'
 import { server } from '../../test/server'
@@ -30,6 +30,9 @@ const STREAM_URL = '/api/stream/file-1/multivariant.m3u8?t=playback-token'
 
 function serveApp() {
   server.use(
+    graphql.mutation('DestroyStreamSession', () =>
+      HttpResponse.json({ data: { destroyStreamSession: true } }),
+    ),
     graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
     graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
     graphql.mutation('CreateStreamSession', () =>
@@ -56,6 +59,9 @@ async function attachedVideo(): Promise<HTMLVideoElement> {
 }
 
 describe('/play/$mediaFileId', () => {
+  afterEach(async () => {
+    await act(async () => cleanup())
+  })
   beforeEach(() => {
     vi.clearAllMocks()
   })

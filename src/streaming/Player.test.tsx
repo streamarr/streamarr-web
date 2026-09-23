@@ -1,7 +1,8 @@
-import { act, fireEvent, screen, waitFor } from '@testing-library/react'
+import { deferred } from '../test/deferred'
+import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
 import { HttpResponse, graphql } from 'msw'
 import { useState } from 'react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
 import { Player } from './Player'
@@ -82,6 +83,72 @@ function Harness() {
 describe('Player', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    server.use(
+      graphql.mutation('DestroyStreamSession', () =>
+        HttpResponse.json({ data: { destroyStreamSession: true } }),
+      ),
+    )
+  })
+
+  afterEach(async () => {
+    await act(async () => cleanup())
+  })
+
+  it('shouldKeepTheFinalPositionWhenAnEarlierReportIsDelayed', async () => {
+    const gate = deferred()
+    const started = deferred()
+    const persisted: TimelineReport[] = []
+    serveSession()
+    server.use(
+      graphql.mutation('ReportStreamSessionTimeline', async ({ variables }) => {
+        const report = variables as unknown as TimelineReport
+        if (report.state === 'PLAYING') {
+          started.resolve()
+          await gate.promise
+        }
+        persisted.push(report)
+        return HttpResponse.json({ data: { reportStreamSessionTimeline: true } })
+      }),
+    )
+    const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
+    const video = await attachedVideo()
+    playheadAt(video, 12)
+    await started.promise
+    playheadAt(video, 15)
+    await act(async () => unmount())
+    gate.resolve()
+
+    await waitFor(() => expect(persisted).toHaveLength(2))
+    expect(persisted.at(-1)).toMatchObject({ state: 'STOPPED', positionSeconds: 15 })
+  })
+
+  it('shouldSaveTheFinalPositionAndReleaseTheSessionAfterAReportFails', async () => {
+    const started = deferred()
+    const saved: unknown[] = []
+    let destroyed = false
+    serveSession()
+    server.use(
+      graphql.mutation('ReportStreamSessionTimeline', ({ variables }) => {
+        if (variables.state === 'PLAYING') {
+          started.resolve()
+          return HttpResponse.json({ errors: [{ message: 'Temporarily unavailable' }] })
+        }
+        saved.push(variables)
+        return HttpResponse.json({ data: { reportStreamSessionTimeline: true } })
+      }),
+      graphql.mutation('DestroyStreamSession', () => {
+        destroyed = true
+        return HttpResponse.json({ data: { destroyStreamSession: true } })
+      }),
+    )
+    const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
+    const video = await attachedVideo()
+    playheadAt(video, 12)
+    await started.promise
+    playheadAt(video, 15)
+    unmount()
+    await waitFor(() => expect(destroyed).toBe(true))
+    expect(saved).toEqual([{ sessionId: 'sess-1', state: 'STOPPED', positionSeconds: 15 }])
   })
 
   it('shouldCreateSessionAndFeedTokenedUrlToHls', async () => {
@@ -100,6 +167,59 @@ describe('Player', () => {
     await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(STREAM_URL))
     expect(hls.attachMedia).toHaveBeenCalledOnce()
     expect(variables).toEqual({ input: { mediaFileId: 'abcd' } })
+  })
+
+  it('shouldDestroyASessionThatFinishesCreatingAfterThePlayerLeaves', async () => {
+    const gate = deferred()
+    const started = deferred()
+    const destroyed: unknown[] = []
+    server.use(
+      graphql.mutation('CreateStreamSession', async () => {
+        started.resolve()
+        await gate.promise
+        return HttpResponse.json({
+          data: { createStreamSession: { session: SESSION, userErrors: [] } },
+        })
+      }),
+      graphql.mutation('DestroyStreamSession', ({ variables }) => {
+        destroyed.push(variables.sessionId)
+        return HttpResponse.json({ data: { destroyStreamSession: true } })
+      }),
+    )
+    const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
+    await started.promise
+    unmount()
+    gate.resolve()
+
+    await waitFor(() => expect(destroyed).toEqual(['sess-1']))
+    expect(hls.attachMedia).not.toHaveBeenCalled()
+  })
+
+  it('shouldReleaseTheSessionAfterReportingItsFinalPosition', async () => {
+    const gate = deferred()
+    const started = deferred()
+    const completed: string[] = []
+    serveSession()
+    server.use(
+      graphql.mutation('ReportStreamSessionTimeline', async () => {
+        started.resolve()
+        await gate.promise
+        completed.push('STOPPED')
+        return HttpResponse.json({ data: { reportStreamSessionTimeline: true } })
+      }),
+      graphql.mutation('DestroyStreamSession', () => {
+        completed.push('DESTROYED')
+        return HttpResponse.json({ data: { destroyStreamSession: true } })
+      }),
+    )
+    const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
+    const video = await attachedVideo()
+    playheadAt(video, 5)
+    unmount()
+    await started.promise
+    gate.resolve()
+
+    await waitFor(() => expect(completed).toEqual(['STOPPED', 'DESTROYED']))
   })
 
   it('shouldShowErrorWhenSessionCreationFails', async () => {

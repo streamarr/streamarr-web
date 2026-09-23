@@ -246,7 +246,7 @@ for (const viewport of [
   })
 }
 
-test('a letter jump slides the grid out at the press and back in when the page lands, unless motion is reduced', async ({
+test('a letter jump keeps rows visible until the response arrives, then slides them, unless motion is reduced', async ({
   page,
   request,
 }) => {
@@ -294,13 +294,15 @@ test('a letter jump slides the grid out at the press and back in when the page l
   const oldRows = (frame: Frame) => frame.first === 'A Title 00'
 
   await page.getByRole('button', { name: 'N', exact: true }).click()
-  // The old rows leave upward at the press, before the letter's page has arrived.
-  await expect
-    .poll(sawFrame((frame) => oldRows(frame) && frame.ty < -5 && frame.opacity < 0.9))
-    .toBe(true)
+  // A slow response must never leave an invisible grid waiting on the network.
+  await page.waitForTimeout(400) // NOSONAR: bounded settle to prove the old rows do not disappear
+  expect((await frames()).every((frame) => frame.opacity === 1 && frame.ty === 0)).toBe(true)
   await expect(page.getByText('A Title 00', { exact: true })).toBeAttached()
   expect((await frames()).some((frame) => !oldRows(frame))).toBe(false)
   releaseSeek()
+  await expect
+    .poll(sawFrame((frame) => oldRows(frame) && frame.ty < -5 && frame.opacity < 0.9))
+    .toBe(true)
   await expect(page.getByText('N Title 00', { exact: true })).toBeInViewport()
   // The new rows enter from below.
   await expect.poll(sawFrame((frame) => !oldRows(frame) && frame.ty > 5)).toBe(true)
@@ -599,5 +601,149 @@ for (const { orientation, viewport, minPosterShare } of [
     await lastLetter.focus()
     await expect(lastLetter).toBeInViewport({ ratio: 0.99 })
     await page.screenshot({ path: testInfo.outputPath('library.png') })
+  })
+}
+
+test('selecting the URL letter again returns to its first title after scrolling', async ({
+  page,
+  request,
+}) => {
+  await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
+  await request.post(`${STUB_URL}/api/auth/refresh`)
+  await page.route('**/graphql', async (route) => {
+    const op = route.request().postDataJSON() as {
+      operationName: string
+      variables: LibraryPageQueryVariables
+    }
+    if (op.operationName !== 'LibraryPage') return route.continue()
+    return route.fulfill({ json: { data: libraryPage(op.variables) } })
+  })
+  await page.goto('/library/movies?by=TITLE&direction=ASC&letter=N')
+  const grid = page.locator('[data-scroll-restoration-id="library-grid"]')
+  const landing = page.getByText('N Title 00', { exact: true })
+  const nButton = page.getByRole('button', { name: 'N', exact: true })
+  const pButton = page.getByRole('button', { name: 'P', exact: true })
+  await expect(landing).toBeInViewport()
+  await expect(nButton).toHaveAttribute('aria-pressed', 'true')
+  const pOffset = await page
+    .getByText('P Title 00', { exact: true })
+    .evaluate((el) => el.closest('a')!.parentElement!.offsetTop)
+  await grid.evaluate((el, offset) => {
+    el.scrollTop = offset
+  }, pOffset)
+  await expect(pButton).toHaveAttribute('aria-pressed', 'true')
+  await expect(nButton).toHaveAttribute('aria-pressed', 'false')
+  expect(new URL(page.url()).searchParams.get('letter')).toBe('N')
+  await nButton.click()
+  expect(new URL(page.url()).searchParams.get('letter')).toBe('N')
+  await expect
+    .poll(() =>
+      landing.evaluate((el) => {
+        const row = el.closest('a')!.parentElement!
+        return Math.abs(row.offsetTop - row.parentElement!.scrollTop)
+      }),
+    )
+    .toBeLessThanOrEqual(1)
+})
+
+test('Back after a letter jump restores the previous grid position', async ({ page, request }) => {
+  await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
+  await request.post(`${STUB_URL}/api/auth/refresh`)
+  await page.route('**/graphql', async (route) => {
+    const op = route.request().postDataJSON() as {
+      operationName: string
+      variables: LibraryPageQueryVariables
+    }
+    if (op.operationName !== 'LibraryPage') return route.continue()
+    return route.fulfill({ json: { data: libraryPage(op.variables) } })
+  })
+  await page.goto('/library/movies?by=TITLE&direction=ASC')
+  await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
+  const grid = page.locator('[data-scroll-restoration-id="library-grid"]')
+  await grid.evaluate((el) => {
+    el.scrollTop = 600
+  })
+  await expect.poll(() => grid.evaluate((el) => el.scrollTop)).toBe(600)
+  await page.getByRole('button', { name: 'N', exact: true }).click()
+  await expect(page.getByText('N Title 00', { exact: true })).toBeInViewport()
+  await expect.poll(() => grid.evaluate((el) => getComputedStyle(el).opacity)).toBe('1')
+  await page.goBack()
+  await expect(page.getByText('A Title 00', { exact: true })).toBeAttached()
+  await expect.poll(() => grid.evaluate((el) => el.scrollTop), { timeout: 1500 }).toBe(600)
+})
+
+for (const { seek, failRecovery } of [
+  { seek: false, failRecovery: false },
+  { seek: true, failRecovery: false },
+  { seek: false, failRecovery: true },
+]) {
+  test(`Back restores the expanded ${seek ? 'letter' : 'forward'} window after changing watched state${failRecovery ? ' and a failed page' : ''}`, async ({
+    page,
+    request,
+  }) => {
+    await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
+    await request.post(`${STUB_URL}/api/auth/refresh`)
+    let watched = false
+    let allowRecovery = !failRecovery
+    let failedPages = 0
+    await page.route('**/graphql', async (route) => {
+      const operation = route.request().postDataJSON() as {
+        operationName: string
+        variables: LibraryPageQueryVariables & { id: string }
+      }
+      if (operation.operationName === 'LibraryPage') {
+        if (watched && operation.variables.after && !allowRecovery) {
+          failedPages += 1
+          return route.fulfill({ json: { errors: [{ message: 'Page temporarily unavailable' }] } })
+        }
+        return route.fulfill({ json: { data: libraryPage(operation.variables) } })
+      }
+      if (operation.operationName === 'MovieDetail') {
+        const data = movieDetail(operation.variables.id)
+        data.movie.watchStatus = watched ? 'WATCHED' : 'UNWATCHED'
+        return route.fulfill({ json: { data } })
+      }
+      if (operation.operationName === 'MarkWatched') {
+        watched = true
+        return route.fulfill({ json: { data: { markWatched: true } } })
+      }
+      return route.continue()
+    })
+    await page.goto('/library/movies?by=TITLE&direction=ASC')
+    await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
+    const grid = page.locator('[data-scroll-restoration-id="library-grid"]')
+    if (seek) {
+      await page.getByRole('button', { name: 'N', exact: true }).click()
+      await expect(page.getByText('J Title 00', { exact: true })).toBeAttached()
+      await grid.evaluate((element) => {
+        element.scrollTop = 0
+      })
+      await expect(page.getByText('F Title 00', { exact: true })).toBeAttached()
+    } else {
+      await grid.evaluate((element) => {
+        element.scrollTop = element.scrollHeight
+      })
+      await expect(page.getByText('E Title 00', { exact: true })).toBeAttached()
+    }
+    const titleName = seek ? 'P Title 00' : 'G Title 00'
+    const title = page.getByRole('link', { name: `${titleName} 2024 · 1h 30m`, exact: true })
+    await title.evaluate((element) => element.scrollIntoView({ block: 'start' }))
+    await expect(title).toBeInViewport()
+    const savedPosition = await grid.evaluate((element) => element.scrollTop)
+    await title.dispatchEvent('click')
+    await page.getByRole('button', { name: 'Mark watched', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Mark unwatched', exact: true })).toBeVisible()
+    await page.goBack()
+    if (failRecovery) {
+      await expect(page.getByRole('alert')).toContainText('Page temporarily unavailable', {
+        timeout: 1500,
+      })
+      await page.waitForTimeout(250) // NOSONAR: bounded settle proves failed pages are not retried automatically
+      expect(failedPages).toBe(1)
+      allowRecovery = true
+      await page.getByRole('button', { name: 'Try again', exact: true }).click()
+    }
+    await expect(page.getByText(titleName, { exact: true })).toBeInViewport()
+    await expect.poll(() => grid.evaluate((element) => element.scrollTop)).toBe(savedPosition)
   })
 }

@@ -114,6 +114,28 @@ describe('useLibraryItems', () => {
     await waitFor(() => expect(screen.getByTestId('landing')).toHaveTextContent('o'))
   })
 
+  it('shouldKeepTheFirstResolvedLandingWhenEarlierRowsArePrepended', async () => {
+    server.use(
+      graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) => {
+        const earlier = Boolean(variables.before)
+        return HttpResponse.json({
+          data: libraryResponse({
+            edges: [
+              {
+                cursor: earlier ? 'm' : 'o',
+                node: movieNode(earlier ? 'm' : 'o', earlier ? 'Middle' : 'Ocean'),
+              },
+            ],
+            hasPreviousPage: !earlier,
+          }),
+        })
+      }),
+    )
+    renderWithProviders(<Harness initialFilter={{ startLetter: 'N' }} />)
+    await screen.findByText('Middle')
+    expect(screen.getByTestId('landing')).toHaveTextContent('o')
+  })
+
   it('returns to the requested letter after revisiting a cached, backfilled page', async () => {
     server.use(
       graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) => {
