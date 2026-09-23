@@ -1,4 +1,4 @@
-/* Server-settings layout. Values come from streamarr-ux tokens. */
+/* Server-settings layout, measured from the streamarr-ux mock. */
 .settings {
   color: var(--text-primary);
   font-family: var(--font-family-content);
@@ -84,8 +84,8 @@
 .typeField legend,
 .metadata dt {
   font-family: var(--font-family-system);
-  font-size: 11px;
-  font-weight: 400;
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-regular);
   text-transform: uppercase;
   letter-spacing: var(--letter-spacing-system);
   color: var(--text-secondary);
@@ -95,14 +95,14 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 24px;
+  gap: var(--spacing-24);
   margin-bottom: 28px;
 }
 .pageHeading h1 {
   margin-top: 2px;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--spacing-12);
 }
 .libraryCount {
   display: inline-flex;
@@ -138,19 +138,19 @@
   align-self: start;
 }
 .railTitle {
-  padding: 0 12px 24px;
+  padding: 0 var(--spacing-12) var(--spacing-24);
 }
 .sectionActive {
   display: flex;
   align-items: center;
   gap: 11px;
   width: 100%;
-  padding: 12px;
+  padding: var(--spacing-12);
   background: var(--selection-active);
   color: var(--text-primary);
   border: 0;
   border-radius: var(--radius-md);
-  font-size: 15px;
+  font-size: var(--font-size-emphasis);
 }
 .railContent {
   min-width: 0;
@@ -189,13 +189,13 @@
   background: var(--surface-wash);
 }
 .libraryList {
-  padding: 20px 12px;
+  padding: var(--spacing-20) var(--spacing-12);
   background: var(--surface-wash);
 }
 .libraryChoice,
 .selectedLibrary {
   display: flex;
-  gap: 12px;
+  gap: var(--spacing-12);
   align-items: center;
   border: 0;
   border-radius: var(--radius-md);
@@ -204,7 +204,7 @@
   background: transparent;
   color: var(--text-primary);
   padding: 17px 13px;
-  margin-bottom: 6px;
+  margin-bottom: var(--spacing-6);
 }
 .selectedLibrary {
   background: var(--selection-active);
@@ -220,7 +220,7 @@
 .libraryChoice strong,
 .selectedLibrary strong {
   font-size: 14px;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   display: block;
   margin-bottom: 7px;
   overflow-wrap: anywhere;
@@ -246,7 +246,7 @@
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr);
   align-items: center;
-  gap: 8px 16px;
+  gap: var(--spacing-8) var(--spacing-16);
 }
 .detailHeading .typeIcon {
   width: 44px;
@@ -262,9 +262,9 @@
 .metadata {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 24px;
+  gap: var(--spacing-24);
   margin: 32px 0;
-  padding: 24px 0;
+  padding: var(--spacing-24) 0;
   border-top: 1px solid var(--border-hairline);
   border-bottom: 1px solid var(--border-hairline);
 }
@@ -272,12 +272,12 @@
   grid-column: 1 / -1;
 }
 .metadata dt {
-  margin-bottom: 10px;
-  font-size: 10px;
+  margin-bottom: var(--spacing-10);
+  font-size: var(--font-size-micro);
 }
 .metadata dd {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--font-size-body);
   overflow-wrap: anywhere;
   font-variant-numeric: tabular-nums;
 }
@@ -285,7 +285,7 @@
   font-size: var(--font-size-label);
 }
 .detailActions h3 {
-  font-size: 15px;
+  font-size: var(--font-size-emphasis);
   margin-bottom: 15px;
 }
 .primaryActions {
@@ -300,7 +300,7 @@
 }
 .primaryActions p {
   flex-basis: 100%;
-  font-size: 12px;
+  font-size: var(--font-size-label);
   color: var(--text-secondary);
   margin-top: 3px;
 }
@@ -350,7 +350,7 @@
 }
 .typeOptions {
   display: flex;
-  gap: 12px;
+  gap: var(--spacing-12);
 }
 .typeOption,
 .typeSelected {
@@ -358,12 +358,12 @@
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--spacing-12);
   border: 1px solid var(--border-hairline);
   border-radius: var(--radius-md);
   background: var(--surface-panel);
   color: var(--text-primary);
-  padding: 18px 16px;
+  padding: var(--spacing-18) var(--spacing-16);
   font-size: 14px;
   min-height: 65px;
   flex: 1;
@@ -378,15 +378,15 @@
 .scanNote {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--spacing-10);
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-label);
   padding-top: 2px;
 }
 .formActions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--spacing-12);
   padding-top: 2px;
 }
 .notice {
@@ -397,7 +397,7 @@
   border: 1px solid color-mix(in srgb, var(--semantic-success) 22%, transparent);
   border-radius: var(--radius-md);
   color: var(--semantic-success);
-  font-size: 13px;
+  font-size: var(--font-size-body);
   padding: 15px 17px;
   margin-bottom: 22px;
 }
@@ -406,7 +406,7 @@
   background: transparent;
   color: var(--semantic-success);
   margin-left: auto;
-  font-size: 20px;
+  font-size: var(--font-size-title);
 }
 /* Preserve the mock's in-place workflow and compact controls within the existing detail surface. */
 .refreshEditor {
@@ -419,7 +419,7 @@
   align-items: flex-end;
   flex-wrap: wrap;
   gap: var(--spacing-18);
-  padding-bottom: 24px;
+  padding-bottom: var(--spacing-24);
   border-bottom: 1px solid var(--border-hairline);
 }
 .refreshImages {
@@ -451,12 +451,12 @@
   text-align: center;
   justify-content: center;
   min-height: 420px;
-  gap: 16px;
+  gap: var(--spacing-16);
   padding: 35px 20px;
 }
 .empty > svg {
   color: var(--text-secondary);
-  margin-bottom: 8px;
+  margin-bottom: var(--spacing-8);
 }
 .empty p {
   color: var(--text-secondary);
@@ -465,7 +465,7 @@
   line-height: 1.6;
 }
 .empty :global(.mantine-Button-root) {
-  margin-top: 10px;
+  margin-top: var(--spacing-10);
 }
 @media (min-width: 1550px) {
   .railLayout {
@@ -498,16 +498,16 @@
   }
   .railLayout {
     display: block;
-    margin-top: 12px;
+    margin-top: var(--spacing-12);
   }
   .settingsRail {
     min-height: auto;
-    padding: 12px;
+    padding: var(--spacing-12);
     margin-bottom: 25px;
   }
   .railTitle {
     padding: 2px 4px 12px;
-    font-size: 10px;
+    font-size: var(--font-size-micro);
   }
   .sectionActive {
     padding: 9px 12px;
@@ -517,7 +517,7 @@
   }
   .pageHeading {
     min-height: 45px;
-    gap: 12px;
+    gap: var(--spacing-12);
     margin-bottom: 23px;
     flex-wrap: wrap;
   }
@@ -536,7 +536,7 @@
   }
   .libraryChoice,
   .selectedLibrary {
-    padding: 12px;
+    padding: var(--spacing-12);
   }
   .detailPane {
     padding: 26px 22px;
@@ -552,10 +552,10 @@
   .typeSelected {
     padding: 13px 10px;
     gap: 7px;
-    font-size: 13px;
+    font-size: var(--font-size-body);
   }
   .typeOptions {
-    gap: 8px;
+    gap: var(--spacing-8);
   }
   .scanNote {
     align-items: flex-start;
