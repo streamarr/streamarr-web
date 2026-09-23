@@ -795,4 +795,25 @@ describe('LibraryScreen', () => {
     await screen.findByText('Mountain')
     expect(screen.getByRole('link', { name: /Northern Line/ })).toHaveFocus()
   })
+
+  it('moves focus down from a card whose row is kept only for its focus, after scrolling away', async () => {
+    server.use(
+      graphql.query('LibraryPage', () =>
+        HttpResponse.json({ data: libraryData({ edges: titledEdges(12) }) }),
+      ),
+    )
+    const { user } = renderWithProviders(<Harness />)
+    const first = await screen.findByRole('link', { name: /Title 00/ })
+    act(() => first.focus())
+    const grid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
+    grid.scrollTop = 9 * JSDOM_ROW_HEIGHT
+    fireEvent.scroll(grid)
+    await screen.findByRole('link', { name: /Title 09/ })
+    expect(screen.queryByRole('link', { name: /Title 01/ })).not.toBeInTheDocument()
+
+    await user.keyboard('{ArrowDown}')
+
+    // The row below was not rendered; it is now, and holds focus.
+    expect(screen.getByRole('link', { name: /Title 01/ })).toHaveFocus()
+  })
 })

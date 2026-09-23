@@ -455,7 +455,8 @@ function LibraryCard({
       return () => {
         focus.current.cards.delete(edge.cursor)
         // Unmounted while focused: the row was re-keyed, and the card returns in a new element.
-        if (document.activeElement === node) {
+        // Unless focus is already on its way elsewhere, as when a key moved it off this row.
+        if (document.activeElement === node && focus.current.requested === null) {
           focus.current.requested = edge.cursor
         }
       }
