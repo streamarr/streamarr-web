@@ -80,55 +80,65 @@ const movieDetail = (id: string) => ({
   },
 })
 
-test('the grid keeps its place when returning from a title', async ({ page, request }) => {
-  await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
-  await request.post(`${STUB_URL}/api/auth/refresh`)
-  await page.route('**/graphql', async (route) => {
-    const operation = route.request().postDataJSON() as {
-      operationName: string
-      variables: LibraryPageQueryVariables & { id?: string }
-    }
-    if (operation.operationName === 'LibraryPage') {
-      return route.fulfill({ json: { data: libraryPage(operation.variables) } })
-    }
-    if (operation.operationName === 'MovieDetail') {
-      return route.fulfill({ json: { data: movieDetail(operation.variables.id!) } })
-    }
-    return route.continue()
-  })
-  await page.goto('/library/movies?by=TITLE&direction=ASC')
-  await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
-  const grid = page.locator('[class*="_grid_"]')
-  // Scroll three rows down, to the row's measured top, so a whole row sits in view.
-  const target = await grid.evaluate((element) => {
-    const gridTop = element.getBoundingClientRect().top
-    const rowTops = [...element.querySelectorAll('[data-index]')].map(
-      (row) => row.getBoundingClientRect().top,
-    )
-    element.scrollTop = Math.round(rowTops[3] - gridTop)
-    return element.scrollTop
-  })
-  expect(target).toBeGreaterThan(0)
-  const href = await grid.evaluate((element) => {
-    const bounds = element.getBoundingClientRect()
-    const item = [...element.querySelectorAll('a')].find((candidate) => {
-      const box = candidate.getBoundingClientRect()
-      return box.top >= bounds.top - 1 && box.bottom <= bounds.bottom
+for (const viewport of [
+  { width: 1440, height: 900 },
+  { width: 375, height: 667 },
+  { width: 812, height: 375 },
+]) {
+  test(`the grid keeps its place when returning from a title at ${viewport.width}x${viewport.height}`, async ({
+    page,
+    request,
+  }) => {
+    await page.setViewportSize(viewport)
+    await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
+    await request.post(`${STUB_URL}/api/auth/refresh`)
+    await page.route('**/graphql', async (route) => {
+      const operation = route.request().postDataJSON() as {
+        operationName: string
+        variables: LibraryPageQueryVariables & { id?: string }
+      }
+      if (operation.operationName === 'LibraryPage') {
+        return route.fulfill({ json: { data: libraryPage(operation.variables) } })
+      }
+      if (operation.operationName === 'MovieDetail') {
+        return route.fulfill({ json: { data: movieDetail(operation.variables.id!) } })
+      }
+      return route.continue()
     })
-    return item?.getAttribute('href') ?? null
+    await page.goto('/library/movies?by=TITLE&direction=ASC')
+    await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
+    const grid = page.locator('[class*="_grid_"]')
+    // Scroll three rows down, to the row's measured top, so a whole row sits in view.
+    const target = await grid.evaluate((element) => {
+      const gridTop = element.getBoundingClientRect().top
+      const rowTops = [...element.querySelectorAll('[data-index]')].map(
+        (row) => row.getBoundingClientRect().top,
+      )
+      element.scrollTop = Math.round(rowTops[3] - gridTop)
+      return element.scrollTop
+    })
+    expect(target).toBeGreaterThan(0)
+    const href = await grid.evaluate((element) => {
+      const bounds = element.getBoundingClientRect()
+      const item = [...element.querySelectorAll('a')].find((candidate) => {
+        const box = candidate.getBoundingClientRect()
+        return box.top >= bounds.top - 1 && box.bottom <= bounds.bottom
+      })
+      return item?.getAttribute('href') ?? null
+    })
+    expect(href).not.toBeNull()
+    // Dispatched rather than clicked: a pointer click would first scroll the card into view.
+    await page.locator(`a[href="${href}"]`).dispatchEvent('click')
+    const opened = movies[Number(href!.split('/').at(-1))].title
+    await expect(page.getByRole('heading', { level: 1, name: opened })).toBeVisible()
+
+    await page.goBack()
+
+    // Only the rows near the restored position exist, so wait for any card rather than the first.
+    await expect(grid.locator('a').first()).toBeAttached()
+    await expect.poll(() => grid.evaluate((element) => element.scrollTop)).toBe(target)
   })
-  expect(href).not.toBeNull()
-  // Dispatched rather than clicked: a pointer click would first scroll the card into view.
-  await page.locator(`a[href="${href}"]`).dispatchEvent('click')
-  const opened = movies[Number(href!.split('/').at(-1))].title
-  await expect(page.getByRole('heading', { level: 1, name: opened })).toBeVisible()
-
-  await page.goBack()
-
-  // Only the rows near the restored position exist, so wait for any card rather than the first.
-  await expect(grid.locator('a').first()).toBeAttached()
-  await expect.poll(() => grid.evaluate((element) => element.scrollTop)).toBe(target)
-})
+}
 
 for (const viewport of [
   { width: 1440, height: 900 },
