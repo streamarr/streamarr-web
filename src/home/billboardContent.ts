@@ -16,6 +16,7 @@ export interface BillboardContent {
   metadata: BillboardMetadataEntry[]
   ctaLabel: string
   ctaFileId: string | null
+  ctaPositionSeconds: number | null
 }
 
 type ContinueWatchingItem = HomeQuery['continueWatching'][number]
@@ -39,6 +40,7 @@ export function billboardFromRecentlyAdded(
 
 function movieBillboard(movie: ContinueWatchingMovie): BillboardContent {
   const backdrop = movie.images[0] ?? null
+  const position = resumePosition(movie.watchProgress)
   return {
     title: movie.title ?? 'Untitled',
     tagline: movie.tagline,
@@ -50,14 +52,16 @@ function movieBillboard(movie: ContinueWatchingMovie): BillboardContent {
       { label: 'Genre', value: genreLabel(movie.genres) },
       { label: 'Added', value: formatRelativeTime(movie.createdOn) },
     ],
-    ctaLabel: movie.watchProgress ? 'Continue' : 'Play',
-    ctaFileId: movie.files[0]?.id ?? null,
+    ctaLabel: position ? 'Resume' : 'Play',
+    ctaFileId: movie.files.find((file) => file !== null)?.id ?? null,
+    ctaPositionSeconds: position,
   }
 }
 
 function episodeBillboard(episode: ContinueWatchingEpisode): BillboardContent {
   const series = episode.season.series
   const backdrop = series.images[0] ?? null
+  const position = resumePosition(episode.watchProgress)
   return {
     title: series.title ?? 'Untitled',
     tagline: series.tagline,
@@ -69,8 +73,10 @@ function episodeBillboard(episode: ContinueWatchingEpisode): BillboardContent {
       { label: 'Genre', value: genreLabel(series.genres) },
       { label: 'Added', value: formatRelativeTime(series.createdOn) },
     ],
-    ctaLabel: `Continue S${episode.season.seasonNumber} E${episode.episodeNumber}`,
-    ctaFileId: episode.files[0]?.id ?? null,
+    // Resume = mid-watch stream, Continue = next unwatched episode (principle 14).
+    ctaLabel: `${position ? 'Resume' : 'Continue'} S${episode.season.seasonNumber} E${episode.episodeNumber}`,
+    ctaFileId: episode.files.find((file) => file !== null)?.id ?? null,
+    ctaPositionSeconds: position,
   }
 }
 
@@ -88,7 +94,8 @@ function recentMovieBillboard(movie: RecentlyAddedMovie): BillboardContent {
       { label: 'Added', value: formatRelativeTime(movie.createdOn) },
     ],
     ctaLabel: 'Play',
-    ctaFileId: movie.files[0]?.id ?? null,
+    ctaFileId: movie.files.find((file) => file !== null)?.id ?? null,
+    ctaPositionSeconds: null,
   }
 }
 
@@ -107,7 +114,12 @@ function recentSeriesBillboard(series: RecentlyAddedSeries): BillboardContent {
     ],
     ctaLabel: 'Play',
     ctaFileId: null,
+    ctaPositionSeconds: null,
   }
+}
+
+function resumePosition(progress: { positionSeconds: number } | null | undefined): number | null {
+  return progress && progress.positionSeconds > 0 ? progress.positionSeconds : null
 }
 
 function genreLabel(genres: ReadonlyArray<{ name: string } | null>): string {

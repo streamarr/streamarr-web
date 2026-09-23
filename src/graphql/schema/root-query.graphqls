@@ -13,15 +13,16 @@ type Query {
     accountAdministration(accountId: ID!): AccountAdministration
     profileAdministration(profileId: ID!): ProfileAdministration
     accountInvitations(first: Int, after: String, last: Int, before: String): AccountInvitationConnection!
+    accountInvitationProfilePreview(profileId: ID!): AccountInvitationProfilePreview
     profileSharePreview(profileId: ID!, householdId: ID!): ProfileSharePreview
     pendingShareOffers(householdId: ID!, first: Int, after: String, last: Int, before: String): ProfileShareConnection!
     profileShares(profileId: ID!, first: Int, after: String, last: Int, before: String): ProfileShareConnection!
-    managerInvitations(profileId: ID!, first: Int, after: String, last: Int, before: String): ManagerInvitationConnection!
+    pendingManagerInvitationsForProfile(profileId: ID!, first: Int, after: String, last: Int, before: String): ManagerInvitationConnection!
     pendingManagerInvitations(first: Int, after: String, last: Int, before: String): ManagerInvitationConnection!
     householdDevices(householdId: ID!, first: Int, after: String, last: Int, before: String): DeviceRegistrationConnection!
     esnBlocks(householdId: ID!, first: Int, after: String, last: Int, before: String): EsnBlockConnection!
     serverEsnBlocks(first: Int, after: String, last: Int, before: String): EsnBlockConnection!
-    householdTeardownPreview(householdId: ID!): HouseholdTeardownPreview
+    householdDeletionPreview(householdId: ID!): HouseholdDeletionPreview
     securityAuditEvents(first: Int, after: String, last: Int, before: String): SecurityAuditEventConnection!
     profileActivity(profileId: ID!, first: Int, after: String, last: Int, before: String): ProfileActivityConnection!
 }

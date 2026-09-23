@@ -1,50 +1,148 @@
-import { useMutation } from '@apollo/client/react'
+import type { ObservableQuery } from '@apollo/client'
+import { useApolloClient, useMutation } from '@apollo/client/react'
 import { Alert, AspectRatio, Stack } from '@mantine/core'
 import Hls from 'hls.js'
 import { useEffect, useRef, useState } from 'react'
-import { CreateStreamSessionDocument } from '../graphql/generated/graphql'
+import {
+  CreateStreamSessionDocument,
+  type CreateStreamSessionMutation,
+  DestroyStreamSessionDocument,
+  ReportStreamSessionTimelineDocument,
+  type ReportStreamSessionTimelineMutationVariables,
+} from '../graphql/generated/graphql'
+import { userErrorMessage } from '../graphql/userErrors'
+import { invalidateWatchedState } from '../media/watchedState'
 
-export function Player({ mediaFileId }: { mediaFileId: string }) {
+// Progress is only worth a round trip once the playhead has moved this far since the last report.
+const TIMELINE_REPORT_INTERVAL_SECONDS = 10
+
+const PLAYBACK_FAILURE_MESSAGE = "Playback couldn't start. Try again."
+
+type PlaybackState = ReportStreamSessionTimelineMutationVariables['state']
+type StreamSessionPayload = CreateStreamSessionMutation['createStreamSession']
+
+export function Player({
+  mediaFileId,
+  startPositionSeconds,
+}: Readonly<{
+  mediaFileId: string
+  startPositionSeconds?: number
+}>) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [createStreamSession] = useMutation(CreateStreamSessionDocument)
-  const [failed, setFailed] = useState(false)
+  const client = useApolloClient()
+  const [failure, setFailure] = useState<string | null>(null)
 
   useEffect(() => {
+    const video = videoRef.current
+    if (!video) {
+      return undefined
+    }
+    setFailure(null)
+
     let hls: Hls | null = null
     let cancelled = false
-    // A new media file starts a new attempt, so the previous attempt's failure is cleared first.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setFailed(false)
+    let sessionId: string | null = null
+    let lastReportedPosition = startPositionSeconds ?? 0
+    let lastKnownPosition: number | null = null
+    let timelineReports = Promise.resolve()
 
-    createStreamSession({ variables: { mediaFileId } })
-      .then((result) => {
-        const url = result.data?.createStreamSession.streamUrl
-        const video = videoRef.current
-        if (cancelled || !url || !video) {
+    async function destroySession(id: string) {
+      await client
+        .mutate({
+          mutation: DestroyStreamSessionDocument,
+          variables: { sessionId: id },
+        })
+        .catch(() => {
+          // The server's idle reaper owns cleanup if the connection has already gone away.
+        })
+    }
+
+    function report(state: PlaybackState, positionSeconds: number) {
+      if (!sessionId) {
+        return
+      }
+      const variables = { sessionId, positionSeconds: Math.floor(positionSeconds), state }
+      // The server accepts arrival order, including reports that precede the final STOPPED.
+      timelineReports = timelineReports
+        .then(async () => {
+          await client.mutate({
+            mutation: ReportStreamSessionTimelineDocument,
+            variables,
+            update: (cache, { data }) => {
+              if (data?.reportStreamSessionTimeline) invalidateWatchedState(cache)
+            },
+            onQueryUpdated: refetchWatchedQuery,
+          })
+        })
+        .catch(ignoreTimelineReportFailure)
+    }
+
+    const timeline = attachTimeline(video, {
+      // Seeking before metadata is loaded is unreliable across browsers; the event is the safe point.
+      onLoadedMetadata: (element) => {
+        if (startPositionSeconds) {
+          element.currentTime = startPositionSeconds
+        }
+      },
+      onTimeUpdate: (element) => {
+        lastKnownPosition = element.currentTime
+        if (
+          Math.abs(element.currentTime - lastReportedPosition) < TIMELINE_REPORT_INTERVAL_SECONDS
+        ) {
           return
         }
-        hls = attach(video, url, () => {
+        lastReportedPosition = element.currentTime
+        report('PLAYING', element.currentTime)
+      },
+      onPause: (element) => {
+        lastKnownPosition = element.currentTime
+        report('PAUSED', element.currentTime)
+      },
+    })
+
+    createStreamSession({ variables: { input: { mediaFileId } } })
+      .then((result) => {
+        const payload = result.data?.createStreamSession
+        const session = payload?.session
+        if (cancelled) {
+          return session ? destroySession(session.id) : undefined
+        }
+        if (!session) {
+          setFailure(refusalMessage(payload))
+          return
+        }
+        sessionId = session.id
+        hls = attach(video, session.streamUrl, () => {
           hls = null
-          setFailed(true)
+          setFailure(PLAYBACK_FAILURE_MESSAGE)
         })
       })
       .catch(() => {
         if (!cancelled) {
-          setFailed(true)
+          setFailure(PLAYBACK_FAILURE_MESSAGE)
         }
       })
 
     return () => {
       cancelled = true
+      timeline.detach()
+      if (lastKnownPosition !== null) {
+        report('STOPPED', lastKnownPosition)
+      }
       hls?.destroy()
+      const closingSessionId = sessionId
+      if (closingSessionId) {
+        void timelineReports.then(() => destroySession(closingSessionId))
+      }
     }
-  }, [mediaFileId, createStreamSession])
+  }, [mediaFileId, startPositionSeconds, createStreamSession, client])
 
   return (
     <Stack maw={960}>
-      {failed && (
+      {failure && (
         <Alert color="red" role="alert">
-          Playback couldn't start. Try again.
+          {failure}
         </Alert>
       )}
       <AspectRatio ratio={16 / 9}>
@@ -52,6 +150,47 @@ export function Player({ mediaFileId }: { mediaFileId: string }) {
       </AspectRatio>
     </Stack>
   )
+}
+
+type TimelineHandler = (video: HTMLVideoElement) => void
+
+function refetchWatchedQuery(query: ObservableQuery) {
+  // UI refreshes must not hold the report queue or session disposal open.
+  void query.refetch().catch(() => undefined)
+  return false
+}
+
+function attachTimeline(
+  video: HTMLVideoElement,
+  handlers: {
+    onLoadedMetadata: TimelineHandler
+    onTimeUpdate: TimelineHandler
+    onPause: TimelineHandler
+  },
+): { detach: () => void } {
+  const onLoadedMetadata = () => handlers.onLoadedMetadata(video)
+  const onTimeUpdate = () => handlers.onTimeUpdate(video)
+  const onPause = () => handlers.onPause(video)
+  video.addEventListener('loadedmetadata', onLoadedMetadata)
+  video.addEventListener('timeupdate', onTimeUpdate)
+  video.addEventListener('pause', onPause)
+  return {
+    detach: () => {
+      video.removeEventListener('loadedmetadata', onLoadedMetadata)
+      video.removeEventListener('timeupdate', onTimeUpdate)
+      video.removeEventListener('pause', onPause)
+    },
+  }
+}
+
+function refusalMessage(payload: StreamSessionPayload | undefined): string {
+  const refusal = payload?.userErrors[0]
+  return refusal ? userErrorMessage(refusal) : PLAYBACK_FAILURE_MESSAGE
+}
+
+function ignoreTimelineReportFailure() {
+  // A missed progress report costs nothing the next one doesn't restore, and playback must never
+  // surface it.
 }
 
 // The stream URL carries the playback ?t= token; relative segment requests inherit it.

@@ -6,10 +6,15 @@
       "ProfileManagerNotEligibleError"
     ],
     "AcceptProfileShareError": [
+      "OfferInvalidatedError",
       "RestrictedProfileRequiresHouseholdAdminError",
       "ShareNameConflictError",
       "ShareNotFoundError",
       "ShareNotPendingError"
+    ],
+    "AccountInvitationProfile": [
+      "ExistingAccountInvitationProfile",
+      "NewAccountInvitationProfile"
     ],
     "AddLibraryError": [
       "LibraryNameRequiredError",
@@ -19,9 +24,45 @@
       "LibraryPathNotReadableError",
       "LibraryPathRequiredError"
     ],
+    "AdministrativelyDeleteAccountError": [
+      "AccountNotFoundError",
+      "InvalidIdError",
+      "LastHouseholdAccountError",
+      "LastHouseholdAdminError",
+      "LastServerAdminError",
+      "ProfileManagerNotEligibleError",
+      "ProfileRequiresEligibleManagerError",
+      "ReasonRequiredError",
+      "ReauthenticationRequiredError",
+      "ReplacementManagerRequiredError",
+      "RestrictedProfileRequiresHouseholdAdminError"
+    ],
     "AdministrativelyDeleteProfileError": [
+      "InvalidIdError",
       "ProfileBelongsToAccountError",
       "ProfileNotFoundError",
+      "ReasonRequiredError",
+      "ReauthenticationRequiredError"
+    ],
+    "AdministrativelyEndProfileShareError": [
+      "MembershipShareCannotEndError",
+      "ReasonRequiredError",
+      "ReauthenticationRequiredError",
+      "ShareNotActiveError",
+      "ShareNotFoundError"
+    ],
+    "AdministrativelyGrantProfileManagerError": [
+      "AccountNotFoundError",
+      "AlreadyManagerError",
+      "ProfileManagerNotEligibleError",
+      "ProfileNotFoundError",
+      "ReasonRequiredError",
+      "ReauthenticationRequiredError"
+    ],
+    "AdministrativelyRemoveProfileManagerError": [
+      "NotAManagerError",
+      "ProfileNotFoundError",
+      "ProfileRequiresEligibleManagerError",
       "ReasonRequiredError",
       "ReauthenticationRequiredError"
     ],
@@ -37,12 +78,14 @@
     ],
     "BlockEsnError": [
       "EsnAlreadyBlockedError",
+      "EsnInvalidError",
       "EsnRequiredError",
       "HouseholdNotFoundError",
       "ReasonRequiredError"
     ],
     "BlockEsnServerWideError": [
       "EsnAlreadyBlockedError",
+      "EsnInvalidError",
       "EsnRequiredError",
       "ReasonRequiredError",
       "ReauthenticationRequiredError"
@@ -63,7 +106,8 @@
       "ProfileNotFoundError",
       "ProfileRequiresEligibleManagerError",
       "ReauthenticationRequiredError",
-      "RestrictedAccountCannotAdministerError"
+      "RestrictedAccountCannotAdministerError",
+      "RestrictedProfileRequiresHouseholdAdminError"
     ],
     "ContinueWatchingMedia": [
       "Episode",
@@ -81,20 +125,45 @@
       "ProfileNameTakenError",
       "ProfileRequiresEligibleManagerError"
     ],
+    "CreateStreamSessionError": [
+      "InvalidIdError",
+      "InvalidMediaFileError",
+      "MediaFileHasNoVideoError",
+      "MediaFileNotFoundError",
+      "MediaFileProbeNotReadyError",
+      "TranscodeCapacityUnavailableError"
+    ],
     "DeclineManagerInvitationError": [
       "ManagerInvitationNotFoundError"
     ],
-    "DeleteAccountError": [
+    "DeleteEmptyHouseholdError": [
+      "AccountsRemainError",
+      "HouseholdNotFoundError",
+      "InvalidIdError",
+      "ReasonRequiredError",
+      "ReauthenticationRequiredError"
+    ],
+    "DeleteLastAccountAndHouseholdError": [
+      "AccountsRemainError",
+      "HouseholdNotFoundError",
+      "InvalidIdError",
+      "LastAccountNotFoundError",
+      "LastServerAdminError",
+      "ReasonRequiredError",
+      "ReauthenticationRequiredError"
+    ],
+    "DeleteLastAccountAndHouseholdPreservingPersonalProfileError": [
       "AccountNotFoundError",
-      "LastHouseholdAccountError",
-      "LastHouseholdAdminError",
+      "AccountsRemainError",
+      "DestinationNotFoundError",
+      "HouseholdNotFoundError",
+      "InvalidIdError",
+      "LastAccountNotFoundError",
       "LastServerAdminError",
       "ProfileManagerNotEligibleError",
-      "ProfileRequiresEligibleManagerError",
+      "ProfileNameTakenError",
       "ReasonRequiredError",
-      "ReauthenticationRequiredError",
-      "ReplacementManagerRequiredError",
-      "RestrictedProfileRequiresHouseholdAdminError"
+      "ReauthenticationRequiredError"
     ],
     "DeleteMyAccountError": [
       "ConfirmationRequiredError",
@@ -124,25 +193,10 @@
       "ShareNotActiveError",
       "ShareNotFoundError"
     ],
-    "ForceEndProfileShareError": [
-      "MembershipShareCannotEndError",
-      "ReasonRequiredError",
-      "ReauthenticationRequiredError",
-      "ShareNotActiveError",
-      "ShareNotFoundError"
-    ],
     "GrantHouseholdAdminError": [
       "AccountNotFoundError",
       "InvalidIdError",
       "RestrictedAccountCannotAdministerError"
-    ],
-    "GrantProfileManagerOverrideError": [
-      "AccountNotFoundError",
-      "AlreadyManagerError",
-      "ProfileManagerNotEligibleError",
-      "ProfileNotFoundError",
-      "ReasonRequiredError",
-      "ReauthenticationRequiredError"
     ],
     "GrantServerAdminError": [
       "AccountNotFoundError",
@@ -155,16 +209,15 @@
       "AccountNotFoundError",
       "AlreadyManagerError",
       "ConfirmationRequiredError",
-      "ConnectProfileNotFoundError",
-      "ConnectProfileRequiredError",
       "DestinationNotFoundError",
-      "DestinationRequiredError",
       "DisplayNameRequiredError",
       "EligibleProfileManagerRequiredError",
       "EmailAlreadyUsedError",
+      "EmailInvalidError",
       "EmailRequiredError",
       "EsnAlreadyBlockedError",
       "EsnBlockNotFoundError",
+      "EsnInvalidError",
       "EsnRequiredError",
       "HouseholdNameRequiredError",
       "HouseholdNotFoundError",
@@ -177,16 +230,18 @@
       "LibraryPathNotFoundError",
       "LibraryPathNotReadableError",
       "LibraryPathRequiredError",
+      "LinkProfileNotFoundError",
       "ManagerInvitationNotFoundError",
       "MaximumAllowedRatingAgeInvalidError",
+      "MediaFileNotFoundError",
       "NotAManagerError",
+      "OfferInvalidatedError",
       "ProfileAlreadyLinkedError",
       "ProfileAlreadySharedError",
       "ProfileManagerNotEligibleError",
       "ProfileNameRequiredError",
       "ProfileNameTakenError",
       "ProfileNotFoundError",
-      "ProfileNotInHouseholdError",
       "ReasonRequiredError",
       "RegistrationNotActiveError",
       "RegistrationNotFoundError",
@@ -194,6 +249,7 @@
       "ReofferHouseholdNotSharedError",
       "ReplacementManagerRequiredError",
       "RestrictedAccountCannotAdministerError",
+      "RestrictedHouseholdAdminError",
       "SameHouseholdError",
       "ShareNotActiveError",
       "ShareNotFoundError",
@@ -205,20 +261,30 @@
       "ProfileManagerNotEligibleError",
       "ProfileNotFoundError"
     ],
-    "IssueAccountInvitationError": [
-      "AccountNotFoundError",
-      "ConnectProfileNotFoundError",
-      "ConnectProfileRequiredError",
-      "EligibleProfileManagerRequiredError",
+    "IssueAccountInvitationForExistingProfileError": [
       "EmailAlreadyUsedError",
+      "EmailInvalidError",
       "EmailRequiredError",
       "HouseholdNotFoundError",
+      "LinkProfileNotFoundError",
       "ProfileAlreadyLinkedError",
-      "ProfileNameRequiredError",
-      "ProfileNotInHouseholdError",
       "ReofferHouseholdNotFoundError",
       "ReofferHouseholdNotSharedError",
-      "RestrictedFirstAccountError"
+      "RestrictedFirstAccountError",
+      "RestrictedHouseholdAdminError"
+    ],
+    "IssueAccountInvitationWithNewProfileError": [
+      "EligibleProfileManagerRequiredError",
+      "EmailAlreadyUsedError",
+      "EmailInvalidError",
+      "EmailRequiredError",
+      "HouseholdNotFoundError",
+      "MaximumAllowedRatingAgeInvalidError",
+      "ProfileManagerNotEligibleError",
+      "ProfileNameRequiredError",
+      "ProfileNameTakenError",
+      "RestrictedFirstAccountError",
+      "RestrictedHouseholdAdminError"
     ],
     "IssuePasswordResetError": [
       "AccountNotFoundError",
@@ -234,24 +300,23 @@
       "AccountsRemainError",
       "AlreadyManagerError",
       "ConfirmationRequiredError",
-      "ConnectProfileNotFoundError",
-      "ConnectProfileRequiredError",
       "DestinationNotFoundError",
-      "DestinationRequiredError",
       "DisplayNameRequiredError",
       "EligibleProfileManagerRequiredError",
       "EmailAlreadyUsedError",
+      "EmailInvalidError",
       "EmailRequiredError",
       "EsnAlreadyBlockedError",
       "EsnBlockNotFoundError",
+      "EsnInvalidError",
       "EsnRequiredError",
       "HouseholdNameRequiredError",
       "HouseholdNotFoundError",
       "InvalidIdError",
+      "InvalidMediaFileError",
       "InvalidProfilePinError",
       "InvitationNotPendingError",
-      "LastAccountActionNotAllowedError",
-      "LastAccountActionRequiredError",
+      "LastAccountNotFoundError",
       "LastHouseholdAccountError",
       "LastHouseholdAdminError",
       "LastServerAdminError",
@@ -261,11 +326,16 @@
       "LibraryPathNotFoundError",
       "LibraryPathNotReadableError",
       "LibraryPathRequiredError",
+      "LinkProfileNotFoundError",
       "ManagementAlreadyRemovedError",
       "ManagerInvitationNotFoundError",
       "MaximumAllowedRatingAgeInvalidError",
+      "MediaFileHasNoVideoError",
+      "MediaFileNotFoundError",
+      "MediaFileProbeNotReadyError",
       "MembershipShareCannotEndError",
       "NotAManagerError",
+      "OfferInvalidatedError",
       "ProfileAlreadyLinkedError",
       "ProfileAlreadySharedError",
       "ProfileBelongsToAccountError",
@@ -274,7 +344,6 @@
       "ProfileNameTakenError",
       "ProfileNotDeletableError",
       "ProfileNotFoundError",
-      "ProfileNotInHouseholdError",
       "ProfilePinRequiredError",
       "ProfileRequiresEligibleManagerError",
       "ReasonRequiredError",
@@ -286,12 +355,14 @@
       "ReplacementManagerRequiredError",
       "RestrictedAccountCannotAdministerError",
       "RestrictedFirstAccountError",
+      "RestrictedHouseholdAdminError",
       "RestrictedProfileRequiresHouseholdAdminError",
       "SameHouseholdError",
       "ShareNameConflictError",
       "ShareNotActiveError",
       "ShareNotFoundError",
-      "ShareNotPendingError"
+      "ShareNotPendingError",
+      "TranscodeCapacityUnavailableError"
     ],
     "OfferProfileShareError": [
       "HouseholdNotFoundError",
@@ -312,19 +383,13 @@
       "ProfileNotFoundError",
       "ProfileRequiresEligibleManagerError"
     ],
-    "RemoveProfileManagerOverrideError": [
-      "NotAManagerError",
-      "ProfileNotFoundError",
-      "ProfileRequiresEligibleManagerError",
-      "ReasonRequiredError",
-      "ReauthenticationRequiredError"
-    ],
     "RemoveProfileMaximumAllowedRatingAgeError": [
       "MaximumAllowedRatingAgeInvalidError",
       "ProfileNotFoundError",
       "ProfileRequiresEligibleManagerError",
       "ReauthenticationRequiredError",
-      "RestrictedAccountCannotAdministerError"
+      "RestrictedAccountCannotAdministerError",
+      "RestrictedProfileRequiresHouseholdAdminError"
     ],
     "RemoveProfilePinError": [
       "ProfileNotFoundError",
@@ -366,7 +431,8 @@
       "ProfileNotFoundError",
       "ProfileRequiresEligibleManagerError",
       "ReauthenticationRequiredError",
-      "RestrictedAccountCannotAdministerError"
+      "RestrictedAccountCannotAdministerError",
+      "RestrictedProfileRequiresHouseholdAdminError"
     ],
     "SetProfilePictureError": [
       "ProfileNotFoundError"
@@ -375,23 +441,10 @@
       "InvalidProfilePinError",
       "ProfileNotFoundError"
     ],
-    "TearDownHouseholdError": [
-      "AccountNotFoundError",
-      "AccountsRemainError",
-      "DestinationNotFoundError",
-      "DestinationRequiredError",
-      "HouseholdNotFoundError",
-      "LastAccountActionNotAllowedError",
-      "LastAccountActionRequiredError",
-      "LastServerAdminError",
-      "ProfileManagerNotEligibleError",
-      "ReasonRequiredError",
-      "ReauthenticationRequiredError",
-      "ReplacementManagerRequiredError"
-    ],
     "TransferAccountError": [
       "AccountNotFoundError",
       "HouseholdNotFoundError",
+      "InvalidIdError",
       "LastHouseholdAccountError",
       "LastHouseholdAdminError",
       "ProfileNameTakenError",
@@ -400,10 +453,21 @@
       "RestrictedProfileRequiresHouseholdAdminError",
       "SameHouseholdError"
     ],
+    "TransferLastAccountAndDeleteHouseholdError": [
+      "AccountsRemainError",
+      "DestinationNotFoundError",
+      "HouseholdNotFoundError",
+      "InvalidIdError",
+      "LastAccountNotFoundError",
+      "ProfileNameTakenError",
+      "ReasonRequiredError",
+      "ReauthenticationRequiredError"
+    ],
     "TransferProfileError": [
       "AccountNotFoundError",
       "EligibleProfileManagerRequiredError",
       "HouseholdNotFoundError",
+      "InvalidIdError",
       "ProfileBelongsToAccountError",
       "ProfileManagerNotEligibleError",
       "ProfileNameTakenError",
@@ -413,11 +477,13 @@
     ],
     "UnblockEsnError": [
       "EsnBlockNotFoundError",
+      "EsnInvalidError",
       "EsnRequiredError",
       "HouseholdNotFoundError"
     ],
     "UnblockEsnServerWideError": [
       "EsnBlockNotFoundError",
+      "EsnInvalidError",
       "EsnRequiredError"
     ]
   }

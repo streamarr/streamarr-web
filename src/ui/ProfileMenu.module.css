@@ -2,20 +2,20 @@
   width: 32px;
   height: 32px;
   border-radius: var(--radius-md);
-  background: var(--color-alpha-18);
+  background: color-mix(in srgb, var(--ambient-text-primary, var(--color-white)) 18%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 14px;
   font-weight: 600;
-  color: var(--color-alpha-92);
+  color: var(--ambient-text-primary, var(--color-alpha-92));
   border: none;
   cursor: pointer;
   padding: 0;
 }
 
 .profileChipOpen {
-  background: var(--selection-active);
+  background: var(--ambient-selected, var(--selection-active));
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--indicator-active-track) 50%, transparent);
 }
 

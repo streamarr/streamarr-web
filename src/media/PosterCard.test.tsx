@@ -26,4 +26,19 @@ describe('PosterCard', () => {
     render(<PosterCard title="Everlight" meta="2024" image={null} blurHash={null} />)
     expect(screen.queryByLabelText('Watched')).not.toBeInTheDocument()
   })
+
+  it('renders a progress bar beside the corner badge for a season in progress', () => {
+    const { container } = render(
+      <PosterCard
+        title="Season 2"
+        meta="2018"
+        image={null}
+        blurHash={null}
+        badge={{ status: 'unwatched-count', count: 3 }}
+        progressPercent={56}
+      />,
+    )
+    expect(screen.getByLabelText('3 unwatched')).toBeInTheDocument()
+    expect(container.querySelector('[style*="width: 56%"]')).not.toBeNull()
+  })
 })

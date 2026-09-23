@@ -14,6 +14,25 @@
   overflow: hidden;
 }
 
+.grid,
+.grid .stillArt {
+  width: auto;
+}
+
+.grid .stillArt {
+  height: auto;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-lg);
+}
+
+.grid .stillTitle {
+  color: var(--ambient-text-primary, var(--text-primary));
+}
+
+.grid .stillSubtitle {
+  color: var(--ambient-text-secondary, var(--text-secondary));
+}
+
 .progressTrack {
   position: absolute;
   left: 0;

@@ -31,6 +31,7 @@ export function BillboardHero({ content }: Readonly<{ content: BillboardContent 
           <Link
             to="/play/$mediaFileId"
             params={{ mediaFileId: content.ctaFileId }}
+            search={{ position: content.ctaPositionSeconds ?? undefined }}
             className={styles.cta}
           >
             {content.ctaLabel}

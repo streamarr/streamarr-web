@@ -1,0 +1,3 @@
+mutation DestroyStreamSession($sessionId: ID!) {
+  destroyStreamSession(sessionId: $sessionId)
+}

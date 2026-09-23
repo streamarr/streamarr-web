@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate, useRouteContext } from '@tanstack/react-router'
-import lockup from '../assets/streamarr-mark-and-text-light.svg'
 import { useMe } from '../identity/useMe'
 import { useLibraries } from '../media/useLibraries'
+import { Lockup } from './Lockup'
 import { ProfileMenu } from './ProfileMenu'
 import styles from './TopBar.module.css'
 
@@ -21,7 +21,7 @@ export function TopBar() {
 
   return (
     <header className={styles.topBar}>
-      <img className={styles.topBarLockup} src={lockup} alt="Streamarr" />
+      <Lockup className={styles.topBarLockup} />
       <div className={styles.topBarDivider} aria-hidden />
       <nav className={styles.topBarNav} aria-label="Primary">
         <Link to="/" className={pillClassName(pathname === '/')}>
