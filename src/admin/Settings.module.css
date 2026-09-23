@@ -52,30 +52,6 @@
     margin-top: var(--spacing-8);
     color: var(--semantic-error-text);
   }
-  & :global(.mantine-Button-root) {
-    font-size: var(--font-size-body);
-    font-weight: var(--font-weight-medium);
-    min-height: 40px;
-    border-radius: var(--radius-md);
-  }
-  & :global(.mantine-Button-root)[data-variant='filled'] {
-    background: var(--selection-active);
-    color: var(--color-white);
-    border: none;
-    font-weight: var(--font-weight-semibold);
-  }
-  & :global(.mantine-Button-root)[data-variant='default'] {
-    border: none;
-    background: var(--surface-panel-strong);
-    color: var(--text-primary);
-  }
-  & :global(.mantine-Button-root)[data-variant='default']:hover:not(:disabled) {
-    background: var(--surface-panel-heavy);
-  }
-  & :global(.mantine-Button-root):disabled {
-    background: var(--surface-panel);
-    color: var(--text-tertiary);
-  }
 }
 .railTitle,
 .typeField legend,
@@ -291,10 +267,6 @@
   gap: var(--spacing-10);
   flex-wrap: wrap;
 }
-.primaryActions :global(.mantine-Button-root) {
-  border-radius: var(--radius-sm);
-  padding-inline: var(--spacing-14);
-}
 .primaryActions p {
   flex-basis: 100%;
   font-size: var(--font-size-label);
@@ -429,11 +401,6 @@
   flex-wrap: wrap;
   gap: var(--spacing-10);
   margin-left: auto;
-}
-.refreshActions :global(.mantine-Button-root) {
-  border-radius: var(--radius-sm);
-  font-size: 14px;
-  padding-inline: var(--spacing-18);
 }
 .settings .refreshForm :global(.mantine-Input-input),
 .settings .refreshActions :global(.mantine-Button-root) {
