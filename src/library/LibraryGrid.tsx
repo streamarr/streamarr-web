@@ -320,6 +320,8 @@ export function LibraryGrid({
           role="grid"
           aria-label="Items"
           aria-rowcount={rowCount}
+          // Focusable by a click on the space between cards, so the keys keep moving their focus.
+          tabIndex={-1}
           className={styles.rows}
           style={{ height: totalSize }}
           onKeyDown={moveFocus}
