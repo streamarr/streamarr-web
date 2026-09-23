@@ -681,7 +681,7 @@ describe('LibraryScreen', () => {
     expect(claimed).toEqual(['ArrowDown'])
   })
 
-  it('exposes the rows as a grid that announces each rendered row among all the loaded rows', async () => {
+  it('exposes the rows as a grid whose total the client does not know, each rendered row carrying its index', async () => {
     twoColumnRows()
     server.use(
       graphql.query('LibraryPage', () =>
@@ -691,7 +691,7 @@ describe('LibraryScreen', () => {
     renderWithProviders(<Harness />)
     await screen.findByRole('link', { name: /Title 00/ })
     const grid = screen.getByRole('grid', { name: 'Items' })
-    expect(grid).toHaveAttribute('aria-rowcount', '12')
+    expect(grid).toHaveAttribute('aria-rowcount', '-1')
     const firstRow = within(grid).getAllByRole('row')[0]
     expect(firstRow).toHaveAttribute('aria-rowindex', '1')
     expect(within(firstRow).getAllByRole('gridcell')).toHaveLength(2)

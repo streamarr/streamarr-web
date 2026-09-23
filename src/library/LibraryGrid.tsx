@@ -336,7 +336,8 @@ export function LibraryGrid({
         <div
           role="grid"
           aria-label="Items"
-          aria-rowcount={rowCount}
+          // The loaded titles are a window on the library; its size is unknown here (ARIA: -1).
+          aria-rowcount={-1}
           // Focusable by a click on the space between cards, so the keys keep moving their focus.
           tabIndex={-1}
           className={styles.rows}
