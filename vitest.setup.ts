@@ -25,18 +25,52 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
 
+// jsdom lays nothing out, so the virtualized library grid would see a 0px viewport and render no
+// rows: its scroll container is this tall (offsetHeight, which the virtualizer reads) and each of
+// its cells this high (the bounding rect the grid measures a row by), one title per row.
+export const JSDOM_GRID_HEIGHT = 800
+export const JSDOM_ROW_HEIGHT = 300
+function jsdomOffsetHeight(this: HTMLElement) {
+  return this.hasAttribute('data-scroll-restoration-id') ? JSDOM_GRID_HEIGHT : 0
+}
+Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+  configurable: true,
+  get: jsdomOffsetHeight,
+})
+// eslint-disable-next-line @typescript-eslint/unbound-method -- kept to call with the element as `this`
+const nativeGetBoundingClientRect = Element.prototype.getBoundingClientRect
+Element.prototype.getBoundingClientRect = function getBoundingClientRect(this: Element) {
+  const rect = nativeGetBoundingClientRect.call(this)
+  if (this.getAttribute('role') !== 'gridcell') {
+    return rect
+  }
+  const { x, y, top, left, right, width } = rect
+  const bottom = top + JSDOM_ROW_HEIGHT
+  return { x, y, top, left, right, bottom, width, height: JSDOM_ROW_HEIGHT, toJSON: () => ({}) }
+}
+
 // jsdom has no scroll layout, so it implements neither this nor a meaningful scroll position;
 // tests that care about scrolling assert against the mocked IntersectionObserver instead.
 // eslint-disable-next-line @typescript-eslint/unbound-method -- a polyfill check reads the method without calling it
 Element.prototype.scrollIntoView ??= function scrollIntoView() {}
 
-// Mantine's SegmentedControl positions its indicator with ResizeObserver, which jsdom lacks.
-class QuietResizeObserver {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
+// jsdom has no ResizeObserver. Mantine's SegmentedControl positions its indicator with one, and
+// the library grid re-lays its rows from one, so each instance is kept reachable through
+// `resizeObserverInstances` for a test to fire by hand.
+export class MockResizeObserver implements ResizeObserver {
+  readonly callback: ResizeObserverCallback
+
+  constructor(callback: ResizeObserverCallback) {
+    this.callback = callback
+    resizeObserverInstances.push(this)
+  }
+
+  observe = vi.fn()
+  unobserve = vi.fn()
+  disconnect = vi.fn()
 }
-globalThis.ResizeObserver ??= QuietResizeObserver as unknown as typeof ResizeObserver
+export const resizeObserverInstances: MockResizeObserver[] = []
+globalThis.ResizeObserver ??= MockResizeObserver as unknown as typeof ResizeObserver
 
 // jsdom has no IntersectionObserver either. Unlike ResizeObserver this one isn't fire-and-forget:
 // infinite-scroll and alphabet-rail tests need to trigger it manually, so each instance is kept
@@ -67,4 +101,5 @@ globalThis.IntersectionObserver ??=
 
 afterEach(() => {
   intersectionObserverInstances.length = 0
+  resizeObserverInstances.length = 0
 })

@@ -34,7 +34,18 @@ describe('AlphabetRail', () => {
 
     await user.click(screen.getByText('N'))
 
-    expect(onSelect).toHaveBeenCalledWith('N')
+    expect(onSelect).toHaveBeenCalledWith('N', 'pointer')
+  })
+
+  it('reports a letter chosen from the keyboard, so the caller can move focus with the jump', async () => {
+    const onSelect = vi.fn()
+    const user = userEvent.setup()
+    render(<AlphabetRail index={INDEX} selected={null} onSelect={onSelect} />)
+
+    screen.getByText('N').focus()
+    await user.keyboard('{Enter}')
+
+    expect(onSelect).toHaveBeenCalledWith('N', 'keyboard')
   })
 
   it('calls onSelect with null when the active letter is tapped again', async () => {
@@ -44,6 +55,6 @@ describe('AlphabetRail', () => {
 
     await user.click(screen.getByText('N'))
 
-    expect(onSelect).toHaveBeenCalledWith(null)
+    expect(onSelect).toHaveBeenCalledWith(null, 'pointer')
   })
 })

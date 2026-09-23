@@ -66,3 +66,77 @@ Adopt **(a)**. It matches what tvOS actually does (data swap under a still-mount
 - **`src/library/LibraryScreen.test.tsx`** (`renderWithProviders` + `Harness`, MSW): hold the grid node (`document.querySelector('.' + styles.grid)`) before clicking `N` with the N response gated; assert `grid.isConnected` stays `true`, the `Movies` heading and `navigation "Jump to letter"` remain, and `N` has `aria-pressed="true"` during the wait; after release assert the same node still holds `Northern Line`.
 - **`src/routes/_authenticated/-library.$libraryId.test.tsx`** (`renderAppAt`, `src/test/render.tsx:33-46`): click `N`; assert `router.state.location.search.letter === 'N'` and the grid node identity is unchanged across the navigation.
 - **`e2e/library.spec.ts`**: in "a letter jump stays on its target…", take `await grid.elementHandle()` before the click and assert `handle.evaluate((el) => el.isConnected)` after both the seek and the backfill; assert the landing card's `boundingBox().y` equals the grid's top within one row gap after the backfill, and that no frame showed `J Title 00` above it (poll `scrollTop` never drops to 0 after landing). Playwright is the only layer that can prove the positioning, since jsdom has no layout.
+
+## Spike: row virtualization (2026-09-22)
+
+Branch `feat/library-virtual-grid` (spiked as `spike/library-virtual-grid`), worktree `../streamarr-web-virtual-spike`, on top of `feat/web-12-detail-pages` at 5a6a4b3. Question: does virtualizing the grid with TanStack Virtual make a letter jump cheaper without losing the landing, the backfill, Back, the rail, or the phone layouts?
+
+### What was built
+
+- `LibraryGrid` (extracted from `LibraryScreen`) runs `useVirtualizer` over rows: rows are absolutely positioned inside a spacer the height of the list; one rendered row supplies the column count (computed `grid-template-columns`), the row height (bounding rect, ceiled) and the gap (`row-gap`), measured again on a width change. Rows are keyed by their first cursor, so a page prepended in whole rows keeps the visible rows mounted.
+- A letter lands by row index from `measurementsCache[row].start`; a prepended page shifts `scrollTop` by the start of the row its old first title moved to, and only within the same result key. The paging sentinels sit at the spacer's ends, so the half-viewport prefetch is unchanged. The rail's letter is the top row's (`virtualizer.range.startIndex`), no per-item observers; when the pressed letter's titles are in that row it wins, as tvOS does through its focused title.
+- Cards load posters eagerly (they mount only near the viewport) and `.posterMeta` is one line, so every row is the same height. The React Compiler skips any function that calls `useVirtualizer`, so that call lives in a thin hook and the grid still compiles.
+- jsdom needs a viewport: `vitest.setup.ts` reports an `offsetHeight` for the scroll container and a rect for a row. The browser specs scroll by row geometry where a row is not in the DOM yet, and a new spec holds the card count flat across ten jumps.
+
+### Measurements
+
+1,799 titles on the LAN server, Chrome, dev build unless noted, warm cache.
+
+| Scenario | Before | Virtualized |
+| --- | --- | --- |
+| Jump at 1440×900: request leaves after the press | ~60 ms | 23 ms |
+| Jump at 1440×900: grid invisible | ~235 ms | ~95 ms |
+| Cards in the DOM after landing and backfill | 96 | 36 (phone 375×667: 12) |
+| Back from a title at 1440×900 | restored | restored (4037 → 4037, title in view) |
+| Ten jumps, card count | grows per page | flat within one row |
+
+Fast flick of 8,000–9,000 px:
+
+| Viewport, build | Frames with unloaded visible posters | Longest frame | Row mount |
+| --- | --- | --- | --- |
+| 1440×900 dev, lazy posters | 18 of 89 | 34 ms | – |
+| 1440×900 dev, eager posters | 0 | 25 ms | – |
+| 1440×900 dev, eager, overscan 4 | 0 | 26 ms | – (+24 cards) |
+| 2560×1440 dev (11 columns) | 0 | 42 ms, 18 frames over 20 ms | 13 ms mean, 18 ms max |
+| 2560×1440 production | 0 | 19 ms, none over 20 ms | 2.4 ms mean, 5 ms max |
+
+Page size is not what shows blank space on a flick: the viewer never reached the end of the loaded rows (0 frames) and one page request fired. Lazy loading was: a remounted card deferred its poster. At wide windows the dev build's row mounts outrun the compositor; the production build keeps up.
+
+### Costs and open points
+
+- A focused card that scrolls out of the rendered range unmounts, and focus falls to `body`; two rows of overscan keep sequential Tab working.
+- Geometry follows the ResizeObserver, so the frame after a width change can lay rows out with the old column count.
+- On a reload with `?letter=` and a saved position, the first landing yields to a non-zero `scrollTop`.
+- TanStack's `anchorTo: 'end'` anchoring by key does not cover a prepend that reflows rows (48 % columns ≠ 0); the row-index compensation does.
+- Dev-mode flicks at wide windows show blank rows. A lighter card while `isScrolling` is the usual mitigation if that matters.
+
+### Verdict
+
+Virtualization pays: the jump's invisible window drops by about 60%, the DOM stays flat as pages accumulate, and the phone layouts, Back and the rail hold. Merge candidate once the focus behaviour has an owner's answer.
+
+## Productionizing the spike (2026-09-22)
+
+The open points above were closed on the same branch, test-first at the agreed seams (`LibraryScreen.test.tsx`, the route test, `e2e/library.spec.ts`).
+
+- **Focus.** The grid follows the WAI-ARIA grid pattern, which agrees with tvOS that focus is the viewer's place and is never lost. The rows are `role="grid"` with `aria-rowcount`, each rendered row carries `aria-rowindex`, and each card sits in a `gridcell`. One tab stop with a roving tabindex: the focused card, else the first card in view; arrow keys move between cards, Home and End along the row, Tab leaves. The focused card's row is added to the virtualizer's range through `rangeExtractor`, so it stays mounted however far the viewer scrolls. A letter chosen from the keyboard (a click with `detail === 0`) moves focus to the landing card, as tvOS focuses the anchor item; a pointer jump leaves focus where it was.
+- **Resize.** The grid observes its own size with a `ResizeObserver` and re-measures the geometry inside a `flushSync` render there, before paint. The browser spec registers a second observer after the app's, whose callback therefore sees the rows as the frame will paint them, and finds none overfull or overlapping; before the change it saw four overfull and three overlapping rows. The geometry is taken from a cell, not the row: in that delivery the probe row is still laid out for the old column count, so its cards wrap and its height is that of several rows.
+- **Re-keyed rows.** Rows are keyed by their first title, so a new column count, or a page prepended in anything but whole rows, remounts the cards in them. A card unmounted while focused asks to be focused again in its new element, and the effect that fulfils focus requests runs after the effects that place the rows. Found by manual testing on the production build; proven by unit tests for both re-key causes and by the resize spec, which also checks the re-focused card is fully in view.
+- **Reload guard.** Removed as unreachable. The router restores an element's position only when the element exists as the route renders; on a reload the grid mounts after the query answers, so a reload lands on the letter or the top, as it did before virtualization. On Back the router's restore runs after the landing effect and wins on its own.
+- **Uniform row height.** Stated where the geometry is measured and proven by a browser spec that lengthens one title: no title grows, every row measures the same, rows sit one pitch apart. Dropping the title's one-line rule fails it.
+- **Coverage.** `LibraryGrid.tsx` at 95% statements / 87% branches from the unit suite; the remaining lines are the zero-height and no-focus guards.
+- **Adversarial review (Codex).** Two keyboard defects, fixed test-first: an arrow key from a row kept mounted only for its focus let the unmount fallback overwrite the pending request, dropping focus to the body; and a navigation key with nowhere to go (Home on a row's first card, End on its last, an arrow at an edge) was left to the browser, which scrolled the grid while focus stayed behind. The grid now owns every navigation key it recognises.
+
+Observed once during manual testing, not reproduced in three further attempts: after a keyboard jump to P, the page before P was requested twice and the grid showed 48 titles for a few seconds before the backfill appeared. Both responses were valid; the cache held the merged page afterwards. Worth watching in the browser suite's jump specs.
+
+## Integration with merged detail pages (2026-09-23)
+
+The rebase onto `main` preserves the later detail-page navigation fixes. The reload-guard conclusion
+above is superseded: the screen captures the router's saved offset on arrival, and the grid places
+it once both the reconstructed page window and measured virtual rows are ready. A letter already
+in the URL has an explicit placement request, so choosing it after scrolling returns to its first
+row without another query or slide animation. Slow seeks keep the previous rows visible.
+
+The merged browser regressions now scroll using rendered row geometry when their target card is
+virtualized away. They still assert the visible landing and exact saved offset after Back, including
+watched-state invalidation and a failed recovery page. The virtualizer adapter explicitly opts out
+of React Compiler memoization and returns fresh snapshots to the compiled grid.

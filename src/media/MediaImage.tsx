@@ -10,11 +10,14 @@ export function MediaImage({
   blurHash,
   alt,
   className,
+  loading = 'lazy',
 }: Readonly<{
   image: PickedImage | null
   blurHash: string | null
   alt: string
   className?: string
+  // A caller that mounts only images near the viewport, like a virtualized grid, loads eagerly.
+  loading?: 'lazy' | 'eager'
 }>) {
   const [loaded, setLoaded] = useState(false)
   const placeholder = blurHash ? decodeBlurHashToDataUrl(blurHash) : null
@@ -34,7 +37,7 @@ export function MediaImage({
         <img
           src={image.url}
           alt={alt}
-          loading="lazy"
+          loading={loading}
           className={loaded ? `${styles.image} ${styles.imageLoaded}` : styles.image}
           onLoad={() => setLoaded(true)}
         />
