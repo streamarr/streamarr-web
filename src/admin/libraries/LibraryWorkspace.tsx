@@ -19,6 +19,9 @@ import {
 import { useAdminLibraries, useLibraryCommands } from './useLibraryAdmin'
 import styles from '../Settings.module.css'
 
+// Until #32 delivers live status, every acknowledgement points at a reload.
+const REFRESH_PAGE_FOR_STATUS = 'Refresh the page to see the latest status.'
+
 /**
  * Library inventory and selected-library workspace. Selection belongs to the route so reload/back
  * restore it. Missing IDs display a recovery state instead of silently acting on another library.
@@ -233,9 +236,7 @@ function LibraryDetails({
               event.preventDefault()
               if (disabled) return
               if (await commands.refresh(library.id, imageMode)) {
-                setNotice(
-                  `Metadata refresh requested for ${name}. Refresh the page to see the latest status.`,
-                )
+                setNotice(`Metadata refresh requested for ${name}. ${REFRESH_PAGE_FOR_STATUS}`)
                 closeRefresh()
               }
             }}
@@ -306,7 +307,7 @@ function LibraryDetails({
             onClick={async () => {
               setRefreshOpen(false)
               if (await commands.scan(library.id))
-                setNotice(`Scan requested for ${name}. Refresh the page to see the latest status.`)
+                setNotice(`Scan requested for ${name}. ${REFRESH_PAGE_FOR_STATUS}`)
             }}
           >
             Scan library
@@ -342,7 +343,7 @@ function LibraryDetails({
           {!maintainable && (
             <p>
               {library.status === 'SCANNING' || library.status === 'REFRESHING'
-                ? 'Maintenance is in progress. Refresh the page to see the latest status. You can still view this library.'
+                ? `Maintenance is in progress. ${REFRESH_PAGE_FOR_STATUS} You can still view this library.`
                 : 'Maintenance is unavailable for this library status.'}
             </p>
           )}
