@@ -31,6 +31,8 @@ type LibraryEdge = LibraryItems['edges'][number]
 
 export type JumpDirection = 'forward' | 'backward'
 export type SlidePhase = 'idle' | 'exit' | 'enter'
+// A request to land on the current letter again, and whether focus travels with it.
+export type LandingRepeat = { request: number; focus: boolean }
 type SlideCustom = { direction: JumpDirection | undefined; reduceMotion: boolean }
 
 // Every row is the same height: posters share an aspect ratio and their text stays on one line,
@@ -52,7 +54,7 @@ export function LibraryGrid({
   landing,
   locationKey,
   restoredScrollY,
-  repeatLanding,
+  repeat,
   focusLanding,
   selectedLetter,
   visibleLetterStore,
@@ -69,7 +71,7 @@ export function LibraryGrid({
   loadPrevious: LibraryItems['loadPrevious']
   locationKey: string | undefined
   restoredScrollY: number | undefined
-  repeatLanding: number
+  repeat: LandingRepeat
   landing: LibraryItems['landing']
   focusLanding: boolean
   selectedLetter: string | null
@@ -220,7 +222,7 @@ export function LibraryGrid({
   const placedResult = useRef<{
     locationKey: string | undefined
     landingKey: string
-    repeatLanding: number
+    repeat: number
   } | null>(null)
   useLayoutEffect(
     function placeLandingRow() {
@@ -230,7 +232,7 @@ export function LibraryGrid({
         !grid ||
         (placedResult.current?.locationKey === locationKey &&
           placedResult.current?.landingKey === landingKey &&
-          placedResult.current?.repeatLanding === repeatLanding)
+          placedResult.current?.repeat === repeat.request)
       ) {
         return
       }
@@ -238,8 +240,8 @@ export function LibraryGrid({
         return
       }
       const repeated =
-        placedResult.current !== null && placedResult.current.repeatLanding !== repeatLanding
-      placedResult.current = { locationKey, landingKey, repeatLanding }
+        placedResult.current !== null && placedResult.current.repeat !== repeat.request
+      placedResult.current = { locationKey, landingKey, repeat: repeat.request }
       if (restoredScrollY !== undefined && !repeated) {
         grid.scrollTop = restoredScrollY
         return
@@ -254,7 +256,8 @@ export function LibraryGrid({
       grid.scrollTop = rowStart(virtualizer, Math.floor(cursorIndex / geometry.columns))
       // A short page scrolls to the letter's row, through the frame the slide cannot move.
       frameRef.current?.scrollIntoView({ block: 'start' })
-      cardFocus.current.requested = focusLanding ? edges[cursorIndex].cursor : null
+      const focus = repeated ? repeat.focus : focusLanding
+      cardFocus.current.requested = focus ? edges[cursorIndex].cursor : null
     },
     [
       landingKey,
@@ -266,7 +269,7 @@ export function LibraryGrid({
       virtualizer,
       locationKey,
       restoredScrollY,
-      repeatLanding,
+      repeat,
     ],
   )
 
