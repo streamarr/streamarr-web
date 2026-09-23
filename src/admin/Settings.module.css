@@ -33,9 +33,6 @@
   & svg {
     flex-shrink: 0;
   }
-  & :global(.mantine-Input-input) {
-    min-height: 46px;
-  }
   & :global(.mantine-Input-input[data-error]) {
     border-color: var(--semantic-error);
   }
@@ -382,7 +379,6 @@
   min-width: 0;
 }
 .refreshForm {
-  --refresh-control-height: 40px;
   display: flex;
   align-items: flex-end;
   flex-wrap: wrap;
@@ -401,11 +397,6 @@
   flex-wrap: wrap;
   gap: var(--spacing-10);
   margin-left: auto;
-}
-.settings .refreshForm :global(.mantine-Input-input),
-.settings .refreshActions :global(.mantine-Button-root) {
-  height: var(--refresh-control-height);
-  min-height: var(--refresh-control-height);
 }
 .empty {
   display: flex;

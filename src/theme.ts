@@ -1,7 +1,9 @@
 import {
+  Button,
   CloseButton,
   PasswordInput,
   Select,
+  TextInput,
   colorsTuple,
   createTheme,
   type CSSVariablesResolver,
@@ -20,9 +22,12 @@ export const theme = createTheme({
   },
   primaryColor: 'streamarr',
   components: {
-    Button: {
+    // 42px controls everywhere: Mantine's md, so a button beside an input shares its height.
+    Button: Button.extend({
+      defaultProps: { size: 'md' },
       classNames: { root: buttonStyles.button },
-    },
+    }),
+    TextInput: TextInput.extend({ defaultProps: { size: 'md' } }),
     InputWrapper: {
       classNames: { label: styles.fieldLabel, required: styles.fieldRequired },
     },
@@ -31,6 +36,7 @@ export const theme = createTheme({
     },
     PasswordInput: PasswordInput.extend({
       defaultProps: {
+        size: 'md',
         visibilityToggleIcon: ({ reveal }) =>
           createElement(Icon, {
             name: reveal ? 'hide-password' : 'show-password',
@@ -43,6 +49,7 @@ export const theme = createTheme({
     }),
     Select: Select.extend({
       defaultProps: {
+        size: 'md',
         rightSection: createElement(Icon, { name: 'chevron-down', size: 16 }),
         renderOption: ({ option, checked }) =>
           createElement(
