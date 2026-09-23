@@ -59,6 +59,7 @@ export function meFixture(
     contextHouseholdName?: string
     scope?: string
     deviceBound?: boolean
+    serverAdmin?: boolean
   } = {},
 ): MeFixture {
   const households = overrides.usableHouseholds ?? [
@@ -70,7 +71,7 @@ export function meFixture(
     accountId: '11111111-1111-1111-1111-111111111111',
     email: 'owner@example.com',
     displayName: 'Owner',
-    serverAdmin: false,
+    serverAdmin: overrides.serverAdmin ?? false,
     scope: overrides.scope ?? 'account',
     deviceBound: overrides.deviceBound ?? false,
     householdRole: 'ADMIN',

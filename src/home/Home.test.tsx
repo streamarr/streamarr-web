@@ -161,7 +161,9 @@ describe('Home', () => {
   it('guides an eligible admin to creation only for a successfully empty inventory', async () => {
     serve(homeData())
     server.use(
-      graphql.query('Me', () => HttpResponse.json({ data: { me: { ...ME, serverAdmin: true } } })),
+      graphql.query('Me', () =>
+        HttpResponse.json({ data: { me: meFixture({ scope: 'profile', serverAdmin: true }) } }),
+      ),
     )
     renderAppAt('/')
     expect(await screen.findByRole('link', { name: 'Add library' })).toHaveAttribute(
@@ -173,7 +175,9 @@ describe('Home', () => {
   it('does not mistake existing libraries with no indexed media for a new server', async () => {
     serve(homeData({ libraries: [library()] }))
     server.use(
-      graphql.query('Me', () => HttpResponse.json({ data: { me: { ...ME, serverAdmin: true } } })),
+      graphql.query('Me', () =>
+        HttpResponse.json({ data: { me: meFixture({ scope: 'profile', serverAdmin: true }) } }),
+      ),
     )
     renderAppAt('/')
     await screen.findByText('Nothing to watch yet.')
