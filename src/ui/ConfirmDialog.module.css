@@ -60,6 +60,17 @@
   cursor: pointer;
 }
 
+/* Heard, not seen: the pending state has no visual beyond the disabled pair. */
+.status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .error {
   margin: 0;
   color: var(--semantic-error-text);
