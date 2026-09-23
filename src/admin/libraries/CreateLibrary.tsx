@@ -19,7 +19,7 @@ type DraftErrors = { name?: string; filepath?: string; form?: string }
  * onCreated receives the confirmed ID once; callers keep the user inside server settings.
  */
 export function CreateLibrary({ onCreated }: Readonly<{ onCreated: (id: string) => void }>) {
-  const [name, setName] = useState('Movies')
+  const [name, setName] = useState('')
   const [filepath, setFilepath] = useState('')
   const [type, setType] = useState<LibraryType>('MOVIE')
   const [errors, setErrors] = useState<DraftErrors>({})
@@ -99,11 +99,7 @@ export function CreateLibrary({ onCreated }: Readonly<{ onCreated: (id: string) 
                     name="content-type"
                     value={value}
                     checked={type === value}
-                    onChange={() => {
-                      setType(value)
-                      if (!name || name === 'Movies' || name === 'TV shows')
-                        setName(value === 'MOVIE' ? 'Movies' : 'TV shows')
-                    }}
+                    onChange={() => setType(value)}
                   />
                   <Icon name={libraryIcon(value)} />
                   {libraryTypeLabel(value)}
@@ -117,6 +113,7 @@ export function CreateLibrary({ onCreated }: Readonly<{ onCreated: (id: string) 
             label="Library name"
             required
             value={name}
+            placeholder="Movies"
             onChange={(event) => setName(event.currentTarget.value)}
             error={errors.name}
             disabled={commands.pending}

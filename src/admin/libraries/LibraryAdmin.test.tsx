@@ -189,6 +189,19 @@ describe('library administration', () => {
     ).toBeInTheDocument()
   })
 
+  it('shouldStartTheNameEmptyAndLeaveItAloneWhenTheTypeChanges', async () => {
+    serve([])
+    const { user } = renderAppAt(`${SETTINGS}/new`)
+    const name = await screen.findByRole('textbox', { name: /Library name/ })
+    expect(name).toHaveValue('')
+    expect(name).toHaveAttribute('placeholder', 'Movies')
+    await user.click(screen.getByRole('radio', { name: 'TV shows' }))
+    expect(name).toHaveValue('')
+    await user.type(name, 'Family')
+    await user.click(screen.getByRole('radio', { name: 'Movies' }))
+    expect(name).toHaveValue('Family')
+  })
+
   it('shouldDisplayUnknownCreationErrorsThroughTheirMessageFallback', async () => {
     serve([])
     server.use(
@@ -209,7 +222,8 @@ describe('library administration', () => {
       ),
     )
     const { user } = renderAppAt(`${SETTINGS}/new`)
-    await user.type(await screen.findByRole('textbox', { name: /Server folder/ }), '/media/movies')
+    await user.type(await screen.findByRole('textbox', { name: /Library name/ }), 'Movies')
+    await user.type(screen.getByRole('textbox', { name: /Server folder/ }), '/media/movies')
     await user.click(screen.getByRole('button', { name: 'Add library' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(
       /cannot add another library|Something went wrong/,
@@ -228,11 +242,12 @@ describe('library administration', () => {
       }),
     )
     const { user } = renderAppAt(`${SETTINGS}/new`)
-    await user.type(await screen.findByRole('textbox', { name: /Server folder/ }), '/media/family')
+    await user.type(await screen.findByRole('textbox', { name: /Library name/ }), 'Family')
+    await user.type(screen.getByRole('textbox', { name: /Server folder/ }), '/media/family')
     await user.dblClick(screen.getByRole('button', { name: 'Add library' }))
     expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't confirm the operation")
     expect(screen.getByRole('textbox', { name: /Server folder/ })).toHaveValue('/media/family')
-    expect(screen.getByRole('textbox', { name: /Library name/ })).toHaveValue('Movies')
+    expect(screen.getByRole('textbox', { name: /Library name/ })).toHaveValue('Family')
     expect(requests).toBe(1)
   })
 
