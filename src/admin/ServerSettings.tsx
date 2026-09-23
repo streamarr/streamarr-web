@@ -1,6 +1,6 @@
 import { useQuery } from '@apollo/client/react'
 import { Alert, Center, Loader } from '@mantine/core'
-import { Link, Navigate, Outlet } from '@tanstack/react-router'
+import { Link, Outlet } from '@tanstack/react-router'
 import { MeDocument } from '../graphql/generated/graphql'
 import { Icon } from '../ui/Icon'
 import { RetryAlert } from '../ui/RetryAlert'
@@ -30,7 +30,6 @@ export function ServerSettings() {
         <Link to="/">Back to Home</Link>
       </Alert>
     )
-  if (data.me.scope !== 'profile') return <Navigate to="/select-profile" />
 
   return (
     <div className={`${styles.settings} ${styles.railLayout}`}>
