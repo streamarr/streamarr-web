@@ -136,7 +136,7 @@ function LibraryInventory({
               <strong>{libraryName(library)}</strong>
               <LibraryStatus status={library.status} />
             </div>
-            <Icon name="chevron-right" size={14} />
+            <Icon name="chevron-right" size={16} />
           </button>
         ))}
       </nav>

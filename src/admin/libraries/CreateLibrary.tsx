@@ -133,7 +133,7 @@ export function CreateLibrary({ onCreated }: Readonly<{ onCreated: (id: string) 
             spellCheck={false}
           />
           <p className={styles.scanNote}>
-            <Icon name="scan" />
+            <Icon name="scan" size={16} />
             The initial scan starts automatically.
           </p>
           <div className={styles.formActions}>
