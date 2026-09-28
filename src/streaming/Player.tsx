@@ -1,6 +1,6 @@
-import type { ObservableQuery } from '@apollo/client'
+import type { ApolloClient, ObservableQuery } from '@apollo/client'
 import { useApolloClient, useMutation } from '@apollo/client/react'
-import { Alert, AspectRatio, Stack } from '@mantine/core'
+import { Alert, AspectRatio, Button, Stack } from '@mantine/core'
 import Hls from 'hls.js'
 import { useEffect, useRef, useState } from 'react'
 import {
@@ -15,11 +15,15 @@ import { invalidateWatchedState } from '../media/watchedState'
 
 // Progress is only worth a round trip once the playhead has moved this far since the last report.
 const TIMELINE_REPORT_INTERVAL_SECONDS = 10
+const TIMELINE_CLEANUP_TIMEOUT_MS = 10_000
+const PLAYBACK_START_TIMEOUT_MS = 30_000
 
 const PLAYBACK_FAILURE_MESSAGE = "Playback couldn't start. Try again."
 
 type PlaybackState = ReportStreamSessionTimelineMutationVariables['state']
 type StreamSessionPayload = CreateStreamSessionMutation['createStreamSession']
+
+const pendingCleanups = new WeakMap<ApolloClient, () => Promise<void>>()
 
 export function Player({
   mediaFileId,
@@ -29,10 +33,10 @@ export function Player({
   startPositionSeconds?: number
 }>) {
   const videoRef = useRef<HTMLVideoElement>(null)
-  const pendingCleanup = useRef(Promise.resolve())
   const [createStreamSession] = useMutation(CreateStreamSessionDocument)
   const client = useApolloClient()
   const [failure, setFailure] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     const video = videoRef.current
@@ -47,16 +51,23 @@ export function Player({
     let lastReportedPosition = startPositionSeconds ?? 0
     let lastKnownPosition: number | null = null
     let timelineReports = Promise.resolve()
+    const reportCancellation = new AbortController()
+    let previousCleanup = pendingCleanups.get(client)
+    let cleanupInFlight: Promise<void> | undefined
 
     async function destroySession(id: string) {
-      await client
+      const controller = new AbortController()
+      const deadline = setTimeout(() => controller.abort(), PLAYBACK_START_TIMEOUT_MS)
+      const result = await client
         .mutate({
           mutation: DestroyStreamSessionDocument,
           variables: { sessionId: id },
+          context: { fetchOptions: { signal: controller.signal } },
         })
-        .catch(() => {
-          // The server's idle reaper owns cleanup if the connection has already gone away.
-        })
+        .finally(() => clearTimeout(deadline))
+      if (!result.data?.destroyStreamSession) {
+        throw new Error('Stream session destruction was not acknowledged')
+      }
     }
 
     function report(state: PlaybackState, positionSeconds: number) {
@@ -67,9 +78,13 @@ export function Player({
       // The server accepts arrival order, including reports that precede the final STOPPED.
       timelineReports = timelineReports
         .then(async () => {
+          if (reportCancellation.signal.aborted) {
+            return
+          }
           await client.mutate({
             mutation: ReportStreamSessionTimelineDocument,
             variables,
+            context: { fetchOptions: { signal: reportCancellation.signal } },
             update: (cache, { data }) => {
               if (data?.reportStreamSessionTimeline) invalidateWatchedState(cache)
             },
@@ -102,22 +117,30 @@ export function Player({
       },
     })
 
-    const startup = pendingCleanup.current
+    const startupDeadline = setTimeout(() => {
+      cancelled = true
+      setFailure('Playback is taking too long to start. Try again.')
+      requestCleanup()
+    }, PLAYBACK_START_TIMEOUT_MS)
+    const startup = Promise.resolve()
       .then(async () => {
+        await previousCleanup?.()
+        previousCleanup = undefined
         if (cancelled) {
           return
         }
+        // The UI deadline must not discard a late session ID that still needs destruction.
         const result = await createStreamSession({ variables: { input: { mediaFileId } } })
         const payload = result.data?.createStreamSession
         const session = payload?.session
+        sessionId = session?.id ?? null
         if (cancelled) {
-          return session ? destroySession(session.id) : undefined
+          return
         }
         if (!session) {
           setFailure(refusalMessage(payload))
           return
         }
-        sessionId = session.id
         hls = attach(video, session.streamUrl, () => {
           hls = null
           setFailure(PLAYBACK_FAILURE_MESSAGE)
@@ -128,29 +151,59 @@ export function Player({
           setFailure(PLAYBACK_FAILURE_MESSAGE)
         }
       })
+      .finally(() => clearTimeout(startupDeadline))
+
+    function releaseSession(): Promise<void> {
+      if (cleanupInFlight) {
+        return cleanupInFlight
+      }
+      cleanupInFlight = finishCleanup().finally(() => {
+        cleanupInFlight = undefined
+      })
+      return cleanupInFlight
+    }
+
+    async function finishCleanup() {
+      await startup
+      await previousCleanup?.()
+      previousCleanup = undefined
+      const deadline = setTimeout(() => reportCancellation.abort(), TIMELINE_CLEANUP_TIMEOUT_MS)
+      await timelineReports.finally(() => clearTimeout(deadline))
+      if (sessionId) {
+        await destroySession(sessionId)
+        sessionId = null
+      }
+      if (pendingCleanups.get(client) === releaseSession) {
+        pendingCleanups.delete(client)
+      }
+    }
+
+    function requestCleanup() {
+      // A failed or pending destroy retains ownership; a later startup can retry the same cleanup.
+      pendingCleanups.set(client, releaseSession)
+      void releaseSession().catch(() => undefined)
+    }
 
     return () => {
       cancelled = true
+      clearTimeout(startupDeadline)
       timeline.detach()
       if (lastKnownPosition !== null) {
         report('STOPPED', lastKnownPosition)
       }
       hls?.destroy()
-      // A replacement must wait even when the cancelled creation has not returned its session yet.
-      pendingCleanup.current = startup.then(async () => {
-        await timelineReports
-        if (sessionId) {
-          await destroySession(sessionId)
-        }
-      })
+      requestCleanup()
     }
-  }, [mediaFileId, startPositionSeconds, createStreamSession, client])
+  }, [mediaFileId, startPositionSeconds, createStreamSession, client, attempt])
 
   return (
     <Stack maw={960}>
       {failure && (
         <Alert color="red" role="alert">
           {failure}
+          <Button display="block" mt="sm" onClick={() => setAttempt((value) => value + 1)}>
+            Retry playback
+          </Button>
         </Alert>
       )}
       <AspectRatio ratio={16 / 9}>

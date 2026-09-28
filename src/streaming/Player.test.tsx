@@ -54,19 +54,22 @@ function serveSession(): TimelineReport[] {
 function serveSingleWorkerSlot({
   beforeCreated,
   beforeDestroyed,
+  onCreateAttempt,
 }: {
   beforeCreated?: (mediaFileId: string) => Promise<void>
   beforeDestroyed?: () => Promise<void>
+  onCreateAttempt?: (mediaFileId: string) => void
 } = {}): Set<string> {
   const activeSessions = new Set<string>()
   server.use(
     graphql.mutation('CreateStreamSession', async ({ variables }) => {
+      const { mediaFileId } = variables.input as { mediaFileId: string }
+      onCreateAttempt?.(mediaFileId)
       if (activeSessions.size > 0) {
         return HttpResponse.json({
           errors: [{ message: 'No connected transcode worker can run this variant' }],
         })
       }
-      const { mediaFileId } = variables.input as { mediaFileId: string }
       const session = {
         ...SESSION,
         id: `sess-${mediaFileId}`,
@@ -116,6 +119,18 @@ function Harness() {
   )
 }
 
+function RemountHarness() {
+  const [shown, setShown] = useState(true)
+  return (
+    <>
+      <button type="button" onClick={() => setShown((value) => !value)}>
+        {shown ? 'Leave playback' : 'Return to playback'}
+      </button>
+      {shown && <Player mediaFileId="abcd" />}
+    </>
+  )
+}
+
 describe('Player', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -127,8 +142,273 @@ describe('Player', () => {
   })
 
   afterEach(async () => {
+    vi.useRealTimers()
     await act(async () => cleanup())
     configure({ reactStrictMode: false })
+  })
+
+  it('shouldAbandonStalledTimelineReportsAndReleaseTheSessionBeforeReplacement', async () => {
+    const reportStarted = deferred()
+    const reportResponse = deferred()
+    const reports: TimelineReport[] = []
+    let reportAborted = false
+    const activeSessions = serveSingleWorkerSlot()
+    server.use(
+      graphql.mutation('ReportStreamSessionTimeline', async ({ variables, request }) => {
+        reports.push(variables as unknown as TimelineReport)
+        request.signal.addEventListener('abort', () => {
+          reportAborted = true
+        })
+        reportStarted.resolve()
+        await reportResponse.promise
+        return HttpResponse.json({ data: { reportStreamSessionTimeline: true } })
+      }),
+    )
+    const { unmount } = renderWithProviders(<Harness />)
+    const video = await attachedVideo('/api/stream/a/multivariant.m3u8?t=playback-token')
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    playheadAt(video, 12)
+    await reportStarted.promise
+    playheadAt(video, 25)
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+
+    await act(async () => vi.advanceTimersByTimeAsync(10_000))
+    vi.useRealTimers()
+    await waitFor(() =>
+      expect(hls.loadSource).toHaveBeenLastCalledWith(
+        '/api/stream/b/multivariant.m3u8?t=playback-token',
+      ),
+    )
+    expect(reportAborted).toBe(true)
+    expect(reports).toEqual([{ sessionId: 'sess-a', positionSeconds: 12, state: 'PLAYING' }])
+    expect(activeSessions).toEqual(new Set(['sess-b']))
+    reportResponse.resolve()
+    unmount()
+    await waitFor(() => expect(activeSessions.size).toBe(0))
+  })
+
+  it('shouldPreserveOrderedProgressWhenASlowReportFinishesDuringPlayback', async () => {
+    const started = deferred()
+    const response = deferred()
+    const saved: number[] = []
+    let aborted = false
+    serveSession()
+    server.use(
+      graphql.mutation('ReportStreamSessionTimeline', async ({ variables, request }) => {
+        request.signal.addEventListener('abort', () => {
+          aborted = true
+        })
+        started.resolve()
+        await response.promise
+        saved.push(variables.positionSeconds as number)
+        return HttpResponse.json({ data: { reportStreamSessionTimeline: true } })
+      }),
+    )
+    renderWithProviders(<Player mediaFileId="abcd" />)
+    const video = await attachedVideo()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    playheadAt(video, 12)
+    await started.promise
+    playheadAt(video, 25)
+
+    await act(async () => vi.advanceTimersByTimeAsync(10_000))
+    vi.useRealTimers()
+    expect(aborted).toBe(false)
+    response.resolve()
+    await waitFor(() => expect(saved).toEqual([12, 25]))
+  })
+
+  it('shouldBoundTheWaitForDestructionWithoutStartingAnotherSessionBeforeAcknowledgement', async () => {
+    const destructionStarted = deferred()
+    const destructionResponse = deferred()
+    const attempts: string[] = []
+    const activeSessions = serveSingleWorkerSlot({
+      onCreateAttempt: (mediaFileId) => attempts.push(mediaFileId),
+      beforeDestroyed: async () => {
+        destructionStarted.resolve()
+        await destructionResponse.promise
+      },
+    })
+    const { user, unmount } = renderWithProviders(<Harness />)
+    await attachedVideo('/api/stream/a/multivariant.m3u8?t=playback-token')
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    await destructionStarted.promise
+
+    await act(async () => vi.advanceTimersByTimeAsync(30_000))
+    vi.useRealTimers()
+    expect(screen.getByRole('alert')).toHaveTextContent('Playback is taking too long to start.')
+    expect(attempts).toEqual(['a'])
+    expect(activeSessions).toEqual(new Set(['sess-a']))
+
+    destructionResponse.resolve()
+    await waitFor(() => expect(activeSessions.size).toBe(0))
+    await user.click(screen.getByRole('button', { name: 'Retry playback' }))
+    await waitFor(() =>
+      expect(hls.loadSource).toHaveBeenLastCalledWith(
+        '/api/stream/b/multivariant.m3u8?t=playback-token',
+      ),
+    )
+    expect(attempts).toEqual(['a', 'b'])
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    unmount()
+    await waitFor(() => expect(activeSessions.size).toBe(0))
+  })
+
+  it.each(['rejected', 'unacknowledged'] as const)(
+    'shouldRetryDestructionBeforeCreatingAnotherSessionWhenCleanupIs%s',
+    async (outcome) => {
+      const attempts: string[] = []
+      const activeSessions = serveSingleWorkerSlot({
+        onCreateAttempt: (mediaFileId) => attempts.push(mediaFileId),
+      })
+      let destructions = 0
+      server.use(
+        graphql.mutation('DestroyStreamSession', ({ variables }) => {
+          destructions += 1
+          if (destructions > 1) {
+            activeSessions.delete(variables.sessionId as string)
+            return HttpResponse.json({ data: { destroyStreamSession: true } })
+          }
+          return outcome === 'unacknowledged'
+            ? HttpResponse.json({ data: { destroyStreamSession: false } })
+            : HttpResponse.json({ errors: [{ message: 'Cleanup temporarily unavailable' }] })
+        }),
+      )
+      const { user, unmount } = renderWithProviders(<Harness />)
+      await attachedVideo('/api/stream/a/multivariant.m3u8?t=playback-token')
+
+      await user.click(screen.getByRole('button', { name: 'Next' }))
+      await screen.findByRole('alert')
+      expect(attempts).toEqual(['a'])
+      expect(activeSessions).toEqual(new Set(['sess-a']))
+
+      await user.click(screen.getByRole('button', { name: 'Retry playback' }))
+      await waitFor(() =>
+        expect(hls.loadSource).toHaveBeenLastCalledWith(
+          '/api/stream/b/multivariant.m3u8?t=playback-token',
+        ),
+      )
+      expect(destructions).toBe(2)
+      expect(activeSessions).toEqual(new Set(['sess-b']))
+      unmount()
+      await waitFor(() => expect(activeSessions.size).toBe(0))
+    },
+  )
+
+  it('shouldRetryTimedOutDestructionWithoutReleasingOwnershipBeforeAcknowledgement', async () => {
+    const firstStarted = deferred()
+    const firstResponse = deferred()
+    const recoveryStarted = deferred()
+    const recoveryResponse = deferred()
+    const attempts: string[] = []
+    const activeSessions = serveSingleWorkerSlot({
+      onCreateAttempt: (mediaFileId) => attempts.push(mediaFileId),
+    })
+    let destructionCount = 0
+    let firstAborted = false
+    server.use(
+      graphql.mutation('DestroyStreamSession', async ({ variables, request }) => {
+        destructionCount += 1
+        if (destructionCount === 1) {
+          request.signal.addEventListener('abort', () => {
+            firstAborted = true
+          })
+          firstStarted.resolve()
+          await firstResponse.promise
+        }
+        if (destructionCount > 1) {
+          recoveryStarted.resolve()
+          await recoveryResponse.promise
+        }
+        activeSessions.delete(variables.sessionId as string)
+        return HttpResponse.json({ data: { destroyStreamSession: true } })
+      }),
+    )
+    const { user, unmount } = renderWithProviders(<Harness />)
+    await attachedVideo('/api/stream/a/multivariant.m3u8?t=playback-token')
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    await firstStarted.promise
+
+    await act(async () => vi.advanceTimersByTimeAsync(30_000))
+    vi.useRealTimers()
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+    expect(firstAborted).toBe(true)
+    expect(attempts).toEqual(['a'])
+    await user.click(screen.getByRole('button', { name: 'Retry playback' }))
+    await recoveryStarted.promise
+    expect(activeSessions).toEqual(new Set(['sess-a']))
+    recoveryResponse.resolve()
+
+    await waitFor(() =>
+      expect(hls.loadSource).toHaveBeenLastCalledWith(
+        '/api/stream/b/multivariant.m3u8?t=playback-token',
+      ),
+    )
+    expect(activeSessions).toEqual(new Set(['sess-b']))
+    firstResponse.resolve()
+    unmount()
+    await waitFor(() => expect(activeSessions.size).toBe(0))
+  })
+
+  it('shouldReleaseASessionCreatedAfterTimeoutBeforeAllowingRetryToCreateAnother', async () => {
+    const creationStarted = deferred()
+    const creationResponse = deferred()
+    const attempts: string[] = []
+    const activeSessions = serveSingleWorkerSlot({
+      onCreateAttempt: (mediaFileId) => attempts.push(mediaFileId),
+      beforeCreated: async () => {
+        if (attempts.length === 1) {
+          creationStarted.resolve()
+          await creationResponse.promise
+        }
+      },
+    })
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const { user, unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
+    await act(async () => vi.advanceTimersByTimeAsync(0))
+    await creationStarted.promise
+
+    await act(async () => vi.advanceTimersByTimeAsync(30_000))
+    vi.useRealTimers()
+    expect(screen.getByRole('alert')).toHaveTextContent('Playback is taking too long to start.')
+    expect(hls.attachMedia).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: 'Retry playback' }))
+    expect(attempts).toEqual(['abcd'])
+    creationResponse.resolve()
+
+    await attachedVideo()
+    expect(hls.attachMedia).toHaveBeenCalledOnce()
+    expect(attempts).toEqual(['abcd', 'abcd'])
+    expect(activeSessions).toEqual(new Set(['sess-abcd']))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    unmount()
+    await waitFor(() => expect(activeSessions.size).toBe(0))
+  })
+
+  it('shouldWaitForThePreviousMountToReleaseItsSessionBeforeReturningToPlayback', async () => {
+    const destructionStarted = deferred()
+    const destructionResponse = deferred()
+    const activeSessions = serveSingleWorkerSlot({
+      beforeDestroyed: async () => {
+        destructionStarted.resolve()
+        await destructionResponse.promise
+      },
+    })
+    const { user, unmount } = renderWithProviders(<RemountHarness />)
+    await attachedVideo()
+
+    await user.click(screen.getByRole('button', { name: 'Leave playback' }))
+    await destructionStarted.promise
+    await user.click(screen.getByRole('button', { name: 'Return to playback' }))
+    destructionResponse.resolve()
+
+    await waitFor(() => expect(hls.attachMedia).toHaveBeenCalledTimes(2))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(activeSessions).toEqual(new Set(['sess-abcd']))
+    unmount()
+    await waitFor(() => expect(activeSessions.size).toBe(0))
   })
 
   it('shouldStartPlaybackWithOneWorkerSlotWhenStrictModeRestartsTheEffect', async () => {
