@@ -29,6 +29,7 @@ export function Player({
   startPositionSeconds?: number
 }>) {
   const videoRef = useRef<HTMLVideoElement>(null)
+  const pendingCleanup = useRef(Promise.resolve())
   const [createStreamSession] = useMutation(CreateStreamSessionDocument)
   const client = useApolloClient()
   const [failure, setFailure] = useState<string | null>(null)
@@ -101,8 +102,12 @@ export function Player({
       },
     })
 
-    createStreamSession({ variables: { input: { mediaFileId } } })
-      .then((result) => {
+    const startup = pendingCleanup.current
+      .then(async () => {
+        if (cancelled) {
+          return
+        }
+        const result = await createStreamSession({ variables: { input: { mediaFileId } } })
         const payload = result.data?.createStreamSession
         const session = payload?.session
         if (cancelled) {
@@ -131,10 +136,13 @@ export function Player({
         report('STOPPED', lastKnownPosition)
       }
       hls?.destroy()
-      const closingSessionId = sessionId
-      if (closingSessionId) {
-        void timelineReports.then(() => destroySession(closingSessionId))
-      }
+      // A replacement must wait even when the cancelled creation has not returned its session yet.
+      pendingCleanup.current = startup.then(async () => {
+        await timelineReports
+        if (sessionId) {
+          await destroySession(sessionId)
+        }
+      })
     }
   }, [mediaFileId, startPositionSeconds, createStreamSession, client])
 

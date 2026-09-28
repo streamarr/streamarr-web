@@ -1,5 +1,5 @@
 import { deferred } from '../test/deferred'
-import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, configure, fireEvent, screen, waitFor } from '@testing-library/react'
 import { HttpResponse, graphql } from 'msw'
 import { useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -51,10 +51,46 @@ function serveSession(): TimelineReport[] {
   return reports
 }
 
+function serveSingleWorkerSlot({
+  beforeCreated,
+  beforeDestroyed,
+}: {
+  beforeCreated?: (mediaFileId: string) => Promise<void>
+  beforeDestroyed?: () => Promise<void>
+} = {}): Set<string> {
+  const activeSessions = new Set<string>()
+  server.use(
+    graphql.mutation('CreateStreamSession', async ({ variables }) => {
+      if (activeSessions.size > 0) {
+        return HttpResponse.json({
+          errors: [{ message: 'No connected transcode worker can run this variant' }],
+        })
+      }
+      const { mediaFileId } = variables.input as { mediaFileId: string }
+      const session = {
+        ...SESSION,
+        id: `sess-${mediaFileId}`,
+        streamUrl: `/api/stream/${mediaFileId}/multivariant.m3u8?t=playback-token`,
+      }
+      activeSessions.add(session.id)
+      await beforeCreated?.(mediaFileId)
+      return HttpResponse.json({
+        data: { createStreamSession: { session, userErrors: [] } },
+      })
+    }),
+    graphql.mutation('DestroyStreamSession', async ({ variables }) => {
+      await beforeDestroyed?.()
+      activeSessions.delete(variables.sessionId as string)
+      return HttpResponse.json({ data: { destroyStreamSession: true } })
+    }),
+  )
+  return activeSessions
+}
+
 // jsdom's media element has no real timeline; an own property stands in for currentTime so the
 // player's seek is observable and tests can move the playhead before firing events.
-async function attachedVideo(): Promise<HTMLVideoElement> {
-  await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(STREAM_URL))
+async function attachedVideo(streamUrl = STREAM_URL): Promise<HTMLVideoElement> {
+  await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(streamUrl))
   const video = document.querySelector('video')
   if (!video) {
     throw new Error('no video element rendered')
@@ -92,6 +128,112 @@ describe('Player', () => {
 
   afterEach(async () => {
     await act(async () => cleanup())
+    configure({ reactStrictMode: false })
+  })
+
+  it('shouldStartPlaybackWithOneWorkerSlotWhenStrictModeRestartsTheEffect', async () => {
+    configure({ reactStrictMode: true })
+    const started = deferred()
+    const response = deferred()
+    const activeSessions = serveSingleWorkerSlot({
+      beforeCreated: async () => {
+        started.resolve()
+        await response.promise
+      },
+    })
+
+    const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
+    await started.promise
+    await act(async () => response.resolve())
+
+    await attachedVideo()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(activeSessions).toEqual(new Set(['sess-abcd']))
+
+    unmount()
+    await waitFor(() => expect(activeSessions.size).toBe(0))
+  })
+
+  it('shouldWaitForCancelledCreationAndDestructionBeforeStartingTheNextMediaFile', async () => {
+    const creationStarted = deferred()
+    const creationResponse = deferred()
+    const destructionStarted = deferred()
+    const destructionResponse = deferred()
+    const activeSessions = serveSingleWorkerSlot({
+      beforeCreated: async (mediaFileId) => {
+        if (mediaFileId === 'a') {
+          creationStarted.resolve()
+          await creationResponse.promise
+        }
+      },
+      beforeDestroyed: async () => {
+        destructionStarted.resolve()
+        await destructionResponse.promise
+      },
+    })
+    const { user, unmount } = renderWithProviders(<Harness />)
+    await creationStarted.promise
+
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    creationResponse.resolve()
+    await destructionStarted.promise
+    expect(hls.loadSource).not.toHaveBeenCalled()
+    destructionResponse.resolve()
+
+    await waitFor(() =>
+      expect(hls.loadSource).toHaveBeenCalledExactlyOnceWith(
+        '/api/stream/b/multivariant.m3u8?t=playback-token',
+      ),
+    )
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(activeSessions).toEqual(new Set(['sess-b']))
+
+    unmount()
+    await waitFor(() => expect(activeSessions.size).toBe(0))
+  })
+
+  it('shouldReleaseThePlayingSessionAfterItsFinalReportBeforeStartingTheNextMediaFile', async () => {
+    const reportStarted = deferred()
+    const reportResponse = deferred()
+    const destructionStarted = deferred()
+    const destructionResponse = deferred()
+    const saved: TimelineReport[] = []
+    const activeSessions = serveSingleWorkerSlot({
+      beforeDestroyed: async () => {
+        destructionStarted.resolve()
+        await destructionResponse.promise
+      },
+    })
+    server.use(
+      graphql.mutation('ReportStreamSessionTimeline', async ({ variables }) => {
+        reportStarted.resolve()
+        await reportResponse.promise
+        saved.push(variables as unknown as TimelineReport)
+        return HttpResponse.json({ data: { reportStreamSessionTimeline: true } })
+      }),
+    )
+    const { user, unmount } = renderWithProviders(<Harness />)
+    const video = await attachedVideo('/api/stream/a/multivariant.m3u8?t=playback-token')
+    playheadAt(video, 5)
+
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    await reportStarted.promise
+    expect(activeSessions).toEqual(new Set(['sess-a']))
+    reportResponse.resolve()
+    await destructionStarted.promise
+    expect(saved).toEqual([{ sessionId: 'sess-a', positionSeconds: 5, state: 'STOPPED' }])
+    destructionResponse.resolve()
+
+    await waitFor(() =>
+      expect(hls.loadSource).toHaveBeenLastCalledWith(
+        '/api/stream/b/multivariant.m3u8?t=playback-token',
+      ),
+    )
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(activeSessions).toEqual(new Set(['sess-b']))
+
+    unmount()
+    await waitFor(() => expect(activeSessions.size).toBe(0))
   })
 
   it('shouldKeepTheFinalPositionWhenAnEarlierReportIsDelayed', async () => {
