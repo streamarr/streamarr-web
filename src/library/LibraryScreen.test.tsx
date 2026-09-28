@@ -139,6 +139,21 @@ function Harness({
 }
 
 describe('LibraryScreen', () => {
+  it('shouldShowHashFirstWhenTheServerListsItLast', async () => {
+    const data = libraryData()
+    data.library.alphabetIndex.push({ letter: 'HASH', count: 2 })
+    server.use(graphql.query('LibraryPage', () => HttpResponse.json({ data })))
+    renderWithProviders(<Harness initialSearch={{ by: 'TITLE', direction: 'ASC' }} />)
+
+    const rail = await screen.findByRole('navigation', { name: 'Jump to letter' })
+
+    expect(
+      within(rail)
+        .getAllByRole('button')
+        .map((button) => button.textContent),
+    ).toEqual(['#', 'A', 'E', 'N'])
+  })
+
   it.each([
     { by: 'ADDED', direction: 'DESC', letter: 'N' },
     { by: 'TITLE', direction: 'ASC', letter: 'N', watchStatus: 'UNWATCHED' },

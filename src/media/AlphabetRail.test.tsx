@@ -16,9 +16,13 @@ describe('AlphabetRail', () => {
     expect(screen.queryByText('B')).not.toBeInTheDocument()
   })
 
-  it('renders HASH as "#"', () => {
+  it('shouldRenderHashBeforeLettersWhenTheIndexListsItLast', () => {
     render(<AlphabetRail index={INDEX} selected={null} onSelect={() => {}} />)
-    expect(screen.getByText('#')).toBeInTheDocument()
+    expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual([
+      '#',
+      'A',
+      'N',
+    ])
   })
 
   it('marks the selected letter as pressed', () => {
