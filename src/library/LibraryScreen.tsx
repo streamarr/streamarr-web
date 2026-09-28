@@ -259,7 +259,7 @@ function directionOfJump(
   from: string | null,
   to: string,
 ): JumpDirection {
-  // Titles under '#' sort before A, although the rail lists '#' last.
+  // Titles under '#' sort before A, regardless of the server's alphabet index order.
   const position = (letter: string | null) =>
     letter === 'HASH' ? -1 : index.findIndex((entry) => entry.letter === letter)
   return position(to) < position(from) ? 'backward' : 'forward'
