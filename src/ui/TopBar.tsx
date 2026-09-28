@@ -34,7 +34,7 @@ export function TopBar() {
               key={library.id}
               to="/library/$libraryId"
               params={{ libraryId: library.id }}
-              search={{ by: 'ADDED', direction: 'DESC' }}
+              search={{ by: 'TITLE', direction: 'ASC' }}
               className={pillClassName(pathname === to)}
             >
               {library.name ?? 'Library'}

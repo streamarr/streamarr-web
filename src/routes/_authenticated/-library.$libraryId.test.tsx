@@ -175,7 +175,7 @@ describe('/library/$libraryId', () => {
     expect(await screen.findByRole('link', { name: /Everlight/ })).toBeVisible()
   })
 
-  it('queries the id from the route param with the default sort when no search params are given', async () => {
+  it('shouldSortByTitleWhenNoSearchParamsAreGiven', async () => {
     const requests: { libraryId?: string; sort?: MediaSort; filter?: MediaFilter }[] = []
     mockLibraryPage(requests)
 
@@ -183,7 +183,8 @@ describe('/library/$libraryId', () => {
 
     await screen.findByRole('heading', { name: 'Movies' })
     expect(requests[0].libraryId).toBe(LIBRARY_ID)
-    expect(requests[0].sort).toEqual({ by: 'ADDED', direction: 'DESC' })
+    expect(requests[0].sort).toEqual({ by: 'TITLE', direction: 'ASC' })
+    expect(screen.getByRole('button', { name: 'Sort: Title' })).toBeVisible()
     expect(requests[0].filter?.watchStatus).toBeUndefined()
     expect(requests[0].filter?.startLetter).toBeUndefined()
   })
@@ -198,6 +199,54 @@ describe('/library/$libraryId', () => {
     expect(requests[0].sort).toEqual({ by: 'TITLE', direction: 'ASC' })
     expect(requests[0].filter?.watchStatus).toBeUndefined()
     expect(requests[0].filter?.startLetter).toBe('N')
+  })
+
+  it('shouldUseRecentlyAddedForSeeAllAndTitleForLibraryNavigation', async () => {
+    const requests: { libraryId?: string; sort?: MediaSort; filter?: MediaFilter }[] = []
+    mockLibraryPage(requests)
+    const library = { id: LIBRARY_ID, name: 'Movies', type: 'MOVIE' }
+    server.use(
+      graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [library] } })),
+      graphql.query('Home', () =>
+        HttpResponse.json({
+          data: {
+            continueWatching: [],
+            libraries: [
+              {
+                ...library,
+                items: {
+                  edges: [
+                    {
+                      cursor: 'c1',
+                      node: {
+                        ...EVERLIGHT_CARD,
+                        createdOn: '2026-08-28T11:46:00Z',
+                        tagline: null,
+                        summary: null,
+                        genres: [],
+                        files: [],
+                        backdropImages: [],
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        }),
+      ),
+    )
+    const { user } = renderAppAt('/')
+
+    await user.click(await screen.findByRole('link', { name: 'See all' }))
+
+    expect(await screen.findByRole('button', { name: 'Sort: Recently added' })).toBeVisible()
+    expect(requests[0].sort).toEqual({ by: 'ADDED', direction: 'DESC' })
+
+    await user.click(screen.getByRole('link', { name: 'Movies' }))
+
+    await waitFor(() => expect(requests.at(-1)?.sort).toEqual({ by: 'TITLE', direction: 'ASC' }))
+    expect(screen.getByRole('button', { name: 'Sort: Title' })).toBeVisible()
   })
 
   it('keeps the grid position when returning from a title', async () => {
@@ -400,14 +449,15 @@ describe('/library/$libraryId', () => {
     expect(grid.scrollTop).toBe(0)
   })
 
-  it('falls back to the default sort when a search param is not a recognized value', async () => {
+  it('shouldSortByTitleWhenSearchParamsAreNotRecognized', async () => {
     const requests: { libraryId?: string; sort?: MediaSort; filter?: MediaFilter }[] = []
     mockLibraryPage(requests)
 
     renderAppAt(`/library/${LIBRARY_ID}?by=BOGUS&direction=SIDEWAYS&watchStatus=BINGED`)
 
     await screen.findByRole('heading', { name: 'Movies' })
-    expect(requests[0].sort).toEqual({ by: 'ADDED', direction: 'DESC' })
+    expect(requests[0].sort).toEqual({ by: 'TITLE', direction: 'ASC' })
+    expect(screen.getByRole('button', { name: 'Sort: Title' })).toBeVisible()
     expect(requests[0].filter?.watchStatus).toBeUndefined()
   })
 })

@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { LibraryScreen, type LibrarySearch } from '../../library/LibraryScreen'
 
-const DEFAULT_SORT: Pick<LibrarySearch, 'by' | 'direction'> = { by: 'ADDED', direction: 'DESC' }
+const DEFAULT_SORT: Pick<LibrarySearch, 'by' | 'direction'> = { by: 'TITLE', direction: 'ASC' }
 
 export const Route = createFileRoute('/_authenticated/library/$libraryId')({
   validateSearch: (search: Record<string, unknown>): LibrarySearch => ({
