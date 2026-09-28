@@ -14,7 +14,9 @@ export function AlphabetRail({
   selected: string | null
   onSelect: (letter: string | null, input: SelectionInput) => void
 }>) {
-  const visible = index.filter((entry) => entry.count > 0)
+  const visible = index
+    .filter((entry) => entry.count > 0)
+    .sort((left, right) => Number(right.letter === 'HASH') - Number(left.letter === 'HASH'))
   const selectedCell = useRef<HTMLButtonElement | null>(null)
   useEffect(() => {
     selectedCell.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
