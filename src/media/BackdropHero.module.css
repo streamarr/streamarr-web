@@ -9,6 +9,10 @@
   inset: 0;
 }
 
+.artwork img {
+  object-position: 50% 30%;
+}
+
 /* The artwork's own corner colors, pulled outward so the tint follows the image's geometry. */
 .cornerHint {
   position: absolute;
