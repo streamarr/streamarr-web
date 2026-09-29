@@ -1461,6 +1461,19 @@ describe('Player', () => {
       expect(player).toHaveAttribute('data-idle')
     })
 
+    it('shouldKeepTheControlsWhileTheMouseRestsOnBack', async () => {
+      serveSession()
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await attachedVideo()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      moveMouse(screen.getByRole('button', { name: 'Back' }), video)
+      await act(() => video.play())
+
+      await act(async () => vi.advanceTimersByTimeAsync(10_000))
+
+      expect(screen.getByRole('region', { name: 'Player' })).not.toHaveAttribute('data-idle')
+    })
+
     it('shouldLetTheTapThatWakesTheFadedControlsPressNothing', async () => {
       serveSession()
       renderWithProviders(<Player mediaFileId="abcd" />)

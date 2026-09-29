@@ -49,12 +49,13 @@ export function Player({
   const playerRef = useRef<HTMLElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const controlsRef = useRef<HTMLDivElement>(null)
+  const backRef = useRef<HTMLDivElement>(null)
   const [createStreamSession] = useMutation(CreateStreamSessionDocument)
   const client = useApolloClient()
   const [sourcePhase, setSourcePhase] = useState(STARTING)
   const [attempt, setAttempt] = useState(0)
   const videoState = useVideoState(videoRef)
-  const idle = useIdle(videoState.paused || sourcePhase.at === 'failed', controlsRef)
+  const idle = useIdle(videoState.paused || sourcePhase.at === 'failed', [controlsRef, backRef])
 
   useEffect(() => {
     const video = videoRef.current
@@ -249,7 +250,7 @@ export function Player({
           </Button>
         </Alert>
       )}
-      <div className={`${styles.back} ${styles.chrome}`}>
+      <div ref={backRef} className={`${styles.back} ${styles.chrome}`}>
         <DetailBackButton />
       </div>
       <PlayerControls

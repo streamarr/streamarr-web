@@ -5,11 +5,14 @@ const WAKE_EVENTS = ['pointermove', 'keydown'] as const
 
 /**
  * Whether the viewer has left the pointer and keyboard alone for three seconds. The viewer never
- * counts as idle while `held`, nor while the mouse rests on `controlsRef`'s element.
+ * counts as idle while `held`, nor while the mouse rests on one of the `chromeRefs` elements.
  */
-export function useIdle(held: boolean, controlsRef: RefObject<HTMLElement | null>): boolean {
+export function useIdle(
+  held: boolean,
+  chromeRefs: readonly RefObject<HTMLElement | null>[],
+): boolean {
   const [idle, setIdle] = useState(false)
-  const mouseOnControls = useRef(false)
+  const mouseOnChrome = useRef(false)
   if (held && idle) {
     setIdle(false)
   }
@@ -17,20 +20,20 @@ export function useIdle(held: boolean, controlsRef: RefObject<HTMLElement | null
   // Enter and leave events cannot say where the mouse is: a browser sends no leave when the
   // element under the mouse is replaced, such as a glyph that changes on click.
   useEffect(() => {
-    const trackMouseOverControls = (event: PointerEvent) => {
+    const trackMouseOverChrome = (event: PointerEvent) => {
       const under = event.type === 'pointerout' ? event.relatedTarget : event.target
-      mouseOnControls.current =
+      mouseOnChrome.current =
         event.pointerType === 'mouse' &&
         under instanceof Node &&
-        controlsRef.current?.contains(under) === true
+        chromeRefs.some((chrome) => chrome.current?.contains(under))
     }
-    document.addEventListener('pointermove', trackMouseOverControls)
-    document.addEventListener('pointerout', trackMouseOverControls)
+    document.addEventListener('pointermove', trackMouseOverChrome)
+    document.addEventListener('pointerout', trackMouseOverChrome)
     return () => {
-      document.removeEventListener('pointermove', trackMouseOverControls)
-      document.removeEventListener('pointerout', trackMouseOverControls)
+      document.removeEventListener('pointermove', trackMouseOverChrome)
+      document.removeEventListener('pointerout', trackMouseOverChrome)
     }
-  }, [controlsRef])
+  }, [chromeRefs])
 
   useEffect(() => {
     if (held) {
@@ -38,7 +41,7 @@ export function useIdle(held: boolean, controlsRef: RefObject<HTMLElement | null
     }
     let faded = false
     const settle = () => {
-      if (mouseOnControls.current) {
+      if (mouseOnChrome.current) {
         timer = setTimeout(settle, IDLE_AFTER_MS)
         return
       }
