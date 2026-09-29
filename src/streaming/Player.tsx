@@ -45,7 +45,7 @@ export function Player({
     }
     setFailure(null)
 
-    let source: ReturnType<typeof attach> | null = null
+    let source: StreamSource | null = null
     let cancelled = false
     let sessionId: string | null = null
     let lastReportedPosition = startPositionSeconds ?? 0
@@ -270,7 +270,7 @@ interface StartupDeadline {
 }
 
 type StartupPhase =
-  { at: 'timing'; timer: ReturnType<typeof setTimeout> } | { at: 'held' } | { at: 'ended' }
+  { at: 'armed'; timer: ReturnType<typeof setTimeout> } | { at: 'held' } | { at: 'ended' }
 
 function createStartupDeadline(onExpired: () => void): StartupDeadline {
   let phase = arm()
@@ -280,18 +280,18 @@ function createStartupDeadline(onExpired: () => void): StartupDeadline {
       phase = { at: 'ended' }
       onExpired()
     }, PLAYBACK_START_TIMEOUT_MS)
-    return { at: 'timing', timer }
+    return { at: 'armed', timer }
   }
 
   return {
     end: () => {
-      if (phase.at === 'timing') {
+      if (phase.at === 'armed') {
         clearTimeout(phase.timer)
       }
       phase = { at: 'ended' }
     },
     hold: () => {
-      if (phase.at !== 'timing') {
+      if (phase.at !== 'armed') {
         return
       }
       clearTimeout(phase.timer)
@@ -316,19 +316,19 @@ function ignoreTimelineReportFailure() {
   // surface it.
 }
 
-interface SourceHandlers {
+interface StreamSource {
+  detach: () => void
+}
+
+interface StreamSourceOptions {
   onFatal: () => void
   startupDeadline: StartupDeadline
 }
 
 // The stream URL carries the playback ?t= token; relative segment requests inherit it.
-function attach(
-  video: HTMLVideoElement,
-  url: string,
-  handlers: SourceHandlers,
-): { detach: () => void } {
+function attach(video: HTMLVideoElement, url: string, options: StreamSourceOptions): StreamSource {
   if (!Hls.isSupported()) {
-    return attachNative(video, url, handlers)
+    return attachNative(video, url, options)
   }
   const hls = new Hls()
   hls.on(Hls.Events.ERROR, (_event, data) => {
@@ -336,7 +336,7 @@ function attach(
       return
     }
     // An expired ?t= token or a restarted server: the instance cannot recover.
-    handlers.onFatal()
+    options.onFatal()
   })
   hls.loadSource(url)
   hls.attachMedia(video)
@@ -347,8 +347,8 @@ function attach(
 function attachNative(
   video: HTMLVideoElement,
   url: string,
-  { onFatal, startupDeadline }: SourceHandlers,
-): { detach: () => void } {
+  { onFatal, startupDeadline }: StreamSourceOptions,
+): StreamSource {
   // A browser may load nothing before the viewer's gesture; startup then waits for play.
   const onSuspend = () => {
     if (video.readyState === HTMLMediaElement.HAVE_NOTHING) {
