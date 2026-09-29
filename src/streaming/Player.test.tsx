@@ -1321,6 +1321,22 @@ describe('Player', () => {
       expect(video.paused).toBe(false)
     })
 
+    it('shouldKeepPlayingWhenAPressOnTheSeekSliderMissesItsTrack', async () => {
+      const reports = serveSession()
+      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await seekableVideo(2824)
+      await user.click(screen.getByRole('button', { name: 'Play' }))
+      const seekRoot = screen.getByRole('slider', { name: 'Seek' }).closest('.mantine-Slider-root')
+      assert(seekRoot)
+
+      await user.pointer({ keys: '[MouseLeft]', target: seekRoot })
+      playheadAt(video, 1200)
+
+      expect(video.paused).toBe(false)
+      expect(screen.getByText('20:00 / 47:04')).toBeInTheDocument()
+      expect(reports.filter((report) => report.state === 'PAUSED')).toEqual([])
+    })
+
     it('shouldMuteAndSetTheVolume', async () => {
       serveSession()
       const { user } = renderWithProviders(<Player mediaFileId="abcd" />)

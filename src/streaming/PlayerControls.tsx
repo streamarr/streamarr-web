@@ -64,7 +64,8 @@ export function PlayerControls({
     element.currentTime = Math.min(Math.max(element.currentTime + seconds, 0), element.duration)
   }
 
-  // Only a pointer drag pauses: the keyboard seeks in steps, and each step lands at once.
+  // Only a pointer drag pauses: the keyboard seeks in steps, and each step lands at once. The
+  // slider drags only from its track container, which alone ends the scrub it starts.
   function startScrub() {
     const element = videoRef.current
     if (!element || !seekable) {
@@ -112,7 +113,7 @@ export function PlayerControls({
         thumbValueText={
           seekable ? (seconds) => `${timecodeAt(seconds)} of ${durationTimecode}` : undefined
         }
-        onPointerDown={startScrub}
+        attributes={{ trackContainer: { onPointerDown: startScrub } }}
         onChange={moveScrub}
         onChangeEnd={seek}
       />
