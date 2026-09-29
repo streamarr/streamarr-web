@@ -98,7 +98,7 @@ export function Player({
       // Seeking before metadata is loaded is unreliable across browsers; the event is the safe point.
       onLoadedMetadata: (element) => {
         // Nothing calls play(), so metadata is as far as a stream starts without the viewer.
-        clearTimeout(startupDeadline)
+        startupDeadline.end()
         if (startPositionSeconds) {
           element.currentTime = startPositionSeconds
         }
@@ -119,12 +119,12 @@ export function Player({
       },
     })
 
-    const startupDeadline = setTimeout(() => {
+    const startupDeadline = createStartupDeadline(() => {
       cancelled = true
       detachSource()
       setFailure('Playback is taking too long to start. Try again.')
       requestCleanup()
-    }, PLAYBACK_START_TIMEOUT_MS)
+    })
     const startup = Promise.resolve()
       .then(async () => {
         await previousCleanup?.()
@@ -161,7 +161,7 @@ export function Player({
       })
 
     function showFailure(message: string) {
-      clearTimeout(startupDeadline)
+      startupDeadline.end()
       setFailure(message)
     }
 
@@ -203,7 +203,7 @@ export function Player({
 
     return () => {
       cancelled = true
-      clearTimeout(startupDeadline)
+      startupDeadline.end()
       timeline.detach()
       if (lastKnownPosition !== null) {
         report('STOPPED', lastKnownPosition)
@@ -259,6 +259,11 @@ function attachTimeline(
       video.removeEventListener('pause', onPause)
     },
   }
+}
+
+function createStartupDeadline(onExpired: () => void): { end: () => void } {
+  const timer = setTimeout(onExpired, PLAYBACK_START_TIMEOUT_MS)
+  return { end: () => clearTimeout(timer) }
 }
 
 function refusalMessage(payload: StreamSessionPayload | undefined): string {
