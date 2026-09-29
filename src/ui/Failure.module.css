@@ -54,5 +54,5 @@
   margin: 0;
   font-size: var(--font-size-body);
   line-height: var(--line-height-prose);
-  color: var(--semantic-error-text);
+  color: var(--text-primary);
 }
