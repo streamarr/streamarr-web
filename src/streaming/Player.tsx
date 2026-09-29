@@ -280,7 +280,6 @@ export function Player({
         playerRef={playerRef}
         videoRef={videoRef}
         videoState={videoState}
-        attached={sourcePhase.at === 'attached'}
         tracks={tracks}
         openPicker={openPicker}
         onOpenPicker={(kind) => setPicker(kind && tracks && { tracks, kind })}
