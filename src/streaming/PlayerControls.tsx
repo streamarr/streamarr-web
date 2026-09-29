@@ -4,7 +4,7 @@ import { formatTimecode } from '../media/formatting'
 import { Icon, type IconName } from '../ui/Icon'
 import { CaretPopover, type PopoverOption } from './CaretPopover'
 import styles from './PlayerControls.module.css'
-import type { TrackSource } from './trackSources'
+import type { StreamTracks, TrackSource } from './trackSources'
 import { useSpaceToPlayOrPause } from './useSpaceToPlayOrPause'
 import { useStreamTracks } from './useStreamTracks'
 import type { VideoState } from './useVideoState'
@@ -24,6 +24,17 @@ export type TrackPickerKind = 'audio' | 'subtitles'
 type Scrub = { at: 'dragging'; seconds: number; resume: boolean } | { at: 'abandoned' }
 
 const SUBTITLES_OFF: PopoverOption<null> = { id: null, label: 'Off' }
+
+/**
+ * Whether a picker has a choice to make: one option alone would only repeat what its chip shows.
+ * The subtitles picker always offers Off beside the stream's tracks.
+ */
+export function pickerOffersChoice(
+  kind: TrackPickerKind,
+  { audio, subtitles }: StreamTracks,
+): boolean {
+  return kind === 'audio' ? audio.options.length > 1 : subtitles.options.length > 0
+}
 
 export function PlayerControls({
   ref,
@@ -50,7 +61,8 @@ export function PlayerControls({
 }>) {
   const [scrub, setScrub] = useState<Scrub | null>(null)
   const attached = tracks !== null
-  const { audio, subtitles } = useStreamTracks(tracks)
+  const streamTracks = useStreamTracks(tracks)
+  const { audio, subtitles } = streamTracks
   const durationKnown = Number.isFinite(videoState.duration)
   const timecodeAt = (seconds: number) =>
     formatTimecode({ positionSeconds: seconds, durationSeconds: videoState.duration })
@@ -185,6 +197,7 @@ export function PlayerControls({
             icon="audio-track"
             options={audio.options}
             selected={audio.selected}
+            choosable={pickerOffersChoice('audio', streamTracks)}
             open={openPicker === 'audio'}
             onOpenChange={(open) => onOpenPicker(open ? 'audio' : null)}
             onChoose={(id) => tracks?.selectAudio(id)}
@@ -195,6 +208,7 @@ export function PlayerControls({
             options={[SUBTITLES_OFF, ...subtitles.options]}
             selected={subtitles.selected}
             showsActiveTrack={subtitles.selected !== null}
+            choosable={pickerOffersChoice('subtitles', streamTracks)}
             open={openPicker === 'subtitles'}
             onOpenChange={(open) => onOpenPicker(open ? 'subtitles' : null)}
             onChoose={(id) => tracks?.selectSubtitles(id)}
@@ -296,13 +310,13 @@ function QualityChip({ videoHeight }: Readonly<{ videoHeight: number }>) {
   )
 }
 
-// A picker opens only with a choice to make; one option alone would repeat what the chip shows.
 function TrackPicker<Id extends number | null>({
   name,
   icon,
   options,
   selected,
   showsActiveTrack,
+  choosable,
   open,
   onOpenChange,
   onChoose,
@@ -312,13 +326,13 @@ function TrackPicker<Id extends number | null>({
   options: readonly PopoverOption<Id>[]
   selected: Id | null
   showsActiveTrack?: boolean
+  choosable: boolean
   open: boolean
   onOpenChange: (open: boolean) => void
   onChoose: (id: Id) => void
 }>) {
   const chipRef = useRef<HTMLButtonElement>(null)
   const menuId = useId()
-  const choosable = options.length > 1
   const menu = choosable
     ? { ref: chipRef, id: menuId, open, toggle: () => onOpenChange(!open) }
     : undefined

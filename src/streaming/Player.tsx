@@ -16,9 +16,15 @@ import { invalidateWatchedState } from '../media/watchedState'
 import focusStyles from '../styles/focus.module.css'
 import { BufferingRing } from './BufferingRing'
 import styles from './Player.module.css'
-import { PlayerControls, type PlayerTitle, type TrackPickerKind } from './PlayerControls'
+import {
+  PlayerControls,
+  type PlayerTitle,
+  type TrackPickerKind,
+  pickerOffersChoice,
+} from './PlayerControls'
 import { hlsTrackSource, nativeTrackSource, type TrackSource } from './trackSources'
 import { useIdle } from './useIdle'
+import { useStreamTracks } from './useStreamTracks'
 import { useVideoState } from './useVideoState'
 
 // Progress is only worth a round trip once the playhead has moved this far since the last report.
@@ -35,12 +41,6 @@ type SourcePhase =
   { at: 'starting' } | { at: 'attached'; tracks: TrackSource } | { at: 'failed'; message: string }
 
 const STARTING: SourcePhase = { at: 'starting' }
-
-// Held against the stream whose tracks it lists, so a picker never outlives its stream.
-interface OpenPicker {
-  tracks: TrackSource
-  kind: TrackPickerKind
-}
 
 const pendingCleanups = new WeakMap<ApolloClient, () => Promise<void>>()
 
@@ -61,9 +61,14 @@ export function Player({
   const client = useApolloClient()
   const [sourcePhase, setSourcePhase] = useState(STARTING)
   const [attempt, setAttempt] = useState(0)
-  const [picker, setPicker] = useState<OpenPicker | null>(null)
+  const [picker, setPicker] = useState<TrackPickerKind | null>(null)
   const tracks = sourcePhase.at === 'attached' ? sourcePhase.tracks : null
-  const openPicker = picker?.tracks === tracks ? picker.kind : null
+  const streamTracks = useStreamTracks(tracks)
+  const openPicker = picker !== null && pickerOffersChoice(picker, streamTracks) ? picker : null
+  // A picker that loses its choices, or its stream with them, closes rather than reopen later.
+  if (picker !== openPicker) {
+    setPicker(null)
+  }
   const videoState = useVideoState(videoRef)
   const controlsHeld = videoState.paused || sourcePhase.at === 'failed' || openPicker !== null
   const idle = useIdle(controlsHeld, [controlsRef, backRef])
@@ -282,7 +287,7 @@ export function Player({
         videoState={videoState}
         tracks={tracks}
         openPicker={openPicker}
-        onOpenPicker={(kind) => setPicker(kind && tracks && { tracks, kind })}
+        onOpenPicker={setPicker}
         title={title}
       />
     </section>
