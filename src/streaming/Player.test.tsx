@@ -935,6 +935,21 @@ describe('Player', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
+  it('shouldNotTimeOutTheNextMediaFileWhenThePreviousOneNeverStarted', async () => {
+    serveSingleWorkerSlot()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    renderWithProviders(<Harness />)
+    await attachedVideo('/api/stream/a/multivariant.m3u8?t=playback-token')
+    await act(async () => vi.advanceTimersByTimeAsync(10_000))
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    await attachedVideo('/api/stream/b/multivariant.m3u8?t=playback-token')
+
+    await act(async () => vi.advanceTimersByTimeAsync(20_000))
+
+    vi.useRealTimers()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
   it.each([
     ['Refusal', { serve: refuseSession, message: CAPACITY_REFUSAL }],
     ['FailedCreation', { serve: failSessionCreation, message: "Playback couldn't start." }],
