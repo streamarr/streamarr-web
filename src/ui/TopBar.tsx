@@ -48,7 +48,8 @@ function AccountTrail() {
   const { data, error } = useMe()
   const { session } = useRouteContext({ from: '__root__' })
   const navigate = useNavigate()
-  const signOut = useSignOut(() => void navigate({ to: '/login' }))
+  const toSignIn = () => void navigate({ to: '/login' })
+  const signOut = useSignOut(toSignIn)
 
   if (data) {
     return (
@@ -58,10 +59,10 @@ function AccountTrail() {
         onPinRequired={(profileId) =>
           navigate({ to: '/select-profile', search: { profile: profileId } })
         }
-        onSignedOut={() => navigate({ to: '/login' })}
+        onSignedOut={toSignIn}
         onUnauthenticated={() => {
           session.markAnonymous()
-          void navigate({ to: '/login' })
+          toSignIn()
         }}
       />
     )
