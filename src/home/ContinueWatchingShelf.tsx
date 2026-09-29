@@ -23,7 +23,6 @@ export function ContinueWatchingShelf({ items }: Readonly<{ items: ContinueWatch
             subtitle={summary.subtitle}
             image={summary.image}
             blurHash={summary.blurHash}
-            progressPercent={summary.progressPercent}
           />
         )
         return summary.ctaFileId ? (
@@ -51,7 +50,6 @@ function summarize(item: ContinueWatchingItem): {
   subtitle: string
   image: PickedImage | null
   blurHash: string | null
-  progressPercent: number
   ctaFileId: string | null
   ctaPositionSeconds: number | null
 } {
@@ -65,7 +63,6 @@ function summarize(item: ContinueWatchingItem): {
       subtitle: timeLeft,
       image: pickImageVariant(backdrop, 'MEDIUM'),
       blurHash: backdrop?.blurHash ?? null,
-      progressPercent: item.watchProgress?.percentComplete ?? 0,
       ctaFileId: item.files.find((file) => file !== null)?.id ?? null,
       ctaPositionSeconds,
     }
@@ -77,7 +74,6 @@ function summarize(item: ContinueWatchingItem): {
     subtitle: `S${item.season.seasonNumber} E${item.episodeNumber} · ${item.title ?? ''} · ${timeLeft}`,
     image: pickImageVariant(still, 'MEDIUM'),
     blurHash: still?.blurHash ?? null,
-    progressPercent: item.watchProgress?.percentComplete ?? 0,
     ctaFileId: item.files.find((file) => file !== null)?.id ?? null,
     ctaPositionSeconds,
   }
