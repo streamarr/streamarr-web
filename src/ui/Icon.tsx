@@ -51,6 +51,8 @@ const icons = {
 /** Approved semantic names from streamarr-ux's ICONOGRAPHY.md. */
 export type IconName = keyof typeof icons
 
+const FILLED = new Set<IconName>(['play'])
+
 /** Shared icon geometry; colors come from the surrounding control's currentColor. */
 export interface IconProps {
   /** Meaning, not an arbitrary upstream icon name. The same meaning shares one glyph. */
@@ -71,7 +73,7 @@ export function Icon({ name, size = 20, label, className }: Readonly<IconProps>)
       size={size}
       strokeWidth={1.75}
       nonScalingStroke
-      fill={name === 'play' ? 'currentColor' : 'none'}
+      fill={FILLED.has(name) ? 'currentColor' : 'none'}
       className={className}
       style={{ width: size, height: size, flexShrink: 0 }}
       aria-hidden={label ? undefined : true}
