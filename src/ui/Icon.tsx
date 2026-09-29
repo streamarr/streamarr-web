@@ -22,6 +22,8 @@ import {
   Settings,
   TriangleAlert,
   TvMinimal,
+  Volume2,
+  VolumeX,
   X,
 } from 'lucide-react'
 
@@ -43,6 +45,8 @@ const icons = {
   pause: Pause,
   'skip-back': RotateCcw,
   'skip-forward': RotateCw,
+  volume: Volume2,
+  muted: VolumeX,
   lock: LockKeyhole,
   'sign-out': LogOut,
   'show-password': Eye,

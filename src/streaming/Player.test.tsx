@@ -1296,6 +1296,40 @@ describe('Player', () => {
       expect(video.paused).toBe(false)
     })
 
+    it('shouldMuteAndSetTheVolume', async () => {
+      serveSession()
+      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await attachedVideo()
+      const volume = screen.getByRole('slider', { name: 'Volume' })
+      expect(volume).toHaveAttribute('aria-valuetext', '100%')
+
+      await user.click(screen.getByRole('button', { name: 'Mute' }))
+      expect(video.muted).toBe(true)
+      expect(volume).toHaveAttribute('aria-valuetext', '0%')
+
+      await user.click(screen.getByRole('button', { name: 'Unmute' }))
+      expect(video.muted).toBe(false)
+      act(() => volume.focus())
+      await user.keyboard('{ArrowLeft}')
+      expect(video.volume).toBe(0.95)
+      expect(volume).toHaveAttribute('aria-valuetext', '95%')
+    })
+
+    it('shouldRestoreFullVolumeWhenUnmutingFromZero', async () => {
+      serveSession()
+      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await attachedVideo()
+      act(() => screen.getByRole('slider', { name: 'Volume' }).focus())
+
+      await user.keyboard('{Home}')
+      expect(video.volume).toBe(0)
+      await user.click(screen.getByRole('button', { name: 'Unmute' }))
+
+      expect(video.volume).toBe(1)
+      expect(video.muted).toBe(false)
+      expect(screen.getByRole('button', { name: 'Mute' })).toBeInTheDocument()
+    })
+
     it('shouldShowTheTimecodeAndTitleInTheTitleLine', async () => {
       serveSession()
       renderWithProviders(

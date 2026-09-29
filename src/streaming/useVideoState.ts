@@ -5,6 +5,8 @@ export interface VideoState {
   currentTime: number
   /** NaN until the stream declares its length. */
   duration: number
+  volume: number
+  muted: boolean
 }
 
 const VIDEO_EVENTS = [
@@ -13,11 +15,18 @@ const VIDEO_EVENTS = [
   'timeupdate',
   'seeking',
   'durationchange',
+  'volumechange',
   'emptied',
 ] as const
 
 // An element that has not loaded anything reads this way, so the first render needs no read.
-const UNLOADED: VideoState = { paused: true, currentTime: 0, duration: Number.NaN }
+const UNLOADED: VideoState = {
+  paused: true,
+  currentTime: 0,
+  duration: Number.NaN,
+  volume: 1,
+  muted: false,
+}
 
 /** The video element's transport state, re-read whenever the element reports a change. */
 export function useVideoState(videoRef: RefObject<HTMLVideoElement | null>): VideoState {
@@ -29,7 +38,13 @@ export function useVideoState(videoRef: RefObject<HTMLVideoElement | null>): Vid
       return undefined
     }
     const read = () =>
-      setState({ paused: video.paused, currentTime: video.currentTime, duration: video.duration })
+      setState({
+        paused: video.paused,
+        currentTime: video.currentTime,
+        duration: video.duration,
+        volume: video.volume,
+        muted: video.muted,
+      })
     for (const event of VIDEO_EVENTS) {
       video.addEventListener(event, read)
     }

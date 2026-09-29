@@ -81,6 +81,8 @@ test('keyboard focus draws the theme ring on each player control', async ({ page
   const controls = [
     page.getByRole('button', { name: 'Back', exact: true }),
     page.getByRole('slider', { name: 'Seek' }),
+    page.getByRole('button', { name: 'Mute' }),
+    page.getByRole('slider', { name: 'Volume' }),
     page.getByRole('button', { name: 'Back 10 seconds' }),
     page.getByRole('button', { name: 'Play' }),
     page.getByRole('button', { name: 'Forward 10 seconds' }),
