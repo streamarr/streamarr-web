@@ -17,18 +17,18 @@ export function useIdle(held: boolean, controlsRef: RefObject<HTMLElement | null
   // Enter and leave events cannot say where the mouse is: a browser sends no leave when the
   // element under the mouse is replaced, such as a glyph that changes on click.
   useEffect(() => {
-    const follow = (event: PointerEvent) => {
+    const trackMouseOverControls = (event: PointerEvent) => {
       const under = event.type === 'pointerout' ? event.relatedTarget : event.target
       mouseOnControls.current =
         event.pointerType === 'mouse' &&
         under instanceof Node &&
         controlsRef.current?.contains(under) === true
     }
-    document.addEventListener('pointermove', follow)
-    document.addEventListener('pointerout', follow)
+    document.addEventListener('pointermove', trackMouseOverControls)
+    document.addEventListener('pointerout', trackMouseOverControls)
     return () => {
-      document.removeEventListener('pointermove', follow)
-      document.removeEventListener('pointerout', follow)
+      document.removeEventListener('pointermove', trackMouseOverControls)
+      document.removeEventListener('pointerout', trackMouseOverControls)
     }
   }, [controlsRef])
 
