@@ -5,8 +5,8 @@ import { Icon, type IconName } from '../ui/Icon'
 import { CaretPopover, type PopoverOption } from './CaretPopover'
 import styles from './PlayerControls.module.css'
 import type { TrackSource } from './trackSources'
-import { usePlaybackTracks } from './usePlaybackTracks'
 import { useSpaceToPlayOrPause } from './useSpaceToPlayOrPause'
+import { useStreamTracks } from './useStreamTracks'
 import type { VideoState } from './useVideoState'
 
 const SKIP_SECONDS = 10
@@ -50,7 +50,7 @@ export function PlayerControls({
   title?: PlayerTitle
 }>) {
   const [scrub, setScrub] = useState<Scrub | null>(null)
-  const { audio, subtitles } = usePlaybackTracks(tracks)
+  const { audio, subtitles } = useStreamTracks(tracks)
   const durationKnown = Number.isFinite(videoState.duration)
   const timecodeAt = (seconds: number) =>
     formatTimecode({ positionSeconds: seconds, durationSeconds: videoState.duration })
