@@ -1,9 +1,10 @@
 import { Slider } from '@mantine/core'
-import { type Ref, type RefObject, useEffect, useState } from 'react'
+import { type Ref, type RefObject, useEffect, useId, useRef, useState } from 'react'
 import { formatTimecode } from '../media/formatting'
 import { Icon, type IconName } from '../ui/Icon'
+import { CaretPopover, type PopoverOption } from './CaretPopover'
 import styles from './PlayerControls.module.css'
-import type { TrackChoice, TrackSource } from './trackSources'
+import type { TrackSource } from './trackSources'
 import { usePlaybackTracks } from './usePlaybackTracks'
 import { useSpaceToPlayOrPause } from './useSpaceToPlayOrPause'
 import type { VideoState } from './useVideoState'
@@ -16,9 +17,13 @@ export interface PlayerTitle {
   detail?: string
 }
 
+export type TrackPickerKind = 'audio' | 'subtitles'
+
 // Mantine's slider ends a drag only on touchend or mouseup. After a cancelled touch its drag stays
 // open until the next touchend or mouseup anywhere, and that late end must not seek.
 type Scrub = { at: 'dragging'; seconds: number; resume: boolean } | { at: 'abandoned' }
+
+const SUBTITLES_OFF: PopoverOption<null> = { id: null, label: 'Off' }
 
 export function PlayerControls({
   ref,
@@ -28,6 +33,8 @@ export function PlayerControls({
   videoState,
   attached,
   tracks,
+  openPicker,
+  onOpenPicker,
   title,
 }: Readonly<{
   ref: Ref<HTMLDivElement>
@@ -38,6 +45,8 @@ export function PlayerControls({
   videoState: VideoState
   attached: boolean
   tracks: TrackSource | null
+  openPicker: TrackPickerKind | null
+  onOpenPicker: (kind: TrackPickerKind | null) => void
   title?: PlayerTitle
 }>) {
   const [scrub, setScrub] = useState<Scrub | null>(null)
@@ -171,12 +180,24 @@ export function PlayerControls({
         </div>
         <div className={styles.end}>
           <QualityChip videoHeight={videoState.videoHeight} />
-          <StatusChip name="Audio" icon="audio-track" value={selectedLabel(audio)} />
-          <StatusChip
+          <TrackPicker
+            name="Audio"
+            icon="audio-track"
+            options={audio.options}
+            selected={audio.selected}
+            open={openPicker === 'audio'}
+            onOpenChange={(open) => onOpenPicker(open ? 'audio' : null)}
+            onChoose={(id) => tracks?.selectAudio(id)}
+          />
+          <TrackPicker
             name="Subtitles"
             icon="subtitles"
-            value={selectedLabel(subtitles) ?? 'Off'}
+            options={[SUBTITLES_OFF, ...subtitles.options]}
+            selected={subtitles.selected}
             marked={subtitles.selected !== null}
+            open={openPicker === 'subtitles'}
+            onOpenChange={(open) => onOpenPicker(open ? 'subtitles' : null)}
+            onChoose={(id) => tracks?.selectSubtitles(id)}
           />
           <FullscreenButton targetRef={playerRef} />
         </div>
@@ -275,11 +296,73 @@ function QualityChip({ videoHeight }: Readonly<{ videoHeight: number }>) {
   )
 }
 
+// A picker opens only with a choice to make; one option alone would repeat what the chip shows.
+function TrackPicker<Id extends number | null>({
+  name,
+  icon,
+  options,
+  selected,
+  marked,
+  open,
+  onOpenChange,
+  onChoose,
+}: Readonly<{
+  name: string
+  icon: IconName
+  options: readonly PopoverOption<Id>[]
+  selected: Id | null
+  marked?: boolean
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onChoose: (id: Id) => void
+}>) {
+  const chipRef = useRef<HTMLButtonElement>(null)
+  const menuId = useId()
+  const choosable = options.length > 1
+  const menu = choosable
+    ? { ref: chipRef, id: menuId, open, toggle: () => onOpenChange(!open) }
+    : undefined
+
+  return (
+    <>
+      <StatusChip
+        name={name}
+        icon={icon}
+        value={options.find((option) => option.id === selected)?.label}
+        marked={marked}
+        menu={menu}
+      />
+      {choosable && open && (
+        <CaretPopover
+          id={menuId}
+          heading={name}
+          anchorRef={chipRef}
+          options={options}
+          selected={selected}
+          onChoose={(id) => {
+            onChoose(id)
+            onOpenChange(false)
+          }}
+          onDismiss={() => onOpenChange(false)}
+        />
+      )}
+    </>
+  )
+}
+
+interface ChipMenu {
+  ref: RefObject<HTMLButtonElement | null>
+  id: string
+  open: boolean
+  toggle: () => void
+}
+
 function StatusChip({
   name,
   icon,
   value,
   marked = false,
+  menu,
 }: Readonly<{
   name: string
   icon: IconName
@@ -287,23 +370,26 @@ function StatusChip({
   value?: string
   /** Whether the setting is on, such as subtitles showing. */
   marked?: boolean
+  /** The menu the chip opens; without one it only shows the setting. */
+  menu?: ChipMenu
 }>) {
   return (
     <button
+      ref={menu?.ref}
       type="button"
       className={styles.chip}
       aria-label={value ? `${name}: ${value}` : name}
-      aria-disabled
+      aria-disabled={!menu || undefined}
+      aria-haspopup={menu && 'menu'}
+      aria-expanded={menu?.open}
+      aria-controls={menu?.open ? menu.id : undefined}
+      onClick={menu?.toggle}
     >
       {marked && <span className={styles.activeTrack} />}
       <Icon name={icon} size={16} />
       {value && <span className={styles.chipValue}>{value}</span>}
     </button>
   )
-}
-
-function selectedLabel({ options, selected }: TrackChoice): string | undefined {
-  return options.find((option) => option.id === selected)?.label
 }
 
 function FullscreenButton({ targetRef }: Readonly<{ targetRef: RefObject<HTMLElement | null> }>) {

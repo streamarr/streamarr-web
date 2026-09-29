@@ -208,6 +208,11 @@
   cursor: default;
 }
 
+.chip[aria-expanded='true'] {
+  background: var(--selection-active);
+  color: var(--color-white);
+}
+
 .iconChip {
   justify-content: center;
   min-width: 32px;

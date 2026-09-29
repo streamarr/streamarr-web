@@ -1,9 +1,10 @@
 import { deferred } from '../test/deferred'
-import { act, cleanup, configure, fireEvent, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import type { UserEvent } from '@testing-library/user-event'
 import { HttpResponse, graphql } from 'msw'
 import { useState } from 'react'
 import { afterEach, assert, beforeEach, describe, expect, it, vi } from 'vitest'
-import { type FakeTextTrack, giveElementTracks } from '../test/mediaTracks'
+import { type FakeAudioTrack, type FakeTextTrack, giveElementTracks } from '../test/mediaTracks'
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
 import { Player } from './Player'
@@ -60,11 +61,19 @@ vi.mock('hls.js', () => ({
     get audioTrack() {
       return hls.audioTrack
     }
+    set audioTrack(id: number) {
+      hls.audioTrack = id
+      hls.emit('hlsAudioTrackSwitching')
+    }
     get subtitleTracks() {
       return hls.subtitleTracks
     }
     get subtitleTrack() {
       return hls.subtitleTrack
+    }
+    set subtitleTrack(id: number) {
+      hls.subtitleTrack = id
+      hls.emit('hlsSubtitleTrackSwitch')
     }
   },
 }))
@@ -383,6 +392,11 @@ function offerHlsTracks({
     hls.emit('hlsAudioTracksUpdated')
     hls.emit('hlsSubtitleTracksUpdated')
   })
+}
+
+async function openPicker(user: UserEvent, chip: HTMLElement): Promise<HTMLElement> {
+  await user.click(chip)
+  return screen.getByRole('menu')
 }
 
 function renderedVideo(): HTMLVideoElement {
@@ -1911,7 +1925,7 @@ describe('Player', () => {
         language: 'en',
         mode: 'disabled',
       }
-      const { textTracks } = giveElementTracks(renderedVideo(), {
+      giveElementTracks(renderedVideo(), {
         audio: [
           { label: '', language: 'fr', enabled: true },
           { label: 'Commentary', language: 'en', enabled: false },
@@ -1923,12 +1937,150 @@ describe('Player', () => {
       expect(screen.getByRole('button', { name: 'Audio: French' })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Subtitles: Off' })).toBeInTheDocument()
 
-      english.mode = 'showing'
       act(() => {
-        textTracks.dispatchEvent(new Event('change'))
+        english.mode = 'showing'
       })
 
       expect(screen.getByRole('button', { name: 'Subtitles: English' })).toBeInTheDocument()
+    })
+
+    it('shouldSwitchSubtitlesFromThePicker', async () => {
+      serveSession()
+      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      await attachedVideo()
+      offerHlsTracks({ subtitles: [{ name: 'English' }, { name: 'English (SDH)' }] })
+      const chip = screen.getByRole('button', { name: 'Subtitles: Off' })
+
+      const menu = await openPicker(user, chip)
+
+      expect(chip).toHaveAttribute('aria-expanded', 'true')
+      expect(menu).toHaveAccessibleName('Subtitles')
+      expect(
+        within(menu)
+          .getAllByRole('menuitemradio')
+          .map((row) => row.textContent),
+      ).toEqual(['Off', 'English', 'English (SDH)'])
+      expect(within(menu).getByRole('menuitemradio', { checked: true })).toHaveTextContent('Off')
+
+      await user.click(within(menu).getByRole('menuitemradio', { name: 'English (SDH)' }))
+
+      expect(hls.subtitleTrack).toBe(1)
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Subtitles: English (SDH)' })).toHaveFocus()
+    })
+
+    it('shouldMoveThroughTheAudioPickerByKeyboardAndChooseWithEnter', async () => {
+      serveSession()
+      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      await attachedVideo()
+      offerHlsTracks({
+        audio: [{ name: 'English' }, { name: 'Français' }, { name: 'Commentary' }],
+        audioTrack: 0,
+      })
+      act(() => screen.getByRole('button', { name: 'Audio: English' }).focus())
+
+      await user.keyboard('{Enter}')
+      expect(screen.getByRole('menuitemradio', { name: 'English' })).toHaveFocus()
+      for (const [key, row] of [
+        ['{ArrowUp}', 'Commentary'],
+        ['{ArrowDown}', 'English'],
+        ['{End}', 'Commentary'],
+        ['{Home}', 'English'],
+        ['{ArrowDown}', 'Français'],
+      ]) {
+        await user.keyboard(key)
+        expect(screen.getByRole('menuitemradio', { name: row })).toHaveFocus()
+      }
+      await user.keyboard('{Enter}')
+
+      expect(hls.audioTrack).toBe(1)
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Audio: Français' })).toHaveFocus()
+    })
+
+    it('shouldCloseThePickerWithoutChoosingOnEscapeAnOutsidePressOrItsChip', async () => {
+      serveSession()
+      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await attachedVideo()
+      offerHlsTracks({ audio: [{ name: 'English' }, { name: 'Français' }], audioTrack: 0 })
+      const chip = screen.getByRole('button', { name: 'Audio: English' })
+
+      await openPicker(user, chip)
+      await user.keyboard('{ArrowDown}{Escape}')
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+      expect(chip).toHaveFocus()
+
+      await openPicker(user, chip)
+      await user.click(video)
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+
+      await openPicker(user, chip)
+      await user.click(chip)
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+      expect(chip).toHaveAttribute('aria-expanded', 'false')
+      expect(hls.audioTrack).toBe(0)
+    })
+
+    it('shouldCloseThePickerWhenTabMovesFocusOn', async () => {
+      serveSession()
+      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      await attachedVideo()
+      offerHlsTracks({ audio: [{ name: 'English' }, { name: 'Français' }], audioTrack: 0 })
+      await openPicker(user, screen.getByRole('button', { name: 'Audio: English' }))
+
+      await user.tab()
+
+      expect(screen.getByRole('button', { name: 'Subtitles: Off' })).toHaveFocus()
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    })
+
+    it('shouldSwitchTheElementsOwnTracksFromThePickersOnTheNativePath', async () => {
+      hls.supported = false
+      serveSession()
+      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const audio: FakeAudioTrack[] = [
+        { label: 'English', language: 'en', enabled: true },
+        { label: 'Commentary', language: 'en', enabled: false },
+      ]
+      const text: FakeTextTrack[] = [
+        { kind: 'subtitles', label: 'English', language: 'en', mode: 'disabled' },
+      ]
+      giveElementTracks(renderedVideo(), { audio, text })
+      await nativeVideo()
+
+      await user.click(screen.getByRole('button', { name: 'Audio: English' }))
+      await user.click(screen.getByRole('menuitemradio', { name: 'Commentary' }))
+      await user.click(screen.getByRole('button', { name: 'Subtitles: Off' }))
+      await user.click(screen.getByRole('menuitemradio', { name: 'English' }))
+
+      expect(audio.map((track) => track.enabled)).toEqual([false, true])
+      expect(text.map((track) => track.mode)).toEqual(['showing'])
+      expect(screen.getByRole('button', { name: 'Audio: Commentary' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Subtitles: English' })).toBeInTheDocument()
+    })
+
+    it('shouldCloseAnOpenPickerWhenPlaybackFailsAndKeepItClosedAfterRetry', async () => {
+      serveSession()
+      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      await attachedVideo()
+      const tracks = { audio: [{ name: 'English' }, { name: 'Français' }], audioTrack: 0 }
+      offerHlsTracks(tracks)
+      await openPicker(user, screen.getByRole('button', { name: 'Audio: English' }))
+
+      raiseHlsFatalError()
+
+      expect(await screen.findByRole('alert')).toBeInTheDocument()
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: 'Retry playback' }))
+      await waitFor(() => expect(hls.loadSource).toHaveBeenCalledTimes(2))
+      offerHlsTracks(tracks)
+
+      expect(screen.getByRole('button', { name: 'Audio: English' })).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      )
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
     })
 
     it('shouldEnterAndLeaveFullScreenOnThePlayer', async () => {
