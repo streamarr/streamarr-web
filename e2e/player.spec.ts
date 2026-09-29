@@ -239,7 +239,7 @@ async function centreY(control: Locator): Promise<number> {
   return y + height / 2
 }
 
-async function openPopover(menu: Locator) {
+async function popoverPlacement(menu: Locator) {
   return menu.evaluate((node) => {
     const surface = node.parentElement
     if (!surface) {
@@ -713,7 +713,7 @@ for (const viewport of [
 
     await chip.click()
 
-    const popover = await openPopover(page.getByRole('menu', { name: 'Subtitles' }))
+    const popover = await popoverPlacement(page.getByRole('menu', { name: 'Subtitles' }))
     const chipBox = (await chip.boundingBox()) as Box
     const seekBox = (await page.getByRole('slider', { name: 'Seek' }).boundingBox()) as Box
     expect(popover.left).toBeGreaterThanOrEqual(0)
