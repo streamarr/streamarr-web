@@ -2026,6 +2026,25 @@ describe('Player', () => {
       expect(screen.queryByRole('menu')).not.toBeInTheDocument()
     })
 
+    it('shouldKeepAPickerClosedOnceItsChoicesGoAndReturn', async () => {
+      serveSession()
+      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      await attachedVideo()
+      const choices = { audio: [{ name: 'English' }, { name: 'Français' }], audioTrack: 0 }
+      offerHlsTracks(choices)
+      await openPicker(user, screen.getByRole('button', { name: 'Audio: English' }))
+
+      offerHlsTracks({ audio: [{ name: 'English' }], audioTrack: 0 })
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+      offerHlsTracks(choices)
+
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Audio: English' })).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      )
+    })
+
     it('shouldEnterAndLeaveFullScreenOnThePlayer', async () => {
       serveSession()
       const exitFullscreen = vi.fn(() => Promise.resolve())
@@ -2195,6 +2214,23 @@ describe('Player', () => {
 
       fireEvent.keyDown(document, { key: 'Escape' })
       await act(async () => vi.advanceTimersByTimeAsync(3_000))
+      expect(player).toHaveAttribute('data-idle')
+    })
+
+    it('shouldFadeTheControlsOnceTheOpenPickersChoicesAreGone', async () => {
+      serveSession()
+      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await attachedVideo()
+      const player = screen.getByRole('region', { name: 'Player' })
+      offerHlsTracks({ audio: [{ name: 'English' }, { name: 'Français' }], audioTrack: 0 })
+      const menu = await openPicker(user, screen.getByRole('button', { name: 'Audio: English' }))
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      moveMouse(video, menu)
+      await act(() => video.play())
+
+      offerHlsTracks({ audio: [{ name: 'English' }], audioTrack: 0 })
+      await act(async () => vi.advanceTimersByTimeAsync(3_000))
+
       expect(player).toHaveAttribute('data-idle')
     })
 
