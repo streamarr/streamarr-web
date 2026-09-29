@@ -898,11 +898,12 @@ test('a narrower window re-lays the rows before the frame that resized them pain
   expect(await seen()).toMatchObject({ overfullRows: 0, overlappingRows: 0 })
   await expect(page.getByRole('link', { name: 'A Title 02' })).toBeFocused()
   // Re-focusing scrolls the card into view only if needed, by the rows' final positions. Scroll
-  // offsets are whole pixels, so a card aligned flush with the grid's edge may overhang it by less.
-  const grid = await page.locator('[class*="_grid_"]').boundingBox()
-  const card = await page.getByRole('link', { name: 'A Title 02' }).boundingBox()
-  expect(card!.y).toBeGreaterThan(grid!.y - 1)
-  expect(card!.y + card!.height).toBeLessThan(grid!.y + grid!.height + 1)
+  // offsets are whole pixels, so a card aligned flush with the grid's edge may overhang it by
+  // under a pixel.
+  const gridBox = await page.locator('[class*="_grid_"]').boundingBox()
+  const cardBox = await page.getByRole('link', { name: 'A Title 02' }).boundingBox()
+  expect(cardBox!.y).toBeGreaterThan(gridBox!.y - 1)
+  expect(cardBox!.y + cardBox!.height).toBeLessThan(gridBox!.y + gridBox!.height + 1)
 })
 
 // Rows are re-laid for a new width once the grid has measured it.
