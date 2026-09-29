@@ -30,6 +30,7 @@ vi.mock('hls.js', () => ({
 
 const STREAM_URL = '/api/stream/abcd/multivariant.m3u8?t=playback-token'
 const SESSION = { id: 'sess-1', streamUrl: STREAM_URL, transcodeMode: 'REMUX' }
+const CAPACITY_REFUSAL = 'Every transcode slot is busy. Try again in a moment.'
 
 interface TimelineReport {
   sessionId: string
@@ -49,6 +50,31 @@ function serveSession(): TimelineReport[] {
     }),
   )
   return reports
+}
+
+function refuseSession() {
+  server.use(
+    graphql.mutation('CreateStreamSession', () =>
+      HttpResponse.json({
+        data: {
+          createStreamSession: {
+            session: null,
+            userErrors: [
+              { __typename: 'TranscodeCapacityUnavailableError', message: CAPACITY_REFUSAL },
+            ],
+          },
+        },
+      }),
+    ),
+  )
+}
+
+function failSessionCreation() {
+  server.use(
+    graphql.mutation('CreateStreamSession', () =>
+      HttpResponse.json({ errors: [{ message: 'boom' }] }, { status: 200 }),
+    ),
+  )
 }
 
 function serveSingleWorkerSlot({
@@ -131,6 +157,12 @@ function fakeMedia(video: HTMLVideoElement): HTMLVideoElement {
     },
   })
   return video
+}
+
+function raiseHlsFatalError() {
+  const onError = hls.on.mock.calls.find(([event]) => event === 'hlsError')?.[1]
+  expect(onError).toBeTypeOf('function')
+  act(() => onError?.('hlsError', { fatal: true, type: 'networkError' }))
 }
 
 function playheadAt(video: HTMLVideoElement, seconds: number) {
@@ -677,11 +709,7 @@ describe('Player', () => {
   })
 
   it('shouldShowErrorWhenSessionCreationFails', async () => {
-    server.use(
-      graphql.mutation('CreateStreamSession', () =>
-        HttpResponse.json({ errors: [{ message: 'boom' }] }, { status: 200 }),
-      ),
-    )
+    failSessionCreation()
 
     renderWithProviders(<Player mediaFileId="abcd" />)
 
@@ -689,29 +717,11 @@ describe('Player', () => {
   })
 
   it('shouldShowTheServersRefusalWhenTheSessionIsRefused', async () => {
-    server.use(
-      graphql.mutation('CreateStreamSession', () =>
-        HttpResponse.json({
-          data: {
-            createStreamSession: {
-              session: null,
-              userErrors: [
-                {
-                  __typename: 'TranscodeCapacityUnavailableError',
-                  message: 'Every transcode slot is busy. Try again in a moment.',
-                },
-              ],
-            },
-          },
-        }),
-      ),
-    )
+    refuseSession()
 
     renderWithProviders(<Player mediaFileId="abcd" />)
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Every transcode slot is busy. Try again in a moment.',
-    )
+    expect(await screen.findByRole('alert')).toHaveTextContent(CAPACITY_REFUSAL)
     expect(hls.loadSource).not.toHaveBeenCalled()
   })
 
@@ -724,9 +734,7 @@ describe('Player', () => {
     renderWithProviders(<Player mediaFileId="abcd" />)
     await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(STREAM_URL))
 
-    const onError = hls.on.mock.calls.find(([event]) => event === 'hlsError')?.[1]
-    expect(onError).toBeTypeOf('function')
-    act(() => onError?.('hlsError', { fatal: true, type: 'networkError' }))
+    raiseHlsFatalError()
 
     expect(await screen.findByRole('alert')).toBeInTheDocument()
     expect(hls.destroy).toHaveBeenCalled()
