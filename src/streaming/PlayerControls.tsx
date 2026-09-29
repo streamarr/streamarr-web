@@ -116,6 +116,7 @@ export function PlayerControls({
             title={title}
             timecode={length && `${formatTimecode(position, video.duration)} / ${length}`}
           />
+          <VolumeControl videoRef={videoRef} volume={video.volume} muted={video.muted} />
         </div>
         <div className={styles.transport}>
           <SkipButton
@@ -161,6 +162,69 @@ function TitleLine({
         {title?.detail && timecode && ' · '}
         {timecode && <span className={styles.timecode}>{timecode}</span>}
       </span>
+    </div>
+  )
+}
+
+function VolumeControl({
+  videoRef,
+  volume,
+  muted,
+}: Readonly<{ videoRef: RefObject<HTMLVideoElement | null>; volume: number; muted: boolean }>) {
+  const audible = !muted && volume > 0
+
+  function toggleMuted() {
+    const element = videoRef.current
+    if (!element) {
+      return
+    }
+    if (audible) {
+      element.muted = true
+      return
+    }
+    element.muted = false
+    if (element.volume === 0) {
+      element.volume = 1
+    }
+  }
+
+  function changeVolume(level: number) {
+    const element = videoRef.current
+    if (!element) {
+      return
+    }
+    element.volume = level
+    element.muted = false
+  }
+
+  return (
+    <div className={styles.volume}>
+      <button
+        type="button"
+        className={styles.volumeToggle}
+        aria-label={audible ? 'Mute' : 'Unmute'}
+        onClick={toggleMuted}
+      >
+        <Icon name={audible ? 'volume' : 'muted'} size={16} />
+      </button>
+      <Slider
+        classNames={{
+          root: styles.volumeSlider,
+          track: styles.volumeTrack,
+          bar: styles.volumeFill,
+          thumb: styles.volumeThumb,
+        }}
+        size={4}
+        thumbSize={10}
+        min={0}
+        max={1}
+        step={0.05}
+        value={audible ? volume : 0}
+        label={null}
+        thumbLabel="Volume"
+        thumbValueText={(level) => `${Math.round(level * 100)}%`}
+        onChange={changeVolume}
+      />
     </div>
   )
 }
