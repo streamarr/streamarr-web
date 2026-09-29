@@ -175,6 +175,11 @@ function loadMetadata(video: HTMLVideoElement) {
   fireEvent(video, new Event('loadedmetadata'))
 }
 
+function loadFirstFrame(video: HTMLVideoElement) {
+  setReadyState(video, HTMLMediaElement.HAVE_CURRENT_DATA)
+  fireEvent(video, new Event('loadeddata'))
+}
+
 function raiseHlsFatalError() {
   const onError = hls.on.mock.calls.find(([event]) => event === 'hlsError')?.[1]
   expect(onError).toBeTypeOf('function')
@@ -189,6 +194,7 @@ function playheadAt(video: HTMLVideoElement, seconds: number) {
 interface StreamPath {
   supported: boolean
   streamingVideo: () => Promise<HTMLVideoElement>
+  startStream: (video: HTMLVideoElement) => void
   failStream: (video: HTMLVideoElement) => void
   expectStreamReleased: (video: HTMLVideoElement) => void
 }
@@ -199,6 +205,10 @@ const STREAM_PATHS: [string, StreamPath][] = [
     {
       supported: false,
       streamingVideo: nativeVideo,
+      startStream: (video) => {
+        loadMetadata(video)
+        loadFirstFrame(video)
+      },
       failStream: (video) => fireEvent(video, new Event('error')),
       expectStreamReleased: (video) => expect(video).not.toHaveAttribute('src'),
     },
@@ -208,11 +218,17 @@ const STREAM_PATHS: [string, StreamPath][] = [
     {
       supported: true,
       streamingVideo: attachedVideo,
+      startStream: loadMetadata,
       failStream: raiseHlsFatalError,
       expectStreamReleased: () => expect(hls.destroy).toHaveBeenCalledOnce(),
     },
   ],
 ]
+
+const NATIVE_WAITING_POINTS = [
+  ['BeforeMetadata', () => undefined],
+  ['AtMetadata', loadMetadata],
+] as const
 
 function Harness() {
   const [mediaFileId, setMediaFileId] = useState('a')
@@ -867,15 +883,15 @@ describe('Player', () => {
   )
 
   it.each(STREAM_PATHS)(
-    'shouldKeepTheStreamPastTheStartupDeadlineOnceMetadataLoadsOnThe%s',
-    async (_path, { supported, streamingVideo }) => {
+    'shouldKeepTheStreamPastTheStartupDeadlineOnceItStartsOnThe%s',
+    async (_path, { supported, streamingVideo, startStream }) => {
       hls.supported = supported
       serveSession()
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
       renderWithProviders(<Player mediaFileId="abcd" />)
       const video = await streamingVideo()
 
-      loadMetadata(video)
+      startStream(video)
       await act(async () => vi.advanceTimersByTimeAsync(30_000))
 
       vi.useRealTimers()
@@ -883,41 +899,81 @@ describe('Player', () => {
     },
   )
 
-  it('shouldHoldTheStartupDeadlineWhileTheNativeElementWaitsForTheViewer', async () => {
+  it('shouldTimeOutStartupWhenTheNativeStreamLoadsMetadataButNoFrame', async () => {
     hls.supported = false
     const activeSessions = serveSingleWorkerSlot()
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     renderWithProviders(<Player mediaFileId="abcd" />)
     const video = await nativeVideo()
 
-    fireEvent(video, new Event('suspend'))
-    await act(async () => vi.advanceTimersByTimeAsync(60_000))
-
-    vi.useRealTimers()
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    expect(video).toHaveAttribute('src', STREAM_URL)
-    expect(activeSessions).toEqual(new Set(['sess-abcd']))
-  })
-
-  it('shouldRestartTheStartupDeadlineWhenTheViewerPlaysTheWaitingNativeElement', async () => {
-    hls.supported = false
-    const activeSessions = serveSingleWorkerSlot()
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-    renderWithProviders(<Player mediaFileId="abcd" />)
-    const video = await nativeVideo()
-    fireEvent(video, new Event('suspend'))
-    await act(async () => vi.advanceTimersByTimeAsync(60_000))
-
-    fireEvent(video, new Event('play'))
-    await act(async () => vi.advanceTimersByTimeAsync(29_999))
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    await act(async () => vi.advanceTimersByTimeAsync(1))
+    loadMetadata(video)
+    await act(async () => vi.advanceTimersByTimeAsync(30_000))
 
     vi.useRealTimers()
     expect(screen.getByRole('alert')).toHaveTextContent('Playback is taking too long to start.')
     expect(video).not.toHaveAttribute('src')
     await waitFor(() => expect(activeSessions.size).toBe(0))
   })
+
+  it('shouldKeepTheResumePositionWhenTheNativeStreamTimesOutAfterSeeking', async () => {
+    hls.supported = false
+    const activeSessions = serveSingleWorkerSlot()
+    const reports = recordTimelineReports()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    renderWithProviders(<Player mediaFileId="abcd" startPositionSeconds={120} />)
+    const video = await nativeVideo()
+    loadMetadata(video)
+
+    await act(async () => vi.advanceTimersByTimeAsync(30_000))
+
+    vi.useRealTimers()
+    await waitFor(() => expect(activeSessions.size).toBe(0))
+    expect(reports).toEqual([])
+  })
+
+  it.each(NATIVE_WAITING_POINTS)(
+    'shouldHoldTheStartupDeadlineWhileTheNativeElementWaitsForTheViewer%s',
+    async (_point, reachWaitingPoint) => {
+      hls.supported = false
+      const activeSessions = serveSingleWorkerSlot()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await nativeVideo()
+
+      reachWaitingPoint(video)
+      fireEvent(video, new Event('suspend'))
+      await act(async () => vi.advanceTimersByTimeAsync(60_000))
+
+      vi.useRealTimers()
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(video).toHaveAttribute('src', STREAM_URL)
+      expect(activeSessions).toEqual(new Set(['sess-abcd']))
+    },
+  )
+
+  it.each(NATIVE_WAITING_POINTS)(
+    'shouldRestartTheStartupDeadlineWhenTheViewerPlaysTheNativeElementWaiting%s',
+    async (_point, reachWaitingPoint) => {
+      hls.supported = false
+      const activeSessions = serveSingleWorkerSlot()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await nativeVideo()
+      reachWaitingPoint(video)
+      fireEvent(video, new Event('suspend'))
+      await act(async () => vi.advanceTimersByTimeAsync(60_000))
+
+      fireEvent(video, new Event('play'))
+      await act(async () => vi.advanceTimersByTimeAsync(29_999))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      await act(async () => vi.advanceTimersByTimeAsync(1))
+
+      vi.useRealTimers()
+      expect(screen.getByRole('alert')).toHaveTextContent('Playback is taking too long to start.')
+      expect(video).not.toHaveAttribute('src')
+      await waitFor(() => expect(activeSessions.size).toBe(0))
+    },
+  )
 
   it('shouldNotRestartTheStartupDeadlineWhenTheViewerPlaysALoadedNativeStream', async () => {
     hls.supported = false
@@ -927,6 +983,7 @@ describe('Player', () => {
     const video = await nativeVideo()
 
     loadMetadata(video)
+    loadFirstFrame(video)
     fireEvent(video, new Event('suspend'))
     fireEvent(video, new Event('play'))
     await act(async () => vi.advanceTimersByTimeAsync(60_000))
