@@ -2,6 +2,8 @@ import { type RefObject, useEffect, useState } from 'react'
 
 export interface VideoState {
   paused: boolean
+  /** Playing, but stalled until more of the stream arrives. */
+  buffering: boolean
   currentTime: number
   /** NaN until the stream declares its length. */
   duration: number
@@ -14,6 +16,9 @@ export interface VideoState {
 const VIDEO_EVENTS = [
   'play',
   'pause',
+  'playing',
+  'waiting',
+  'canplay',
   'timeupdate',
   'seeking',
   'durationchange',
@@ -26,6 +31,7 @@ const VIDEO_EVENTS = [
 // An element that has not loaded anything reads this way, so the first render needs no read.
 const UNLOADED: VideoState = {
   paused: true,
+  buffering: false,
   currentTime: 0,
   duration: Number.NaN,
   volume: 1,
@@ -45,6 +51,7 @@ export function useVideoState(videoRef: RefObject<HTMLVideoElement | null>): Vid
     const read = () =>
       setState({
         paused: video.paused,
+        buffering: !video.paused && video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA,
         currentTime: video.currentTime,
         duration: video.duration,
         volume: video.volume,

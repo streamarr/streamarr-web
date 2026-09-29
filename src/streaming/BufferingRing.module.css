@@ -1,0 +1,50 @@
+.ring {
+  position: absolute;
+  top: 44%;
+  left: 50%;
+  width: 54px;
+  height: 54px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+/* The native progress carries the status for assistive technology; the ring beneath shows it. */
+.status {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+}
+
+.spinner {
+  display: block;
+  width: 100%;
+  height: 100%;
+  animation: bufferingRingTurn 1s linear infinite;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+.track,
+.arc {
+  fill: none;
+  stroke-width: 2;
+}
+
+.track {
+  stroke: rgba(255, 255, 255, 0.2);
+}
+
+.arc {
+  stroke: var(--indicator-active-track);
+  stroke-linecap: round;
+}
+
+@keyframes bufferingRingTurn {
+  to {
+    transform: rotate(360deg);
+  }
+}

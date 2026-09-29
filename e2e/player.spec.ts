@@ -128,3 +128,17 @@ test('the controls fade while playing untouched and return on pointer or keyboar
   await page.keyboard.press('Shift')
   await expect.poll(() => renderedOpacity(pause)).toBe(1)
 })
+
+test('the buffering ring shows while the playing video waits for data', async ({
+  page,
+  request,
+}) => {
+  await openPlayer(page, request)
+
+  await page.getByRole('button', { name: 'Play' }).click()
+
+  const ring = page.getByRole('progressbar', { name: 'Buffering' })
+  await expect(ring).toBeAttached()
+  const box = await ring.boundingBox()
+  expect(box && { x: box.x + box.width / 2, width: box.width }).toEqual({ x: 1512 / 2, width: 54 })
+})
