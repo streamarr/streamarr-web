@@ -10,12 +10,12 @@ const CHIPS: { value: WatchStatusFilter; label: string }[] = [
 
 export function FilterBar({
   status,
+  total,
   onChange,
-  showing,
 }: Readonly<{
   status: WatchStatusFilter
+  total: number
   onChange: (status: WatchStatusFilter) => void
-  showing: string
 }>) {
   return (
     <div className={styles.filterBar}>
@@ -29,10 +29,23 @@ export function FilterBar({
             onClick={() => onChange(chip.value)}
           >
             {chip.label}
+            {chip.value === 'ALL' && <LibraryTotal total={total} />}
           </button>
         ))}
       </div>
-      <span className={styles.showing}>{showing}</span>
     </div>
+  )
+}
+
+function LibraryTotal({ total }: Readonly<{ total: number }>) {
+  if (total === 0) {
+    return null
+  }
+
+  return (
+    <>
+      {' '}
+      <span className={styles.count}>{total.toLocaleString()}</span>
+    </>
   )
 }

@@ -30,8 +30,6 @@
   font-weight: 600;
 }
 
-.showing {
-  margin-left: auto;
-  font-size: var(--font-size-caption);
-  color: var(--text-secondary);
+.count {
+  font-weight: var(--font-weight-regular);
 }

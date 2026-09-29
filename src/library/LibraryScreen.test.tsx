@@ -58,6 +58,7 @@ function libraryData(
     edges?: { cursor: string; node: ReturnType<typeof movieNode> | ReturnType<typeof seriesNode> }[]
     hasNextPage?: boolean
     scanCompletedOn?: string | null
+    alphabetIndex?: LibraryPageQuery['library']['alphabetIndex']
   } = {},
 ): LibraryPageQuery & { library: { __typename: 'Library' } } {
   return {
@@ -67,7 +68,7 @@ function libraryData(
       name: 'Movies',
       status: 'HEALTHY',
       scanCompletedOn: overrides.scanCompletedOn ?? '2026-08-28T11:46:00Z',
-      alphabetIndex: [
+      alphabetIndex: overrides.alphabetIndex ?? [
         { letter: 'A', count: 1 },
         { letter: 'E', count: 1 },
         { letter: 'N', count: 1 },
@@ -117,6 +118,11 @@ function twoColumnRows() {
 }
 
 const DEFAULT_SEARCH: LibrarySearch = { by: 'ADDED', direction: 'DESC' }
+
+const LIBRARY_OF_1799: LibraryPageQuery['library']['alphabetIndex'] = [
+  { letter: 'A', count: 1000 },
+  { letter: 'E', count: 799 },
+]
 
 function Harness({
   initialSearch = DEFAULT_SEARCH,
@@ -208,14 +214,44 @@ describe('LibraryScreen', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
   })
 
-  it('renders the header with item count and relative scan time', async () => {
-    server.use(graphql.query('LibraryPage', () => HttpResponse.json({ data: libraryData() })))
+  it('shouldShowTheLibraryTotalOnceOnTheAllChip', async () => {
+    server.use(
+      graphql.query('LibraryPage', () =>
+        HttpResponse.json({ data: libraryData({ alphabetIndex: LIBRARY_OF_1799 }) }),
+      ),
+    )
     renderWithProviders(<Harness />)
 
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Movies' })).toBeInTheDocument())
-    expect(screen.getByText(/3 items/)).toBeInTheDocument()
+    const allChip = await screen.findByRole('button', { name: 'All 1,799' })
+    const totals = screen.getAllByText(/1,799/)
+    expect(totals).toHaveLength(1)
+    expect(allChip).toContainElement(totals[0])
     expect(screen.getByText(/last scan/)).toBeInTheDocument()
+    expect(screen.queryByText(/items ·/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^Showing/)).not.toBeInTheDocument()
   })
+
+  it.each([
+    { filter: 'a watch status', search: { watchStatus: 'UNWATCHED' }, pressed: 'Unwatched' },
+    { filter: 'a letter seek', search: { letter: 'N' }, pressed: 'All 1,799' },
+  ] satisfies { filter: string; search: Partial<LibrarySearch>; pressed: string }[])(
+    'shouldKeepTheLibraryTotalOnTheAllChipUnder$filter',
+    async ({ search, pressed }) => {
+      server.use(
+        graphql.query('LibraryPage', () =>
+          HttpResponse.json({
+            data: libraryData({ alphabetIndex: LIBRARY_OF_1799, hasNextPage: true }),
+          }),
+        ),
+      )
+      renderWithProviders(<Harness initialSearch={{ by: 'TITLE', direction: 'ASC', ...search }} />)
+
+      await screen.findByText('Everlight')
+      expect(screen.getByRole('button', { name: pressed })).toHaveAttribute('aria-pressed', 'true')
+      expect(screen.getByRole('button', { name: 'All 1,799' })).toBeInTheDocument()
+      expect(screen.getAllByText(/1,799/)).toHaveLength(1)
+    },
+  )
 
   it('renders a watched badge for a WATCHED item', async () => {
     server.use(
