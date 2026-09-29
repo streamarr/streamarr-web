@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
 import { STUB_URL } from './ports'
 
 // The session's stream is 47:04 long, and its media never arrives: the playlists answer and every
@@ -71,6 +71,17 @@ async function ringOnActiveElement(page: Page) {
   })
 }
 
+// Opacity does not inherit, so a control's own style never shows that its container faded.
+async function renderedOpacity(control: Locator): Promise<number> {
+  return control.evaluate((element) => {
+    let opacity = 1
+    for (let node: Element | null = element; node; node = node.parentElement) {
+      opacity *= Number(getComputedStyle(node).opacity)
+    }
+    return opacity
+  })
+}
+
 test.afterEach(async ({ page }) => {
   await page.unrouteAll({ behavior: 'ignoreErrors' })
 })
@@ -94,4 +105,26 @@ test('keyboard focus draws the theme ring on each player control', async ({ page
     await expect(control).toBeFocused()
     expect(await ringOnActiveElement(page)).toEqual(RING)
   }
+})
+
+test('the controls fade while playing untouched and return on pointer or keyboard', async ({
+  page,
+  request,
+}) => {
+  await openPlayer(page, request)
+  const back = page.getByRole('button', { name: 'Back', exact: true })
+  const pause = page.getByRole('button', { name: 'Pause' })
+
+  await page.getByRole('button', { name: 'Play' }).click()
+  await page.mouse.move(756, 200)
+  await expect.poll(() => renderedOpacity(pause)).toBe(0)
+  expect(await renderedOpacity(back)).toBe(0)
+
+  await page.mouse.move(700, 240)
+  await expect.poll(() => renderedOpacity(pause)).toBe(1)
+  expect(await renderedOpacity(back)).toBe(1)
+
+  await expect.poll(() => renderedOpacity(pause)).toBe(0)
+  await page.keyboard.press('Shift')
+  await expect.poll(() => renderedOpacity(pause)).toBe(1)
 })

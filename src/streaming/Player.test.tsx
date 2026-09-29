@@ -1384,6 +1384,65 @@ describe('Player', () => {
       expect(screen.queryByRole('button', { name: 'Full screen' })).not.toBeInTheDocument()
     })
 
+    it('shouldFadeTheControlsAfterThreeSecondsOfPlaybackUntilThePointerOrKeyboardWakesThem', async () => {
+      serveSession()
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await attachedVideo()
+      const player = screen.getByRole('region', { name: 'Player' })
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      await act(() => video.play())
+
+      await act(async () => vi.advanceTimersByTimeAsync(2_999))
+      expect(player).not.toHaveAttribute('data-idle')
+      await act(async () => vi.advanceTimersByTimeAsync(1))
+      expect(player).toHaveAttribute('data-idle')
+
+      fireEvent.pointerMove(document)
+      expect(player).not.toHaveAttribute('data-idle')
+      await act(async () => vi.advanceTimersByTimeAsync(3_000))
+      expect(player).toHaveAttribute('data-idle')
+
+      fireEvent.keyDown(document, { key: 'Shift' })
+      expect(player).not.toHaveAttribute('data-idle')
+    })
+
+    it('shouldKeepTheControlsWhilePausedOrWhileThePointerRestsOnTheBar', async () => {
+      serveSession()
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await attachedVideo()
+      const player = screen.getByRole('region', { name: 'Player' })
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      await act(async () => vi.advanceTimersByTimeAsync(10_000))
+      expect(player).not.toHaveAttribute('data-idle')
+
+      const play = screen.getByRole('button', { name: 'Play' })
+      fireEvent.pointerOver(play)
+      await act(() => video.play())
+      await act(async () => vi.advanceTimersByTimeAsync(10_000))
+      expect(player).not.toHaveAttribute('data-idle')
+
+      fireEvent.pointerOut(screen.getByRole('button', { name: 'Pause' }), { relatedTarget: video })
+      await act(async () => vi.advanceTimersByTimeAsync(3_000))
+      expect(player).toHaveAttribute('data-idle')
+    })
+
+    it('shouldKeepBackOnScreenWhileAPlaybackFailureShows', async () => {
+      serveSession()
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await attachedVideo()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      await act(() => video.play())
+      raiseHlsFatalError()
+
+      await act(async () => vi.advanceTimersByTimeAsync(10_000))
+
+      expect(screen.getByRole('alert')).toBeInTheDocument()
+
+      expect(screen.getByRole('region', { name: 'Player' })).not.toHaveAttribute('data-idle')
+      expect(screen.getByRole('button', { name: 'Back' })).toBeEnabled()
+    })
+
     it('shouldShowTheTimecodeAndTitleInTheTitleLine', async () => {
       serveSession()
       renderWithProviders(

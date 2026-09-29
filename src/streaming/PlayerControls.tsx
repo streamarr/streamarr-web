@@ -19,12 +19,17 @@ interface Scrub {
 }
 
 export function PlayerControls({
+  className,
+  onHoverChange,
   playerRef,
   videoRef,
   video,
   attached,
   title,
 }: Readonly<{
+  className: string
+  /** Called with true when the pointer comes to rest over the bar and false when it leaves. */
+  onHoverChange: (hovered: boolean) => void
   /** The element that takes the screen in full screen, so the bar stays over the video. */
   playerRef: RefObject<HTMLElement | null>
   videoRef: RefObject<HTMLVideoElement | null>
@@ -86,7 +91,11 @@ export function PlayerControls({
   }
 
   return (
-    <div className={styles.bar}>
+    <div
+      className={`${styles.bar} ${className}`}
+      onPointerEnter={() => onHoverChange(true)}
+      onPointerLeave={() => onHoverChange(false)}
+    >
       <Slider
         classNames={{
           root: styles.seek,

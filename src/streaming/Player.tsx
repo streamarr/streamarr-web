@@ -16,6 +16,7 @@ import { invalidateWatchedState } from '../media/watchedState'
 import focusStyles from '../styles/focus.module.css'
 import styles from './Player.module.css'
 import { PlayerControls, type PlayerTitle } from './PlayerControls'
+import { useIdle } from './useIdle'
 import { useVideoState } from './useVideoState'
 
 // Progress is only worth a round trip once the playhead has moved this far since the last report.
@@ -47,6 +48,8 @@ export function Player({
   const [attempt, setAttempt] = useState(0)
   const [attached, setAttached] = useState(false)
   const video = useVideoState(videoRef)
+  const [overControls, setOverControls] = useState(false)
+  const idle = useIdle(video.paused || failure !== null || overControls)
 
   useEffect(() => {
     const video = videoRef.current
@@ -230,6 +233,7 @@ export function Player({
       ref={playerRef}
       aria-label="Player"
       className={`${styles.player} ${focusStyles.focusRing}`}
+      data-idle={idle || undefined}
     >
       <video ref={videoRef} className={styles.video} playsInline />
       {failure && (
@@ -240,10 +244,12 @@ export function Player({
           </Button>
         </Alert>
       )}
-      <div className={styles.back}>
+      <div className={`${styles.back} ${styles.chrome}`}>
         <DetailBackButton />
       </div>
       <PlayerControls
+        className={styles.chrome}
+        onHoverChange={setOverControls}
         playerRef={playerRef}
         videoRef={videoRef}
         video={video}
