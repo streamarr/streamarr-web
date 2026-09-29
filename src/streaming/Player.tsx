@@ -30,6 +30,11 @@ const PLAYBACK_FAILURE_MESSAGE = "Playback couldn't start. Try again."
 type PlaybackState = ReportStreamSessionTimelineMutationVariables['state']
 type StreamSessionPayload = CreateStreamSessionMutation['createStreamSession']
 
+type SourcePhase = { at: 'starting' } | { at: 'attached' } | { at: 'failed'; message: string }
+
+const STARTING: SourcePhase = { at: 'starting' }
+const ATTACHED: SourcePhase = { at: 'attached' }
+
 const pendingCleanups = new WeakMap<ApolloClient, () => Promise<void>>()
 
 export function Player({
@@ -46,18 +51,17 @@ export function Player({
   const controlsRef = useRef<HTMLDivElement>(null)
   const [createStreamSession] = useMutation(CreateStreamSessionDocument)
   const client = useApolloClient()
-  const [failure, setFailure] = useState<string | null>(null)
+  const [sourcePhase, setSourcePhase] = useState(STARTING)
   const [attempt, setAttempt] = useState(0)
-  const [attached, setAttached] = useState(false)
   const videoState = useVideoState(videoRef)
-  const idle = useIdle(videoState.paused || failure !== null, controlsRef)
+  const idle = useIdle(videoState.paused || sourcePhase.at === 'failed', controlsRef)
 
   useEffect(() => {
     const video = videoRef.current
     if (!video) {
       return undefined
     }
-    setFailure(null)
+    setSourcePhase(STARTING)
 
     let source: StreamSource | null = null
     let cancelled = false
@@ -134,7 +138,7 @@ export function Player({
     const startupDeadline = createStartupDeadline(() => {
       cancelled = true
       detachSource()
-      setFailure('Playback is taking too long to start. Try again.')
+      setSourcePhase({ at: 'failed', message: 'Playback is taking too long to start. Try again.' })
       requestCleanup()
     })
     const startup = Promise.resolve()
@@ -166,7 +170,7 @@ export function Player({
             showFailure(PLAYBACK_FAILURE_MESSAGE)
           },
         })
-        setAttached(true)
+        setSourcePhase(ATTACHED)
       })
       .catch(() => {
         if (!cancelled) {
@@ -176,7 +180,7 @@ export function Player({
 
     function showFailure(message: string) {
       startupDeadline.end()
-      setFailure(message)
+      setSourcePhase({ at: 'failed', message })
     }
 
     function releaseSession(): Promise<void> {
@@ -209,7 +213,6 @@ export function Player({
       timeline.detach()
       source?.detach()
       source = null
-      setAttached(false)
     }
 
     function requestCleanup() {
@@ -238,9 +241,9 @@ export function Player({
     >
       <video ref={videoRef} className={styles.video} playsInline />
       {videoState.buffering && <BufferingRing />}
-      {failure && (
+      {sourcePhase.at === 'failed' && (
         <Alert className={styles.failure} color="red" role="alert">
-          {failure}
+          {sourcePhase.message}
           <Button display="block" mt="sm" onClick={() => setAttempt((value) => value + 1)}>
             Retry playback
           </Button>
@@ -255,7 +258,7 @@ export function Player({
         playerRef={playerRef}
         videoRef={videoRef}
         videoState={videoState}
-        attached={attached}
+        attached={sourcePhase.at === 'attached'}
         title={title}
       />
     </section>
