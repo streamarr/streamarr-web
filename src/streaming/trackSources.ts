@@ -55,8 +55,14 @@ export interface HlsTracks {
 export function hlsTrackSource(hls: HlsTracks): TrackSource {
   return {
     read: unchangedUntilDifferent(() => ({
-      audio: choice(hls.audioTracks.map(hlsTrackOption), hls.audioTrack),
-      subtitles: choice(hls.subtitleTracks.map(hlsTrackOption), hls.subtitleTrack),
+      audio: choice(
+        hls.audioTracks.map((track, index) => hlsTrackOption(track, index)),
+        hls.audioTrack,
+      ),
+      subtitles: choice(
+        hls.subtitleTracks.map((track, index) => hlsTrackOption(track, index)),
+        hls.subtitleTrack,
+      ),
     })),
     subscribe: (onChange) => {
       for (const event of HLS_TRACK_EVENTS) {
@@ -96,11 +102,11 @@ export function nativeTrackSource(video: HTMLVideoElement): TrackSource {
       const subtitles = subtitleTracksOf(video)
       return {
         audio: choice(
-          audio.map(elementTrackOption),
+          audio.map((track, index) => elementTrackOption(track, index)),
           audio.findIndex((track) => track.enabled),
         ),
         subtitles: choice(
-          subtitles.map(elementTrackOption),
+          subtitles.map((track, index) => elementTrackOption(track, index)),
           subtitles.findIndex((track) => track.mode === 'showing'),
         ),
       }
