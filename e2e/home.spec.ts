@@ -63,6 +63,15 @@ test.beforeEach(async ({ page, request }) => {
   await expect(page.getByRole('heading', { name: FEATURED_TITLE })).toBeVisible()
 })
 
+test('the billboard tagline sits upright under the title', async ({ page }) => {
+  const hero = page.locator('[class*="_hero_"]')
+  const tagline = hero.getByText('An unexpected adventure.', { exact: true })
+  await expect(tagline).toHaveCSS('font-style', 'normal')
+  const title = await hero.getByRole('heading', { level: 1, name: FEATURED_TITLE }).boundingBox()
+  const taglineBox = await tagline.boundingBox()
+  expect(taglineBox!.y).toBeGreaterThanOrEqual(title!.y + title!.height)
+})
+
 test('continue-watching cards fit the shelf and grow with the available width', async ({
   page,
 }) => {

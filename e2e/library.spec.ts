@@ -760,7 +760,7 @@ for (const { seek, failRecovery } of [
     if (seek) {
       await page.getByRole('button', { name: 'N', exact: true }).click()
       await expect.poll(() => firstLoaded).toBe(108)
-      await expect(page.getByText('Showing 1–96 of 312', { exact: true })).toBeVisible()
+      await expect(page.getByText('M Title 11', { exact: true })).toBeAttached()
       await expect.poll(() => grid.evaluate((el) => getComputedStyle(el).opacity)).toBe('1')
       await grid.evaluate((element) => {
         element.scrollTop = 0
@@ -897,8 +897,13 @@ test('a narrower window re-lays the rows before the frame that resized them pain
   await expect.poll(rowsFitTheWidth(page)).toBe(true)
   expect(await seen()).toMatchObject({ overfullRows: 0, overlappingRows: 0 })
   await expect(page.getByRole('link', { name: 'A Title 02' })).toBeFocused()
-  // Re-focusing scrolls the card into view only if needed, by the rows' final positions.
-  await expect(page.getByRole('link', { name: 'A Title 02' })).toBeInViewport({ ratio: 1 })
+  // Re-focusing scrolls the card into view only if needed, by the rows' final positions. Scroll
+  // offsets are whole pixels, so a card aligned flush with the grid's edge may overhang it by
+  // under a pixel.
+  const gridBox = await page.locator('[class*="_grid_"]').boundingBox()
+  const cardBox = await page.getByRole('link', { name: 'A Title 02' }).boundingBox()
+  expect(cardBox!.y).toBeGreaterThan(gridBox!.y - 1)
+  expect(cardBox!.y + cardBox!.height).toBeLessThan(gridBox!.y + gridBox!.height + 1)
 })
 
 // Rows are re-laid for a new width once the grid has measured it.

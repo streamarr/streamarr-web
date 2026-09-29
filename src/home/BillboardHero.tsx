@@ -16,8 +16,8 @@ export function BillboardHero({ content }: Readonly<{ content: BillboardContent 
       />
       <div className={styles.scrim} aria-hidden />
       <div className={styles.panel}>
-        {content.tagline && <p className={styles.tagline}>{content.tagline}</p>}
         <h1 className={styles.title}>{content.title}</h1>
+        {content.tagline && <p className={styles.tagline}>{content.tagline}</p>}
         <div className={styles.metadata}>
           {content.metadata.map((entry) => (
             <span key={entry.label}>

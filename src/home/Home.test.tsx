@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { HomeQuery } from '../graphql/generated/graphql'
@@ -258,6 +258,14 @@ describe('Home', () => {
     )
   })
 
+  it('shouldSetTheBillboardTaglineBelowTheTitle', async () => {
+    serve(homeData({ continueWatching: [continueWatchingMovie()] }))
+    renderAppAt('/')
+    const title = await screen.findByRole('heading', { level: 1, name: 'Everlight' })
+    const tagline = screen.getByText('Change begins with a whisper.')
+    expect(title.compareDocumentPosition(tagline) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
   it('builds the billboard from an Episode in continueWatching, reading the parent series', async () => {
     serve(homeData({ continueWatching: [continueWatchingEpisode()] }))
     renderAppAt('/')
@@ -278,6 +286,26 @@ describe('Home', () => {
       'href',
       '/play/file-2?position=600',
     )
+  })
+
+  it('shouldShowNoCounterOnContinueWatching', async () => {
+    serve(homeData({ continueWatching: [continueWatchingMovie(), continueWatchingEpisode()] }))
+    renderAppAt('/')
+    await screen.findByRole('heading', { name: 'Continue watching' })
+    expect(screen.queryByText(/\d+ in progress/)).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['Episode', /Breakage/, 'S2 E5 · Breakage · 15m left'],
+    ['Movie', /Everlight/, '3m left'],
+  ])('shouldGiveThe%sCardOneProgressReadout', async (_kind, title, readout) => {
+    serve(homeData({ continueWatching: [continueWatchingMovie(), continueWatchingEpisode()] }))
+    renderAppAt('/')
+    await screen.findByRole('heading', { name: 'Continue watching' })
+
+    const card = screen.getByRole('link', { name: title })
+    expect(within(card).getAllByText(readout)).toHaveLength(1)
+    expect(card.querySelector('[style*="width"]')).toBeNull()
   })
 
   it('falls back to the newest recently-added item when continueWatching is empty', async () => {

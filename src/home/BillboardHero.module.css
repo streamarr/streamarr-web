@@ -33,7 +33,6 @@
 }
 
 .tagline {
-  font-style: italic;
   color: var(--text-secondary);
   margin: 0;
 }

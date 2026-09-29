@@ -4,9 +4,12 @@ import { describe, expect, it, vi } from 'vitest'
 import { FilterBar } from './FilterBar'
 
 describe('FilterBar', () => {
-  it('renders the three chips and the showing count', () => {
-    render(<FilterBar status="ALL" onChange={() => {}} showing="Showing 1–24 of 1,284" />)
-    expect(screen.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true')
+  it('shouldCountTheLibraryOnTheAllChipOnly', () => {
+    render(<FilterBar status="ALL" total={1799} onChange={vi.fn()} />)
+    expect(screen.getByRole('button', { name: 'All 1,799' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
     expect(screen.getByRole('button', { name: 'Unwatched' })).toHaveAttribute(
       'aria-pressed',
       'false',
@@ -15,13 +18,18 @@ describe('FilterBar', () => {
       'aria-pressed',
       'false',
     )
-    expect(screen.getByText('Showing 1–24 of 1,284')).toBeInTheDocument()
+    expect(screen.queryByText(/Showing/)).not.toBeInTheDocument()
+  })
+
+  it('shouldLeaveTheAllChipUncountedForAnEmptyLibrary', () => {
+    render(<FilterBar status="ALL" total={0} onChange={vi.fn()} />)
+    expect(screen.getByRole('button', { name: 'All' })).toBeInTheDocument()
   })
 
   it('calls onChange with the tapped chip', async () => {
     const onChange = vi.fn()
     const user = userEvent.setup()
-    render(<FilterBar status="ALL" onChange={onChange} showing="" />)
+    render(<FilterBar status="ALL" total={1799} onChange={onChange} />)
 
     await user.click(screen.getByRole('button', { name: 'Unwatched' }))
 

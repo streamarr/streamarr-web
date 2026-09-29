@@ -33,20 +33,6 @@
   color: var(--ambient-text-secondary, var(--text-secondary));
 }
 
-.progressTrack {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 4px;
-  background: var(--color-alpha-32);
-}
-
-.progressFill {
-  height: 100%;
-  background: var(--color-white);
-}
-
 .stillTitle {
   font-size: var(--font-size-emphasis);
   font-weight: 500;
