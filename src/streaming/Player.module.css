@@ -1,0 +1,29 @@
+/* Letterbox bars are true black, which no token holds. */
+.player {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #000;
+  color: var(--text-primary);
+}
+
+.video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.back {
+  position: absolute;
+  top: var(--spacing-24);
+  left: var(--spacing-page);
+}
+
+.failure {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(480px, calc(100% - 2 * var(--spacing-16)));
+  transform: translate(-50%, -50%);
+}
