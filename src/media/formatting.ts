@@ -60,3 +60,18 @@ export function formatTimeLeft(progress: {
   )
   return `${formatRuntime(remainingMinutes)} left`
 }
+
+// `23:12` under an hour, `1:02:05` from one. The position takes the duration's fields, so a
+// timecode keeps its shape while it counts.
+export function formatTimecode(seconds: number, durationSeconds: number): string {
+  const whole = Math.max(0, Math.floor(seconds))
+  const secondsField = pad(whole % MINUTE)
+  if (durationSeconds < HOUR) {
+    return `${Math.floor(whole / MINUTE)}:${secondsField}`
+  }
+  return `${Math.floor(whole / HOUR)}:${pad(Math.floor(whole / MINUTE) % 60)}:${secondsField}`
+}
+
+function pad(value: number): string {
+  return String(value).padStart(2, '0')
+}

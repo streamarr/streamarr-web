@@ -8,6 +8,7 @@ import {
   formatRelativeTime,
   formatRuntime,
   formatTimeLeft,
+  formatTimecode,
   formatYear,
 } from './formatting'
 
@@ -103,5 +104,21 @@ describe('formatTimeLeft', () => {
 
   it('never goes negative when position exceeds duration', () => {
     expect(formatTimeLeft({ positionSeconds: 3100, durationSeconds: 3060 })).toBe('0m left')
+  })
+})
+
+describe('formatTimecode', () => {
+  it('reads minutes and seconds under an hour', () => {
+    expect(formatTimecode(1392, 2824)).toBe('23:12')
+    expect(formatTimecode(2824.9, 2824.9)).toBe('47:04')
+    expect(formatTimecode(0, 2824)).toBe('0:00')
+  })
+
+  it('reads hours, minutes and seconds from an hour', () => {
+    expect(formatTimecode(3725, 3725)).toBe('1:02:05')
+  })
+
+  it("gives the position the duration's fields so the width holds", () => {
+    expect(formatTimecode(65, 3725)).toBe('0:01:05')
   })
 })
