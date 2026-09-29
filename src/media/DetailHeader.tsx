@@ -55,8 +55,8 @@ export function DetailHeader({
         <div className={styles.main}>
           <div className={styles.heading}>
             {eyebrow && <span className={styles.eyebrow}>{eyebrow}</span>}
-            {tagline && <p className={styles.tagline}>{tagline}</p>}
             <h1 className={styles.title}>{title}</h1>
+            {tagline && <p className={styles.tagline}>{tagline}</p>}
           </div>
           <div className={styles.body}>
             {metaLine && metaLine.length > 0 && (

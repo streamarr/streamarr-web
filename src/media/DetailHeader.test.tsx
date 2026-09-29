@@ -50,6 +50,21 @@ describe('DetailHeader', () => {
     expect(screen.queryByRole('term')).not.toBeInTheDocument()
   })
 
+  it('shouldSetTheTaglineBelowTheTitle', () => {
+    render(
+      <DetailHeader
+        backdrop={BACKDROP}
+        metadata={[]}
+        title="Everlight"
+        tagline="Change begins with a whisper."
+        actions={null}
+      />,
+    )
+    const title = screen.getByRole('heading', { level: 1, name: 'Everlight' })
+    const tagline = screen.getByText('Change begins with a whisper.')
+    expect(title.compareDocumentPosition(tagline) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
   it('separates meta line entries with a dot the screen reader skips', () => {
     render(
       <DetailHeader

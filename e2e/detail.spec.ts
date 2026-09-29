@@ -116,6 +116,16 @@ test('the ratings stack under the title on a phone', async ({ page, request }) =
   expect(chip!.y).toBeGreaterThan(title!.y + title!.height)
 })
 
+test('the tagline sits upright under the title', async ({ page, request }) => {
+  await openMovie(page, request, { tagline: 'Change begins with a whisper.' })
+
+  const tagline = page.getByText('Change begins with a whisper.', { exact: true })
+  await expect(tagline).toHaveCSS('font-style', 'normal')
+  const title = await page.getByRole('heading', { level: 1, name: 'Everlight' }).boundingBox()
+  const taglineBox = await tagline.boundingBox()
+  expect(taglineBox!.y).toBeGreaterThanOrEqual(title!.y + title!.height)
+})
+
 test('the metadata columns clear the Back button on a phone', async ({ page, request }) => {
   await openMovie(page, request, {
     genres: [

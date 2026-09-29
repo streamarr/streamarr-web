@@ -258,6 +258,14 @@ describe('Home', () => {
     )
   })
 
+  it('shouldSetTheBillboardTaglineBelowTheTitle', async () => {
+    serve(homeData({ continueWatching: [continueWatchingMovie()] }))
+    renderAppAt('/')
+    const title = await screen.findByRole('heading', { level: 1, name: 'Everlight' })
+    const tagline = screen.getByText('Change begins with a whisper.')
+    expect(title.compareDocumentPosition(tagline) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
   it('builds the billboard from an Episode in continueWatching, reading the parent series', async () => {
     serve(homeData({ continueWatching: [continueWatchingEpisode()] }))
     renderAppAt('/')
