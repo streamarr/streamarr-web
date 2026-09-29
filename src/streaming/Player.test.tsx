@@ -4,79 +4,13 @@ import type { UserEvent } from '@testing-library/user-event'
 import { HttpResponse, graphql } from 'msw'
 import { useState } from 'react'
 import { afterEach, assert, beforeEach, describe, expect, it, vi } from 'vitest'
+import { type FakeHlsTrack, hls, resetFakeHls } from '../test/fakeHls'
 import { type FakeAudioTrack, type FakeTextTrack, giveElementTracks } from '../test/mediaTracks'
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
 import { Player } from './Player'
 
-type HlsListener = (event: string, data: unknown) => void
-
-interface HlsTrack {
-  name: string
-  lang?: string
-}
-
-const hls = vi.hoisted(() => {
-  const listeners = new Map<string, Set<HlsListener>>()
-  return {
-    loadSource: vi.fn(),
-    attachMedia: vi.fn(),
-    destroy: vi.fn(),
-    on: vi.fn((event: string, listener: HlsListener) => {
-      listeners.set(event, (listeners.get(event) ?? new Set()).add(listener))
-    }),
-    off: vi.fn((event: string, listener: HlsListener) => {
-      listeners.get(event)?.delete(listener)
-    }),
-    emit: (event: string) => listeners.get(event)?.forEach((listener) => listener(event, {})),
-    listeners,
-    supported: true,
-    audioTracks: [] as HlsTrack[],
-    audioTrack: -1,
-    subtitleTracks: [] as HlsTrack[],
-    subtitleTrack: -1,
-  }
-})
-
-vi.mock('hls.js', () => ({
-  default: class {
-    static Events = {
-      ERROR: 'hlsError',
-      AUDIO_TRACKS_UPDATED: 'hlsAudioTracksUpdated',
-      AUDIO_TRACK_SWITCHING: 'hlsAudioTrackSwitching',
-      SUBTITLE_TRACKS_UPDATED: 'hlsSubtitleTracksUpdated',
-      SUBTITLE_TRACK_SWITCH: 'hlsSubtitleTrackSwitch',
-    }
-    static isSupported() {
-      return hls.supported
-    }
-    loadSource = hls.loadSource
-    attachMedia = hls.attachMedia
-    destroy = hls.destroy
-    on = hls.on
-    off = hls.off
-    get audioTracks() {
-      return hls.audioTracks
-    }
-    get audioTrack() {
-      return hls.audioTrack
-    }
-    set audioTrack(id: number) {
-      hls.audioTrack = id
-      hls.emit('hlsAudioTrackSwitching')
-    }
-    get subtitleTracks() {
-      return hls.subtitleTracks
-    }
-    get subtitleTrack() {
-      return hls.subtitleTrack
-    }
-    set subtitleTrack(id: number) {
-      hls.subtitleTrack = id
-      hls.emit('hlsSubtitleTrackSwitch')
-    }
-  },
-}))
+vi.mock('hls.js', async () => (await import('../test/fakeHls')).hlsModule)
 
 const STREAM_URL = '/api/stream/abcd/multivariant.m3u8?t=playback-token'
 const SESSION = { id: 'sess-1', streamUrl: STREAM_URL, transcodeMode: 'REMUX' }
@@ -379,9 +313,9 @@ function offerHlsTracks({
   subtitles = [],
   subtitleTrack = -1,
 }: {
-  audio?: HlsTrack[]
+  audio?: FakeHlsTrack[]
   audioTrack?: number
-  subtitles?: HlsTrack[]
+  subtitles?: FakeHlsTrack[]
   subtitleTrack?: number
 }) {
   hls.audioTracks = audio
@@ -478,12 +412,7 @@ function RemountHarness() {
 describe('Player', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    hls.supported = true
-    hls.listeners.clear()
-    hls.audioTracks = []
-    hls.audioTrack = -1
-    hls.subtitleTracks = []
-    hls.subtitleTrack = -1
+    resetFakeHls()
     server.use(
       graphql.mutation('DestroyStreamSession', () =>
         HttpResponse.json({ data: { destroyStreamSession: true } }),
