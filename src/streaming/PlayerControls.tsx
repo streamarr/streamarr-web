@@ -97,8 +97,8 @@ export function PlayerControls({
           root: styles.seek,
           trackContainer: styles.seekHit,
           track: styles.seekTrack,
-          bar: styles.seekFill,
-          thumb: styles.seekThumb,
+          bar: styles.sliderFill,
+          thumb: `${styles.sliderThumb} ${styles.seekThumb}`,
         }}
         size={4}
         thumbSize={12}
@@ -133,7 +133,7 @@ export function PlayerControls({
           />
           <button
             type="button"
-            className={styles.playPause}
+            className={`${styles.iconButton} ${styles.playPause}`}
             aria-label={videoState.paused ? 'Play' : 'Pause'}
             disabled={!attached}
             onClick={togglePaused}
@@ -210,7 +210,7 @@ function VolumeControl({
     <div className={styles.volume}>
       <button
         type="button"
-        className={styles.volumeToggle}
+        className={`${styles.iconButton} ${styles.volumeToggle}`}
         aria-label={audible ? 'Mute' : 'Unmute'}
         onClick={toggleMuted}
       >
@@ -220,8 +220,8 @@ function VolumeControl({
         classNames={{
           root: styles.volumeSlider,
           track: styles.volumeTrack,
-          bar: styles.volumeFill,
-          thumb: styles.volumeThumb,
+          bar: styles.sliderFill,
+          thumb: `${styles.sliderThumb} ${styles.volumeThumb}`,
         }}
         size={4}
         thumbSize={10}
@@ -296,7 +296,7 @@ function SkipButton({
   return (
     <button
       type="button"
-      className={styles.skip}
+      className={`${styles.iconButton} ${styles.skip}`}
       aria-label={label}
       disabled={disabled}
       onClick={onSkip}

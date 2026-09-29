@@ -25,17 +25,20 @@
   background-color: rgba(255, 255, 255, 0.22);
 }
 
-.bar .seekFill {
+.bar .sliderFill {
   background-color: var(--color-white);
 }
 
-.bar .seekFill[data-disabled] {
+.bar .sliderFill[data-disabled] {
   visibility: hidden;
 }
 
-.bar .seekThumb {
+.bar .sliderThumb {
   border: none;
   background-color: var(--color-white);
+}
+
+.bar .seekThumb {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
 }
 
@@ -91,19 +94,23 @@
   align-items: center;
 }
 
-.volumeToggle {
+.iconButton {
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--color-white);
+  cursor: pointer;
+}
+
+.volumeToggle {
   width: 32px;
   height: 32px;
   margin-inline-start: calc(-1 * var(--spacing-8));
-  padding: 0;
-  border: none;
   border-radius: var(--radius-md);
-  background: none;
-  color: var(--color-white);
-  cursor: pointer;
 }
 
 .volumeSlider {
@@ -114,13 +121,7 @@
   background-color: rgba(255, 255, 255, 0.25);
 }
 
-.volume .volumeFill {
-  background-color: var(--color-white);
-}
-
 .volume .volumeThumb {
-  border: none;
-  background-color: var(--color-white);
   opacity: 0;
 }
 
@@ -136,24 +137,11 @@
   gap: 28px;
 }
 
-.skip,
-.playPause {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  font: inherit;
-  cursor: pointer;
-}
-
 .skip {
   position: relative;
   width: 32px;
   height: 32px;
-  background: none;
-  color: var(--color-white);
+  border-radius: 50%;
 }
 
 .skipLabel {
@@ -165,8 +153,8 @@
 .playPause {
   width: 52px;
   height: 52px;
+  border-radius: 50%;
   background: var(--selection-active);
-  color: var(--color-white);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--selection-active) 32%, transparent);
 }
 
