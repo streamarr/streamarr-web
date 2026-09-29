@@ -34,7 +34,15 @@ export function SeasonDetailScreen({ seasonId }: Readonly<{ seasonId: string }>)
   usePublishAmbientTheme(ambient?.theme ?? null)
 
   if (loading || error || !season) {
-    return <MediaTitleFallback kind="season" loading={loading} error={error} onRetry={refetch} />
+    return (
+      <MediaTitleFallback
+        kind="season"
+        loading={loading}
+        error={error}
+        title={data?.season}
+        onRetry={refetch}
+      />
+    )
   }
 
   const series = season.series

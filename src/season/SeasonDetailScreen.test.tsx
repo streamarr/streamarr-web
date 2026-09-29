@@ -177,6 +177,17 @@ describe('SeasonDetailScreen', () => {
     expect(requests).toBe(2)
   })
 
+  it('shouldShowNotFoundWithoutRetryWhenTheSeasonDoesNotExist', async () => {
+    serve({ season: null })
+    renderAppAt('/season/season-2')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "This season doesn't exist or was removed.",
+    )
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument()
+  })
+
   it('queries the season named in the URL and renders its header under the series', async () => {
     const requestedIds: string[] = []
     serve(seasonData(), requestedIds)

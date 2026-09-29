@@ -114,6 +114,50 @@ describe('MovieDetailScreen', () => {
     expect(requests).toBe(2)
   })
 
+  it('shouldShowNotFoundWithoutRetryWhenTheMovieDoesNotExist', async () => {
+    serve({ movie: null })
+    server.use(
+      graphql.query('Home', () =>
+        HttpResponse.json({ data: { continueWatching: [], libraries: [] } }),
+      ),
+    )
+    const { router, user } = renderAppAt('/movie/m1')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "This movie doesn't exist or was removed.",
+    )
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Back' }))
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+  })
+
+  it('shouldTreatAMalformedMovieIdAsNotFound', async () => {
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
+      graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
+      graphql.query('MovieDetail', () =>
+        HttpResponse.json({
+          errors: [
+            {
+              message: 'Invalid ID format: abc',
+              path: ['movie'],
+              extensions: { errorType: 'BAD_REQUEST', code: 'INVALID_INPUT' },
+            },
+          ],
+          data: null,
+        }),
+      ),
+    )
+    renderAppAt('/movie/abc')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "This movie doesn't exist or was removed.",
+    )
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+  })
+
   it('queries the movie named in the URL and renders its header', async () => {
     const requestedIds: string[] = []
     serve(movieData(), requestedIds)
