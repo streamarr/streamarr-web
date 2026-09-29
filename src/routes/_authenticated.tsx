@@ -21,7 +21,7 @@ export const Route = createFileRoute('/_authenticated')({
   },
   pendingMs: 0,
   pendingComponent: CheckingSession,
-  errorComponent: EntryUnconfirmed,
+  errorComponent: AuthenticatedLayoutFailure,
 })
 
 async function confirmSession(session: SessionStore) {
@@ -40,9 +40,8 @@ function CheckingSession() {
   )
 }
 
-// A rejected probe is an outage, not a verdict: neither bounce nor waive the gate. This boundary
-// also catches every descendant page's render and chunk-load errors.
-function EntryUnconfirmed({ error }: Readonly<{ error: unknown }>) {
+// A rejected probe is an outage, not a verdict: neither bounce nor waive the gate.
+function AuthenticatedLayoutFailure({ error }: Readonly<{ error: unknown }>) {
   const router = useRouter()
   const retry = () => router.invalidate()
 
