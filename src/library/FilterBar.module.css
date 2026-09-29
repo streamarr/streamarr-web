@@ -1,16 +1,9 @@
 .filterBar {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: var(--spacing-12);
+  gap: var(--spacing-8);
   padding-bottom: var(--spacing-16);
   border-bottom: var(--border-width-hairline) solid var(--border-hairline);
-}
-
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--spacing-8);
 }
 
 .chip {

@@ -19,20 +19,18 @@ export function FilterBar({
 }>) {
   return (
     <div className={styles.filterBar}>
-      <div className={styles.chips}>
-        {CHIPS.map((chip) => (
-          <button
-            key={chip.value}
-            type="button"
-            className={chip.value === status ? `${styles.chip} ${styles.chipActive}` : styles.chip}
-            aria-pressed={chip.value === status}
-            onClick={() => onChange(chip.value)}
-          >
-            {chip.label}
-            {chip.value === 'ALL' && <LibraryTotal total={total} />}
-          </button>
-        ))}
-      </div>
+      {CHIPS.map((chip) => (
+        <button
+          key={chip.value}
+          type="button"
+          className={chip.value === status ? `${styles.chip} ${styles.chipActive}` : styles.chip}
+          aria-pressed={chip.value === status}
+          onClick={() => onChange(chip.value)}
+        >
+          {chip.label}
+          {chip.value === 'ALL' && <LibraryTotal total={total} />}
+        </button>
+      ))}
     </div>
   )
 }
