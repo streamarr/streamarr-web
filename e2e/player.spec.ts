@@ -116,6 +116,13 @@ async function tapCentre(page: Page, control: Locator) {
   await page.touchscreen.tap(x + width / 2, y + height / 2)
 }
 
+async function centreY(control: Locator): Promise<number> {
+  const box = await control.boundingBox()
+  expect(box, String(control)).not.toBeNull()
+  const { y, height } = box as Box
+  return y + height / 2
+}
+
 function overlap(a: Box, b: Box): boolean {
   return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
 }
@@ -268,12 +275,23 @@ test('a refusal keeps Retry above the control bar on a phone held sideways', asy
 })
 
 const LAYOUTS = [
-  { device: 'a phone', viewport: { width: 375, height: 667 }, volumeShown: false },
-  { device: 'a tablet', viewport: { width: 820, height: 1180 }, volumeShown: false },
-  { device: 'a small laptop', viewport: { width: 1024, height: 768 }, volumeShown: true },
+  { device: 'a phone', viewport: { width: 375, height: 667 }, volumeShown: false, oneRow: false },
+  {
+    device: 'a phone held sideways',
+    viewport: { width: 667, height: 375 },
+    volumeShown: false,
+    oneRow: true,
+  },
+  { device: 'a tablet', viewport: { width: 820, height: 1180 }, volumeShown: false, oneRow: true },
+  {
+    device: 'a small laptop',
+    viewport: { width: 1024, height: 768 },
+    volumeShown: true,
+    oneRow: true,
+  },
 ]
 
-for (const { device, viewport, volumeShown } of LAYOUTS) {
+for (const { device, viewport, volumeShown, oneRow } of LAYOUTS) {
   test(`the control bar keeps its controls apart on ${device}`, async ({ page, request }) => {
     await page.setViewportSize(viewport)
     await openPlayer(page, request)
@@ -285,5 +303,13 @@ for (const { device, viewport, volumeShown } of LAYOUTS) {
       volumeShown ? [...barControls(page), volume] : barControls(page),
     )
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(viewport.width)
+    const rowCentres = await Promise.all(
+      [
+        page.getByText('0:00 / 47:04'),
+        page.getByRole('button', { name: 'Play' }),
+        page.getByRole('button', { name: 'Full screen' }),
+      ].map(centreY),
+    )
+    expect(Math.max(...rowCentres) - Math.min(...rowCentres) < 8, 'one row').toBe(oneRow)
   })
 }
