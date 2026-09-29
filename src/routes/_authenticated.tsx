@@ -1,14 +1,16 @@
-import { Alert, Anchor, Center, Loader } from '@mantine/core'
-import { createFileRoute, Link, redirect } from '@tanstack/react-router'
+import { Center, Loader } from '@mantine/core'
+import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
 import { getSetupStatus, ServerStatusUnavailableError } from '../auth/api'
-import { CSRF_REJECTION_MESSAGE, isCsrfRejection } from '../auth/csrf'
+import { CSRF_REJECTION_CAUSE, isCsrfRejection } from '../auth/csrf'
+import { SessionUnconfirmedError, type SessionStore } from '../auth/session'
 import { extractAuthContext } from '../graphql/errorRouting'
+import { FailurePanel } from '../ui/Failure'
 
 // Only the server's answer counts (the httpOnly cookies are unreadable), and only on arrival:
 // mid-session evictions are the Apollo error link's job.
 export const Route = createFileRoute('/_authenticated')({
   beforeLoad: async ({ context, location }) => {
-    if ((await context.session.ensure()) === 'authenticated') {
+    if ((await confirmSession(context.session)) === 'authenticated') {
       return
     }
     if (location.pathname === '/' && (await getSetupStatus()).setupComplete === false) {
@@ -22,6 +24,14 @@ export const Route = createFileRoute('/_authenticated')({
   errorComponent: EntryUnconfirmed,
 })
 
+async function confirmSession(session: SessionStore) {
+  try {
+    return await session.ensure()
+  } catch (cause) {
+    throw new SessionUnconfirmedError(cause)
+  }
+}
+
 function CheckingSession() {
   return (
     <Center h={200}>
@@ -30,25 +40,30 @@ function CheckingSession() {
   )
 }
 
-// A rejected probe is an outage, not a verdict: neither bounce nor waive the gate.
+// A rejected probe is an outage, not a verdict: neither bounce nor waive the gate. This boundary
+// also catches every descendant page's render and chunk-load errors.
 function EntryUnconfirmed({ error }: Readonly<{ error: unknown }>) {
+  const router = useRouter()
+  const retry = () => router.invalidate()
+
   if (error instanceof ServerStatusUnavailableError) {
     return (
-      <Alert color="red" role="alert">
-        {error.message}{' '}
-        <Anchor component={Link} to="/login">
-          Sign in
-        </Anchor>
-      </Alert>
+      <FailurePanel onRetry={retry} wayOut="sign-in">
+        {error.message}
+      </FailurePanel>
     )
   }
-  const context = extractAuthContext(error)
-  const message = isCsrfRejection(context.networkStatus, context.networkCode)
-    ? CSRF_REJECTION_MESSAGE
-    : "Couldn't confirm you're signed in. Reload the page to try again."
-  return (
-    <Alert color="red" role="alert">
-      {message}
-    </Alert>
-  )
+
+  return <FailurePanel onRetry={retry}>{entryFailureMessage(error)}</FailurePanel>
+}
+
+function entryFailureMessage(error: unknown): string {
+  if (!(error instanceof SessionUnconfirmedError)) {
+    return "Couldn't load this page."
+  }
+  const context = extractAuthContext(error.cause)
+  if (isCsrfRejection(context.networkStatus, context.networkCode)) {
+    return CSRF_REJECTION_CAUSE
+  }
+  return error.message
 }

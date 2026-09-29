@@ -97,6 +97,25 @@ describe('/setup-server', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe('/select-profile'))
   })
 
+  it('shouldRetryTheServerStatusAfterAnOutage', async () => {
+    server.use(
+      http.get('/api/auth/status', () => HttpResponse.json({}, { status: 503 }), { once: true }),
+      http.get('/api/auth/status', () =>
+        HttpResponse.json({ setupComplete: false, devicePairingEnabled: false }),
+      ),
+    )
+    const { user } = renderAppAt('/setup-server')
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent("Couldn't check whether this server is set up.")
+    expect(alert).not.toHaveTextContent(/reload/i)
+    expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login')
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByRole('button', { name: /create account/i })).toBeInTheDocument()
+  })
+
   it.each([500, 200])('shouldFailClosedWhenTheServerStatusCannotBeRead(%s)', async (status) => {
     server.use(http.get('/api/auth/status', () => HttpResponse.json({}, { status })))
     const { router } = renderAppAt('/setup-server')
