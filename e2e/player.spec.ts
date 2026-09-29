@@ -674,6 +674,22 @@ for (const { device, viewport, volumeShown, oneRow } of LAYOUTS) {
   })
 }
 
+test('the chips keep their values on a phone held upright', async ({ page, request }) => {
+  await page.setViewportSize({ width: 375, height: 667 })
+
+  await openPlayer(page, request)
+
+  for (const [chip, value] of [
+    ['Quality: Auto', 'Auto'],
+    ['Audio: Audio', 'Audio'],
+    ['Subtitles: Off', 'Off'],
+  ]) {
+    await expect(
+      page.getByRole('button', { name: chip }).getByText(value, { exact: true }),
+    ).toBeVisible()
+  }
+})
+
 test('the pickers switch the audio and subtitles the stream declares', async ({
   page,
   request,
