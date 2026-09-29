@@ -32,7 +32,7 @@ type PendingOffer = SharingOverviewQuery['pendingShareOffers']['edges'][number][
 type ProfileShareRow = SharingOverviewQuery['profileShares']['edges'][number]['node']
 
 const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const FAILURE_MESSAGE = 'Something went wrong. Please try again.'
+const UPDATE_FAILED_MESSAGE = "Couldn't update sharing."
 
 export function SharingScreen() {
   const { data: meData, loading: meLoading, error: meError, refetch: refetchMe } = useMe()
@@ -148,8 +148,8 @@ function OffersIntoHousehold({
     setBusy(offer.id)
     try {
       await applyDecision(offer, decision)
-    } catch {
-      setFailure(FAILURE_MESSAGE)
+    } catch (error) {
+      setFailure(requestFailureMessage(error, UPDATE_FAILED_MESSAGE))
     } finally {
       setBusy(null)
     }
@@ -234,8 +234,8 @@ function OfferForm({
     setFailure(null)
     try {
       await sendOffer()
-    } catch {
-      setFailure(FAILURE_MESSAGE)
+    } catch (error) {
+      setFailure(requestFailureMessage(error, UPDATE_FAILED_MESSAGE))
     }
   }
 
@@ -302,8 +302,8 @@ function OwnShares({
     setBusy(share.id)
     try {
       await applyChange(share)
-    } catch {
-      setFailure(FAILURE_MESSAGE)
+    } catch (error) {
+      setFailure(requestFailureMessage(error, UPDATE_FAILED_MESSAGE))
     } finally {
       setBusy(null)
     }

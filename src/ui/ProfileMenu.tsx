@@ -16,7 +16,7 @@ const SESSION_EVICTION_CODES = new Set([
   'EXPIRED_TOKEN',
   'INVALID_TOKEN',
 ])
-const SWITCH_FAILED_MESSAGE = "Couldn't switch profiles. Try again."
+const SWITCH_FAILED_MESSAGE = "Couldn't switch profiles."
 
 export function ProfileMenu({
   me,

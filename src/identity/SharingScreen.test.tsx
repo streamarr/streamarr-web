@@ -136,8 +136,18 @@ describe('SharingScreen', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Accept' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/something went wrong/i)
+    expect(await screen.findByRole('alert')).toHaveTextContent(/^forbidden$/)
     expect(screen.getByRole('button', { name: 'Accept' })).toBeEnabled()
+  })
+
+  it('shouldExplainADecisionThatCouldNotReachTheServerWithoutAskingToTryAgain', async () => {
+    serverAnswersOverview({ offers: [shareRow()] })
+    server.use(graphql.mutation('AcceptProfileShare', () => HttpResponse.error()))
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    await user.click(await screen.findByRole('button', { name: 'Accept' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/^Couldn't update sharing\.$/)
   })
 
   it('shouldReportARejectedOfferInsteadOfSwallowingIt', async () => {
@@ -165,7 +175,7 @@ describe('SharingScreen', () => {
     await user.type(await screen.findByLabelText(/^household id/i), OTHER_HOUSEHOLD_ID)
     await user.click(screen.getByRole('button', { name: 'Offer share' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/something went wrong/i)
+    expect(await screen.findByRole('alert')).toHaveTextContent(/^forbidden$/)
   })
 
   it('shouldEndAnActiveShareButNeverTheHomeOne', async () => {
