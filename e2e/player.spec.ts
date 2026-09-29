@@ -1,4 +1,5 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
+import { RING, ringOnActiveElement } from './focusRing'
 import { STUB_URL } from './ports'
 
 // The session's stream is 47:04 long, and its media never arrives: the playlists answer and every
@@ -24,8 +25,6 @@ const LEVEL = [
   '#EXT-X-ENDLIST',
   '',
 ].join('\n')
-
-const RING = { outline: '2px solid rgb(92, 192, 232)', offset: '2px' }
 
 async function openPlayer(page: Page, request: APIRequestContext): Promise<void> {
   await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
@@ -59,16 +58,6 @@ const PLAYER_OPERATIONS: Record<string, unknown> = {
   },
   ReportStreamSessionTimeline: { reportStreamSessionTimeline: true },
   DestroyStreamSession: { destroyStreamSession: true },
-}
-
-async function ringOnActiveElement(page: Page) {
-  return page.evaluate(() => {
-    const style = getComputedStyle(document.activeElement as HTMLElement)
-    return {
-      outline: `${style.outlineWidth} ${style.outlineStyle} ${style.outlineColor}`,
-      offset: style.outlineOffset,
-    }
-  })
 }
 
 // Opacity does not inherit, so a control's own style never shows that its container faded.
@@ -162,7 +151,7 @@ test('keyboard focus draws the theme ring on each player control', async ({ page
   for (const control of controls) {
     await page.keyboard.press('Tab')
     await expect(control).toBeFocused()
-    expect(await ringOnActiveElement(page)).toEqual(RING)
+    expect(await ringOnActiveElement(page)).toMatchObject(RING)
   }
 })
 
