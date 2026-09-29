@@ -4,8 +4,9 @@ const IDLE_AFTER_MS = 3_000
 const WAKE_EVENTS = ['pointermove', 'keydown'] as const
 
 /**
- * Whether the viewer has left the pointer and keyboard alone for three seconds. The viewer never
- * counts as idle while `held`, nor while the mouse rests on one of the `chromeRefs` elements.
+ * Whether three seconds have passed since the viewer last used the pointer or keyboard, or last
+ * moved focus onto one of the `chromeRefs` elements by any means. The viewer never counts as idle
+ * while `held`, nor while the mouse rests on one of the `chromeRefs` elements.
  */
 export function useIdle(
   held: boolean,
@@ -65,16 +66,24 @@ export function useIdle(
       }
       wake()
     }
+    // A screen reader, voice control or a switch device moves focus without a key event.
+    const wakeFromFocus = (event: FocusEvent) => {
+      if (isOnChrome(event.target)) {
+        wake()
+      }
+    }
     for (const event of WAKE_EVENTS) {
       document.addEventListener(event, wake)
     }
     document.addEventListener('pointerdown', wakeFromPress)
+    document.addEventListener('focusin', wakeFromFocus)
     return () => {
       clearTimeout(timer)
       for (const event of WAKE_EVENTS) {
         document.removeEventListener(event, wake)
       }
       document.removeEventListener('pointerdown', wakeFromPress)
+      document.removeEventListener('focusin', wakeFromFocus)
       document.removeEventListener('click', swallowClick, true)
     }
   }, [held])

@@ -1561,6 +1561,61 @@ describe('Player', () => {
       expect(player).not.toHaveAttribute('data-idle')
     })
 
+    it.each(['Mute', 'Back'])(
+      'shouldWakeTheFadedControlsWhenFocusLandsOn%sWithoutAKeyPress',
+      async (control) => {
+        serveSession()
+        renderWithProviders(<Player mediaFileId="abcd" />)
+        const video = await attachedVideo()
+        const player = screen.getByRole('region', { name: 'Player' })
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        await act(() => video.play())
+        await act(async () => vi.advanceTimersByTimeAsync(3_000))
+        expect(player).toHaveAttribute('data-idle')
+
+        act(() => screen.getByRole('button', { name: control }).focus())
+
+        expect(player).not.toHaveAttribute('data-idle')
+      },
+    )
+
+    it('shouldFadeTheControlsAgainThreeSecondsAfterFocusLandsWhileFocusStaysOnThem', async () => {
+      serveSession()
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await attachedVideo()
+      const player = screen.getByRole('region', { name: 'Player' })
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      await act(() => video.play())
+      await act(async () => vi.advanceTimersByTimeAsync(3_000))
+      const mute = screen.getByRole('button', { name: 'Mute' })
+
+      act(() => mute.focus())
+      await act(async () => vi.advanceTimersByTimeAsync(2_999))
+      expect(player).not.toHaveAttribute('data-idle')
+      await act(async () => vi.advanceTimersByTimeAsync(1))
+
+      expect(player).toHaveAttribute('data-idle')
+      expect(mute).toHaveFocus()
+    })
+
+    it('shouldLeaveTheControlsFadedWhenFocusLandsOutsideThem', async () => {
+      serveSession()
+      renderWithProviders(
+        <>
+          <button type="button">Elsewhere</button>
+          <Player mediaFileId="abcd" />
+        </>,
+      )
+      const video = await attachedVideo()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      await act(() => video.play())
+      await act(async () => vi.advanceTimersByTimeAsync(3_000))
+
+      act(() => screen.getByRole('button', { name: 'Elsewhere' }).focus())
+
+      expect(screen.getByRole('region', { name: 'Player' })).toHaveAttribute('data-idle')
+    })
+
     it('shouldKeepTheControlsWhilePausedOrWhileTheMouseRestsOnTheBar', async () => {
       serveSession()
       renderWithProviders(<Player mediaFileId="abcd" />)
