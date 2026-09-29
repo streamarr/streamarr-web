@@ -283,9 +283,10 @@ describe('the authenticated layout', () => {
     )
     const { router, user } = renderAppAt('/')
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      "Couldn't check whether this server is set up. Reload the page to try again.",
-    )
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent("Couldn't check whether this server is set up.")
+    expect(alert).not.toHaveTextContent(/reload/i)
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/')
     expect(screen.queryByRole('button', { name: /create account/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /sign in/i })).not.toBeInTheDocument()
@@ -295,6 +296,43 @@ describe('the authenticated layout', () => {
 
     expect(await screen.findByRole('button', { name: /sign in/i })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/login')
+  })
+
+  it('shouldRetryTheSessionCheckAfterAnOutage', async () => {
+    server.use(
+      http.post('/graphql', () => HttpResponse.json({}, { status: 500 }), { once: true }),
+      ...homeHandlers(),
+      graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
+    )
+    const { router, user } = renderAppAt('/')
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent("Couldn't confirm you're signed in.")
+    expect(alert).not.toHaveTextContent(/reload/i)
+    expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByRole('banner')).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/')
+  })
+
+  it('shouldNotBlameTheSessionWhenAPageFailsToRender', async () => {
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
+      graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
+      graphql.query('Home', () =>
+        HttpResponse.json({ data: { continueWatching: null, libraries: [] } }),
+      ),
+    )
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    renderAppAt('/')
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent("Couldn't load this page.")
+    expect(alert).not.toHaveTextContent(/signed in/i)
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
   })
 
   it('shouldFailClosedWithAnAlertWhenTheServerCannotAnswer', async () => {

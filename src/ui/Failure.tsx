@@ -1,11 +1,11 @@
 import { Button } from '@mantine/core'
-import { useNavigate } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 import { useSignOut } from '../auth/useSignOut'
 import { DetailBackButton } from '../media/DetailBack'
 import styles from './Failure.module.css'
 
-type WayOut = 'sign-out' | 'back'
+type WayOut = 'sign-out' | 'sign-in' | 'back'
 
 /**
  * A page that could not load: the cause in plain words, Retry, and a way out. A `ceremony` panel
@@ -54,6 +54,14 @@ export function FailureRow({
 function WayOutControl({ wayOut }: Readonly<{ wayOut: WayOut }>) {
   if (wayOut === 'back') {
     return <DetailBackButton />
+  }
+
+  if (wayOut === 'sign-in') {
+    return (
+      <Button component={Link} to="/login" variant="default">
+        Sign in
+      </Button>
+    )
   }
 
   return <SignOutButton />

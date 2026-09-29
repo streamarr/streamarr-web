@@ -5,7 +5,7 @@ import { renderAppAt } from '../../test/render'
 import { server } from '../../test/server'
 
 describe('/', () => {
-  it('shouldExplainRecoveryWhenCsrfRetryCannotLoadTheSession', async () => {
+  it('shouldOfferRetryWhenCsrfRetryCannotLoadTheSession', async () => {
     server.use(
       http.post('/graphql', () =>
         HttpResponse.json({ code: 'CSRF_TOKEN_REQUIRED' }, { status: 403 }),
@@ -14,6 +14,10 @@ describe('/', () => {
 
     renderAppAt('/')
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/reload the page and try again/i)
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Your session security check failed.')
+    expect(alert).not.toHaveTextContent(/reload/i)
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
   })
 })

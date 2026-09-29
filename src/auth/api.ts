@@ -24,11 +24,11 @@ export type SetupInput = Omit<SetupRequest, 'cookieMode'>
 
 export type ServerStatus = Required<Response2xx<'/api/auth/status', 'get'>>
 
+export const SERVER_STATUS_UNAVAILABLE_MESSAGE = "Couldn't check whether this server is set up."
+
 export class ServerStatusUnavailableError extends Error {
   constructor(cause: unknown) {
-    super("Couldn't check whether this server is set up. Reload the page to try again.", {
-      cause,
-    })
+    super(SERVER_STATUS_UNAVAILABLE_MESSAGE, { cause })
     this.name = 'ServerStatusUnavailableError'
   }
 }
