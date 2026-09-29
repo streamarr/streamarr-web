@@ -254,16 +254,24 @@ function VolumeControl({
 
 // Holds the quality menu's place and shows the quality in use until the menu has choices to offer.
 function QualityChip({ videoHeight }: Readonly<{ videoHeight: number }>) {
-  const quality = videoHeight > 0 ? `Auto · ${videoHeight}p` : 'Auto'
   return (
-    <button
-      type="button"
-      className={styles.chip}
-      aria-label={`Quality: ${quality}`}
-      aria-disabled="true"
-    >
-      <Icon name="quality" size={16} />
-      <span className={styles.chipValue}>{quality}</span>
+    <StatusChip
+      name="Quality"
+      icon="quality"
+      value={videoHeight > 0 ? `Auto · ${videoHeight}p` : 'Auto'}
+    />
+  )
+}
+
+function StatusChip({
+  name,
+  icon,
+  value,
+}: Readonly<{ name: string; icon: IconName; value: string }>) {
+  return (
+    <button type="button" className={styles.chip} aria-label={`${name}: ${value}`} aria-disabled>
+      <Icon name={icon} size={16} />
+      <span className={styles.chipValue}>{value}</span>
     </button>
   )
 }
