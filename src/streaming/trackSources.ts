@@ -180,7 +180,9 @@ function choice(options: TrackOption[], selectedIndex: number): TrackChoice {
 }
 
 function hlsTrackOption(track: HlsTrack, index: number): TrackOption {
-  return { id: index, label: trackLabel({ name: track.name, language: track.lang }, index) }
+  // hls.js names a rendition that declares no NAME after its language code.
+  const name = track.name === track.lang ? undefined : track.name
+  return { id: index, label: trackLabel({ name, language: track.lang }, index) }
 }
 
 function elementTrackOption(track: ElementTrack, index: number): TrackOption {

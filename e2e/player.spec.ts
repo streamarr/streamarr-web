@@ -30,6 +30,7 @@ const MULTIVARIANT_WITH_TRACKS = [
   '#EXTM3U',
   '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="English",LANGUAGE="en",DEFAULT=YES,AUTOSELECT=YES,URI="audio-en.m3u8?t=playback-token"',
   '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="Français",LANGUAGE="fr",DEFAULT=NO,AUTOSELECT=YES,URI="audio-fr.m3u8?t=playback-token"',
+  '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",LANGUAGE="de",DEFAULT=NO,AUTOSELECT=YES,URI="audio-de.m3u8?t=playback-token"',
   '#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="English (SDH)",LANGUAGE="en",DEFAULT=NO,AUTOSELECT=YES,URI="subtitles-en.m3u8?t=playback-token"',
   '#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="Español",LANGUAGE="es",DEFAULT=NO,AUTOSELECT=YES,URI="subtitles-es.m3u8?t=playback-token"',
   '#EXT-X-STREAM-INF:BANDWIDTH=2000000,RESOLUTION=1280x720,CODECS="avc1.64001f,mp4a.40.2",AUDIO="audio",SUBTITLES="subs"',
@@ -681,7 +682,7 @@ test('the pickers switch the audio and subtitles the stream declares', async ({
 
   await page.getByRole('button', { name: 'Audio: English' }).click()
   const audio = page.getByRole('menu', { name: 'Audio' })
-  await expect(audio.getByRole('menuitemradio')).toHaveText(['English', 'Français'])
+  await expect(audio.getByRole('menuitemradio')).toHaveText(['English', 'Français', 'German'])
   const frenchRequested = page.waitForRequest(/\/audio-fr\.m3u8/)
   await audio.getByRole('menuitemradio', { name: 'Français' }).click()
   await frenchRequested
