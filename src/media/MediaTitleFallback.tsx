@@ -1,13 +1,29 @@
 import { Center, Loader } from '@mantine/core'
+import type {
+  MovieDetailQuery,
+  SeasonDetailQuery,
+  SeriesDetailQuery,
+} from '../graphql/generated/graphql'
 import { hasInvalidInputAt, requestFailureMessage } from '../graphql/requestErrors'
 import { FailurePanel } from '../ui/Failure'
 
-export type MediaTitleKind = 'movie' | 'series' | 'season'
+type MediaTitleKind = 'movie' | 'series' | 'season'
 
 const SPOKEN_KIND: Record<MediaTitleKind, string> = {
   movie: 'movie',
   series: 'show',
   season: 'season',
+}
+
+// The server reports an id it cannot parse on the detail query's root field.
+const ROOT_FIELD = {
+  movie: 'movie',
+  series: 'series',
+  season: 'season',
+} as const satisfies {
+  movie: keyof MovieDetailQuery
+  series: keyof SeriesDetailQuery
+  season: keyof SeasonDetailQuery
 }
 
 /**
@@ -36,7 +52,7 @@ export function MediaTitleFallback({
   }
 
   // Retrying can never find a title the server has no record of, or an id it cannot parse.
-  if (title === null || hasInvalidInputAt(error, kind)) {
+  if (title === null || hasInvalidInputAt(error, ROOT_FIELD[kind])) {
     return (
       <FailurePanel wayOut="back">
         This {SPOKEN_KIND[kind]} doesn't exist or was removed.
