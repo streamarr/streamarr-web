@@ -1879,6 +1879,7 @@ describe('Player', () => {
       await attachedVideo()
       offerHlsTracks({ subtitles: [{ name: 'English' }, { name: 'English (SDH)' }] })
       const chip = screen.getByRole('button', { name: 'Subtitles: Off' })
+      expect(within(chip).queryByTestId('active-track')).not.toBeInTheDocument()
 
       const menu = await openPicker(user, chip)
 
@@ -1895,7 +1896,9 @@ describe('Player', () => {
 
       expect(hls.subtitleTrack).toBe(1)
       expect(screen.queryByRole('menu')).not.toBeInTheDocument()
-      expect(screen.getByRole('button', { name: 'Subtitles: English (SDH)' })).toHaveFocus()
+      const switched = screen.getByRole('button', { name: 'Subtitles: English (SDH)' })
+      expect(switched).toHaveFocus()
+      expect(within(switched).getByTestId('active-track')).toBeInTheDocument()
     })
 
     it('shouldMoveThroughTheAudioPickerByKeyboardAndChooseWithEnter', async () => {
