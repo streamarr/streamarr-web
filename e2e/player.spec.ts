@@ -82,6 +82,67 @@ async function renderedOpacity(control: Locator): Promise<number> {
   })
 }
 
+interface Box {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+function overlap(a: Box, b: Box): boolean {
+  return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
+}
+
+// Text cut short overflows its own box, or runs past an ancestor that clips it.
+async function truncated(control: Locator): Promise<boolean> {
+  return control.evaluate((node) => {
+    const rect = node.getBoundingClientRect()
+    const clippedBy = (ancestor: Element) => {
+      const bounds = ancestor.getBoundingClientRect()
+      const clips = getComputedStyle(ancestor).overflowX !== 'visible'
+      return clips && (rect.left < bounds.left || rect.right > bounds.right)
+    }
+    const ancestors: Element[] = []
+    for (let parent = node.parentElement; parent; parent = parent.parentElement) {
+      ancestors.push(parent)
+    }
+    return node.scrollWidth > node.clientWidth || ancestors.some(clippedBy)
+  })
+}
+
+// Each control lies whole inside the viewport, clear of every other, with its text untruncated.
+async function expectControlsApart(page: Page, controls: Locator[]) {
+  const viewport = page.viewportSize()
+  const boxes: Box[] = []
+  for (const control of controls) {
+    const box = await control.boundingBox()
+    expect(box, String(control)).not.toBeNull()
+    boxes.push(box as Box)
+    expect(await truncated(control), `${String(control)} is cut short`).toBe(false)
+  }
+  for (const [index, box] of boxes.entries()) {
+    expect(box.x).toBeGreaterThanOrEqual(0)
+    expect(box.y).toBeGreaterThanOrEqual(0)
+    expect(box.x + box.width).toBeLessThanOrEqual(viewport?.width ?? 0)
+    expect(box.y + box.height).toBeLessThanOrEqual(viewport?.height ?? 0)
+    for (const other of boxes.slice(index + 1)) {
+      expect(overlap(box, other), `${String(controls[index])} overlaps another control`).toBe(false)
+    }
+  }
+}
+
+function barControls(page: Page): Locator[] {
+  return [
+    page.getByText('0:00 / 47:04'),
+    page.getByRole('button', { name: 'Mute' }),
+    page.getByRole('button', { name: 'Back 10 seconds' }),
+    page.getByRole('button', { name: 'Play' }),
+    page.getByRole('button', { name: 'Forward 10 seconds' }),
+    page.getByRole('button', { name: 'Quality: Auto' }),
+    page.getByRole('button', { name: 'Full screen' }),
+  ]
+}
+
 test.afterEach(async ({ page }) => {
   await page.unrouteAll({ behavior: 'ignoreErrors' })
 })
@@ -141,4 +202,31 @@ test('the buffering ring shows while the playing video waits for data', async ({
   await expect(ring).toBeAttached()
   const box = await ring.boundingBox()
   expect(box && { x: box.x + box.width / 2, width: box.width }).toEqual({ x: 1512 / 2, width: 54 })
+})
+
+test('the control bar fits a phone', async ({ page, request }) => {
+  await page.setViewportSize({ width: 375, height: 667 })
+  await openPlayer(page, request)
+
+  await expect(page.getByRole('slider', { name: 'Volume' })).toBeHidden()
+  await expectControlsApart(page, barControls(page))
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(375)
+})
+
+test('the control bar keeps its controls apart on a tablet', async ({ page, request }) => {
+  await page.setViewportSize({ width: 820, height: 1180 })
+  await openPlayer(page, request)
+
+  await expect(page.getByRole('slider', { name: 'Volume' })).toBeHidden()
+  await expectControlsApart(page, barControls(page))
+})
+
+test('the control bar keeps its controls apart on a small laptop', async ({ page, request }) => {
+  await page.setViewportSize({ width: 1024, height: 768 })
+  await openPlayer(page, request)
+
+  await expectControlsApart(page, [
+    ...barControls(page),
+    page.getByRole('slider', { name: 'Volume' }),
+  ])
 })

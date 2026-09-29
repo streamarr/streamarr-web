@@ -44,3 +44,10 @@
   width: min(480px, calc(100% - 2 * var(--spacing-16)));
   transform: translate(-50%, -50%);
 }
+
+@media (max-width: 48em) {
+  .back {
+    top: var(--spacing-16);
+    left: var(--spacing-16);
+  }
+}

@@ -226,3 +226,43 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+@media (max-width: 62em) {
+  .volumeSlider {
+    display: none;
+  }
+}
+
+@media (max-width: 48em) {
+  .bar {
+    left: var(--spacing-16);
+    right: var(--spacing-16);
+    bottom: var(--spacing-16);
+  }
+
+  .bar .seek,
+  .bar .seekHit {
+    height: 32px;
+  }
+
+  .bar .seek {
+    top: -14px;
+  }
+
+  .row {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    gap: var(--spacing-12);
+    padding: var(--spacing-20) var(--spacing-16) var(--spacing-16);
+  }
+
+  .start {
+    justify-self: stretch;
+    justify-content: space-between;
+  }
+
+  .end {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+}
