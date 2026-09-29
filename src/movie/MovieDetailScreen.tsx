@@ -29,7 +29,15 @@ export function MovieDetailScreen({ movieId }: Readonly<{ movieId: string }>) {
   usePublishAmbientTheme(ambient?.theme ?? null)
 
   if (loading || error || !movie) {
-    return <MediaTitleFallback kind="movie" loading={loading} error={error} onRetry={refetch} />
+    return (
+      <MediaTitleFallback
+        kind="movie"
+        loading={loading}
+        error={error}
+        title={data?.movie}
+        onRetry={refetch}
+      />
+    )
   }
 
   const artwork = movie.backdropImages[0] ?? movie.posterImages[0] ?? null

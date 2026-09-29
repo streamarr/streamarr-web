@@ -5,6 +5,7 @@ import type { GraphQLFormattedError } from 'graphql'
 // the server's placeholder for a failure it will not describe, and uncoded errors come from
 // graphql-java itself; neither is shown.
 const UNDESCRIBED_CODE = 'INTERNAL'
+const INVALID_INPUT_CODE = 'INVALID_INPUT'
 
 /** The server's sentence for a failed request when it sent one, otherwise the screen's own. */
 export function requestFailureMessage(error: unknown, fallback: string): string {
@@ -20,4 +21,14 @@ function serverSentence(error: GraphQLFormattedError): string | null {
     return null
   }
   return error.message.trim() || null
+}
+
+/** Whether the server refused the arguments of `rootField`, such as an id it cannot parse. */
+export function hasInvalidInputAt(error: unknown, rootField: string): boolean {
+  if (!CombinedGraphQLErrors.is(error)) {
+    return false
+  }
+  return error.errors.some(
+    (entry) => entry.extensions?.code === INVALID_INPUT_CODE && entry.path?.[0] === rootField,
+  )
 }

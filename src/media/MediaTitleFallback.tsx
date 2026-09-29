@@ -1,5 +1,5 @@
 import { Center, Loader } from '@mantine/core'
-import { requestFailureMessage } from '../graphql/requestErrors'
+import { hasInvalidInputAt, requestFailureMessage } from '../graphql/requestErrors'
 import { FailurePanel } from '../ui/Failure'
 
 export type MediaTitleKind = 'movie' | 'series' | 'season'
@@ -10,16 +10,21 @@ const SPOKEN_KIND: Record<MediaTitleKind, string> = {
   season: 'season',
 }
 
-/** What a media title's page shows in place of the title while it loads or when it cannot. */
+/**
+ * What a media title's page shows in place of the title while it loads or when it cannot. `title`
+ * is the query's root field: null when the server has no such title.
+ */
 export function MediaTitleFallback({
   kind,
   loading,
   error,
+  title,
   onRetry,
 }: Readonly<{
   kind: MediaTitleKind
   loading: boolean
   error: unknown
+  title: object | null | undefined
   onRetry: () => unknown
 }>) {
   if (loading) {
@@ -27,6 +32,15 @@ export function MediaTitleFallback({
       <Center h={200}>
         <Loader />
       </Center>
+    )
+  }
+
+  // Retrying can never find a title the server has no record of, or an id it cannot parse.
+  if (title === null || hasInvalidInputAt(error, kind)) {
+    return (
+      <FailurePanel wayOut="back">
+        This {SPOKEN_KIND[kind]} doesn't exist or was removed.
+      </FailurePanel>
     )
   }
 

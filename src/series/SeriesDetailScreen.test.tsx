@@ -180,6 +180,17 @@ describe('SeriesDetailScreen', () => {
     expect(requests).toBe(2)
   })
 
+  it('shouldShowNotFoundWithoutRetryWhenTheShowDoesNotExist', async () => {
+    serve({ series: null })
+    renderAppAt('/series/series-1')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "This show doesn't exist or was removed.",
+    )
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument()
+  })
+
   it('queries the series named in the URL and renders its header', async () => {
     const requestedIds: string[] = []
     serve(seriesData(), requestedIds)

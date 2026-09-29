@@ -1,6 +1,6 @@
 import { CombinedGraphQLErrors, ServerError } from '@apollo/client/errors'
 import { describe, expect, it } from 'vitest'
-import { requestFailureMessage } from './requestErrors'
+import { hasInvalidInputAt, requestFailureMessage } from './requestErrors'
 
 const FALLBACK = "Couldn't load your library."
 
@@ -61,5 +61,34 @@ describe('requestFailureMessage', () => {
 
     expect(requestFailureMessage(error, FALLBACK)).toBe(FALLBACK)
     expect(requestFailureMessage(new TypeError('Failed to fetch'), FALLBACK)).toBe(FALLBACK)
+  })
+})
+
+describe('hasInvalidInputAt', () => {
+  const invalidId = new CombinedGraphQLErrors({
+    errors: [
+      {
+        message: 'Invalid ID format: abc',
+        path: ['movie'],
+        extensions: { errorType: 'BAD_REQUEST', code: 'INVALID_INPUT', requestId: 'r-3' },
+      },
+    ],
+  })
+
+  it('shouldRecognizeTheServerRejectingTheRootFieldsInput', () => {
+    expect(hasInvalidInputAt(invalidId, 'movie')).toBe(true)
+  })
+
+  it('shouldIgnoreARejectionOfAnotherField', () => {
+    expect(hasInvalidInputAt(invalidId, 'library')).toBe(false)
+  })
+
+  it('shouldIgnoreOtherFailures', () => {
+    const unavailable = new CombinedGraphQLErrors({
+      errors: [{ message: 'offline', path: ['movie'], extensions: { code: 'UNAVAILABLE' } }],
+    })
+
+    expect(hasInvalidInputAt(unavailable, 'movie')).toBe(false)
+    expect(hasInvalidInputAt(new TypeError('Failed to fetch'), 'movie')).toBe(false)
   })
 })
