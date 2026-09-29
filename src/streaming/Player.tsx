@@ -45,7 +45,7 @@ export function Player({
     }
     setFailure(null)
 
-    let hls: Hls | null = null
+    let source: ReturnType<typeof attach> | null = null
     let cancelled = false
     let sessionId: string | null = null
     let lastReportedPosition = startPositionSeconds ?? 0
@@ -141,8 +141,8 @@ export function Player({
           setFailure(refusalMessage(payload))
           return
         }
-        hls = attach(video, session.streamUrl, () => {
-          hls = null
+        source = attach(video, session.streamUrl, () => {
+          detachSource()
           setFailure(PLAYBACK_FAILURE_MESSAGE)
         })
       })
@@ -178,6 +178,11 @@ export function Player({
       }
     }
 
+    function detachSource() {
+      source?.detach()
+      source = null
+    }
+
     function requestCleanup() {
       // A failed or pending destroy retains ownership; a later startup can retry the same cleanup.
       pendingCleanups.set(client, releaseSession)
@@ -191,7 +196,7 @@ export function Player({
       if (lastKnownPosition !== null) {
         report('STOPPED', lastKnownPosition)
       }
-      hls?.destroy()
+      detachSource()
       requestCleanup()
     }
   }, [mediaFileId, startPositionSeconds, createStreamSession, client, attempt])
@@ -255,10 +260,10 @@ function ignoreTimelineReportFailure() {
 }
 
 // The stream URL carries the playback ?t= token; relative segment requests inherit it.
-function attach(video: HTMLVideoElement, url: string, onFatal: () => void): Hls | null {
+function attach(video: HTMLVideoElement, url: string, onFatal: () => void): { detach: () => void } {
   if (!Hls.isSupported()) {
     video.src = url
-    return null
+    return { detach: () => undefined }
   }
   const hls = new Hls()
   hls.on(Hls.Events.ERROR, (_event, data) => {
@@ -266,10 +271,9 @@ function attach(video: HTMLVideoElement, url: string, onFatal: () => void): Hls 
       return
     }
     // An expired ?t= token or a restarted server: the instance cannot recover.
-    hls.destroy()
     onFatal()
   })
   hls.loadSource(url)
   hls.attachMedia(video)
-  return hls
+  return { detach: () => hls.destroy() }
 }
