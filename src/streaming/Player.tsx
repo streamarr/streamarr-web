@@ -144,14 +144,16 @@ export function Player({
           showFailure(refusalMessage(payload))
           return
         }
-        source = attach(video, session.streamUrl, () => {
-          if (cancelled) {
-            return
-          }
-          // Releasing the stream rewinds the element; the timeline must not record the rewind.
-          timeline.detach()
-          detachSource()
-          showFailure(PLAYBACK_FAILURE_MESSAGE)
+        source = attach(video, session.streamUrl, {
+          onFatal: () => {
+            if (cancelled) {
+              return
+            }
+            // Releasing the stream rewinds the element; the timeline must not record the rewind.
+            timeline.detach()
+            detachSource()
+            showFailure(PLAYBACK_FAILURE_MESSAGE)
+          },
         })
       })
       .catch(() => {
@@ -276,10 +278,18 @@ function ignoreTimelineReportFailure() {
   // surface it.
 }
 
+interface SourceHandlers {
+  onFatal: () => void
+}
+
 // The stream URL carries the playback ?t= token; relative segment requests inherit it.
-function attach(video: HTMLVideoElement, url: string, onFatal: () => void): { detach: () => void } {
+function attach(
+  video: HTMLVideoElement,
+  url: string,
+  handlers: SourceHandlers,
+): { detach: () => void } {
   if (!Hls.isSupported()) {
-    return attachNative(video, url, onFatal)
+    return attachNative(video, url, handlers)
   }
   const hls = new Hls()
   hls.on(Hls.Events.ERROR, (_event, data) => {
@@ -287,7 +297,7 @@ function attach(video: HTMLVideoElement, url: string, onFatal: () => void): { de
       return
     }
     // An expired ?t= token or a restarted server: the instance cannot recover.
-    onFatal()
+    handlers.onFatal()
   })
   hls.loadSource(url)
   hls.attachMedia(video)
@@ -298,7 +308,7 @@ function attach(video: HTMLVideoElement, url: string, onFatal: () => void): { de
 function attachNative(
   video: HTMLVideoElement,
   url: string,
-  onFatal: () => void,
+  { onFatal }: SourceHandlers,
 ): { detach: () => void } {
   video.addEventListener('error', onFatal)
   video.src = url
