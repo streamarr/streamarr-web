@@ -235,16 +235,18 @@
 }
 
 /* Too narrow for the values beside the centred transport: each chip keeps its glyph, and its
-   accessible name keeps the value. */
-@container (max-width: 25em) {
-  .chip {
-    justify-content: center;
-    min-width: 32px;
-    padding-inline: 0;
-  }
+   accessible name keeps the value. A phone held upright wraps the chips onto their own row. */
+@media not all and (max-width: 48em) and (orientation: portrait) {
+  @container (max-width: 25em) {
+    .chip {
+      justify-content: center;
+      min-width: 32px;
+      padding-inline: 0;
+    }
 
-  .chipValue {
-    display: none;
+    .chipValue {
+      display: none;
+    }
   }
 }
 
