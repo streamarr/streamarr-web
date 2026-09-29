@@ -36,7 +36,7 @@ export function TopBar() {
         })}
       </nav>
       <div className={styles.topBarTrail}>
-        <Account />
+        <AccountTrail />
       </div>
     </header>
   )
@@ -44,7 +44,7 @@ export function TopBar() {
 
 // Chrome must never flash a half-known identity, and an account that failed to load must still
 // leave a way out.
-function Account() {
+function AccountTrail() {
   const { data, error } = useMe()
   const { session } = useRouteContext({ from: '__root__' })
   const navigate = useNavigate()
