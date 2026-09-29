@@ -2,7 +2,7 @@ import { deferred } from '../test/deferred'
 import { act, cleanup, configure, fireEvent, screen, waitFor } from '@testing-library/react'
 import { HttpResponse, graphql } from 'msw'
 import { useState } from 'react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, assert, beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
 import { Player } from './Player'
@@ -234,6 +234,15 @@ function raiseHlsFatalError() {
   const onError = hls.on.mock.calls.find(([event]) => event === 'hlsError')?.[1]
   expect(onError).toBeTypeOf('function')
   act(() => onError?.('hlsError', { fatal: true, type: 'networkError' }))
+}
+
+// A browser sends no pointerout from an element that left the document while under the mouse.
+function moveMouse(to: Element, from: Element) {
+  if (from.isConnected) {
+    fireEvent.pointerOut(from, { pointerType: 'mouse', relatedTarget: to })
+  }
+  fireEvent.pointerOver(to, { pointerType: 'mouse', relatedTarget: from })
+  fireEvent.pointerMove(to, { pointerType: 'mouse' })
 }
 
 function playheadAt(video: HTMLVideoElement, seconds: number) {
@@ -1406,7 +1415,7 @@ describe('Player', () => {
       expect(player).not.toHaveAttribute('data-idle')
     })
 
-    it('shouldKeepTheControlsWhilePausedOrWhileThePointerRestsOnTheBar', async () => {
+    it('shouldKeepTheControlsWhilePausedOrWhileTheMouseRestsOnTheBar', async () => {
       serveSession()
       renderWithProviders(<Player mediaFileId="abcd" />)
       const video = await attachedVideo()
@@ -1416,15 +1425,49 @@ describe('Player', () => {
       await act(async () => vi.advanceTimersByTimeAsync(10_000))
       expect(player).not.toHaveAttribute('data-idle')
 
-      const play = screen.getByRole('button', { name: 'Play' })
-      fireEvent.pointerOver(play)
+      moveMouse(screen.getByRole('button', { name: 'Play' }), video)
       await act(() => video.play())
       await act(async () => vi.advanceTimersByTimeAsync(10_000))
       expect(player).not.toHaveAttribute('data-idle')
 
-      fireEvent.pointerOut(screen.getByRole('button', { name: 'Pause' }), { relatedTarget: video })
+      moveMouse(video, screen.getByRole('button', { name: 'Pause' }))
       await act(async () => vi.advanceTimersByTimeAsync(3_000))
       expect(player).toHaveAttribute('data-idle')
+    })
+
+    it('shouldFadeTheControlsOnceTheMouseLeavesTheBarAfterTheGlyphUnderItWasReplaced', async () => {
+      serveSession()
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await attachedVideo()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      const playGlyph = screen.getByRole('button', { name: 'Play' }).querySelector('svg')
+      assert(playGlyph)
+      moveMouse(playGlyph, video)
+      await act(() => video.play())
+      expect(playGlyph.isConnected).toBe(false)
+
+      moveMouse(video, playGlyph)
+      await act(async () => vi.advanceTimersByTimeAsync(3_000))
+
+      expect(screen.getByRole('region', { name: 'Player' })).toHaveAttribute('data-idle')
+    })
+
+    it('shouldFadeTheControlsOnceTheMouseLeavesTheWindowFromTheBar', async () => {
+      serveSession()
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await attachedVideo()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      moveMouse(screen.getByRole('button', { name: 'Play' }), video)
+      await act(() => video.play())
+      await act(async () => vi.advanceTimersByTimeAsync(3_000))
+
+      fireEvent.pointerOut(screen.getByRole('button', { name: 'Pause' }), {
+        pointerType: 'mouse',
+        relatedTarget: null,
+      })
+      await act(async () => vi.advanceTimersByTimeAsync(3_000))
+
+      expect(screen.getByRole('region', { name: 'Player' })).toHaveAttribute('data-idle')
     })
 
     it('shouldKeepBackOnScreenWhileAPlaybackFailureShows', async () => {

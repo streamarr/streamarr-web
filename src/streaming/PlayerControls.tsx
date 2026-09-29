@@ -1,5 +1,5 @@
 import { Slider } from '@mantine/core'
-import { type RefObject, useEffect, useState } from 'react'
+import { type Ref, type RefObject, useEffect, useState } from 'react'
 import { formatTimecode } from '../media/formatting'
 import { Icon, type IconName } from '../ui/Icon'
 import styles from './PlayerControls.module.css'
@@ -19,17 +19,16 @@ interface Scrub {
 }
 
 export function PlayerControls({
+  ref,
   className,
-  onHoverChange,
   playerRef,
   videoRef,
   video,
   attached,
   title,
 }: Readonly<{
+  ref: Ref<HTMLDivElement>
   className: string
-  /** Called with true when the pointer comes to rest over the bar and false when it leaves. */
-  onHoverChange: (hovered: boolean) => void
   /** The element that takes the screen in full screen, so the bar stays over the video. */
   playerRef: RefObject<HTMLElement | null>
   videoRef: RefObject<HTMLVideoElement | null>
@@ -91,11 +90,7 @@ export function PlayerControls({
   }
 
   return (
-    <div
-      className={`${styles.bar} ${className}`}
-      onPointerEnter={() => onHoverChange(true)}
-      onPointerLeave={() => onHoverChange(false)}
-    >
+    <div ref={ref} className={`${styles.bar} ${className}`}>
       <Slider
         classNames={{
           root: styles.seek,
