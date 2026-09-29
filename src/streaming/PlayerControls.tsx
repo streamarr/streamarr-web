@@ -144,7 +144,9 @@ export function PlayerControls({
             onSkip={() => skip(SKIP_SECONDS)}
           />
         </div>
-        <div className={styles.end} />
+        <div className={styles.end}>
+          <QualityChip videoHeight={video.videoHeight} />
+        </div>
       </div>
     </div>
   )
@@ -226,6 +228,22 @@ function VolumeControl({
         onChange={changeVolume}
       />
     </div>
+  )
+}
+
+// Holds the quality menu's place and shows the quality in use until the menu has choices to offer.
+function QualityChip({ videoHeight }: Readonly<{ videoHeight: number }>) {
+  const quality = videoHeight > 0 ? `Auto · ${videoHeight}p` : 'Auto'
+  return (
+    <button
+      type="button"
+      className={styles.chip}
+      aria-label={`Quality: ${quality}`}
+      aria-disabled="true"
+    >
+      <Icon name="quality" size={16} />
+      <span className={styles.chipValue}>{quality}</span>
+    </button>
   )
 }
 

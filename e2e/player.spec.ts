@@ -86,6 +86,7 @@ test('keyboard focus draws the theme ring on each player control', async ({ page
     page.getByRole('button', { name: 'Back 10 seconds' }),
     page.getByRole('button', { name: 'Play' }),
     page.getByRole('button', { name: 'Forward 10 seconds' }),
+    page.getByRole('button', { name: 'Quality: Auto' }),
   ]
   for (const control of controls) {
     await page.keyboard.press('Tab')

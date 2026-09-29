@@ -7,6 +7,8 @@ export interface VideoState {
   duration: number
   volume: number
   muted: boolean
+  /** The height of the frames in view; 0 before the first. */
+  videoHeight: number
 }
 
 const VIDEO_EVENTS = [
@@ -16,6 +18,8 @@ const VIDEO_EVENTS = [
   'seeking',
   'durationchange',
   'volumechange',
+  'loadedmetadata',
+  'resize',
   'emptied',
 ] as const
 
@@ -26,6 +30,7 @@ const UNLOADED: VideoState = {
   duration: Number.NaN,
   volume: 1,
   muted: false,
+  videoHeight: 0,
 }
 
 /** The video element's transport state, re-read whenever the element reports a change. */
@@ -44,6 +49,7 @@ export function useVideoState(videoRef: RefObject<HTMLVideoElement | null>): Vid
         duration: video.duration,
         volume: video.volume,
         muted: video.muted,
+        videoHeight: video.videoHeight,
       })
     for (const event of VIDEO_EVENTS) {
       video.addEventListener(event, read)
