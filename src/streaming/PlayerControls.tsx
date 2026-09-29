@@ -170,7 +170,7 @@ function TitleLine({
       <span className={styles.detail}>
         {title?.detail}
         {title?.detail && timecode && ' · '}
-        {timecode && <span className={styles.timecode}>{timecode}</span>}
+        <span className={styles.timecode}>{timecode}</span>
       </span>
     </div>
   )

@@ -88,6 +88,12 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* A sub-hour timecode's width, held until the duration is known so the controls beside it stay. */
+.timecode:empty {
+  display: inline-block;
+  min-width: 12ch;
+}
+
 .volume {
   display: flex;
   flex: none;

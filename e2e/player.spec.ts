@@ -35,12 +35,13 @@ const LEVEL = [
 
 interface PlayerRoutes {
   operations?: Record<string, unknown>
+  levelPlaylistAnswered?: Promise<void>
 }
 
 async function routePlayer(
   page: Page,
   request: APIRequestContext,
-  { operations = {} }: PlayerRoutes = {},
+  { operations = {}, levelPlaylistAnswered = Promise.resolve() }: PlayerRoutes = {},
 ): Promise<void> {
   await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
   await request.post(`${STUB_URL}/api/auth/refresh`)
@@ -51,9 +52,10 @@ async function routePlayer(
   await page.route('**/api/stream/**/multivariant.m3u8*', (route) =>
     route.fulfill({ contentType: 'application/vnd.apple.mpegurl', body: MULTIVARIANT }),
   )
-  await page.route('**/api/stream/**/stream.m3u8*', (route) =>
-    route.fulfill({ contentType: 'application/vnd.apple.mpegurl', body: LEVEL }),
-  )
+  await page.route('**/api/stream/**/stream.m3u8*', async (route) => {
+    await levelPlaylistAnswered
+    return route.fulfill({ contentType: 'application/vnd.apple.mpegurl', body: LEVEL })
+  })
   await page.route(/\/api\/stream\/.*\.(mp4|m4s)/, () => new Promise(() => undefined))
 }
 
@@ -276,6 +278,22 @@ test('a refusal keeps Retry above the control bar on a phone held sideways', asy
   const retried = page.waitForRequest((call) => operationName(call) === 'CreateStreamSession')
   await retry.click()
   await retried
+})
+
+test('Mute holds its place when the stream declares its length', async ({ page, request }) => {
+  let answerLevelPlaylist: () => void = () => undefined
+  const levelPlaylistAnswered = new Promise<void>((resolve) => (answerLevelPlaylist = resolve))
+  await routePlayer(page, request, { levelPlaylistAnswered })
+  await page.goto('/play/file-1')
+  const mute = page.getByRole('button', { name: 'Mute' })
+  await expect(page.getByRole('button', { name: 'Play' })).toBeEnabled()
+  const unknownLength = await mute.boundingBox()
+
+  answerLevelPlaylist()
+
+  await expect(page.getByText('0:00 / 47:04')).toBeVisible()
+  const knownLength = await mute.boundingBox()
+  expect(knownLength?.x).toBeCloseTo(unknownLength?.x ?? Number.NaN, 0)
 })
 
 const LAYOUTS = [
