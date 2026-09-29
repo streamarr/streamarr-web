@@ -187,6 +187,11 @@ function pressPlay(video: HTMLVideoElement) {
   fireEvent(video, new Event('play'))
 }
 
+function pressPause(video: HTMLVideoElement) {
+  Object.defineProperty(video, 'paused', { writable: true, value: true, configurable: true })
+  fireEvent(video, new Event('pause'))
+}
+
 function raiseHlsFatalError() {
   const onError = hls.on.mock.calls.find(([event]) => event === 'hlsError')?.[1]
   expect(onError).toBeTypeOf('function')
@@ -981,6 +986,48 @@ describe('Player', () => {
       await waitFor(() => expect(activeSessions.size).toBe(0))
     },
   )
+
+  it.each(NATIVE_WAITING_POINTS)(
+    'shouldTimeOutStartupWhenTheNativeElementSuspendsAfterTheViewerPlaysWaiting%s',
+    async (_point, reachWaitingPoint) => {
+      hls.supported = false
+      const activeSessions = serveSingleWorkerSlot()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await nativeVideo()
+      reachWaitingPoint(video)
+      fireEvent(video, new Event('suspend'))
+      pressPlay(video)
+
+      fireEvent(video, new Event('suspend'))
+      await act(async () => vi.advanceTimersByTimeAsync(30_000))
+
+      vi.useRealTimers()
+      expect(screen.getByRole('alert')).toHaveTextContent('Playback is taking too long to start.')
+      expect(video).not.toHaveAttribute('src')
+      await waitFor(() => expect(activeSessions.size).toBe(0))
+    },
+  )
+
+  it('shouldHoldTheStartupDeadlineWhenTheViewerPausesTheNativeElementBeforeItsFirstFrame', async () => {
+    hls.supported = false
+    const activeSessions = serveSingleWorkerSlot()
+    recordTimelineReports()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    renderWithProviders(<Player mediaFileId="abcd" />)
+    const video = await nativeVideo()
+    loadMetadata(video)
+    pressPlay(video)
+    pressPause(video)
+
+    fireEvent(video, new Event('suspend'))
+    await act(async () => vi.advanceTimersByTimeAsync(60_000))
+
+    vi.useRealTimers()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(video).toHaveAttribute('src', STREAM_URL)
+    expect(activeSessions).toEqual(new Set(['sess-abcd']))
+  })
 
   it('shouldNotRestartTheStartupDeadlineWhenTheViewerPlaysALoadedNativeStream', async () => {
     hls.supported = false
