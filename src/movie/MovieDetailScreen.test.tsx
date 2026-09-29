@@ -265,6 +265,31 @@ describe('MovieDetailScreen', () => {
     expect(markedIds).toEqual(['m1'])
   })
 
+  it('shouldShowTheServersWordsWhenTheWatchedStateCannotBeSaved', async () => {
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
+      graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
+      graphql.query('MovieDetail', () => HttpResponse.json({ data: movieData() })),
+      graphql.mutation('MarkWatched', () =>
+        HttpResponse.json({
+          errors: [
+            {
+              message: 'Watch history is read-only during maintenance.',
+              extensions: { code: 'UNAVAILABLE' },
+            },
+          ],
+        }),
+      ),
+    )
+    const { user } = renderAppAt('/movie/m1')
+    await user.click(await screen.findByRole('button', { name: 'Mark watched' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /^Watch history is read-only during maintenance\.$/,
+    )
+    expect(screen.getByRole('button', { name: 'Mark watched' })).toBeEnabled()
+  })
+
   it('omits the cast shelf when there is no cast', async () => {
     serve(movieData({ cast: [] }))
     renderAppAt('/movie/m1')

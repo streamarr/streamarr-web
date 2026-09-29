@@ -97,9 +97,9 @@ export function MovieDetailScreen({ movieId }: Readonly<{ movieId: string }>) {
         }
         aside={ratings.length > 0 && <RatingChipRow ratings={ratings} />}
       />
-      {watched.failed && (
+      {watched.failure && (
         <Alert color="red" role="alert" className={styles.notice}>
-          Couldn't update the watched state. Try again.
+          {watched.failure}
         </Alert>
       )}
       {cast.length > 0 && (
