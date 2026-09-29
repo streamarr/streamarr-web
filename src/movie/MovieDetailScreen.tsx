@@ -20,14 +20,16 @@ import styles from './MovieDetailScreen.module.css'
 type Movie = NonNullable<MovieDetailQuery['movie']>
 
 export function MovieDetailScreen({ movieId }: Readonly<{ movieId: string }>) {
-  const { data, loading, error } = useQuery(MovieDetailDocument, { variables: { id: movieId } })
+  const { data, loading, error, refetch } = useQuery(MovieDetailDocument, {
+    variables: { id: movieId },
+  })
   const watched = useWatchedToggle(movieId, MovieDetailDocument)
   const movie = data?.movie
   const ambient = movie ? resolveAmbientColors(movie.backdropImages, movie.posterImages) : null
   usePublishAmbientTheme(ambient?.theme ?? null)
 
   if (loading || error || !movie) {
-    return <MediaTitleFallback kind="movie" loading={loading} />
+    return <MediaTitleFallback kind="movie" loading={loading} error={error} onRetry={refetch} />
   }
 
   const artwork = movie.backdropImages[0] ?? movie.posterImages[0] ?? null

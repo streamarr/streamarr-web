@@ -23,14 +23,16 @@ type Season = NonNullable<Series['seasons'][number]>
 type Episode = NonNullable<Season['episodes'][number]>
 
 export function SeriesDetailScreen({ seriesId }: Readonly<{ seriesId: string }>) {
-  const { data, loading, error } = useQuery(SeriesDetailDocument, { variables: { id: seriesId } })
+  const { data, loading, error, refetch } = useQuery(SeriesDetailDocument, {
+    variables: { id: seriesId },
+  })
   const bulkWatched = useBulkWatchedAction({ kind: 'series', id: seriesId, detail: data?.series })
   const series = data?.series
   const ambient = series ? resolveAmbientColors(series.backdropImages, series.posterImages) : null
   usePublishAmbientTheme(ambient?.theme ?? null)
 
   if (loading || error || !series) {
-    return <MediaTitleFallback kind="series" loading={loading} />
+    return <MediaTitleFallback kind="series" loading={loading} error={error} onRetry={refetch} />
   }
 
   const title = series.title ?? 'Untitled'

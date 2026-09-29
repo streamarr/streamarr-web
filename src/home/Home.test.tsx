@@ -1,5 +1,5 @@
 import { screen, waitFor } from '@testing-library/react'
-import { graphql, HttpResponse } from 'msw'
+import { graphql, http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { HomeQuery } from '../graphql/generated/graphql'
 import { meFixture } from '../test/meFixture'
@@ -228,14 +228,65 @@ describe('Home', () => {
     expect(screen.queryByText('Nothing to watch yet.')).not.toBeInTheDocument()
   })
 
-  it('shows an error state when the query fails', async () => {
+  it('shouldRetryHomeAfterItFailsToLoad', async () => {
+    let homeRequests = 0
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
+      graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
+      graphql.query('Home', () => {
+        homeRequests += 1
+        if (homeRequests === 1) {
+          return HttpResponse.json({ errors: [{ message: 'boom' }] })
+        }
+        return HttpResponse.json({
+          data: homeData({ continueWatching: [continueWatchingMovie()] }),
+        })
+      }),
+    )
+    const { user } = renderAppAt('/')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load your library.")
+    expect(screen.queryByText(/try again/i)).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByRole('heading', { name: 'Everlight' })).toBeInTheDocument()
+    expect(homeRequests).toBe(2)
+  })
+
+  it('shouldShowTheServersWordsWhenHomeFails', async () => {
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
+      graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
+      graphql.query('Home', () =>
+        HttpResponse.json({
+          errors: [{ message: 'Library storage is offline.', extensions: { code: 'UNAVAILABLE' } }],
+        }),
+      ),
+    )
+    renderAppAt('/')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Library storage is offline.')
+  })
+
+  it('shouldSignOutFromAFailedHome', async () => {
+    let revoked = false
     server.use(
       graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
       graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
       graphql.query('Home', () => HttpResponse.json({ errors: [{ message: 'boom' }] })),
+      http.post('/api/auth/refresh/revoke', () => {
+        revoked = true
+        return new HttpResponse(null, { status: 204 })
+      }),
     )
-    renderAppAt('/')
-    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+    const { router, user } = renderAppAt('/')
+    await screen.findByRole('alert')
+
+    await user.click(screen.getByRole('button', { name: 'Sign out' }))
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
+    expect(revoked).toBe(true)
   })
 
   it('shows a full empty state when there is nothing anywhere', async () => {

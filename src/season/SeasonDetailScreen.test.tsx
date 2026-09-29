@@ -154,14 +154,27 @@ describe('SeasonDetailScreen', () => {
     expect(screen.getByRole('link', { name: /Cold Open/ })).toHaveAttribute('href', '/play/file-e4')
   })
 
-  it('shows an error state when the query fails', async () => {
+  it('shouldRetryTheSeasonAfterItFailsToLoad', async () => {
+    let requests = 0
     server.use(
       graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
       graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
-      graphql.query('SeasonDetail', () => HttpResponse.json({ errors: [{ message: 'boom' }] })),
+      graphql.query('SeasonDetail', () => {
+        requests += 1
+        if (requests === 1) {
+          return HttpResponse.json({ errors: [{ message: 'boom' }] })
+        }
+        return HttpResponse.json({ data: seasonData() })
+      }),
     )
-    renderAppAt('/season/season-2')
-    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+    const { user } = renderAppAt('/season/season-2')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load this season.")
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Season 2' })).toBeInTheDocument()
+    expect(requests).toBe(2)
   })
 
   it('queries the season named in the URL and renders its header under the series', async () => {

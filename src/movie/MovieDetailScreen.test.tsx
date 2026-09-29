@@ -89,14 +89,29 @@ describe('MovieDetailScreen', () => {
     )
   })
 
-  it('shows an error state when the query fails', async () => {
+  it('shouldRetryTheMovieAfterItFailsToLoad', async () => {
+    let requests = 0
     server.use(
       graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
       graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
-      graphql.query('MovieDetail', () => HttpResponse.json({ errors: [{ message: 'boom' }] })),
+      graphql.query('MovieDetail', () => {
+        requests += 1
+        if (requests === 1) {
+          return HttpResponse.json({ errors: [{ message: 'boom' }] })
+        }
+        return HttpResponse.json({ data: movieData() })
+      }),
     )
-    renderAppAt('/movie/m1')
-    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+    const { user } = renderAppAt('/movie/m1')
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent("Couldn't load this movie.")
+    expect(alert).not.toHaveTextContent('boom')
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Everlight' })).toBeInTheDocument()
+    expect(requests).toBe(2)
   })
 
   it('queries the movie named in the URL and renders its header', async () => {
