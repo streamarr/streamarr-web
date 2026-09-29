@@ -1,6 +1,7 @@
 import { screen, waitFor } from '@testing-library/react'
 import { graphql, http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
+import { failsOnceThen } from '../test/graphqlResponses'
 import { HOUSEHOLD_ID, meFixture, PROFILE_ID, profileFixture } from '../test/meFixture'
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
@@ -385,16 +386,7 @@ describe('Picker', () => {
   })
 
   it('shouldRetryLoadingProfilesAfterAFailure', async () => {
-    let requests = 0
-    server.use(
-      graphql.query('Me', () => {
-        requests += 1
-        if (requests === 1) {
-          return HttpResponse.json({ errors: [{ message: 'boom' }] })
-        }
-        return HttpResponse.json({ data: { me: meFixture() } })
-      }),
-    )
+    server.use(graphql.query('Me', failsOnceThen({ me: meFixture() }).resolver))
     const { user } = renderWithProviders(<PickerHarness onProfileSelected={vi.fn()} />)
 
     expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load your profiles.")

@@ -3,7 +3,7 @@ import { graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { MovieDetailQuery } from '../graphql/generated/graphql'
 import { meFixture } from '../test/meFixture'
-import { invalidIdResponse } from '../test/graphqlResponses'
+import { failsOnceThen, invalidIdResponse } from '../test/graphqlResponses'
 import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
 
@@ -91,17 +91,11 @@ describe('MovieDetailScreen', () => {
   })
 
   it('shouldRetryTheMovieAfterItFailsToLoad', async () => {
-    let requests = 0
+    const movie = failsOnceThen(movieData())
     server.use(
       graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
       graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
-      graphql.query('MovieDetail', () => {
-        requests += 1
-        if (requests === 1) {
-          return HttpResponse.json({ errors: [{ message: 'boom' }] })
-        }
-        return HttpResponse.json({ data: movieData() })
-      }),
+      graphql.query('MovieDetail', movie.resolver),
     )
     const { user } = renderAppAt('/movie/m1')
 
@@ -112,7 +106,7 @@ describe('MovieDetailScreen', () => {
     await user.click(screen.getByRole('button', { name: 'Retry' }))
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Everlight' })).toBeInTheDocument()
-    expect(requests).toBe(2)
+    expect(movie.calls).toBe(2)
   })
 
   it('shouldShowNotFoundWithoutRetryWhenTheMovieDoesNotExist', async () => {
