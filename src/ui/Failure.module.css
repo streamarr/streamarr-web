@@ -32,6 +32,7 @@
 }
 
 .actions {
+  composes: focusRing from '../styles/focus.module.css';
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
