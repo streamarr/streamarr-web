@@ -145,6 +145,7 @@ export function Player({
           return
         }
         source = attach(video, session.streamUrl, {
+          startupDeadline,
           onFatal: () => {
             if (cancelled) {
               return
@@ -263,9 +264,47 @@ function attachTimeline(
   }
 }
 
-function createStartupDeadline(onExpired: () => void): { end: () => void } {
-  const timer = setTimeout(onExpired, PLAYBACK_START_TIMEOUT_MS)
-  return { end: () => clearTimeout(timer) }
+interface StartupDeadline {
+  end: () => void
+  hold: () => void
+  rearm: () => void
+}
+
+type StartupPhase =
+  { at: 'timing'; timer: ReturnType<typeof setTimeout> } | { at: 'held' } | { at: 'ended' }
+
+function createStartupDeadline(onExpired: () => void): StartupDeadline {
+  let phase = arm()
+
+  function arm(): StartupPhase {
+    const timer = setTimeout(() => {
+      phase = { at: 'ended' }
+      onExpired()
+    }, PLAYBACK_START_TIMEOUT_MS)
+    return { at: 'timing', timer }
+  }
+
+  return {
+    end: () => {
+      if (phase.at === 'timing') {
+        clearTimeout(phase.timer)
+      }
+      phase = { at: 'ended' }
+    },
+    hold: () => {
+      if (phase.at !== 'timing') {
+        return
+      }
+      clearTimeout(phase.timer)
+      phase = { at: 'held' }
+    },
+    rearm: () => {
+      if (phase.at !== 'held') {
+        return
+      }
+      phase = arm()
+    },
+  }
 }
 
 function refusalMessage(payload: StreamSessionPayload | undefined): string {
@@ -280,6 +319,7 @@ function ignoreTimelineReportFailure() {
 
 interface SourceHandlers {
   onFatal: () => void
+  startupDeadline: StartupDeadline
 }
 
 // The stream URL carries the playback ?t= token; relative segment requests inherit it.
@@ -308,13 +348,23 @@ function attach(
 function attachNative(
   video: HTMLVideoElement,
   url: string,
-  { onFatal }: SourceHandlers,
+  { onFatal, startupDeadline }: SourceHandlers,
 ): { detach: () => void } {
+  // A browser may load nothing before the viewer's gesture; startup then waits for play.
+  const onSuspend = () => {
+    if (video.readyState === HTMLMediaElement.HAVE_NOTHING) {
+      startupDeadline.hold()
+    }
+  }
   video.addEventListener('error', onFatal)
+  video.addEventListener('suspend', onSuspend)
+  video.addEventListener('play', startupDeadline.rearm)
   video.src = url
   return {
     detach: () => {
       video.removeEventListener('error', onFatal)
+      video.removeEventListener('suspend', onSuspend)
+      video.removeEventListener('play', startupDeadline.rearm)
       // The same reset hls.js performs on detach: the element stops fetching the stream.
       video.removeAttribute('src')
       video.load()
