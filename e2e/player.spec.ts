@@ -228,6 +228,23 @@ test('the controls fade while playing untouched and return on pointer or keyboar
   await expect.poll(() => renderedOpacity(pause)).toBe(1)
 })
 
+test('focus that lands on a faded control brings the controls back without a key press', async ({
+  page,
+  request,
+}) => {
+  await openPlayer(page, request)
+  const back = page.getByRole('button', { name: 'Back', exact: true })
+  const pause = page.getByRole('button', { name: 'Pause' })
+  await page.getByRole('button', { name: 'Play' }).click()
+  await page.mouse.move(756, 200)
+  await expect.poll(() => renderedOpacity(pause)).toBe(0)
+
+  await page.getByRole('button', { name: 'Mute' }).focus()
+
+  await expect.poll(() => renderedOpacity(pause)).toBe(1)
+  expect(await renderedOpacity(back)).toBe(1)
+})
+
 test.describe('on a touch screen', () => {
   test.use({ hasTouch: true })
 
