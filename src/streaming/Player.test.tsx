@@ -1486,6 +1486,28 @@ describe('Player', () => {
       expect(screen.getByRole('button', { name: 'Back' })).toBeEnabled()
     })
 
+    it('shouldShowTheBufferingRingWhileThePlayingVideoWaitsForData', async () => {
+      serveSession()
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await attachedVideo()
+      setReadyState(video, HTMLMediaElement.HAVE_FUTURE_DATA)
+      await act(() => video.play())
+      expect(screen.queryByRole('progressbar', { name: 'Buffering' })).not.toBeInTheDocument()
+
+      setReadyState(video, HTMLMediaElement.HAVE_CURRENT_DATA)
+      fireEvent(video, new Event('waiting'))
+      expect(screen.getByRole('progressbar', { name: 'Buffering' })).toBeInTheDocument()
+
+      setReadyState(video, HTMLMediaElement.HAVE_ENOUGH_DATA)
+      fireEvent(video, new Event('playing'))
+      expect(screen.queryByRole('progressbar', { name: 'Buffering' })).not.toBeInTheDocument()
+
+      setReadyState(video, HTMLMediaElement.HAVE_CURRENT_DATA)
+      fireEvent(video, new Event('waiting'))
+      act(() => video.pause())
+      expect(screen.queryByRole('progressbar', { name: 'Buffering' })).not.toBeInTheDocument()
+    })
+
     it('shouldShowTheTimecodeAndTitleInTheTitleLine', async () => {
       serveSession()
       renderWithProviders(

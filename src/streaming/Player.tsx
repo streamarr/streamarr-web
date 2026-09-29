@@ -14,6 +14,7 @@ import { userErrorMessage } from '../graphql/userErrors'
 import { DetailBackButton } from '../media/DetailBack'
 import { invalidateWatchedState } from '../media/watchedState'
 import focusStyles from '../styles/focus.module.css'
+import { BufferingRing } from './BufferingRing'
 import styles from './Player.module.css'
 import { PlayerControls, type PlayerTitle } from './PlayerControls'
 import { useIdle } from './useIdle'
@@ -236,6 +237,7 @@ export function Player({
       data-idle={idle || undefined}
     >
       <video ref={videoRef} className={styles.video} playsInline />
+      {video.buffering && <BufferingRing />}
       {failure && (
         <Alert className={styles.failure} color="red" role="alert">
           {failure}
