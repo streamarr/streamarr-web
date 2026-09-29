@@ -1,9 +1,11 @@
-import { screen, waitFor } from '@testing-library/react'
-import { graphql, HttpResponse } from 'msw'
+import { screen, waitFor, within } from '@testing-library/react'
+import { graphql, http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
+import { deferred } from '../test/deferred'
 import { meFixture } from '../test/meFixture'
 import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
+import { signIn } from '../test/signIn'
 
 const ME = meFixture({ scope: 'profile' })
 const LIBRARIES = [
@@ -23,6 +25,20 @@ const LIBRARIES = [
 
 function serveMe() {
   server.use(graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })))
+}
+
+// Signing in adopts the session without the entry probe, so the top bar's own Me is the one that
+// fails or waits.
+function serveSignIn() {
+  server.use(
+    http.post('/api/auth/login', () =>
+      HttpResponse.json({ accessTokenExpiresAt: '2026-08-05T12:00:00Z', scope: 'profile' }),
+    ),
+    graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
+    graphql.query('Home', () =>
+      HttpResponse.json({ data: { continueWatching: [], libraries: [] } }),
+    ),
+  )
 }
 
 describe('TopBar', () => {
@@ -110,5 +126,58 @@ describe('TopBar', () => {
 
     expect(await screen.findByRole('link', { name: 'Home' })).toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('shouldKeepTheLockupNavigationAndSignOutWhenTheAccountFailsToLoad', async () => {
+    let revoked = false
+    serveSignIn()
+    server.use(
+      graphql.query('Me', () =>
+        HttpResponse.json({
+          errors: [{ message: 'Account storage is offline.', extensions: { code: 'UNAVAILABLE' } }],
+        }),
+      ),
+      http.post('/api/auth/refresh/revoke', () => {
+        revoked = true
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+    const { router, user } = renderAppAt('/login?redirect=/')
+
+    await signIn(user)
+
+    const banner = await screen.findByRole('banner')
+    expect(within(banner).getByRole('img', { name: 'Streamarr' })).toBeInTheDocument()
+    expect(within(banner).getByRole('link', { name: 'Home' })).toBeInTheDocument()
+    const signOut = await within(banner).findByRole('button', { name: 'Sign out' })
+    expect(within(banner).queryByRole('button', { name: /profile menu/i })).not.toBeInTheDocument()
+
+    await user.click(signOut)
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
+    expect(revoked).toBe(true)
+  })
+
+  it('shouldShowNoIdentityWhileTheAccountIsLoading', async () => {
+    const account = deferred()
+    serveSignIn()
+    server.use(
+      graphql.query('Me', async () => {
+        await account.promise
+        return HttpResponse.json({ data: { me: ME } })
+      }),
+    )
+    const { user } = renderAppAt('/login?redirect=/')
+
+    await signIn(user)
+
+    const banner = await screen.findByRole('banner')
+    expect(within(banner).getByRole('link', { name: 'Home' })).toBeInTheDocument()
+    expect(within(banner).queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument()
+    expect(within(banner).queryByRole('button', { name: /profile menu/i })).not.toBeInTheDocument()
+
+    account.resolve()
+
+    expect(await within(banner).findByRole('button', { name: /profile menu/i })).toBeInTheDocument()
   })
 })
