@@ -1927,6 +1927,17 @@ describe('Player', () => {
       expect(screen.getByRole('button', { name: 'Audio: Français' })).toHaveFocus()
     })
 
+    it('shouldStartThePickersFocusOnTheTrackInUse', async () => {
+      serveSession()
+      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      await attachedVideo()
+      offerHlsTracks({ audio: [{ name: 'English' }, { name: 'Français' }], audioTrack: 1 })
+
+      await openPicker(user, screen.getByRole('button', { name: 'Audio: Français' }))
+
+      expect(screen.getByRole('menuitemradio', { name: 'Français' })).toHaveFocus()
+    })
+
     it('shouldCloseThePickerWithoutChoosingOnEscapeAnOutsidePressOrItsChip', async () => {
       serveSession()
       const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
