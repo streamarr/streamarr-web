@@ -2,6 +2,7 @@ import { screen, waitFor } from '@testing-library/react'
 import { graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { SharingOverviewQuery } from '../graphql/generated/graphql'
+import { failsOnceThen } from '../test/graphqlResponses'
 import { HOUSEHOLD_ID, meFixture, PROFILE_ID, profileFixture } from '../test/meFixture'
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
@@ -136,8 +137,18 @@ describe('SharingScreen', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Accept' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/something went wrong/i)
+    expect(await screen.findByRole('alert')).toHaveTextContent(/^forbidden$/)
     expect(screen.getByRole('button', { name: 'Accept' })).toBeEnabled()
+  })
+
+  it('shouldExplainADecisionThatCouldNotReachTheServerWithoutAskingToTryAgain', async () => {
+    serverAnswersOverview({ offers: [shareRow()] })
+    server.use(graphql.mutation('AcceptProfileShare', () => HttpResponse.error()))
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    await user.click(await screen.findByRole('button', { name: 'Accept' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/^Couldn't update sharing\.$/)
   })
 
   it('shouldReportARejectedOfferInsteadOfSwallowingIt', async () => {
@@ -165,7 +176,7 @@ describe('SharingScreen', () => {
     await user.type(await screen.findByLabelText(/^household id/i), OTHER_HOUSEHOLD_ID)
     await user.click(screen.getByRole('button', { name: 'Offer share' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/something went wrong/i)
+    expect(await screen.findByRole('alert')).toHaveTextContent(/^forbidden$/)
   })
 
   it('shouldEndAnActiveShareButNeverTheHomeOne', async () => {
@@ -204,5 +215,56 @@ describe('SharingScreen', () => {
     await user.click(endButtons[0])
 
     await waitFor(() => expect(ended).toBe(true))
+  })
+
+  it('shouldRetryWhenTheAccountFailsToLoad', async () => {
+    serverAnswersOverview()
+    server.use(
+      graphql.query(
+        'Me',
+        failsOnceThen({ me: meFixture({ profiles: [profileFixture()] }) }).resolver,
+      ),
+    )
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load sharing.")
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByRole('heading', { name: 'Sharing' })).toBeInTheDocument()
+  })
+
+  it('shouldRetryWhenSharingFailsToLoad', async () => {
+    serverAnswersOverview()
+    const overview = failsOnceThen({
+      pendingShareOffers: { __typename: 'ProfileShareConnection', edges: [] },
+      profileShares: { __typename: 'ProfileShareConnection', edges: [] },
+    })
+    server.use(graphql.query('SharingOverview', overview.resolver))
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load sharing.")
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByRole('heading', { name: 'Sharing' })).toBeInTheDocument()
+    expect(overview.calls).toBe(2)
+  })
+
+  it('shouldSayThereIsNoProfileToShareWithoutOfferingRetry', async () => {
+    server.use(
+      graphql.query('Me', () =>
+        HttpResponse.json({
+          data: { me: meFixture({ profiles: [profileFixture({ personal: false })] }) },
+        }),
+      ),
+    )
+    renderWithProviders(<SharingScreen />)
+
+    expect(
+      await screen.findByText('You have no Profile of your own in Smith Family to share.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
   })
 })

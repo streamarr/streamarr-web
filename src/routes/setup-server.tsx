@@ -1,7 +1,8 @@
-import { Alert, Center, Loader } from '@mantine/core'
+import { Center, Loader } from '@mantine/core'
 import { AuthShell } from '../ui/AuthShell'
-import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
-import { getSetupStatus } from '../auth/api'
+import { FailurePanel } from '../ui/Failure'
+import { createFileRoute, redirect, useNavigate, useRouter } from '@tanstack/react-router'
+import { getSetupStatus, SERVER_STATUS_UNAVAILABLE_MESSAGE } from '../auth/api'
 import type { AuthTokens } from '../auth/api'
 import { SetupForm } from '../auth/SetupForm'
 
@@ -46,11 +47,12 @@ function CheckingServer() {
 // An unreadable status is not a fresh server: showing the wizard would offer to set up a
 // server that may already have an owner.
 function ServerStatusUnknown() {
+  const router = useRouter()
   return (
     <AuthShell>
-      <Alert color="red" role="alert">
-        Couldn't check whether this server is set up. Reload the page to try again.
-      </Alert>
+      <FailurePanel layout="ceremony" wayOut="sign-in" onRetry={() => router.invalidate()}>
+        {SERVER_STATUS_UNAVAILABLE_MESSAGE}
+      </FailurePanel>
     </AuthShell>
   )
 }

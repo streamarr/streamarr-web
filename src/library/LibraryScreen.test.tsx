@@ -11,6 +11,7 @@ import {
   JSDOM_ROW_HEIGHT,
   resizeObserverInstances,
 } from '../../vitest.setup'
+import { failsOnceThen, invalidIdResponse } from '../test/graphqlResponses'
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
 import { LibraryScreen, type LibrarySearch } from './LibraryScreen'
@@ -200,12 +201,31 @@ describe('LibraryScreen', () => {
     expect(screen.queryByText('No items match this filter.')).not.toBeInTheDocument()
   })
 
-  it('shows an error state when the query fails', async () => {
-    server.use(
-      graphql.query('LibraryPage', () => HttpResponse.json({ errors: [{ message: 'boom' }] })),
-    )
+  it('shouldRetryTheLibraryAfterItFailsToLoad', async () => {
+    const libraryPage = failsOnceThen(libraryData())
+    server.use(graphql.query('LibraryPage', libraryPage.resolver))
+    const { user } = renderWithProviders(<Harness />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load this library.")
+    expect(screen.queryByText(/boom/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByRole('heading', { name: 'Movies' })).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(libraryPage.calls).toBe(2)
+  })
+
+  it('shouldShowNotFoundWithoutRetryWhenTheLibraryIdIsMalformed', async () => {
+    server.use(graphql.query('LibraryPage', () => invalidIdResponse('library')))
     renderWithProviders(<Harness />)
-    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "This library doesn't exist or was removed.",
+    )
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument()
   })
 
   it('renders the header with item count and relative scan time', async () => {

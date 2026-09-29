@@ -114,7 +114,7 @@ describe('library administration', () => {
         HttpResponse.json({ data: { me: { ...ADMIN, serverAdmin: false } } }),
       ),
     )
-    await user.click(screen.getByRole('button', { name: 'Try again' }))
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent(
         'Server settings are available to server admins',
@@ -135,7 +135,7 @@ describe('library administration', () => {
     server.use(
       graphql.query('AdminLibraries', () => HttpResponse.json({ data: { libraries: [] } })),
     )
-    await user.click(screen.getByRole('button', { name: 'Try again' }))
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
     await screen.findByRole('link', { name: 'Add library' })
   })
 
@@ -453,7 +453,7 @@ describe('library administration', () => {
     server.use(
       graphql.query('AdminLibraries', () => HttpResponse.json({ data: { libraries: [MOVIES] } })),
     )
-    await user.click(screen.getByRole('button', { name: 'Try again' }))
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
     await waitFor(() => expect(screen.getByRole('button', { name: 'Scan library' })).toBeEnabled())
   })
 

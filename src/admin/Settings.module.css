@@ -374,6 +374,9 @@
   margin-left: auto;
   font-size: var(--font-size-title);
 }
+.failureRow {
+  margin-bottom: var(--spacing-16);
+}
 .refreshEditor {
   padding-bottom: 28px;
   min-width: 0;

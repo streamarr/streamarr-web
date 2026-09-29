@@ -47,9 +47,9 @@ export function useBulkWatchedAction(target: BulkWatchedTarget) {
         onClick={() => setConfirming(subject.isWatched ? 'unwatched' : 'watched')}
       />
     ),
-    feedback: watched.failed && (
+    feedback: watched.failure && (
       <Alert color="red" role="alert" className={styles.notice}>
-        Couldn't update the watched state. Try again.
+        {watched.failure}
       </Alert>
     ),
     dialog: (

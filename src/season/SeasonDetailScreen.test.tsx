@@ -3,6 +3,7 @@ import { graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { SeasonDetailQuery } from '../graphql/generated/graphql'
 import { meFixture } from '../test/meFixture'
+import { failsOnceThen, invalidIdResponse } from '../test/graphqlResponses'
 import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
 
@@ -154,14 +155,46 @@ describe('SeasonDetailScreen', () => {
     expect(screen.getByRole('link', { name: /Cold Open/ })).toHaveAttribute('href', '/play/file-e4')
   })
 
-  it('shows an error state when the query fails', async () => {
+  it('shouldRetryTheSeasonAfterItFailsToLoad', async () => {
+    const season = failsOnceThen(seasonData())
     server.use(
       graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
       graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
-      graphql.query('SeasonDetail', () => HttpResponse.json({ errors: [{ message: 'boom' }] })),
+      graphql.query('SeasonDetail', season.resolver),
     )
+    const { user } = renderAppAt('/season/season-2')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load this season.")
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Season 2' })).toBeInTheDocument()
+    expect(season.calls).toBe(2)
+  })
+
+  it('shouldShowNotFoundWithoutRetryWhenTheSeasonDoesNotExist', async () => {
+    serve({ season: null })
     renderAppAt('/season/season-2')
-    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "This season doesn't exist or was removed.",
+    )
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument()
+  })
+
+  it('shouldTreatAMalformedSeasonIdAsNotFound', async () => {
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
+      graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
+      graphql.query('SeasonDetail', () => invalidIdResponse('season')),
+    )
+    renderAppAt('/season/abc')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "This season doesn't exist or was removed.",
+    )
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
   })
 
   it('queries the season named in the URL and renders its header under the series', async () => {

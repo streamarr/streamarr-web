@@ -3,6 +3,7 @@ import { graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { MovieDetailQuery } from '../graphql/generated/graphql'
 import { meFixture } from '../test/meFixture'
+import { failsOnceThen, invalidIdResponse } from '../test/graphqlResponses'
 import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
 
@@ -89,14 +90,56 @@ describe('MovieDetailScreen', () => {
     )
   })
 
-  it('shows an error state when the query fails', async () => {
+  it('shouldRetryTheMovieAfterItFailsToLoad', async () => {
+    const movie = failsOnceThen(movieData())
     server.use(
       graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
       graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
-      graphql.query('MovieDetail', () => HttpResponse.json({ errors: [{ message: 'boom' }] })),
+      graphql.query('MovieDetail', movie.resolver),
     )
-    renderAppAt('/movie/m1')
-    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+    const { user } = renderAppAt('/movie/m1')
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent("Couldn't load this movie.")
+    expect(alert).not.toHaveTextContent('boom')
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Everlight' })).toBeInTheDocument()
+    expect(movie.calls).toBe(2)
+  })
+
+  it('shouldShowNotFoundWithoutRetryWhenTheMovieDoesNotExist', async () => {
+    serve({ movie: null })
+    server.use(
+      graphql.query('Home', () =>
+        HttpResponse.json({ data: { continueWatching: [], libraries: [] } }),
+      ),
+    )
+    const { router, user } = renderAppAt('/movie/m1')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "This movie doesn't exist or was removed.",
+    )
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Back' }))
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+  })
+
+  it('shouldTreatAMalformedMovieIdAsNotFound', async () => {
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
+      graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
+      graphql.query('MovieDetail', () => invalidIdResponse('movie')),
+    )
+    renderAppAt('/movie/abc')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "This movie doesn't exist or was removed.",
+    )
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
   })
 
   it('queries the movie named in the URL and renders its header', async () => {
@@ -204,6 +247,31 @@ describe('MovieDetailScreen', () => {
       expect(screen.getByRole('button', { name: 'Mark unwatched' })).toBeInTheDocument(),
     )
     expect(markedIds).toEqual(['m1'])
+  })
+
+  it('shouldShowTheServersWordsWhenTheWatchedStateCannotBeSaved', async () => {
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
+      graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
+      graphql.query('MovieDetail', () => HttpResponse.json({ data: movieData() })),
+      graphql.mutation('MarkWatched', () =>
+        HttpResponse.json({
+          errors: [
+            {
+              message: 'Watch history is read-only during maintenance.',
+              extensions: { code: 'UNAVAILABLE' },
+            },
+          ],
+        }),
+      ),
+    )
+    const { user } = renderAppAt('/movie/m1')
+    await user.click(await screen.findByRole('button', { name: 'Mark watched' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /^Watch history is read-only during maintenance\.$/,
+    )
+    expect(screen.getByRole('button', { name: 'Mark watched' })).toBeEnabled()
   })
 
   it('omits the cast shelf when there is no cast', async () => {

@@ -1,5 +1,4 @@
-import { CombinedGraphQLErrors } from '@apollo/client/errors'
-import { Alert, Anchor, Center, Loader, Text, Title } from '@mantine/core'
+import { Center, Loader, Text, Title } from '@mantine/core'
 import { useElementScrollRestoration, useLocation } from '@tanstack/react-router'
 import { useStore } from '@tanstack/react-store'
 import { Store } from '@tanstack/store'
@@ -11,8 +10,10 @@ import type {
   OrderMediaBy,
   SortDirection,
 } from '../graphql/generated/graphql'
+import { hasInvalidInputAt, requestFailureMessage } from '../graphql/requestErrors'
 import { AlphabetRail, type SelectionInput } from '../media/AlphabetRail'
 import { formatRelativeTime } from '../media/formatting'
+import { FailurePanel, FailureRow } from '../ui/Failure'
 import { FilterBar, type WatchStatusFilter } from './FilterBar'
 import { LibraryGrid, type JumpDirection, type LandingRepeat, type SlidePhase } from './LibraryGrid'
 import styles from './LibraryScreen.module.css'
@@ -156,8 +157,18 @@ export function LibraryScreen({
     )
   }
 
+  // An unknown but well-formed id still fails as an uncoded non-null violation, so only an id the
+  // server cannot parse is known to be missing.
+  if (!library && hasInvalidInputAt(error, 'library')) {
+    return <FailurePanel wayOut="back">This library doesn't exist or was removed.</FailurePanel>
+  }
+
   if (!library) {
-    return <LibraryUnavailable error={error} onRetry={retry} />
+    return (
+      <FailurePanel onRetry={retry}>
+        {requestFailureMessage(error, "Couldn't load this library.")}
+      </FailurePanel>
+    )
   }
 
   const total = library.alphabetIndex.reduce((sum, entry) => sum + entry.count, 0)
@@ -185,7 +196,11 @@ export function LibraryScreen({
         showing={buildShowingLabel(edges.length, hasNextPage, !search.watchStatus, total)}
       />
 
-      {error && <LibraryUnavailable error={error} onRetry={retry} />}
+      {error && (
+        <FailureRow onRetry={retry}>
+          {requestFailureMessage(error, "Couldn't load these titles.")}
+        </FailureRow>
+      )}
 
       <div className={styles.body}>
         {edges.length === 0 ? (
@@ -263,18 +278,6 @@ function directionOfJump(
   const position = (letter: string | null) =>
     letter === 'HASH' ? -1 : index.findIndex((entry) => entry.letter === letter)
   return position(to) < position(from) ? 'backward' : 'forward'
-}
-
-function LibraryUnavailable({ error, onRetry }: Readonly<{ error: unknown; onRetry: () => void }>) {
-  const message = CombinedGraphQLErrors.is(error) ? error.errors[0]?.message : undefined
-  return (
-    <Alert color="red" role="alert">
-      {message || "Couldn't load this library."}{' '}
-      <Anchor component="button" type="button" onClick={onRetry}>
-        Try again
-      </Anchor>
-    </Alert>
-  )
 }
 
 function buildShowingLabel(

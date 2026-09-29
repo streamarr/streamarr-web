@@ -1,6 +1,7 @@
 import { screen, waitFor } from '@testing-library/react'
 import { graphql, http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
+import { failsOnceThen } from '../test/graphqlResponses'
 import { HOUSEHOLD_ID, meFixture, PROFILE_ID, profileFixture } from '../test/meFixture'
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
@@ -235,6 +236,36 @@ describe('Picker', () => {
     expect(onProfileSelected).not.toHaveBeenCalled()
   })
 
+  it('shouldExplainAProfileThatCouldNotBeSelectedWithoutAskingToTryAgain', async () => {
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ data: { me: meFixture() } })),
+      http.post('/api/auth/select-profile', () => HttpResponse.error()),
+    )
+    const { user } = renderWithProviders(<PickerHarness onProfileSelected={vi.fn()} />)
+
+    await user.click(await screen.findByRole('button', { name: /Alex/ }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/^Couldn't select that Profile\.$/)
+  })
+
+  it('shouldExplainAnUnlockThatCouldNotReachTheServerWithoutAskingToTryAgain', async () => {
+    server.use(
+      graphql.query('Me', () =>
+        HttpResponse.json({
+          data: { me: meFixture({ profiles: [profileFixture({ pinConfigured: true })] }) },
+        }),
+      ),
+      http.post('/api/auth/select-profile', () => HttpResponse.error()),
+    )
+    const { user } = renderWithProviders(<PickerHarness onProfileSelected={vi.fn()} />)
+    await user.click(await screen.findByRole('button', { name: /Alex/ }))
+
+    await user.type(await screen.findByTestId('pin-input'), '4242')
+    await user.click(screen.getByRole('button', { name: 'Unlock' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/^Couldn't select that Profile\.$/)
+  })
+
   it('shouldSendADeadSessionToSignInFromTheGrid', async () => {
     server.use(
       graphql.query('Me', () => HttpResponse.json({ data: { me: meFixture() } })),
@@ -290,6 +321,29 @@ describe('Picker', () => {
     expect(screen.getByRole('button', { name: /Alex/ })).toBeInTheDocument()
   })
 
+  it('shouldExplainAHouseholdThatCouldNotBeSwitchedToWithoutAskingToTryAgain', async () => {
+    server.use(
+      graphql.query('Me', () =>
+        HttpResponse.json({
+          data: {
+            me: meFixture({
+              usableHouseholds: [
+                { id: HOUSEHOLD_ID, name: 'Smith Family', membership: true },
+                { id: OTHER_HOUSEHOLD_ID, name: 'Cabin', membership: false },
+              ],
+            }),
+          },
+        }),
+      ),
+      http.post('/api/auth/select-household', () => HttpResponse.error()),
+    )
+    const { user } = renderWithProviders(<PickerHarness onProfileSelected={vi.fn()} />)
+
+    await user.click(await screen.findByRole('radio', { name: 'Cabin' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/^Couldn't switch Households\.$/)
+  })
+
   it('shouldSwitchHouseholdsAndReloadTheirProfiles', async () => {
     const twoHouseholds = {
       usableHouseholds: [
@@ -329,5 +383,33 @@ describe('Picker', () => {
     await user.click(await screen.findByRole('radio', { name: 'Cabin' }))
 
     expect(await screen.findByRole('button', { name: /Visiting Alex/ })).toBeInTheDocument()
+  })
+
+  it('shouldRetryLoadingProfilesAfterAFailure', async () => {
+    server.use(graphql.query('Me', failsOnceThen({ me: meFixture() }).resolver))
+    const { user } = renderWithProviders(<PickerHarness onProfileSelected={vi.fn()} />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load your profiles.")
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByRole('heading', { name: "Who's watching?" })).toBeInTheDocument()
+  })
+
+  it('shouldOfferSignOutWhenProfilesFailToLoad', async () => {
+    let revoked = false
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ errors: [{ message: 'boom' }] })),
+      http.post('/api/auth/refresh/revoke', () => {
+        revoked = true
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+    const { user } = renderWithProviders(<PickerHarness onProfileSelected={vi.fn()} />)
+    await screen.findByRole('alert')
+
+    await user.click(screen.getByRole('button', { name: 'Sign out' }))
+
+    await waitFor(() => expect(revoked).toBe(true))
   })
 })

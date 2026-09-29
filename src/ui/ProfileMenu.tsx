@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { AuthApiError } from '../auth/api'
 import { useAuth } from '../auth/AuthProvider'
+import { useSignOut } from '../auth/useSignOut'
 import type { MeQuery } from '../graphql/generated/graphql'
 import { initials, tileColor } from './ProfileTile'
 import { Icon } from './Icon'
@@ -15,7 +16,7 @@ const SESSION_EVICTION_CODES = new Set([
   'EXPIRED_TOKEN',
   'INVALID_TOKEN',
 ])
-const SWITCH_FAILED_MESSAGE = "Couldn't switch profiles. Try again."
+const SWITCH_FAILED_MESSAGE = "Couldn't switch profiles."
 
 export function ProfileMenu({
   me,
@@ -31,7 +32,8 @@ export function ProfileMenu({
   /** Opens the integrated settings route; only exposed for eligible account sessions. */
   onServerSettings?: () => void
 }) {
-  const { selectProfile, logout } = useAuth()
+  const { selectProfile } = useAuth()
+  const signOut = useSignOut(onSignedOut)
   const [opened, setOpened] = useState(false)
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
@@ -104,11 +106,9 @@ export function ProfileMenu({
     setOpened((open) => !open)
   }
 
-  function signOut() {
+  function closeAndSignOut() {
     close()
-    // Revocation is best-effort: an outage must never trap someone in a session they left.
-    void logout().catch(() => {})
-    onSignedOut()
+    signOut()
   }
 
   return (
@@ -172,7 +172,7 @@ export function ProfileMenu({
               <span>Server settings</span>
             </button>
           )}
-          <button type="button" className={styles.profileMenuRow} onClick={signOut}>
+          <button type="button" className={styles.profileMenuRow} onClick={closeAndSignOut}>
             <Icon name="sign-out" size={20} />
             <span>Sign out</span>
           </button>

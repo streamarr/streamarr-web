@@ -121,6 +121,16 @@ describe('ProfileMenu', () => {
     expect(screen.getByRole('button', { name: 'Sam' })).toBeEnabled()
   })
 
+  it('shouldExplainASwitchThatCouldNotReachTheServerWithoutAskingToTryAgain', async () => {
+    server.use(http.post('/api/auth/select-profile', () => HttpResponse.error()))
+    const { user } = renderMenu()
+
+    await openMenu(user)
+    await user.click(screen.getByRole('button', { name: 'Sam' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/^Couldn't switch profiles\.$/)
+  })
+
   it('shouldHandASessionEvictionToTheCaller', async () => {
     server.use(
       http.post('/api/auth/select-profile', () =>

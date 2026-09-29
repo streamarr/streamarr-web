@@ -1,10 +1,13 @@
 import { screen, waitFor } from '@testing-library/react'
-import { graphql, HttpResponse } from 'msw'
+import { graphql, http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { HomeQuery } from '../graphql/generated/graphql'
+import { deferred } from '../test/deferred'
+import { failsOnceThen } from '../test/graphqlResponses'
 import { meFixture } from '../test/meFixture'
-import { renderAppAt } from '../test/render'
+import { renderAppAt, renderWithProviders } from '../test/render'
 import { server } from '../test/server'
+import { Home } from './Home'
 
 const ME = meFixture({ scope: 'profile' })
 
@@ -190,6 +193,44 @@ describe('Home', () => {
     await screen.findByText('Ask your server admin to add a library.')
     expect(screen.queryByRole('link', { name: 'Add library' })).not.toBeInTheDocument()
   })
+  it('shouldWaitForTheAccountBeforeChoosingTheEmptyLibraryGuidance', async () => {
+    const account = deferred()
+    server.use(
+      graphql.query('Home', () => HttpResponse.json({ data: homeData() })),
+      graphql.query('Me', async () => {
+        await account.promise
+        return HttpResponse.json({
+          data: { me: meFixture({ scope: 'profile', serverAdmin: true }) },
+        })
+      }),
+    )
+    renderWithProviders(<Home />)
+
+    expect(await screen.findByRole('status', { name: 'Loading your account' })).toBeInTheDocument()
+    expect(screen.queryByText('Ask your server admin to add a library.')).not.toBeInTheDocument()
+
+    account.resolve()
+
+    expect(await screen.findByRole('link', { name: 'Add library' })).toBeInTheDocument()
+    expect(screen.queryByText('Ask your server admin to add a library.')).not.toBeInTheDocument()
+  })
+
+  it('shouldOfferRetryWhenTheAccountFailsBehindAnEmptyInventory', async () => {
+    const account = failsOnceThen({ me: meFixture({ scope: 'profile', serverAdmin: true }) })
+    server.use(
+      graphql.query('Home', () => HttpResponse.json({ data: homeData() })),
+      graphql.query('Me', account.resolver),
+    )
+    const { user } = renderWithProviders(<Home />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load your account.")
+    expect(screen.queryByText('Ask your server admin to add a library.')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByRole('link', { name: 'Add library' })).toBeInTheDocument()
+  })
+
   it('omits empty recently-added sections when there is content elsewhere', async () => {
     serve(
       homeData({
@@ -228,14 +269,57 @@ describe('Home', () => {
     expect(screen.queryByText('Nothing to watch yet.')).not.toBeInTheDocument()
   })
 
-  it('shows an error state when the query fails', async () => {
+  it('shouldRetryHomeAfterItFailsToLoad', async () => {
+    const home = failsOnceThen(homeData({ continueWatching: [continueWatchingMovie()] }))
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
+      graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
+      graphql.query('Home', home.resolver),
+    )
+    const { user } = renderAppAt('/')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load your library.")
+    expect(screen.queryByText(/try again/i)).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByRole('heading', { name: 'Everlight' })).toBeInTheDocument()
+    expect(home.calls).toBe(2)
+  })
+
+  it('shouldShowTheServersWordsWhenHomeFails', async () => {
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
+      graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
+      graphql.query('Home', () =>
+        HttpResponse.json({
+          errors: [{ message: 'Library storage is offline.', extensions: { code: 'UNAVAILABLE' } }],
+        }),
+      ),
+    )
+    renderAppAt('/')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Library storage is offline.')
+  })
+
+  it('shouldSignOutFromAFailedHome', async () => {
+    let revoked = false
     server.use(
       graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
       graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
       graphql.query('Home', () => HttpResponse.json({ errors: [{ message: 'boom' }] })),
+      http.post('/api/auth/refresh/revoke', () => {
+        revoked = true
+        return new HttpResponse(null, { status: 204 })
+      }),
     )
-    renderAppAt('/')
-    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+    const { router, user } = renderAppAt('/')
+    await screen.findByRole('alert')
+
+    await user.click(screen.getByRole('button', { name: 'Sign out' }))
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
+    expect(revoked).toBe(true)
   })
 
   it('shows a full empty state when there is nothing anywhere', async () => {

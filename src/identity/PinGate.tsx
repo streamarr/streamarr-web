@@ -7,7 +7,7 @@ import { PinGateAvatar } from '../ui/ProfileTile'
 import styles from './PinGate.module.css'
 
 const PIN_SHAPE = /^\d{4,8}$/
-const FAILURE_MESSAGE = "Couldn't select that Profile. Try again."
+const FAILURE_MESSAGE = "Couldn't select that Profile."
 
 // PINs ride the REST ceremony, never GraphQL: the server verifies, throttles, and refuses.
 export function PinGate({

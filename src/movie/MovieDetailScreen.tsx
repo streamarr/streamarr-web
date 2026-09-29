@@ -1,5 +1,5 @@
 import { useQuery } from '@apollo/client/react'
-import { Alert, Center, Loader } from '@mantine/core'
+import { Alert } from '@mantine/core'
 import { Link } from '@tanstack/react-router'
 import { MovieDetailDocument, type MovieDetailQuery } from '../graphql/generated/graphql'
 import { usePublishAmbientTheme } from '../media/ambientThemeContext'
@@ -8,6 +8,7 @@ import { CastCard } from '../media/CastCard'
 import { ContentShelf } from '../media/ContentShelf'
 import { DetailBackButton } from '../media/DetailBack'
 import { detailAction, DetailHeader } from '../media/DetailHeader'
+import { MediaTitleFallback } from '../media/MediaTitleFallback'
 import { formatLongDate, formatRuntime, formatYear } from '../media/formatting'
 import { Icon } from '../ui/Icon'
 import { pickImageVariant } from '../media/images'
@@ -19,25 +20,23 @@ import styles from './MovieDetailScreen.module.css'
 type Movie = NonNullable<MovieDetailQuery['movie']>
 
 export function MovieDetailScreen({ movieId }: Readonly<{ movieId: string }>) {
-  const { data, loading, error } = useQuery(MovieDetailDocument, { variables: { id: movieId } })
+  const { data, loading, error, refetch } = useQuery(MovieDetailDocument, {
+    variables: { id: movieId },
+  })
   const watched = useWatchedToggle(movieId, MovieDetailDocument)
   const movie = data?.movie
   const ambient = movie ? resolveAmbientColors(movie.backdropImages, movie.posterImages) : null
   usePublishAmbientTheme(ambient?.theme ?? null)
 
-  if (loading) {
+  if (loading || error || !movie) {
     return (
-      <Center h={200}>
-        <Loader />
-      </Center>
-    )
-  }
-
-  if (error || !movie) {
-    return (
-      <Alert color="red" role="alert">
-        Couldn't load this movie. Try again.
-      </Alert>
+      <MediaTitleFallback
+        kind="movie"
+        loading={loading}
+        error={error}
+        title={data?.movie}
+        onRetry={refetch}
+      />
     )
   }
 
@@ -98,9 +97,9 @@ export function MovieDetailScreen({ movieId }: Readonly<{ movieId: string }>) {
         }
         aside={ratings.length > 0 && <RatingChipRow ratings={ratings} />}
       />
-      {watched.failed && (
+      {watched.failure && (
         <Alert color="red" role="alert" className={styles.notice}>
-          Couldn't update the watched state. Try again.
+          {watched.failure}
         </Alert>
       )}
       {cast.length > 0 && (

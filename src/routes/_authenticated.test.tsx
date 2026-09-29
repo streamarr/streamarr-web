@@ -283,9 +283,10 @@ describe('the authenticated layout', () => {
     )
     const { router, user } = renderAppAt('/')
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      "Couldn't check whether this server is set up. Reload the page to try again.",
-    )
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent("Couldn't check whether this server is set up.")
+    expect(alert).not.toHaveTextContent(/reload/i)
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/')
     expect(screen.queryByRole('button', { name: /create account/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /sign in/i })).not.toBeInTheDocument()
@@ -295,6 +296,82 @@ describe('the authenticated layout', () => {
 
     expect(await screen.findByRole('button', { name: /sign in/i })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/login')
+  })
+
+  it('shouldRetryTheSetupCheckAfterAnOutage', async () => {
+    server.use(
+      http.post('/graphql', () =>
+        HttpResponse.json({ code: 'AUTHENTICATION_REQUIRED' }, { status: 401 }),
+      ),
+      http.get('/api/auth/status', () => HttpResponse.json({}, { status: 503 }), { once: true }),
+      setupStatus(false),
+    )
+    const { router, user } = renderAppAt('/')
+    await screen.findByRole('alert')
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByRole('button', { name: /create account/i })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/setup-server')
+  })
+
+  it('shouldRetryTheSessionCheckAfterAnOutage', async () => {
+    server.use(
+      http.post('/graphql', () => HttpResponse.json({}, { status: 500 }), { once: true }),
+      ...homeHandlers(),
+      graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
+    )
+    const { router, user } = renderAppAt('/')
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent("Couldn't confirm you're signed in.")
+    expect(alert).not.toHaveTextContent(/reload/i)
+    expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByRole('banner')).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/')
+  })
+
+  it('shouldShowTheServersWordsWhenTheSessionCheckFails', async () => {
+    server.use(
+      graphql.query('Me', () =>
+        HttpResponse.json({
+          errors: [{ message: 'Account storage is offline.', extensions: { code: 'UNAVAILABLE' } }],
+        }),
+      ),
+    )
+    renderAppAt('/')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/^Account storage is offline\.$/)
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+  })
+
+  it('shouldNotBlameTheSessionWhenAPageFailsToRender', async () => {
+    let homeRecovered = false
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
+      graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
+      graphql.query('Home', () =>
+        HttpResponse.json({
+          data: { continueWatching: homeRecovered ? [] : null, libraries: [] },
+        }),
+      ),
+    )
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { user } = renderAppAt('/')
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent("Couldn't load this page.")
+    expect(alert).not.toHaveTextContent(/signed in/i)
+    expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
+
+    homeRecovered = true
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByRole('heading', { name: 'Nothing to watch yet' })).toBeInTheDocument()
+    expect(screen.queryByText("Couldn't load this page.")).not.toBeInTheDocument()
   })
 
   it('shouldFailClosedWithAnAlertWhenTheServerCannotAnswer', async () => {
