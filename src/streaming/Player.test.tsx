@@ -1977,6 +1977,21 @@ describe('Player', () => {
       expect(screen.queryByRole('menu')).not.toBeInTheDocument()
     })
 
+    it('shouldCloseThePickerWhenShiftTabReturnsFocusToItsChip', async () => {
+      serveSession()
+      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      await attachedVideo()
+      offerHlsTracks({ audio: [{ name: 'English' }, { name: 'Français' }], audioTrack: 0 })
+      const chip = screen.getByRole('button', { name: 'Audio: English' })
+      await openPicker(user, chip)
+
+      await user.tab({ shift: true })
+
+      expect(chip).toHaveFocus()
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+      expect(chip).toHaveAttribute('aria-expanded', 'false')
+    })
+
     it('shouldSwitchTheElementsOwnTracksFromThePickersOnTheNativePath', async () => {
       hls.supported = false
       serveSession()

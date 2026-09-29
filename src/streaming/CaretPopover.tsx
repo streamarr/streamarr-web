@@ -26,8 +26,8 @@ export interface PopoverOption<Id> {
 
 /**
  * A menu of options above the control bar, its caret pointing down at the anchor that opened it.
- * Focus starts on the chosen row; choosing or Escape returns it to the anchor. A press or focus
- * outside the menu and its anchor dismisses it.
+ * Focus starts on the chosen row; choosing, Escape or Shift+Tab returns it to the anchor. A press
+ * or focus outside the menu and its anchor dismisses it.
  */
 export function CaretPopover<Id>({
   id,
@@ -94,6 +94,17 @@ export function CaretPopover<Id>({
     onChoose(option)
   }
 
+  function handleRowKey(event: ReactKeyboardEvent<HTMLElement>) {
+    // Shift+Tab lands on the anchor, which the outside checks count as part of the menu.
+    if (event.key === 'Tab' && event.shiftKey) {
+      event.preventDefault()
+      anchorRef.current?.focus()
+      onDismiss()
+      return
+    }
+    moveBetweenRows(event)
+  }
+
   return (
     <div ref={surfaceRef} className={styles.popover}>
       <div id={headingId} className={styles.heading}>
@@ -111,7 +122,7 @@ export function CaretPopover<Id>({
               tabIndex={-1}
               className={styles.row}
               onClick={() => choose(option.id)}
-              onKeyDown={moveBetweenRows}
+              onKeyDown={handleRowKey}
             >
               {option.label}
               {checked && <Icon name="check" size={14} />}
