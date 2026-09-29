@@ -348,7 +348,7 @@ describe('SeriesDetailScreen', () => {
     response.resolve()
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      "Couldn't update the watched state. Try again.",
+      /^Couldn't update the watched state\.$/,
     )
     expect(screen.getByRole('button', { name: 'Mark series watched' })).toBeEnabled()
   })
