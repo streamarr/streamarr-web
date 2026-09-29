@@ -37,10 +37,11 @@ export function PlayerControls({
   title?: PlayerTitle
 }>) {
   const [scrub, setScrub] = useState<Scrub | null>(null)
-  const length = Number.isFinite(videoState.duration)
+  const durationKnown = Number.isFinite(videoState.duration)
+  const durationTimecode = durationKnown
     ? formatTimecode(videoState.duration, videoState.duration)
     : null
-  const seekable = attached && length !== null
+  const seekable = attached && durationKnown
   const position = scrub?.seconds ?? videoState.currentTime
 
   function togglePaused() {
@@ -110,7 +111,7 @@ export function PlayerControls({
         thumbLabel="Seek"
         thumbValueText={
           seekable
-            ? (seconds) => `${formatTimecode(seconds, videoState.duration)} of ${length}`
+            ? (seconds) => `${formatTimecode(seconds, videoState.duration)} of ${durationTimecode}`
             : undefined
         }
         onPointerDown={startScrub}
@@ -121,7 +122,10 @@ export function PlayerControls({
         <div className={styles.start}>
           <TitleLine
             title={title}
-            timecode={length && `${formatTimecode(position, videoState.duration)} / ${length}`}
+            timecode={
+              durationTimecode &&
+              `${formatTimecode(position, videoState.duration)} / ${durationTimecode}`
+            }
           />
           <VolumeControl videoRef={videoRef} volume={videoState.volume} muted={videoState.muted} />
         </div>
@@ -259,9 +263,9 @@ function FullscreenButton({ targetRef }: Readonly<{ targetRef: RefObject<HTMLEle
   const [active, setActive] = useState(false)
 
   useEffect(() => {
-    const follow = () => setActive(document.fullscreenElement === targetRef.current)
-    document.addEventListener('fullscreenchange', follow)
-    return () => document.removeEventListener('fullscreenchange', follow)
+    const syncFullscreen = () => setActive(document.fullscreenElement === targetRef.current)
+    document.addEventListener('fullscreenchange', syncFullscreen)
+    return () => document.removeEventListener('fullscreenchange', syncFullscreen)
   }, [targetRef])
 
   if (!document.fullscreenEnabled) {
