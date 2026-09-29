@@ -330,4 +330,41 @@ describe('Picker', () => {
 
     expect(await screen.findByRole('button', { name: /Visiting Alex/ })).toBeInTheDocument()
   })
+
+  it('shouldRetryLoadingProfilesAfterAFailure', async () => {
+    let requests = 0
+    server.use(
+      graphql.query('Me', () => {
+        requests += 1
+        if (requests === 1) {
+          return HttpResponse.json({ errors: [{ message: 'boom' }] })
+        }
+        return HttpResponse.json({ data: { me: meFixture() } })
+      }),
+    )
+    const { user } = renderWithProviders(<PickerHarness onProfileSelected={vi.fn()} />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load your profiles.")
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByRole('heading', { name: "Who's watching?" })).toBeInTheDocument()
+  })
+
+  it('shouldOfferSignOutWhenProfilesFailToLoad', async () => {
+    let revoked = false
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ errors: [{ message: 'boom' }] })),
+      http.post('/api/auth/refresh/revoke', () => {
+        revoked = true
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+    const { user } = renderWithProviders(<PickerHarness onProfileSelected={vi.fn()} />)
+    await screen.findByRole('alert')
+
+    await user.click(screen.getByRole('button', { name: 'Sign out' }))
+
+    await waitFor(() => expect(revoked).toBe(true))
+  })
 })

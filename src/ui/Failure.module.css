@@ -11,6 +11,18 @@
   text-align: center;
 }
 
+.ceremony {
+  align-items: flex-start;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  text-align: start;
+
+  & .actions {
+    justify-content: flex-start;
+  }
+}
+
 .panelCause {
   margin: 0;
   font-size: var(--font-size-subtitle);
