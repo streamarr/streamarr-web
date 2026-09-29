@@ -31,7 +31,6 @@ export function PlayerControls({
   playerRef,
   videoRef,
   videoState,
-  attached,
   tracks,
   openPicker,
   onOpenPicker,
@@ -43,13 +42,14 @@ export function PlayerControls({
   playerRef: RefObject<HTMLElement | null>
   videoRef: RefObject<HTMLVideoElement | null>
   videoState: VideoState
-  attached: boolean
+  /** The attached stream's tracks; null while no stream is attached. */
   tracks: TrackSource | null
   openPicker: TrackPickerKind | null
   onOpenPicker: (kind: TrackPickerKind | null) => void
   title?: PlayerTitle
 }>) {
   const [scrub, setScrub] = useState<Scrub | null>(null)
+  const attached = tracks !== null
   const { audio, subtitles } = useStreamTracks(tracks)
   const durationKnown = Number.isFinite(videoState.duration)
   const timecodeAt = (seconds: number) =>
