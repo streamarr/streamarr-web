@@ -3,21 +3,49 @@ import { act, cleanup, configure, fireEvent, screen, waitFor } from '@testing-li
 import { HttpResponse, graphql } from 'msw'
 import { useState } from 'react'
 import { afterEach, assert, beforeEach, describe, expect, it, vi } from 'vitest'
+import { type FakeTextTrack, giveElementTracks } from '../test/mediaTracks'
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
 import { Player } from './Player'
 
-const hls = vi.hoisted(() => ({
-  loadSource: vi.fn(),
-  attachMedia: vi.fn(),
-  destroy: vi.fn(),
-  on: vi.fn<(event: string, listener: (event: string, data: unknown) => void) => void>(),
-  supported: true,
-}))
+type HlsListener = (event: string, data: unknown) => void
+
+interface HlsTrack {
+  name: string
+  lang?: string
+}
+
+const hls = vi.hoisted(() => {
+  const listeners = new Map<string, Set<HlsListener>>()
+  return {
+    loadSource: vi.fn(),
+    attachMedia: vi.fn(),
+    destroy: vi.fn(),
+    on: vi.fn((event: string, listener: HlsListener) => {
+      listeners.set(event, (listeners.get(event) ?? new Set()).add(listener))
+    }),
+    off: vi.fn((event: string, listener: HlsListener) => {
+      listeners.get(event)?.delete(listener)
+    }),
+    emit: (event: string) => listeners.get(event)?.forEach((listener) => listener(event, {})),
+    listeners,
+    supported: true,
+    audioTracks: [] as HlsTrack[],
+    audioTrack: -1,
+    subtitleTracks: [] as HlsTrack[],
+    subtitleTrack: -1,
+  }
+})
 
 vi.mock('hls.js', () => ({
   default: class {
-    static Events = { ERROR: 'hlsError' }
+    static Events = {
+      ERROR: 'hlsError',
+      AUDIO_TRACKS_UPDATED: 'hlsAudioTracksUpdated',
+      AUDIO_TRACK_SWITCHING: 'hlsAudioTrackSwitching',
+      SUBTITLE_TRACKS_UPDATED: 'hlsSubtitleTracksUpdated',
+      SUBTITLE_TRACK_SWITCH: 'hlsSubtitleTrackSwitch',
+    }
     static isSupported() {
       return hls.supported
     }
@@ -25,6 +53,19 @@ vi.mock('hls.js', () => ({
     attachMedia = hls.attachMedia
     destroy = hls.destroy
     on = hls.on
+    off = hls.off
+    get audioTracks() {
+      return hls.audioTracks
+    }
+    get audioTrack() {
+      return hls.audioTrack
+    }
+    get subtitleTracks() {
+      return hls.subtitleTracks
+    }
+    get subtitleTrack() {
+      return hls.subtitleTrack
+    }
   },
 }))
 
@@ -323,6 +364,33 @@ function playheadAt(video: HTMLVideoElement, seconds: number) {
   fireEvent(video, new Event('timeupdate'))
 }
 
+function offerHlsTracks({
+  audio = [],
+  audioTrack = -1,
+  subtitles = [],
+  subtitleTrack = -1,
+}: {
+  audio?: HlsTrack[]
+  audioTrack?: number
+  subtitles?: HlsTrack[]
+  subtitleTrack?: number
+}) {
+  hls.audioTracks = audio
+  hls.audioTrack = audioTrack
+  hls.subtitleTracks = subtitles
+  hls.subtitleTrack = subtitleTrack
+  act(() => {
+    hls.emit('hlsAudioTracksUpdated')
+    hls.emit('hlsSubtitleTracksUpdated')
+  })
+}
+
+function renderedVideo(): HTMLVideoElement {
+  const video = document.querySelector('video')
+  assert(video, 'no video element rendered')
+  return video
+}
+
 interface StreamPath {
   supported: boolean
   streamingVideo: () => Promise<HTMLVideoElement>
@@ -397,6 +465,11 @@ describe('Player', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     hls.supported = true
+    hls.listeners.clear()
+    hls.audioTracks = []
+    hls.audioTrack = -1
+    hls.subtitleTracks = []
+    hls.subtitleTrack = -1
     server.use(
       graphql.mutation('DestroyStreamSession', () =>
         HttpResponse.json({ data: { destroyStreamSession: true } }),
@@ -1765,6 +1838,97 @@ describe('Player', () => {
       expect(chip).toHaveAttribute('aria-disabled', 'true')
       await user.click(chip)
       expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    })
+
+    it('shouldShowTheStreamsOnlyAudioTrackAndSubtitlesOffOnChipsThatOpenNothing', async () => {
+      serveSession()
+      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      await attachedVideo()
+
+      offerHlsTracks({ audio: [{ name: 'Audio' }], audioTrack: 0 })
+
+      const audio = screen.getByRole('button', { name: 'Audio: Audio' })
+      const subtitles = screen.getByRole('button', { name: 'Subtitles: Off' })
+      expect(audio).toHaveTextContent(/^Audio$/)
+      expect(subtitles).toHaveTextContent(/^Off$/)
+      for (const chip of [audio, subtitles]) {
+        expect(chip).toHaveAttribute('aria-disabled', 'true')
+        await user.click(chip)
+      }
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    })
+
+    it('shouldShowTheSubtitlesInUseOnTheSubtitlesChip', async () => {
+      serveSession()
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      await attachedVideo()
+
+      offerHlsTracks({
+        subtitles: [{ name: 'English' }, { name: 'English (SDH)' }],
+        subtitleTrack: 1,
+      })
+
+      expect(screen.getByRole('button', { name: 'Subtitles: English (SDH)' })).toHaveTextContent(
+        /^English \(SDH\)$/,
+      )
+    })
+
+    it('shouldHoldTheTrackChipsPlacesBeforeTheStreamNamesItsTracks', async () => {
+      serveSession()
+      renderWithProviders(<Player mediaFileId="abcd" />)
+
+      expect(screen.getByRole('button', { name: 'Audio' })).toHaveTextContent(/^$/)
+      expect(screen.getByRole('button', { name: 'Subtitles: Off' })).toBeInTheDocument()
+      await attachedVideo()
+      expect(screen.getByRole('button', { name: 'Audio' })).toHaveTextContent(/^$/)
+    })
+
+    it('shouldForgetTheStreamsTracksOnceAFailureReleasesIt', async () => {
+      serveSession()
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      await attachedVideo()
+      offerHlsTracks({
+        audio: [{ name: 'English' }],
+        audioTrack: 0,
+        subtitles: [{ name: 'English' }],
+        subtitleTrack: 0,
+      })
+
+      raiseHlsFatalError()
+
+      expect(await screen.findByRole('alert')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Audio' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Subtitles: Off' })).toBeInTheDocument()
+    })
+
+    it('shouldShowTheElementsOwnTracksOnTheNativePath', async () => {
+      hls.supported = false
+      serveSession()
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const english: FakeTextTrack = {
+        kind: 'subtitles',
+        label: 'English',
+        language: 'en',
+        mode: 'disabled',
+      }
+      const { textTracks } = giveElementTracks(renderedVideo(), {
+        audio: [
+          { label: '', language: 'fr', enabled: true },
+          { label: 'Commentary', language: 'en', enabled: false },
+        ],
+        text: [english],
+      })
+      await nativeVideo()
+
+      expect(screen.getByRole('button', { name: 'Audio: French' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Subtitles: Off' })).toBeInTheDocument()
+
+      english.mode = 'showing'
+      act(() => {
+        textTracks.dispatchEvent(new Event('change'))
+      })
+
+      expect(screen.getByRole('button', { name: 'Subtitles: English' })).toBeInTheDocument()
     })
 
     it('shouldEnterAndLeaveFullScreenOnThePlayer', async () => {

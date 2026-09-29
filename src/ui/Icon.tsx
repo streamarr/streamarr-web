@@ -1,6 +1,8 @@
 import {
   ArrowLeft,
   ArrowRight,
+  AudioLines,
+  Captions,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -51,6 +53,8 @@ const icons = {
   volume: Volume2,
   muted: VolumeX,
   quality: SlidersHorizontal,
+  'audio-track': AudioLines,
+  subtitles: Captions,
   fullscreen: Maximize,
   'exit-fullscreen': Minimize,
   lock: LockKeyhole,
