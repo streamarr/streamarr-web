@@ -78,6 +78,13 @@ interface Box {
   height: number
 }
 
+async function tapCentre(page: Page, control: Locator) {
+  const box = await control.boundingBox()
+  expect(box, String(control)).not.toBeNull()
+  const { x, y, width, height } = box as Box
+  await page.touchscreen.tap(x + width / 2, y + height / 2)
+}
+
 function overlap(a: Box, b: Box): boolean {
   return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
 }
@@ -175,6 +182,29 @@ test('the controls fade while playing untouched and return on pointer or keyboar
   await expect.poll(() => renderedOpacity(pause)).toBe(0)
   await page.keyboard.press('Shift')
   await expect.poll(() => renderedOpacity(pause)).toBe(1)
+})
+
+test.describe('on a touch screen', () => {
+  test.use({ hasTouch: true })
+
+  test('a tap on the faded controls brings them back and presses nothing', async ({
+    page,
+    request,
+  }) => {
+    await openPlayer(page, request)
+    const back = page.getByRole('button', { name: 'Back', exact: true })
+    const pause = page.getByRole('button', { name: 'Pause' })
+    await page.getByRole('button', { name: 'Play' }).tap()
+    await expect.poll(() => renderedOpacity(back)).toBe(0)
+
+    await tapCentre(page, pause)
+
+    await expect.poll(() => renderedOpacity(back)).toBe(1)
+    await expect(pause).toBeVisible()
+    expect(await page.locator('video').evaluate((video: HTMLVideoElement) => video.paused)).toBe(
+      false,
+    )
+  })
 })
 
 test('the buffering ring shows while the playing video waits for data', async ({

@@ -249,6 +249,12 @@ function moveMouse(to: Element, from: Element) {
   fireEvent.pointerMove(to, { pointerType: 'mouse' })
 }
 
+function tap(target: Element) {
+  fireEvent.pointerDown(target, { pointerType: 'touch' })
+  fireEvent.pointerUp(target, { pointerType: 'touch' })
+  fireEvent.click(target)
+}
+
 function playheadAt(video: HTMLVideoElement, seconds: number) {
   video.currentTime = seconds
   fireEvent(video, new Event('timeupdate'))
@@ -1437,6 +1443,39 @@ describe('Player', () => {
       moveMouse(video, screen.getByRole('button', { name: 'Pause' }))
       await act(async () => vi.advanceTimersByTimeAsync(3_000))
       expect(player).toHaveAttribute('data-idle')
+    })
+
+    it('shouldLetTheTapThatWakesTheFadedControlsPressNothing', async () => {
+      serveSession()
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await attachedVideo()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      await act(() => video.play())
+      await act(async () => vi.advanceTimersByTimeAsync(3_000))
+      const pause = screen.getByRole('button', { name: 'Pause' })
+
+      tap(pause)
+      expect(video.paused).toBe(false)
+      expect(screen.getByRole('region', { name: 'Player' })).not.toHaveAttribute('data-idle')
+
+      tap(pause)
+      expect(video.paused).toBe(true)
+    })
+
+    it('shouldPressOnTheNextTapWhenTheTouchThatWokeTheControlsMadeNoClick', async () => {
+      serveSession()
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await attachedVideo()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      await act(() => video.play())
+      await act(async () => vi.advanceTimersByTimeAsync(3_000))
+      const pause = screen.getByRole('button', { name: 'Pause' })
+
+      fireEvent.pointerDown(pause, { pointerType: 'touch' })
+      fireEvent.pointerCancel(pause, { pointerType: 'touch' })
+      tap(pause)
+
+      expect(video.paused).toBe(true)
     })
 
     it('shouldFadeTheControlsWhileATouchRestsOnTheBar', async () => {
