@@ -1,3 +1,4 @@
+import { useApolloClient } from '@apollo/client/react'
 import { Center, Loader } from '@mantine/core'
 import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
 import { getSetupStatus, ServerStatusUnavailableError } from '../auth/api'
@@ -44,7 +45,13 @@ function CheckingSession() {
 // A rejected probe is an outage, not a verdict: neither bounce nor waive the gate.
 function AuthenticatedLayoutFailure({ error }: Readonly<{ error: unknown }>) {
   const router = useRouter()
-  const retry = () => router.invalidate()
+  const apollo = useApolloClient()
+  // A page that failed to render may have cached the response that broke it; remounting it would
+  // read that response again, so the store refetches before the route runs again.
+  const retry = async () => {
+    await apollo.resetStore().catch(leaveFailuresToTheirQueries)
+    await router.invalidate()
+  }
 
   if (error instanceof ServerStatusUnavailableError) {
     return (
@@ -55,6 +62,10 @@ function AuthenticatedLayoutFailure({ error }: Readonly<{ error: unknown }>) {
   }
 
   return <FailurePanel onRetry={retry}>{entryFailureMessage(error)}</FailurePanel>
+}
+
+function leaveFailuresToTheirQueries() {
+  // An active query that fails its refetch shows its own failure state.
 }
 
 function entryFailureMessage(error: unknown): string {
