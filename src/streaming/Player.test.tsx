@@ -90,14 +90,30 @@ function serveSingleWorkerSlot({
   return activeSessions
 }
 
+async function attachedVideo(streamUrl = STREAM_URL): Promise<HTMLVideoElement> {
+  return videoWhen(() => expect(hls.loadSource).toHaveBeenCalledWith(streamUrl))
+}
+
+// Testing Library's waitFor stalls under faked timers; vi.waitFor advances them while it polls.
+async function videoWhen(
+  expectation: (video: HTMLVideoElement) => void,
+): Promise<HTMLVideoElement> {
+  const video = await act(() =>
+    vi.waitFor(() => {
+      const element = document.querySelector('video')
+      if (!element) {
+        throw new Error('no video element rendered')
+      }
+      expectation(element)
+      return element
+    }),
+  )
+  return fakeMedia(video)
+}
+
 // jsdom's media element has no real timeline; an own property stands in for currentTime so the
 // player's seek is observable and tests can move the playhead before firing events.
-async function attachedVideo(streamUrl = STREAM_URL): Promise<HTMLVideoElement> {
-  await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(streamUrl))
-  const video = document.querySelector('video')
-  if (!video) {
-    throw new Error('no video element rendered')
-  }
+function fakeMedia(video: HTMLVideoElement): HTMLVideoElement {
   Object.defineProperty(video, 'currentTime', { writable: true, value: 0, configurable: true })
   return video
 }
