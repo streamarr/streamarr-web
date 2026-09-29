@@ -1,12 +1,12 @@
 import Hls, { type MediaPlaylist } from 'hls.js'
 
-export interface TrackOption {
+interface TrackOption {
   id: number
   label: string
 }
 
 /** The tracks of one kind a stream offers, and the one in use; null when none is. */
-export interface TrackChoice {
+interface TrackChoice {
   options: readonly TrackOption[]
   selected: number | null
 }

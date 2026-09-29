@@ -11,13 +11,9 @@ export interface FakeTextTrack {
   mode: TextTrackMode
 }
 
-/**
- * A media element's track list as a browser builds one: indexed tracks on an event target, which
- * announces a change whenever a track is switched on or off.
- */
-export function fakeTrackList<Track extends object>(
-  tracks: Track[],
-): EventTarget & ArrayLike<Track> {
+// A media element's track list as a browser builds one: indexed tracks on an event target, which
+// announces a change whenever a track is switched on or off.
+function fakeTrackList<Track extends object>(tracks: Track[]): EventTarget & ArrayLike<Track> {
   const list = new EventTarget()
   for (const track of tracks) {
     announceSwitches(track, list)
