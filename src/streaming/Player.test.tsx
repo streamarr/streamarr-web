@@ -39,11 +39,17 @@ interface TimelineReport {
 }
 
 function serveSession(): TimelineReport[] {
-  const reports: TimelineReport[] = []
   server.use(
     graphql.mutation('CreateStreamSession', () =>
       HttpResponse.json({ data: { createStreamSession: { session: SESSION, userErrors: [] } } }),
     ),
+  )
+  return recordTimelineReports()
+}
+
+function recordTimelineReports(): TimelineReport[] {
+  const reports: TimelineReport[] = []
+  server.use(
     graphql.mutation('ReportStreamSessionTimeline', ({ variables }) => {
       reports.push(variables as unknown as TimelineReport)
       return HttpResponse.json({ data: { reportStreamSessionTimeline: true } })
@@ -141,14 +147,15 @@ async function videoWhen(
   return fakeMedia(video)
 }
 
-// jsdom's media element has no real timeline and cannot load. Own properties stand in for
-// currentTime, so the player's seek is observable and tests can move the playhead, and for load(),
-// whose reset rewinds the playhead with a timeupdate as a browser's does.
+// jsdom's media element has no timeline and cannot load. Own currentTime and readyState let tests
+// observe the seek, move the playhead and load the stream; load() resets both as a browser does.
 function fakeMedia(video: HTMLVideoElement): HTMLVideoElement {
   Object.defineProperty(video, 'currentTime', { writable: true, value: 0, configurable: true })
+  setReadyState(video, HTMLMediaElement.HAVE_NOTHING)
   Object.defineProperty(video, 'load', {
     configurable: true,
     value: () => {
+      setReadyState(video, HTMLMediaElement.HAVE_NOTHING)
       if (video.currentTime === 0) {
         return
       }
@@ -157,6 +164,15 @@ function fakeMedia(video: HTMLVideoElement): HTMLVideoElement {
     },
   })
   return video
+}
+
+function setReadyState(video: HTMLVideoElement, readyState: number) {
+  Object.defineProperty(video, 'readyState', { value: readyState, configurable: true })
+}
+
+function loadMetadata(video: HTMLVideoElement) {
+  setReadyState(video, HTMLMediaElement.HAVE_METADATA)
+  fireEvent(video, new Event('loadedmetadata'))
 }
 
 function raiseHlsFatalError() {
@@ -859,7 +875,7 @@ describe('Player', () => {
       renderWithProviders(<Player mediaFileId="abcd" />)
       const video = await streamingVideo()
 
-      fireEvent(video, new Event('loadedmetadata'))
+      loadMetadata(video)
       await act(async () => vi.advanceTimersByTimeAsync(30_000))
 
       vi.useRealTimers()
@@ -910,7 +926,7 @@ describe('Player', () => {
     renderWithProviders(<Player mediaFileId="abcd" />)
     const video = await nativeVideo()
 
-    fireEvent(video, new Event('loadedmetadata'))
+    loadMetadata(video)
     fireEvent(video, new Event('suspend'))
     fireEvent(video, new Event('play'))
     await act(async () => vi.advanceTimersByTimeAsync(60_000))
@@ -961,7 +977,7 @@ describe('Player', () => {
     renderWithProviders(<Player mediaFileId="abcd" startPositionSeconds={120} />)
     const video = await attachedVideo()
 
-    fireEvent(video, new Event('loadedmetadata'))
+    loadMetadata(video)
 
     expect(video.currentTime).toBe(120)
   })
@@ -971,7 +987,7 @@ describe('Player', () => {
     renderWithProviders(<Player mediaFileId="abcd" />)
     const video = await attachedVideo()
 
-    fireEvent(video, new Event('loadedmetadata'))
+    loadMetadata(video)
 
     expect(video.currentTime).toBe(0)
   })
