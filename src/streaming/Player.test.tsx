@@ -255,6 +255,14 @@ function tap(target: Element) {
   fireEvent.click(target)
 }
 
+// jsdom lays nothing out; the seek slider turns a pointer's x into a position across 1000 pixels.
+function layOutSeekTrack() {
+  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
+    ...{ x: 0, y: 0, left: 0, top: 0, right: 1000, bottom: 20, width: 1000, height: 20 },
+    toJSON: () => ({}),
+  })
+}
+
 function playheadAt(video: HTMLVideoElement, seconds: number) {
   video.currentTime = seconds
   fireEvent(video, new Event('timeupdate'))
@@ -1302,10 +1310,7 @@ describe('Player', () => {
 
     it('shouldPauseWhileScrubbingAndSeekOnRelease', async () => {
       serveSession()
-      vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
-        ...{ x: 0, y: 0, left: 0, top: 0, right: 1000, bottom: 20, width: 1000, height: 20 },
-        toJSON: () => ({}),
-      })
+      layOutSeekTrack()
       const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
       const video = await seekableVideo(2000)
       await user.click(screen.getByRole('button', { name: 'Play' }))
