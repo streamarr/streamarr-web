@@ -12,9 +12,12 @@ import {
   Folder,
   LockKeyhole,
   LogOut,
+  Pause,
   Play,
   Plus,
   RefreshCw,
+  RotateCcw,
+  RotateCw,
   ScanLine,
   Settings,
   TriangleAlert,
@@ -37,6 +40,9 @@ const icons = {
   check: Check,
   'watched-action': CircleCheck,
   play: Play,
+  pause: Pause,
+  'skip-back': RotateCcw,
+  'skip-forward': RotateCw,
   lock: LockKeyhole,
   'sign-out': LogOut,
   'show-password': Eye,
@@ -51,7 +57,7 @@ const icons = {
 /** Approved semantic names from streamarr-ux's ICONOGRAPHY.md. */
 export type IconName = keyof typeof icons
 
-const FILLED = new Set<IconName>(['play'])
+const FILLED = new Set<IconName>(['play', 'pause'])
 
 /** Shared icon geometry; colors come from the surrounding control's currentColor. */
 export interface IconProps {

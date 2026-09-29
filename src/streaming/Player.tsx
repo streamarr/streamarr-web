@@ -15,6 +15,8 @@ import { DetailBackButton } from '../media/DetailBack'
 import { invalidateWatchedState } from '../media/watchedState'
 import focusStyles from '../styles/focus.module.css'
 import styles from './Player.module.css'
+import { PlayerControls, type PlayerTitle } from './PlayerControls'
+import { useVideoState } from './useVideoState'
 
 // Progress is only worth a round trip once the playhead has moved this far since the last report.
 const TIMELINE_REPORT_INTERVAL_SECONDS = 10
@@ -31,15 +33,19 @@ const pendingCleanups = new WeakMap<ApolloClient, () => Promise<void>>()
 export function Player({
   mediaFileId,
   startPositionSeconds,
+  title,
 }: Readonly<{
   mediaFileId: string
   startPositionSeconds?: number
+  title?: PlayerTitle
 }>) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [createStreamSession] = useMutation(CreateStreamSessionDocument)
   const client = useApolloClient()
   const [failure, setFailure] = useState<string | null>(null)
   const [attempt, setAttempt] = useState(0)
+  const [attached, setAttached] = useState(false)
+  const video = useVideoState(videoRef)
 
   useEffect(() => {
     const video = videoRef.current
@@ -155,6 +161,7 @@ export function Player({
             showFailure(PLAYBACK_FAILURE_MESSAGE)
           },
         })
+        setAttached(true)
       })
       .catch(() => {
         if (!cancelled) {
@@ -197,6 +204,7 @@ export function Player({
       timeline.detach()
       source?.detach()
       source = null
+      setAttached(false)
     }
 
     function requestCleanup() {
@@ -218,7 +226,7 @@ export function Player({
 
   return (
     <div className={`${styles.player} ${focusStyles.focusRing}`}>
-      <video ref={videoRef} className={styles.video} controls />
+      <video ref={videoRef} className={styles.video} playsInline />
       {failure && (
         <Alert className={styles.failure} color="red" role="alert">
           {failure}
@@ -230,6 +238,7 @@ export function Player({
       <div className={styles.back}>
         <DetailBackButton />
       </div>
+      <PlayerControls videoRef={videoRef} video={video} attached={attached} title={title} />
     </div>
   )
 }

@@ -149,11 +149,29 @@ async function videoWhen(
 
 // jsdom's media element has no timeline and cannot load or play. Own currentTime, readyState and
 // paused let tests observe the seek, move the playhead, load the stream and press play; load()
-// resets the playhead and ready state as a browser does.
+// resets the playhead and ready state as a browser does, and play() and pause() flip paused.
 function fakeMedia(video: HTMLVideoElement): HTMLVideoElement {
   Object.defineProperty(video, 'currentTime', { writable: true, value: 0, configurable: true })
   Object.defineProperty(video, 'paused', { writable: true, value: true, configurable: true })
+  setDuration(video, Number.NaN)
   setReadyState(video, HTMLMediaElement.HAVE_NOTHING)
+  Object.defineProperty(video, 'play', {
+    configurable: true,
+    value: () => {
+      if (video.paused) {
+        pressPlay(video)
+      }
+      return Promise.resolve()
+    },
+  })
+  Object.defineProperty(video, 'pause', {
+    configurable: true,
+    value: () => {
+      if (!video.paused) {
+        pressPause(video)
+      }
+    },
+  })
   Object.defineProperty(video, 'load', {
     configurable: true,
     value: () => {
@@ -170,6 +188,26 @@ function fakeMedia(video: HTMLVideoElement): HTMLVideoElement {
 
 function setReadyState(video: HTMLVideoElement, readyState: number) {
   Object.defineProperty(video, 'readyState', { value: readyState, configurable: true })
+}
+
+function setDuration(video: HTMLVideoElement, seconds: number) {
+  Object.defineProperty(video, 'duration', { value: seconds, configurable: true })
+}
+
+function loadDuration(video: HTMLVideoElement, seconds: number) {
+  setDuration(video, seconds)
+  fireEvent(video, new Event('durationchange'))
+}
+
+async function seekableVideo(durationSeconds: number): Promise<HTMLVideoElement> {
+  const video = await attachedVideo()
+  loadDuration(video, durationSeconds)
+  return video
+}
+
+// Matches the one element whose whole text reads `text`, across the spans that style its parts.
+function wholeText(text: string) {
+  return (_content: string, element: Element | null) => element?.textContent === text
 }
 
 function loadMetadata(video: HTMLVideoElement) {
@@ -1159,5 +1197,130 @@ describe('Player', () => {
 
     await waitFor(() => expect(reports).toHaveLength(2))
     expect(reports[1]).toEqual({ sessionId: 'sess-1', positionSeconds: 42, state: 'STOPPED' })
+  })
+
+  describe('controls', () => {
+    it('shouldHandPlaybackToTheControlBarInsteadOfTheBrowserControls', async () => {
+      serveSession()
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      expect(screen.getByRole('button', { name: 'Play' })).toBeDisabled()
+
+      const video = await attachedVideo()
+
+      expect(video).not.toHaveAttribute('controls')
+      expect(video).toHaveAttribute('playsinline')
+      expect(screen.getByRole('button', { name: 'Play' })).toBeEnabled()
+    })
+
+    it('shouldPlayAndPauseFromTheRoundButton', async () => {
+      serveSession()
+      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await attachedVideo()
+
+      await user.click(screen.getByRole('button', { name: 'Play' }))
+      expect(video.paused).toBe(false)
+
+      await user.click(screen.getByRole('button', { name: 'Pause' }))
+      expect(video.paused).toBe(true)
+      expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument()
+    })
+
+    it('shouldHoldSeekingUntilTheDurationIsKnown', async () => {
+      serveSession()
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await attachedVideo()
+      expect(screen.getByRole('button', { name: 'Back 10 seconds' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Forward 10 seconds' })).toBeDisabled()
+      expect(screen.getByRole('slider', { name: 'Seek' })).toHaveAttribute('aria-disabled', 'true')
+
+      loadDuration(video, 2824)
+
+      expect(screen.getByRole('button', { name: 'Back 10 seconds' })).toBeEnabled()
+      expect(screen.getByRole('button', { name: 'Forward 10 seconds' })).toBeEnabled()
+      expect(screen.getByRole('slider', { name: 'Seek' })).toHaveAttribute('aria-disabled', 'false')
+    })
+
+    it('shouldSkipTenSecondsWithinTheVideo', async () => {
+      serveSession()
+      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await seekableVideo(45)
+      playheadAt(video, 30)
+
+      await user.click(screen.getByRole('button', { name: 'Forward 10 seconds' }))
+      expect(video.currentTime).toBe(40)
+      await user.click(screen.getByRole('button', { name: 'Forward 10 seconds' }))
+      expect(video.currentTime).toBe(45)
+
+      playheadAt(video, 4)
+      await user.click(screen.getByRole('button', { name: 'Back 10 seconds' }))
+      expect(video.currentTime).toBe(0)
+    })
+
+    it('shouldSeekFromTheSeekSliderByKeyboardWithoutPausing', async () => {
+      const reports = serveSession()
+      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await seekableVideo(2824)
+      await user.click(screen.getByRole('button', { name: 'Play' }))
+      playheadAt(video, 30)
+      const seek = screen.getByRole('slider', { name: 'Seek' })
+      expect(seek).toHaveAttribute('aria-valuetext', '0:30 of 47:04')
+
+      act(() => seek.focus())
+      await user.keyboard('{ArrowRight}')
+      expect(video.currentTime).toBe(31)
+      await user.keyboard('{End}')
+      expect(video.currentTime).toBe(2824)
+
+      expect(video.paused).toBe(false)
+      expect(reports.filter((report) => report.state === 'PAUSED')).toEqual([])
+    })
+
+    it('shouldPauseWhileScrubbingAndSeekOnRelease', async () => {
+      serveSession()
+      vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
+        ...{ x: 0, y: 0, left: 0, top: 0, right: 1000, bottom: 20, width: 1000, height: 20 },
+        toJSON: () => ({}),
+      })
+      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await seekableVideo(2000)
+      await user.click(screen.getByRole('button', { name: 'Play' }))
+      const seek = screen.getByRole('slider', { name: 'Seek' })
+
+      await user.pointer({ keys: '[MouseLeft>]', target: seek, coords: { clientX: 250 } })
+      expect(video.paused).toBe(true)
+      expect(await screen.findByText('8:20 / 33:20')).toBeInTheDocument()
+      expect(video.currentTime).toBe(0)
+
+      await user.pointer({ keys: '[/MouseLeft]', target: seek })
+      await waitFor(() => expect(video.currentTime).toBe(500))
+      expect(video.paused).toBe(false)
+    })
+
+    it('shouldShowTheTimecodeAndTitleInTheTitleLine', async () => {
+      serveSession()
+      renderWithProviders(
+        <Player
+          mediaFileId="abcd"
+          title={{ heading: 'Northern Line', detail: 'S2 E5 — Breakage' }}
+        />,
+      )
+      const video = await seekableVideo(2824)
+
+      playheadAt(video, 1392)
+
+      expect(screen.getByText('Northern Line')).toBeInTheDocument()
+      expect(screen.getByText(wholeText('S2 E5 — Breakage · 23:12 / 47:04'))).toBeInTheDocument()
+    })
+
+    it('shouldShowTheTimecodeAloneOnceTheDurationIsKnownWithoutATitle', async () => {
+      serveSession()
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await attachedVideo()
+      expect(screen.queryByText(/ \/ /)).not.toBeInTheDocument()
+
+      loadDuration(video, 2824)
+
+      expect(screen.getByText('0:00 / 47:04')).toBeInTheDocument()
+    })
   })
 })

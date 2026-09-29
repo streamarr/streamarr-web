@@ -1,0 +1,149 @@
+.bar {
+  position: absolute;
+  left: var(--spacing-page);
+  right: var(--spacing-page);
+  bottom: 36px;
+  border-radius: var(--radius-2xl);
+  background: var(--surface-chrome);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+/* The seek track runs along the bar's top edge; its hit area reaches above and below it. */
+.bar .seek {
+  position: absolute;
+  top: -8px;
+  left: 0;
+  right: 0;
+  height: 20px;
+}
+
+.bar .seekHit {
+  height: 20px;
+}
+
+.bar .seekTrack::before {
+  background-color: rgba(255, 255, 255, 0.22);
+}
+
+.bar .seekFill {
+  background-color: var(--color-white);
+}
+
+.bar .seekFill[data-disabled] {
+  visibility: hidden;
+}
+
+.bar .seekThumb {
+  border: none;
+  background-color: var(--color-white);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--spacing-24);
+  padding: var(--spacing-20) var(--spacing-24) var(--spacing-16);
+}
+
+.start {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-24);
+  min-width: 0;
+}
+
+.titleLine {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.heading,
+.detail {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.heading {
+  font-size: var(--font-size-emphasis);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+.detail {
+  min-height: 1lh;
+  font-size: var(--font-size-body);
+  color: var(--text-secondary);
+}
+
+.timecode {
+  font-family: var(--font-family-system);
+  font-variant-numeric: tabular-nums;
+}
+
+.transport {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+}
+
+.skip,
+.playPause {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  font: inherit;
+  cursor: pointer;
+}
+
+.skip {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  background: none;
+  color: var(--color-white);
+}
+
+.skipLabel {
+  position: absolute;
+  font-size: var(--font-size-micro);
+  font-weight: var(--font-weight-bold);
+}
+
+.playPause {
+  width: 52px;
+  height: 52px;
+  background: var(--selection-active);
+  color: var(--color-white);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--selection-active) 32%, transparent);
+}
+
+.playGlyph {
+  margin-inline-start: 2px;
+}
+
+.skip:disabled,
+.playPause:disabled {
+  color: var(--text-tertiary);
+  cursor: default;
+}
+
+.playPause:disabled {
+  background: var(--surface-panel);
+  box-shadow: none;
+}
+
+.end {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--spacing-8);
+  min-width: 0;
+}

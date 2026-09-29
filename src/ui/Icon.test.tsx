@@ -3,16 +3,18 @@ import { describe, expect, it } from 'vitest'
 import { Icon } from './Icon'
 
 describe('Icon', () => {
-  it('shouldFillThePlayGlyphAndOutlineTheRest', () => {
+  it('shouldFillThePlayAndPauseGlyphsAndOutlineTheRest', () => {
     const { container } = render(
       <>
         <Icon name="play" />
+        <Icon name="pause" />
         <Icon name="arrow-left" />
       </>,
     )
 
-    const [play, back] = container.querySelectorAll('svg')
+    const [play, pause, back] = container.querySelectorAll('svg')
     expect(play).toHaveAttribute('fill', 'currentColor')
+    expect(pause).toHaveAttribute('fill', 'currentColor')
     expect(back).toHaveAttribute('fill', 'none')
   })
 })
