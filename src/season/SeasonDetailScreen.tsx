@@ -21,7 +21,9 @@ type Episode = NonNullable<Season['episodes'][number]>
 type Sibling = NonNullable<Season['series']['seasons'][number]>
 
 export function SeasonDetailScreen({ seasonId }: Readonly<{ seasonId: string }>) {
-  const { data, loading, error } = useQuery(SeasonDetailDocument, { variables: { id: seasonId } })
+  const { data, loading, error, refetch } = useQuery(SeasonDetailDocument, {
+    variables: { id: seasonId },
+  })
   const bulkWatched = useBulkWatchedAction({ kind: 'season', id: seasonId, detail: data?.season })
   const navigate = useNavigate()
   const season = data?.season
@@ -32,7 +34,7 @@ export function SeasonDetailScreen({ seasonId }: Readonly<{ seasonId: string }>)
   usePublishAmbientTheme(ambient?.theme ?? null)
 
   if (loading || error || !season) {
-    return <MediaTitleFallback kind="season" loading={loading} />
+    return <MediaTitleFallback kind="season" loading={loading} error={error} onRetry={refetch} />
   }
 
   const series = season.series

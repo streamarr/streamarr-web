@@ -1,6 +1,7 @@
 import { useQuery } from '@apollo/client/react'
-import { Alert, Center, Loader, Text } from '@mantine/core'
+import { Center, Loader, Text } from '@mantine/core'
 import { HomeDocument, type HomeQuery } from '../graphql/generated/graphql'
+import { requestFailureMessage } from '../graphql/requestErrors'
 import { definedEdges } from '../media/edges'
 import {
   billboardFromContinueWatching,
@@ -14,9 +15,10 @@ import { RecentlyAddedRail } from './RecentlyAddedRail'
 import { useMe } from '../identity/useMe'
 import { canManageServer } from '../admin/access'
 import { EmptyLibraries } from '../admin/libraries/EmptyLibraries'
+import { FailurePanel } from '../ui/Failure'
 
 export function Home() {
-  const { data, loading, error } = useQuery(HomeDocument)
+  const { data, loading, error, refetch } = useQuery(HomeDocument)
   const { data: identity } = useMe()
 
   if (loading) {
@@ -29,9 +31,9 @@ export function Home() {
 
   if (error || !data) {
     return (
-      <Alert color="red" role="alert">
-        Couldn't load your library. Try again.
-      </Alert>
+      <FailurePanel onRetry={refetch}>
+        {requestFailureMessage(error, "Couldn't load your library.")}
+      </FailurePanel>
     )
   }
 
