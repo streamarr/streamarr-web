@@ -335,6 +335,20 @@ describe('the authenticated layout', () => {
     expect(router.state.location.pathname).toBe('/')
   })
 
+  it('shouldShowTheServersWordsWhenTheSessionCheckFails', async () => {
+    server.use(
+      graphql.query('Me', () =>
+        HttpResponse.json({
+          errors: [{ message: 'Account storage is offline.', extensions: { code: 'UNAVAILABLE' } }],
+        }),
+      ),
+    )
+    renderAppAt('/')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/^Account storage is offline\.$/)
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+  })
+
   it('shouldNotBlameTheSessionWhenAPageFailsToRender', async () => {
     server.use(
       graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),

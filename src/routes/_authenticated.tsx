@@ -4,6 +4,7 @@ import { getSetupStatus, ServerStatusUnavailableError } from '../auth/api'
 import { CSRF_REJECTION_CAUSE, isCsrfRejection } from '../auth/csrf'
 import { SessionUnconfirmedError, type SessionStore } from '../auth/session'
 import { extractAuthContext } from '../graphql/errorRouting'
+import { requestFailureMessage } from '../graphql/requestErrors'
 import { FailurePanel } from '../ui/Failure'
 
 // Only the server's answer counts (the httpOnly cookies are unreadable), and only on arrival:
@@ -64,5 +65,5 @@ function entryFailureMessage(error: unknown): string {
   if (isCsrfRejection(context.networkStatus, context.networkCode)) {
     return CSRF_REJECTION_CAUSE
   }
-  return error.message
+  return requestFailureMessage(error.cause, error.message)
 }
