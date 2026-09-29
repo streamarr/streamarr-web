@@ -194,7 +194,7 @@ export function PlayerControls({
             icon="subtitles"
             options={[SUBTITLES_OFF, ...subtitles.options]}
             selected={subtitles.selected}
-            marked={subtitles.selected !== null}
+            showsActiveTrack={subtitles.selected !== null}
             open={openPicker === 'subtitles'}
             onOpenChange={(open) => onOpenPicker(open ? 'subtitles' : null)}
             onChoose={(id) => tracks?.selectSubtitles(id)}
@@ -302,7 +302,7 @@ function TrackPicker<Id extends number | null>({
   icon,
   options,
   selected,
-  marked,
+  showsActiveTrack,
   open,
   onOpenChange,
   onChoose,
@@ -311,7 +311,7 @@ function TrackPicker<Id extends number | null>({
   icon: IconName
   options: readonly PopoverOption<Id>[]
   selected: Id | null
-  marked?: boolean
+  showsActiveTrack?: boolean
   open: boolean
   onOpenChange: (open: boolean) => void
   onChoose: (id: Id) => void
@@ -329,7 +329,7 @@ function TrackPicker<Id extends number | null>({
         name={name}
         icon={icon}
         value={options.find((option) => option.id === selected)?.label}
-        marked={marked}
+        showsActiveTrack={showsActiveTrack}
         menu={menu}
       />
       {choosable && open && (
@@ -361,16 +361,13 @@ function StatusChip({
   name,
   icon,
   value,
-  marked = false,
+  showsActiveTrack = false,
   menu,
 }: Readonly<{
   name: string
   icon: IconName
-  /** Omitted while the setting has no known value. */
   value?: string
-  /** Whether the setting is on, such as subtitles showing. */
-  marked?: boolean
-  /** The menu the chip opens; without one it only shows the setting. */
+  showsActiveTrack?: boolean
   menu?: ChipMenu
 }>) {
   return (
@@ -385,7 +382,7 @@ function StatusChip({
       aria-controls={menu?.open ? menu.id : undefined}
       onClick={menu?.toggle}
     >
-      {marked && <span className={styles.activeTrack} />}
+      {showsActiveTrack && <span className={styles.activeTrack} />}
       <Icon name={icon} size={16} />
       {value && <span className={styles.chipValue}>{value}</span>}
     </button>
