@@ -339,7 +339,7 @@ describe('/library/$libraryId', () => {
     await user.click(screen.getByRole('button', { name: 'N' }))
 
     const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent("Couldn't load more of this library.")
+    expect(alert).toHaveTextContent(/^Couldn't load these titles\.$/)
     expect(grid).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Alright/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'A' })).toHaveAttribute('aria-pressed', 'true')

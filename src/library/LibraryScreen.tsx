@@ -198,7 +198,7 @@ export function LibraryScreen({
 
       {error && (
         <FailureRow onRetry={retry}>
-          {requestFailureMessage(error, "Couldn't load more of this library.")}
+          {requestFailureMessage(error, "Couldn't load these titles.")}
         </FailureRow>
       )}
 
