@@ -191,29 +191,23 @@ test('the buffering ring shows while the playing video waits for data', async ({
   expect(box && { x: box.x + box.width / 2, width: box.width }).toEqual({ x: 1512 / 2, width: 54 })
 })
 
-test('the control bar fits a phone', async ({ page, request }) => {
-  await page.setViewportSize({ width: 375, height: 667 })
-  await openPlayer(page, request)
+const LAYOUTS = [
+  { device: 'a phone', viewport: { width: 375, height: 667 }, volumeShown: false },
+  { device: 'a tablet', viewport: { width: 820, height: 1180 }, volumeShown: false },
+  { device: 'a small laptop', viewport: { width: 1024, height: 768 }, volumeShown: true },
+]
 
-  await expect(page.getByRole('slider', { name: 'Volume' })).toBeHidden()
-  await expectControlsApart(page, barControls(page))
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(375)
-})
+for (const { device, viewport, volumeShown } of LAYOUTS) {
+  test(`the control bar keeps its controls apart on ${device}`, async ({ page, request }) => {
+    await page.setViewportSize(viewport)
+    await openPlayer(page, request)
+    const volume = page.getByRole('slider', { name: 'Volume' })
 
-test('the control bar keeps its controls apart on a tablet', async ({ page, request }) => {
-  await page.setViewportSize({ width: 820, height: 1180 })
-  await openPlayer(page, request)
-
-  await expect(page.getByRole('slider', { name: 'Volume' })).toBeHidden()
-  await expectControlsApart(page, barControls(page))
-})
-
-test('the control bar keeps its controls apart on a small laptop', async ({ page, request }) => {
-  await page.setViewportSize({ width: 1024, height: 768 })
-  await openPlayer(page, request)
-
-  await expectControlsApart(page, [
-    ...barControls(page),
-    page.getByRole('slider', { name: 'Volume' }),
-  ])
-})
+    await expect(volume).toBeVisible({ visible: volumeShown })
+    await expectControlsApart(
+      page,
+      volumeShown ? [...barControls(page), volume] : barControls(page),
+    )
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(viewport.width)
+  })
+}
