@@ -1,6 +1,7 @@
 import { screen, waitFor } from '@testing-library/react'
 import { HttpResponse, graphql, http } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
+import { HomeDocument } from '../graphql/generated/graphql'
 import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
 import { meFixture, profileFixture } from '../test/meFixture'
@@ -298,6 +299,23 @@ describe('the authenticated layout', () => {
     expect(router.state.location.pathname).toBe('/login')
   })
 
+  it('shouldRetryTheSetupCheckAfterAnOutage', async () => {
+    server.use(
+      http.post('/graphql', () =>
+        HttpResponse.json({ code: 'AUTHENTICATION_REQUIRED' }, { status: 401 }),
+      ),
+      http.get('/api/auth/status', () => HttpResponse.json({}, { status: 503 }), { once: true }),
+      setupStatus(false),
+    )
+    const { router, user } = renderAppAt('/')
+    await screen.findByRole('alert')
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByRole('button', { name: /create account/i })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/setup-server')
+  })
+
   it('shouldRetryTheSessionCheckAfterAnOutage', async () => {
     server.use(
       http.post('/graphql', () => HttpResponse.json({}, { status: 500 }), { once: true }),
@@ -326,13 +344,18 @@ describe('the authenticated layout', () => {
       ),
     )
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    renderAppAt('/')
+    const { apolloClient, user } = renderAppAt('/')
 
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent("Couldn't load this page.")
     expect(alert).not.toHaveTextContent(/signed in/i)
-    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
+
+    apolloClient.writeQuery({ query: HomeDocument, data: { continueWatching: [], libraries: [] } })
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByRole('heading', { name: 'Nothing to watch yet' })).toBeInTheDocument()
+    expect(screen.queryByText("Couldn't load this page.")).not.toBeInTheDocument()
   })
 
   it('shouldFailClosedWithAnAlertWhenTheServerCannotAnswer', async () => {
