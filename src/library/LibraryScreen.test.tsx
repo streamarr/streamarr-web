@@ -200,12 +200,27 @@ describe('LibraryScreen', () => {
     expect(screen.queryByText('No items match this filter.')).not.toBeInTheDocument()
   })
 
-  it('shows an error state when the query fails', async () => {
+  it('shouldRetryTheLibraryAfterItFailsToLoad', async () => {
+    let requests = 0
     server.use(
-      graphql.query('LibraryPage', () => HttpResponse.json({ errors: [{ message: 'boom' }] })),
+      graphql.query('LibraryPage', () => {
+        requests += 1
+        return requests === 1
+          ? HttpResponse.json({ errors: [{ message: 'boom' }] })
+          : HttpResponse.json({ data: libraryData() })
+      }),
     )
-    renderWithProviders(<Harness />)
-    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+    const { user } = renderWithProviders(<Harness />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load this library.")
+    expect(screen.queryByText(/boom/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByRole('heading', { name: 'Movies' })).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(requests).toBe(2)
   })
 
   it('renders the header with item count and relative scan time', async () => {

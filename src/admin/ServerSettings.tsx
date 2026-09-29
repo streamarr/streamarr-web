@@ -2,8 +2,9 @@ import { useQuery } from '@apollo/client/react'
 import { Alert, Center, Loader } from '@mantine/core'
 import { Link, Outlet } from '@tanstack/react-router'
 import { MeDocument } from '../graphql/generated/graphql'
+import { requestFailureMessage } from '../graphql/requestErrors'
+import { FailurePanel } from '../ui/Failure'
 import { Icon } from '../ui/Icon'
-import { RetryAlert } from '../ui/RetryAlert'
 import { canManageServer } from './access'
 import styles from './Settings.module.css'
 
@@ -15,7 +16,9 @@ export function ServerSettings() {
 
   if (error)
     return (
-      <RetryAlert onRetry={refetch}>Couldn't confirm your access to server settings.</RetryAlert>
+      <FailurePanel onRetry={refetch}>
+        {requestFailureMessage(error, "Couldn't confirm your access to server settings.")}
+      </FailurePanel>
     )
   if (!data)
     return (
