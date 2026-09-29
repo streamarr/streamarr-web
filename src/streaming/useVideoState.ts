@@ -18,12 +18,10 @@ const VIDEO_EVENTS = [
   'pause',
   'playing',
   'waiting',
-  'canplay',
   'timeupdate',
   'seeking',
   'durationchange',
   'volumechange',
-  'loadedmetadata',
   'resize',
   'emptied',
 ] as const
