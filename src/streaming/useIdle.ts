@@ -1,4 +1,4 @@
-import { type RefObject, useEffect, useRef, useState } from 'react'
+import { type RefObject, useEffect, useEffectEvent, useRef, useState } from 'react'
 
 const IDLE_AFTER_MS = 3_000
 const WAKE_EVENTS = ['pointermove', 'keydown'] as const
@@ -16,16 +16,17 @@ export function useIdle(
   if (held && idle) {
     setIdle(false)
   }
+  const isOnChrome = useEffectEvent(
+    (target: EventTarget | null) =>
+      target instanceof Node && chromeRefs.some((chrome) => chrome.current?.contains(target)),
+  )
 
   // Enter and leave events cannot say where the mouse is: a browser sends no leave when the
   // element under the mouse is replaced, such as a glyph that changes on click.
   useEffect(() => {
     const trackMouseOverChrome = (event: PointerEvent) => {
       const under = event.type === 'pointerout' ? event.relatedTarget : event.target
-      mouseOnChrome.current =
-        event.pointerType === 'mouse' &&
-        under instanceof Node &&
-        chromeRefs.some((chrome) => chrome.current?.contains(under))
+      mouseOnChrome.current = event.pointerType === 'mouse' && isOnChrome(under)
     }
     document.addEventListener('pointermove', trackMouseOverChrome)
     document.addEventListener('pointerout', trackMouseOverChrome)
@@ -33,7 +34,7 @@ export function useIdle(
       document.removeEventListener('pointermove', trackMouseOverChrome)
       document.removeEventListener('pointerout', trackMouseOverChrome)
     }
-  }, [chromeRefs])
+  }, [])
 
   useEffect(() => {
     if (held) {
