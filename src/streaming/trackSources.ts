@@ -11,7 +11,7 @@ export interface TrackChoice {
   selected: number | null
 }
 
-export interface PlaybackTracks {
+export interface StreamTracks {
   audio: TrackChoice
   subtitles: TrackChoice
 }
@@ -19,14 +19,14 @@ export interface PlaybackTracks {
 /** The audio and subtitle tracks of one attached stream. */
 export interface TrackSource {
   /** Returns the same object until the tracks, or the choice among them, change. */
-  read: () => PlaybackTracks
+  read: () => StreamTracks
   subscribe: (onChange: () => void) => () => void
   selectAudio: (id: number) => void
   /** Null turns subtitles off. */
   selectSubtitles: (id: number | null) => void
 }
 
-export const NO_TRACKS: PlaybackTracks = {
+export const NO_TRACKS: StreamTracks = {
   audio: { options: [], selected: null },
   subtitles: { options: [], selected: null },
 }
@@ -211,7 +211,7 @@ function languageName(code: string | undefined): string | undefined {
   }
 }
 
-function unchangedUntilDifferent(read: () => PlaybackTracks): () => PlaybackTracks {
+function unchangedUntilDifferent(read: () => StreamTracks): () => StreamTracks {
   let tracks = NO_TRACKS
   let fingerprint = JSON.stringify(NO_TRACKS)
   return () => {
