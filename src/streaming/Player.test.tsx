@@ -149,7 +149,8 @@ async function videoWhen(
 
 // jsdom's media element has no timeline and cannot load or play. Own currentTime, readyState and
 // paused let tests observe the seek, move the playhead, load the stream and press play; load()
-// resets the playhead and ready state as a browser does, and play() and pause() flip paused.
+// resets the element as a browser does, firing emptied but no pause, and play() and pause() flip
+// paused.
 function fakeMedia(video: HTMLVideoElement): HTMLVideoElement {
   Object.defineProperty(video, 'currentTime', { writable: true, value: 0, configurable: true })
   Object.defineProperty(video, 'paused', { writable: true, value: true, configurable: true })
@@ -175,12 +176,15 @@ function fakeMedia(video: HTMLVideoElement): HTMLVideoElement {
   Object.defineProperty(video, 'load', {
     configurable: true,
     value: () => {
+      const rewound = video.currentTime !== 0
+      Object.defineProperty(video, 'paused', { writable: true, value: true, configurable: true })
       setReadyState(video, HTMLMediaElement.HAVE_NOTHING)
-      if (video.currentTime === 0) {
-        return
-      }
+      setDuration(video, Number.NaN)
       video.currentTime = 0
-      video.dispatchEvent(new Event('timeupdate'))
+      video.dispatchEvent(new Event('emptied'))
+      if (rewound) {
+        video.dispatchEvent(new Event('timeupdate'))
+      }
     },
   })
   return video
@@ -1506,6 +1510,33 @@ describe('Player', () => {
       fireEvent(video, new Event('waiting'))
       act(() => video.pause())
       expect(screen.queryByRole('progressbar', { name: 'Buffering' })).not.toBeInTheDocument()
+    })
+
+    it('shouldShowTheVideoStoppedOnceAFailureReleasesTheStream', async () => {
+      hls.supported = false
+      serveSession()
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await nativeVideo()
+      await act(() => video.play())
+      fireEvent(video, new Event('waiting'))
+      expect(screen.getByRole('progressbar', { name: 'Buffering' })).toBeInTheDocument()
+
+      fireEvent(video, new Event('error'))
+
+      expect(await screen.findByRole('alert')).toBeInTheDocument()
+      expect(screen.queryByRole('progressbar', { name: 'Buffering' })).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Play' })).toBeDisabled()
+    })
+
+    it('shouldShowTheSkippedToPositionAsSoonAsTheSeekStarts', async () => {
+      serveSession()
+      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await seekableVideo(2824)
+
+      await user.click(screen.getByRole('button', { name: 'Forward 10 seconds' }))
+      fireEvent(video, new Event('seeking'))
+
+      expect(screen.getByText('0:10 / 47:04')).toBeInTheDocument()
     })
 
     it('shouldShowTheTimecodeAndTitleInTheTitleLine', async () => {
