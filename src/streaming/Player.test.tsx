@@ -1330,6 +1330,22 @@ describe('Player', () => {
       expect(screen.getByRole('button', { name: 'Mute' })).toBeInTheDocument()
     })
 
+    it('shouldShowTheQualityInUseOnAStatusChipThatOpensNothing', async () => {
+      serveSession()
+      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await attachedVideo()
+      expect(screen.getByRole('button', { name: 'Quality: Auto' })).toHaveTextContent(/^Auto$/)
+
+      Object.defineProperty(video, 'videoHeight', { value: 720, configurable: true })
+      fireEvent(video, new Event('resize'))
+
+      const chip = screen.getByRole('button', { name: 'Quality: Auto · 720p' })
+      expect(chip).toHaveTextContent(/^Auto · 720p$/)
+      expect(chip).toHaveAttribute('aria-disabled', 'true')
+      await user.click(chip)
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    })
+
     it('shouldShowTheTimecodeAndTitleInTheTitleLine', async () => {
       serveSession()
       renderWithProviders(

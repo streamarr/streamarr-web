@@ -192,3 +192,29 @@
   gap: var(--spacing-8);
   min-width: 0;
 }
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  min-width: 0;
+  padding: 7px var(--spacing-12);
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--surface-panel-strong);
+  font: inherit;
+  font-size: var(--font-size-body);
+  color: var(--text-primary);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.chip[aria-disabled='true'] {
+  color: var(--text-secondary);
+  cursor: default;
+}
+
+.chipValue {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
