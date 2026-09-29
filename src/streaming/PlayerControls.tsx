@@ -38,9 +38,9 @@ export function PlayerControls({
 }>) {
   const [scrub, setScrub] = useState<Scrub | null>(null)
   const durationKnown = Number.isFinite(videoState.duration)
-  const durationTimecode = durationKnown
-    ? formatTimecode(videoState.duration, videoState.duration)
-    : null
+  const timecodeAt = (seconds: number) =>
+    formatTimecode({ positionSeconds: seconds, durationSeconds: videoState.duration })
+  const durationTimecode = durationKnown ? timecodeAt(videoState.duration) : null
   const seekable = attached && durationKnown
   const position = scrub?.seconds ?? videoState.currentTime
 
@@ -110,9 +110,7 @@ export function PlayerControls({
         label={null}
         thumbLabel="Seek"
         thumbValueText={
-          seekable
-            ? (seconds) => `${formatTimecode(seconds, videoState.duration)} of ${durationTimecode}`
-            : undefined
+          seekable ? (seconds) => `${timecodeAt(seconds)} of ${durationTimecode}` : undefined
         }
         onPointerDown={startScrub}
         onChange={moveScrub}
@@ -122,10 +120,7 @@ export function PlayerControls({
         <div className={styles.start}>
           <TitleLine
             title={title}
-            timecode={
-              durationTimecode &&
-              `${formatTimecode(position, videoState.duration)} / ${durationTimecode}`
-            }
+            timecode={durationTimecode && `${timecodeAt(position)} / ${durationTimecode}`}
           />
           <VolumeControl videoRef={videoRef} volume={videoState.volume} muted={videoState.muted} />
         </div>

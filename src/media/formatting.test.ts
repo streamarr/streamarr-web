@@ -109,16 +109,16 @@ describe('formatTimeLeft', () => {
 
 describe('formatTimecode', () => {
   it('reads minutes and seconds under an hour', () => {
-    expect(formatTimecode(1392, 2824)).toBe('23:12')
-    expect(formatTimecode(2824.9, 2824.9)).toBe('47:04')
-    expect(formatTimecode(0, 2824)).toBe('0:00')
+    expect(formatTimecode({ positionSeconds: 1392, durationSeconds: 2824 })).toBe('23:12')
+    expect(formatTimecode({ positionSeconds: 2824.9, durationSeconds: 2824.9 })).toBe('47:04')
+    expect(formatTimecode({ positionSeconds: 0, durationSeconds: 2824 })).toBe('0:00')
   })
 
   it('reads hours, minutes and seconds from an hour', () => {
-    expect(formatTimecode(3725, 3725)).toBe('1:02:05')
+    expect(formatTimecode({ positionSeconds: 3725, durationSeconds: 3725 })).toBe('1:02:05')
   })
 
   it("gives the position the duration's fields so the width holds", () => {
-    expect(formatTimecode(65, 3725)).toBe('0:01:05')
+    expect(formatTimecode({ positionSeconds: 65, durationSeconds: 3725 })).toBe('0:01:05')
   })
 })
