@@ -33,10 +33,14 @@ const LEVEL = [
   '',
 ].join('\n')
 
+interface PlayerRoutes {
+  operations?: Record<string, unknown>
+}
+
 async function routePlayer(
   page: Page,
   request: APIRequestContext,
-  operations: Record<string, unknown> = {},
+  { operations = {} }: PlayerRoutes = {},
 ): Promise<void> {
   await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
   await request.post(`${STUB_URL}/api/auth/refresh`)
@@ -264,7 +268,7 @@ test('a refusal keeps Retry above the control bar on a phone held sideways', asy
   request,
 }) => {
   await page.setViewportSize({ width: 667, height: 375 })
-  await routePlayer(page, request, { CreateStreamSession: CAPACITY_REFUSAL })
+  await routePlayer(page, request, { operations: { CreateStreamSession: CAPACITY_REFUSAL } })
   await page.goto('/play/file-1')
   const retry = page.getByRole('button', { name: 'Retry playback' })
   await expect(retry).toBeVisible()
