@@ -2,9 +2,11 @@ import { screen, waitFor } from '@testing-library/react'
 import { graphql, http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { HomeQuery } from '../graphql/generated/graphql'
+import { deferred } from '../test/deferred'
 import { meFixture } from '../test/meFixture'
-import { renderAppAt } from '../test/render'
+import { renderAppAt, renderWithProviders } from '../test/render'
 import { server } from '../test/server'
+import { Home } from './Home'
 
 const ME = meFixture({ scope: 'profile' })
 
@@ -190,6 +192,52 @@ describe('Home', () => {
     await screen.findByText('Ask your server admin to add a library.')
     expect(screen.queryByRole('link', { name: 'Add library' })).not.toBeInTheDocument()
   })
+  it('shouldWaitForTheAccountBeforeChoosingTheEmptyLibraryGuidance', async () => {
+    const account = deferred()
+    server.use(
+      graphql.query('Home', () => HttpResponse.json({ data: homeData() })),
+      graphql.query('Me', async () => {
+        await account.promise
+        return HttpResponse.json({
+          data: { me: meFixture({ scope: 'profile', serverAdmin: true }) },
+        })
+      }),
+    )
+    renderWithProviders(<Home />)
+
+    expect(await screen.findByRole('status', { name: 'Loading your account' })).toBeInTheDocument()
+    expect(screen.queryByText('Ask your server admin to add a library.')).not.toBeInTheDocument()
+
+    account.resolve()
+
+    expect(await screen.findByRole('link', { name: 'Add library' })).toBeInTheDocument()
+    expect(screen.queryByText('Ask your server admin to add a library.')).not.toBeInTheDocument()
+  })
+
+  it('shouldOfferRetryWhenTheAccountFailsBehindAnEmptyInventory', async () => {
+    let accountRequests = 0
+    server.use(
+      graphql.query('Home', () => HttpResponse.json({ data: homeData() })),
+      graphql.query('Me', () => {
+        accountRequests += 1
+        if (accountRequests === 1) {
+          return HttpResponse.json({ errors: [{ message: 'boom' }] })
+        }
+        return HttpResponse.json({
+          data: { me: meFixture({ scope: 'profile', serverAdmin: true }) },
+        })
+      }),
+    )
+    const { user } = renderWithProviders(<Home />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load your account.")
+    expect(screen.queryByText('Ask your server admin to add a library.')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByRole('link', { name: 'Add library' })).toBeInTheDocument()
+  })
+
   it('omits empty recently-added sections when there is content elsewhere', async () => {
     serve(
       homeData({

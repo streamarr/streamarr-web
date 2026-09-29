@@ -25,3 +25,22 @@
   justify-content: center;
   gap: var(--spacing-12);
 }
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-12) var(--spacing-16);
+  padding: var(--spacing-12) var(--spacing-16);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+}
+
+.rowCause {
+  flex: 1 1 16rem;
+  margin: 0;
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-prose);
+  color: var(--semantic-error-text);
+}
