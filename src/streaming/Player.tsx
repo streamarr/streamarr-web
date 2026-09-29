@@ -150,8 +150,6 @@ export function Player({
             if (cancelled) {
               return
             }
-            // Releasing the stream rewinds the element; the timeline must not record the rewind.
-            timeline.detach()
             detachSource()
             showFailure(PLAYBACK_FAILURE_MESSAGE)
           },
@@ -194,6 +192,8 @@ export function Player({
     }
 
     function detachSource() {
+      // Releasing the stream rewinds the element; the timeline must not record the rewind.
+      timeline.detach()
       source?.detach()
       source = null
     }
@@ -207,7 +207,6 @@ export function Player({
     return () => {
       cancelled = true
       startupDeadline.end()
-      timeline.detach()
       if (lastKnownPosition !== null) {
         report('STOPPED', lastKnownPosition)
       }
