@@ -4,11 +4,9 @@ import styles from './ContentShelf.module.css'
 
 export function ContentShelf({
   title,
-  count,
   children,
 }: Readonly<{
   title: string
-  count?: string
   children: ReactNode
 }>) {
   const trackRef = useRef<HTMLDivElement>(null)
@@ -21,10 +19,7 @@ export function ContentShelf({
   return (
     <section className={styles.shelf}>
       <div className={styles.header}>
-        <div className={styles.heading}>
-          <h2 className={styles.title}>{title}</h2>
-          {count && <span className={styles.count}>{count}</span>}
-        </div>
+        <h2 className={styles.title}>{title}</h2>
         <div className={styles.arrows}>
           <button
             type="button"

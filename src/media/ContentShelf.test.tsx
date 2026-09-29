@@ -4,24 +4,14 @@ import { describe, expect, it, vi } from 'vitest'
 import { ContentShelf } from './ContentShelf'
 
 describe('ContentShelf', () => {
-  it('renders the title, count, and children', () => {
-    render(
-      <ContentShelf title="Continue watching" count="4 in progress">
-        <div>Card</div>
-      </ContentShelf>,
-    )
-    expect(screen.getByText('Continue watching')).toBeInTheDocument()
-    expect(screen.getByText('4 in progress')).toBeInTheDocument()
-    expect(screen.getByText('Card')).toBeInTheDocument()
-  })
-
-  it('renders no count element when none is given', () => {
+  it('renders the title and children', () => {
     render(
       <ContentShelf title="Continue watching">
         <div>Card</div>
       </ContentShelf>,
     )
-    expect(screen.queryByText(/in progress/)).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 2, name: 'Continue watching' })).toBeInTheDocument()
+    expect(screen.getByText('Card')).toBeInTheDocument()
   })
 
   it('scrolls one visible shelf width in either direction, including after a resize', async () => {
