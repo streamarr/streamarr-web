@@ -12,6 +12,11 @@ const HLS_TRACK_EVENTS = [
 
 type FakeHls = HlsTracks & { emit: (event: string) => void }
 
+// As hls.js parses an EXT-X-MEDIA tag: a rendition without a NAME takes its LANGUAGE as its name.
+function parsedRendition({ NAME, LANGUAGE }: { NAME?: string; LANGUAGE?: string }) {
+  return { name: NAME || LANGUAGE || '', lang: LANGUAGE }
+}
+
 function fakeHls(
   tracks: Partial<
     Pick<HlsTracks, 'audioTracks' | 'audioTrack' | 'subtitleTracks' | 'subtitleTrack'>
@@ -62,7 +67,11 @@ describe('hlsTrackSource', () => {
   it('shouldNameAnUnnamedTrackByItsLanguageThenByItsPlace', () => {
     const source = hlsTrackSource(
       fakeHls({
-        audioTracks: [{ name: '', lang: 'fr' }, { name: '' }, { name: '', lang: 'not a language' }],
+        audioTracks: [
+          parsedRendition({ LANGUAGE: 'fr' }),
+          parsedRendition({}),
+          parsedRendition({ LANGUAGE: 'not a language' }),
+        ],
       }),
     )
 
