@@ -311,7 +311,7 @@ describe('/library/$libraryId', () => {
     expect(grid).toContainElement(landing)
   })
 
-  it('keeps the grid and the viewed letter when a letter jump fails, and retries from the failure row', async () => {
+  it('shouldKeepTheGridAndViewedLetterAndOfferRetryWhenALetterJumpFails', async () => {
     let seekAttempts = 0
     server.use(
       graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
