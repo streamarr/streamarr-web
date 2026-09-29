@@ -2236,6 +2236,25 @@ describe('Player', () => {
       expect(screen.getByRole('region', { name: 'Player' })).not.toHaveAttribute('data-idle')
     })
 
+    it('shouldKeepTheControlsWhileAPickerIsOpen', async () => {
+      serveSession()
+      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await attachedVideo()
+      const player = screen.getByRole('region', { name: 'Player' })
+      offerHlsTracks({ audio: [{ name: 'English' }, { name: 'Français' }], audioTrack: 0 })
+      const menu = await openPicker(user, screen.getByRole('button', { name: 'Audio: English' }))
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      moveMouse(video, menu)
+      await act(() => video.play())
+
+      await act(async () => vi.advanceTimersByTimeAsync(10_000))
+      expect(player).not.toHaveAttribute('data-idle')
+
+      fireEvent.keyDown(document, { key: 'Escape' })
+      await act(async () => vi.advanceTimersByTimeAsync(3_000))
+      expect(player).toHaveAttribute('data-idle')
+    })
+
     it('shouldLetTheTapThatWakesTheFadedControlsPressNothing', async () => {
       serveSession()
       renderWithProviders(<Player mediaFileId="abcd" />)

@@ -65,7 +65,8 @@ export function Player({
   const tracks = sourcePhase.at === 'attached' ? sourcePhase.tracks : null
   const openPicker = picker?.tracks === tracks ? picker.kind : null
   const videoState = useVideoState(videoRef)
-  const idle = useIdle(videoState.paused || sourcePhase.at === 'failed', [controlsRef, backRef])
+  const controlsHeld = videoState.paused || sourcePhase.at === 'failed' || openPicker !== null
+  const idle = useIdle(controlsHeld, [controlsRef, backRef])
 
   useEffect(() => {
     const video = videoRef.current
