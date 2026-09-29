@@ -1,7 +1,6 @@
 import { screen, waitFor } from '@testing-library/react'
 import { HttpResponse, graphql, http } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
-import { HomeDocument } from '../graphql/generated/graphql'
 import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
 import { meFixture, profileFixture } from '../test/meFixture'
@@ -350,22 +349,25 @@ describe('the authenticated layout', () => {
   })
 
   it('shouldNotBlameTheSessionWhenAPageFailsToRender', async () => {
+    let homeRecovered = false
     server.use(
       graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
       graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
       graphql.query('Home', () =>
-        HttpResponse.json({ data: { continueWatching: null, libraries: [] } }),
+        HttpResponse.json({
+          data: { continueWatching: homeRecovered ? [] : null, libraries: [] },
+        }),
       ),
     )
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    const { apolloClient, user } = renderAppAt('/')
+    const { user } = renderAppAt('/')
 
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent("Couldn't load this page.")
     expect(alert).not.toHaveTextContent(/signed in/i)
     expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
 
-    apolloClient.writeQuery({ query: HomeDocument, data: { continueWatching: [], libraries: [] } })
+    homeRecovered = true
     await user.click(screen.getByRole('button', { name: 'Retry' }))
 
     expect(await screen.findByRole('heading', { name: 'Nothing to watch yet' })).toBeInTheDocument()
