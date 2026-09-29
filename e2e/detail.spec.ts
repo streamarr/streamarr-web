@@ -123,8 +123,10 @@ test('the metadata columns clear the Back button on a phone', async ({ page, req
       { id: 'g2', name: 'Adventure' },
       { id: 'g3', name: 'Comedy' },
     ],
-    directors: [{ id: 'p3', name: 'Terry Gilliam' }],
-    contentRating: { value: 'PG' },
+    directors: [
+      { id: 'p3', name: 'Terry Gilliam' },
+      { id: 'p4', name: 'Terry Jones' },
+    ],
   })
   await page.setViewportSize({ width: 375, height: 667 })
 

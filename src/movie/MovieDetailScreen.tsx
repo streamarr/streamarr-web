@@ -8,7 +8,7 @@ import { CastCard } from '../media/CastCard'
 import { ContentShelf } from '../media/ContentShelf'
 import { DetailBackButton } from '../media/DetailBack'
 import { detailAction, DetailHeader } from '../media/DetailHeader'
-import { formatLongDate, formatRuntime, formatYear } from '../media/formatting'
+import { formatRuntime, formatYear } from '../media/formatting'
 import { Icon } from '../ui/Icon'
 import { pickImageVariant } from '../media/images'
 import { RatingChipRow } from '../media/RatingChipRow'
@@ -65,8 +65,6 @@ export function MovieDetailScreen({ movieId }: Readonly<{ movieId: string }>) {
         metadata={[
           { label: 'Genre', value: names(movie.genres) },
           { label: 'Directed by', value: names(movie.directors) },
-          { label: 'Released', value: formatLongDate(movie.releaseDate) },
-          { label: 'Rating', value: movie.contentRating?.value ?? null },
         ]}
         title={movie.title ?? 'Untitled'}
         tagline={movie.tagline}
