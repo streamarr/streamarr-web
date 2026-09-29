@@ -49,8 +49,8 @@ export function Player({
   const [failure, setFailure] = useState<string | null>(null)
   const [attempt, setAttempt] = useState(0)
   const [attached, setAttached] = useState(false)
-  const video = useVideoState(videoRef)
-  const idle = useIdle(video.paused || failure !== null, controlsRef)
+  const videoState = useVideoState(videoRef)
+  const idle = useIdle(videoState.paused || failure !== null, controlsRef)
 
   useEffect(() => {
     const video = videoRef.current
@@ -237,7 +237,7 @@ export function Player({
       data-idle={idle || undefined}
     >
       <video ref={videoRef} className={styles.video} playsInline />
-      {video.buffering && <BufferingRing />}
+      {videoState.buffering && <BufferingRing />}
       {failure && (
         <Alert className={styles.failure} color="red" role="alert">
           {failure}
@@ -254,7 +254,7 @@ export function Player({
         className={styles.chrome}
         playerRef={playerRef}
         videoRef={videoRef}
-        video={video}
+        videoState={videoState}
         attached={attached}
         title={title}
       />

@@ -23,7 +23,7 @@ export function PlayerControls({
   className,
   playerRef,
   videoRef,
-  video,
+  videoState,
   attached,
   title,
 }: Readonly<{
@@ -32,16 +32,16 @@ export function PlayerControls({
   /** The element that takes the screen in full screen, so the bar stays over the video. */
   playerRef: RefObject<HTMLElement | null>
   videoRef: RefObject<HTMLVideoElement | null>
-  video: VideoState
+  videoState: VideoState
   attached: boolean
   title?: PlayerTitle
 }>) {
   const [scrub, setScrub] = useState<Scrub | null>(null)
-  const length = Number.isFinite(video.duration)
-    ? formatTimecode(video.duration, video.duration)
+  const length = Number.isFinite(videoState.duration)
+    ? formatTimecode(videoState.duration, videoState.duration)
     : null
   const seekable = attached && length !== null
-  const position = scrub?.seconds ?? video.currentTime
+  const position = scrub?.seconds ?? videoState.currentTime
 
   function togglePaused() {
     const element = videoRef.current
@@ -102,7 +102,7 @@ export function PlayerControls({
         size={4}
         thumbSize={12}
         min={0}
-        max={seekable ? video.duration : 1}
+        max={seekable ? videoState.duration : 1}
         step={1}
         value={seekable ? position : 0}
         disabled={!seekable}
@@ -110,7 +110,7 @@ export function PlayerControls({
         thumbLabel="Seek"
         thumbValueText={
           seekable
-            ? (seconds) => `${formatTimecode(seconds, video.duration)} of ${length}`
+            ? (seconds) => `${formatTimecode(seconds, videoState.duration)} of ${length}`
             : undefined
         }
         onPointerDown={startScrub}
@@ -121,9 +121,9 @@ export function PlayerControls({
         <div className={styles.start}>
           <TitleLine
             title={title}
-            timecode={length && `${formatTimecode(position, video.duration)} / ${length}`}
+            timecode={length && `${formatTimecode(position, videoState.duration)} / ${length}`}
           />
-          <VolumeControl videoRef={videoRef} volume={video.volume} muted={video.muted} />
+          <VolumeControl videoRef={videoRef} volume={videoState.volume} muted={videoState.muted} />
         </div>
         <div className={styles.transport}>
           <SkipButton
@@ -135,13 +135,13 @@ export function PlayerControls({
           <button
             type="button"
             className={styles.playPause}
-            aria-label={video.paused ? 'Play' : 'Pause'}
+            aria-label={videoState.paused ? 'Play' : 'Pause'}
             disabled={!attached}
             onClick={togglePaused}
           >
             <Icon
-              name={video.paused ? 'play' : 'pause'}
-              className={video.paused ? styles.playGlyph : undefined}
+              name={videoState.paused ? 'play' : 'pause'}
+              className={videoState.paused ? styles.playGlyph : undefined}
             />
           </button>
           <SkipButton
@@ -152,7 +152,7 @@ export function PlayerControls({
           />
         </div>
         <div className={styles.end}>
-          <QualityChip videoHeight={video.videoHeight} />
+          <QualityChip videoHeight={videoState.videoHeight} />
           <FullscreenButton targetRef={playerRef} />
         </div>
       </div>
