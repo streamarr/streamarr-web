@@ -205,4 +205,69 @@ describe('SharingScreen', () => {
 
     await waitFor(() => expect(ended).toBe(true))
   })
+
+  it('shouldRetryWhenTheAccountFailsToLoad', async () => {
+    serverAnswersOverview()
+    let accountRequests = 0
+    server.use(
+      graphql.query('Me', () => {
+        accountRequests += 1
+        if (accountRequests === 1) {
+          return HttpResponse.json({ errors: [{ message: 'boom' }] })
+        }
+        return HttpResponse.json({ data: { me: meFixture({ profiles: [profileFixture()] }) } })
+      }),
+    )
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load sharing.")
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByRole('heading', { name: 'Sharing' })).toBeInTheDocument()
+  })
+
+  it('shouldRetryWhenSharingFailsToLoad', async () => {
+    serverAnswersOverview()
+    let overviewRequests = 0
+    server.use(
+      graphql.query('SharingOverview', () => {
+        overviewRequests += 1
+        if (overviewRequests === 1) {
+          return HttpResponse.json({ errors: [{ message: 'boom' }] })
+        }
+        return HttpResponse.json({
+          data: {
+            pendingShareOffers: { __typename: 'ProfileShareConnection', edges: [] },
+            profileShares: { __typename: 'ProfileShareConnection', edges: [] },
+          },
+        })
+      }),
+    )
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load sharing.")
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByRole('heading', { name: 'Sharing' })).toBeInTheDocument()
+    expect(overviewRequests).toBe(2)
+  })
+
+  it('shouldSayThereIsNoProfileToShareWithoutOfferingRetry', async () => {
+    server.use(
+      graphql.query('Me', () =>
+        HttpResponse.json({
+          data: { me: meFixture({ profiles: [profileFixture({ personal: false })] }) },
+        }),
+      ),
+    )
+    renderWithProviders(<SharingScreen />)
+
+    expect(
+      await screen.findByText('You have no Profile of your own in Smith Family to share.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+  })
 })

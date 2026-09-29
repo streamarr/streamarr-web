@@ -7,14 +7,23 @@ import styles from './Failure.module.css'
 
 type WayOut = 'sign-out' | 'back'
 
-/** A page that could not load: the cause in plain words, Retry, and a way out. */
+/**
+ * A page that could not load: the cause in plain words, Retry, and a way out. A `ceremony` panel
+ * sits in the left-aligned column of an auth or pairing screen.
+ */
 export function FailurePanel({
   children,
   onRetry,
   wayOut = 'sign-out',
-}: Readonly<{ children: ReactNode; onRetry?: () => unknown; wayOut?: WayOut }>) {
+  layout = 'page',
+}: Readonly<{
+  children: ReactNode
+  onRetry?: () => unknown
+  wayOut?: WayOut
+  layout?: 'page' | 'ceremony'
+}>) {
   return (
-    <div className={styles.panel}>
+    <div className={layout === 'ceremony' ? `${styles.panel} ${styles.ceremony}` : styles.panel}>
       <p role="alert" className={styles.panelCause}>
         {children}
       </p>

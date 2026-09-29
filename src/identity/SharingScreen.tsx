@@ -23,7 +23,9 @@ import {
   SharingOverviewDocument,
   type SharingOverviewQuery,
 } from '../graphql/generated/graphql'
+import { requestFailureMessage } from '../graphql/requestErrors'
 import { userErrorMessage, type UserErrorLike } from '../graphql/userErrors'
+import { FailurePanel } from '../ui/Failure'
 import { useMe } from './useMe'
 
 type PendingOffer = SharingOverviewQuery['pendingShareOffers']['edges'][number]['node']
@@ -33,23 +35,33 @@ const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 const FAILURE_MESSAGE = 'Something went wrong. Please try again.'
 
 export function SharingScreen() {
-  const { data: meData, loading: meLoading, error: meError } = useMe()
+  const { data: meData, loading: meLoading, error: meError, refetch: refetchMe } = useMe()
 
   if (meLoading) {
     return <SharingLoading />
   }
 
-  const personal = meData?.me.selectableProfiles.edges
+  if (meError || !meData) {
+    return <SharingUnavailable error={meError} onRetry={refetchMe} />
+  }
+
+  const household = meData.me.contextHousehold
+  const personal = meData.me.selectableProfiles.edges
     .map((edge) => edge.node)
     .find((profile) => profile.personal)
-  if (meError || !meData || !personal) {
-    return <SharingUnavailable />
+  if (!personal) {
+    return (
+      <Stack>
+        <Title order={2}>Sharing</Title>
+        <Text c="dimmed">You have no Profile of your own in {household.name} to share.</Text>
+      </Stack>
+    )
   }
 
   return (
     <Sharing
-      householdId={meData.me.contextHousehold.id}
-      householdName={meData.me.contextHousehold.name}
+      householdId={household.id}
+      householdName={household.name}
       profileId={personal.id}
       profileName={personal.name}
     />
@@ -77,7 +89,7 @@ function Sharing({
   }
 
   if (overview.error || !overview.data) {
-    return <SharingUnavailable />
+    return <SharingUnavailable error={overview.error} onRetry={refetch} />
   }
 
   const offers = overview.data.pendingShareOffers.edges.map((edge) => edge.node)
@@ -106,11 +118,14 @@ function SharingLoading() {
   )
 }
 
-function SharingUnavailable() {
+function SharingUnavailable({
+  error,
+  onRetry,
+}: Readonly<{ error: unknown; onRetry: () => unknown }>) {
   return (
-    <Alert color="red" role="alert">
-      Couldn't load sharing. Try again.
-    </Alert>
+    <FailurePanel onRetry={onRetry}>
+      {requestFailureMessage(error, "Couldn't load sharing.")}
+    </FailurePanel>
   )
 }
 
