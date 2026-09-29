@@ -94,6 +94,10 @@ async function attachedVideo(streamUrl = STREAM_URL): Promise<HTMLVideoElement> 
   return videoWhen(() => expect(hls.loadSource).toHaveBeenCalledWith(streamUrl))
 }
 
+async function nativeVideo(streamUrl = STREAM_URL): Promise<HTMLVideoElement> {
+  return videoWhen((video) => expect(video).toHaveAttribute('src', streamUrl))
+}
+
 // Testing Library's waitFor stalls under faked timers; vi.waitFor advances them while it polls.
 async function videoWhen(
   expectation: (video: HTMLVideoElement) => void,
@@ -111,10 +115,21 @@ async function videoWhen(
   return fakeMedia(video)
 }
 
-// jsdom's media element has no real timeline; an own property stands in for currentTime so the
-// player's seek is observable and tests can move the playhead before firing events.
+// jsdom's media element has no real timeline and cannot load. Own properties stand in for
+// currentTime, so the player's seek is observable and tests can move the playhead, and for load(),
+// whose reset rewinds the playhead with a timeupdate as a browser's does.
 function fakeMedia(video: HTMLVideoElement): HTMLVideoElement {
   Object.defineProperty(video, 'currentTime', { writable: true, value: 0, configurable: true })
+  Object.defineProperty(video, 'load', {
+    configurable: true,
+    value: () => {
+      if (video.currentTime === 0) {
+        return
+      }
+      video.currentTime = 0
+      video.dispatchEvent(new Event('timeupdate'))
+    },
+  })
   return video
 }
 
@@ -150,6 +165,7 @@ function RemountHarness() {
 describe('Player', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    hls.supported = true
     server.use(
       graphql.mutation('DestroyStreamSession', () =>
         HttpResponse.json({ data: { destroyStreamSession: true } }),
@@ -714,6 +730,68 @@ describe('Player', () => {
 
     expect(await screen.findByRole('alert')).toBeInTheDocument()
     expect(hls.destroy).toHaveBeenCalled()
+  })
+
+  it('shouldShowThePlaybackErrorWhenTheNativeElementCannotPlayTheStream', async () => {
+    hls.supported = false
+    serveSession()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    renderWithProviders(<Player mediaFileId="abcd" />)
+    const video = await nativeVideo()
+
+    fireEvent(video, new Event('error'))
+    await act(async () => vi.advanceTimersByTimeAsync(30_000))
+
+    vi.useRealTimers()
+    expect(screen.getByRole('alert')).toHaveTextContent("Playback couldn't start.")
+    expect(screen.getByRole('button', { name: 'Retry playback' })).toBeInTheDocument()
+  })
+
+  it('shouldIgnoreTheFailedAttemptsNativeErrorsWhileRetrying', async () => {
+    hls.supported = false
+    const retryResponse = deferred()
+    let creations = 0
+    server.use(
+      graphql.mutation('CreateStreamSession', async () => {
+        creations += 1
+        if (creations > 1) {
+          await retryResponse.promise
+        }
+        return HttpResponse.json({
+          data: { createStreamSession: { session: SESSION, userErrors: [] } },
+        })
+      }),
+    )
+    const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+    const video = await nativeVideo()
+    fireEvent(video, new Event('error'))
+    await user.click(await screen.findByRole('button', { name: 'Retry playback' }))
+    await waitFor(() => expect(creations).toBe(2))
+
+    fireEvent(video, new Event('error'))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    retryResponse.resolve()
+
+    await nativeVideo()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('shouldReportTheLastPositionWhenLeavingAfterANativePlaybackError', async () => {
+    hls.supported = false
+    const reports = serveSession()
+    const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
+    const video = await nativeVideo()
+    playheadAt(video, 25)
+    fireEvent(video, new Event('error'))
+    await screen.findByRole('alert')
+
+    unmount()
+
+    await waitFor(() => expect(reports.at(-1)?.state).toBe('STOPPED'))
+    expect(reports).toEqual([
+      { sessionId: 'sess-1', positionSeconds: 25, state: 'PLAYING' },
+      { sessionId: 'sess-1', positionSeconds: 25, state: 'STOPPED' },
+    ])
   })
 
   it('shouldRecoverWhenTheNextMediaFileStartsAfterAFailedOne', async () => {

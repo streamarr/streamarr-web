@@ -142,6 +142,11 @@ export function Player({
           return
         }
         source = attach(video, session.streamUrl, () => {
+          if (cancelled) {
+            return
+          }
+          // Releasing the stream rewinds the element; the timeline must not record the rewind.
+          timeline.detach()
           detachSource()
           setFailure(PLAYBACK_FAILURE_MESSAGE)
         })
@@ -262,8 +267,7 @@ function ignoreTimelineReportFailure() {
 // The stream URL carries the playback ?t= token; relative segment requests inherit it.
 function attach(video: HTMLVideoElement, url: string, onFatal: () => void): { detach: () => void } {
   if (!Hls.isSupported()) {
-    video.src = url
-    return { detach: () => undefined }
+    return attachNative(video, url, onFatal)
   }
   const hls = new Hls()
   hls.on(Hls.Events.ERROR, (_event, data) => {
@@ -276,4 +280,22 @@ function attach(video: HTMLVideoElement, url: string, onFatal: () => void): { de
   hls.loadSource(url)
   hls.attachMedia(video)
   return { detach: () => hls.destroy() }
+}
+
+// Without MSE the element plays HLS itself and reports failure only through its error event.
+function attachNative(
+  video: HTMLVideoElement,
+  url: string,
+  onFatal: () => void,
+): { detach: () => void } {
+  video.addEventListener('error', onFatal)
+  video.src = url
+  return {
+    detach: () => {
+      video.removeEventListener('error', onFatal)
+      // The same reset hls.js performs on detach: the element stops fetching the stream.
+      video.removeAttribute('src')
+      video.load()
+    },
+  }
 }
