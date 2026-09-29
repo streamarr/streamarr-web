@@ -170,6 +170,34 @@ function playheadAt(video: HTMLVideoElement, seconds: number) {
   fireEvent(video, new Event('timeupdate'))
 }
 
+interface StreamPath {
+  supported: boolean
+  streamingVideo: () => Promise<HTMLVideoElement>
+  failStream: (video: HTMLVideoElement) => void
+  expectStreamReleased: (video: HTMLVideoElement) => void
+}
+
+const STREAM_PATHS: [string, StreamPath][] = [
+  [
+    'NativePath',
+    {
+      supported: false,
+      streamingVideo: nativeVideo,
+      failStream: (video) => fireEvent(video, new Event('error')),
+      expectStreamReleased: (video) => expect(video).not.toHaveAttribute('src'),
+    },
+  ],
+  [
+    'HlsJsPath',
+    {
+      supported: true,
+      streamingVideo: attachedVideo,
+      failStream: raiseHlsFatalError,
+      expectStreamReleased: () => expect(hls.destroy).toHaveBeenCalledOnce(),
+    },
+  ],
+]
+
 function Harness() {
   const [mediaFileId, setMediaFileId] = useState('a')
   return (
@@ -801,6 +829,61 @@ describe('Player', () => {
       { sessionId: 'sess-1', positionSeconds: 25, state: 'STOPPED' },
     ])
   })
+
+  it.each(STREAM_PATHS)(
+    'shouldTimeOutStartupWhenTheStreamNeverLoadsMetadataOnThe%s',
+    async (_path, { supported, streamingVideo, failStream, expectStreamReleased }) => {
+      hls.supported = supported
+      const activeSessions = serveSingleWorkerSlot()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await streamingVideo()
+
+      await act(async () => vi.advanceTimersByTimeAsync(30_000))
+      vi.useRealTimers()
+
+      expect(screen.getByRole('alert')).toHaveTextContent('Playback is taking too long to start.')
+      expectStreamReleased(video)
+      await waitFor(() => expect(activeSessions.size).toBe(0))
+      failStream(video)
+      expect(screen.getByRole('alert')).toHaveTextContent('Playback is taking too long to start.')
+    },
+  )
+
+  it.each(STREAM_PATHS)(
+    'shouldKeepTheStreamPastTheStartupDeadlineOnceMetadataLoadsOnThe%s',
+    async (_path, { supported, streamingVideo }) => {
+      hls.supported = supported
+      serveSession()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await streamingVideo()
+
+      fireEvent(video, new Event('loadedmetadata'))
+      await act(async () => vi.advanceTimersByTimeAsync(30_000))
+
+      vi.useRealTimers()
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    },
+  )
+
+  it.each([
+    ['Refusal', { serve: refuseSession, message: CAPACITY_REFUSAL }],
+    ['FailedCreation', { serve: failSessionCreation, message: "Playback couldn't start." }],
+  ] as const)(
+    'shouldKeepTheFailureMessagePastTheStartupDeadlineAfterA%s',
+    async (_outcome, { serve, message }) => {
+      serve()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'], shouldAdvanceTime: true })
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      expect(await screen.findByRole('alert')).toHaveTextContent(message)
+
+      await act(async () => vi.advanceTimersByTimeAsync(30_000))
+
+      vi.useRealTimers()
+      expect(screen.getByRole('alert')).toHaveTextContent(message)
+    },
+  )
 
   it('shouldRecoverWhenTheNextMediaFileStartsAfterAFailedOne', async () => {
     server.use(

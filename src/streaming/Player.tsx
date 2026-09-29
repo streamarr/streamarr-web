@@ -97,6 +97,8 @@ export function Player({
     const timeline = attachTimeline(video, {
       // Seeking before metadata is loaded is unreliable across browsers; the event is the safe point.
       onLoadedMetadata: (element) => {
+        // Nothing calls play(), so metadata is as far as a stream starts without the viewer.
+        clearTimeout(startupDeadline)
         if (startPositionSeconds) {
           element.currentTime = startPositionSeconds
         }
@@ -119,6 +121,7 @@ export function Player({
 
     const startupDeadline = setTimeout(() => {
       cancelled = true
+      detachSource()
       setFailure('Playback is taking too long to start. Try again.')
       requestCleanup()
     }, PLAYBACK_START_TIMEOUT_MS)
@@ -138,7 +141,7 @@ export function Player({
           return
         }
         if (!session) {
-          setFailure(refusalMessage(payload))
+          showFailure(refusalMessage(payload))
           return
         }
         source = attach(video, session.streamUrl, () => {
@@ -148,15 +151,19 @@ export function Player({
           // Releasing the stream rewinds the element; the timeline must not record the rewind.
           timeline.detach()
           detachSource()
-          setFailure(PLAYBACK_FAILURE_MESSAGE)
+          showFailure(PLAYBACK_FAILURE_MESSAGE)
         })
       })
       .catch(() => {
         if (!cancelled) {
-          setFailure(PLAYBACK_FAILURE_MESSAGE)
+          showFailure(PLAYBACK_FAILURE_MESSAGE)
         }
       })
-      .finally(() => clearTimeout(startupDeadline))
+
+    function showFailure(message: string) {
+      clearTimeout(startupDeadline)
+      setFailure(message)
+    }
 
     function releaseSession(): Promise<void> {
       if (cleanupInFlight) {
