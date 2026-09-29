@@ -30,6 +30,7 @@ vi.mock('hls.js', () => ({
 
 const STREAM_URL = '/api/stream/abcd/multivariant.m3u8?t=playback-token'
 const SESSION = { id: 'sess-1', streamUrl: STREAM_URL, transcodeMode: 'REMUX' }
+const CAPACITY_REFUSAL = 'Every transcode slot is busy. Try again in a moment.'
 
 interface TimelineReport {
   sessionId: string
@@ -38,17 +39,48 @@ interface TimelineReport {
 }
 
 function serveSession(): TimelineReport[] {
-  const reports: TimelineReport[] = []
   server.use(
     graphql.mutation('CreateStreamSession', () =>
       HttpResponse.json({ data: { createStreamSession: { session: SESSION, userErrors: [] } } }),
     ),
+  )
+  return recordTimelineReports()
+}
+
+function recordTimelineReports(): TimelineReport[] {
+  const reports: TimelineReport[] = []
+  server.use(
     graphql.mutation('ReportStreamSessionTimeline', ({ variables }) => {
       reports.push(variables as unknown as TimelineReport)
       return HttpResponse.json({ data: { reportStreamSessionTimeline: true } })
     }),
   )
   return reports
+}
+
+function refuseSession() {
+  server.use(
+    graphql.mutation('CreateStreamSession', () =>
+      HttpResponse.json({
+        data: {
+          createStreamSession: {
+            session: null,
+            userErrors: [
+              { __typename: 'TranscodeCapacityUnavailableError', message: CAPACITY_REFUSAL },
+            ],
+          },
+        },
+      }),
+    ),
+  )
+}
+
+function failSessionCreation() {
+  server.use(
+    graphql.mutation('CreateStreamSession', () =>
+      HttpResponse.json({ errors: [{ message: 'boom' }] }, { status: 200 }),
+    ),
+  )
 }
 
 function serveSingleWorkerSlot({
@@ -90,22 +122,125 @@ function serveSingleWorkerSlot({
   return activeSessions
 }
 
-// jsdom's media element has no real timeline; an own property stands in for currentTime so the
-// player's seek is observable and tests can move the playhead before firing events.
 async function attachedVideo(streamUrl = STREAM_URL): Promise<HTMLVideoElement> {
-  await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(streamUrl))
-  const video = document.querySelector('video')
-  if (!video) {
-    throw new Error('no video element rendered')
-  }
+  return videoWhen(() => expect(hls.loadSource).toHaveBeenCalledWith(streamUrl))
+}
+
+async function nativeVideo(streamUrl = STREAM_URL): Promise<HTMLVideoElement> {
+  return videoWhen((video) => expect(video).toHaveAttribute('src', streamUrl))
+}
+
+// Testing Library's waitFor stalls under faked timers; vi.waitFor advances them while it polls.
+async function videoWhen(
+  expectation: (video: HTMLVideoElement) => void,
+): Promise<HTMLVideoElement> {
+  const video = await act(() =>
+    vi.waitFor(() => {
+      const element = document.querySelector('video')
+      if (!element) {
+        throw new Error('no video element rendered')
+      }
+      expectation(element)
+      return element
+    }),
+  )
+  return fakeMedia(video)
+}
+
+// jsdom's media element has no timeline and cannot load or play. Own currentTime, readyState and
+// paused let tests observe the seek, move the playhead, load the stream and press play; load()
+// resets the playhead and ready state as a browser does.
+function fakeMedia(video: HTMLVideoElement): HTMLVideoElement {
   Object.defineProperty(video, 'currentTime', { writable: true, value: 0, configurable: true })
+  Object.defineProperty(video, 'paused', { writable: true, value: true, configurable: true })
+  setReadyState(video, HTMLMediaElement.HAVE_NOTHING)
+  Object.defineProperty(video, 'load', {
+    configurable: true,
+    value: () => {
+      setReadyState(video, HTMLMediaElement.HAVE_NOTHING)
+      if (video.currentTime === 0) {
+        return
+      }
+      video.currentTime = 0
+      video.dispatchEvent(new Event('timeupdate'))
+    },
+  })
   return video
+}
+
+function setReadyState(video: HTMLVideoElement, readyState: number) {
+  Object.defineProperty(video, 'readyState', { value: readyState, configurable: true })
+}
+
+function loadMetadata(video: HTMLVideoElement) {
+  setReadyState(video, HTMLMediaElement.HAVE_METADATA)
+  fireEvent(video, new Event('loadedmetadata'))
+}
+
+function loadFirstFrame(video: HTMLVideoElement) {
+  setReadyState(video, HTMLMediaElement.HAVE_CURRENT_DATA)
+  fireEvent(video, new Event('loadeddata'))
+}
+
+function pressPlay(video: HTMLVideoElement) {
+  Object.defineProperty(video, 'paused', { writable: true, value: false, configurable: true })
+  fireEvent(video, new Event('play'))
+}
+
+function pressPause(video: HTMLVideoElement) {
+  Object.defineProperty(video, 'paused', { writable: true, value: true, configurable: true })
+  fireEvent(video, new Event('pause'))
+}
+
+function raiseHlsFatalError() {
+  const onError = hls.on.mock.calls.find(([event]) => event === 'hlsError')?.[1]
+  expect(onError).toBeTypeOf('function')
+  act(() => onError?.('hlsError', { fatal: true, type: 'networkError' }))
 }
 
 function playheadAt(video: HTMLVideoElement, seconds: number) {
   video.currentTime = seconds
   fireEvent(video, new Event('timeupdate'))
 }
+
+interface StreamPath {
+  supported: boolean
+  streamingVideo: () => Promise<HTMLVideoElement>
+  startStream: (video: HTMLVideoElement) => void
+  failStream: (video: HTMLVideoElement) => void
+  expectStreamReleased: (video: HTMLVideoElement) => void
+}
+
+const STREAM_PATHS: [string, StreamPath][] = [
+  [
+    'NativePath',
+    {
+      supported: false,
+      streamingVideo: nativeVideo,
+      startStream: (video) => {
+        loadMetadata(video)
+        loadFirstFrame(video)
+      },
+      failStream: (video) => fireEvent(video, new Event('error')),
+      expectStreamReleased: (video) => expect(video).not.toHaveAttribute('src'),
+    },
+  ],
+  [
+    'HlsJsPath',
+    {
+      supported: true,
+      streamingVideo: attachedVideo,
+      startStream: loadMetadata,
+      failStream: raiseHlsFatalError,
+      expectStreamReleased: () => expect(hls.destroy).toHaveBeenCalledOnce(),
+    },
+  ],
+]
+
+const NATIVE_WAITING_POINTS = [
+  ['BeforeMetadata', () => undefined],
+  ['AtMetadata', loadMetadata],
+] as const
 
 function Harness() {
   const [mediaFileId, setMediaFileId] = useState('a')
@@ -134,6 +269,7 @@ function RemountHarness() {
 describe('Player', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    hls.supported = true
     server.use(
       graphql.mutation('DestroyStreamSession', () =>
         HttpResponse.json({ data: { destroyStreamSession: true } }),
@@ -645,11 +781,7 @@ describe('Player', () => {
   })
 
   it('shouldShowErrorWhenSessionCreationFails', async () => {
-    server.use(
-      graphql.mutation('CreateStreamSession', () =>
-        HttpResponse.json({ errors: [{ message: 'boom' }] }, { status: 200 }),
-      ),
-    )
+    failSessionCreation()
 
     renderWithProviders(<Player mediaFileId="abcd" />)
 
@@ -657,29 +789,11 @@ describe('Player', () => {
   })
 
   it('shouldShowTheServersRefusalWhenTheSessionIsRefused', async () => {
-    server.use(
-      graphql.mutation('CreateStreamSession', () =>
-        HttpResponse.json({
-          data: {
-            createStreamSession: {
-              session: null,
-              userErrors: [
-                {
-                  __typename: 'TranscodeCapacityUnavailableError',
-                  message: 'Every transcode slot is busy. Try again in a moment.',
-                },
-              ],
-            },
-          },
-        }),
-      ),
-    )
+    refuseSession()
 
     renderWithProviders(<Player mediaFileId="abcd" />)
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Every transcode slot is busy. Try again in a moment.',
-    )
+    expect(await screen.findByRole('alert')).toHaveTextContent(CAPACITY_REFUSAL)
     expect(hls.loadSource).not.toHaveBeenCalled()
   })
 
@@ -692,13 +806,278 @@ describe('Player', () => {
     renderWithProviders(<Player mediaFileId="abcd" />)
     await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(STREAM_URL))
 
-    const onError = hls.on.mock.calls.find(([event]) => event === 'hlsError')?.[1]
-    expect(onError).toBeTypeOf('function')
-    act(() => onError?.('hlsError', { fatal: true, type: 'networkError' }))
+    raiseHlsFatalError()
 
     expect(await screen.findByRole('alert')).toBeInTheDocument()
     expect(hls.destroy).toHaveBeenCalled()
   })
+
+  it('shouldShowThePlaybackErrorWhenTheNativeElementCannotPlayTheStream', async () => {
+    hls.supported = false
+    serveSession()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    renderWithProviders(<Player mediaFileId="abcd" />)
+    const video = await nativeVideo()
+
+    fireEvent(video, new Event('error'))
+    await act(async () => vi.advanceTimersByTimeAsync(30_000))
+
+    vi.useRealTimers()
+    expect(screen.getByRole('alert')).toHaveTextContent("Playback couldn't start.")
+    expect(screen.getByRole('button', { name: 'Retry playback' })).toBeInTheDocument()
+  })
+
+  it('shouldIgnoreTheFailedAttemptsNativeErrorsWhileRetrying', async () => {
+    hls.supported = false
+    const retryResponse = deferred()
+    let creations = 0
+    server.use(
+      graphql.mutation('CreateStreamSession', async () => {
+        creations += 1
+        if (creations > 1) {
+          await retryResponse.promise
+        }
+        return HttpResponse.json({
+          data: { createStreamSession: { session: SESSION, userErrors: [] } },
+        })
+      }),
+    )
+    const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+    const video = await nativeVideo()
+    fireEvent(video, new Event('error'))
+    await user.click(await screen.findByRole('button', { name: 'Retry playback' }))
+    await waitFor(() => expect(creations).toBe(2))
+
+    fireEvent(video, new Event('error'))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    retryResponse.resolve()
+
+    await nativeVideo()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('shouldReportTheLastPositionWhenLeavingAfterANativePlaybackError', async () => {
+    hls.supported = false
+    const reports = serveSession()
+    const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
+    const video = await nativeVideo()
+    playheadAt(video, 25)
+    fireEvent(video, new Event('error'))
+    await screen.findByRole('alert')
+
+    unmount()
+
+    await waitFor(() => expect(reports.at(-1)?.state).toBe('STOPPED'))
+    expect(reports).toEqual([
+      { sessionId: 'sess-1', positionSeconds: 25, state: 'PLAYING' },
+      { sessionId: 'sess-1', positionSeconds: 25, state: 'STOPPED' },
+    ])
+  })
+
+  it.each(STREAM_PATHS)(
+    'shouldTimeOutStartupWhenTheStreamNeverLoadsMetadataOnThe%s',
+    async (_path, { supported, streamingVideo, failStream, expectStreamReleased }) => {
+      hls.supported = supported
+      const activeSessions = serveSingleWorkerSlot()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await streamingVideo()
+
+      await act(async () => vi.advanceTimersByTimeAsync(30_000))
+      vi.useRealTimers()
+
+      expect(screen.getByRole('alert')).toHaveTextContent('Playback is taking too long to start.')
+      expectStreamReleased(video)
+      await waitFor(() => expect(activeSessions.size).toBe(0))
+      failStream(video)
+      expect(screen.getByRole('alert')).toHaveTextContent('Playback is taking too long to start.')
+    },
+  )
+
+  it.each(STREAM_PATHS)(
+    'shouldKeepTheStreamPastTheStartupDeadlineOnceItStartsOnThe%s',
+    async (_path, { supported, streamingVideo, startStream }) => {
+      hls.supported = supported
+      serveSession()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await streamingVideo()
+
+      startStream(video)
+      await act(async () => vi.advanceTimersByTimeAsync(30_000))
+
+      vi.useRealTimers()
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    },
+  )
+
+  it('shouldTimeOutStartupWhenTheNativeStreamLoadsMetadataButNoFrame', async () => {
+    hls.supported = false
+    const activeSessions = serveSingleWorkerSlot()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    renderWithProviders(<Player mediaFileId="abcd" />)
+    const video = await nativeVideo()
+
+    loadMetadata(video)
+    await act(async () => vi.advanceTimersByTimeAsync(30_000))
+
+    vi.useRealTimers()
+    expect(screen.getByRole('alert')).toHaveTextContent('Playback is taking too long to start.')
+    expect(video).not.toHaveAttribute('src')
+    await waitFor(() => expect(activeSessions.size).toBe(0))
+  })
+
+  it('shouldKeepTheResumePositionWhenTheNativeStreamTimesOutAfterSeeking', async () => {
+    hls.supported = false
+    const activeSessions = serveSingleWorkerSlot()
+    const reports = recordTimelineReports()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    renderWithProviders(<Player mediaFileId="abcd" startPositionSeconds={120} />)
+    const video = await nativeVideo()
+    loadMetadata(video)
+
+    await act(async () => vi.advanceTimersByTimeAsync(30_000))
+
+    vi.useRealTimers()
+    await waitFor(() => expect(activeSessions.size).toBe(0))
+    expect(reports).toEqual([])
+  })
+
+  it.each(NATIVE_WAITING_POINTS)(
+    'shouldHoldTheStartupDeadlineWhileTheNativeElementWaitsForTheViewer%s',
+    async (_point, reachWaitingPoint) => {
+      hls.supported = false
+      const activeSessions = serveSingleWorkerSlot()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await nativeVideo()
+
+      reachWaitingPoint(video)
+      fireEvent(video, new Event('suspend'))
+      await act(async () => vi.advanceTimersByTimeAsync(60_000))
+
+      vi.useRealTimers()
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(video).toHaveAttribute('src', STREAM_URL)
+      expect(activeSessions).toEqual(new Set(['sess-abcd']))
+    },
+  )
+
+  it.each(NATIVE_WAITING_POINTS)(
+    'shouldRestartTheStartupDeadlineWhenTheViewerPlaysTheNativeElementWaiting%s',
+    async (_point, reachWaitingPoint) => {
+      hls.supported = false
+      const activeSessions = serveSingleWorkerSlot()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await nativeVideo()
+      reachWaitingPoint(video)
+      fireEvent(video, new Event('suspend'))
+      await act(async () => vi.advanceTimersByTimeAsync(60_000))
+
+      pressPlay(video)
+      await act(async () => vi.advanceTimersByTimeAsync(29_999))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      await act(async () => vi.advanceTimersByTimeAsync(1))
+
+      vi.useRealTimers()
+      expect(screen.getByRole('alert')).toHaveTextContent('Playback is taking too long to start.')
+      expect(video).not.toHaveAttribute('src')
+      await waitFor(() => expect(activeSessions.size).toBe(0))
+    },
+  )
+
+  it.each(NATIVE_WAITING_POINTS)(
+    'shouldTimeOutStartupWhenTheNativeElementSuspendsAfterTheViewerPlaysWaiting%s',
+    async (_point, reachWaitingPoint) => {
+      hls.supported = false
+      const activeSessions = serveSingleWorkerSlot()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await nativeVideo()
+      reachWaitingPoint(video)
+      fireEvent(video, new Event('suspend'))
+      pressPlay(video)
+
+      fireEvent(video, new Event('suspend'))
+      await act(async () => vi.advanceTimersByTimeAsync(30_000))
+
+      vi.useRealTimers()
+      expect(screen.getByRole('alert')).toHaveTextContent('Playback is taking too long to start.')
+      expect(video).not.toHaveAttribute('src')
+      await waitFor(() => expect(activeSessions.size).toBe(0))
+    },
+  )
+
+  it('shouldHoldTheStartupDeadlineWhenTheViewerPausesTheNativeElementBeforeItsFirstFrame', async () => {
+    hls.supported = false
+    const activeSessions = serveSingleWorkerSlot()
+    recordTimelineReports()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    renderWithProviders(<Player mediaFileId="abcd" />)
+    const video = await nativeVideo()
+    loadMetadata(video)
+    pressPlay(video)
+    pressPause(video)
+
+    fireEvent(video, new Event('suspend'))
+    await act(async () => vi.advanceTimersByTimeAsync(60_000))
+
+    vi.useRealTimers()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(video).toHaveAttribute('src', STREAM_URL)
+    expect(activeSessions).toEqual(new Set(['sess-abcd']))
+  })
+
+  it('shouldNotRestartTheStartupDeadlineWhenTheViewerPlaysALoadedNativeStream', async () => {
+    hls.supported = false
+    serveSession()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    renderWithProviders(<Player mediaFileId="abcd" />)
+    const video = await nativeVideo()
+
+    loadMetadata(video)
+    loadFirstFrame(video)
+    fireEvent(video, new Event('suspend'))
+    pressPlay(video)
+    await act(async () => vi.advanceTimersByTimeAsync(60_000))
+
+    vi.useRealTimers()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('shouldNotTimeOutTheNextMediaFileWhenThePreviousOneNeverStarted', async () => {
+    serveSingleWorkerSlot()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    renderWithProviders(<Harness />)
+    await attachedVideo('/api/stream/a/multivariant.m3u8?t=playback-token')
+    await act(async () => vi.advanceTimersByTimeAsync(10_000))
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    await attachedVideo('/api/stream/b/multivariant.m3u8?t=playback-token')
+
+    await act(async () => vi.advanceTimersByTimeAsync(20_000))
+
+    vi.useRealTimers()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['Refusal', { serve: refuseSession, message: CAPACITY_REFUSAL }],
+    ['FailedCreation', { serve: failSessionCreation, message: "Playback couldn't start." }],
+  ] as const)(
+    'shouldKeepTheFailureMessagePastTheStartupDeadlineAfterA%s',
+    async (_outcome, { serve, message }) => {
+      serve()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'], shouldAdvanceTime: true })
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      expect(await screen.findByRole('alert')).toHaveTextContent(message)
+
+      await act(async () => vi.advanceTimersByTimeAsync(30_000))
+
+      vi.useRealTimers()
+      expect(screen.getByRole('alert')).toHaveTextContent(message)
+    },
+  )
 
   it('shouldRecoverWhenTheNextMediaFileStartsAfterAFailedOne', async () => {
     server.use(
@@ -724,7 +1103,7 @@ describe('Player', () => {
     renderWithProviders(<Player mediaFileId="abcd" startPositionSeconds={120} />)
     const video = await attachedVideo()
 
-    fireEvent(video, new Event('loadedmetadata'))
+    loadMetadata(video)
 
     expect(video.currentTime).toBe(120)
   })
@@ -734,7 +1113,7 @@ describe('Player', () => {
     renderWithProviders(<Player mediaFileId="abcd" />)
     const video = await attachedVideo()
 
-    fireEvent(video, new Event('loadedmetadata'))
+    loadMetadata(video)
 
     expect(video.currentTime).toBe(0)
   })

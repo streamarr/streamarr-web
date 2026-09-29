@@ -45,7 +45,7 @@ export function Player({
     }
     setFailure(null)
 
-    let hls: Hls | null = null
+    let source: StreamSource | null = null
     let cancelled = false
     let sessionId: string | null = null
     let lastReportedPosition = startPositionSeconds ?? 0
@@ -117,11 +117,12 @@ export function Player({
       },
     })
 
-    const startupDeadline = setTimeout(() => {
+    const startupDeadline = createStartupDeadline(() => {
       cancelled = true
+      detachSource()
       setFailure('Playback is taking too long to start. Try again.')
       requestCleanup()
-    }, PLAYBACK_START_TIMEOUT_MS)
+    })
     const startup = Promise.resolve()
       .then(async () => {
         await previousCleanup?.()
@@ -138,20 +139,30 @@ export function Player({
           return
         }
         if (!session) {
-          setFailure(refusalMessage(payload))
+          showFailure(refusalMessage(payload))
           return
         }
-        hls = attach(video, session.streamUrl, () => {
-          hls = null
-          setFailure(PLAYBACK_FAILURE_MESSAGE)
+        source = attach(video, session.streamUrl, {
+          startupDeadline,
+          onFatal: () => {
+            if (cancelled) {
+              return
+            }
+            detachSource()
+            showFailure(PLAYBACK_FAILURE_MESSAGE)
+          },
         })
       })
       .catch(() => {
         if (!cancelled) {
-          setFailure(PLAYBACK_FAILURE_MESSAGE)
+          showFailure(PLAYBACK_FAILURE_MESSAGE)
         }
       })
-      .finally(() => clearTimeout(startupDeadline))
+
+    function showFailure(message: string) {
+      startupDeadline.end()
+      setFailure(message)
+    }
 
     function releaseSession(): Promise<void> {
       if (cleanupInFlight) {
@@ -178,6 +189,13 @@ export function Player({
       }
     }
 
+    function detachSource() {
+      // Releasing the stream rewinds the element; the timeline must not record the rewind.
+      timeline.detach()
+      source?.detach()
+      source = null
+    }
+
     function requestCleanup() {
       // A failed or pending destroy retains ownership; a later startup can retry the same cleanup.
       pendingCleanups.set(client, releaseSession)
@@ -186,12 +204,11 @@ export function Player({
 
     return () => {
       cancelled = true
-      clearTimeout(startupDeadline)
-      timeline.detach()
+      startupDeadline.end()
       if (lastKnownPosition !== null) {
         report('STOPPED', lastKnownPosition)
       }
-      hls?.destroy()
+      detachSource()
       requestCleanup()
     }
   }, [mediaFileId, startPositionSeconds, createStreamSession, client, attempt])
@@ -244,6 +261,49 @@ function attachTimeline(
   }
 }
 
+interface StartupDeadline {
+  end: () => void
+  hold: () => void
+  rearm: () => void
+}
+
+type StartupPhase =
+  { at: 'armed'; timer: ReturnType<typeof setTimeout> } | { at: 'held' } | { at: 'ended' }
+
+function createStartupDeadline(onExpired: () => void): StartupDeadline {
+  let phase = arm()
+
+  function arm(): StartupPhase {
+    const timer = setTimeout(() => {
+      phase = { at: 'ended' }
+      onExpired()
+    }, PLAYBACK_START_TIMEOUT_MS)
+    return { at: 'armed', timer }
+  }
+
+  return {
+    end: () => {
+      if (phase.at === 'armed') {
+        clearTimeout(phase.timer)
+      }
+      phase = { at: 'ended' }
+    },
+    hold: () => {
+      if (phase.at !== 'armed') {
+        return
+      }
+      clearTimeout(phase.timer)
+      phase = { at: 'held' }
+    },
+    rearm: () => {
+      if (phase.at !== 'held') {
+        return
+      }
+      phase = arm()
+    },
+  }
+}
+
 function refusalMessage(payload: StreamSessionPayload | undefined): string {
   const refusal = payload?.userErrors[0]
   return refusal ? userErrorMessage(refusal) : PLAYBACK_FAILURE_MESSAGE
@@ -254,11 +314,19 @@ function ignoreTimelineReportFailure() {
   // surface it.
 }
 
+interface StreamSource {
+  detach: () => void
+}
+
+interface StreamSourceOptions {
+  onFatal: () => void
+  startupDeadline: StartupDeadline
+}
+
 // The stream URL carries the playback ?t= token; relative segment requests inherit it.
-function attach(video: HTMLVideoElement, url: string, onFatal: () => void): Hls | null {
+function attach(video: HTMLVideoElement, url: string, options: StreamSourceOptions): StreamSource {
   if (!Hls.isSupported()) {
-    video.src = url
-    return null
+    return attachNative(video, url, options)
   }
   const hls = new Hls()
   hls.on(Hls.Events.ERROR, (_event, data) => {
@@ -266,10 +334,47 @@ function attach(video: HTMLVideoElement, url: string, onFatal: () => void): Hls 
       return
     }
     // An expired ?t= token or a restarted server: the instance cannot recover.
-    hls.destroy()
-    onFatal()
+    options.onFatal()
   })
+  video.addEventListener('loadedmetadata', options.startupDeadline.end)
   hls.loadSource(url)
   hls.attachMedia(video)
-  return hls
+  return {
+    detach: () => {
+      video.removeEventListener('loadedmetadata', options.startupDeadline.end)
+      hls.destroy()
+    },
+  }
+}
+
+// Without MSE the element plays HLS itself and reports failure only through its error event.
+function attachNative(
+  video: HTMLVideoElement,
+  url: string,
+  { onFatal, startupDeadline }: StreamSourceOptions,
+): StreamSource {
+  // WebKit loads metadata from the playlists alone, so startup ends on the first frame. A browser
+  // may withhold that frame until the viewer presses play, so a suspend while paused holds startup
+  // until then. A playing element that suspends is still owed its first frame.
+  const holdWhilePaused = () => {
+    if (video.paused) {
+      startupDeadline.hold()
+    }
+  }
+  video.addEventListener('error', onFatal)
+  video.addEventListener('loadeddata', startupDeadline.end)
+  video.addEventListener('suspend', holdWhilePaused)
+  video.addEventListener('play', startupDeadline.rearm)
+  video.src = url
+  return {
+    detach: () => {
+      video.removeEventListener('error', onFatal)
+      video.removeEventListener('loadeddata', startupDeadline.end)
+      video.removeEventListener('suspend', holdWhilePaused)
+      video.removeEventListener('play', startupDeadline.rearm)
+      // The same reset hls.js performs on detach: the element stops fetching the stream.
+      video.removeAttribute('src')
+      video.load()
+    },
+  }
 }
