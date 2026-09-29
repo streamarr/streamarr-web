@@ -198,12 +198,14 @@
   align-items: center;
   gap: var(--spacing-8);
   min-width: 0;
+  min-height: 32px;
   padding: 7px var(--spacing-12);
   border: none;
   border-radius: var(--radius-md);
   background: var(--surface-panel-strong);
   font: inherit;
   font-size: var(--font-size-body);
+  line-height: 16px;
   color: var(--text-primary);
   white-space: nowrap;
   cursor: pointer;
@@ -212,6 +214,12 @@
 .chip[aria-disabled='true'] {
   color: var(--text-secondary);
   cursor: default;
+}
+
+.iconChip {
+  justify-content: center;
+  min-width: 32px;
+  padding-inline: 0;
 }
 
 .chipValue {

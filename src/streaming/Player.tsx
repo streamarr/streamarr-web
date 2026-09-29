@@ -39,6 +39,7 @@ export function Player({
   startPositionSeconds?: number
   title?: PlayerTitle
 }>) {
+  const playerRef = useRef<HTMLElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const [createStreamSession] = useMutation(CreateStreamSessionDocument)
   const client = useApolloClient()
@@ -225,7 +226,11 @@ export function Player({
   }, [mediaFileId, startPositionSeconds, createStreamSession, client, attempt])
 
   return (
-    <div className={`${styles.player} ${focusStyles.focusRing}`}>
+    <section
+      ref={playerRef}
+      aria-label="Player"
+      className={`${styles.player} ${focusStyles.focusRing}`}
+    >
       <video ref={videoRef} className={styles.video} playsInline />
       {failure && (
         <Alert className={styles.failure} color="red" role="alert">
@@ -238,8 +243,14 @@ export function Player({
       <div className={styles.back}>
         <DetailBackButton />
       </div>
-      <PlayerControls videoRef={videoRef} video={video} attached={attached} title={title} />
-    </div>
+      <PlayerControls
+        playerRef={playerRef}
+        videoRef={videoRef}
+        video={video}
+        attached={attached}
+        title={title}
+      />
+    </section>
   )
 }
 
