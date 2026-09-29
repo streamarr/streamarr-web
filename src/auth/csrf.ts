@@ -24,8 +24,8 @@ function readCookie(name: string): string | null {
 
 export const CSRF_HEADER = 'X-XSRF-TOKEN'
 export const CSRF_REJECTION_CODE = 'CSRF_TOKEN_REQUIRED'
-export const CSRF_REJECTION_MESSAGE =
-  'Your session security check failed. Reload the page and try again.'
+export const CSRF_REJECTION_CAUSE = 'Your session security check failed.'
+export const CSRF_REJECTION_MESSAGE = `${CSRF_REJECTION_CAUSE} Reload the page and try again.`
 
 export function isCsrfRejection(
   status: number | undefined,
