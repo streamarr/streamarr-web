@@ -97,8 +97,6 @@ export function Player({
     const timeline = attachTimeline(video, {
       // Seeking before metadata is loaded is unreliable across browsers; the event is the safe point.
       onLoadedMetadata: (element) => {
-        // Nothing calls play(), so metadata is as far as a stream starts without the viewer.
-        startupDeadline.end()
         if (startPositionSeconds) {
           element.currentTime = startPositionSeconds
         }
@@ -338,9 +336,15 @@ function attach(video: HTMLVideoElement, url: string, options: StreamSourceOptio
     // An expired ?t= token or a restarted server: the instance cannot recover.
     options.onFatal()
   })
+  video.addEventListener('loadedmetadata', options.startupDeadline.end)
   hls.loadSource(url)
   hls.attachMedia(video)
-  return { detach: () => hls.destroy() }
+  return {
+    detach: () => {
+      video.removeEventListener('loadedmetadata', options.startupDeadline.end)
+      hls.destroy()
+    },
+  }
 }
 
 // Without MSE the element plays HLS itself and reports failure only through its error event.
@@ -356,12 +360,14 @@ function attachNative(
     }
   }
   video.addEventListener('error', onFatal)
+  video.addEventListener('loadedmetadata', startupDeadline.end)
   video.addEventListener('suspend', onSuspend)
   video.addEventListener('play', startupDeadline.rearm)
   video.src = url
   return {
     detach: () => {
       video.removeEventListener('error', onFatal)
+      video.removeEventListener('loadedmetadata', startupDeadline.end)
       video.removeEventListener('suspend', onSuspend)
       video.removeEventListener('play', startupDeadline.rearm)
       // The same reset hls.js performs on detach: the element stops fetching the stream.
