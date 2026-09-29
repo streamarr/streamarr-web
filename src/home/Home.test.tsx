@@ -288,6 +288,13 @@ describe('Home', () => {
     )
   })
 
+  it('shouldShowNoCounterOnContinueWatching', async () => {
+    serve(homeData({ continueWatching: [continueWatchingMovie(), continueWatchingEpisode()] }))
+    renderAppAt('/')
+    await screen.findByRole('heading', { name: 'Continue watching' })
+    expect(screen.queryByText(/\d+ in progress/)).not.toBeInTheDocument()
+  })
+
   it('falls back to the newest recently-added item when continueWatching is empty', async () => {
     serve(
       homeData({

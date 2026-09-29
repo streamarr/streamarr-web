@@ -14,7 +14,7 @@ export function ContinueWatchingShelf({ items }: Readonly<{ items: ContinueWatch
   }
 
   return (
-    <ContentShelf title="Continue watching" count={`${items.length} in progress`}>
+    <ContentShelf title="Continue watching">
       {items.map((item) => {
         const summary = summarize(item)
         const card = (
