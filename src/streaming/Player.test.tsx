@@ -1439,6 +1439,19 @@ describe('Player', () => {
       expect(player).toHaveAttribute('data-idle')
     })
 
+    it('shouldFadeTheControlsWhileATouchRestsOnTheBar', async () => {
+      serveSession()
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await attachedVideo()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      await act(() => video.play())
+
+      fireEvent.pointerMove(screen.getByRole('button', { name: 'Pause' }), { pointerType: 'touch' })
+      await act(async () => vi.advanceTimersByTimeAsync(3_000))
+
+      expect(screen.getByRole('region', { name: 'Player' })).toHaveAttribute('data-idle')
+    })
+
     it('shouldFadeTheControlsOnceTheMouseLeavesTheBarAfterTheGlyphUnderItWasReplaced', async () => {
       serveSession()
       renderWithProviders(<Player mediaFileId="abcd" />)
