@@ -7,6 +7,23 @@
   color: var(--text-primary);
 }
 
+.player[data-idle] {
+  cursor: none;
+}
+
+.chrome {
+  transition: opacity 200ms ease;
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+
+.player[data-idle] .chrome {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .video {
   display: block;
   width: 100%;
