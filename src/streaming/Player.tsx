@@ -1,6 +1,6 @@
 import type { ApolloClient, ObservableQuery } from '@apollo/client'
 import { useApolloClient, useMutation } from '@apollo/client/react'
-import { Alert, AspectRatio, Button, Stack } from '@mantine/core'
+import { Alert, Button } from '@mantine/core'
 import Hls from 'hls.js'
 import { useEffect, useRef, useState } from 'react'
 import {
@@ -11,7 +11,10 @@ import {
   type ReportStreamSessionTimelineMutationVariables,
 } from '../graphql/generated/graphql'
 import { userErrorMessage } from '../graphql/userErrors'
+import { DetailBackButton } from '../media/DetailBack'
 import { invalidateWatchedState } from '../media/watchedState'
+import focusStyles from '../styles/focus.module.css'
+import styles from './Player.module.css'
 
 // Progress is only worth a round trip once the playhead has moved this far since the last report.
 const TIMELINE_REPORT_INTERVAL_SECONDS = 10
@@ -214,19 +217,20 @@ export function Player({
   }, [mediaFileId, startPositionSeconds, createStreamSession, client, attempt])
 
   return (
-    <Stack maw={960}>
+    <div className={`${styles.player} ${focusStyles.focusRing}`}>
+      <video ref={videoRef} className={styles.video} controls />
       {failure && (
-        <Alert color="red" role="alert">
+        <Alert className={styles.failure} color="red" role="alert">
           {failure}
           <Button display="block" mt="sm" onClick={() => setAttempt((value) => value + 1)}>
             Retry playback
           </Button>
         </Alert>
       )}
-      <AspectRatio ratio={16 / 9}>
-        <video ref={videoRef} controls style={{ width: '100%' }} />
-      </AspectRatio>
-    </Stack>
+      <div className={styles.back}>
+        <DetailBackButton />
+      </div>
+    </div>
   )
 }
 

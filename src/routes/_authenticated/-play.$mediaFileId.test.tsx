@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
 import { HttpResponse, graphql } from 'msw'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { meFixture } from '../../test/meFixture'
@@ -86,5 +86,21 @@ describe('/play/$mediaFileId', () => {
     fireEvent(video, new Event('loadedmetadata'))
 
     expect(video.currentTime).toBe(startsAt)
+  })
+
+  it('shouldReturnHomeFromBackWhenThePlayerWasOpenedDirectly', async () => {
+    serveApp()
+    server.use(
+      graphql.query('Home', () =>
+        HttpResponse.json({ data: { continueWatching: [], libraries: [] } }),
+      ),
+    )
+    const { user, router } = renderAppAt('/play/file-1')
+    await attachedVideo()
+
+    await user.click(screen.getByRole('button', { name: 'Back' }))
+
+    expect(await screen.findByText(/nothing to watch yet/i)).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/')
   })
 })
