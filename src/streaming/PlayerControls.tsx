@@ -96,7 +96,7 @@ export function PlayerControls({
         classNames={{
           root: styles.seek,
           trackContainer: styles.seekHit,
-          track: styles.seekTrack,
+          track: styles.sliderTrack,
           bar: styles.sliderFill,
           thumb: `${styles.sliderThumb} ${styles.seekThumb}`,
         }}
@@ -219,7 +219,7 @@ function VolumeControl({
       <Slider
         classNames={{
           root: styles.volumeSlider,
-          track: styles.volumeTrack,
+          track: styles.sliderTrack,
           bar: styles.sliderFill,
           thumb: `${styles.sliderThumb} ${styles.volumeThumb}`,
         }}

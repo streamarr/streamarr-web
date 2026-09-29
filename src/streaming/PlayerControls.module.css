@@ -21,7 +21,7 @@
   height: 20px;
 }
 
-.bar .seekTrack::before {
+.bar .sliderTrack::before {
   background-color: rgba(255, 255, 255, 0.22);
 }
 
@@ -115,10 +115,6 @@
 
 .volumeSlider {
   width: 110px;
-}
-
-.volume .volumeTrack::before {
-  background-color: rgba(255, 255, 255, 0.25);
 }
 
 .volume .volumeThumb {
