@@ -33,11 +33,15 @@ const LEVEL = [
   '',
 ].join('\n')
 
-async function routePlayer(page: Page, request: APIRequestContext): Promise<void> {
+async function routePlayer(
+  page: Page,
+  request: APIRequestContext,
+  operations: Record<string, unknown> = {},
+): Promise<void> {
   await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
   await request.post(`${STUB_URL}/api/auth/refresh`)
   await page.route('**/graphql', async (route) => {
-    const data = PLAYER_OPERATIONS[operationName(route.request())]
+    const data = { ...PLAYER_OPERATIONS, ...operations }[operationName(route.request())]
     return data ? route.fulfill({ json: { data } }) : route.continue()
   })
   await page.route('**/api/stream/**/multivariant.m3u8*', (route) =>
@@ -73,6 +77,18 @@ const PLAYER_OPERATIONS: Record<string, unknown> = {
   },
   ReportStreamSessionTimeline: { reportStreamSessionTimeline: true },
   DestroyStreamSession: { destroyStreamSession: true },
+}
+
+const CAPACITY_REFUSAL = {
+  createStreamSession: {
+    session: null,
+    userErrors: [
+      {
+        __typename: 'TranscodeCapacityUnavailableError',
+        message: 'Every transcode slot is busy. Try again in a moment.',
+      },
+    ],
+  },
 }
 
 // Opacity does not inherit, so a control's own style never shows that its container faded.
@@ -234,6 +250,21 @@ test('the buffering ring shows while the playing video waits for data', async ({
   await expect(ring).toBeAttached()
   const box = await ring.boundingBox()
   expect(box && { x: box.x + box.width / 2, width: box.width }).toEqual({ x: 1512 / 2, width: 54 })
+})
+
+test('a refusal keeps Retry above the control bar on a phone held sideways', async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize({ width: 667, height: 375 })
+  await routePlayer(page, request, { CreateStreamSession: CAPACITY_REFUSAL })
+  await page.goto('/play/file-1')
+  const retry = page.getByRole('button', { name: 'Retry playback' })
+  await expect(retry).toBeVisible()
+
+  const retried = page.waitForRequest((call) => operationName(call) === 'CreateStreamSession')
+  await retry.click()
+  await retried
 })
 
 const LAYOUTS = [
