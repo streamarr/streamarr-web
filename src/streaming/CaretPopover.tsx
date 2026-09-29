@@ -51,12 +51,7 @@ export function CaretPopover<Id>({
   const headingId = useId()
 
   useLayoutEffect(() => {
-    const surface = surfaceRef.current
-    const anchor = anchorRef.current
-    if (!surface || !anchor) {
-      return undefined
-    }
-    const place = () => placeAbove(surface, anchor)
+    const place = () => placeAbove(surfaceRef.current, anchorRef.current)
     place()
     window.addEventListener('resize', place)
     return () => window.removeEventListener('resize', place)
@@ -142,9 +137,9 @@ function moveBetweenRows(event: ReactKeyboardEvent<HTMLElement>) {
   rows[move(rows.indexOf(event.currentTarget), rows.length)]?.focus()
 }
 
-function placeAbove(surface: HTMLElement, anchor: HTMLElement) {
-  const frame = surface.offsetParent
-  if (!frame) {
+function placeAbove(surface: HTMLElement | null, anchor: HTMLElement | null) {
+  const frame = surface?.offsetParent
+  if (!surface || !anchor || !frame) {
     return
   }
   const anchorBox = anchor.getBoundingClientRect()
