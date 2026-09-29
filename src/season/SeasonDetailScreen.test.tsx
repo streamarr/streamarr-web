@@ -3,7 +3,7 @@ import { graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { SeasonDetailQuery } from '../graphql/generated/graphql'
 import { meFixture } from '../test/meFixture'
-import { invalidIdResponse } from '../test/graphqlResponses'
+import { failsOnceThen, invalidIdResponse } from '../test/graphqlResponses'
 import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
 
@@ -156,17 +156,11 @@ describe('SeasonDetailScreen', () => {
   })
 
   it('shouldRetryTheSeasonAfterItFailsToLoad', async () => {
-    let requests = 0
+    const season = failsOnceThen(seasonData())
     server.use(
       graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
       graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
-      graphql.query('SeasonDetail', () => {
-        requests += 1
-        if (requests === 1) {
-          return HttpResponse.json({ errors: [{ message: 'boom' }] })
-        }
-        return HttpResponse.json({ data: seasonData() })
-      }),
+      graphql.query('SeasonDetail', season.resolver),
     )
     const { user } = renderAppAt('/season/season-2')
 
@@ -175,7 +169,7 @@ describe('SeasonDetailScreen', () => {
     await user.click(screen.getByRole('button', { name: 'Retry' }))
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Season 2' })).toBeInTheDocument()
-    expect(requests).toBe(2)
+    expect(season.calls).toBe(2)
   })
 
   it('shouldShowNotFoundWithoutRetryWhenTheSeasonDoesNotExist', async () => {

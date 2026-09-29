@@ -13,3 +13,17 @@ export function invalidIdResponse(rootField: string) {
     data: null,
   })
 }
+
+/** A resolver that fails the first request without a code and answers `data` after that. */
+export function failsOnceThen(data: GraphQLQuery) {
+  const handler = {
+    calls: 0,
+    resolver: () => {
+      handler.calls += 1
+      return HttpResponse.json<GraphQLResponseBody<GraphQLQuery>>(
+        handler.calls === 1 ? { errors: [{ message: 'boom' }] } : { data },
+      )
+    },
+  }
+  return handler
+}

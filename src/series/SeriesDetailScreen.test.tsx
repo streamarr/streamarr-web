@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import type { SeriesDetailQuery } from '../graphql/generated/graphql'
 import { deferred } from '../test/deferred'
 import { meFixture } from '../test/meFixture'
-import { invalidIdResponse } from '../test/graphqlResponses'
+import { failsOnceThen, invalidIdResponse } from '../test/graphqlResponses'
 import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
 
@@ -157,17 +157,11 @@ describe('SeriesDetailScreen', () => {
   })
 
   it('shouldRetryTheShowAfterItFailsToLoad', async () => {
-    let requests = 0
+    const series = failsOnceThen(seriesData())
     server.use(
       graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
       graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
-      graphql.query('SeriesDetail', () => {
-        requests += 1
-        if (requests === 1) {
-          return HttpResponse.json({ errors: [{ message: 'boom' }] })
-        }
-        return HttpResponse.json({ data: seriesData() })
-      }),
+      graphql.query('SeriesDetail', series.resolver),
     )
     const { user } = renderAppAt('/series/series-1')
 
@@ -178,7 +172,7 @@ describe('SeriesDetailScreen', () => {
     expect(
       await screen.findByRole('heading', { level: 1, name: 'Northern Line' }),
     ).toBeInTheDocument()
-    expect(requests).toBe(2)
+    expect(series.calls).toBe(2)
   })
 
   it('shouldShowNotFoundWithoutRetryWhenTheShowDoesNotExist', async () => {

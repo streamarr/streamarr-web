@@ -2,6 +2,7 @@ import { screen, waitFor } from '@testing-library/react'
 import { graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { SharingOverviewQuery } from '../graphql/generated/graphql'
+import { failsOnceThen } from '../test/graphqlResponses'
 import { HOUSEHOLD_ID, meFixture, PROFILE_ID, profileFixture } from '../test/meFixture'
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
@@ -218,15 +219,11 @@ describe('SharingScreen', () => {
 
   it('shouldRetryWhenTheAccountFailsToLoad', async () => {
     serverAnswersOverview()
-    let accountRequests = 0
     server.use(
-      graphql.query('Me', () => {
-        accountRequests += 1
-        if (accountRequests === 1) {
-          return HttpResponse.json({ errors: [{ message: 'boom' }] })
-        }
-        return HttpResponse.json({ data: { me: meFixture({ profiles: [profileFixture()] }) } })
-      }),
+      graphql.query(
+        'Me',
+        failsOnceThen({ me: meFixture({ profiles: [profileFixture()] }) }).resolver,
+      ),
     )
     const { user } = renderWithProviders(<SharingScreen />)
 
@@ -239,21 +236,11 @@ describe('SharingScreen', () => {
 
   it('shouldRetryWhenSharingFailsToLoad', async () => {
     serverAnswersOverview()
-    let overviewRequests = 0
-    server.use(
-      graphql.query('SharingOverview', () => {
-        overviewRequests += 1
-        if (overviewRequests === 1) {
-          return HttpResponse.json({ errors: [{ message: 'boom' }] })
-        }
-        return HttpResponse.json({
-          data: {
-            pendingShareOffers: { __typename: 'ProfileShareConnection', edges: [] },
-            profileShares: { __typename: 'ProfileShareConnection', edges: [] },
-          },
-        })
-      }),
-    )
+    const overview = failsOnceThen({
+      pendingShareOffers: { __typename: 'ProfileShareConnection', edges: [] },
+      profileShares: { __typename: 'ProfileShareConnection', edges: [] },
+    })
+    server.use(graphql.query('SharingOverview', overview.resolver))
     const { user } = renderWithProviders(<SharingScreen />)
 
     expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load sharing.")
@@ -261,7 +248,7 @@ describe('SharingScreen', () => {
     await user.click(screen.getByRole('button', { name: 'Retry' }))
 
     expect(await screen.findByRole('heading', { name: 'Sharing' })).toBeInTheDocument()
-    expect(overviewRequests).toBe(2)
+    expect(overview.calls).toBe(2)
   })
 
   it('shouldSayThereIsNoProfileToShareWithoutOfferingRetry', async () => {

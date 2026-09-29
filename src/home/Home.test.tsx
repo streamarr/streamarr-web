@@ -3,6 +3,7 @@ import { graphql, http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { HomeQuery } from '../graphql/generated/graphql'
 import { deferred } from '../test/deferred'
+import { failsOnceThen } from '../test/graphqlResponses'
 import { meFixture } from '../test/meFixture'
 import { renderAppAt, renderWithProviders } from '../test/render'
 import { server } from '../test/server'
@@ -215,18 +216,10 @@ describe('Home', () => {
   })
 
   it('shouldOfferRetryWhenTheAccountFailsBehindAnEmptyInventory', async () => {
-    let accountRequests = 0
+    const account = failsOnceThen({ me: meFixture({ scope: 'profile', serverAdmin: true }) })
     server.use(
       graphql.query('Home', () => HttpResponse.json({ data: homeData() })),
-      graphql.query('Me', () => {
-        accountRequests += 1
-        if (accountRequests === 1) {
-          return HttpResponse.json({ errors: [{ message: 'boom' }] })
-        }
-        return HttpResponse.json({
-          data: { me: meFixture({ scope: 'profile', serverAdmin: true }) },
-        })
-      }),
+      graphql.query('Me', account.resolver),
     )
     const { user } = renderWithProviders(<Home />)
 
@@ -277,19 +270,11 @@ describe('Home', () => {
   })
 
   it('shouldRetryHomeAfterItFailsToLoad', async () => {
-    let homeRequests = 0
+    const home = failsOnceThen(homeData({ continueWatching: [continueWatchingMovie()] }))
     server.use(
       graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
       graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
-      graphql.query('Home', () => {
-        homeRequests += 1
-        if (homeRequests === 1) {
-          return HttpResponse.json({ errors: [{ message: 'boom' }] })
-        }
-        return HttpResponse.json({
-          data: homeData({ continueWatching: [continueWatchingMovie()] }),
-        })
-      }),
+      graphql.query('Home', home.resolver),
     )
     const { user } = renderAppAt('/')
 
@@ -299,7 +284,7 @@ describe('Home', () => {
     await user.click(screen.getByRole('button', { name: 'Retry' }))
 
     expect(await screen.findByRole('heading', { name: 'Everlight' })).toBeInTheDocument()
-    expect(homeRequests).toBe(2)
+    expect(home.calls).toBe(2)
   })
 
   it('shouldShowTheServersWordsWhenHomeFails', async () => {

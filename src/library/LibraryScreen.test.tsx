@@ -11,7 +11,7 @@ import {
   JSDOM_ROW_HEIGHT,
   resizeObserverInstances,
 } from '../../vitest.setup'
-import { invalidIdResponse } from '../test/graphqlResponses'
+import { failsOnceThen, invalidIdResponse } from '../test/graphqlResponses'
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
 import { LibraryScreen, type LibrarySearch } from './LibraryScreen'
@@ -202,15 +202,8 @@ describe('LibraryScreen', () => {
   })
 
   it('shouldRetryTheLibraryAfterItFailsToLoad', async () => {
-    let requests = 0
-    server.use(
-      graphql.query('LibraryPage', () => {
-        requests += 1
-        return requests === 1
-          ? HttpResponse.json({ errors: [{ message: 'boom' }] })
-          : HttpResponse.json({ data: libraryData() })
-      }),
-    )
+    const libraryPage = failsOnceThen(libraryData())
+    server.use(graphql.query('LibraryPage', libraryPage.resolver))
     const { user } = renderWithProviders(<Harness />)
 
     expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load this library.")
@@ -221,7 +214,7 @@ describe('LibraryScreen', () => {
 
     expect(await screen.findByRole('heading', { name: 'Movies' })).toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    expect(requests).toBe(2)
+    expect(libraryPage.calls).toBe(2)
   })
 
   it('shouldShowNotFoundWithoutRetryWhenTheLibraryIdIsMalformed', async () => {
