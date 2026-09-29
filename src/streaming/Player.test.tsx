@@ -255,6 +255,28 @@ function tap(target: Element) {
   fireEvent.click(target)
 }
 
+// Mantine's slider follows a finger through touch events; the controls watch its pointer events.
+function touchDown(target: Element, clientX = 0) {
+  fireEvent.pointerDown(target, { pointerType: 'touch', clientX })
+  fireEvent.touchStart(target, { changedTouches: [{ clientX, clientY: 10 }] })
+}
+
+function liftTouch(target: Element) {
+  fireEvent.pointerUp(target, { pointerType: 'touch' })
+  fireEvent.touchEnd(target)
+}
+
+// The browser takes a touch back when, say, a system gesture or an incoming call claims it.
+function cancelTouch(target: Element) {
+  fireEvent.pointerCancel(target, { pointerType: 'touch' })
+  fireEvent.touchCancel(target)
+}
+
+// Mantine's slider moves to where a drag has reached on the next animation frame.
+async function nextAnimationFrame() {
+  await act(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())))
+}
+
 // jsdom lays nothing out; the seek slider turns a pointer's x into a position across 1000 pixels.
 function layOutSeekTrack() {
   vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
@@ -1340,6 +1362,78 @@ describe('Player', () => {
       expect(video.paused).toBe(false)
       expect(screen.getByText('20:00 / 47:04')).toBeInTheDocument()
       expect(reports.filter((report) => report.state === 'PAUSED')).toEqual([])
+    })
+
+    it('shouldResumePlaybackWhereItWasWhenATouchScrubIsCancelled', async () => {
+      const reports = serveSession()
+      layOutSeekTrack()
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await seekableVideo(2000)
+      await act(() => video.play())
+      playheadAt(video, 30)
+      const seek = screen.getByRole('slider', { name: 'Seek' })
+      touchDown(seek, 250)
+      await nextAnimationFrame()
+      expect(screen.getByText('8:20 / 33:20')).toBeInTheDocument()
+
+      cancelTouch(seek)
+
+      expect(screen.getByRole('button', { name: 'Pause' })).toBeInTheDocument()
+      expect(video.currentTime).toBe(30)
+      playheadAt(video, 45)
+      expect(screen.getByText('0:45 / 33:20')).toBeInTheDocument()
+      await waitFor(() =>
+        expect(reports).toEqual([
+          { sessionId: 'sess-1', positionSeconds: 30, state: 'PLAYING' },
+          { sessionId: 'sess-1', positionSeconds: 30, state: 'PAUSED' },
+          { sessionId: 'sess-1', positionSeconds: 45, state: 'PLAYING' },
+        ]),
+      )
+    })
+
+    it('shouldSeekOnlyWhereTheViewerNextAsksWhenATouchScrubWasCancelled', async () => {
+      serveSession()
+      layOutSeekTrack()
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await seekableVideo(2000)
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      await act(() => video.play())
+      playheadAt(video, 30)
+      const seek = screen.getByRole('slider', { name: 'Seek' })
+      touchDown(seek, 250)
+      await nextAnimationFrame()
+      expect(screen.getByText('8:20 / 33:20')).toBeInTheDocument()
+      cancelTouch(seek)
+
+      const forward = screen.getByRole('button', { name: 'Forward 10 seconds' })
+      touchDown(forward)
+      liftTouch(forward)
+      fireEvent.click(forward)
+      await act(async () => vi.advanceTimersByTimeAsync(0))
+      expect(video.currentTime).toBe(40)
+
+      touchDown(seek, 500)
+      await nextAnimationFrame()
+      expect(screen.getByText('16:40 / 33:20')).toBeInTheDocument()
+      liftTouch(seek)
+      await act(async () => vi.advanceTimersByTimeAsync(0))
+      expect(video.currentTime).toBe(1000)
+      expect(video.paused).toBe(false)
+    })
+
+    it('shouldLeaveAReleasedStreamStoppedWhenATouchScrubIsCancelled', async () => {
+      serveSession()
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await seekableVideo(2000)
+      await act(() => video.play())
+      const seek = screen.getByRole('slider', { name: 'Seek' })
+      touchDown(seek)
+      raiseHlsFatalError()
+
+      cancelTouch(seek)
+
+      expect(video.paused).toBe(true)
+      expect(screen.getByRole('button', { name: 'Play' })).toBeDisabled()
     })
 
     it('shouldMuteAndSetTheVolume', async () => {

@@ -13,10 +13,9 @@ export interface PlayerTitle {
   detail?: string
 }
 
-interface Scrub {
-  seconds: number
-  resume: boolean
-}
+// Mantine's slider ends a drag only on touchend or mouseup. After a cancelled touch its drag stays
+// open until the next touchend or mouseup anywhere, and that late end must not seek.
+type Scrub = { at: 'dragging'; seconds: number; resume: boolean } | { at: 'abandoned' }
 
 export function PlayerControls({
   ref,
@@ -42,7 +41,7 @@ export function PlayerControls({
     formatTimecode({ positionSeconds: seconds, durationSeconds: videoState.duration })
   const durationTimecode = durationKnown ? timecodeAt(videoState.duration) : null
   const seekable = attached && durationKnown
-  const position = scrub?.seconds ?? videoState.currentTime
+  const position = scrub?.at === 'dragging' ? scrub.seconds : videoState.currentTime
 
   function togglePaused() {
     const element = videoRef.current
@@ -71,18 +70,30 @@ export function PlayerControls({
     if (!element || !seekable) {
       return
     }
-    setScrub({ seconds: element.currentTime, resume: !element.paused })
+    setScrub({ at: 'dragging', seconds: element.currentTime, resume: !element.paused })
     element.pause()
   }
 
   function moveScrub(seconds: number) {
-    setScrub((current) => current && { ...current, seconds })
+    setScrub((current) => (current?.at === 'dragging' ? { ...current, seconds } : current))
+  }
+
+  function abandonScrub() {
+    const element = videoRef.current
+    if (scrub?.at !== 'dragging') {
+      return
+    }
+    setScrub({ at: 'abandoned' })
+    if (!element || !attached || !scrub.resume) {
+      return
+    }
+    void element.play().catch(ignoreInterruptedPlay)
   }
 
   function seek(seconds: number) {
     const element = videoRef.current
     setScrub(null)
-    if (!element) {
+    if (!element || scrub?.at === 'abandoned') {
       return
     }
     element.currentTime = seconds
@@ -113,7 +124,7 @@ export function PlayerControls({
         thumbValueText={
           seekable ? (seconds) => `${timecodeAt(seconds)} of ${durationTimecode}` : undefined
         }
-        attributes={{ trackContainer: { onPointerDown: startScrub } }}
+        attributes={{ trackContainer: { onPointerDown: startScrub, onTouchCancel: abandonScrub } }}
         onChange={moveScrub}
         onChangeEnd={seek}
       />
