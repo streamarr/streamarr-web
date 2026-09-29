@@ -232,7 +232,9 @@
   .bar .seek {
     top: -14px;
   }
+}
 
+@media (max-width: 48em) and (orientation: portrait) {
   .row {
     grid-template-columns: minmax(0, 1fr);
     justify-items: center;
