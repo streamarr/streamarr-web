@@ -1,4 +1,11 @@
-import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
+import {
+  expect,
+  test,
+  type APIRequestContext,
+  type Locator,
+  type Page,
+  type Request,
+} from '@playwright/test'
 import { RING, ringOnActiveElement } from './focusRing'
 import { STUB_URL } from './ports'
 
@@ -26,12 +33,11 @@ const LEVEL = [
   '',
 ].join('\n')
 
-async function openPlayer(page: Page, request: APIRequestContext): Promise<void> {
+async function routePlayer(page: Page, request: APIRequestContext): Promise<void> {
   await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
   await request.post(`${STUB_URL}/api/auth/refresh`)
   await page.route('**/graphql', async (route) => {
-    const { operationName } = route.request().postDataJSON() as { operationName?: string }
-    const data = PLAYER_OPERATIONS[operationName ?? '']
+    const data = PLAYER_OPERATIONS[operationName(route.request())]
     return data ? route.fulfill({ json: { data } }) : route.continue()
   })
   await page.route('**/api/stream/**/multivariant.m3u8*', (route) =>
@@ -41,8 +47,17 @@ async function openPlayer(page: Page, request: APIRequestContext): Promise<void>
     route.fulfill({ contentType: 'application/vnd.apple.mpegurl', body: LEVEL }),
   )
   await page.route(/\/api\/stream\/.*\.(mp4|m4s)/, () => new Promise(() => undefined))
+}
+
+async function openPlayer(page: Page, request: APIRequestContext): Promise<void> {
+  await routePlayer(page, request)
   await page.goto('/play/file-1')
   await expect(page.getByRole('slider', { name: 'Seek' })).toHaveAttribute('aria-disabled', 'false')
+}
+
+function operationName(call: Request): string {
+  const body = call.postDataJSON() as { operationName?: string } | null
+  return body?.operationName ?? ''
 }
 
 const PLAYER_OPERATIONS: Record<string, unknown> = {
