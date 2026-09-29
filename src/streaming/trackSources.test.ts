@@ -1,6 +1,6 @@
 import Hls from 'hls.js'
 import { describe, expect, it, vi } from 'vitest'
-import { giveElementTracks } from '../test/mediaTracks'
+import { type FakeAudioTrack, type FakeTextTrack, giveElementTracks } from '../test/mediaTracks'
 import { type HlsTracks, NO_TRACKS, hlsTrackSource, nativeTrackSource } from './trackSources'
 
 const HLS_TRACK_EVENTS = [
@@ -96,6 +96,22 @@ describe('hlsTrackSource', () => {
     HLS_TRACK_EVENTS.forEach((event) => hls.emit(event))
     expect(onChange).toHaveBeenCalledTimes(HLS_TRACK_EVENTS.length)
   })
+
+  it('shouldSwitchTheStreamsTracksThroughHls', () => {
+    const hls = fakeHls({
+      audioTracks: [{ name: 'English' }, { name: 'Deutsch' }],
+      audioTrack: 0,
+      subtitleTracks: [{ name: 'English' }],
+    })
+    const source = hlsTrackSource(hls)
+
+    source.selectAudio(1)
+    source.selectSubtitles(0)
+    expect([hls.audioTrack, hls.subtitleTrack]).toEqual([1, 0])
+
+    source.selectSubtitles(null)
+    expect(hls.subtitleTrack).toBe(-1)
+  })
 })
 
 describe('nativeTrackSource', () => {
@@ -161,5 +177,28 @@ describe('nativeTrackSource', () => {
     unsubscribe()
     announceEveryChange()
     expect(onChange).toHaveBeenCalledTimes(6)
+  })
+
+  it('shouldSwitchTheElementsOwnTracks', () => {
+    const video = document.createElement('video')
+    const audio: FakeAudioTrack[] = [
+      { label: 'English', language: 'en', enabled: true },
+      { label: 'Commentary', language: 'en', enabled: false },
+    ]
+    const text: FakeTextTrack[] = [
+      { kind: 'subtitles', label: 'English', language: 'en', mode: 'showing' },
+      { kind: 'metadata', label: '', language: '', mode: 'hidden' },
+      { kind: 'captions', label: 'English (SDH)', language: 'en', mode: 'disabled' },
+    ]
+    giveElementTracks(video, { audio, text })
+    const source = nativeTrackSource(video)
+
+    source.selectAudio(1)
+    source.selectSubtitles(1)
+    expect(audio.map((track) => track.enabled)).toEqual([false, true])
+    expect(text.map((track) => track.mode)).toEqual(['disabled', 'hidden', 'showing'])
+
+    source.selectSubtitles(null)
+    expect(text.map((track) => track.mode)).toEqual(['disabled', 'hidden', 'disabled'])
   })
 })

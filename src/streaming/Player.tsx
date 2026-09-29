@@ -16,7 +16,7 @@ import { invalidateWatchedState } from '../media/watchedState'
 import focusStyles from '../styles/focus.module.css'
 import { BufferingRing } from './BufferingRing'
 import styles from './Player.module.css'
-import { PlayerControls, type PlayerTitle } from './PlayerControls'
+import { PlayerControls, type PlayerTitle, type TrackPickerKind } from './PlayerControls'
 import { hlsTrackSource, nativeTrackSource, type TrackSource } from './trackSources'
 import { useIdle } from './useIdle'
 import { useVideoState } from './useVideoState'
@@ -35,6 +35,12 @@ type SourcePhase =
   { at: 'starting' } | { at: 'attached'; tracks: TrackSource } | { at: 'failed'; message: string }
 
 const STARTING: SourcePhase = { at: 'starting' }
+
+// Held against the stream whose tracks it lists, so a picker never outlives its stream.
+interface OpenPicker {
+  tracks: TrackSource
+  kind: TrackPickerKind
+}
 
 const pendingCleanups = new WeakMap<ApolloClient, () => Promise<void>>()
 
@@ -55,6 +61,9 @@ export function Player({
   const client = useApolloClient()
   const [sourcePhase, setSourcePhase] = useState(STARTING)
   const [attempt, setAttempt] = useState(0)
+  const [picker, setPicker] = useState<OpenPicker | null>(null)
+  const tracks = sourcePhase.at === 'attached' ? sourcePhase.tracks : null
+  const openPicker = picker?.tracks === tracks ? picker.kind : null
   const videoState = useVideoState(videoRef)
   const idle = useIdle(videoState.paused || sourcePhase.at === 'failed', [controlsRef, backRef])
 
@@ -271,7 +280,9 @@ export function Player({
         videoRef={videoRef}
         videoState={videoState}
         attached={sourcePhase.at === 'attached'}
-        tracks={sourcePhase.at === 'attached' ? sourcePhase.tracks : null}
+        tracks={tracks}
+        openPicker={openPicker}
+        onOpenPicker={(kind) => setPicker(kind && tracks && { tracks, kind })}
         title={title}
       />
     </section>

@@ -21,6 +21,9 @@ export interface TrackSource {
   /** Returns the same object until the tracks, or the choice among them, change. */
   read: () => PlaybackTracks
   subscribe: (onChange: () => void) => () => void
+  selectAudio: (id: number) => void
+  /** Null turns subtitles off. */
+  selectSubtitles: (id: number | null) => void
 }
 
 export const NO_TRACKS: PlaybackTracks = {
@@ -34,6 +37,8 @@ const HLS_TRACK_EVENTS = [
   Hls.Events.SUBTITLE_TRACKS_UPDATED,
   Hls.Events.SUBTITLE_TRACK_SWITCH,
 ] as const
+
+const HLS_SUBTITLES_OFF = -1
 
 type HlsTrack = Pick<MediaPlaylist, 'name' | 'lang'>
 
@@ -62,6 +67,12 @@ export function hlsTrackSource(hls: HlsTracks): TrackSource {
           hls.off(event, onChange)
         }
       }
+    },
+    selectAudio: (id) => {
+      hls.audioTrack = id
+    },
+    selectSubtitles: (id) => {
+      hls.subtitleTrack = id ?? HLS_SUBTITLES_OFF
     },
   }
 }
@@ -99,6 +110,16 @@ export function nativeTrackSource(video: HTMLVideoElement): TrackSource {
         listenToTrackList(list, onChange),
       )
       return () => stops.forEach((stop) => stop())
+    },
+    selectAudio: (id) => {
+      audioTracksOf(video).forEach((track, index) => {
+        track.enabled = index === id
+      })
+    },
+    selectSubtitles: (id) => {
+      subtitleTracksOf(video).forEach((track, index) => {
+        track.mode = index === id ? 'showing' : 'disabled'
+      })
     },
   }
 }

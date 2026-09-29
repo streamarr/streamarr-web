@@ -11,11 +11,31 @@ export interface FakeTextTrack {
   mode: TextTrackMode
 }
 
-/** A media element's track list as a browser builds one: indexed tracks on an event target. */
+/**
+ * A media element's track list as a browser builds one: indexed tracks on an event target, which
+ * announces a change whenever a track is switched on or off.
+ */
 export function fakeTrackList<Track extends object>(
   tracks: Track[],
 ): EventTarget & ArrayLike<Track> {
-  return Object.assign(new EventTarget(), tracks, { length: tracks.length })
+  const list = new EventTarget()
+  for (const track of tracks) {
+    announceSwitches(track, list)
+  }
+  return Object.assign(list, tracks, { length: tracks.length })
+}
+
+function announceSwitches(track: object, list: EventTarget) {
+  for (const switchKey of ['enabled', 'mode'].filter((key) => key in track)) {
+    let value: unknown = Reflect.get(track, switchKey)
+    Object.defineProperty(track, switchKey, {
+      get: () => value,
+      set: (next: unknown) => {
+        value = next
+        list.dispatchEvent(new Event('change'))
+      },
+    })
+  }
 }
 
 /** Gives the element the track lists a browser that plays HLS itself would. */
