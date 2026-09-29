@@ -382,7 +382,7 @@ function StatusChip({
       aria-controls={menu?.open ? menu.id : undefined}
       onClick={menu?.toggle}
     >
-      {showsActiveTrack && <span className={styles.activeTrack} />}
+      {showsActiveTrack && <span className={styles.activeTrack} data-testid="active-track" />}
       <Icon name={icon} size={16} />
       {value && <span className={styles.chipValue}>{value}</span>}
     </button>

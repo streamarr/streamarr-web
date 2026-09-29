@@ -696,7 +696,9 @@ test('the pickers switch the audio and subtitles the stream declares', async ({
   const englishRequested = page.waitForRequest(/\/subtitles-en\.m3u8/)
   await page.keyboard.press('Enter')
   await englishRequested
-  await expect(page.getByRole('button', { name: 'Subtitles: English (SDH)' })).toBeFocused()
+  const subtitlesChip = page.getByRole('button', { name: 'Subtitles: English (SDH)' })
+  await expect(subtitlesChip).toBeFocused()
+  await expect(subtitlesChip.getByTestId('active-track')).toBeVisible()
 })
 
 for (const viewport of [
