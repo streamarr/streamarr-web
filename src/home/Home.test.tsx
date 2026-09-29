@@ -296,9 +296,9 @@ describe('Home', () => {
   })
 
   it.each([
-    { kind: 'Episode', title: /Breakage/, readout: 'S2 E5 · Breakage · 15m left' },
-    { kind: 'Movie', title: /Everlight/, readout: '3m left' },
-  ])('shouldGiveA$kindCardOneProgressReadout', async ({ title, readout }) => {
+    ['Episode', /Breakage/, 'S2 E5 · Breakage · 15m left'],
+    ['Movie', /Everlight/, '3m left'],
+  ])('shouldGiveThe%sCardOneProgressReadout', async (_kind, title, readout) => {
     serve(homeData({ continueWatching: [continueWatchingMovie(), continueWatchingEpisode()] }))
     renderAppAt('/')
     await screen.findByRole('heading', { name: 'Continue watching' })

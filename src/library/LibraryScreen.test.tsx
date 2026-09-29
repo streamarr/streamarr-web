@@ -232,11 +232,11 @@ describe('LibraryScreen', () => {
   })
 
   it.each([
-    { filter: 'a watch status', search: { watchStatus: 'UNWATCHED' }, pressed: 'Unwatched' },
-    { filter: 'a letter seek', search: { letter: 'N' }, pressed: 'All 1,799' },
-  ] satisfies { filter: string; search: Partial<LibrarySearch>; pressed: string }[])(
-    'shouldKeepTheLibraryTotalOnTheAllChipUnder$filter',
-    async ({ search, pressed }) => {
+    ['AWatchStatusFilter', { watchStatus: 'UNWATCHED' }, 'Unwatched'],
+    ['ALetterSeek', { letter: 'N' }, 'All 1,799'],
+  ] satisfies [string, Partial<LibrarySearch>, string][])(
+    'shouldKeepTheLibraryTotalOnTheAllChipWhen%sIsActive',
+    async (_filter, search, pressed) => {
       server.use(
         graphql.query('LibraryPage', () =>
           HttpResponse.json({
