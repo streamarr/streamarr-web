@@ -1,11 +1,11 @@
 import { useQuery } from '@apollo/client/react'
-import { Alert, Center, Loader } from '@mantine/core'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { SeasonDetailDocument, type SeasonDetailQuery } from '../graphql/generated/graphql'
 import { usePublishAmbientTheme } from '../media/ambientThemeContext'
 import { resolveAmbientColors } from '../media/ambientSource'
 import { detailBackClass } from '../media/DetailBack'
 import { detailAction, DetailHeader } from '../media/DetailHeader'
+import { MediaTitleFallback } from '../media/MediaTitleFallback'
 import { formatRuntime, formatTimeLeft, formatYear } from '../media/formatting'
 import { Icon } from '../ui/Icon'
 import { pickImageVariant } from '../media/images'
@@ -31,20 +31,8 @@ export function SeasonDetailScreen({ seasonId }: Readonly<{ seasonId: string }>)
     : null
   usePublishAmbientTheme(ambient?.theme ?? null)
 
-  if (loading) {
-    return (
-      <Center h={200}>
-        <Loader />
-      </Center>
-    )
-  }
-
-  if (error || !season) {
-    return (
-      <Alert color="red" role="alert">
-        Couldn't load this season. Try again.
-      </Alert>
-    )
+  if (loading || error || !season) {
+    return <MediaTitleFallback kind="season" loading={loading} />
   }
 
   const series = season.series
