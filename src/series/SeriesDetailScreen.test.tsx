@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import type { SeriesDetailQuery } from '../graphql/generated/graphql'
 import { deferred } from '../test/deferred'
 import { meFixture } from '../test/meFixture'
+import { invalidIdResponse } from '../test/graphqlResponses'
 import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
 
@@ -189,6 +190,20 @@ describe('SeriesDetailScreen', () => {
     )
     expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument()
+  })
+
+  it('shouldTreatAMalformedShowIdAsNotFound', async () => {
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
+      graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
+      graphql.query('SeriesDetail', () => invalidIdResponse('series')),
+    )
+    renderAppAt('/series/abc')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "This show doesn't exist or was removed.",
+    )
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
   })
 
   it('queries the series named in the URL and renders its header', async () => {

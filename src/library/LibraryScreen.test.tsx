@@ -11,6 +11,7 @@ import {
   JSDOM_ROW_HEIGHT,
   resizeObserverInstances,
 } from '../../vitest.setup'
+import { invalidIdResponse } from '../test/graphqlResponses'
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
 import { LibraryScreen, type LibrarySearch } from './LibraryScreen'
@@ -224,20 +225,7 @@ describe('LibraryScreen', () => {
   })
 
   it('shouldShowNotFoundWithoutRetryWhenTheLibraryIdIsMalformed', async () => {
-    server.use(
-      graphql.query('LibraryPage', () =>
-        HttpResponse.json({
-          errors: [
-            {
-              message: 'Invalid ID format: abc',
-              path: ['library'],
-              extensions: { errorType: 'BAD_REQUEST', code: 'INVALID_INPUT', requestId: 'r-1' },
-            },
-          ],
-          data: null,
-        }),
-      ),
-    )
+    server.use(graphql.query('LibraryPage', () => invalidIdResponse('library')))
     renderWithProviders(<Harness />)
 
     expect(await screen.findByRole('alert')).toHaveTextContent(

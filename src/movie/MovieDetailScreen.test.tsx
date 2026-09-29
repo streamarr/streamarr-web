@@ -3,6 +3,7 @@ import { graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { MovieDetailQuery } from '../graphql/generated/graphql'
 import { meFixture } from '../test/meFixture'
+import { invalidIdResponse } from '../test/graphqlResponses'
 import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
 
@@ -137,18 +138,7 @@ describe('MovieDetailScreen', () => {
     server.use(
       graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
       graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
-      graphql.query('MovieDetail', () =>
-        HttpResponse.json({
-          errors: [
-            {
-              message: 'Invalid ID format: abc',
-              path: ['movie'],
-              extensions: { errorType: 'BAD_REQUEST', code: 'INVALID_INPUT' },
-            },
-          ],
-          data: null,
-        }),
-      ),
+      graphql.query('MovieDetail', () => invalidIdResponse('movie')),
     )
     renderAppAt('/movie/abc')
 
