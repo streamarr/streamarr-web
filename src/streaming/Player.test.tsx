@@ -1436,6 +1436,27 @@ describe('Player', () => {
       expect(screen.getByRole('button', { name: 'Play' })).toBeDisabled()
     })
 
+    it('shouldLeaveAReleasedStreamStoppedWhenTheScrubEndsAfterTheStreamFails', async () => {
+      serveSession()
+      layOutSeekTrack()
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await seekableVideo(2000)
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      await act(() => video.play())
+      const seek = screen.getByRole('slider', { name: 'Seek' })
+      touchDown(seek, 250)
+      await nextAnimationFrame()
+      raiseHlsFatalError()
+
+      liftTouch(seek)
+      await act(async () => vi.advanceTimersByTimeAsync(0))
+
+      expect(video.paused).toBe(true)
+      expect(screen.getByRole('button', { name: 'Play' })).toBeDisabled()
+      expect(screen.queryByRole('progressbar', { name: 'Buffering' })).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Retry playback' })).toBeInTheDocument()
+    })
+
     it('shouldMuteAndSetTheVolume', async () => {
       serveSession()
       const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
