@@ -26,6 +26,22 @@ export function FailurePanel({
   )
 }
 
+/** A section that could not load, inside a page that did: the cause and Retry. */
+export function FailureRow({
+  children,
+  onRetry,
+  className,
+}: Readonly<{ children: ReactNode; onRetry: () => unknown; className?: string }>) {
+  return (
+    <div className={className ? `${styles.row} ${className}` : styles.row}>
+      <p role="alert" className={styles.rowCause}>
+        {children}
+      </p>
+      <RetryButton onRetry={onRetry} variant="default" />
+    </div>
+  )
+}
+
 function WayOutControl({ wayOut }: Readonly<{ wayOut: WayOut }>) {
   if (wayOut === 'back') {
     return <DetailBackButton />
@@ -34,13 +50,20 @@ function WayOutControl({ wayOut }: Readonly<{ wayOut: WayOut }>) {
   return <SignOutButton />
 }
 
-function RetryButton({ onRetry }: Readonly<{ onRetry: () => unknown }>) {
+function RetryButton({
+  onRetry,
+  variant = 'filled',
+}: Readonly<{ onRetry: () => unknown; variant?: 'filled' | 'default' }>) {
   // A retry that fails again reports through the request's own error state.
   function retry() {
     void Promise.resolve(onRetry()).catch(() => undefined)
   }
 
-  return <Button onClick={retry}>Retry</Button>
+  return (
+    <Button variant={variant} onClick={retry}>
+      Retry
+    </Button>
+  )
 }
 
 function SignOutButton() {

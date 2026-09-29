@@ -15,11 +15,10 @@ import { RecentlyAddedRail } from './RecentlyAddedRail'
 import { useMe } from '../identity/useMe'
 import { canManageServer } from '../admin/access'
 import { EmptyLibraries } from '../admin/libraries/EmptyLibraries'
-import { FailurePanel } from '../ui/Failure'
+import { FailurePanel, FailureRow } from '../ui/Failure'
 
 export function Home() {
   const { data, loading, error, refetch } = useQuery(HomeDocument)
-  const { data: identity } = useMe()
 
   if (loading) {
     return (
@@ -39,13 +38,7 @@ export function Home() {
 
   const billboard = billboardContentFor(data)
   if (!billboard) {
-    if (data.libraries.length === 0)
-      return <EmptyLibraries canCreate={canManageServer(identity?.me)} />
-    return (
-      <Center h={200}>
-        <Text c="dimmed">Nothing to watch yet.</Text>
-      </Center>
-    )
+    return <EmptyHome hasLibraries={data.libraries.length > 0} />
   }
 
   const libraries = data.libraries.filter(
@@ -64,6 +57,37 @@ export function Home() {
         </div>
       )}
     </div>
+  )
+}
+
+// Which guidance fits an empty server depends on who is asking, so it waits for the account.
+function EmptyHome({ hasLibraries }: Readonly<{ hasLibraries: boolean }>) {
+  const { data, loading, error, refetch } = useMe()
+
+  if (hasLibraries) {
+    return (
+      <Center h={200}>
+        <Text c="dimmed">Nothing to watch yet.</Text>
+      </Center>
+    )
+  }
+
+  if (data) {
+    return <EmptyLibraries canCreate={canManageServer(data.me)} />
+  }
+
+  if (loading) {
+    return (
+      <Center h={200}>
+        <Loader role="status" aria-label="Loading your account" />
+      </Center>
+    )
+  }
+
+  return (
+    <FailureRow onRetry={refetch}>
+      {requestFailureMessage(error, "Couldn't load your account.")}
+    </FailureRow>
   )
 }
 

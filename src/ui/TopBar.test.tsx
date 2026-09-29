@@ -180,4 +180,26 @@ describe('TopBar', () => {
 
     expect(await within(banner).findByRole('button', { name: /profile menu/i })).toBeInTheDocument()
   })
+
+  it('shouldRestoreTheProfileMenuOnceHomeRetriesTheAccount', async () => {
+    let accountAvailable = false
+    serveSignIn()
+    server.use(
+      graphql.query('Me', () =>
+        accountAvailable
+          ? HttpResponse.json({ data: { me: ME } })
+          : HttpResponse.json({ errors: [{ message: 'boom' }] }),
+      ),
+    )
+    const { user } = renderAppAt('/login?redirect=/')
+    await signIn(user)
+    const banner = await screen.findByRole('banner')
+    await within(banner).findByRole('button', { name: 'Sign out' })
+
+    accountAvailable = true
+    await user.click(await screen.findByRole('button', { name: 'Retry' }))
+
+    expect(await within(banner).findByRole('button', { name: /profile menu/i })).toBeInTheDocument()
+    expect(within(banner).queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument()
+  })
 })
