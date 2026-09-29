@@ -1200,6 +1200,12 @@ describe('Player', () => {
   })
 
   describe('controls', () => {
+    afterEach(() => {
+      for (const property of ['fullscreenEnabled', 'fullscreenElement', 'exitFullscreen']) {
+        Reflect.deleteProperty(document, property)
+      }
+    })
+
     it('shouldHandPlaybackToTheControlBarInsteadOfTheBrowserControls', async () => {
       serveSession()
       renderWithProviders(<Player mediaFileId="abcd" />)
@@ -1344,6 +1350,38 @@ describe('Player', () => {
       expect(chip).toHaveAttribute('aria-disabled', 'true')
       await user.click(chip)
       expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    })
+
+    it('shouldEnterAndLeaveFullScreenOnThePlayer', async () => {
+      serveSession()
+      const exitFullscreen = vi.fn(() => Promise.resolve())
+      Object.defineProperty(document, 'fullscreenEnabled', { configurable: true, value: true })
+      Object.defineProperty(document, 'exitFullscreen', {
+        configurable: true,
+        value: exitFullscreen,
+      })
+      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const player = screen.getByRole('region', { name: 'Player' })
+      const requestFullscreen = vi.fn(() => Promise.resolve())
+      Object.defineProperty(player, 'requestFullscreen', { value: requestFullscreen })
+
+      await user.click(screen.getByRole('button', { name: 'Full screen' }))
+      expect(requestFullscreen).toHaveBeenCalledOnce()
+
+      Object.defineProperty(document, 'fullscreenElement', { configurable: true, value: player })
+      fireEvent(document, new Event('fullscreenchange'))
+      await user.click(screen.getByRole('button', { name: 'Exit full screen' }))
+      expect(exitFullscreen).toHaveBeenCalledOnce()
+    })
+
+    it('shouldOfferNoFullScreenWhereTheBrowserCannotGiveIt', async () => {
+      serveSession()
+      Object.defineProperty(document, 'fullscreenEnabled', { configurable: true, value: false })
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      await attachedVideo()
+
+      expect(screen.getByRole('region', { name: 'Player' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Full screen' })).not.toBeInTheDocument()
     })
 
     it('shouldShowTheTimecodeAndTitleInTheTitleLine', async () => {

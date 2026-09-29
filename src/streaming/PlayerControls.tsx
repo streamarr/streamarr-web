@@ -1,5 +1,5 @@
 import { Slider } from '@mantine/core'
-import { type RefObject, useState } from 'react'
+import { type RefObject, useEffect, useState } from 'react'
 import { formatTimecode } from '../media/formatting'
 import { Icon, type IconName } from '../ui/Icon'
 import styles from './PlayerControls.module.css'
@@ -19,11 +19,14 @@ interface Scrub {
 }
 
 export function PlayerControls({
+  playerRef,
   videoRef,
   video,
   attached,
   title,
 }: Readonly<{
+  /** The element that takes the screen in full screen, so the bar stays over the video. */
+  playerRef: RefObject<HTMLElement | null>
   videoRef: RefObject<HTMLVideoElement | null>
   video: VideoState
   attached: boolean
@@ -146,6 +149,7 @@ export function PlayerControls({
         </div>
         <div className={styles.end}>
           <QualityChip videoHeight={video.videoHeight} />
+          <FullscreenButton targetRef={playerRef} />
         </div>
       </div>
     </div>
@@ -247,6 +251,39 @@ function QualityChip({ videoHeight }: Readonly<{ videoHeight: number }>) {
   )
 }
 
+function FullscreenButton({ targetRef }: Readonly<{ targetRef: RefObject<HTMLElement | null> }>) {
+  const [active, setActive] = useState(false)
+
+  useEffect(() => {
+    const follow = () => setActive(document.fullscreenElement === targetRef.current)
+    document.addEventListener('fullscreenchange', follow)
+    return () => document.removeEventListener('fullscreenchange', follow)
+  }, [targetRef])
+
+  if (!document.fullscreenEnabled) {
+    return null
+  }
+
+  function toggle() {
+    if (active) {
+      void document.exitFullscreen().catch(ignoreRefusedFullscreen)
+      return
+    }
+    void targetRef.current?.requestFullscreen().catch(ignoreRefusedFullscreen)
+  }
+
+  return (
+    <button
+      type="button"
+      className={`${styles.chip} ${styles.iconChip}`}
+      aria-label={active ? 'Exit full screen' : 'Full screen'}
+      onClick={toggle}
+    >
+      <Icon name={active ? 'exit-fullscreen' : 'fullscreen'} size={16} />
+    </button>
+  )
+}
+
 function SkipButton({
   label,
   icon,
@@ -271,4 +308,8 @@ function SkipButton({
 
 function ignoreInterruptedPlay() {
   // A pause or a released stream interrupts play(); the element's own events already show it.
+}
+
+function ignoreRefusedFullscreen() {
+  // The browser may refuse full screen; the page then simply stays as it is.
 }
