@@ -1,6 +1,5 @@
 import styles from './BufferingRing.module.css'
 
-/** Shows that playback is waiting for data, turning over the middle of the video. */
 export function BufferingRing() {
   return (
     <div className={styles.ring}>

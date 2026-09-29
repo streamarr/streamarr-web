@@ -93,7 +93,6 @@ function overlap(a: Box, b: Box): boolean {
   return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
 }
 
-// Text cut short overflows its own box, or runs past an ancestor that clips it.
 async function truncated(control: Locator): Promise<boolean> {
   return control.evaluate((node) => {
     const rect = node.getBoundingClientRect()
@@ -110,7 +109,6 @@ async function truncated(control: Locator): Promise<boolean> {
   })
 }
 
-// Each control lies whole inside the viewport, clear of every other, with its text untruncated.
 async function expectControlsApart(page: Page, controls: Locator[]) {
   const viewport = page.viewportSize()
   const boxes: Box[] = []
