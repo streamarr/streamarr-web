@@ -867,6 +867,58 @@ describe('Player', () => {
     },
   )
 
+  it('shouldHoldTheStartupDeadlineWhileTheNativeElementWaitsForTheViewer', async () => {
+    hls.supported = false
+    const activeSessions = serveSingleWorkerSlot()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    renderWithProviders(<Player mediaFileId="abcd" />)
+    const video = await nativeVideo()
+
+    fireEvent(video, new Event('suspend'))
+    await act(async () => vi.advanceTimersByTimeAsync(60_000))
+
+    vi.useRealTimers()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(video).toHaveAttribute('src', STREAM_URL)
+    expect(activeSessions).toEqual(new Set(['sess-abcd']))
+  })
+
+  it('shouldRestartTheStartupDeadlineWhenTheViewerPlaysTheWaitingNativeElement', async () => {
+    hls.supported = false
+    const activeSessions = serveSingleWorkerSlot()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    renderWithProviders(<Player mediaFileId="abcd" />)
+    const video = await nativeVideo()
+    fireEvent(video, new Event('suspend'))
+    await act(async () => vi.advanceTimersByTimeAsync(60_000))
+
+    fireEvent(video, new Event('play'))
+    await act(async () => vi.advanceTimersByTimeAsync(29_999))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    await act(async () => vi.advanceTimersByTimeAsync(1))
+
+    vi.useRealTimers()
+    expect(screen.getByRole('alert')).toHaveTextContent('Playback is taking too long to start.')
+    expect(video).not.toHaveAttribute('src')
+    await waitFor(() => expect(activeSessions.size).toBe(0))
+  })
+
+  it('shouldNotRestartTheStartupDeadlineWhenTheViewerPlaysALoadedNativeStream', async () => {
+    hls.supported = false
+    serveSession()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    renderWithProviders(<Player mediaFileId="abcd" />)
+    const video = await nativeVideo()
+
+    fireEvent(video, new Event('loadedmetadata'))
+    fireEvent(video, new Event('suspend'))
+    fireEvent(video, new Event('play'))
+    await act(async () => vi.advanceTimersByTimeAsync(60_000))
+
+    vi.useRealTimers()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
   it.each([
     ['Refusal', { serve: refuseSession, message: CAPACITY_REFUSAL }],
     ['FailedCreation', { serve: failSessionCreation, message: "Playback couldn't start." }],
