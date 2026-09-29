@@ -93,7 +93,7 @@ export function PlayerControls({
   function seek(seconds: number) {
     const element = videoRef.current
     setScrub(null)
-    if (!element || scrub?.at === 'abandoned') {
+    if (!element || !attached || scrub?.at === 'abandoned') {
       return
     }
     element.currentTime = seconds
