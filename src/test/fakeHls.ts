@@ -75,5 +75,5 @@ class FakeHls {
   }
 }
 
-/** The hls.js module jsdom cannot run: `vi.mock('hls.js', async () => (await import(…)).hlsModule)`. */
+/** Mock hls.js with it: `vi.mock('hls.js', async () => (await import(…)).hlsModule)`. */
 export const hlsModule = { default: FakeHls }
