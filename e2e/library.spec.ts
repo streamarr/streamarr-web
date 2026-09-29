@@ -730,7 +730,13 @@ for (const { seek, failRecovery } of [
       if (operation.operationName === 'LibraryPage') {
         if (watched && operation.variables.after && !allowRecovery) {
           failedPages += 1
-          return route.fulfill({ json: { errors: [{ message: 'Page temporarily unavailable' }] } })
+          return route.fulfill({
+            json: {
+              errors: [
+                { message: 'Page temporarily unavailable', extensions: { code: 'UNAVAILABLE' } },
+              ],
+            },
+          })
         }
         const data = libraryPage(operation.variables)
         const nodes = data.library.items.edges ?? []
@@ -788,7 +794,7 @@ for (const { seek, failRecovery } of [
       await page.waitForTimeout(250) // NOSONAR: bounded settle proves failed pages are not retried automatically
       expect(failedPages).toBe(1)
       allowRecovery = true
-      await page.getByRole('button', { name: 'Try again', exact: true }).click()
+      await page.getByRole('button', { name: 'Retry', exact: true }).click()
     }
     await expect(page.getByText(titleName, { exact: true })).toBeInViewport()
     await expect.poll(() => grid.evaluate((element) => element.scrollTop)).toBe(savedPosition)
