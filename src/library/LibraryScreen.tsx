@@ -10,7 +10,7 @@ import type {
   OrderMediaBy,
   SortDirection,
 } from '../graphql/generated/graphql'
-import { requestFailureMessage } from '../graphql/requestErrors'
+import { hasInvalidInputAt, requestFailureMessage } from '../graphql/requestErrors'
 import { AlphabetRail, type SelectionInput } from '../media/AlphabetRail'
 import { formatRelativeTime } from '../media/formatting'
 import { FailurePanel, FailureRow } from '../ui/Failure'
@@ -155,6 +155,12 @@ export function LibraryScreen({
         <Loader />
       </Center>
     )
+  }
+
+  // An unknown but well-formed id still fails as an uncoded non-null violation, so only an id the
+  // server cannot parse is known to be missing.
+  if (!library && hasInvalidInputAt(error, 'library')) {
+    return <FailurePanel wayOut="back">This library doesn't exist or was removed.</FailurePanel>
   }
 
   if (!library) {

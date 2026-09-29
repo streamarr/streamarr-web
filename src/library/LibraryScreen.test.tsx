@@ -229,6 +229,30 @@ describe('LibraryScreen', () => {
     expect(requests).toBe(2)
   })
 
+  it('shouldShowNotFoundWithoutRetryWhenTheLibraryIdIsMalformed', async () => {
+    server.use(
+      graphql.query('LibraryPage', () =>
+        HttpResponse.json({
+          errors: [
+            {
+              message: 'Invalid ID format: abc',
+              path: ['library'],
+              extensions: { errorType: 'BAD_REQUEST', code: 'INVALID_INPUT', requestId: 'r-1' },
+            },
+          ],
+          data: null,
+        }),
+      ),
+    )
+    renderWithProviders(<Harness />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "This library doesn't exist or was removed.",
+    )
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument()
+  })
+
   it('shouldShowTheLibraryTotalOnceOnTheAllChip', async () => {
     server.use(
       graphql.query('LibraryPage', () =>
