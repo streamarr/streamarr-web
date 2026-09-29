@@ -3,6 +3,8 @@ import { type Ref, type RefObject, useEffect, useState } from 'react'
 import { formatTimecode } from '../media/formatting'
 import { Icon, type IconName } from '../ui/Icon'
 import styles from './PlayerControls.module.css'
+import type { TrackChoice, TrackSource } from './trackSources'
+import { usePlaybackTracks } from './usePlaybackTracks'
 import { useSpaceToPlayOrPause } from './useSpaceToPlayOrPause'
 import type { VideoState } from './useVideoState'
 
@@ -25,6 +27,7 @@ export function PlayerControls({
   videoRef,
   videoState,
   attached,
+  tracks,
   title,
 }: Readonly<{
   ref: Ref<HTMLDivElement>
@@ -34,9 +37,11 @@ export function PlayerControls({
   videoRef: RefObject<HTMLVideoElement | null>
   videoState: VideoState
   attached: boolean
+  tracks: TrackSource | null
   title?: PlayerTitle
 }>) {
   const [scrub, setScrub] = useState<Scrub | null>(null)
+  const { audio, subtitles } = usePlaybackTracks(tracks)
   const durationKnown = Number.isFinite(videoState.duration)
   const timecodeAt = (seconds: number) =>
     formatTimecode({ positionSeconds: seconds, durationSeconds: videoState.duration })
@@ -166,6 +171,13 @@ export function PlayerControls({
         </div>
         <div className={styles.end}>
           <QualityChip videoHeight={videoState.videoHeight} />
+          <StatusChip name="Audio" icon="audio-track" value={selectedLabel(audio)} />
+          <StatusChip
+            name="Subtitles"
+            icon="subtitles"
+            value={selectedLabel(subtitles) ?? 'Off'}
+            marked={subtitles.selected !== null}
+          />
           <FullscreenButton targetRef={playerRef} />
         </div>
       </div>
@@ -267,13 +279,31 @@ function StatusChip({
   name,
   icon,
   value,
-}: Readonly<{ name: string; icon: IconName; value: string }>) {
+  marked = false,
+}: Readonly<{
+  name: string
+  icon: IconName
+  /** Omitted while the setting has no known value. */
+  value?: string
+  /** Whether the setting is on, such as subtitles showing. */
+  marked?: boolean
+}>) {
   return (
-    <button type="button" className={styles.chip} aria-label={`${name}: ${value}`} aria-disabled>
+    <button
+      type="button"
+      className={styles.chip}
+      aria-label={value ? `${name}: ${value}` : name}
+      aria-disabled
+    >
+      {marked && <span className={styles.activeTrack} />}
       <Icon name={icon} size={16} />
-      <span className={styles.chipValue}>{value}</span>
+      {value && <span className={styles.chipValue}>{value}</span>}
     </button>
   )
+}
+
+function selectedLabel({ options, selected }: TrackChoice): string | undefined {
+  return options.find((option) => option.id === selected)?.label
 }
 
 function FullscreenButton({ targetRef }: Readonly<{ targetRef: RefObject<HTMLElement | null> }>) {

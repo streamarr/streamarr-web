@@ -15,10 +15,11 @@ import { STUB_URL } from './ports'
 // segment request hangs. Each spec ends well inside the player's 30-second startup deadline.
 test.use({ viewport: { width: 1512, height: 850 }, serviceWorkers: 'block' })
 
+// As the server writes it: one audio rendition, muxed into the variant, and no subtitles.
 const MULTIVARIANT = [
   '#EXTM3U',
-  '#EXT-X-VERSION:7',
-  '#EXT-X-STREAM-INF:BANDWIDTH=2000000,RESOLUTION=1280x720,CODECS="avc1.64001f,mp4a.40.2"',
+  '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="Audio",DEFAULT=YES,AUTOSELECT=YES,CHANNELS="2"',
+  '#EXT-X-STREAM-INF:BANDWIDTH=2000000,RESOLUTION=1280x720,CODECS="avc1.64001f,mp4a.40.2",AUDIO="audio"',
   'stream.m3u8?t=playback-token',
   '',
 ].join('\n')
@@ -228,7 +229,8 @@ async function truncated(control: Locator): Promise<boolean> {
     for (let parent = node.parentElement; parent; parent = parent.parentElement) {
       ancestors.push(parent)
     }
-    return node.scrollWidth > node.clientWidth || ancestors.some(clippedBy)
+    const overflows = (element: Element) => element.scrollWidth > element.clientWidth
+    return [node, ...node.querySelectorAll('*')].some(overflows) || ancestors.some(clippedBy)
   })
 }
 
@@ -260,6 +262,8 @@ function barControls(page: Page): Locator[] {
     page.getByRole('button', { name: 'Play' }),
     page.getByRole('button', { name: 'Forward 10 seconds' }),
     page.getByRole('button', { name: 'Quality: Auto' }),
+    page.getByRole('button', { name: 'Audio: Audio' }),
+    page.getByRole('button', { name: 'Subtitles: Off' }),
     page.getByRole('button', { name: 'Full screen' }),
   ]
 }
@@ -280,6 +284,8 @@ test('keyboard focus draws the theme ring on each player control', async ({ page
     page.getByRole('button', { name: 'Play' }),
     page.getByRole('button', { name: 'Forward 10 seconds' }),
     page.getByRole('button', { name: 'Quality: Auto' }),
+    page.getByRole('button', { name: 'Audio: Audio' }),
+    page.getByRole('button', { name: 'Subtitles: Off' }),
     page.getByRole('button', { name: 'Full screen' }),
   ]
   for (const control of controls) {

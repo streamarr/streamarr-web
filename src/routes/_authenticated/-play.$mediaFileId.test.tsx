@@ -10,6 +10,7 @@ const hls = vi.hoisted(() => ({
   attachMedia: vi.fn(),
   destroy: vi.fn(),
   on: vi.fn(),
+  off: vi.fn(),
 }))
 
 vi.mock('hls.js', () => ({
@@ -22,6 +23,11 @@ vi.mock('hls.js', () => ({
     attachMedia = hls.attachMedia
     destroy = hls.destroy
     on = hls.on
+    off = hls.off
+    audioTracks = []
+    audioTrack = -1
+    subtitleTracks = []
+    subtitleTrack = -1
   },
 }))
 

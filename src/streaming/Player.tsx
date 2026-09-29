@@ -17,6 +17,7 @@ import focusStyles from '../styles/focus.module.css'
 import { BufferingRing } from './BufferingRing'
 import styles from './Player.module.css'
 import { PlayerControls, type PlayerTitle } from './PlayerControls'
+import { hlsTrackSource, nativeTrackSource, type TrackSource } from './trackSources'
 import { useIdle } from './useIdle'
 import { useVideoState } from './useVideoState'
 
@@ -30,10 +31,10 @@ const PLAYBACK_FAILURE_MESSAGE = "Playback couldn't start. Try again."
 type PlaybackState = ReportStreamSessionTimelineMutationVariables['state']
 type StreamSessionPayload = CreateStreamSessionMutation['createStreamSession']
 
-type SourcePhase = { at: 'starting' } | { at: 'attached' } | { at: 'failed'; message: string }
+type SourcePhase =
+  { at: 'starting' } | { at: 'attached'; tracks: TrackSource } | { at: 'failed'; message: string }
 
 const STARTING: SourcePhase = { at: 'starting' }
-const ATTACHED: SourcePhase = { at: 'attached' }
 
 const pendingCleanups = new WeakMap<ApolloClient, () => Promise<void>>()
 
@@ -181,7 +182,7 @@ export function Player({
             showFailure(PLAYBACK_FAILURE_MESSAGE)
           },
         })
-        setSourcePhase(ATTACHED)
+        setSourcePhase({ at: 'attached', tracks: source.tracks })
       })
       .catch(() => {
         if (!cancelled) {
@@ -270,6 +271,7 @@ export function Player({
         videoRef={videoRef}
         videoState={videoState}
         attached={sourcePhase.at === 'attached'}
+        tracks={sourcePhase.at === 'attached' ? sourcePhase.tracks : null}
         title={title}
       />
     </section>
@@ -371,6 +373,7 @@ function ignoreTimelineReportFailure() {
 
 interface StreamSource {
   detach: () => void
+  tracks: TrackSource
 }
 
 interface StreamSourceOptions {
@@ -399,6 +402,7 @@ function attach(video: HTMLVideoElement, url: string, options: StreamSourceOptio
       video.removeEventListener('loadedmetadata', options.startupDeadline.end)
       hls.destroy()
     },
+    tracks: hlsTrackSource(hls),
   }
 }
 
@@ -431,5 +435,6 @@ function attachNative(
       video.removeAttribute('src')
       video.load()
     },
+    tracks: nativeTrackSource(video),
   }
 }
