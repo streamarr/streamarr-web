@@ -65,7 +65,7 @@ export function Picker({
       // The auth boundary resets the Apollo store, which refetches the active Me.
       await selectHousehold(householdId)
     } catch (error) {
-      refuse(error, "Couldn't switch Households. Try again.")
+      refuse(error, "Couldn't switch Households.")
     } finally {
       setSwitching(false)
     }
@@ -104,7 +104,7 @@ export function Picker({
     try {
       onProfileSelected(await selectProfile(profile.id))
     } catch (error) {
-      refuse(error, "Couldn't select that Profile. Try again.")
+      refuse(error, "Couldn't select that Profile.")
     } finally {
       setBusy(null)
     }

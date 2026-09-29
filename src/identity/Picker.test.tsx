@@ -235,6 +235,36 @@ describe('Picker', () => {
     expect(onProfileSelected).not.toHaveBeenCalled()
   })
 
+  it('shouldExplainAProfileThatCouldNotBeSelectedWithoutAskingToTryAgain', async () => {
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ data: { me: meFixture() } })),
+      http.post('/api/auth/select-profile', () => HttpResponse.error()),
+    )
+    const { user } = renderWithProviders(<PickerHarness onProfileSelected={vi.fn()} />)
+
+    await user.click(await screen.findByRole('button', { name: /Alex/ }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/^Couldn't select that Profile\.$/)
+  })
+
+  it('shouldExplainAnUnlockThatCouldNotReachTheServerWithoutAskingToTryAgain', async () => {
+    server.use(
+      graphql.query('Me', () =>
+        HttpResponse.json({
+          data: { me: meFixture({ profiles: [profileFixture({ pinConfigured: true })] }) },
+        }),
+      ),
+      http.post('/api/auth/select-profile', () => HttpResponse.error()),
+    )
+    const { user } = renderWithProviders(<PickerHarness onProfileSelected={vi.fn()} />)
+    await user.click(await screen.findByRole('button', { name: /Alex/ }))
+
+    await user.type(await screen.findByTestId('pin-input'), '4242')
+    await user.click(screen.getByRole('button', { name: 'Unlock' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/^Couldn't select that Profile\.$/)
+  })
+
   it('shouldSendADeadSessionToSignInFromTheGrid', async () => {
     server.use(
       graphql.query('Me', () => HttpResponse.json({ data: { me: meFixture() } })),
@@ -288,6 +318,29 @@ describe('Picker', () => {
       'The requested household is not accessible to this account.',
     )
     expect(screen.getByRole('button', { name: /Alex/ })).toBeInTheDocument()
+  })
+
+  it('shouldExplainAHouseholdThatCouldNotBeSwitchedToWithoutAskingToTryAgain', async () => {
+    server.use(
+      graphql.query('Me', () =>
+        HttpResponse.json({
+          data: {
+            me: meFixture({
+              usableHouseholds: [
+                { id: HOUSEHOLD_ID, name: 'Smith Family', membership: true },
+                { id: OTHER_HOUSEHOLD_ID, name: 'Cabin', membership: false },
+              ],
+            }),
+          },
+        }),
+      ),
+      http.post('/api/auth/select-household', () => HttpResponse.error()),
+    )
+    const { user } = renderWithProviders(<PickerHarness onProfileSelected={vi.fn()} />)
+
+    await user.click(await screen.findByRole('radio', { name: 'Cabin' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/^Couldn't switch Households\.$/)
   })
 
   it('shouldSwitchHouseholdsAndReloadTheirProfiles', async () => {
