@@ -354,17 +354,23 @@ function attachNative(
   { onFatal, startupDeadline }: StreamSourceOptions,
 ): StreamSource {
   // WebKit loads metadata from the playlists alone, so startup ends on the first frame. A browser
-  // may withhold that frame until the viewer presses play, so a suspend holds startup until then.
+  // may withhold that frame until the viewer presses play, so a suspend while paused holds startup
+  // until then. A playing element that suspends is still owed its first frame.
+  const holdWhilePaused = () => {
+    if (video.paused) {
+      startupDeadline.hold()
+    }
+  }
   video.addEventListener('error', onFatal)
   video.addEventListener('loadeddata', startupDeadline.end)
-  video.addEventListener('suspend', startupDeadline.hold)
+  video.addEventListener('suspend', holdWhilePaused)
   video.addEventListener('play', startupDeadline.rearm)
   video.src = url
   return {
     detach: () => {
       video.removeEventListener('error', onFatal)
       video.removeEventListener('loadeddata', startupDeadline.end)
-      video.removeEventListener('suspend', startupDeadline.hold)
+      video.removeEventListener('suspend', holdWhilePaused)
       video.removeEventListener('play', startupDeadline.rearm)
       // The same reset hls.js performs on detach: the element stops fetching the stream.
       video.removeAttribute('src')
