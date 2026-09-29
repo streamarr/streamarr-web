@@ -147,10 +147,12 @@ async function videoWhen(
   return fakeMedia(video)
 }
 
-// jsdom's media element has no timeline and cannot load. Own currentTime and readyState let tests
-// observe the seek, move the playhead and load the stream; load() resets both as a browser does.
+// jsdom's media element has no timeline and cannot load or play. Own currentTime, readyState and
+// paused let tests observe the seek, move the playhead, load the stream and press play; load()
+// resets the playhead and ready state as a browser does.
 function fakeMedia(video: HTMLVideoElement): HTMLVideoElement {
   Object.defineProperty(video, 'currentTime', { writable: true, value: 0, configurable: true })
+  Object.defineProperty(video, 'paused', { writable: true, value: true, configurable: true })
   setReadyState(video, HTMLMediaElement.HAVE_NOTHING)
   Object.defineProperty(video, 'load', {
     configurable: true,
@@ -178,6 +180,11 @@ function loadMetadata(video: HTMLVideoElement) {
 function loadFirstFrame(video: HTMLVideoElement) {
   setReadyState(video, HTMLMediaElement.HAVE_CURRENT_DATA)
   fireEvent(video, new Event('loadeddata'))
+}
+
+function pressPlay(video: HTMLVideoElement) {
+  Object.defineProperty(video, 'paused', { writable: true, value: false, configurable: true })
+  fireEvent(video, new Event('play'))
 }
 
 function raiseHlsFatalError() {
@@ -963,7 +970,7 @@ describe('Player', () => {
       fireEvent(video, new Event('suspend'))
       await act(async () => vi.advanceTimersByTimeAsync(60_000))
 
-      fireEvent(video, new Event('play'))
+      pressPlay(video)
       await act(async () => vi.advanceTimersByTimeAsync(29_999))
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
       await act(async () => vi.advanceTimersByTimeAsync(1))
@@ -985,7 +992,7 @@ describe('Player', () => {
     loadMetadata(video)
     loadFirstFrame(video)
     fireEvent(video, new Event('suspend'))
-    fireEvent(video, new Event('play'))
+    pressPlay(video)
     await act(async () => vi.advanceTimersByTimeAsync(60_000))
 
     vi.useRealTimers()
