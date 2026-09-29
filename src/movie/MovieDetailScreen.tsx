@@ -1,5 +1,5 @@
 import { useQuery } from '@apollo/client/react'
-import { Alert, Center, Loader } from '@mantine/core'
+import { Alert } from '@mantine/core'
 import { Link } from '@tanstack/react-router'
 import { MovieDetailDocument, type MovieDetailQuery } from '../graphql/generated/graphql'
 import { usePublishAmbientTheme } from '../media/ambientThemeContext'
@@ -8,6 +8,7 @@ import { CastCard } from '../media/CastCard'
 import { ContentShelf } from '../media/ContentShelf'
 import { DetailBackButton } from '../media/DetailBack'
 import { detailAction, DetailHeader } from '../media/DetailHeader'
+import { MediaTitleFallback } from '../media/MediaTitleFallback'
 import { formatLongDate, formatRuntime, formatYear } from '../media/formatting'
 import { Icon } from '../ui/Icon'
 import { pickImageVariant } from '../media/images'
@@ -25,20 +26,8 @@ export function MovieDetailScreen({ movieId }: Readonly<{ movieId: string }>) {
   const ambient = movie ? resolveAmbientColors(movie.backdropImages, movie.posterImages) : null
   usePublishAmbientTheme(ambient?.theme ?? null)
 
-  if (loading) {
-    return (
-      <Center h={200}>
-        <Loader />
-      </Center>
-    )
-  }
-
-  if (error || !movie) {
-    return (
-      <Alert color="red" role="alert">
-        Couldn't load this movie. Try again.
-      </Alert>
-    )
+  if (loading || error || !movie) {
+    return <MediaTitleFallback kind="movie" loading={loading} />
   }
 
   const artwork = movie.backdropImages[0] ?? movie.posterImages[0] ?? null
