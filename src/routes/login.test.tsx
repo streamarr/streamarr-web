@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
 import { meFixture } from '../test/meFixture'
+import { signIn } from '../test/signIn'
 
 const ME = meFixture({ scope: 'account' })
 
@@ -18,12 +19,6 @@ function serverAcceptsCredentials(scope: 'account' | 'profile') {
       HttpResponse.json({ data: { continueWatching: [], libraries: [] } }),
     ),
   )
-}
-
-async function signIn(user: Awaited<ReturnType<typeof renderAppAt>>['user']) {
-  await user.type(await screen.findByLabelText(/email/i), 'owner@example.com')
-  await user.type(screen.getByLabelText(/^password/i), 'hunter2!')
-  await user.click(screen.getByRole('button', { name: /sign in/i }))
 }
 
 describe('/login gate', () => {
