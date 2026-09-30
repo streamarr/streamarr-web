@@ -255,10 +255,16 @@ async function playUntilFaded(video: HTMLVideoElement) {
   await act(async () => vi.advanceTimersByTimeAsync(3_000))
 }
 
-function tap(target: Element) {
-  fireEvent.pointerDown(target, { pointerType: 'touch' })
-  fireEvent.pointerUp(target, { pointerType: 'touch' })
-  fireEvent.click(target)
+// A browser follows a tap with mouse events unless its pointerdown was cancelled, and finds their
+// target afresh: once the tap has woken the faded controls, they land on the control it uncovered.
+function tap(target: Element, { mouseTarget = target, clientX = 0 } = {}) {
+  const followedByMouseEvents = fireEvent.pointerDown(target, { pointerType: 'touch', clientX })
+  fireEvent.pointerUp(target, { pointerType: 'touch', clientX })
+  if (followedByMouseEvents) {
+    fireEvent.mouseDown(mouseTarget, { clientX })
+    fireEvent.mouseUp(mouseTarget, { clientX })
+  }
+  fireEvent.click(mouseTarget, { clientX })
 }
 
 // Mantine's slider follows a finger through touch events; the controls watch its pointer events.
