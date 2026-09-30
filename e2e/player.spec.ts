@@ -467,6 +467,29 @@ test('after Tab to Mute, Space mutes and playback continues', async ({ page, req
   expect(await videoPaused(page)).toBe(false)
 })
 
+test('Space pauses the video after Tab to the Quality chip, which opens nothing', async ({
+  page,
+  request,
+}) => {
+  await openPlayerFromThePlayLink(page, request)
+  await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible()
+  await tabThrough(page, [
+    page.getByRole('button', { name: 'Back', exact: true }),
+    page.getByRole('slider', { name: 'Seek' }),
+    page.getByRole('button', { name: 'Mute' }),
+    page.getByRole('slider', { name: 'Volume' }),
+    page.getByRole('button', { name: 'Back 10 seconds' }),
+    page.getByRole('button', { name: 'Pause' }),
+    page.getByRole('button', { name: 'Forward 10 seconds' }),
+    page.getByRole('button', { name: /^Quality/ }),
+  ])
+
+  await page.keyboard.press('Space')
+
+  expect(await videoPaused(page)).toBe(true)
+  await expect(page.getByRole('button', { name: 'Play' })).toBeVisible()
+})
+
 test('after a click on Forward 10 seconds, a held Space pauses and skips no further', async ({
   page,
   request,
