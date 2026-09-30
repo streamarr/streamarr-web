@@ -722,6 +722,30 @@ test('the pickers switch the audio and subtitles the stream declares', async ({
   await expect(subtitlesChip.getByTestId('active-track')).toBeVisible()
 })
 
+test('Space chooses the picker row that has focus and shows its ring, after a click on the chip or an arrow key', async ({
+  page,
+  request,
+}) => {
+  await openPlayer(page, request, { multivariant: MULTIVARIANT_WITH_TRACKS })
+  const chip = page.getByRole('button', { name: /^Audio/ })
+  const audio = page.getByRole('menu', { name: 'Audio' })
+
+  await chip.click()
+  await expect(audio.getByRole('menuitemradio', { name: 'English' })).toBeFocused()
+  await page.keyboard.down('Space')
+  expect(await ringOnActiveElement(page)).toMatchObject({ name: 'English', ...RING })
+  await page.keyboard.up('Space')
+  await expect(audio).toBeHidden()
+  await expect(page.getByRole('button', { name: 'Audio: English' })).toBeFocused()
+  expect(await videoPaused(page)).toBe(true)
+
+  await chip.click()
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('Space')
+  await expect(page.getByRole('button', { name: 'Audio: Français' })).toBeFocused()
+  expect(await videoPaused(page)).toBe(true)
+})
+
 for (const viewport of [
   { width: 1512, height: 850 },
   { width: 667, height: 375 },
