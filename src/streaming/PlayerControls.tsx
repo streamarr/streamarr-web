@@ -226,7 +226,7 @@ function TitleLine({
 }: Readonly<{ title?: PlayerTitle; timecode: string | null }>) {
   return (
     <div className={styles.titleLine}>
-      {title && <span className={styles.heading}>{title.heading}</span>}
+      {title && <h1 className={styles.heading}>{title.heading}</h1>}
       <span className={styles.detail}>
         {title?.detail}
         {title?.detail && timecode && ' · '}
