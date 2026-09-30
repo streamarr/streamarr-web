@@ -125,15 +125,19 @@ const MOVIE_DETAIL = {
 // Ten seconds of black 720p H.264 and silent stereo AAC, as the variant's CODECS declare. hls.js
 // appends the initialization segment only with the first media segment, and only then does the
 // element load its metadata, where the player asks it to play.
-async function serveTheFirstMediaSegment(page: Page): Promise<void> {
+async function serveTheFirstMediaSegment(
+  page: Page,
+  segmentsAnswered = Promise.resolve(),
+): Promise<void> {
   for (const [segment, fixture] of [
     ['init.mp4', 'initialization-segment.mp4'],
     ['segment0.m4s', 'media-segment.m4s'],
   ]) {
     const path = fileURLToPath(new URL(`fixtures/${fixture}`, import.meta.url))
-    await page.route(`**/api/stream/**/${segment}*`, (route) =>
-      route.fulfill({ contentType: 'video/mp4', path }),
-    )
+    await page.route(`**/api/stream/**/${segment}*`, async (route) => {
+      await segmentsAnswered
+      return route.fulfill({ contentType: 'video/mp4', path })
+    })
   }
 }
 
@@ -377,6 +381,28 @@ test('the player opened from a Play link starts playing without a press on Play'
   await page.getByRole('link', { name: 'Play' }).click()
 
   await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible()
+})
+
+test('the player keeps a Pause the viewer pressed before the stream loaded', async ({
+  page,
+  request,
+}) => {
+  let answerSegments: () => void = () => undefined
+  const segmentsAnswered = new Promise<void>((resolve) => (answerSegments = resolve))
+  await routePlayer(page, request, { operations: { MovieDetail: MOVIE_DETAIL } })
+  await serveTheFirstMediaSegment(page, segmentsAnswered)
+  const metadata = await watchForLoadedMetadata(page)
+  await page.goto('/movie/m1')
+  await page.getByRole('link', { name: 'Play' }).click()
+  await page.getByRole('button', { name: 'Play' }).click()
+  await page.getByRole('button', { name: 'Pause' }).click()
+
+  answerSegments()
+  await metadata.loaded
+
+  const video = page.locator('video')
+  expect(await video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(true)
+  await expect(page.getByRole('button', { name: 'Play' })).toBeVisible()
 })
 
 test('the player opened from its address waits on Play when the browser refuses to start it', async ({
