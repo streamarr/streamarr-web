@@ -1,0 +1,19 @@
+query PlayerMediaTitle($id: ID!, $movie: Boolean!) {
+  movie(id: $id) @include(if: $movie) {
+    id
+    title
+  }
+  episode(id: $id) @skip(if: $movie) {
+    id
+    title
+    episodeNumber
+    season {
+      id
+      seasonNumber
+      series {
+        id
+        title
+      }
+    }
+  }
+}
