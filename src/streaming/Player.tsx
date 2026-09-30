@@ -113,14 +113,22 @@ export function Player({
         .catch(ignoreTimelineReportFailure)
     }
 
+    let playRequested = false
     const timeline = attachTimeline(video, {
       // Seeking before metadata is loaded is unreliable across browsers; the event is the safe point.
       onLoadedMetadata: (element) => {
         if (startPositionSeconds) {
           element.currentTime = startPositionSeconds
         }
+        // Before metadata, only the viewer can ask to play. Their choice stands, even a later Pause.
+        if (playRequested) {
+          return
+        }
         // Asked only after the seek, so the first frame to play is at the start position.
         void element.play().catch(ignoreRefusedStart)
+      },
+      onPlay: () => {
+        playRequested = true
       },
       onTimeUpdate: (element) => {
         lastKnownPosition = element.currentTime
@@ -281,19 +289,23 @@ function attachTimeline(
   handlers: {
     onLoadedMetadata: TimelineHandler
     onTimeUpdate: TimelineHandler
+    onPlay: TimelineHandler
     onPause: TimelineHandler
   },
 ): { detach: () => void } {
   const onLoadedMetadata = () => handlers.onLoadedMetadata(video)
   const onTimeUpdate = () => handlers.onTimeUpdate(video)
+  const onPlay = () => handlers.onPlay(video)
   const onPause = () => handlers.onPause(video)
   video.addEventListener('loadedmetadata', onLoadedMetadata)
   video.addEventListener('timeupdate', onTimeUpdate)
+  video.addEventListener('play', onPlay)
   video.addEventListener('pause', onPause)
   return {
     detach: () => {
       video.removeEventListener('loadedmetadata', onLoadedMetadata)
       video.removeEventListener('timeupdate', onTimeUpdate)
+      video.removeEventListener('play', onPlay)
       video.removeEventListener('pause', onPause)
     },
   }

@@ -1276,6 +1276,23 @@ describe('Player', () => {
     expect(video.muted).toBe(false)
   })
 
+  it.each(STREAM_PATHS)(
+    'shouldStayPausedWhenTheViewerPausedBeforeTheStreamLoadedOnThe%s',
+    async (_path, { supported, streamingVideo }) => {
+      hls.supported = supported
+      serveSession()
+      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await streamingVideo()
+      await user.click(screen.getByRole('button', { name: 'Play' }))
+      await user.click(screen.getByRole('button', { name: 'Pause' }))
+
+      loadMetadata(video)
+
+      expect(video.paused).toBe(true)
+      expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument()
+    },
+  )
+
   it('shouldStartPlaybackOnceARetriedStreamLoads', async () => {
     serveSession()
     const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
