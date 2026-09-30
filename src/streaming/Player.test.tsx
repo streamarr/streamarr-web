@@ -249,6 +249,12 @@ function moveMouse(to: Element, from: Element) {
   fireEvent.pointerMove(to, { pointerType: 'mouse' })
 }
 
+async function playUntilFaded(video: HTMLVideoElement) {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  await act(() => video.play())
+  await act(async () => vi.advanceTimersByTimeAsync(3_000))
+}
+
 function tap(target: Element) {
   fireEvent.pointerDown(target, { pointerType: 'touch' })
   fireEvent.pointerUp(target, { pointerType: 'touch' })
@@ -1568,9 +1574,7 @@ describe('Player', () => {
         renderWithProviders(<Player mediaFileId="abcd" />)
         const video = await attachedVideo()
         const player = screen.getByRole('region', { name: 'Player' })
-        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-        await act(() => video.play())
-        await act(async () => vi.advanceTimersByTimeAsync(3_000))
+        await playUntilFaded(video)
         expect(player).toHaveAttribute('data-idle')
 
         act(() => screen.getByRole('button', { name: control }).focus())
@@ -1584,9 +1588,7 @@ describe('Player', () => {
       renderWithProviders(<Player mediaFileId="abcd" />)
       const video = await attachedVideo()
       const player = screen.getByRole('region', { name: 'Player' })
-      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-      await act(() => video.play())
-      await act(async () => vi.advanceTimersByTimeAsync(3_000))
+      await playUntilFaded(video)
       const mute = screen.getByRole('button', { name: 'Mute' })
 
       act(() => mute.focus())
@@ -1607,9 +1609,7 @@ describe('Player', () => {
         </>,
       )
       const video = await attachedVideo()
-      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-      await act(() => video.play())
-      await act(async () => vi.advanceTimersByTimeAsync(3_000))
+      await playUntilFaded(video)
 
       act(() => screen.getByRole('button', { name: 'Elsewhere' }).focus())
 
@@ -1653,9 +1653,7 @@ describe('Player', () => {
       serveSession()
       renderWithProviders(<Player mediaFileId="abcd" />)
       const video = await attachedVideo()
-      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-      await act(() => video.play())
-      await act(async () => vi.advanceTimersByTimeAsync(3_000))
+      await playUntilFaded(video)
       const pause = screen.getByRole('button', { name: 'Pause' })
 
       tap(pause)
@@ -1670,9 +1668,7 @@ describe('Player', () => {
       serveSession()
       renderWithProviders(<Player mediaFileId="abcd" />)
       const video = await attachedVideo()
-      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-      await act(() => video.play())
-      await act(async () => vi.advanceTimersByTimeAsync(3_000))
+      await playUntilFaded(video)
       const pause = screen.getByRole('button', { name: 'Pause' })
 
       fireEvent.pointerDown(pause, { pointerType: 'touch' })
