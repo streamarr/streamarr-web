@@ -1687,6 +1687,24 @@ describe('Player', () => {
       expect(video.paused).toBe(true)
     })
 
+    it('shouldLetTheTapThatWakesTheFadedControlsMoveNoSlider', async () => {
+      serveSession()
+      layOutSeekTrack()
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await seekableVideo(2000)
+      await playUntilFaded(video)
+      const seekTrack = screen
+        .getByRole('slider', { name: 'Seek' })
+        .closest('.mantine-Slider-trackContainer')
+      assert(seekTrack)
+
+      tap(video, { mouseTarget: seekTrack, clientX: 750 })
+      await nextAnimationFrame()
+      await act(async () => vi.advanceTimersByTimeAsync(0))
+
+      expect(video.currentTime).toBe(0)
+    })
+
     it('shouldPressOnTheNextTapWhenTheTouchThatWokeTheControlsMadeNoClick', async () => {
       serveSession()
       renderWithProviders(<Player mediaFileId="abcd" />)

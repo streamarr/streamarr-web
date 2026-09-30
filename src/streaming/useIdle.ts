@@ -57,11 +57,13 @@ export function useIdle(
       setIdle(false)
       timer = setTimeout(settle, IDLE_AFTER_MS)
     }
-    // A touch browser hit-tests a tap's click after the tap has woken the controls, so the click
-    // would press whichever faded control lay under the finger.
+    // A touch browser hit-tests a tap's mouse events and click after the tap has woken the
+    // controls, so they would press or drag whichever faded control lay under the finger.
+    // Cancelling the pointerdown stops the mouse events but not the click.
     const wakeFromPress = (event: PointerEvent) => {
       document.removeEventListener('click', swallowClick, true)
       if (faded && event.pointerType !== 'mouse') {
+        event.preventDefault()
         document.addEventListener('click', swallowClick, { capture: true, once: true })
       }
       wake()

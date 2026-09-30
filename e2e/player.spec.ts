@@ -122,6 +122,12 @@ async function tapAcross(page: Page, control: Locator, fraction: number) {
   await page.touchscreen.tap(x + width * fraction, y + height / 2)
 }
 
+function sliderTrack(page: Page, name: string): Locator {
+  return page
+    .locator('.mantine-Slider-trackContainer')
+    .filter({ has: page.getByRole('slider', { name }) })
+}
+
 async function centreY(control: Locator): Promise<number> {
   const box = await control.boundingBox()
   expect(box, String(control)).not.toBeNull()
@@ -266,6 +272,30 @@ test.describe('on a touch screen', () => {
     expect(await page.locator('video').evaluate((video: HTMLVideoElement) => video.paused)).toBe(
       false,
     )
+  })
+
+  test('a tap on the faded seek bar brings the controls back and seeks nowhere', async ({
+    page,
+  }) => {
+    const back = page.getByRole('button', { name: 'Back', exact: true })
+
+    await tapAcross(page, sliderTrack(page, 'Seek'), 0.75)
+
+    await expect.poll(() => renderedOpacity(back)).toBe(1)
+    expect(
+      await page.locator('video').evaluate((video: HTMLVideoElement) => video.currentTime),
+    ).toBe(0)
+  })
+
+  test('a tap on the faded volume slider brings the controls back and changes nothing', async ({
+    page,
+  }) => {
+    const back = page.getByRole('button', { name: 'Back', exact: true })
+
+    await tapAcross(page, sliderTrack(page, 'Volume'), 0.25)
+
+    await expect.poll(() => renderedOpacity(back)).toBe(1)
+    expect(await page.locator('video').evaluate((video: HTMLVideoElement) => video.volume)).toBe(1)
   })
 })
 
