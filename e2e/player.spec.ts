@@ -115,11 +115,11 @@ interface Box {
   height: number
 }
 
-async function tapCentre(page: Page, control: Locator) {
+async function tapAcross(page: Page, control: Locator, fraction: number) {
   const box = await control.boundingBox()
   expect(box, String(control)).not.toBeNull()
   const { x, y, width, height } = box as Box
-  await page.touchscreen.tap(x + width / 2, y + height / 2)
+  await page.touchscreen.tap(x + width * fraction, y + height / 2)
 }
 
 async function centreY(control: Locator): Promise<number> {
@@ -258,7 +258,7 @@ test.describe('on a touch screen', () => {
     await page.getByRole('button', { name: 'Play' }).tap()
     await expect.poll(() => renderedOpacity(back)).toBe(0)
 
-    await tapCentre(page, pause)
+    await tapAcross(page, pause, 0.5)
 
     await expect.poll(() => renderedOpacity(back)).toBe(1)
     await expect(pause).toBeVisible()
