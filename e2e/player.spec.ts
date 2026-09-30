@@ -302,6 +302,23 @@ async function truncated(control: Locator): Promise<boolean> {
   })
 }
 
+// The part of a control left on screen once every ancestor that clips its overflow has cut it.
+async function paintedBox(control: Locator): Promise<Box> {
+  return control.evaluate((node) => {
+    const { left, right, top, height } = node.getBoundingClientRect()
+    const painted = { left, right }
+    for (let parent = node.parentElement; parent; parent = parent.parentElement) {
+      if (getComputedStyle(parent).overflowX === 'visible') {
+        continue
+      }
+      const bounds = parent.getBoundingClientRect()
+      painted.left = Math.max(painted.left, bounds.left)
+      painted.right = Math.min(painted.right, bounds.right)
+    }
+    return { x: painted.left, y: top, width: Math.max(painted.right - painted.left, 0), height }
+  })
+}
+
 async function expectControlsApart(page: Page, controls: Locator[]) {
   const viewport = page.viewportSize()
   const boxes: Box[] = []
@@ -695,6 +712,26 @@ for (const { device, viewport, volumeShown, oneRow } of LAYOUTS) {
       ].map(centreY),
     )
     expect(Math.max(...rowCentres) - Math.min(...rowCentres) < 8, 'one row').toBe(oneRow)
+  })
+}
+
+for (const viewport of [
+  { width: 568, height: 320 },
+  { width: 640, height: 360 },
+]) {
+  test(`an hours-long timecode stays clear of Mute on a phone ${viewport.width} wide held sideways`, async ({
+    page,
+    request,
+  }) => {
+    await page.setViewportSize(viewport)
+    await openPlayer(page, request, { durationSeconds: 7471 })
+    const timecode = page.getByText('0:00:00 / 2:04:31')
+    await expect(timecode).toBeAttached()
+
+    const mute = (await page.getByRole('button', { name: 'Mute' }).boundingBox()) as Box
+    for (const text of [page.getByRole('heading', { level: 1 }), timecode]) {
+      expect(overlap(await paintedBox(text), mute), `${String(text)} runs under Mute`).toBe(false)
+    }
   })
 }
 
