@@ -6,6 +6,7 @@ import {
   type Page,
   type Request,
 } from '@playwright/test'
+import { fileURLToPath } from 'node:url'
 import { RING, ringOnActiveElement } from './focusRing'
 import { STUB_URL } from './ports'
 
@@ -95,6 +96,44 @@ const CAPACITY_REFUSAL = {
       },
     ],
   },
+}
+
+// A movie whose detail page has a Play link to the player's media file.
+const MOVIE_DETAIL = {
+  movie: {
+    __typename: 'Movie',
+    id: 'm1',
+    title: 'Everlight',
+    tagline: null,
+    summary: null,
+    runtime: 142,
+    releaseDate: '2024-05-10',
+    contentRating: null,
+    genres: [],
+    directors: [],
+    cast: [],
+    ratings: [],
+    files: [{ id: 'file-1' }],
+    watchStatus: 'UNWATCHED',
+    watchProgress: null,
+    backdropImages: [],
+    posterImages: [],
+  },
+}
+
+// Ten seconds of black 720p H.264 and silent stereo AAC, as the variant's CODECS declare. hls.js
+// appends the initialization segment only with the first media segment, and only then does the
+// element load its metadata, where the player asks it to play.
+async function serveTheFirstMediaSegment(page: Page): Promise<void> {
+  for (const [segment, fixture] of [
+    ['init.mp4', 'initialization-segment.mp4'],
+    ['segment0.m4s', 'media-segment.m4s'],
+  ]) {
+    const path = fileURLToPath(new URL(`fixtures/${fixture}`, import.meta.url))
+    await page.route(`**/api/stream/**/${segment}*`, (route) =>
+      route.fulfill({ contentType: 'video/mp4', path }),
+    )
+  }
 }
 
 // Opacity does not inherit, so a control's own style never shows that its container faded.
@@ -311,6 +350,46 @@ test('the buffering ring shows while the playing video waits for data', async ({
   await expect(ring).toBeAttached()
   const box = await ring.boundingBox()
   expect(box && { x: box.x + box.width / 2, width: box.width }).toEqual({ x: 1512 / 2, width: 54 })
+})
+
+test('the player opened from a Play link starts playing without a press on Play', async ({
+  page,
+  request,
+}) => {
+  await routePlayer(page, request, { operations: { MovieDetail: MOVIE_DETAIL } })
+  await serveTheFirstMediaSegment(page)
+  await page.goto('/movie/m1')
+
+  await page.getByRole('link', { name: 'Play' }).click()
+
+  await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible()
+})
+
+// Every query Playwright makes of the page counts as user activation, so the spec learns from the
+// console, not from the page, that the player has asked the element to play.
+test('the player opened from its address waits on Play when the browser refuses to start it', async ({
+  page,
+  request,
+}) => {
+  await routePlayer(page, request)
+  await serveTheFirstMediaSegment(page)
+  await page.addInitScript(() => {
+    const announce = () => console.info('loadedmetadata')
+    document.addEventListener('loadedmetadata', announce, { capture: true })
+  })
+  const metadataLoaded = page.waitForEvent(
+    'console',
+    (message) => message.text() === 'loadedmetadata',
+  )
+
+  await page.goto('/play/file-1')
+  await metadataLoaded
+
+  await expect(page.getByRole('button', { name: 'Play' })).toBeVisible()
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  const video = page.locator('video')
+  expect(await video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(true)
+  expect(await video.evaluate((element: HTMLVideoElement) => element.muted)).toBe(false)
 })
 
 test('a refusal keeps Retry above the control bar on a phone held sideways', async ({

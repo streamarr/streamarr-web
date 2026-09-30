@@ -55,6 +55,8 @@ async function attachedVideo(): Promise<HTMLVideoElement> {
     throw new Error('no video element rendered')
   }
   Object.defineProperty(video, 'currentTime', { writable: true, value: 0, configurable: true })
+  // jsdom cannot play, and the player starts playback once the stream loads.
+  Object.defineProperty(video, 'play', { configurable: true, value: () => Promise.resolve() })
   return video
 }
 
