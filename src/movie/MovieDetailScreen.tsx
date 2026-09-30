@@ -82,7 +82,7 @@ export function MovieDetailScreen({ movieId }: Readonly<{ movieId: string }>) {
               <Link
                 to="/play/$mediaFileId"
                 params={{ mediaFileId: fileId }}
-                search={{ position: position ?? undefined }}
+                search={{ movie: movie.id, position: position ?? undefined }}
                 className={detailAction.primary}
               >
                 <Icon name="play" size={14} />

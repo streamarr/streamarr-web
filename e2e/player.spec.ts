@@ -38,21 +38,24 @@ const MULTIVARIANT_WITH_TRACKS = [
   '',
 ].join('\n')
 
-const LEVEL = [
-  '#EXTM3U',
-  '#EXT-X-VERSION:7',
-  '#EXT-X-TARGETDURATION:2824',
-  '#EXT-X-PLAYLIST-TYPE:VOD',
-  '#EXT-X-MAP:URI="init.mp4"',
-  '#EXTINF:2824.0,',
-  'segment0.m4s',
-  '#EXT-X-ENDLIST',
-  '',
-].join('\n')
+function levelPlaylist(durationSeconds: number): string {
+  return [
+    '#EXTM3U',
+    '#EXT-X-VERSION:7',
+    `#EXT-X-TARGETDURATION:${durationSeconds}`,
+    '#EXT-X-PLAYLIST-TYPE:VOD',
+    '#EXT-X-MAP:URI="init.mp4"',
+    `#EXTINF:${durationSeconds}.0,`,
+    'segment0.m4s',
+    '#EXT-X-ENDLIST',
+    '',
+  ].join('\n')
+}
 
 interface PlayerRoutes {
   operations?: Record<string, unknown>
   multivariant?: string
+  durationSeconds?: number
   levelPlaylistAnswered?: Promise<void>
 }
 
@@ -62,6 +65,7 @@ async function routePlayer(
   {
     operations = {},
     multivariant = MULTIVARIANT,
+    durationSeconds = 2824,
     levelPlaylistAnswered = Promise.resolve(),
   }: PlayerRoutes = {},
 ): Promise<void> {
@@ -76,7 +80,10 @@ async function routePlayer(
   )
   await page.route('**/api/stream/**/stream.m3u8*', async (route) => {
     await levelPlaylistAnswered
-    return route.fulfill({ contentType: 'application/vnd.apple.mpegurl', body: LEVEL })
+    return route.fulfill({
+      contentType: 'application/vnd.apple.mpegurl',
+      body: levelPlaylist(durationSeconds),
+    })
   })
   await page.route(
     /\/api\/stream\/.*\/(audio|subtitles)-\w+\.m3u8/,
@@ -85,13 +92,15 @@ async function routePlayer(
   await page.route(/\/api\/stream\/.*\.(mp4|m4s)/, () => new Promise(() => undefined))
 }
 
+const PLAYER_PATH = '/play/file-1?episode=e1'
+
 async function openPlayer(
   page: Page,
   request: APIRequestContext,
   routes?: PlayerRoutes,
 ): Promise<void> {
   await routePlayer(page, request, routes)
-  await page.goto('/play/file-1')
+  await page.goto(PLAYER_PATH)
   await expect(page.getByRole('slider', { name: 'Seek' })).toHaveAttribute('aria-disabled', 'false')
 }
 
@@ -109,6 +118,20 @@ const PLAYER_OPERATIONS: Record<string, unknown> = {
         transcodeMode: 'REMUX',
       },
       userErrors: [],
+    },
+  },
+  PlayerMediaTitle: {
+    episode: {
+      __typename: 'Episode',
+      id: 'e1',
+      title: 'Breakage',
+      episodeNumber: 5,
+      season: {
+        __typename: 'Season',
+        id: 'season-2',
+        seasonNumber: 2,
+        series: { __typename: 'Series', id: 'series-1', title: 'Northern Line' },
+      },
     },
   },
   ReportStreamSessionTimeline: { reportStreamSessionTimeline: true },
@@ -279,6 +302,23 @@ async function truncated(control: Locator): Promise<boolean> {
   })
 }
 
+// The part of a control left on screen once every ancestor that clips its overflow has cut it.
+async function paintedBox(control: Locator): Promise<Box> {
+  return control.evaluate((node) => {
+    const { left, right, top, height } = node.getBoundingClientRect()
+    const painted = { left, right }
+    for (let parent = node.parentElement; parent; parent = parent.parentElement) {
+      if (getComputedStyle(parent).overflowX === 'visible') {
+        continue
+      }
+      const bounds = parent.getBoundingClientRect()
+      painted.left = Math.max(painted.left, bounds.left)
+      painted.right = Math.min(painted.right, bounds.right)
+    }
+    return { x: painted.left, y: top, width: Math.max(painted.right - painted.left, 0), height }
+  })
+}
+
 async function expectControlsApart(page: Page, controls: Locator[]) {
   const viewport = page.viewportSize()
   const boxes: Box[] = []
@@ -301,6 +341,7 @@ async function expectControlsApart(page: Page, controls: Locator[]) {
 
 function barControls(page: Page): Locator[] {
   return [
+    page.getByRole('heading', { level: 1, name: 'Northern Line' }),
     page.getByText('0:00 / 47:04'),
     page.getByRole('button', { name: 'Mute' }),
     page.getByRole('button', { name: 'Back 10 seconds' }),
@@ -609,7 +650,7 @@ test('a refusal keeps Retry above the control bar on a phone held sideways', asy
 }) => {
   await page.setViewportSize({ width: 667, height: 375 })
   await routePlayer(page, request, { operations: { CreateStreamSession: CAPACITY_REFUSAL } })
-  await page.goto('/play/file-1')
+  await page.goto(PLAYER_PATH)
   const retry = page.getByRole('button', { name: 'Retry playback' })
   await expect(retry).toBeVisible()
 
@@ -622,9 +663,10 @@ test('Mute holds its place when the stream declares its length', async ({ page, 
   let answerLevelPlaylist: () => void = () => undefined
   const levelPlaylistAnswered = new Promise<void>((resolve) => (answerLevelPlaylist = resolve))
   await routePlayer(page, request, { levelPlaylistAnswered })
-  await page.goto('/play/file-1')
+  await page.goto(PLAYER_PATH)
   const mute = page.getByRole('button', { name: 'Mute' })
   await expect(page.getByRole('button', { name: 'Play' })).toBeEnabled()
+  await expect(page.getByRole('heading', { level: 1, name: 'Northern Line' })).toBeVisible()
   const unknownLength = await mute.boundingBox()
 
   answerLevelPlaylist()
@@ -665,12 +707,32 @@ for (const { device, viewport, volumeShown, oneRow } of LAYOUTS) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(viewport.width)
     const rowCentres = await Promise.all(
       [
-        page.getByText('0:00 / 47:04'),
+        page.getByRole('button', { name: 'Mute' }),
         page.getByRole('button', { name: 'Play' }),
         page.getByRole('button', { name: 'Full screen' }),
       ].map(centreY),
     )
     expect(Math.max(...rowCentres) - Math.min(...rowCentres) < 8, 'one row').toBe(oneRow)
+  })
+}
+
+for (const viewport of [
+  { width: 568, height: 320 },
+  { width: 640, height: 360 },
+]) {
+  test(`an hours-long timecode stays clear of Mute on a phone ${viewport.width} wide held sideways`, async ({
+    page,
+    request,
+  }) => {
+    await page.setViewportSize(viewport)
+    await openPlayer(page, request, { durationSeconds: 7471 })
+    const timecode = page.getByText('0:00:00 / 2:04:31')
+    await expect(timecode).toBeAttached()
+
+    const mute = (await page.getByRole('button', { name: 'Mute' }).boundingBox()) as Box
+    for (const text of [page.getByRole('heading', { level: 1 }), timecode]) {
+      expect(overlap(await paintedBox(text), mute), `${String(text)} runs under Mute`).toBe(false)
+    }
   })
 }
 

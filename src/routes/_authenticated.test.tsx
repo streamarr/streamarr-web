@@ -87,6 +87,7 @@ describe('the authenticated layout', () => {
     '/sharing',
     '/library/library-1?by=ADDED&direction=DESC',
     '/play/media-1',
+    '/play/media-1?episode=episode-1',
     '/select-profile',
   ])('shouldSendOtherAnonymousVisitsToSignInWithoutCheckingSetup(%s)', async (path) => {
     const readStatus = vi.fn(() =>

@@ -1,6 +1,7 @@
 import type { HomeQuery } from '../graphql/generated/graphql'
 import { formatRelativeTime, formatRuntime } from '../media/formatting'
 import { pickImageVariant, type PickedImage } from '../media/images'
+import type { MediaTitleSearch } from '../streaming/usePlayerTitle'
 
 export interface BillboardMetadataEntry {
   label: string
@@ -16,6 +17,7 @@ export interface BillboardContent {
   metadata: BillboardMetadataEntry[]
   ctaLabel: string
   ctaFileId: string | null
+  ctaMediaTitle: MediaTitleSearch | null
   ctaPositionSeconds: number | null
 }
 
@@ -54,6 +56,7 @@ function movieBillboard(movie: ContinueWatchingMovie): BillboardContent {
     ],
     ctaLabel: position ? 'Resume' : 'Play',
     ctaFileId: movie.files.find((file) => file !== null)?.id ?? null,
+    ctaMediaTitle: { movie: movie.id },
     ctaPositionSeconds: position,
   }
 }
@@ -76,6 +79,7 @@ function episodeBillboard(episode: ContinueWatchingEpisode): BillboardContent {
     // Resume = mid-watch stream, Continue = next unwatched episode (principle 14).
     ctaLabel: `${position ? 'Resume' : 'Continue'} S${episode.season.seasonNumber} E${episode.episodeNumber}`,
     ctaFileId: episode.files.find((file) => file !== null)?.id ?? null,
+    ctaMediaTitle: { episode: episode.id },
     ctaPositionSeconds: position,
   }
 }
@@ -95,6 +99,7 @@ function recentMovieBillboard(movie: RecentlyAddedMovie): BillboardContent {
     ],
     ctaLabel: 'Play',
     ctaFileId: movie.files.find((file) => file !== null)?.id ?? null,
+    ctaMediaTitle: { movie: movie.id },
     ctaPositionSeconds: null,
   }
 }
@@ -114,6 +119,7 @@ function recentSeriesBillboard(series: RecentlyAddedSeries): BillboardContent {
     ],
     ctaLabel: 'Play',
     ctaFileId: null,
+    ctaMediaTitle: null,
     ctaPositionSeconds: null,
   }
 }

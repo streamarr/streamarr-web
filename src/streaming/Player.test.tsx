@@ -2500,7 +2500,7 @@ describe('Player', () => {
 
       playheadAt(video, 1392)
 
-      expect(screen.getByText('Northern Line')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { level: 1, name: 'Northern Line' })).toBeInTheDocument()
       expect(screen.getByText(wholeText('S2 E5 — Breakage · 23:12 / 47:04'))).toBeInTheDocument()
     })
 

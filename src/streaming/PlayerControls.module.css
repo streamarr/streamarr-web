@@ -65,22 +65,35 @@
 }
 
 .heading,
-.detail {
+.detailText {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
 .heading {
+  margin: 0;
   font-size: var(--font-size-emphasis);
   font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
 }
 
 .detail {
+  display: flex;
+  overflow: hidden;
   min-height: 1lh;
   font-size: var(--font-size-body);
   color: var(--text-secondary);
+}
+
+/* What is playing gives way before the timecode does. */
+.separator,
+.timecode {
+  flex: none;
+}
+
+.separator {
+  white-space: pre;
 }
 
 .timecode {
@@ -88,10 +101,14 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* A sub-hour timecode's width, held until the duration is known so the controls beside it stay. */
+/* A sub-hour timecode's width and the separator before it, held until the duration is known so the
+   controls beside them stay. */
 .timecode:empty {
-  display: inline-block;
   min-width: 12ch;
+}
+
+.separator[data-pending] {
+  visibility: hidden;
 }
 
 .volume {
