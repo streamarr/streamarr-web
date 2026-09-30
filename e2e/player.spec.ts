@@ -746,6 +746,36 @@ test('Space chooses the picker row that has focus and shows its ring, after a cl
   expect(await videoPaused(page)).toBe(true)
 })
 
+test('Space plays the video, and opens no menu, on an Audio chip clicked before its choices arrived', async ({
+  page,
+  request,
+}) => {
+  await routePlayer(page, request)
+  let answerMultivariant: () => void = () => undefined
+  const multivariantAnswered = new Promise<void>((resolve) => (answerMultivariant = resolve))
+  await page.route('**/api/stream/**/multivariant.m3u8*', async (route) => {
+    await multivariantAnswered
+    return route.fulfill({
+      contentType: 'application/vnd.apple.mpegurl',
+      body: MULTIVARIANT_WITH_TRACKS,
+    })
+  })
+  await page.goto('/play/file-1')
+  const chip = page.getByRole('button', { name: /^Audio/ })
+  await expect(chip).toHaveAttribute('aria-disabled', 'true')
+  // Playwright refuses to click an aria-disabled button, but a mouse can still click and focus it.
+  await chip.click({ force: true })
+  answerMultivariant()
+  await expect(page.getByRole('button', { name: 'Audio: English' })).toBeFocused()
+  await expect(page.getByRole('button', { name: 'Play' })).toBeEnabled()
+
+  await page.keyboard.press('Space')
+
+  await expect(page.getByRole('menu', { name: 'Audio' })).toBeHidden()
+  expect(await videoPaused(page)).toBe(false)
+  expect(await ringOnActiveElement(page)).not.toMatchObject(RING)
+})
+
 for (const viewport of [
   { width: 1512, height: 850 },
   { width: 667, height: 375 },
