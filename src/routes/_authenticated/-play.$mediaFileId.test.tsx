@@ -148,6 +148,34 @@ describe('/play/$mediaFileId', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Everlight' })).toBeVisible()
   })
 
+  it('shouldKeepTheAddressThePlayerWasOpenedAt', async () => {
+    serveApp()
+    serveMediaTitles()
+
+    const { router } = renderAppAt('/play/file-1?episode=e1&position=120')
+    await screen.findByRole('heading', { level: 1, name: 'Northern Line' })
+
+    expect(router.state.location.href).toBe('/play/file-1?episode=e1&position=120')
+  })
+
+  it('shouldKeepTheAddressAPlayLinkOpens', async () => {
+    serveApp()
+    serveMediaTitles()
+    const { router } = renderAppAt('/play/file-2')
+    await attachedVideo()
+
+    await act(() =>
+      router.navigate({
+        to: '/play/$mediaFileId',
+        params: { mediaFileId: 'file-1' },
+        search: { movie: 'm1' },
+      }),
+    )
+    await screen.findByRole('heading', { level: 1, name: 'Everlight' })
+
+    expect(router.state.location.href).toBe('/play/file-1?movie=m1')
+  })
+
   it.each([
     { condition: 'NoMediaTitle', search: '?position=120' },
     { condition: 'AnEmptyMediaTitle', search: '?movie=' },

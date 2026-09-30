@@ -6,25 +6,21 @@ import {
   usePlayerTitle,
 } from '../../streaming/usePlayerTitle'
 
-type PlaySearchInput = { position?: number } & MediaTitleSearch
-
-interface PlaySearch {
-  position?: number
-  mediaTitle?: PlayableMediaTitle
-}
+type PlaySearch = { position?: number } & MediaTitleSearch
 
 export const Route = createFileRoute('/_authenticated/play/$mediaFileId')({
-  validateSearch: (search: PlaySearchInput & SearchSchemaInput): PlaySearch => ({
+  validateSearch: (search: PlaySearch & SearchSchemaInput): PlaySearch => ({
     position: parsePosition(search.position),
-    mediaTitle: parseMediaTitle(search),
+    movie: parseId(search.movie),
+    episode: parseId(search.episode),
   }),
   component: Play,
 })
 
 function Play() {
   const { mediaFileId } = Route.useParams()
-  const { position, mediaTitle } = Route.useSearch()
-  const title = usePlayerTitle(mediaTitle)
+  const { position, movie, episode } = Route.useSearch()
+  const title = usePlayerTitle(parseMediaTitle({ movie, episode }))
   return <Player mediaFileId={mediaFileId} startPositionSeconds={position} title={title} />
 }
 
@@ -33,22 +29,16 @@ function parsePosition(value: unknown): number | undefined {
   return Number.isFinite(position) && position > 0 ? position : undefined
 }
 
-function parseMediaTitle({
-  movie,
-  episode,
-}: {
-  movie?: unknown
-  episode?: unknown
-}): PlayableMediaTitle | undefined {
-  if (isId(movie) && episode === undefined) {
+function parseId(value: unknown): string | undefined {
+  return typeof value === 'string' && value !== '' ? value : undefined
+}
+
+function parseMediaTitle({ movie, episode }: MediaTitleSearch): PlayableMediaTitle | undefined {
+  if (movie && !episode) {
     return { kind: 'movie', id: movie }
   }
-  if (isId(episode) && movie === undefined) {
+  if (episode && !movie) {
     return { kind: 'episode', id: episode }
   }
   return undefined
-}
-
-function isId(value: unknown): value is string {
-  return typeof value === 'string' && value !== ''
 }
