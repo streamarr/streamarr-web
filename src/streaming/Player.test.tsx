@@ -234,13 +234,25 @@ function pressPause(video: HTMLVideoElement) {
   fireEvent(video, new Event('pause'))
 }
 
+// The replacement is a plain function that counts its calls. A vi.fn handles every promise it
+// returns, so Vitest would miss a refusal that the player leaves uncaught.
+function replacePlay(video: HTMLVideoElement, answer: () => Promise<void>): { calls: number } {
+  const play = { calls: 0 }
+  Object.defineProperty(video, 'play', {
+    configurable: true,
+    value: () => {
+      play.calls += 1
+      return answer()
+    },
+  })
+  return play
+}
+
 // A browser's autoplay policy refuses play() until the viewer has interacted with the page.
 function refuseToStartPlayback(video: HTMLVideoElement) {
-  const play = vi.fn(() =>
+  return replacePlay(video, () =>
     Promise.reject(new DOMException('No user activation', 'NotAllowedError')),
   )
-  Object.defineProperty(video, 'play', { configurable: true, value: play })
-  return play
 }
 
 function raiseHlsFatalError() {
@@ -1270,7 +1282,7 @@ describe('Player', () => {
     loadMetadata(video)
     await act(async () => {})
 
-    expect(play).toHaveBeenCalledOnce()
+    expect(play.calls).toBe(1)
     expect(screen.getByRole('button', { name: 'Play' })).toBeEnabled()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(video.muted).toBe(false)
