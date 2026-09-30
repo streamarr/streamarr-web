@@ -511,6 +511,30 @@ test('after a click on Forward 10 seconds, a held Space pauses and skips no furt
   expect(await videoPaused(page)).toBe(true)
 })
 
+test('a clicked Forward 10 seconds shows no focus ring while Space plays and pauses, and shows one after Tab and Shift+Tab', async ({
+  page,
+  request,
+}) => {
+  await openPlayerFromThePlayLink(page, request)
+  await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible()
+  const forward = page.getByRole('button', { name: 'Forward 10 seconds' })
+  await forward.click()
+  await page.keyboard.press('Space')
+  expect(await videoPaused(page)).toBe(true)
+
+  await page.keyboard.press('Space')
+
+  expect(await videoPaused(page)).toBe(false)
+  await expect(forward).toBeFocused()
+  expect(await ringOnActiveElement(page)).not.toMatchObject(RING)
+  await page.keyboard.press('Tab')
+  await expect(page.getByRole('button', { name: /^Quality/ })).toBeFocused()
+  expect(await ringOnActiveElement(page)).toMatchObject(RING)
+  await page.keyboard.press('Shift+Tab')
+  await expect(forward).toBeFocused()
+  expect(await ringOnActiveElement(page)).toMatchObject(RING)
+})
+
 test('a refusal keeps Retry above the control bar on a phone held sideways', async ({
   page,
   request,
