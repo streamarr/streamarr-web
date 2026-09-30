@@ -1,0 +1,60 @@
+/* Letterbox bars are true black, which no token holds. */
+.player {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #000;
+  color: var(--text-primary);
+}
+
+.player[data-idle] {
+  cursor: none;
+}
+
+/* Space plays and pauses on a control that focus reached without the keyboard, so the control
+   hides the ring that a key press would give it. useSpaceToPlayOrPause sets the mark. */
+.player [data-pointer-focus]:focus-visible {
+  outline: none;
+}
+
+.chrome {
+  transition: opacity 200ms ease;
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+
+.player[data-idle] .chrome {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.back {
+  position: absolute;
+  top: var(--spacing-24);
+  left: var(--spacing-page);
+}
+
+.failure {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 50%;
+  width: min(480px, calc(100% - 2 * var(--spacing-16)));
+  transform: translate(-50%, -50%);
+}
+
+@media (max-width: 48em) {
+  .back {
+    top: var(--spacing-16);
+    left: var(--spacing-16);
+  }
+}

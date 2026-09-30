@@ -1,6 +1,6 @@
 import type { ApolloClient, ObservableQuery } from '@apollo/client'
 import { useApolloClient, useMutation } from '@apollo/client/react'
-import { Alert, AspectRatio, Button, Stack } from '@mantine/core'
+import { Alert, Button } from '@mantine/core'
 import Hls from 'hls.js'
 import { useEffect, useRef, useState } from 'react'
 import {
@@ -11,7 +11,14 @@ import {
   type ReportStreamSessionTimelineMutationVariables,
 } from '../graphql/generated/graphql'
 import { userErrorMessage } from '../graphql/userErrors'
+import { DetailBackButton } from '../media/DetailBack'
 import { invalidateWatchedState } from '../media/watchedState'
+import focusStyles from '../styles/focus.module.css'
+import { BufferingRing } from './BufferingRing'
+import styles from './Player.module.css'
+import { PlayerControls, type PlayerTitle } from './PlayerControls'
+import { useIdle } from './useIdle'
+import { useVideoState } from './useVideoState'
 
 // Progress is only worth a round trip once the playhead has moved this far since the last report.
 const TIMELINE_REPORT_INTERVAL_SECONDS = 10
@@ -23,27 +30,39 @@ const PLAYBACK_FAILURE_MESSAGE = "Playback couldn't start. Try again."
 type PlaybackState = ReportStreamSessionTimelineMutationVariables['state']
 type StreamSessionPayload = CreateStreamSessionMutation['createStreamSession']
 
+type SourcePhase = { at: 'starting' } | { at: 'attached' } | { at: 'failed'; message: string }
+
+const STARTING: SourcePhase = { at: 'starting' }
+const ATTACHED: SourcePhase = { at: 'attached' }
+
 const pendingCleanups = new WeakMap<ApolloClient, () => Promise<void>>()
 
 export function Player({
   mediaFileId,
   startPositionSeconds,
+  title,
 }: Readonly<{
   mediaFileId: string
   startPositionSeconds?: number
+  title?: PlayerTitle
 }>) {
+  const playerRef = useRef<HTMLElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
+  const controlsRef = useRef<HTMLDivElement>(null)
+  const backRef = useRef<HTMLDivElement>(null)
   const [createStreamSession] = useMutation(CreateStreamSessionDocument)
   const client = useApolloClient()
-  const [failure, setFailure] = useState<string | null>(null)
+  const [sourcePhase, setSourcePhase] = useState(STARTING)
   const [attempt, setAttempt] = useState(0)
+  const videoState = useVideoState(videoRef)
+  const idle = useIdle(videoState.paused || sourcePhase.at === 'failed', [controlsRef, backRef])
 
   useEffect(() => {
     const video = videoRef.current
     if (!video) {
       return undefined
     }
-    setFailure(null)
+    setSourcePhase(STARTING)
 
     let source: StreamSource | null = null
     let cancelled = false
@@ -94,12 +113,22 @@ export function Player({
         .catch(ignoreTimelineReportFailure)
     }
 
+    let playRequested = false
     const timeline = attachTimeline(video, {
       // Seeking before metadata is loaded is unreliable across browsers; the event is the safe point.
       onLoadedMetadata: (element) => {
         if (startPositionSeconds) {
           element.currentTime = startPositionSeconds
         }
+        // Before metadata, only the viewer can ask to play. Their choice stands, even a later Pause.
+        if (playRequested) {
+          return
+        }
+        // Asked only after the seek, so the first frame to play is at the start position.
+        void element.play().catch(ignoreRefusedStart)
+      },
+      onPlay: () => {
+        playRequested = true
       },
       onTimeUpdate: (element) => {
         lastKnownPosition = element.currentTime
@@ -120,7 +149,7 @@ export function Player({
     const startupDeadline = createStartupDeadline(() => {
       cancelled = true
       detachSource()
-      setFailure('Playback is taking too long to start. Try again.')
+      setSourcePhase({ at: 'failed', message: 'Playback is taking too long to start. Try again.' })
       requestCleanup()
     })
     const startup = Promise.resolve()
@@ -152,6 +181,7 @@ export function Player({
             showFailure(PLAYBACK_FAILURE_MESSAGE)
           },
         })
+        setSourcePhase(ATTACHED)
       })
       .catch(() => {
         if (!cancelled) {
@@ -161,7 +191,7 @@ export function Player({
 
     function showFailure(message: string) {
       startupDeadline.end()
-      setFailure(message)
+      setSourcePhase({ at: 'failed', message })
     }
 
     function releaseSession(): Promise<void> {
@@ -214,19 +244,35 @@ export function Player({
   }, [mediaFileId, startPositionSeconds, createStreamSession, client, attempt])
 
   return (
-    <Stack maw={960}>
-      {failure && (
-        <Alert color="red" role="alert">
-          {failure}
+    <section
+      ref={playerRef}
+      aria-label="Player"
+      className={`${styles.player} ${focusStyles.focusRing}`}
+      data-idle={idle || undefined}
+    >
+      <video ref={videoRef} className={styles.video} playsInline />
+      {videoState.buffering && <BufferingRing />}
+      {sourcePhase.at === 'failed' && (
+        <Alert className={styles.failure} color="red" role="alert">
+          {sourcePhase.message}
           <Button display="block" mt="sm" onClick={() => setAttempt((value) => value + 1)}>
             Retry playback
           </Button>
         </Alert>
       )}
-      <AspectRatio ratio={16 / 9}>
-        <video ref={videoRef} controls style={{ width: '100%' }} />
-      </AspectRatio>
-    </Stack>
+      <div ref={backRef} className={`${styles.back} ${styles.chrome}`}>
+        <DetailBackButton />
+      </div>
+      <PlayerControls
+        ref={controlsRef}
+        className={styles.chrome}
+        playerRef={playerRef}
+        videoRef={videoRef}
+        videoState={videoState}
+        attached={sourcePhase.at === 'attached'}
+        title={title}
+      />
+    </section>
   )
 }
 
@@ -243,19 +289,23 @@ function attachTimeline(
   handlers: {
     onLoadedMetadata: TimelineHandler
     onTimeUpdate: TimelineHandler
+    onPlay: TimelineHandler
     onPause: TimelineHandler
   },
 ): { detach: () => void } {
   const onLoadedMetadata = () => handlers.onLoadedMetadata(video)
   const onTimeUpdate = () => handlers.onTimeUpdate(video)
+  const onPlay = () => handlers.onPlay(video)
   const onPause = () => handlers.onPause(video)
   video.addEventListener('loadedmetadata', onLoadedMetadata)
   video.addEventListener('timeupdate', onTimeUpdate)
+  video.addEventListener('play', onPlay)
   video.addEventListener('pause', onPause)
   return {
     detach: () => {
       video.removeEventListener('loadedmetadata', onLoadedMetadata)
       video.removeEventListener('timeupdate', onTimeUpdate)
+      video.removeEventListener('play', onPlay)
       video.removeEventListener('pause', onPause)
     },
   }
@@ -307,6 +357,11 @@ function createStartupDeadline(onExpired: () => void): StartupDeadline {
 function refusalMessage(payload: StreamSessionPayload | undefined): string {
   const refusal = payload?.userErrors[0]
   return refusal ? userErrorMessage(refusal) : PLAYBACK_FAILURE_MESSAGE
+}
+
+function ignoreRefusedStart() {
+  // A browser may refuse to start playback until the viewer interacts with the page, and a released
+  // stream interrupts the start. The element stays paused either way, and the controls show it.
 }
 
 function ignoreTimelineReportFailure() {

@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
 import { HttpResponse, graphql } from 'msw'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { meFixture } from '../../test/meFixture'
@@ -55,6 +55,8 @@ async function attachedVideo(): Promise<HTMLVideoElement> {
     throw new Error('no video element rendered')
   }
   Object.defineProperty(video, 'currentTime', { writable: true, value: 0, configurable: true })
+  // jsdom cannot play, and the player starts playback once the stream loads.
+  Object.defineProperty(video, 'play', { configurable: true, value: () => Promise.resolve() })
   return video
 }
 
@@ -86,5 +88,21 @@ describe('/play/$mediaFileId', () => {
     fireEvent(video, new Event('loadedmetadata'))
 
     expect(video.currentTime).toBe(startsAt)
+  })
+
+  it('shouldReturnHomeFromBackWhenThePlayerWasOpenedDirectly', async () => {
+    serveApp()
+    server.use(
+      graphql.query('Home', () =>
+        HttpResponse.json({ data: { continueWatching: [], libraries: [] } }),
+      ),
+    )
+    const { user, router } = renderAppAt('/play/file-1')
+    await attachedVideo()
+
+    await user.click(screen.getByRole('button', { name: 'Back' }))
+
+    expect(await screen.findByText(/nothing to watch yet/i)).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/')
   })
 })

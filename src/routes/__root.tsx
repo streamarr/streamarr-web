@@ -35,6 +35,9 @@ const AMBIENT_ROUTES = new Set<FileRouteTypes['id']>([
 // Settings are neutral pages: the chrome stays, the browsing wash behind it does not.
 const SETTINGS_ROUTES = new Set<FileRouteTypes['id']>(['/_authenticated/settings/server'])
 
+// The player fills the screen and carries its own Back.
+const PLAYER_ROUTES = new Set<FileRouteTypes['id']>(['/_authenticated/play/$mediaFileId'])
+
 function RootLayout() {
   return (
     <AmbientThemeProvider>
@@ -63,8 +66,11 @@ function RootFrame() {
   const settings = useRouterState({
     select: (state) => state.matches.some((match) => SETTINGS_ROUTES.has(match.routeId)),
   })
+  const player = useRouterState({
+    select: (state) => state.matches.some((match) => PLAYER_ROUTES.has(match.routeId)),
+  })
 
-  if (ceremony) {
+  if (ceremony || player) {
     return <Outlet />
   }
 

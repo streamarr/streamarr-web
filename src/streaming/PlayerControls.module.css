@@ -1,0 +1,260 @@
+.bar {
+  position: absolute;
+  left: var(--spacing-page);
+  right: var(--spacing-page);
+  bottom: 36px;
+  border-radius: var(--radius-2xl);
+  background: var(--surface-chrome);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+/* The seek track runs along the bar's top edge; its hit area reaches above and below it. */
+.bar .seek {
+  position: absolute;
+  top: -8px;
+  left: 0;
+  right: 0;
+  height: 20px;
+}
+
+.bar .seekHit {
+  height: 20px;
+}
+
+.bar .sliderTrack::before {
+  background-color: rgba(255, 255, 255, 0.22);
+}
+
+.bar .sliderFill {
+  background-color: var(--color-white);
+}
+
+.bar .sliderFill[data-disabled] {
+  visibility: hidden;
+}
+
+.bar .sliderThumb {
+  border: none;
+  background-color: var(--color-white);
+}
+
+.bar .seekThumb {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--spacing-24);
+  padding: var(--spacing-20) var(--spacing-24) var(--spacing-16);
+}
+
+.start {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-24);
+  min-width: 0;
+}
+
+.titleLine {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.heading,
+.detail {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.heading {
+  font-size: var(--font-size-emphasis);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+.detail {
+  min-height: 1lh;
+  font-size: var(--font-size-body);
+  color: var(--text-secondary);
+}
+
+.timecode {
+  font-family: var(--font-family-system);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A sub-hour timecode's width, held until the duration is known so the controls beside it stay. */
+.timecode:empty {
+  display: inline-block;
+  min-width: 12ch;
+}
+
+.volume {
+  display: flex;
+  flex: none;
+  align-items: center;
+}
+
+.iconButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--color-white);
+  cursor: pointer;
+}
+
+.volumeToggle {
+  width: 32px;
+  height: 32px;
+  margin-inline-start: calc(-1 * var(--spacing-8));
+  border-radius: var(--radius-md);
+}
+
+.volumeSlider {
+  width: 110px;
+}
+
+.volume .volumeThumb {
+  opacity: 0;
+}
+
+.volume:hover .volumeThumb,
+.volume .volumeThumb:focus-visible,
+.volume .volumeThumb[data-dragging] {
+  opacity: 1;
+}
+
+.transport {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+}
+
+.skip {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+}
+
+.skipLabel {
+  position: absolute;
+  font-size: var(--font-size-micro);
+  font-weight: var(--font-weight-bold);
+}
+
+.playPause {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--selection-active);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--selection-active) 32%, transparent);
+}
+
+.playGlyph {
+  margin-inline-start: 2px;
+}
+
+.skip:disabled,
+.playPause:disabled {
+  color: var(--text-tertiary);
+  cursor: default;
+}
+
+.playPause:disabled {
+  background: var(--surface-panel);
+  box-shadow: none;
+}
+
+.end {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--spacing-8);
+  min-width: 0;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  min-width: 0;
+  min-height: 32px;
+  padding: 7px var(--spacing-12);
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--surface-panel-strong);
+  font: inherit;
+  font-size: var(--font-size-body);
+  line-height: 16px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.chip[aria-disabled='true'] {
+  color: var(--text-secondary);
+  cursor: default;
+}
+
+.iconChip {
+  justify-content: center;
+  min-width: 32px;
+  padding-inline: 0;
+}
+
+.chipValue {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 62em) {
+  .volumeSlider {
+    display: none;
+  }
+}
+
+@media (max-width: 48em) {
+  .bar {
+    left: var(--spacing-16);
+    right: var(--spacing-16);
+    bottom: var(--spacing-16);
+  }
+
+  .bar .seek,
+  .bar .seekHit {
+    height: 32px;
+  }
+
+  .bar .seek {
+    top: -14px;
+  }
+}
+
+@media (max-width: 48em) and (orientation: portrait) {
+  .row {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    gap: var(--spacing-12);
+    padding: var(--spacing-20) var(--spacing-16) var(--spacing-16);
+  }
+
+  .start {
+    justify-self: stretch;
+    justify-content: space-between;
+  }
+
+  .end {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+}

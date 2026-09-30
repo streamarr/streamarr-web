@@ -12,13 +12,21 @@ import {
   Folder,
   LockKeyhole,
   LogOut,
+  Maximize,
+  Minimize,
+  Pause,
   Play,
   Plus,
   RefreshCw,
+  RotateCcw,
+  RotateCw,
   ScanLine,
   Settings,
+  SlidersHorizontal,
   TriangleAlert,
   TvMinimal,
+  Volume2,
+  VolumeX,
   X,
 } from 'lucide-react'
 
@@ -37,6 +45,14 @@ const icons = {
   check: Check,
   'watched-action': CircleCheck,
   play: Play,
+  pause: Pause,
+  'skip-back': RotateCcw,
+  'skip-forward': RotateCw,
+  volume: Volume2,
+  muted: VolumeX,
+  quality: SlidersHorizontal,
+  fullscreen: Maximize,
+  'exit-fullscreen': Minimize,
   lock: LockKeyhole,
   'sign-out': LogOut,
   'show-password': Eye,
@@ -50,6 +66,8 @@ const icons = {
 
 /** Approved semantic names from streamarr-ux's ICONOGRAPHY.md. */
 export type IconName = keyof typeof icons
+
+const FILLED = new Set<IconName>(['play', 'pause'])
 
 /** Shared icon geometry; colors come from the surrounding control's currentColor. */
 export interface IconProps {
@@ -71,7 +89,7 @@ export function Icon({ name, size = 20, label, className }: Readonly<IconProps>)
       size={size}
       strokeWidth={1.75}
       nonScalingStroke
-      fill={name === 'play' ? 'currentColor' : 'none'}
+      fill={FILLED.has(name) ? 'currentColor' : 'none'}
       className={className}
       style={{ width: size, height: size, flexShrink: 0 }}
       aria-hidden={label ? undefined : true}
