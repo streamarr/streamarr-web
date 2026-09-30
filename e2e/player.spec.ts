@@ -162,6 +162,14 @@ async function watchForLoadedMetadata(page: Page): Promise<{ loaded: Promise<Con
   }
 }
 
+// Presses Tab once for each control, and checks that focus lands on each control in turn.
+async function tabThrough(page: Page, controls: Locator[]): Promise<void> {
+  for (const control of controls) {
+    await page.keyboard.press('Tab')
+    await expect(control).toBeFocused()
+  }
+}
+
 async function videoPaused(page: Page): Promise<boolean> {
   return page.locator('video').evaluate((video: HTMLVideoElement) => video.paused)
 }
@@ -447,14 +455,11 @@ test('Space pauses and resumes a playing video', async ({ page, request }) => {
 test('after Tab to Mute, Space mutes and playback continues', async ({ page, request }) => {
   await openPlayerFromThePlayLink(page, request)
   await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible()
-  for (const control of [
+  await tabThrough(page, [
     page.getByRole('button', { name: 'Back', exact: true }),
     page.getByRole('slider', { name: 'Seek' }),
     page.getByRole('button', { name: 'Mute' }),
-  ]) {
-    await page.keyboard.press('Tab')
-    await expect(control).toBeFocused()
-  }
+  ])
 
   await page.keyboard.press('Space')
 
