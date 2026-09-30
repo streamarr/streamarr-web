@@ -38,21 +38,24 @@ const MULTIVARIANT_WITH_TRACKS = [
   '',
 ].join('\n')
 
-const LEVEL = [
-  '#EXTM3U',
-  '#EXT-X-VERSION:7',
-  '#EXT-X-TARGETDURATION:2824',
-  '#EXT-X-PLAYLIST-TYPE:VOD',
-  '#EXT-X-MAP:URI="init.mp4"',
-  '#EXTINF:2824.0,',
-  'segment0.m4s',
-  '#EXT-X-ENDLIST',
-  '',
-].join('\n')
+function levelPlaylist(durationSeconds: number): string {
+  return [
+    '#EXTM3U',
+    '#EXT-X-VERSION:7',
+    `#EXT-X-TARGETDURATION:${durationSeconds}`,
+    '#EXT-X-PLAYLIST-TYPE:VOD',
+    '#EXT-X-MAP:URI="init.mp4"',
+    `#EXTINF:${durationSeconds}.0,`,
+    'segment0.m4s',
+    '#EXT-X-ENDLIST',
+    '',
+  ].join('\n')
+}
 
 interface PlayerRoutes {
   operations?: Record<string, unknown>
   multivariant?: string
+  durationSeconds?: number
   levelPlaylistAnswered?: Promise<void>
 }
 
@@ -62,6 +65,7 @@ async function routePlayer(
   {
     operations = {},
     multivariant = MULTIVARIANT,
+    durationSeconds = 2824,
     levelPlaylistAnswered = Promise.resolve(),
   }: PlayerRoutes = {},
 ): Promise<void> {
@@ -76,7 +80,10 @@ async function routePlayer(
   )
   await page.route('**/api/stream/**/stream.m3u8*', async (route) => {
     await levelPlaylistAnswered
-    return route.fulfill({ contentType: 'application/vnd.apple.mpegurl', body: LEVEL })
+    return route.fulfill({
+      contentType: 'application/vnd.apple.mpegurl',
+      body: levelPlaylist(durationSeconds),
+    })
   })
   await page.route(
     /\/api\/stream\/.*\/(audio|subtitles)-\w+\.m3u8/,
