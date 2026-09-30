@@ -666,6 +666,7 @@ test('Mute holds its place when the stream declares its length', async ({ page, 
   await page.goto(PLAYER_PATH)
   const mute = page.getByRole('button', { name: 'Mute' })
   await expect(page.getByRole('button', { name: 'Play' })).toBeEnabled()
+  await expect(page.getByRole('heading', { level: 1, name: 'Northern Line' })).toBeVisible()
   const unknownLength = await mute.boundingBox()
 
   answerLevelPlaylist()
