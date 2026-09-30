@@ -16,8 +16,15 @@ import { invalidateWatchedState } from '../media/watchedState'
 import focusStyles from '../styles/focus.module.css'
 import { BufferingRing } from './BufferingRing'
 import styles from './Player.module.css'
-import { PlayerControls, type PlayerTitle } from './PlayerControls'
+import {
+  PlayerControls,
+  type PlayerTitle,
+  type TrackPickerKind,
+  pickerOffersChoice,
+} from './PlayerControls'
+import { hlsTrackSource, nativeTrackSource, type TrackSource } from './trackSources'
 import { useIdle } from './useIdle'
+import { useStreamTracks } from './useStreamTracks'
 import { useVideoState } from './useVideoState'
 
 // Progress is only worth a round trip once the playhead has moved this far since the last report.
@@ -30,10 +37,10 @@ const PLAYBACK_FAILURE_MESSAGE = "Playback couldn't start. Try again."
 type PlaybackState = ReportStreamSessionTimelineMutationVariables['state']
 type StreamSessionPayload = CreateStreamSessionMutation['createStreamSession']
 
-type SourcePhase = { at: 'starting' } | { at: 'attached' } | { at: 'failed'; message: string }
+type SourcePhase =
+  { at: 'starting' } | { at: 'attached'; tracks: TrackSource } | { at: 'failed'; message: string }
 
 const STARTING: SourcePhase = { at: 'starting' }
-const ATTACHED: SourcePhase = { at: 'attached' }
 
 const pendingCleanups = new WeakMap<ApolloClient, () => Promise<void>>()
 
@@ -54,8 +61,17 @@ export function Player({
   const client = useApolloClient()
   const [sourcePhase, setSourcePhase] = useState(STARTING)
   const [attempt, setAttempt] = useState(0)
+  const [picker, setPicker] = useState<TrackPickerKind | null>(null)
+  const tracks = sourcePhase.at === 'attached' ? sourcePhase.tracks : null
+  const streamTracks = useStreamTracks(tracks)
+  const openPicker = picker !== null && pickerOffersChoice(picker, streamTracks) ? picker : null
+  // A picker that loses its choices, or its stream with them, closes rather than reopen later.
+  if (picker !== openPicker) {
+    setPicker(null)
+  }
   const videoState = useVideoState(videoRef)
-  const idle = useIdle(videoState.paused || sourcePhase.at === 'failed', [controlsRef, backRef])
+  const controlsHeld = videoState.paused || sourcePhase.at === 'failed' || openPicker !== null
+  const idle = useIdle(controlsHeld, [controlsRef, backRef])
 
   useEffect(() => {
     const video = videoRef.current
@@ -181,7 +197,7 @@ export function Player({
             showFailure(PLAYBACK_FAILURE_MESSAGE)
           },
         })
-        setSourcePhase(ATTACHED)
+        setSourcePhase({ at: 'attached', tracks: source.tracks })
       })
       .catch(() => {
         if (!cancelled) {
@@ -269,7 +285,9 @@ export function Player({
         playerRef={playerRef}
         videoRef={videoRef}
         videoState={videoState}
-        attached={sourcePhase.at === 'attached'}
+        tracks={tracks}
+        openPicker={openPicker}
+        onOpenPicker={setPicker}
         title={title}
       />
     </section>
@@ -371,6 +389,7 @@ function ignoreTimelineReportFailure() {
 
 interface StreamSource {
   detach: () => void
+  tracks: TrackSource
 }
 
 interface StreamSourceOptions {
@@ -399,6 +418,7 @@ function attach(video: HTMLVideoElement, url: string, options: StreamSourceOptio
       video.removeEventListener('loadedmetadata', options.startupDeadline.end)
       hls.destroy()
     },
+    tracks: hlsTrackSource(hls),
   }
 }
 
@@ -431,5 +451,6 @@ function attachNative(
       video.removeAttribute('src')
       video.load()
     },
+    tracks: nativeTrackSource(video),
   }
 }

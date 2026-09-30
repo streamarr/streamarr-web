@@ -2,28 +2,12 @@ import { deferred } from '../test/deferred'
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { graphql, HttpResponse } from 'msw'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { hls } from '../test/fakeHls'
 import { meFixture } from '../test/meFixture'
 import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
 
-const hls = vi.hoisted(() => ({
-  loadSource: vi.fn(),
-  attachMedia: vi.fn(),
-  destroy: vi.fn(),
-  on: vi.fn(),
-}))
-vi.mock('hls.js', () => ({
-  default: class {
-    static Events = { ERROR: 'hlsError' }
-    static isSupported() {
-      return true
-    }
-    loadSource = hls.loadSource
-    attachMedia = hls.attachMedia
-    destroy = hls.destroy
-    on = hls.on
-  },
-}))
+vi.mock('hls.js', async () => (await import('../test/fakeHls')).hlsModule)
 
 afterEach(async () => {
   await act(async () => cleanup())

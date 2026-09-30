@@ -1,9 +1,12 @@
 import { Slider } from '@mantine/core'
-import { type Ref, type RefObject, useEffect, useState } from 'react'
+import { type Ref, type RefObject, useEffect, useId, useRef, useState } from 'react'
 import { formatTimecode } from '../media/formatting'
 import { Icon, type IconName } from '../ui/Icon'
+import { CaretPopover, type PopoverOption } from './CaretPopover'
 import styles from './PlayerControls.module.css'
+import type { StreamTracks, TrackSource } from './trackSources'
 import { useSpaceToPlayOrPause } from './useSpaceToPlayOrPause'
+import { useStreamTracks } from './useStreamTracks'
 import type { VideoState } from './useVideoState'
 
 const SKIP_SECONDS = 10
@@ -14,9 +17,24 @@ export interface PlayerTitle {
   detail?: string
 }
 
+export type TrackPickerKind = 'audio' | 'subtitles'
+
 // Mantine's slider ends a drag only on touchend or mouseup. After a cancelled touch its drag stays
 // open until the next touchend or mouseup anywhere, and that late end must not seek.
 type Scrub = { at: 'dragging'; seconds: number; resume: boolean } | { at: 'abandoned' }
+
+const SUBTITLES_OFF: PopoverOption<null> = { id: null, label: 'Off' }
+
+/**
+ * Whether a picker has a choice to make: one option alone would only repeat what its chip shows.
+ * The subtitles picker always offers Off beside the stream's tracks.
+ */
+export function pickerOffersChoice(
+  kind: TrackPickerKind,
+  { audio, subtitles }: StreamTracks,
+): boolean {
+  return kind === 'audio' ? audio.options.length > 1 : subtitles.options.length > 0
+}
 
 export function PlayerControls({
   ref,
@@ -24,7 +42,9 @@ export function PlayerControls({
   playerRef,
   videoRef,
   videoState,
-  attached,
+  tracks,
+  openPicker,
+  onOpenPicker,
   title,
 }: Readonly<{
   ref: Ref<HTMLDivElement>
@@ -33,10 +53,16 @@ export function PlayerControls({
   playerRef: RefObject<HTMLElement | null>
   videoRef: RefObject<HTMLVideoElement | null>
   videoState: VideoState
-  attached: boolean
+  /** The attached stream's tracks; null while no stream is attached. */
+  tracks: TrackSource | null
+  openPicker: TrackPickerKind | null
+  onOpenPicker: (kind: TrackPickerKind | null) => void
   title?: PlayerTitle
 }>) {
   const [scrub, setScrub] = useState<Scrub | null>(null)
+  const attached = tracks !== null
+  const streamTracks = useStreamTracks(tracks)
+  const { audio, subtitles } = streamTracks
   const durationKnown = Number.isFinite(videoState.duration)
   const timecodeAt = (seconds: number) =>
     formatTimecode({ positionSeconds: seconds, durationSeconds: videoState.duration })
@@ -166,6 +192,27 @@ export function PlayerControls({
         </div>
         <div className={styles.end}>
           <QualityChip videoHeight={videoState.videoHeight} />
+          <TrackPicker
+            name="Audio"
+            icon="audio-track"
+            options={audio.options}
+            selected={audio.selected}
+            choosable={pickerOffersChoice('audio', streamTracks)}
+            open={openPicker === 'audio'}
+            onOpenChange={(open) => onOpenPicker(open ? 'audio' : null)}
+            onChoose={(id) => tracks?.selectAudio(id)}
+          />
+          <TrackPicker
+            name="Subtitles"
+            icon="subtitles"
+            options={[SUBTITLES_OFF, ...subtitles.options]}
+            selected={subtitles.selected}
+            showsActiveTrack={subtitles.selected !== null}
+            choosable={pickerOffersChoice('subtitles', streamTracks)}
+            open={openPicker === 'subtitles'}
+            onOpenChange={(open) => onOpenPicker(open ? 'subtitles' : null)}
+            onChoose={(id) => tracks?.selectSubtitles(id)}
+          />
           <FullscreenButton targetRef={playerRef} />
         </div>
       </div>
@@ -254,16 +301,104 @@ function VolumeControl({
 
 // Holds the quality menu's place and shows the quality in use until the menu has choices to offer.
 function QualityChip({ videoHeight }: Readonly<{ videoHeight: number }>) {
-  const quality = videoHeight > 0 ? `Auto · ${videoHeight}p` : 'Auto'
+  return (
+    <StatusChip
+      name="Quality"
+      icon="quality"
+      value={videoHeight > 0 ? `Auto · ${videoHeight}p` : 'Auto'}
+    />
+  )
+}
+
+function TrackPicker<Id extends number | null>({
+  name,
+  icon,
+  options,
+  selected,
+  showsActiveTrack,
+  choosable,
+  open,
+  onOpenChange,
+  onChoose,
+}: Readonly<{
+  name: string
+  icon: IconName
+  options: readonly PopoverOption<Id>[]
+  selected: Id | null
+  showsActiveTrack?: boolean
+  choosable: boolean
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onChoose: (id: Id) => void
+}>) {
+  const chipRef = useRef<HTMLButtonElement>(null)
+  const menuId = useId()
+  const menu = choosable
+    ? { ref: chipRef, id: menuId, open, toggle: () => onOpenChange(!open) }
+    : undefined
+
+  return (
+    <>
+      <StatusChip
+        name={name}
+        icon={icon}
+        value={options.find((option) => option.id === selected)?.label}
+        showsActiveTrack={showsActiveTrack}
+        menu={menu}
+      />
+      {choosable && open && (
+        <CaretPopover
+          id={menuId}
+          heading={name}
+          anchorRef={chipRef}
+          options={options}
+          selected={selected}
+          onChoose={(id) => {
+            onChoose(id)
+            onOpenChange(false)
+          }}
+          onDismiss={() => onOpenChange(false)}
+        />
+      )}
+    </>
+  )
+}
+
+interface ChipMenu {
+  ref: RefObject<HTMLButtonElement | null>
+  id: string
+  open: boolean
+  toggle: () => void
+}
+
+function StatusChip({
+  name,
+  icon,
+  value,
+  showsActiveTrack = false,
+  menu,
+}: Readonly<{
+  name: string
+  icon: IconName
+  value?: string
+  showsActiveTrack?: boolean
+  menu?: ChipMenu
+}>) {
   return (
     <button
+      ref={menu?.ref}
       type="button"
       className={styles.chip}
-      aria-label={`Quality: ${quality}`}
-      aria-disabled="true"
+      aria-label={value ? `${name}: ${value}` : name}
+      aria-disabled={!menu || undefined}
+      aria-haspopup={menu && 'menu'}
+      aria-expanded={menu?.open}
+      aria-controls={menu?.open ? menu.id : undefined}
+      onClick={menu?.toggle}
     >
-      <Icon name="quality" size={16} />
-      <span className={styles.chipValue}>{quality}</span>
+      {showsActiveTrack && <span className={styles.activeTrack} data-testid="active-track" />}
+      <Icon name={icon} size={16} />
+      {value && <span className={styles.chipValue}>{value}</span>}
     </button>
   )
 }

@@ -176,6 +176,7 @@
 }
 
 .end {
+  container-type: inline-size;
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -184,6 +185,7 @@
 }
 
 .chip {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: var(--spacing-8);
@@ -206,6 +208,11 @@
   cursor: default;
 }
 
+.chip[aria-expanded='true'] {
+  background: var(--selection-active);
+  color: var(--color-white);
+}
+
 .iconChip {
   justify-content: center;
   min-width: 32px;
@@ -215,6 +222,32 @@
 .chipValue {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.activeTrack {
+  position: absolute;
+  top: -3px;
+  left: var(--spacing-10);
+  right: var(--spacing-10);
+  height: 3px;
+  border-radius: 2px;
+  background: var(--indicator-active-track);
+}
+
+/* Too narrow for the values beside the centred transport: each chip keeps its glyph, and its
+   accessible name keeps the value. A phone held upright wraps the chips onto their own row. */
+@media not all and (max-width: 48em) and (orientation: portrait) {
+  @container (max-width: 25em) {
+    .chip {
+      justify-content: center;
+      min-width: 32px;
+      padding-inline: 0;
+    }
+
+    .chipValue {
+      display: none;
+    }
+  }
 }
 
 @media (max-width: 62em) {
@@ -254,6 +287,7 @@
   }
 
   .end {
+    justify-self: stretch;
     flex-wrap: wrap;
     justify-content: center;
   }

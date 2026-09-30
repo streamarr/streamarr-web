@@ -15,10 +15,25 @@ import { STUB_URL } from './ports'
 // segment request hangs. Each spec ends well inside the player's 30-second startup deadline.
 test.use({ viewport: { width: 1512, height: 850 }, serviceWorkers: 'block' })
 
+// As the server writes it: one audio rendition, muxed into the variant, and no subtitles.
 const MULTIVARIANT = [
   '#EXTM3U',
-  '#EXT-X-VERSION:7',
-  '#EXT-X-STREAM-INF:BANDWIDTH=2000000,RESOLUTION=1280x720,CODECS="avc1.64001f,mp4a.40.2"',
+  '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="Audio",DEFAULT=YES,AUTOSELECT=YES,CHANNELS="2"',
+  '#EXT-X-STREAM-INF:BANDWIDTH=2000000,RESOLUTION=1280x720,CODECS="avc1.64001f,mp4a.40.2",AUDIO="audio"',
+  'stream.m3u8?t=playback-token',
+  '',
+].join('\n')
+
+// Beyond what the server writes today: a choice of audio and a subtitle group, so the pickers meet
+// hls.js itself.
+const MULTIVARIANT_WITH_TRACKS = [
+  '#EXTM3U',
+  '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="English",LANGUAGE="en",DEFAULT=YES,AUTOSELECT=YES,URI="audio-en.m3u8?t=playback-token"',
+  '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="Français",LANGUAGE="fr",DEFAULT=NO,AUTOSELECT=YES,URI="audio-fr.m3u8?t=playback-token"',
+  '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",LANGUAGE="de",DEFAULT=NO,AUTOSELECT=YES,URI="audio-de.m3u8?t=playback-token"',
+  '#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="English (SDH)",LANGUAGE="en",DEFAULT=NO,AUTOSELECT=YES,URI="subtitles-en.m3u8?t=playback-token"',
+  '#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="Español",LANGUAGE="es",DEFAULT=NO,AUTOSELECT=YES,URI="subtitles-es.m3u8?t=playback-token"',
+  '#EXT-X-STREAM-INF:BANDWIDTH=2000000,RESOLUTION=1280x720,CODECS="avc1.64001f,mp4a.40.2",AUDIO="audio",SUBTITLES="subs"',
   'stream.m3u8?t=playback-token',
   '',
 ].join('\n')
@@ -37,13 +52,18 @@ const LEVEL = [
 
 interface PlayerRoutes {
   operations?: Record<string, unknown>
+  multivariant?: string
   levelPlaylistAnswered?: Promise<void>
 }
 
 async function routePlayer(
   page: Page,
   request: APIRequestContext,
-  { operations = {}, levelPlaylistAnswered = Promise.resolve() }: PlayerRoutes = {},
+  {
+    operations = {},
+    multivariant = MULTIVARIANT,
+    levelPlaylistAnswered = Promise.resolve(),
+  }: PlayerRoutes = {},
 ): Promise<void> {
   await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
   await request.post(`${STUB_URL}/api/auth/refresh`)
@@ -52,17 +72,25 @@ async function routePlayer(
     return data ? route.fulfill({ json: { data } }) : route.continue()
   })
   await page.route('**/api/stream/**/multivariant.m3u8*', (route) =>
-    route.fulfill({ contentType: 'application/vnd.apple.mpegurl', body: MULTIVARIANT }),
+    route.fulfill({ contentType: 'application/vnd.apple.mpegurl', body: multivariant }),
   )
   await page.route('**/api/stream/**/stream.m3u8*', async (route) => {
     await levelPlaylistAnswered
     return route.fulfill({ contentType: 'application/vnd.apple.mpegurl', body: LEVEL })
   })
+  await page.route(
+    /\/api\/stream\/.*\/(audio|subtitles)-\w+\.m3u8/,
+    () => new Promise(() => undefined),
+  )
   await page.route(/\/api\/stream\/.*\.(mp4|m4s)/, () => new Promise(() => undefined))
 }
 
-async function openPlayer(page: Page, request: APIRequestContext): Promise<void> {
-  await routePlayer(page, request)
+async function openPlayer(
+  page: Page,
+  request: APIRequestContext,
+  routes?: PlayerRoutes,
+): Promise<void> {
+  await routePlayer(page, request, routes)
   await page.goto('/play/file-1')
   await expect(page.getByRole('slider', { name: 'Seek' })).toHaveAttribute('aria-disabled', 'false')
 }
@@ -212,6 +240,24 @@ async function centreY(control: Locator): Promise<number> {
   return y + height / 2
 }
 
+async function popoverPlacement(menu: Locator) {
+  return menu.evaluate((node) => {
+    const surface = node.parentElement
+    if (!surface) {
+      throw new Error('the menu has no popover around it')
+    }
+    const box = surface.getBoundingClientRect()
+    const caretLeft = Number.parseFloat(getComputedStyle(surface, '::after').left)
+    return {
+      left: box.left,
+      right: box.right,
+      top: box.top,
+      bottom: box.bottom,
+      caretX: box.left + surface.clientLeft + caretLeft,
+    }
+  })
+}
+
 function overlap(a: Box, b: Box): boolean {
   return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
 }
@@ -228,7 +274,8 @@ async function truncated(control: Locator): Promise<boolean> {
     for (let parent = node.parentElement; parent; parent = parent.parentElement) {
       ancestors.push(parent)
     }
-    return node.scrollWidth > node.clientWidth || ancestors.some(clippedBy)
+    const overflows = (element: Element) => element.scrollWidth > element.clientWidth
+    return [node, ...node.querySelectorAll('*')].some(overflows) || ancestors.some(clippedBy)
   })
 }
 
@@ -260,6 +307,8 @@ function barControls(page: Page): Locator[] {
     page.getByRole('button', { name: 'Play' }),
     page.getByRole('button', { name: 'Forward 10 seconds' }),
     page.getByRole('button', { name: 'Quality: Auto' }),
+    page.getByRole('button', { name: 'Audio: Audio' }),
+    page.getByRole('button', { name: 'Subtitles: Off' }),
     page.getByRole('button', { name: 'Full screen' }),
   ]
 }
@@ -280,6 +329,8 @@ test('keyboard focus draws the theme ring on each player control', async ({ page
     page.getByRole('button', { name: 'Play' }),
     page.getByRole('button', { name: 'Forward 10 seconds' }),
     page.getByRole('button', { name: 'Quality: Auto' }),
+    page.getByRole('button', { name: 'Audio: Audio' }),
+    page.getByRole('button', { name: 'Subtitles: Off' }),
     page.getByRole('button', { name: 'Full screen' }),
   ]
   for (const control of controls) {
@@ -620,5 +671,132 @@ for (const { device, viewport, volumeShown, oneRow } of LAYOUTS) {
       ].map(centreY),
     )
     expect(Math.max(...rowCentres) - Math.min(...rowCentres) < 8, 'one row').toBe(oneRow)
+  })
+}
+
+test('the chips keep their values on a phone held upright', async ({ page, request }) => {
+  await page.setViewportSize({ width: 375, height: 667 })
+
+  await openPlayer(page, request)
+
+  for (const [chip, value] of [
+    ['Quality: Auto', 'Auto'],
+    ['Audio: Audio', 'Audio'],
+    ['Subtitles: Off', 'Off'],
+  ]) {
+    await expect(
+      page.getByRole('button', { name: chip }).getByText(value, { exact: true }),
+    ).toBeVisible()
+  }
+})
+
+test('the pickers switch the audio and subtitles the stream declares', async ({
+  page,
+  request,
+}) => {
+  await openPlayer(page, request, { multivariant: MULTIVARIANT_WITH_TRACKS })
+
+  await page.getByRole('button', { name: 'Audio: English' }).click()
+  const audio = page.getByRole('menu', { name: 'Audio' })
+  await expect(audio.getByRole('menuitemradio')).toHaveText(['English', 'Français', 'German'])
+  const frenchRequested = page.waitForRequest(/\/audio-fr\.m3u8/)
+  await audio.getByRole('menuitemradio', { name: 'Français' }).click()
+  await frenchRequested
+  await expect(page.getByRole('button', { name: 'Audio: Français' })).toBeFocused()
+
+  await page.keyboard.press('Tab')
+  await page.keyboard.press('Enter')
+  const subtitles = page.getByRole('menu', { name: 'Subtitles' })
+  await expect(subtitles.getByRole('menuitemradio', { checked: true })).toHaveText('Off')
+  await page.keyboard.press('Shift+Tab')
+  await expect(subtitles).toBeHidden()
+  await expect(page.getByRole('button', { name: 'Subtitles: Off' })).toBeFocused()
+  await page.keyboard.press('Enter')
+  await page.keyboard.press('ArrowDown')
+  expect(await ringOnActiveElement(page)).toMatchObject({ name: 'English (SDH)', ...RING })
+  const englishRequested = page.waitForRequest(/\/subtitles-en\.m3u8/)
+  await page.keyboard.press('Enter')
+  await englishRequested
+  const subtitlesChip = page.getByRole('button', { name: 'Subtitles: English (SDH)' })
+  await expect(subtitlesChip).toBeFocused()
+  await expect(subtitlesChip.getByTestId('active-track')).toBeVisible()
+})
+
+test('Space chooses the picker row that has focus and shows its ring, after a click on the chip or an arrow key', async ({
+  page,
+  request,
+}) => {
+  await openPlayer(page, request, { multivariant: MULTIVARIANT_WITH_TRACKS })
+  const chip = page.getByRole('button', { name: /^Audio/ })
+  const audio = page.getByRole('menu', { name: 'Audio' })
+
+  await chip.click()
+  await expect(audio.getByRole('menuitemradio', { name: 'English' })).toBeFocused()
+  await page.keyboard.down('Space')
+  expect(await ringOnActiveElement(page)).toMatchObject({ name: 'English', ...RING })
+  await page.keyboard.up('Space')
+  await expect(audio).toBeHidden()
+  await expect(page.getByRole('button', { name: 'Audio: English' })).toBeFocused()
+  expect(await videoPaused(page)).toBe(true)
+
+  await chip.click()
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('Space')
+  await expect(page.getByRole('button', { name: 'Audio: Français' })).toBeFocused()
+  expect(await videoPaused(page)).toBe(true)
+})
+
+test('Space plays the video, and opens no menu, on an Audio chip clicked before its choices arrived', async ({
+  page,
+  request,
+}) => {
+  await routePlayer(page, request)
+  let answerMultivariant: () => void = () => undefined
+  const multivariantAnswered = new Promise<void>((resolve) => (answerMultivariant = resolve))
+  await page.route('**/api/stream/**/multivariant.m3u8*', async (route) => {
+    await multivariantAnswered
+    return route.fulfill({
+      contentType: 'application/vnd.apple.mpegurl',
+      body: MULTIVARIANT_WITH_TRACKS,
+    })
+  })
+  await page.goto('/play/file-1')
+  const chip = page.getByRole('button', { name: /^Audio/ })
+  await expect(chip).toHaveAttribute('aria-disabled', 'true')
+  // Playwright refuses to click an aria-disabled button, but a mouse can still click and focus it.
+  await chip.click({ force: true })
+  answerMultivariant()
+  await expect(page.getByRole('button', { name: 'Audio: English' })).toBeFocused()
+  await expect(page.getByRole('button', { name: 'Play' })).toBeEnabled()
+
+  await page.keyboard.press('Space')
+
+  await expect(page.getByRole('menu', { name: 'Audio' })).toBeHidden()
+  expect(await videoPaused(page)).toBe(false)
+  expect(await ringOnActiveElement(page)).not.toMatchObject(RING)
+})
+
+for (const viewport of [
+  { width: 1512, height: 850 },
+  { width: 667, height: 375 },
+]) {
+  test(`an open picker points at its chip from above the bar at ${viewport.width} wide`, async ({
+    page,
+    request,
+  }) => {
+    await page.setViewportSize(viewport)
+    await openPlayer(page, request, { multivariant: MULTIVARIANT_WITH_TRACKS })
+    const chip = page.getByRole('button', { name: 'Subtitles: Off' })
+
+    await chip.click()
+
+    const popover = await popoverPlacement(page.getByRole('menu', { name: 'Subtitles' }))
+    const chipBox = (await chip.boundingBox()) as Box
+    const seekBox = (await page.getByRole('slider', { name: 'Seek' }).boundingBox()) as Box
+    expect(popover.left).toBeGreaterThanOrEqual(0)
+    expect(popover.right).toBeLessThanOrEqual(viewport.width)
+    expect(popover.top).toBeGreaterThanOrEqual(0)
+    expect(popover.bottom).toBeLessThan(seekBox.y)
+    expect(popover.caretX).toBeCloseTo(chipBox.x + chipBox.width / 2, 0)
   })
 }
