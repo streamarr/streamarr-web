@@ -1495,6 +1495,22 @@ describe('Player', () => {
       expect(video.paused).toBe(true)
     })
 
+    it('shouldLeaveAClickedMuteAsItIsWhenSpaceIsPressedBeforeTheStreamAttaches', async () => {
+      const creationResponse = deferred()
+      serveSingleWorkerSlot({ beforeCreated: () => creationResponse.promise })
+      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      await user.click(screen.getByRole('button', { name: 'Mute' }))
+      const unmute = screen.getByRole('button', { name: 'Unmute' })
+      expect(screen.getByRole('button', { name: 'Play' })).toBeDisabled()
+
+      await user.keyboard(' ')
+
+      expect(unmute).toHaveAccessibleName('Unmute')
+      creationResponse.resolve()
+      const video = await attachedVideo()
+      expect(video.muted).toBe(true)
+    })
+
     it('shouldPauseWithSpaceAndSkipNoFurtherAfterAClickOnForward', async () => {
       serveSession()
       const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
