@@ -4,6 +4,7 @@ import { ContentShelf } from '../media/ContentShelf'
 import { formatTimeLeft } from '../media/formatting'
 import { pickImageVariant, type PickedImage } from '../media/images'
 import { StillCard } from '../media/StillCard'
+import type { MediaTitleParam } from './billboardContent'
 import styles from './ContinueWatchingShelf.module.css'
 
 type ContinueWatchingItem = HomeQuery['continueWatching'][number]
@@ -30,7 +31,10 @@ export function ContinueWatchingShelf({ items }: Readonly<{ items: ContinueWatch
             key={item.id}
             to="/play/$mediaFileId"
             params={{ mediaFileId: summary.ctaFileId }}
-            search={{ position: summary.ctaPositionSeconds ?? undefined }}
+            search={{
+              ...summary.ctaMediaTitle,
+              position: summary.ctaPositionSeconds ?? undefined,
+            }}
             className={styles.card}
           >
             {card}
@@ -51,6 +55,7 @@ function summarize(item: ContinueWatchingItem): {
   image: PickedImage | null
   blurHash: string | null
   ctaFileId: string | null
+  ctaMediaTitle: MediaTitleParam
   ctaPositionSeconds: number | null
 } {
   const timeLeft = item.watchProgress ? formatTimeLeft(item.watchProgress) : ''
@@ -64,6 +69,7 @@ function summarize(item: ContinueWatchingItem): {
       image: pickImageVariant(backdrop, 'MEDIUM'),
       blurHash: backdrop?.blurHash ?? null,
       ctaFileId: item.files.find((file) => file !== null)?.id ?? null,
+      ctaMediaTitle: { movie: item.id },
       ctaPositionSeconds,
     }
   }
@@ -75,6 +81,7 @@ function summarize(item: ContinueWatchingItem): {
     image: pickImageVariant(still, 'MEDIUM'),
     blurHash: still?.blurHash ?? null,
     ctaFileId: item.files.find((file) => file !== null)?.id ?? null,
+    ctaMediaTitle: { episode: item.id },
     ctaPositionSeconds,
   }
 }

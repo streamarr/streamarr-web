@@ -151,7 +151,10 @@ describe('SeasonDetailScreen', () => {
         episodes: [{ ...episode(4, 'Cold Open'), files: [null, { id: 'file-e4' }] }],
       }),
     )
-    expect(screen.getByRole('link', { name: /Cold Open/ })).toHaveAttribute('href', '/play/file-e4')
+    expect(screen.getByRole('link', { name: /Cold Open/ })).toHaveAttribute(
+      'href',
+      '/play/file-e4?episode=e4',
+    )
   })
 
   it('shows an error state when the query fails', async () => {
@@ -200,7 +203,7 @@ describe('SeasonDetailScreen', () => {
     await renderSeason()
     expect(screen.getByRole('link', { name: 'Resume E5' })).toHaveAttribute(
       'href',
-      '/play/file-e5?position=600',
+      '/play/file-e5?episode=e5&position=600',
     )
   })
 
@@ -223,11 +226,11 @@ describe('SeasonDetailScreen', () => {
     await renderSeason()
     expect(screen.getByRole('link', { name: /E4 — Cold Open/ })).toHaveAttribute(
       'href',
-      '/play/file-e4',
+      '/play/file-e4?episode=e4',
     )
     expect(screen.getByRole('link', { name: /E5 — Breakage/ })).toHaveAttribute(
       'href',
-      '/play/file-e5?position=600',
+      '/play/file-e5?episode=e5&position=600',
     )
     expect(screen.getByText('24m left')).toBeInTheDocument()
     const watchedEpisode = screen.getByRole('link', { name: /E6 — Grievances/ })
