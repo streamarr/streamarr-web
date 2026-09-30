@@ -1,11 +1,13 @@
 import { useEffect, useEffectEvent, useRef } from 'react'
 
-const PRESSED_BY_SPACE = 'a[href], button, input, select, textarea'
+// Where Space does something of its own. It does not follow a link, and an aria-disabled button
+// does nothing when pressed.
+const PRESSED_BY_SPACE = 'button:not([aria-disabled="true"]), input, select, textarea'
 
 /**
- * Space keeps its usual meaning on a button, link or form control that the viewer reached by
- * keyboard. Anywhere else, Space calls `toggle` once for each press while `enabled`, and does
- * nothing while not.
+ * Space keeps its usual meaning on a button or form control that the viewer reached by keyboard,
+ * unless the button is aria-disabled. Anywhere else, Space calls `toggle` once for each press while
+ * `enabled`, and does nothing while not.
  */
 export function useSpaceToPlayOrPause(enabled: boolean, toggle: () => void): void {
   const onSpace = useEffectEvent(() => {
