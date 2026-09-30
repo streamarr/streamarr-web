@@ -3,11 +3,16 @@ import { useEffect, useEffectEvent, useRef } from 'react'
 const PRESSED_BY_SPACE = 'a[href], button, input, select, textarea'
 
 /**
- * Calls `toggle` when the viewer presses Space while `enabled`, once for each press. Space keeps
- * its usual meaning on a button, link or form control that the viewer reached by keyboard.
+ * Space keeps its usual meaning on a button, link or form control that the viewer reached by
+ * keyboard. Anywhere else, Space calls `toggle` once for each press while `enabled`, and does
+ * nothing while not.
  */
 export function useSpaceToPlayOrPause(enabled: boolean, toggle: () => void): void {
-  const onSpace = useEffectEvent(toggle)
+  const onSpace = useEffectEvent(() => {
+    if (enabled) {
+      toggle()
+    }
+  })
   const controlReachedByKeyboard = useRef<Element | null>(null)
 
   useEffect(() => {
@@ -15,14 +20,6 @@ export function useSpaceToPlayOrPause(enabled: boolean, toggle: () => void): voi
       controlReachedByKeyboard.current = isControlReachedByKeyboard(event.target)
         ? event.target
         : null
-    }
-    document.addEventListener('focusin', noteHowFocusArrived)
-    return () => document.removeEventListener('focusin', noteHowFocusArrived)
-  }, [])
-
-  useEffect(() => {
-    if (!enabled) {
-      return undefined
     }
     const playOrPause = (event: KeyboardEvent) => {
       if (!isBareSpace(event) || event.target === controlReachedByKeyboard.current) {
@@ -35,9 +32,13 @@ export function useSpaceToPlayOrPause(enabled: boolean, toggle: () => void): voi
       }
       onSpace()
     }
+    document.addEventListener('focusin', noteHowFocusArrived)
     document.addEventListener('keydown', playOrPause)
-    return () => document.removeEventListener('keydown', playOrPause)
-  }, [enabled])
+    return () => {
+      document.removeEventListener('focusin', noteHowFocusArrived)
+      document.removeEventListener('keydown', playOrPause)
+    }
+  }, [])
 }
 
 function isBareSpace(event: KeyboardEvent): boolean {
