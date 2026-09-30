@@ -36,11 +36,11 @@ const MOVIES: Record<string, object> = {
 }
 
 const EPISODES: Record<string, object> = {
-  e1: episodeTitle({ id: 'e1', title: 'Breakage', episodeNumber: 5 }),
-  e2: episodeTitle({ id: 'e2', title: null, episodeNumber: 6 }),
+  e1: episodeFixture({ id: 'e1', title: 'Breakage', episodeNumber: 5 }),
+  e2: episodeFixture({ id: 'e2', title: null, episodeNumber: 6 }),
 }
 
-function episodeTitle({
+function episodeFixture({
   id,
   title,
   episodeNumber,
@@ -63,7 +63,6 @@ function episodeTitle({
   }
 }
 
-// Answers as the server does: the query asks for the movie or the episode, never both.
 function serveMediaTitles(): unknown[] {
   const requests: unknown[] = []
   server.use(

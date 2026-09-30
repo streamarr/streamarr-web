@@ -1,14 +1,12 @@
 import type { HomeQuery } from '../graphql/generated/graphql'
 import { formatRelativeTime, formatRuntime } from '../media/formatting'
 import { pickImageVariant, type PickedImage } from '../media/images'
+import type { MediaTitleSearch } from '../streaming/usePlayerTitle'
 
 export interface BillboardMetadataEntry {
   label: string
   value: string
 }
-
-/** The search param a Play link names its media title with, keyed by the media title's kind. */
-export type MediaTitleParam = { movie: string } | { episode: string }
 
 export interface BillboardContent {
   title: string
@@ -19,7 +17,7 @@ export interface BillboardContent {
   metadata: BillboardMetadataEntry[]
   ctaLabel: string
   ctaFileId: string | null
-  ctaMediaTitle: MediaTitleParam | null
+  ctaMediaTitle: MediaTitleSearch | null
   ctaPositionSeconds: number | null
 }
 

@@ -4,7 +4,7 @@ import { ContentShelf } from '../media/ContentShelf'
 import { formatTimeLeft } from '../media/formatting'
 import { pickImageVariant, type PickedImage } from '../media/images'
 import { StillCard } from '../media/StillCard'
-import type { MediaTitleParam } from './billboardContent'
+import type { MediaTitleSearch } from '../streaming/usePlayerTitle'
 import styles from './ContinueWatchingShelf.module.css'
 
 type ContinueWatchingItem = HomeQuery['continueWatching'][number]
@@ -55,7 +55,7 @@ function summarize(item: ContinueWatchingItem): {
   image: PickedImage | null
   blurHash: string | null
   ctaFileId: string | null
-  ctaMediaTitle: MediaTitleParam
+  ctaMediaTitle: MediaTitleSearch
   ctaPositionSeconds: number | null
 } {
   const timeLeft = item.watchProgress ? formatTimeLeft(item.watchProgress) : ''

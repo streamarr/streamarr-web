@@ -85,7 +85,6 @@ async function routePlayer(
   await page.route(/\/api\/stream\/.*\.(mp4|m4s)/, () => new Promise(() => undefined))
 }
 
-// As a Play link opens the player: on a media file, naming the episode it plays.
 const PLAYER_PATH = '/play/file-1?episode=e1'
 
 async function openPlayer(
