@@ -1446,6 +1446,84 @@ describe('Player', () => {
       expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument()
     })
 
+    it('shouldPlayAndPauseWithSpace', async () => {
+      serveSession()
+      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await attachedVideo()
+
+      await user.keyboard(' ')
+      expect(video.paused).toBe(false)
+      expect(screen.getByRole('button', { name: 'Pause' })).toBeInTheDocument()
+
+      await user.keyboard(' ')
+      expect(video.paused).toBe(true)
+      expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument()
+    })
+
+    it('shouldPlayOnceWhileSpaceIsHeldDown', async () => {
+      serveSession()
+      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await attachedVideo()
+
+      await user.keyboard('[Space>2/]')
+
+      expect(video.paused).toBe(false)
+    })
+
+    it.each(['Control', 'Alt', 'Meta'])(
+      'shouldNeitherPlayNorPauseWhenSpaceIsPressedWith%s',
+      async (modifier) => {
+        serveSession()
+        const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+        const video = await attachedVideo()
+
+        await user.keyboard(`{${modifier}>}[Space]{/${modifier}}`)
+
+        expect(video.paused).toBe(true)
+      },
+    )
+
+    it('shouldNeitherPlayNorPauseWithSpaceWhilePlayIsDisabled', async () => {
+      serveSession()
+      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await attachedVideo()
+      raiseHlsFatalError()
+      expect(screen.getByRole('button', { name: 'Play' })).toBeDisabled()
+
+      await user.keyboard(' ')
+
+      expect(video.paused).toBe(true)
+    })
+
+    it('shouldPauseWithSpaceAndSkipNoFurtherAfterAClickOnForward', async () => {
+      serveSession()
+      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await seekableVideo(2824)
+      await act(() => video.play())
+      await user.click(screen.getByRole('button', { name: 'Forward 10 seconds' }))
+      expect(video.currentTime).toBe(10)
+
+      await user.keyboard(' ')
+
+      expect(video.paused).toBe(true)
+      expect(video.currentTime).toBe(10)
+    })
+
+    it('shouldPauseAndShowTheFadedControlsOnSpace', async () => {
+      serveSession()
+      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await attachedVideo()
+      const player = screen.getByRole('region', { name: 'Player' })
+      await playUntilFaded(video)
+      expect(player).toHaveAttribute('data-idle')
+      vi.useRealTimers()
+
+      await user.keyboard(' ')
+
+      expect(video.paused).toBe(true)
+      expect(player).not.toHaveAttribute('data-idle')
+    })
+
     it('shouldHoldSeekingUntilTheDurationIsKnown', async () => {
       serveSession()
       renderWithProviders(<Player mediaFileId="abcd" />)

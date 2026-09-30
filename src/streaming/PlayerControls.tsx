@@ -3,6 +3,7 @@ import { type Ref, type RefObject, useEffect, useState } from 'react'
 import { formatTimecode } from '../media/formatting'
 import { Icon, type IconName } from '../ui/Icon'
 import styles from './PlayerControls.module.css'
+import { useSpaceToPlayOrPause } from './useSpaceToPlayOrPause'
 import type { VideoState } from './useVideoState'
 
 const SKIP_SECONDS = 10
@@ -42,6 +43,7 @@ export function PlayerControls({
   const durationTimecode = durationKnown ? timecodeAt(videoState.duration) : null
   const seekable = attached && durationKnown
   const position = scrub?.at === 'dragging' ? scrub.seconds : videoState.currentTime
+  useSpaceToPlayOrPause(attached, togglePaused)
 
   function togglePaused() {
     const element = videoRef.current

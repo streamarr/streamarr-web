@@ -162,6 +162,10 @@ async function watchForLoadedMetadata(page: Page): Promise<{ loaded: Promise<Con
   }
 }
 
+async function videoPaused(page: Page): Promise<boolean> {
+  return page.locator('video').evaluate((video: HTMLVideoElement) => video.paused)
+}
+
 // Opacity does not inherit, so a control's own style never shows that its container faded.
 async function renderedOpacity(control: Locator): Promise<number> {
   return control.evaluate((element) => {
@@ -425,6 +429,58 @@ test('the player opened from its address waits on Play when the browser refuses 
   const video = page.locator('video')
   expect(await video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(true)
   expect(await video.evaluate((element: HTMLVideoElement) => element.muted)).toBe(false)
+})
+
+test('Space pauses and resumes a playing video', async ({ page, request }) => {
+  await openPlayerFromThePlayLink(page, request)
+  await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible()
+
+  await page.keyboard.press('Space')
+  expect(await videoPaused(page)).toBe(true)
+  await expect(page.getByRole('button', { name: 'Play' })).toBeVisible()
+
+  await page.keyboard.press('Space')
+  expect(await videoPaused(page)).toBe(false)
+  await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible()
+})
+
+test('after Tab to Mute, Space mutes and playback continues', async ({ page, request }) => {
+  await openPlayerFromThePlayLink(page, request)
+  await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible()
+  for (const control of [
+    page.getByRole('button', { name: 'Back', exact: true }),
+    page.getByRole('slider', { name: 'Seek' }),
+    page.getByRole('button', { name: 'Mute' }),
+  ]) {
+    await page.keyboard.press('Tab')
+    await expect(control).toBeFocused()
+  }
+
+  await page.keyboard.press('Space')
+
+  await expect(page.getByRole('button', { name: 'Unmute' })).toBeFocused()
+  expect(await videoPaused(page)).toBe(false)
+})
+
+test('after a click on Forward 10 seconds, a held Space pauses and skips no further', async ({
+  page,
+  request,
+}) => {
+  await openPlayerFromThePlayLink(page, request)
+  await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible()
+  const video = page.locator('video')
+  await page.getByRole('button', { name: 'Forward 10 seconds' }).click()
+  const skippedTo = await video.evaluate((element: HTMLVideoElement) => element.currentTime)
+  expect(skippedTo).toBeGreaterThanOrEqual(10)
+
+  // Playwright marks the second keydown as a repeat, because the key is already down.
+  await page.keyboard.down('Space')
+  await page.keyboard.down('Space')
+  await page.keyboard.up('Space')
+
+  const playhead = await video.evaluate((element: HTMLVideoElement) => element.currentTime)
+  expect(playhead).toBeCloseTo(skippedTo, 0)
+  expect(await videoPaused(page)).toBe(true)
 })
 
 test('a refusal keeps Retry above the control bar on a phone held sideways', async ({
