@@ -1600,6 +1600,23 @@ describe('Player', () => {
       expect(mute).toHaveFocus()
     })
 
+    it('shouldRestartTheFadeWhenFocusMovesBetweenTheShownControls', async () => {
+      serveSession()
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await attachedVideo()
+      const player = screen.getByRole('region', { name: 'Player' })
+      await playUntilFaded(video)
+      act(() => screen.getByRole('button', { name: 'Mute' }).focus())
+      await act(async () => vi.advanceTimersByTimeAsync(2_000))
+
+      act(() => screen.getByRole('button', { name: 'Back' }).focus())
+      await act(async () => vi.advanceTimersByTimeAsync(2_999))
+      expect(player).not.toHaveAttribute('data-idle')
+      await act(async () => vi.advanceTimersByTimeAsync(1))
+
+      expect(player).toHaveAttribute('data-idle')
+    })
+
     it('shouldLeaveTheControlsFadedWhenFocusLandsOutsideThem', async () => {
       serveSession()
       renderWithProviders(
