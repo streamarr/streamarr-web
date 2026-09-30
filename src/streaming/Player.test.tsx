@@ -1319,6 +1319,58 @@ describe('Player', () => {
     expect(screen.getByRole('button', { name: 'Pause' })).toBeInTheDocument()
   })
 
+  it.each(STREAM_PATHS)(
+    'shouldNotPlayTheStreamWhenItsMetadataLoadsAfterThePlayerLeavesOnThe%s',
+    async (_path, { supported, streamingVideo }) => {
+      hls.supported = supported
+      serveSession()
+      const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await streamingVideo()
+      const play = replacePlay(video, () => Promise.resolve())
+      unmount()
+
+      loadMetadata(video)
+
+      expect(play.calls).toBe(0)
+    },
+  )
+
+  it.each(STREAM_PATHS)(
+    'shouldNotPlayTheStreamWhenItsMetadataLoadsAfterItFailedOnThe%s',
+    async (_path, { supported, streamingVideo, failStream }) => {
+      hls.supported = supported
+      serveSession()
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await streamingVideo()
+      const play = replacePlay(video, () => Promise.resolve())
+      failStream(video)
+      await screen.findByRole('alert')
+
+      loadMetadata(video)
+
+      expect(play.calls).toBe(0)
+    },
+  )
+
+  it.each(STREAM_PATHS)(
+    'shouldNotPlayTheStreamWhenItsMetadataLoadsAfterStartupTimedOutOnThe%s',
+    async (_path, { supported, streamingVideo }) => {
+      hls.supported = supported
+      serveSession()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await streamingVideo()
+      const play = replacePlay(video, () => Promise.resolve())
+      await act(async () => vi.advanceTimersByTimeAsync(30_000))
+      vi.useRealTimers()
+      expect(screen.getByRole('alert')).toHaveTextContent('Playback is taking too long to start.')
+
+      loadMetadata(video)
+
+      expect(play.calls).toBe(0)
+    },
+  )
+
   it('shouldReportPlayingTimelineEveryTenSecondsOfPlayback', async () => {
     const reports = serveSession()
     renderWithProviders(<Player mediaFileId="abcd" />)
