@@ -11,6 +11,12 @@
   cursor: none;
 }
 
+/* Space plays and pauses on a control that focus reached without the keyboard, so the control
+   hides the ring that a key press would give it. useSpaceToPlayOrPause sets the mark. */
+.player [data-pointer-focus]:focus-visible {
+  outline: none;
+}
+
 .chrome {
   transition: opacity 200ms ease;
 
