@@ -26,8 +26,9 @@ export interface PopoverOption<Id> {
 
 /**
  * A menu of options above the control bar, its caret pointing down at the anchor that opened it.
- * Focus starts on the chosen row; choosing, Escape or Shift+Tab returns it to the anchor. A press
- * or focus outside the menu and its anchor dismisses it.
+ * Focus starts on the chosen row, and moves there, or else to the nearest row, when the focused row
+ * goes. Choosing, Escape or Shift+Tab returns focus to the anchor. A press or focus outside the
+ * menu and its anchor dismisses it.
  */
 export function CaretPopover<Id>({
   id,
@@ -48,6 +49,7 @@ export function CaretPopover<Id>({
 }>) {
   const surfaceRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+  const focusedRow = useRef<{ row: HTMLElement; index: number } | null>(null)
   const headingId = useId()
 
   useLayoutEffect(() => {
@@ -58,10 +60,17 @@ export function CaretPopover<Id>({
   }, [anchorRef])
 
   useEffect(() => {
-    const rows = rowsOf(menuRef.current)
-    const start = rows.find((row) => row.getAttribute('aria-checked') === 'true') ?? rows.at(0)
-    start?.focus()
+    focusCheckedOrNearestRow(menuRef.current, 0)
   }, [])
+
+  // Removing the focused row drops focus to the body without a focusin, so nothing else notices.
+  useEffect(() => {
+    const lost = focusedRow.current
+    if (!lost || lost.row.isConnected) {
+      return
+    }
+    focusCheckedOrNearestRow(menuRef.current, lost.index)
+  })
 
   useEffect(() => {
     const outside = (target: EventTarget | null) =>
@@ -111,7 +120,7 @@ export function CaretPopover<Id>({
         {heading}
       </div>
       <div ref={menuRef} id={id} role="menu" aria-labelledby={headingId} className={styles.menu}>
-        {options.map((option) => {
+        {options.map((option, index) => {
           const checked = option.id === selected
           return (
             <button
@@ -122,6 +131,9 @@ export function CaretPopover<Id>({
               tabIndex={-1}
               className={styles.row}
               onClick={() => choose(option.id)}
+              onFocus={(event) => {
+                focusedRow.current = { row: event.currentTarget, index }
+              }}
               onKeyDown={handleRowKey}
             >
               {option.label}
@@ -136,6 +148,13 @@ export function CaretPopover<Id>({
 
 function rowsOf(menu: HTMLElement | null): HTMLElement[] {
   return Array.from(menu?.querySelectorAll<HTMLElement>('[role="menuitemradio"]') ?? [])
+}
+
+function focusCheckedOrNearestRow(menu: HTMLElement | null, index: number) {
+  const rows = rowsOf(menu)
+  const checked = rows.find((row) => row.getAttribute('aria-checked') === 'true')
+  const target = checked ?? rows.at(Math.min(index, rows.length - 1))
+  target?.focus()
 }
 
 function moveBetweenRows(event: ReactKeyboardEvent<HTMLElement>) {
