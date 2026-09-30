@@ -119,6 +119,8 @@ export function Player({
         if (startPositionSeconds) {
           element.currentTime = startPositionSeconds
         }
+        // Asked only after the seek, so the first frame to play is at the start position.
+        void element.play().catch(ignoreRefusedStart)
       },
       onTimeUpdate: (element) => {
         lastKnownPosition = element.currentTime
@@ -343,6 +345,11 @@ function createStartupDeadline(onExpired: () => void): StartupDeadline {
 function refusalMessage(payload: StreamSessionPayload | undefined): string {
   const refusal = payload?.userErrors[0]
   return refusal ? userErrorMessage(refusal) : PLAYBACK_FAILURE_MESSAGE
+}
+
+function ignoreRefusedStart() {
+  // A browser may refuse to start playback until the viewer interacts with the page, and a released
+  // stream interrupts the start. The element stays paused either way, and the controls show it.
 }
 
 function ignoreTimelineReportFailure() {

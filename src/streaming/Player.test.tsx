@@ -234,6 +234,15 @@ function pressPause(video: HTMLVideoElement) {
   fireEvent(video, new Event('pause'))
 }
 
+// A browser's autoplay policy refuses play() until the viewer has interacted with the page.
+function refuseToStartPlayback(video: HTMLVideoElement) {
+  const play = vi.fn(() =>
+    Promise.reject(new DOMException('No user activation', 'NotAllowedError')),
+  )
+  Object.defineProperty(video, 'play', { configurable: true, value: play })
+  return play
+}
+
 function raiseHlsFatalError() {
   const onError = hls.on.mock.calls.find(([event]) => event === 'hlsError')?.[1]
   expect(onError).toBeTypeOf('function')
@@ -336,9 +345,16 @@ const STREAM_PATHS: [string, StreamPath][] = [
   ],
 ]
 
+// Once it has metadata, the element waits for the viewer only when the browser refused to start it.
 const NATIVE_WAITING_POINTS = [
   ['BeforeMetadata', () => undefined],
-  ['AtMetadata', loadMetadata],
+  [
+    'AtMetadata',
+    (video: HTMLVideoElement) => {
+      refuseToStartPlayback(video)
+      loadMetadata(video)
+    },
+  ],
 ] as const
 
 function Harness() {
@@ -1134,6 +1150,7 @@ describe('Player', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     renderWithProviders(<Player mediaFileId="abcd" />)
     const video = await nativeVideo()
+    refuseToStartPlayback(video)
 
     loadMetadata(video)
     loadFirstFrame(video)
@@ -1215,6 +1232,62 @@ describe('Player', () => {
     loadMetadata(video)
 
     expect(video.currentTime).toBe(0)
+  })
+
+  it.each(STREAM_PATHS)(
+    'shouldStartPlaybackOnceTheStreamLoadsOnThe%s',
+    async (_path, { supported, streamingVideo }) => {
+      hls.supported = supported
+      serveSession()
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await streamingVideo()
+
+      loadMetadata(video)
+
+      expect(video.paused).toBe(false)
+      expect(screen.getByRole('button', { name: 'Pause' })).toBeInTheDocument()
+    },
+  )
+
+  it('shouldStartPlaybackOnlyOnceTheStartPositionIsApplied', async () => {
+    serveSession()
+    renderWithProviders(<Player mediaFileId="abcd" startPositionSeconds={120} />)
+    const video = await attachedVideo()
+    const startedAt: number[] = []
+    video.addEventListener('play', () => startedAt.push(video.currentTime))
+
+    loadMetadata(video)
+
+    expect(startedAt).toEqual([120])
+  })
+
+  it('shouldWaitOnPlayWithoutAnAlertWhenTheBrowserRefusesToStartPlayback', async () => {
+    serveSession()
+    renderWithProviders(<Player mediaFileId="abcd" />)
+    const video = await attachedVideo()
+    const play = refuseToStartPlayback(video)
+
+    loadMetadata(video)
+    await act(async () => {})
+
+    expect(play).toHaveBeenCalledOnce()
+    expect(screen.getByRole('button', { name: 'Play' })).toBeEnabled()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(video.muted).toBe(false)
+  })
+
+  it('shouldStartPlaybackOnceARetriedStreamLoads', async () => {
+    serveSession()
+    const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+    await attachedVideo()
+    raiseHlsFatalError()
+    await user.click(await screen.findByRole('button', { name: 'Retry playback' }))
+    await waitFor(() => expect(hls.loadSource).toHaveBeenCalledTimes(2))
+    const video = await attachedVideo()
+
+    loadMetadata(video)
+
+    expect(screen.getByRole('button', { name: 'Pause' })).toBeInTheDocument()
   })
 
   it('shouldReportPlayingTimelineEveryTenSecondsOfPlayback', async () => {
