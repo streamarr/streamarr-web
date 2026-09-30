@@ -9,6 +9,9 @@ export interface PlayableMediaTitle {
   id: string
 }
 
+/** How a Play link names the media title it opens: its id, under its kind. */
+export type MediaTitleSearch = Partial<Record<PlayableMediaTitle['kind'], string>>
+
 /**
  * The title line's text for the media title being played. There is none while it loads or when it
  * cannot be read: playback never waits on the title.
@@ -22,10 +25,10 @@ export function usePlayerTitle(
       ? { variables: { id: mediaTitle.id, movie: mediaTitle.kind === 'movie' } }
       : skipToken,
   )
-  return data && titleLine(data)
+  return data && playerTitleFrom(data)
 }
 
-function titleLine({ movie, episode }: PlayerMediaTitleQuery): PlayerTitle | undefined {
+function playerTitleFrom({ movie, episode }: PlayerMediaTitleQuery): PlayerTitle | undefined {
   if (movie) {
     return { heading: movie.title ?? 'Untitled' }
   }

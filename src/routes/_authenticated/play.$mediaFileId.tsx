@@ -1,13 +1,12 @@
 import { createFileRoute, type SearchSchemaInput } from '@tanstack/react-router'
 import { Player } from '../../streaming/Player'
-import { type PlayableMediaTitle, usePlayerTitle } from '../../streaming/usePlayerTitle'
+import {
+  type MediaTitleSearch,
+  type PlayableMediaTitle,
+  usePlayerTitle,
+} from '../../streaming/usePlayerTitle'
 
-// A Play link names the media title it opens by its kind, as `movie` or `episode`.
-interface PlaySearchParams {
-  position?: number
-  movie?: string
-  episode?: string
-}
+type PlaySearchInput = { position?: number } & MediaTitleSearch
 
 interface PlaySearch {
   position?: number
@@ -15,7 +14,7 @@ interface PlaySearch {
 }
 
 export const Route = createFileRoute('/_authenticated/play/$mediaFileId')({
-  validateSearch: (search: PlaySearchParams & SearchSchemaInput): PlaySearch => ({
+  validateSearch: (search: PlaySearchInput & SearchSchemaInput): PlaySearch => ({
     position: parsePosition(search.position),
     mediaTitle: parseMediaTitle(search),
   }),
@@ -34,7 +33,6 @@ function parsePosition(value: unknown): number | undefined {
   return Number.isFinite(position) && position > 0 ? position : undefined
 }
 
-// A link that names both a movie and an episode names neither reliably.
 function parseMediaTitle({
   movie,
   episode,
