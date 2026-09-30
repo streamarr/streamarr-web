@@ -3,6 +3,8 @@ import { useEffect, useEffectEvent } from 'react'
 // Where Space does something of its own. It does not follow a link, and an aria-disabled button
 // does nothing when pressed.
 const PRESSED_BY_SPACE = 'button:not([aria-disabled="true"]), input, select, textarea'
+// A clicked control gets the mark even while aria-disabled. Its choices can arrive while it has focus.
+const CONTROL = 'button, input, select, textarea'
 const POINTER_FOCUS = 'data-pointer-focus'
 
 /**
@@ -68,9 +70,5 @@ function isPressedBySpace(target: EventTarget | null): boolean {
 // Checked as focus lands: any key press gives the focused element :focus-visible before keydown
 // listeners run, even when a click focused it.
 function isControlReachedWithoutKeyboard(target: EventTarget | null): target is Element {
-  return (
-    target instanceof Element &&
-    target.matches(PRESSED_BY_SPACE) &&
-    !target.matches(':focus-visible')
-  )
+  return target instanceof Element && target.matches(CONTROL) && !target.matches(':focus-visible')
 }
