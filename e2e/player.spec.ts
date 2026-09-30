@@ -85,13 +85,16 @@ async function routePlayer(
   await page.route(/\/api\/stream\/.*\.(mp4|m4s)/, () => new Promise(() => undefined))
 }
 
+// As a Play link opens the player: on a media file, naming the episode it plays.
+const PLAYER_PATH = '/play/file-1?episode=e1'
+
 async function openPlayer(
   page: Page,
   request: APIRequestContext,
   routes?: PlayerRoutes,
 ): Promise<void> {
   await routePlayer(page, request, routes)
-  await page.goto('/play/file-1')
+  await page.goto(PLAYER_PATH)
   await expect(page.getByRole('slider', { name: 'Seek' })).toHaveAttribute('aria-disabled', 'false')
 }
 
@@ -109,6 +112,20 @@ const PLAYER_OPERATIONS: Record<string, unknown> = {
         transcodeMode: 'REMUX',
       },
       userErrors: [],
+    },
+  },
+  PlayerMediaTitle: {
+    episode: {
+      __typename: 'Episode',
+      id: 'e1',
+      title: 'Breakage',
+      episodeNumber: 5,
+      season: {
+        __typename: 'Season',
+        id: 'season-2',
+        seasonNumber: 2,
+        series: { __typename: 'Series', id: 'series-1', title: 'Northern Line' },
+      },
     },
   },
   ReportStreamSessionTimeline: { reportStreamSessionTimeline: true },
@@ -301,6 +318,7 @@ async function expectControlsApart(page: Page, controls: Locator[]) {
 
 function barControls(page: Page): Locator[] {
   return [
+    page.getByRole('heading', { level: 1, name: 'Northern Line' }),
     page.getByText('0:00 / 47:04'),
     page.getByRole('button', { name: 'Mute' }),
     page.getByRole('button', { name: 'Back 10 seconds' }),
@@ -609,7 +627,7 @@ test('a refusal keeps Retry above the control bar on a phone held sideways', asy
 }) => {
   await page.setViewportSize({ width: 667, height: 375 })
   await routePlayer(page, request, { operations: { CreateStreamSession: CAPACITY_REFUSAL } })
-  await page.goto('/play/file-1')
+  await page.goto(PLAYER_PATH)
   const retry = page.getByRole('button', { name: 'Retry playback' })
   await expect(retry).toBeVisible()
 
@@ -622,7 +640,7 @@ test('Mute holds its place when the stream declares its length', async ({ page, 
   let answerLevelPlaylist: () => void = () => undefined
   const levelPlaylistAnswered = new Promise<void>((resolve) => (answerLevelPlaylist = resolve))
   await routePlayer(page, request, { levelPlaylistAnswered })
-  await page.goto('/play/file-1')
+  await page.goto(PLAYER_PATH)
   const mute = page.getByRole('button', { name: 'Mute' })
   await expect(page.getByRole('button', { name: 'Play' })).toBeEnabled()
   const unknownLength = await mute.boundingBox()
@@ -665,7 +683,7 @@ for (const { device, viewport, volumeShown, oneRow } of LAYOUTS) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(viewport.width)
     const rowCentres = await Promise.all(
       [
-        page.getByText('0:00 / 47:04'),
+        page.getByRole('button', { name: 'Mute' }),
         page.getByRole('button', { name: 'Play' }),
         page.getByRole('button', { name: 'Full screen' }),
       ].map(centreY),
