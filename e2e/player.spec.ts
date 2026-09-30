@@ -535,6 +535,23 @@ test('a clicked Forward 10 seconds shows no focus ring while Space plays and pau
   expect(await ringOnActiveElement(page)).toMatchObject(RING)
 })
 
+test('a clicked Quality chip, which opens nothing, shows no focus ring while Space plays and pauses', async ({
+  page,
+  request,
+}) => {
+  await openPlayerFromThePlayLink(page, request)
+  await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible()
+  const quality = page.getByRole('button', { name: /^Quality/ })
+  // Playwright refuses to click an aria-disabled button, but a mouse can still click and focus it.
+  await quality.click({ force: true })
+
+  await page.keyboard.press('Space')
+
+  expect(await videoPaused(page)).toBe(true)
+  await expect(quality).toBeFocused()
+  expect(await ringOnActiveElement(page)).not.toMatchObject(RING)
+})
+
 test('a refusal keeps Retry above the control bar on a phone held sideways', async ({
   page,
   request,
