@@ -2360,6 +2360,21 @@ describe('Player', () => {
       expect(video.paused).toBe(false)
     })
 
+    it('shouldChooseATrackOnATapWhenAPickerHasHeldTheControlsPastThreeSeconds', async () => {
+      serveSession()
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await attachedVideo()
+      offerHlsTracks({ audio: [{ name: 'English' }, { name: 'Français' }], audioTrack: 0 })
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      tap(screen.getByRole('button', { name: 'Audio: English' }))
+      await act(() => video.play())
+
+      await act(async () => vi.advanceTimersByTimeAsync(10_000))
+      tap(screen.getByRole('menuitemradio', { name: 'Français' }))
+
+      expect(hls.audioTrack).toBe(1)
+    })
+
     it('shouldFadeTheControlsWhileATouchRestsOnTheBar', async () => {
       serveSession()
       renderWithProviders(<Player mediaFileId="abcd" />)
