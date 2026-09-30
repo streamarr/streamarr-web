@@ -7,6 +7,9 @@ export interface BillboardMetadataEntry {
   value: string
 }
 
+/** The search param a Play link names its media title with, keyed by the media title's kind. */
+export type MediaTitleParam = { movie: string } | { episode: string }
+
 export interface BillboardContent {
   title: string
   tagline: string | null
@@ -16,6 +19,7 @@ export interface BillboardContent {
   metadata: BillboardMetadataEntry[]
   ctaLabel: string
   ctaFileId: string | null
+  ctaMediaTitle: MediaTitleParam | null
   ctaPositionSeconds: number | null
 }
 
@@ -54,6 +58,7 @@ function movieBillboard(movie: ContinueWatchingMovie): BillboardContent {
     ],
     ctaLabel: position ? 'Resume' : 'Play',
     ctaFileId: movie.files.find((file) => file !== null)?.id ?? null,
+    ctaMediaTitle: { movie: movie.id },
     ctaPositionSeconds: position,
   }
 }
@@ -76,6 +81,7 @@ function episodeBillboard(episode: ContinueWatchingEpisode): BillboardContent {
     // Resume = mid-watch stream, Continue = next unwatched episode (principle 14).
     ctaLabel: `${position ? 'Resume' : 'Continue'} S${episode.season.seasonNumber} E${episode.episodeNumber}`,
     ctaFileId: episode.files.find((file) => file !== null)?.id ?? null,
+    ctaMediaTitle: { episode: episode.id },
     ctaPositionSeconds: position,
   }
 }
@@ -95,6 +101,7 @@ function recentMovieBillboard(movie: RecentlyAddedMovie): BillboardContent {
     ],
     ctaLabel: 'Play',
     ctaFileId: movie.files.find((file) => file !== null)?.id ?? null,
+    ctaMediaTitle: { movie: movie.id },
     ctaPositionSeconds: null,
   }
 }
@@ -114,6 +121,7 @@ function recentSeriesBillboard(series: RecentlyAddedSeries): BillboardContent {
     ],
     ctaLabel: 'Play',
     ctaFileId: null,
+    ctaMediaTitle: null,
     ctaPositionSeconds: null,
   }
 }

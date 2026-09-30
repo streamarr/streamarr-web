@@ -151,7 +151,7 @@ describe('SeriesDetailScreen', () => {
 
     expect(await screen.findByRole('link', { name: 'Continue S1 E3' })).toHaveAttribute(
       'href',
-      '/play/file-e3',
+      '/play/file-e3?episode=s3',
     )
   })
 
@@ -192,7 +192,7 @@ describe('SeriesDetailScreen', () => {
     await waitFor(() =>
       expect(screen.getByRole('link', { name: 'Resume S2 E5' })).toHaveAttribute(
         'href',
-        '/play/file-s2e5?position=600',
+        '/play/file-s2e5?episode=season-2-s5&position=600',
       ),
     )
   })
@@ -203,7 +203,7 @@ describe('SeriesDetailScreen', () => {
     await waitFor(() =>
       expect(screen.getByRole('link', { name: 'Continue S1 E2' })).toHaveAttribute(
         'href',
-        '/play/file-s1e2',
+        '/play/file-s1e2?episode=season-1-s2',
       ),
     )
   })
@@ -214,7 +214,7 @@ describe('SeriesDetailScreen', () => {
     await waitFor(() =>
       expect(screen.getByRole('link', { name: 'Play S1 E1' })).toHaveAttribute(
         'href',
-        '/play/file-s1e1',
+        '/play/file-s1e1?episode=season-1-s1',
       ),
     )
   })

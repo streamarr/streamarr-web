@@ -83,7 +83,7 @@ export function SeriesDetailScreen({ seriesId }: Readonly<{ seriesId: string }>)
               <Link
                 to="/play/$mediaFileId"
                 params={{ mediaFileId: playable.fileId }}
-                search={{ position: playable.positionSeconds ?? undefined }}
+                search={{ episode: playable.id, position: playable.positionSeconds ?? undefined }}
                 className={detailAction.primary}
               >
                 <Icon name="play" size={14} />

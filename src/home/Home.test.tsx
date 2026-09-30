@@ -140,19 +140,31 @@ describe('Home', () => {
     renderAppAt('/')
     expect(await screen.findByRole('link', { name: 'Play' })).toHaveAttribute(
       'href',
-      '/play/available',
+      '/play/available?movie=movie-2',
     )
   })
 
   it.each([
-    { make: continueWatchingMovie, title: 'Everlight', action: 'Resume', position: 10 },
-    { make: continueWatchingEpisode, title: 'Breakage', action: 'Resume S2 E5', position: 600 },
+    {
+      make: continueWatchingMovie,
+      title: 'Everlight',
+      action: 'Resume',
+      mediaTitle: 'movie=movie-1',
+      position: 10,
+    },
+    {
+      make: continueWatchingEpisode,
+      title: 'Breakage',
+      action: 'Resume S2 E5',
+      mediaTitle: 'episode=episode-1',
+      position: 600,
+    },
   ])(
     'shouldLinkTheBillboardAndShelfToAnAvailableFileFor$action',
-    async ({ make, title, action, position }) => {
+    async ({ make, title, action, mediaTitle, position }) => {
       serve(homeData({ continueWatching: [make({ files: [null, { id: 'available' }] })] }))
       renderAppAt('/')
-      const href = `/play/available?position=${position}`
+      const href = `/play/available?${mediaTitle}&position=${position}`
       expect(await screen.findByRole('link', { name: action })).toHaveAttribute('href', href)
       expect(screen.getByRole('link', { name: new RegExp(title) })).toHaveAttribute('href', href)
     },
@@ -254,7 +266,7 @@ describe('Home', () => {
     )
     expect(screen.getByRole('link', { name: 'Resume' })).toHaveAttribute(
       'href',
-      '/play/file-1?position=10',
+      '/play/file-1?movie=movie-1&position=10',
     )
   })
 
@@ -266,7 +278,7 @@ describe('Home', () => {
     )
     expect(screen.getByRole('link', { name: 'Resume S2 E5' })).toHaveAttribute(
       'href',
-      '/play/file-2?position=600',
+      '/play/file-2?episode=episode-1&position=600',
     )
   })
 
@@ -276,7 +288,7 @@ describe('Home', () => {
     await waitFor(() => expect(screen.getByText('Continue watching')).toBeInTheDocument())
     expect(screen.getByRole('link', { name: /Breakage/ })).toHaveAttribute(
       'href',
-      '/play/file-2?position=600',
+      '/play/file-2?episode=episode-1&position=600',
     )
   })
 

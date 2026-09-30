@@ -101,7 +101,7 @@ export function SeasonDetailScreen({ seasonId }: Readonly<{ seasonId: string }>)
               <Link
                 to="/play/$mediaFileId"
                 params={{ mediaFileId: playable.fileId }}
-                search={{ position: playable.positionSeconds ?? undefined }}
+                search={{ episode: playable.id, position: playable.positionSeconds ?? undefined }}
                 className={detailAction.primary}
               >
                 <Icon name="play" size={14} />
@@ -143,7 +143,10 @@ export function SeasonDetailScreen({ seasonId }: Readonly<{ seasonId: string }>)
                   key={episode.id}
                   to="/play/$mediaFileId"
                   params={{ mediaFileId: fileId }}
-                  search={{ position: episode.watchProgress?.positionSeconds || undefined }}
+                  search={{
+                    episode: episode.id,
+                    position: episode.watchProgress?.positionSeconds || undefined,
+                  }}
                   className={styles.cardLink}
                 >
                   {card}

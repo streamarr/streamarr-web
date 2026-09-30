@@ -210,7 +210,7 @@ describe('watched state across routes', () => {
       router.history.back()
     })
     const resume = await screen.findByRole('link', { name: 'Resume' })
-    expect(resume).toHaveAttribute('href', '/play/f1?position=80')
+    expect(resume).toHaveAttribute('href', '/play/f1?movie=m1&position=80')
     holdMovie = true
     stop.resolve()
     try {
