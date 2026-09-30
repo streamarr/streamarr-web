@@ -141,6 +141,14 @@ async function serveTheFirstMediaSegment(
   }
 }
 
+// The click on the movie's Play link lets the player start playback without a press on Play.
+async function openPlayerFromThePlayLink(page: Page, request: APIRequestContext): Promise<void> {
+  await routePlayer(page, request, { operations: { MovieDetail: MOVIE_DETAIL } })
+  await serveTheFirstMediaSegment(page)
+  await page.goto('/movie/m1')
+  await page.getByRole('link', { name: 'Play' }).click()
+}
+
 // Every query Playwright makes of the page counts as user activation, so a spec learns from the
 // console, not from the page, that the element has loaded its metadata. The page logs the message
 // while it dispatches the event, so the player has handled the event before the spec's next query.
@@ -374,11 +382,7 @@ test('the player opened from a Play link starts playing without a press on Play'
   page,
   request,
 }) => {
-  await routePlayer(page, request, { operations: { MovieDetail: MOVIE_DETAIL } })
-  await serveTheFirstMediaSegment(page)
-  await page.goto('/movie/m1')
-
-  await page.getByRole('link', { name: 'Play' }).click()
+  await openPlayerFromThePlayLink(page, request)
 
   await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible()
 })
