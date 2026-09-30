@@ -164,13 +164,16 @@ describe('/play/$mediaFileId', () => {
     expect(screen.queryByRole('heading')).not.toBeInTheDocument()
   })
 
-  it('shouldKeepPlayingWithoutATitleWhenTheMediaTitleCannotBeRead', async () => {
+  it.each([
+    { condition: 'CannotBeRead', answer: { errors: [{ message: 'boom' }] } },
+    { condition: 'IsUnknown', answer: { data: { episode: null } } },
+  ])('shouldKeepPlayingWithoutATitleWhenTheMediaTitle$condition', async ({ answer }) => {
     serveApp()
     let asked = false
     server.use(
       graphql.query('PlayerMediaTitle', () => {
         asked = true
-        return HttpResponse.json({ errors: [{ message: 'boom' }] })
+        return HttpResponse.json(answer)
       }),
     )
 
