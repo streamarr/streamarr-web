@@ -248,15 +248,16 @@ test('focus that lands on a faded control brings the controls back without a key
 test.describe('on a touch screen', () => {
   test.use({ hasTouch: true })
 
-  test('a tap on the faded controls brings them back and presses nothing', async ({
-    page,
-    request,
-  }) => {
+  test.beforeEach(async ({ page, request }) => {
     await openPlayer(page, request)
+    await page.getByRole('button', { name: 'Play' }).tap()
+    const back = page.getByRole('button', { name: 'Back', exact: true })
+    await expect.poll(() => renderedOpacity(back)).toBe(0)
+  })
+
+  test('a tap on the faded controls brings them back and presses nothing', async ({ page }) => {
     const back = page.getByRole('button', { name: 'Back', exact: true })
     const pause = page.getByRole('button', { name: 'Pause' })
-    await page.getByRole('button', { name: 'Play' }).tap()
-    await expect.poll(() => renderedOpacity(back)).toBe(0)
 
     await tapAcross(page, pause, 0.5)
 
