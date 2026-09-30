@@ -1941,6 +1941,56 @@ describe('Player', () => {
       expect(screen.getByRole('menuitemradio', { name: 'Français' })).toHaveFocus()
     })
 
+    it('shouldMoveFocusToTheTrackInUseWhenTheFocusedTrackGoes', async () => {
+      serveSession()
+      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      await attachedVideo()
+      offerHlsTracks({
+        audio: [{ name: 'English' }, { name: 'Français' }, { name: 'Commentary' }],
+        audioTrack: 0,
+      })
+      act(() => screen.getByRole('button', { name: 'Audio: English' }).focus())
+      await user.keyboard('{Enter}{End}')
+
+      offerHlsTracks({ audio: [{ name: 'English' }, { name: 'Français' }], audioTrack: 0 })
+
+      expect(screen.getByRole('menuitemradio', { name: 'English' })).toHaveFocus()
+      await user.keyboard('{ArrowDown}')
+      expect(screen.getByRole('menuitemradio', { name: 'Français' })).toHaveFocus()
+      await user.keyboard('{Enter}')
+      expect(hls.audioTrack).toBe(1)
+      expect(screen.getByRole('button', { name: 'Audio: Français' })).toHaveFocus()
+    })
+
+    it('shouldMoveFocusToTheNearestTrackWhenTheFocusedTrackGoesAndNoneIsInUse', async () => {
+      serveSession()
+      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      await attachedVideo()
+      offerHlsTracks({ audio: [{ name: 'English' }, { name: 'Français' }, { name: 'Commentary' }] })
+      act(() => screen.getByRole('button', { name: 'Audio' }).focus())
+      await user.keyboard('{Enter}{End}')
+
+      offerHlsTracks({ audio: [{ name: 'English' }, { name: 'Français' }] })
+
+      expect(screen.getByRole('menuitemradio', { name: 'Français' })).toHaveFocus()
+    })
+
+    it('shouldKeepFocusOnTheFocusedTrackWhenAnotherTrackGoes', async () => {
+      serveSession()
+      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      await attachedVideo()
+      offerHlsTracks({
+        audio: [{ name: 'English' }, { name: 'Français' }, { name: 'Commentary' }],
+        audioTrack: 0,
+      })
+      act(() => screen.getByRole('button', { name: 'Audio: English' }).focus())
+      await user.keyboard('{Enter}{ArrowDown}')
+
+      offerHlsTracks({ audio: [{ name: 'English' }, { name: 'Français' }], audioTrack: 0 })
+
+      expect(screen.getByRole('menuitemradio', { name: 'Français' })).toHaveFocus()
+    })
+
     it('shouldCloseThePickerWithoutChoosingOnEscapeAnOutsidePressOrItsChip', async () => {
       serveSession()
       const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
