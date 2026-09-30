@@ -228,8 +228,14 @@ function TitleLine({
     <div className={styles.titleLine}>
       {title && <h1 className={styles.heading}>{title.heading}</h1>}
       <span className={styles.detail}>
-        {title?.detail}
-        {title?.detail && timecode && ' · '}
+        {title?.detail && (
+          <>
+            <span className={styles.detailText}>{title.detail}</span>
+            <span className={styles.separator} data-pending={!timecode || undefined}>
+              {' · '}
+            </span>
+          </>
+        )}
         <span className={styles.timecode}>{timecode}</span>
       </span>
     </div>
