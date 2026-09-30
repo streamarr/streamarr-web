@@ -1719,6 +1719,20 @@ describe('Player', () => {
       expect(video.paused).toBe(true)
     })
 
+    it('shouldPlayOnATapWhenTheControlsHaveBeenHeldPastThreeSeconds', async () => {
+      serveSession()
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await attachedVideo()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      await act(() => video.play())
+      act(() => video.pause())
+
+      await act(async () => vi.advanceTimersByTimeAsync(10_000))
+      tap(screen.getByRole('button', { name: 'Play' }))
+
+      expect(video.paused).toBe(false)
+    })
+
     it('shouldFadeTheControlsWhileATouchRestsOnTheBar', async () => {
       serveSession()
       renderWithProviders(<Player mediaFileId="abcd" />)
