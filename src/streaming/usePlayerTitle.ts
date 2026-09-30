@@ -25,7 +25,8 @@ export function usePlayerTitle(
       ? { variables: { id: mediaTitle.id, movie: mediaTitle.kind === 'movie' } }
       : skipToken,
   )
-  return data && playerTitleFrom(data)
+  // With skipToken, Apollo keeps returning the last result. That result names the previous media title.
+  return mediaTitle && data && playerTitleFrom(data)
 }
 
 function playerTitleFrom({ movie, episode }: PlayerMediaTitleQuery): PlayerTitle | undefined {

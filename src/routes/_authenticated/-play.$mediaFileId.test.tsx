@@ -192,6 +192,27 @@ describe('/play/$mediaFileId', () => {
   })
 
   it.each([
+    { condition: 'NoMediaTitle', search: {} },
+    { condition: 'AnEmptyMediaTitle', search: { movie: '' } },
+    { condition: 'BothAMovieAndAnEpisode', search: { movie: 'm1', episode: 'e1' } },
+  ])(
+    'shouldDropTheLastMediaTitleWhenThePlayerMovesToAnAddressWith$condition',
+    async ({ search }) => {
+      serveApp()
+      serveMediaTitles()
+      const { router } = renderAppAt('/play/file-1?movie=m1')
+      await screen.findByRole('heading', { level: 1, name: 'Everlight' })
+
+      await act(() =>
+        router.navigate({ to: '/play/$mediaFileId', params: { mediaFileId: 'file-2' }, search }),
+      )
+
+      expect(router.state.location.pathname).toBe('/play/file-2')
+      expect(screen.queryByRole('heading')).not.toBeInTheDocument()
+    },
+  )
+
+  it.each([
     { condition: 'CannotBeRead', answer: { errors: [{ message: 'boom' }] } },
     { condition: 'IsUnknown', answer: { data: { episode: null } } },
   ])('shouldKeepPlayingWithoutATitleWhenTheMediaTitle$condition', async ({ answer }) => {
