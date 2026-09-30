@@ -2,6 +2,7 @@ import {
   expect,
   test,
   type APIRequestContext,
+  type ConsoleMessage,
   type Locator,
   type Page,
   type Request,
@@ -133,6 +134,19 @@ async function serveTheFirstMediaSegment(page: Page): Promise<void> {
     await page.route(`**/api/stream/**/${segment}*`, (route) =>
       route.fulfill({ contentType: 'video/mp4', path }),
     )
+  }
+}
+
+// Every query Playwright makes of the page counts as user activation, so a spec learns from the
+// console, not from the page, that the element has loaded its metadata. The page logs the message
+// while it dispatches the event, so the player has handled the event before the spec's next query.
+async function watchForLoadedMetadata(page: Page): Promise<{ loaded: Promise<ConsoleMessage> }> {
+  await page.addInitScript(() => {
+    const announce = () => console.info('loadedmetadata')
+    document.addEventListener('loadedmetadata', announce, { capture: true })
+  })
+  return {
+    loaded: page.waitForEvent('console', (message) => message.text() === 'loadedmetadata'),
   }
 }
 
@@ -365,25 +379,16 @@ test('the player opened from a Play link starts playing without a press on Play'
   await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible()
 })
 
-// Every query Playwright makes of the page counts as user activation, so the spec learns from the
-// console, not from the page, that the player has asked the element to play.
 test('the player opened from its address waits on Play when the browser refuses to start it', async ({
   page,
   request,
 }) => {
   await routePlayer(page, request)
   await serveTheFirstMediaSegment(page)
-  await page.addInitScript(() => {
-    const announce = () => console.info('loadedmetadata')
-    document.addEventListener('loadedmetadata', announce, { capture: true })
-  })
-  const metadataLoaded = page.waitForEvent(
-    'console',
-    (message) => message.text() === 'loadedmetadata',
-  )
+  const metadata = await watchForLoadedMetadata(page)
 
   await page.goto('/play/file-1')
-  await metadataLoaded
+  await metadata.loaded
 
   await expect(page.getByRole('button', { name: 'Play' })).toBeVisible()
   await expect(page.getByRole('alert')).toHaveCount(0)
