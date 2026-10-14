@@ -1291,7 +1291,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "video/mp2t": string;
                     "video/mp4": string;
                 };
             };
@@ -1454,7 +1453,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "video/mp2t": string;
                     "video/mp4": string;
                 };
             };

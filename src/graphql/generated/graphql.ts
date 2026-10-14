@@ -251,6 +251,7 @@ export type CreateStreamSessionMutationVariables = Exact<{
 export type CreateStreamSessionMutation = { createStreamSession: { session: { id: string, streamUrl: string, transcodeMode: TranscodeMode } | null, userErrors: Array<
       | { __typename: 'InvalidIdError', message: string }
       | { __typename: 'InvalidMediaFileError', message: string }
+      | { __typename: 'MediaFileFrameRateUnknownError', message: string }
       | { __typename: 'MediaFileHasNoVideoError', message: string }
       | { __typename: 'MediaFileNotFoundError', message: string }
       | { __typename: 'MediaFileProbeNotReadyError', message: string }
