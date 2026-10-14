@@ -284,6 +284,15 @@ describe('encoding settings', () => {
     expect(await presetSelect()).toHaveValue('fast')
   })
 
+  it('shouldShowSavedPresetWhenServerSendsOneThisClientDoesNotKnow', async () => {
+    serve({
+      ...SAVED_AUTOMATIC,
+      preset: 'PLACEBO' as EncoderPresetSettingFieldsFragment['preset'],
+    })
+    renderAppAt(ENCODING)
+    expect(await presetSelect()).toHaveValue('placebo')
+  })
+
   it('shouldRetryReadingSettingWhenFirstReadFails', async () => {
     const state = serve()
     server.use(

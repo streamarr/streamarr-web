@@ -134,7 +134,7 @@ function EncodingContent({
           label="Encoder preset"
           description="Faster presets start playback sooner and fit more encodes on a worker. Slower presets give a better picture at the same bitrate. A change reaches only quality levels that start afterwards. A quality level that has already started keeps its preset, even after a seek."
           value={setting.preset}
-          data={CHOICES}
+          data={choicesShowing(setting.preset)}
           allowDeselect={false}
           disabled={saving}
           error={refusal}
@@ -144,6 +144,12 @@ function EncodingContent({
       </div>
     </div>
   )
+}
+
+// A preset newer than this client stays visible but cannot be chosen again from here.
+function choicesShowing(saved: EncoderPresetChoice) {
+  if (CHOICES.some((choice) => choice.value === saved)) return CHOICES
+  return [...CHOICES, { value: saved, label: saved.toLowerCase(), disabled: true }]
 }
 
 function automaticLine(automatic: EncoderPresetSettingFieldsFragment['automatic']): string {
