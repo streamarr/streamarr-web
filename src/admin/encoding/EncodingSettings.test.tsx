@@ -237,6 +237,53 @@ describe('encoding settings', () => {
     expect(screen.queryByText("Couldn't load the latest encoder preset.")).not.toBeInTheDocument()
   })
 
+  it('shouldKeepNewerSettingWhenEarlierChangeAnswersAfterAdminReturns', async () => {
+    const state = serve()
+    let answerFirstChange = () => {}
+    const firstChangeAnswered = new Promise<void>((resolve) => {
+      answerFirstChange = resolve
+    })
+    server.use(
+      graphql.mutation<ChangeEncoderPresetMutation, ChangeEncoderPresetMutationVariables>(
+        'ChangeEncoderPreset',
+        async () => {
+          state.changes.push('MEDIUM')
+          await firstChangeAnswered
+          return HttpResponse.json({
+            data: {
+              changeEncoderPreset: {
+                encoderPresetSetting: { ...state.setting, preset: 'MEDIUM' },
+                userErrors: [],
+              },
+            },
+          })
+        },
+        { once: true },
+      ),
+    )
+    const { user } = renderAppAt(ENCODING)
+    await choosePreset(user, 'medium')
+    await waitFor(() => expect(state.changes).toEqual(['MEDIUM']))
+    const rail = screen.getByRole('navigation', { name: 'Server settings' })
+    await user.click(within(rail).getByRole('link', { name: 'Libraries' }))
+    await screen.findByRole('region', { name: 'Library administration' })
+    await user.click(within(rail).getByRole('link', { name: 'Encoding' }))
+    await choosePreset(user, 'fast')
+    await waitFor(async () => expect(await presetSelect()).toHaveValue('fast'))
+    expect(state.changes).toEqual(['MEDIUM', 'FAST'])
+    const firstChangeDelivered = new Promise<void>((resolve) => {
+      const delivered = () => {
+        server.events.removeListener('response:mocked', delivered)
+        resolve()
+      }
+      server.events.on('response:mocked', delivered)
+    })
+    answerFirstChange()
+    await firstChangeDelivered
+    await new Promise((resolve) => setTimeout(resolve))
+    expect(await presetSelect()).toHaveValue('fast')
+  })
+
   it('shouldRetryReadingSettingWhenFirstReadFails', async () => {
     const state = serve()
     server.use(

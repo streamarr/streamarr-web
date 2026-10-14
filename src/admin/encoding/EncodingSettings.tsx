@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from '@apollo/client/react'
 import { Center, Loader, Select } from '@mantine/core'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   ChangeEncoderPresetDocument,
   EncoderPresetSettingDocument,
@@ -44,6 +44,13 @@ export function EncodingSettings() {
   const query = useQuery(EncoderPresetSettingDocument, { fetchPolicy: 'cache-and-network' })
   const [change, { loading: saving }] = useMutation(ChangeEncoderPresetDocument)
   const [refusal, setRefusal] = useState<string | null>(null)
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
   const setting = (query.data ?? query.previousData)?.encoderPresetSetting
 
   async function choose(value: string | null) {
@@ -54,8 +61,9 @@ export function EncodingSettings() {
       const { data } = await change({
         variables: { input: { preset: choice.value } },
         update(cache, { data: result }) {
+          // A save that answers after the admin left may be older than a save made on return.
           const saved = result?.changeEncoderPreset?.encoderPresetSetting
-          if (saved)
+          if (saved && mounted.current)
             cache.writeQuery({
               query: EncoderPresetSettingDocument,
               data: { encoderPresetSetting: saved },
