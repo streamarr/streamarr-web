@@ -41,10 +41,10 @@ const UNCONFIRMED =
  * a refused or unconfirmed change leaves it in place and shows why beside the select.
  */
 export function EncodingSettings() {
-  const query = useQuery(EncoderPresetSettingDocument)
+  const query = useQuery(EncoderPresetSettingDocument, { fetchPolicy: 'cache-and-network' })
   const [change, { loading: saving }] = useMutation(ChangeEncoderPresetDocument)
   const [refusal, setRefusal] = useState<string | null>(null)
-  const setting = query.data?.encoderPresetSetting
+  const setting = (query.data ?? query.previousData)?.encoderPresetSetting
 
   async function choose(value: string | null) {
     const choice = CHOICES.find((candidate) => candidate.value === value)
@@ -78,6 +78,11 @@ export function EncodingSettings() {
       <div className={styles.pageHeading}>
         <h1>Encoding</h1>
       </div>
+      {setting && query.error && (
+        <RetryAlert mb="md" onRetry={query.refetch}>
+          Couldn't load the latest encoder preset.
+        </RetryAlert>
+      )}
       <EncodingContent
         setting={setting}
         error={!setting && !!query.error}

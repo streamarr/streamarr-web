@@ -202,6 +202,41 @@ describe('encoding settings', () => {
     await waitFor(() => expect(select).toHaveValue('ultrafast'))
   })
 
+  it('shouldShowSettingSavedElsewhereWhenAdminReturnsToEncoding', async () => {
+    const state = serve()
+    const { user } = renderAppAt(ENCODING)
+    expect(await presetSelect()).toHaveValue('Automatic')
+    const rail = screen.getByRole('navigation', { name: 'Server settings' })
+    await user.click(within(rail).getByRole('link', { name: 'Libraries' }))
+    await screen.findByRole('region', { name: 'Library administration' })
+    state.setting = { ...state.setting, preset: 'SLOW' }
+    await user.click(within(rail).getByRole('link', { name: 'Encoding' }))
+    await waitFor(async () => expect(await presetSelect()).toHaveValue('slow'))
+  })
+
+  it('shouldOfferRetryAndKeepLastSettingWhenRereadFailsOnReturn', async () => {
+    const state = serve({ ...SAVED_AUTOMATIC, preset: 'MEDIUM' })
+    const { user } = renderAppAt(ENCODING)
+    expect(await presetSelect()).toHaveValue('medium')
+    const rail = screen.getByRole('navigation', { name: 'Server settings' })
+    await user.click(within(rail).getByRole('link', { name: 'Libraries' }))
+    await screen.findByRole('region', { name: 'Library administration' })
+    server.use(
+      graphql.query(
+        'EncoderPresetSetting',
+        () => HttpResponse.json({ errors: [{ message: 'offline' }] }),
+        { once: true },
+      ),
+    )
+    await user.click(within(rail).getByRole('link', { name: 'Encoding' }))
+    expect(await screen.findByText("Couldn't load the latest encoder preset.")).toBeInTheDocument()
+    expect(await presetSelect()).toHaveValue('medium')
+    state.setting = { ...state.setting, preset: 'SLOW' }
+    await user.click(screen.getByRole('button', { name: 'Try again' }))
+    await waitFor(async () => expect(await presetSelect()).toHaveValue('slow'))
+    expect(screen.queryByText("Couldn't load the latest encoder preset.")).not.toBeInTheDocument()
+  })
+
   it('shouldRetryReadingSettingWhenFirstReadFails', async () => {
     const state = serve()
     server.use(
