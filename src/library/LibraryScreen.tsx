@@ -171,19 +171,13 @@ export function LibraryScreen({
         <Title order={1} className={styles.libraryName}>
           {library.name ?? 'Library'}
         </Title>
-        <Text className={styles.scanStatus}>
-          {total.toLocaleString()} items · {scanLabel}
-        </Text>
+        <Text className={styles.scanStatus}>{scanLabel}</Text>
         <div className={styles.sortSlot}>
           <SortMenu sort={sort} onChange={selectSort} />
         </div>
       </div>
 
-      <FilterBar
-        status={search.watchStatus ?? 'ALL'}
-        onChange={selectFilter}
-        showing={buildShowingLabel(edges.length, hasNextPage, !search.watchStatus, total)}
-      />
+      <FilterBar status={search.watchStatus ?? 'ALL'} total={total} onChange={selectFilter} />
 
       {error && <LibraryUnavailable error={error} onRetry={retry} />}
 
@@ -275,22 +269,4 @@ function LibraryUnavailable({ error, onRetry }: Readonly<{ error: unknown; onRet
       </Anchor>
     </Alert>
   )
-}
-
-function buildShowingLabel(
-  loadedCount: number,
-  hasNextPage: boolean,
-  isUnfiltered: boolean,
-  total: number,
-): string {
-  if (loadedCount === 0) {
-    return 'No items'
-  }
-  if (isUnfiltered) {
-    return `Showing 1–${loadedCount} of ${total.toLocaleString()}`
-  }
-  if (!hasNextPage) {
-    return `Showing 1–${loadedCount} of ${loadedCount}`
-  }
-  return `Showing 1–${loadedCount}`
 }

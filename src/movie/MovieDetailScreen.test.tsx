@@ -111,13 +111,42 @@ describe('MovieDetailScreen', () => {
     expect(screen.getByText('Change begins with a whisper.')).toBeInTheDocument()
     expect(screen.getByText('2024')).toBeInTheDocument()
     expect(screen.getByText('2h 22m')).toBeInTheDocument()
-    expect(screen.getAllByText('PG-13')).not.toHaveLength(0)
+    expect(screen.getByText('PG-13')).toBeInTheDocument()
     expect(screen.getByText('A quiet town discovers a secret.')).toBeInTheDocument()
     expect(screen.getByText('Directed by')).toBeInTheDocument()
     expect(screen.getByText('Placeholder Director')).toBeInTheDocument()
     expect(screen.getByText('Drama')).toBeInTheDocument()
     expect(screen.getByText('TMDB · 7.8')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument()
+  })
+
+  it('shouldSayYearRuntimeAndRatingOnceInTheMetaLine', async () => {
+    serve(movieData())
+    renderAppAt('/movie/m1')
+    await screen.findByRole('heading', { level: 1, name: 'Everlight' })
+
+    const [year, runtime, rating] = [/2024/, '2h 22m', 'PG-13'].map((fact) => {
+      const matches = screen.getAllByText(fact)
+      expect(matches).toHaveLength(1)
+      return matches[0]
+    })
+    expect(year.compareDocumentPosition(runtime) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(runtime.compareDocumentPosition(rating) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('shouldKeepOnlyCreditsInTheMetadataColumns', async () => {
+    serve(movieData())
+    renderAppAt('/movie/m1')
+    await screen.findByRole('heading', { level: 1, name: 'Everlight' })
+
+    expect(screen.getAllByRole('term').map((term) => term.textContent)).toEqual([
+      'Genre',
+      'Directed by',
+    ])
+    expect(screen.getAllByRole('definition').map((value) => value.textContent)).toEqual([
+      'Drama',
+      'Placeholder Director',
+    ])
   })
 
   it('links Play to the file when the movie has not been started', async () => {

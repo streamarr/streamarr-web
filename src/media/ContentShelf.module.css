@@ -12,23 +12,11 @@
   justify-content: space-between;
 }
 
-.heading {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--spacing-10);
-}
-
 .title {
   font-size: var(--font-size-title);
   font-weight: 600;
   color: var(--text-primary);
   margin: 0;
-}
-
-.count {
-  font-size: var(--font-size-caption);
-  color: var(--text-secondary);
 }
 
 .arrows {

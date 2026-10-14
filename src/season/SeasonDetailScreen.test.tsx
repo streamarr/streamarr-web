@@ -235,6 +235,13 @@ describe('SeasonDetailScreen', () => {
     expect(screen.getAllByText('52m')).toHaveLength(2)
   })
 
+  it('shouldGiveAnEpisodeInProgressOneProgressReadout', async () => {
+    await renderSeason()
+    const episode = screen.getByRole('link', { name: /E5 — Breakage/ })
+    expect(within(episode).getAllByText('24m left')).toHaveLength(1)
+    expect(episode.querySelector('[style*="width"]')).toBeNull()
+  })
+
   it('confirms before marking the season watched, then flips the verb', async () => {
     let watched = false
     const markedIds: string[] = []

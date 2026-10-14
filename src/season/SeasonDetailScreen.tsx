@@ -134,7 +134,6 @@ export function SeasonDetailScreen({ seasonId }: Readonly<{ seasonId: string }>)
                   image={pickImageVariant(still, 'MEDIUM')}
                   blurHash={still?.blurHash ?? null}
                   badge={episode.watchStatus === 'WATCHED' ? { status: 'watched' } : undefined}
-                  progressPercent={episode.watchProgress?.percentComplete ?? undefined}
                 />
               )
               // Clicking an episode plays it directly; there is no episode page on web.

@@ -10,7 +10,6 @@ export function StillCard({
   subtitle,
   image,
   blurHash,
-  progressPercent,
   badge,
   layout = 'shelf',
 }: Readonly<{
@@ -18,7 +17,6 @@ export function StillCard({
   subtitle: string
   image: PickedImage | null
   blurHash: string | null
-  progressPercent?: number
   badge?: WatchedBadgeProps
   layout?: 'shelf' | 'grid'
 }>) {
@@ -27,11 +25,6 @@ export function StillCard({
       <div className={styles.stillArt}>
         <MediaImage image={image} blurHash={blurHash} alt={title} />
         {badge && <WatchedBadge {...badge} />}
-        {progressPercent != null && progressPercent > 0 && (
-          <div className={styles.progressTrack} aria-hidden>
-            <div className={styles.progressFill} style={{ width: `${progressPercent}%` }} />
-          </div>
-        )}
       </div>
       <div className={styles.stillTitle}>{title}</div>
       <div className={styles.stillSubtitle}>{subtitle}</div>
