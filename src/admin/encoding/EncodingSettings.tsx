@@ -127,7 +127,7 @@ function EncodingContent({
           error={refusal}
           onChange={onChoose}
         />
-        <p className={styles.scanNote}>{automaticLine(setting.automatic)}</p>
+        <p className={styles.fieldNote}>{automaticLine(setting.automatic)}</p>
       </div>
     </div>
   )

@@ -352,6 +352,11 @@
   font-size: var(--font-size-label);
   padding-top: 2px;
 }
+.fieldNote {
+  color: var(--text-secondary);
+  font-size: var(--font-size-label);
+  padding-top: 2px;
+}
 .formActions {
   display: flex;
   align-items: center;
@@ -514,9 +519,12 @@
   .typeOptions {
     gap: var(--spacing-8);
   }
+  .scanNote,
+  .fieldNote {
+    line-height: 1.5;
+  }
   .scanNote {
     align-items: flex-start;
-    line-height: 1.5;
   }
   .empty {
     min-height: 360px;
