@@ -110,17 +110,20 @@
 .railTitle {
   padding: 0 var(--spacing-12) var(--spacing-24);
 }
-.sectionActive {
+.section {
   display: flex;
   align-items: center;
   gap: 11px;
   width: 100%;
   padding: var(--spacing-12);
-  background: var(--selection-active);
+  background: transparent;
   color: var(--text-primary);
   border: 0;
   border-radius: var(--radius-md);
   font-size: var(--font-size-emphasis);
+}
+.section[aria-current='page'] {
+  background: var(--selection-active);
 }
 .railContent {
   min-width: 0;
@@ -463,7 +466,7 @@
     padding: 2px 4px 12px;
     font-size: var(--font-size-micro);
   }
-  .sectionActive {
+  .section {
     padding: 9px 12px;
   }
   .railContent .pageHeading {
