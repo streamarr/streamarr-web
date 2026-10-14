@@ -25,6 +25,7 @@ import { Route as AuthenticatedSeasonSeasonIdRouteImport } from './routes/_authe
 import { Route as AuthenticatedSeriesSeriesIdRouteImport } from './routes/_authenticated/series.$seriesId'
 import { Route as AuthenticatedSettingsServerRouteImport } from './routes/_authenticated/settings.server'
 import { Route as AuthenticatedSettingsServerIndexRouteImport } from './routes/_authenticated/settings.server.index'
+import { Route as AuthenticatedSettingsServerEncodingRouteImport } from './routes/_authenticated/settings.server.encoding'
 import { Route as AuthenticatedSettingsServerLibrariesRouteImport } from './routes/_authenticated/settings.server.libraries'
 import { Route as AuthenticatedSettingsServerLibrariesNewRouteImport } from './routes/_authenticated/settings.server.libraries_.new'
 
@@ -115,6 +116,12 @@ const AuthenticatedSettingsServerIndexRoute =
     path: '/',
     getParentRoute: () => AuthenticatedSettingsServerRoute,
   } as any)
+const AuthenticatedSettingsServerEncodingRoute =
+  AuthenticatedSettingsServerEncodingRouteImport.update({
+    id: '/encoding',
+    path: '/encoding',
+    getParentRoute: () => AuthenticatedSettingsServerRoute,
+  } as any)
 const AuthenticatedSettingsServerLibrariesRoute =
   AuthenticatedSettingsServerLibrariesRouteImport.update({
     id: '/libraries',
@@ -143,6 +150,7 @@ export interface FileRoutesByFullPath {
   '/season/$seasonId': typeof AuthenticatedSeasonSeasonIdRoute
   '/series/$seriesId': typeof AuthenticatedSeriesSeriesIdRoute
   '/settings/server': typeof AuthenticatedSettingsServerRouteWithChildren
+  '/settings/server/encoding': typeof AuthenticatedSettingsServerEncodingRoute
   '/settings/server/libraries': typeof AuthenticatedSettingsServerLibrariesRoute
   '/settings/server/': typeof AuthenticatedSettingsServerIndexRoute
   '/settings/server/libraries/new': typeof AuthenticatedSettingsServerLibrariesNewRoute
@@ -161,6 +169,7 @@ export interface FileRoutesByTo {
   '/play/$mediaFileId': typeof AuthenticatedPlayMediaFileIdRoute
   '/season/$seasonId': typeof AuthenticatedSeasonSeasonIdRoute
   '/series/$seriesId': typeof AuthenticatedSeriesSeriesIdRoute
+  '/settings/server/encoding': typeof AuthenticatedSettingsServerEncodingRoute
   '/settings/server/libraries': typeof AuthenticatedSettingsServerLibrariesRoute
   '/settings/server': typeof AuthenticatedSettingsServerIndexRoute
   '/settings/server/libraries/new': typeof AuthenticatedSettingsServerLibrariesNewRoute
@@ -182,6 +191,7 @@ export interface FileRoutesById {
   '/_authenticated/season/$seasonId': typeof AuthenticatedSeasonSeasonIdRoute
   '/_authenticated/series/$seriesId': typeof AuthenticatedSeriesSeriesIdRoute
   '/_authenticated/settings/server': typeof AuthenticatedSettingsServerRouteWithChildren
+  '/_authenticated/settings/server/encoding': typeof AuthenticatedSettingsServerEncodingRoute
   '/_authenticated/settings/server/libraries': typeof AuthenticatedSettingsServerLibrariesRoute
   '/_authenticated/settings/server/': typeof AuthenticatedSettingsServerIndexRoute
   '/_authenticated/settings/server/libraries_/new': typeof AuthenticatedSettingsServerLibrariesNewRoute
@@ -203,6 +213,7 @@ export interface FileRouteTypes {
     | '/season/$seasonId'
     | '/series/$seriesId'
     | '/settings/server'
+    | '/settings/server/encoding'
     | '/settings/server/libraries'
     | '/settings/server/'
     | '/settings/server/libraries/new'
@@ -221,6 +232,7 @@ export interface FileRouteTypes {
     | '/play/$mediaFileId'
     | '/season/$seasonId'
     | '/series/$seriesId'
+    | '/settings/server/encoding'
     | '/settings/server/libraries'
     | '/settings/server'
     | '/settings/server/libraries/new'
@@ -241,6 +253,7 @@ export interface FileRouteTypes {
     | '/_authenticated/season/$seasonId'
     | '/_authenticated/series/$seriesId'
     | '/_authenticated/settings/server'
+    | '/_authenticated/settings/server/encoding'
     | '/_authenticated/settings/server/libraries'
     | '/_authenticated/settings/server/'
     | '/_authenticated/settings/server/libraries_/new'
@@ -368,6 +381,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsServerIndexRouteImport
       parentRoute: typeof AuthenticatedSettingsServerRoute
     }
+    '/_authenticated/settings/server/encoding': {
+      id: '/_authenticated/settings/server/encoding'
+      path: '/encoding'
+      fullPath: '/settings/server/encoding'
+      preLoaderRoute: typeof AuthenticatedSettingsServerEncodingRouteImport
+      parentRoute: typeof AuthenticatedSettingsServerRoute
+    }
     '/_authenticated/settings/server/libraries': {
       id: '/_authenticated/settings/server/libraries'
       path: '/libraries'
@@ -386,6 +406,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedSettingsServerRouteChildren {
+  AuthenticatedSettingsServerEncodingRoute: typeof AuthenticatedSettingsServerEncodingRoute
   AuthenticatedSettingsServerLibrariesRoute: typeof AuthenticatedSettingsServerLibrariesRoute
   AuthenticatedSettingsServerIndexRoute: typeof AuthenticatedSettingsServerIndexRoute
   AuthenticatedSettingsServerLibrariesNewRoute: typeof AuthenticatedSettingsServerLibrariesNewRoute
@@ -393,6 +414,8 @@ interface AuthenticatedSettingsServerRouteChildren {
 
 const AuthenticatedSettingsServerRouteChildren: AuthenticatedSettingsServerRouteChildren =
   {
+    AuthenticatedSettingsServerEncodingRoute:
+      AuthenticatedSettingsServerEncodingRoute,
     AuthenticatedSettingsServerLibrariesRoute:
       AuthenticatedSettingsServerLibrariesRoute,
     AuthenticatedSettingsServerIndexRoute:

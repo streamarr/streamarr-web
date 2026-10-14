@@ -1,6 +1,8 @@
 import { expect, test, type Page } from '@playwright/test'
 import type {
   AddLibraryInput,
+  ChangeEncoderPresetInput,
+  EncoderPresetSettingFieldsFragment,
   ManagedLibraryFieldsFragment,
 } from '../src/graphql/generated/graphql'
 import { meFixture, profileFixture } from '../src/test/meFixture'
@@ -38,6 +40,16 @@ async function fixture(page: Page, libraries = [movie, shows]) {
     }),
     calls: [] as { operationName: string; variables: Record<string, unknown> }[],
     inventoryFails: false,
+    encoderPresetSetting: {
+      __typename: 'EncoderPresetSetting',
+      preset: 'AUTOMATIC',
+      automatic: {
+        __typename: 'AutomaticEncoderPresets',
+        h264: 'FASTER',
+        hevc: 'VERYFAST',
+        av1: 'FASTER',
+      },
+    } as EncoderPresetSettingFieldsFragment,
   }
   await page.route('**/graphql', async (route) => {
     const { operationName, variables } = route.request().postDataJSON() as {
@@ -93,6 +105,18 @@ async function fixture(page: Page, libraries = [movie, shows]) {
       return reply(
         operationName === 'ScanLibrary' ? { scanLibrary: true } : { refreshLibrary: true },
       )
+    }
+    if (operationName === 'EncoderPresetSetting')
+      return reply({ encoderPresetSetting: state.encoderPresetSetting })
+    if (operationName === 'ChangeEncoderPreset') {
+      const { preset } = variables.input as ChangeEncoderPresetInput
+      state.encoderPresetSetting = {
+        ...state.encoderPresetSetting,
+        preset: preset as EncoderPresetSettingFieldsFragment['preset'],
+      }
+      return reply({
+        changeEncoderPreset: { encoderPresetSetting: state.encoderPresetSetting, userErrors: [] },
+      })
     }
     if (operationName === 'RemoveLibrary') {
       state.libraries = state.libraries.filter((library) => library.id !== variables.id)
@@ -295,4 +319,30 @@ test('Library workspace and creation share a width and fit phone and desktop lay
       fullPage: true,
     })
   }
+})
+
+test('the Encoding section saves a preset and survives reload and back', async ({ page }) => {
+  const state = await fixture(page)
+  await page.goto(SETTINGS)
+  const rail = page.getByRole('navigation', { name: 'Server settings' })
+  await rail.getByRole('link', { name: 'Encoding' }).click()
+  await expect(page).toHaveURL('/settings/server/encoding')
+  const preset = page.getByRole('combobox', { name: 'Encoder preset' })
+  await expect(preset).toHaveValue('Automatic')
+  await expect(
+    page.getByText('Automatic uses faster for H.264 and AV1, and veryfast for HEVC.'),
+  ).toBeVisible()
+  await preset.click()
+  await page.getByRole('option', { name: 'medium', exact: true }).click()
+  await expect(preset).toHaveValue('medium')
+  expect(state.encoderPresetSetting.preset).toBe('MEDIUM')
+
+  await page.reload()
+  await expect(rail.getByRole('link', { name: 'Encoding' })).toHaveAttribute('aria-current', 'page')
+  await expect(preset).toHaveValue('medium')
+  await rail.getByRole('link', { name: 'Libraries' }).click()
+  await expect(page.getByRole('article', { name: 'Movies settings' })).toBeVisible()
+  await page.goBack()
+  await expect(page).toHaveURL('/settings/server/encoding')
+  await expect(preset).toHaveValue('medium')
 })

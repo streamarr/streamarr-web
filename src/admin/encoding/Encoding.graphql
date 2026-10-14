@@ -1,0 +1,33 @@
+fragment EncoderPresetSettingFields on EncoderPresetSetting {
+  __typename
+  preset
+  automatic {
+    __typename
+    h264
+    hevc
+    av1
+  }
+}
+
+query EncoderPresetSetting {
+  encoderPresetSetting {
+    ...EncoderPresetSettingFields
+  }
+}
+
+mutation ChangeEncoderPreset($input: ChangeEncoderPresetInput!) {
+  changeEncoderPreset(input: $input) {
+    encoderPresetSetting {
+      ...EncoderPresetSettingFields
+    }
+    userErrors {
+      __typename
+      ... on MutationError {
+        message
+      }
+      ... on InputMutationError {
+        inputPath
+      }
+    }
+  }
+}
