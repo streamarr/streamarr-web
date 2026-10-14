@@ -346,3 +346,17 @@ test('the Encoding section saves a preset and survives reload and back', async (
   await expect(page).toHaveURL('/settings/server/encoding')
   await expect(preset).toHaveValue('medium')
 })
+
+test('the Encoding select keeps focus after a keyboard choice saves', async ({ page }) => {
+  const state = await fixture(page)
+  await page.goto('/settings/server/encoding')
+  const preset = page.getByRole('combobox', { name: 'Encoder preset' })
+  await expect(preset).toHaveValue('Automatic')
+  await preset.focus()
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('Enter')
+  await expect(preset).toHaveValue('ultrafast')
+  expect(state.encoderPresetSetting.preset).toBe('ULTRAFAST')
+  await expect(preset).toBeFocused()
+})

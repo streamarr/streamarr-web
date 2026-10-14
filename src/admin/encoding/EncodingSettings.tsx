@@ -136,7 +136,7 @@ function EncodingContent({
           value={setting.preset}
           data={choicesShowing(setting.preset)}
           allowDeselect={false}
-          disabled={saving}
+          readOnly={saving}
           error={refusal}
           onChange={onChoose}
         />
