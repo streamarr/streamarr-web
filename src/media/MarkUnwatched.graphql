@@ -1,5 +1,8 @@
 mutation MarkUnwatched($input: MarkUnwatchedInput!) {
   markUnwatched(input: $input) {
+    item {
+      ...WatchStateItemFields
+    }
     userErrors {
       __typename
       ... on MutationError {

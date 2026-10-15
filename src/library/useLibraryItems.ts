@@ -9,6 +9,7 @@ import {
 } from '../graphql/generated/graphql'
 import { definedEdges } from '../media/edges'
 import { alphabetLetterFromTitle } from '../media/alphabetLetter'
+import { trackLibraryItemsConnection } from '../media/watchedState'
 
 const PAGE_SIZE = 48
 type LibraryWindow = { before: number; after: number; anchor: string | null }
@@ -46,12 +47,23 @@ export function useLibraryItems({
   sort: MediaSort
   filter: MediaFilter
 }) {
-  const windows = windowsFor(useApolloClient())
+  const client = useApolloClient()
+  const windows = windowsFor(client)
   const { data, previousData, loading, error, fetchMore, refetch } = useQuery(LibraryPageDocument, {
     variables: { libraryId, first: PAGE_SIZE, sort, filter },
   })
 
   const queryKey = JSON.stringify({ libraryId, sort, filter })
+  useEffect(
+    function trackWatchDependentConnection() {
+      if (!data) return
+      trackLibraryItemsConnection(client.cache, {
+        libraryId,
+        args: { first: PAGE_SIZE, sort, filter },
+      })
+    },
+    [client, data, libraryId, sort, filter],
+  )
   const [pageFailure, setPageFailure] = useState<PageFailure | null>(null)
   let currentPageFailure = pageFailure
   if (pageFailure && pageFailure.query !== queryKey) {

@@ -48,6 +48,7 @@ function episode(
   positionSeconds: number | null = null,
 ) {
   return {
+    __typename: 'Episode',
     id: `s${number}`,
     episodeNumber: number,
     watchStatus: status,
@@ -63,6 +64,7 @@ function season(
 ) {
   const watched = episodes.every((entry) => entry.watchStatus === 'WATCHED')
   return {
+    __typename: 'Season',
     id: `season-${number}`,
     seasonNumber: number,
     title: `Season ${number}`,
@@ -269,29 +271,42 @@ describe('SeriesDetailScreen', () => {
     expect(container.querySelector('[style*="width: 56%"]')).not.toBeNull()
   })
 
-  it('confirms before marking the whole series watched, then flips the verb', async () => {
-    let watched = false
+  it('shouldConfirmAndThenUpdateEverySeasonAndEpisodeFromTheMarkedSeries', async () => {
+    const requestedIds: string[] = []
     const markedIds: string[] = []
+    const data = seriesData()
+    serve(data, requestedIds)
+    const watchedState = { watchStatus: 'WATCHED', watchProgress: null }
     server.use(
-      graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
-      graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
-      graphql.query('SeriesDetail', () =>
-        HttpResponse.json({
-          data: seriesData({ watchStatus: watched ? 'WATCHED' : 'IN_PROGRESS' }),
-        }),
-      ),
       graphql.mutation('MarkWatched', ({ variables }) => {
         markedIds.push((variables.input as { itemId: string }).itemId)
-        watched = true
-        return HttpResponse.json({ data: { markWatched: { userErrors: [] } } })
+        return HttpResponse.json({
+          data: {
+            markWatched: {
+              item: {
+                __typename: 'Series',
+                id: 'series-1',
+                ...watchedState,
+                seasons: data.series!.seasons.map((entry) => ({
+                  __typename: 'Season',
+                  id: entry!.id,
+                  ...watchedState,
+                  episodes: entry!.episodes.map((episode) => ({
+                    __typename: 'Episode',
+                    id: episode!.id,
+                    ...watchedState,
+                  })),
+                })),
+              },
+              userErrors: [],
+            },
+          },
+        })
       }),
     )
     const { user } = renderAppAt('/series/series-1')
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Mark series watched' })).toBeInTheDocument(),
-    )
 
-    await user.click(screen.getByRole('button', { name: 'Mark series watched' }))
+    await user.click(await screen.findByRole('button', { name: 'Mark series watched' }))
     expect(markedIds).toEqual([])
     expect(
       screen.getByRole('dialog', { name: 'Mark Northern Line as watched?' }),
@@ -299,11 +314,35 @@ describe('SeriesDetailScreen', () => {
 
     await user.click(screen.getByRole('button', { name: 'Mark watched' }))
 
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Mark series unwatched' })).toBeInTheDocument(),
-    )
+    expect(await screen.findByRole('button', { name: 'Mark series unwatched' })).toBeEnabled()
+    expect(screen.getByRole('progressbar', { name: '5 of 5 watched' })).toBeInTheDocument()
+    expect(screen.getAllByLabelText('Watched')).toHaveLength(2)
+    expect(screen.queryByLabelText('2 unwatched')).not.toBeInTheDocument()
     expect(markedIds).toEqual(['series-1'])
+    expect(requestedIds).toEqual(['series-1'])
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('shouldShowTheServerMessageWhenMarkingTheSeriesIsRefused', async () => {
+    server.use(
+      graphql.mutation('MarkWatched', () =>
+        HttpResponse.json({
+          data: {
+            markWatched: {
+              item: null,
+              userErrors: [{ __typename: 'InvalidIdError', message: 'The ID is not valid.' }],
+            },
+          },
+        }),
+      ),
+    )
+    const { user } = await renderSeries(seriesData())
+
+    await user.click(screen.getByRole('button', { name: 'Mark series watched' }))
+    await user.click(screen.getByRole('button', { name: 'Mark watched' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('The ID is not valid.')
+    expect(screen.getByRole('button', { name: 'Mark series watched' })).toBeEnabled()
   })
 
   it('confirms before marking the whole series unwatched, and cancelling changes nothing', async () => {

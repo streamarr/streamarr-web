@@ -706,12 +706,15 @@ test('Back after a letter jump restores the previous grid position', async ({ pa
   await expect.poll(() => grid.evaluate((el) => el.scrollTop), { timeout: 1500 }).toBe(600)
 })
 
-for (const { seek, failRecovery } of [
-  { seek: false, failRecovery: false },
-  { seek: true, failRecovery: false },
-  { seek: false, failRecovery: true },
+// Title order does not follow watch state, so its grid keeps its cached rows. Last watched order
+// does, so its grid reloads and restores the expanded window, even past a failed page.
+for (const { seek, sort, failRecovery } of [
+  { seek: false, sort: 'TITLE', failRecovery: false },
+  { seek: true, sort: 'TITLE', failRecovery: false },
+  { seek: false, sort: 'LAST_WATCHED', failRecovery: false },
+  { seek: false, sort: 'LAST_WATCHED', failRecovery: true },
 ]) {
-  test(`Back restores the expanded ${seek ? 'letter' : 'forward'} window after changing watched state${failRecovery ? ' and a failed page' : ''}`, async ({
+  test(`Back restores the expanded ${seek ? 'letter' : 'forward'} window in ${sort} order after changing watched state${failRecovery ? ' and a failed page' : ''}`, async ({
     page,
     request,
   }) => {
@@ -722,12 +725,15 @@ for (const { seek, failRecovery } of [
     let failedPages = 0
     let firstLoaded = 312
     let lastLoaded = -1
+    let libraryReloadsAfterMark = 0
     await page.route('**/graphql', async (route) => {
       const operation = route.request().postDataJSON() as {
         operationName: string
-        variables: LibraryPageQueryVariables & { id: string }
+        variables: LibraryPageQueryVariables & { id: string; input: { itemId: string } }
       }
       if (operation.operationName === 'LibraryPage') {
+        const reload = !operation.variables.before && !operation.variables.after
+        if (watched && reload) libraryReloadsAfterMark += 1
         if (watched && operation.variables.after && !allowRecovery) {
           failedPages += 1
           return route.fulfill({
@@ -740,7 +746,7 @@ for (const { seek, failRecovery } of [
         }
         const data = libraryPage(operation.variables)
         const nodes = data.library.items.edges ?? []
-        if (!operation.variables.before && !operation.variables.after) {
+        if (reload) {
           firstLoaded = Number(nodes[0]?.cursor)
           lastLoaded = Number(nodes.at(-1)?.cursor)
         } else {
@@ -756,11 +762,17 @@ for (const { seek, failRecovery } of [
       }
       if (operation.operationName === 'MarkWatched') {
         watched = true
-        return route.fulfill({ json: { data: { markWatched: { userErrors: [] } } } })
+        const item = {
+          __typename: 'Movie',
+          id: operation.variables.input.itemId,
+          watchStatus: 'WATCHED',
+          watchProgress: null,
+        }
+        return route.fulfill({ json: { data: { markWatched: { item, userErrors: [] } } } })
       }
       return route.continue()
     })
-    await page.goto('/library/movies?by=TITLE&direction=ASC')
+    await page.goto(`/library/movies?by=${sort}&direction=${sort === 'TITLE' ? 'ASC' : 'DESC'}`)
     await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
     const grid = page.locator('[data-scroll-restoration-id="library-grid"]')
     if (seek) {
@@ -798,6 +810,10 @@ for (const { seek, failRecovery } of [
     }
     await expect(page.getByText(titleName, { exact: true })).toBeInViewport()
     await expect.poll(() => grid.evaluate((element) => element.scrollTop)).toBe(savedPosition)
+    expect(libraryReloadsAfterMark > 0).toBe(sort === 'LAST_WATCHED')
+    if (sort === 'TITLE') {
+      await expect(page.getByRole('link', { name: `Watched ${titleName} 2024` })).toBeVisible()
+    }
   })
 }
 

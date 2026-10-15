@@ -23,7 +23,7 @@ export function MovieDetailScreen({ movieId }: Readonly<{ movieId: string }>) {
   const { data, loading, error, refetch } = useQuery(MovieDetailDocument, {
     variables: { id: movieId },
   })
-  const watched = useWatchedToggle(movieId, MovieDetailDocument)
+  const watched = useWatchedToggle(movieId)
   const movie = data?.movie
   const ambient = movie ? resolveAmbientColors(movie.backdropImages, movie.posterImages) : null
   usePublishAmbientTheme(ambient?.theme ?? null)

@@ -43,11 +43,13 @@ type Status = 'UNWATCHED' | 'IN_PROGRESS' | 'WATCHED'
 
 function siblingSeason(number: number, status: Status, episodeStatuses: Status[]) {
   return {
+    __typename: 'Season',
     id: `season-${number}`,
     seasonNumber: number,
     title: `Season ${number}`,
     watchStatus: status,
     episodes: episodeStatuses.map((watchStatus, index) => ({
+      __typename: 'Episode',
       id: `s${number}e${index + 1}`,
       watchStatus,
     })),
@@ -66,6 +68,7 @@ function episode(
 ) {
   const inProgress = overrides.positionSeconds != null
   return {
+    __typename: 'Episode',
     id: `e${number}`,
     title,
     episodeNumber: number,
@@ -94,6 +97,7 @@ function seasonData(overrides: Record<string, unknown> = {}): SeasonDetailQuery 
       airDate: '2018-03-01',
       watchStatus: 'IN_PROGRESS',
       series: {
+        __typename: 'Series',
         id: 'series-1',
         title: 'Northern Line',
         contentRating: { value: 'TV-MA' },
@@ -278,35 +282,48 @@ describe('SeasonDetailScreen', () => {
     expect(episode.querySelector('[style*="width"]')).toBeNull()
   })
 
-  it('confirms before marking the season watched, then flips the verb', async () => {
-    let watched = false
+  it('shouldConfirmAndThenUpdateEveryEpisodeFromTheMarkedSeason', async () => {
+    const requestedIds: string[] = []
     const markedIds: string[] = []
+    serve(seasonData(), requestedIds)
+    const watchedState = { watchStatus: 'WATCHED', watchProgress: null }
     server.use(
-      graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
-      graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
-      graphql.query('SeasonDetail', () =>
-        HttpResponse.json({
-          data: seasonData({ watchStatus: watched ? 'WATCHED' : 'IN_PROGRESS' }),
-        }),
-      ),
       graphql.mutation('MarkWatched', ({ variables }) => {
         markedIds.push((variables.input as { itemId: string }).itemId)
-        watched = true
-        return HttpResponse.json({ data: { markWatched: { userErrors: [] } } })
+        return HttpResponse.json({
+          data: {
+            markWatched: {
+              item: {
+                __typename: 'Season',
+                id: 'season-2',
+                ...watchedState,
+                episodes: ['e4', 'e5', 'e6'].map((id) => ({
+                  __typename: 'Episode',
+                  id,
+                  ...watchedState,
+                })),
+                series: {
+                  __typename: 'Series',
+                  id: 'series-1',
+                  watchStatus: 'IN_PROGRESS',
+                  watchProgress: { positionSeconds: 0, percentComplete: 75, durationSeconds: 0 },
+                },
+              },
+              userErrors: [],
+            },
+          },
+        })
       }),
     )
     const { user } = renderAppAt('/season/season-2')
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Mark season watched' })).toBeInTheDocument(),
-    )
 
-    await user.click(screen.getByRole('button', { name: 'Mark season watched' }))
+    await user.click(await screen.findByRole('button', { name: 'Mark season watched' }))
     expect(screen.getByRole('dialog', { name: 'Mark Season 2 as watched?' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Mark watched' }))
 
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Mark season unwatched' })).toBeInTheDocument(),
-    )
+    expect(await screen.findByRole('button', { name: 'Mark season unwatched' })).toBeEnabled()
+    expect(screen.getByRole('progressbar', { name: '3 of 3 watched' })).toBeInTheDocument()
     expect(markedIds).toEqual(['season-2'])
+    expect(requestedIds).toEqual(['season-2'])
   })
 })

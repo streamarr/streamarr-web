@@ -253,32 +253,72 @@ describe('MovieDetailScreen', () => {
     expect(screen.getByTestId('ambient-scope').style.getPropertyValue('--ambient-accent')).toBe('')
   })
 
-  it('marks the movie watched and flips the verb once the server agrees', async () => {
-    let watched = false
+  it('shouldFlipTheVerbFromTheMarkedItemWithoutLoadingTheMovieAgain', async () => {
+    const requestedIds: string[] = []
     const markedIds: string[] = []
+    serve(movieData({ watchStatus: 'IN_PROGRESS' }), requestedIds)
     server.use(
-      graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
-      graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
-      graphql.query('MovieDetail', () =>
-        HttpResponse.json({ data: movieData({ watchStatus: watched ? 'WATCHED' : 'UNWATCHED' }) }),
-      ),
       graphql.mutation('MarkWatched', ({ variables }) => {
         markedIds.push((variables.input as { itemId: string }).itemId)
-        watched = true
-        return HttpResponse.json({ data: { markWatched: { userErrors: [] } } })
+        return HttpResponse.json({
+          data: {
+            markWatched: {
+              item: { __typename: 'Movie', id: 'm1', watchStatus: 'WATCHED', watchProgress: null },
+              userErrors: [],
+            },
+          },
+        })
       }),
     )
     const { user } = renderAppAt('/movie/m1')
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Mark watched' })).toBeInTheDocument(),
-    )
 
-    await user.click(screen.getByRole('button', { name: 'Mark watched' }))
+    await user.click(await screen.findByRole('button', { name: 'Mark watched' }))
 
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Mark unwatched' })).toBeInTheDocument(),
-    )
+    expect(await screen.findByRole('button', { name: 'Mark unwatched' })).toBeEnabled()
+    expect(screen.getByRole('link', { name: 'Play' })).toBeInTheDocument()
     expect(markedIds).toEqual(['m1'])
+    expect(requestedIds).toEqual(['m1'])
+  })
+
+  it('shouldShowTheServerMessageWhenTheMarkIsRefused', async () => {
+    serve(movieData())
+    server.use(
+      graphql.mutation('MarkWatched', () =>
+        HttpResponse.json({
+          data: {
+            markWatched: {
+              item: null,
+              userErrors: [
+                {
+                  __typename: 'ItemNotFoundError',
+                  message: 'No movie, episode, season or series has the given ID.',
+                },
+              ],
+            },
+          },
+        }),
+      ),
+    )
+    const { user } = renderAppAt('/movie/m1')
+
+    await user.click(await screen.findByRole('button', { name: 'Mark watched' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'No movie, episode, season or series has the given ID.',
+    )
+    expect(screen.getByRole('button', { name: 'Mark watched' })).toBeEnabled()
+  })
+
+  it('shouldShowAGenericFailureWhenTheMarkCannotReachTheServer', async () => {
+    serve(movieData())
+    server.use(graphql.mutation('MarkWatched', () => HttpResponse.error()))
+    const { user } = renderAppAt('/movie/m1')
+
+    await user.click(await screen.findByRole('button', { name: 'Mark watched' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /^Couldn't update the watched state\.$/,
+    )
   })
 
   it('shouldShowTheServersWordsWhenTheWatchedStateCannotBeSaved', async () => {

@@ -14,16 +14,15 @@ afterEach(async () => {
 })
 
 describe('watched state across routes', () => {
-  it('shouldRefreshTheSeriesActionAfterMarkingItsSeasonWatched', async () => {
-    let watched = false
-    const status = () => (watched ? 'WATCHED' : 'UNWATCHED')
+  it('shouldUpdateTheSeriesActionFromTheMarkedSeasonWithoutLoadingTheSeriesAgain', async () => {
+    let seriesRequests = 0
     const episode = () => ({
       __typename: 'Episode',
       id: 'e1',
       title: 'First',
       episodeNumber: 1,
       runtime: 45,
-      watchStatus: status(),
+      watchStatus: 'UNWATCHED',
       watchProgress: null,
       files: [{ __typename: 'MediaFile', id: 'f1' }],
       stillImages: [],
@@ -35,7 +34,7 @@ describe('watched state across routes', () => {
       seasonNumber: 1,
       overview: 'One season',
       airDate: '2024-01-01',
-      watchStatus: status(),
+      watchStatus: 'UNWATCHED',
       watchProgress: null,
       episodes: [episode()],
       posterImages: [],
@@ -47,6 +46,7 @@ describe('watched state across routes', () => {
       ),
       graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
       graphql.query('SeriesDetail', () => {
+        seriesRequests += 1
         return HttpResponse.json({
           data: {
             series: {
@@ -60,7 +60,7 @@ describe('watched state across routes', () => {
               genres: [],
               directors: [],
               cast: [],
-              watchStatus: status(),
+              watchStatus: 'UNWATCHED',
               seasons: [season()],
               backdropImages: [],
               posterImages: [],
@@ -87,8 +87,21 @@ describe('watched state across routes', () => {
         }),
       ),
       graphql.mutation('MarkWatched', () => {
-        watched = true
-        return HttpResponse.json({ data: { markWatched: { userErrors: [] } } })
+        const watched = { watchStatus: 'WATCHED', watchProgress: null }
+        return HttpResponse.json({
+          data: {
+            markWatched: {
+              item: {
+                __typename: 'Season',
+                id: 's1',
+                ...watched,
+                episodes: [{ __typename: 'Episode', id: 'e1', ...watched }],
+                series: { __typename: 'Series', id: 'r1', ...watched },
+              },
+              userErrors: [],
+            },
+          },
+        })
       }),
     )
     const { user } = renderAppAt('/series/r1')
@@ -104,6 +117,8 @@ describe('watched state across routes', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Mark series unwatched' })).toBeInTheDocument(),
     )
+    expect(screen.getByLabelText('Watched')).toBeInTheDocument()
+    expect(seriesRequests).toBe(1)
   })
   it('shouldResumeFromReportedProgressAfterReturningToTheMovie', async () => {
     let position = 20
