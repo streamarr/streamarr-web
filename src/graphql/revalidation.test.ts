@@ -18,7 +18,10 @@ function fakeDocument(visibilityState: DocumentVisibilityState = 'visible') {
   }
 }
 
-function setup({ visibilityState }: { visibilityState?: DocumentVisibilityState } = {}) {
+function setup({
+  visibilityState,
+  reading = false,
+}: { visibilityState?: DocumentVisibilityState; reading?: boolean } = {}) {
   const window = new EventTarget()
   const page = fakeDocument(visibilityState)
   const subscribedListeners = new Set<() => void>()
@@ -26,6 +29,7 @@ function setup({ visibilityState }: { visibilityState?: DocumentVisibilityState 
   const refetchActive = vi.fn(() => pending.promise)
   const uninstall = installRevalidation({
     refetchActive,
+    isReading: () => reading,
     onSubscribed: (listener) => {
       subscribedListeners.add(listener)
       return () => subscribedListeners.delete(listener)
@@ -86,6 +90,20 @@ describe('revalidation', () => {
     expect(page.refetchActive).toHaveBeenCalledTimes(2)
   })
 
+  it('shouldRefetchOnceMoreWhenASocketSubscribesDuringAnotherRead', async () => {
+    // Apollo shares an identical read already in flight, so the first refetch keeps its snapshot.
+    const page = setup({ reading: true })
+
+    page.recover()
+    expect(page.refetchActive).toHaveBeenCalledOnce()
+    page.finishRefetch()
+
+    await vi.waitFor(() => expect(page.refetchActive).toHaveBeenCalledTimes(2))
+    page.finishRefetch()
+    await settled()
+    expect(page.refetchActive).toHaveBeenCalledTimes(2)
+  })
+
   it('shouldRefetchAgainAfterTheEarlierRefetchSettles', async () => {
     const page = setup()
     page.goOnline()
@@ -123,6 +141,7 @@ describe('revalidation', () => {
       .mockResolvedValue(undefined)
     installRevalidation({
       refetchActive,
+      isReading: () => false,
       onSubscribed: () => () => {},
       window,
       document: fakeDocument().document,

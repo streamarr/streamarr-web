@@ -474,6 +474,8 @@ describe('library administration', () => {
           // A scan starts after this read and before the socket subscribes, so no change reports it.
           state.libraries = [{ ...MOVIES, status: 'SCANNING' }, SHOWS]
           await vi.waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+          // The read is still in flight when the socket reports its subscription.
+          await delay(200)
         }
         return HttpResponse.json({ data: { libraries } })
       }),

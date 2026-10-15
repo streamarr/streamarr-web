@@ -45,6 +45,10 @@ function Authenticated() {
     () =>
       installRevalidation({
         refetchActive: () => client.refetchQueries({ include: 'active' }),
+        isReading: () =>
+          [...client.getObservableQueries('active')].some(
+            (query) => query.getCurrentResult().loading,
+          ),
         onSubscribed: (listener) => subscriptions.onSubscribed(listener),
         window,
         document,

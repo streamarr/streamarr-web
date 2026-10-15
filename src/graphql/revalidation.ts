@@ -5,6 +5,8 @@ interface EventSource {
 
 interface RevalidationDependencies {
   refetchActive: () => Promise<unknown>
+  /** Whether any active query has a read in flight. */
+  isReading: () => boolean
   onSubscribed: (listener: () => void) => () => void
   window: EventSource
   document: EventSource & { readonly visibilityState: DocumentVisibilityState }
@@ -13,11 +15,12 @@ interface RevalidationDependencies {
 /**
  * Refetches the active queries after a gap in which live changes may have been missed: a socket
  * subscribed after the queries read, the network came back, or the page returned from the
- * background. Overlapping triggers share one refetch, except that a socket subscribing during a
- * refetch earns one more after it. Nothing runs on a timer. Returns the uninstaller.
+ * background. Overlapping triggers share one refetch, except that a socket subscribing during any
+ * read earns one more after it. Nothing runs on a timer. Returns the uninstaller.
  */
 export function installRevalidation({
   refetchActive,
+  isReading,
   onSubscribed,
   window,
   document,
@@ -41,10 +44,10 @@ export function installRevalidation({
       })
   }
 
-  // A refetch that began before the socket subscribed can miss a change committed in between, and
-  // no frame reports that change, so one more refetch follows it.
+  // A read that began before the socket subscribed can miss a change committed in between, and no
+  // frame reports that change. A refetch now would share that read, so one more follows it.
   const onSocketSubscribed = (): void => {
-    if (inFlight) readAgainAfterInFlight = true
+    if (inFlight || isReading()) readAgainAfterInFlight = true
     revalidate()
   }
 
