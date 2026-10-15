@@ -343,6 +343,51 @@ describe('watched state across routes', () => {
 
     expect(await screen.findByRole('button', { name: 'Mark unwatched' })).toBeInTheDocument()
   })
+  it('shouldShowTheMovieWatchedWhenTheViewerReplaysBeforeTheEndOfPlaybackReportIsSent', async () => {
+    let watched = false
+    let pauseReceived = false
+    const pauseAcknowledgement = deferred()
+    server.use(
+      ...profileSelectedWithoutLibraries(),
+      graphql.query('MovieDetail', () =>
+        HttpResponse.json({
+          data: { movie: movieDetail({ watchStatus: watched ? 'WATCHED' : 'UNWATCHED' }) },
+        }),
+      ),
+      streamSessionCreated(),
+      graphql.mutation('ReportStreamSessionTimeline', async ({ variables }) => {
+        if (variables.state === 'PAUSED') {
+          pauseReceived = true
+          await pauseAcknowledgement.promise
+        }
+        if (variables.state === 'STOPPED' && variables.positionSeconds === 5400) {
+          watched = true
+        }
+        return HttpResponse.json({ data: { reportStreamSessionTimeline: true } })
+      }),
+      graphql.mutation('DestroyStreamSession', () =>
+        HttpResponse.json({ data: { destroyStreamSession: true } }),
+      ),
+    )
+    const { user, router } = renderAppAt('/movie/m1')
+    await user.click(await screen.findByRole('link', { name: 'Play' }))
+    await waitFor(() => expect(hls.loadSource).toHaveBeenCalled())
+    const video = document.querySelector('video')!
+    Object.defineProperty(video, 'currentTime', { writable: true, configurable: true, value: 5400 })
+    fireEvent(video, new Event('timeupdate'))
+    fireEvent(video, new Event('pause'))
+    fireEvent(video, new Event('ended'))
+    await waitFor(() => expect(pauseReceived).toBe(true))
+
+    video.currentTime = 30
+    fireEvent(video, new Event('timeupdate'))
+    pauseAcknowledgement.resolve()
+    await act(async () => {
+      router.history.back()
+    })
+
+    expect(await screen.findByRole('button', { name: 'Mark unwatched' })).toBeInTheDocument()
+  })
   it('shouldResumeFromReportedProgressAfterReturningToTheMovie', async () => {
     let position = 20
     let holdMovie = false

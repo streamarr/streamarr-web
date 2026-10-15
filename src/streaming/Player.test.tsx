@@ -1548,6 +1548,31 @@ describe('Player', () => {
     )
   })
 
+  it('shouldReportStoppedAtTheFinalPositionWhenTheViewerReplaysBeforeTheEndOfPlaybackReportIsSent', async () => {
+    const reports = serveSession()
+    const pauseAcknowledgement = deferred()
+    server.use(
+      graphql.mutation('ReportStreamSessionTimeline', async ({ variables }) => {
+        reports.push(variables as unknown as TimelineReport)
+        if (variables.state === 'PAUSED') await pauseAcknowledgement.promise
+        return HttpResponse.json({ data: { reportStreamSessionTimeline: true } })
+      }),
+    )
+    renderWithProviders(<Player mediaFileId="abcd" />)
+    const video = await attachedVideo()
+    playedToTheEnd(video, 5400)
+    await waitFor(() => expect(reports.at(-1)?.state).toBe('PAUSED'))
+
+    playheadAt(video, 30)
+    pauseAcknowledgement.resolve()
+
+    await waitFor(() =>
+      expect(reports.filter((report) => report.state === 'STOPPED')).toEqual([
+        { sessionId: 'sess-1', positionSeconds: 5400, state: 'STOPPED' },
+      ]),
+    )
+  })
+
   it('shouldReportStoppedAtTheLastKnownPositionWhenTheViewerReplaysAfterTheEndAndLeaves', async () => {
     const reports = serveSession()
     const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
