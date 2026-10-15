@@ -405,13 +405,8 @@ describe('library administration', () => {
       ),
     )
     const { user } = renderAppAt(SETTINGS)
-    await user.click(await screen.findByRole('button', { name: 'Refresh metadata' }))
-    await user.click(
-      within(await screen.findByRole('region', { name: 'Refresh metadata for Movies' })).getByRole(
-        'button',
-        { name: 'Refresh metadata' },
-      ),
-    )
+
+    await refreshMovies(user)
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Something went wrong. Please try again.',
@@ -478,16 +473,10 @@ describe('library administration', () => {
       ),
     )
     const { user } = renderAppAt(SETTINGS)
-    const detail = await screen.findByRole('article', { name: 'Movies settings' })
-    await user.click(within(detail).getByRole('button', { name: 'Refresh metadata' }))
 
-    await user.click(
-      within(await screen.findByRole('region', { name: 'Refresh metadata for Movies' })).getByRole(
-        'button',
-        { name: 'Refresh metadata' },
-      ),
-    )
+    await refreshMovies(user)
 
+    const detail = screen.getByRole('article', { name: 'Movies settings' })
     expect(await within(detail).findByRole('alert')).toHaveTextContent(
       'A library scan is already in progress.',
     )
