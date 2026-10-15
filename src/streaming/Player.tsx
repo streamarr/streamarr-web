@@ -85,6 +85,7 @@ export function Player({
     let sessionId: string | null = null
     let lastReportedPosition = startPositionSeconds ?? 0
     let lastKnownPosition: number | null = null
+    let unacknowledgedEndPosition: number | null = null
     let timelineReports = Promise.resolve()
     const reportCancellation = new AbortController()
     let previousCleanup = pendingCleanups.get(client)
@@ -111,8 +112,8 @@ export function Player({
       )
     }
 
-    // Reads the position only when its turn in the queue comes. An acknowledged STOPPED clears the
-    // playhead it sent unless a replay has moved it, so leaving repeats only a failed STOPPED.
+    // Reads the position only when its turn in the queue comes. An acknowledged STOPPED clears each
+    // position it sent, so leaving repeats only a failed STOPPED, even after a replay.
     function reportStopped(readStoppedAt: () => number | null) {
       enqueueReport(async (id) => {
         const stoppedAt = readStoppedAt()
@@ -124,6 +125,9 @@ export function Player({
           positionSeconds: Math.floor(stoppedAt),
           state: 'STOPPED',
         })
+        if (unacknowledgedEndPosition === stoppedAt) {
+          unacknowledgedEndPosition = null
+        }
         if (lastKnownPosition === stoppedAt) {
           lastKnownPosition = null
         }
@@ -192,6 +196,7 @@ export function Player({
       onEnded: (element) => {
         const endedAt = element.currentTime
         lastKnownPosition = endedAt
+        unacknowledgedEndPosition = endedAt
         // A replay can move the playhead while an earlier report holds the queue.
         reportStopped(() => endedAt)
       },
@@ -286,6 +291,7 @@ export function Player({
     return () => {
       cancelled = true
       startupDeadline.end()
+      reportStopped(() => unacknowledgedEndPosition)
       reportStopped(() => lastKnownPosition)
       detachSource()
       requestCleanup()

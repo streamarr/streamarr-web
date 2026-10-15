@@ -1491,6 +1491,36 @@ describe('Player', () => {
     )
   })
 
+  it('shouldReportStoppedAtTheFinalPositionOnLeavingWhenTheEndOfPlaybackReportFailedBeforeAReplay', async () => {
+    const reports = serveSession()
+    let failNextStop = true
+    server.use(
+      graphql.mutation('ReportStreamSessionTimeline', ({ variables }) => {
+        reports.push(variables as unknown as TimelineReport)
+        if (variables.state === 'STOPPED' && failNextStop) {
+          failNextStop = false
+          return HttpResponse.json({ errors: [{ message: 'Temporarily unavailable' }] })
+        }
+        return HttpResponse.json({ data: { reportStreamSessionTimeline: true } })
+      }),
+    )
+    const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
+    const video = await attachedVideo()
+    playedToTheEnd(video, 5400)
+    await waitFor(() => expect(failNextStop).toBe(false))
+
+    playheadAt(video, 30)
+    unmount()
+
+    await waitFor(() =>
+      expect(reports.filter((report) => report.state === 'STOPPED')).toEqual([
+        { sessionId: 'sess-1', positionSeconds: 5400, state: 'STOPPED' },
+        { sessionId: 'sess-1', positionSeconds: 5400, state: 'STOPPED' },
+        { sessionId: 'sess-1', positionSeconds: 30, state: 'STOPPED' },
+      ]),
+    )
+  })
+
   it('shouldReportStoppedOnceWhenTheViewerLeavesBeforeTheEndOfPlaybackReportIsAcknowledged', async () => {
     const reports = serveSession()
     const acknowledgement = deferred()
