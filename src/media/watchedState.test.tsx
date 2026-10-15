@@ -120,6 +120,96 @@ describe('watched state across routes', () => {
     expect(screen.getByLabelText('Watched')).toBeInTheDocument()
     expect(seriesRequests).toBe(1)
   })
+  it('shouldLoadContinueWatchingAgainAfterMarkingItsMovieWatched', async () => {
+    let watched = false
+    let homeRequests = 0
+    server.use(
+      graphql.query('Me', () =>
+        HttpResponse.json({ data: { me: meFixture({ scope: 'profile' }) } }),
+      ),
+      graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
+      graphql.query('Home', () => {
+        homeRequests += 1
+        return HttpResponse.json({
+          data: {
+            libraries: [],
+            continueWatching: watched
+              ? []
+              : [
+                  {
+                    __typename: 'Movie',
+                    id: 'm1',
+                    title: 'Everlight',
+                    tagline: null,
+                    summary: null,
+                    runtime: 90,
+                    createdOn: '2024-01-01T00:00:00Z',
+                    genres: [],
+                    images: [],
+                    files: [{ id: 'f1' }],
+                    watchProgress: {
+                      positionSeconds: 20,
+                      percentComplete: 2,
+                      durationSeconds: 5400,
+                    },
+                  },
+                ],
+          },
+        })
+      }),
+      graphql.query('MovieDetail', () =>
+        HttpResponse.json({
+          data: {
+            movie: {
+              __typename: 'Movie',
+              id: 'm1',
+              title: 'Everlight',
+              tagline: null,
+              summary: null,
+              runtime: 90,
+              releaseDate: '2024-01-01',
+              contentRating: null,
+              genres: [],
+              directors: [],
+              cast: [],
+              ratings: [],
+              files: [{ __typename: 'MediaFile', id: 'f1' }],
+              watchStatus: 'IN_PROGRESS',
+              watchProgress: { positionSeconds: 20, percentComplete: 2, durationSeconds: 5400 },
+              backdropImages: [],
+              posterImages: [],
+            },
+          },
+        }),
+      ),
+      graphql.mutation('MarkWatched', () => {
+        watched = true
+        return HttpResponse.json({
+          data: {
+            markWatched: {
+              item: { __typename: 'Movie', id: 'm1', watchStatus: 'WATCHED', watchProgress: null },
+              userErrors: [],
+            },
+          },
+        })
+      }),
+    )
+    const { user, router } = renderAppAt('/')
+    await screen.findByRole('heading', { name: 'Continue watching' })
+    await act(async () => {
+      await router.navigate({ to: '/movie/$movieId', params: { movieId: 'm1' } })
+    })
+
+    await user.click(await screen.findByRole('button', { name: 'Mark watched' }))
+    await screen.findByRole('button', { name: 'Mark unwatched' })
+    await act(async () => {
+      router.history.back()
+    })
+
+    await screen.findByRole('heading', { name: 'Nothing to watch yet' })
+    expect(screen.queryByRole('heading', { name: 'Continue watching' })).not.toBeInTheDocument()
+    expect(homeRequests).toBe(2)
+  })
   it('shouldResumeFromReportedProgressAfterReturningToTheMovie', async () => {
     let position = 20
     let holdMovie = false
