@@ -586,6 +586,79 @@ describe('library administration', () => {
   })
 
   it.each([
+    {
+      response: 'AStartedScan',
+      operationName: 'StartLibraryScan',
+      start: scanMovies,
+      busy: 'SCANNING' as const,
+      payload: {
+        startLibraryScan: { library: { ...MOVIES, status: 'SCANNING' }, userErrors: [] },
+      },
+    },
+    {
+      response: 'AStartedRefresh',
+      operationName: 'StartLibraryRefresh',
+      start: refreshMovies,
+      busy: 'REFRESHING' as const,
+      payload: {
+        startLibraryRefresh: { library: { ...MOVIES, status: 'REFRESHING' }, userErrors: [] },
+      },
+    },
+    {
+      response: 'ABusyRefusal',
+      operationName: 'StartLibraryScan',
+      start: scanMovies,
+      busy: 'SCANNING' as const,
+      payload: {
+        startLibraryScan: {
+          library: null,
+          userErrors: [
+            {
+              __typename: 'LibraryBusyError',
+              message: 'A library scan is already in progress.',
+              status: 'SCANNING',
+            },
+          ],
+        },
+      },
+    },
+  ])(
+    'shouldKeepTheLiveStatusWhenTheRunEndsBeforeTheResponseTo$response',
+    async ({ operationName, start, busy, payload }) => {
+      const state = serve()
+      const requested = deferred()
+      const answer = deferred()
+      server.use(
+        graphql.mutation(operationName, async () => {
+          requested.resolve()
+          await answer.promise
+          return HttpResponse.json({ data: payload })
+        }),
+      )
+      const { user } = renderAppAt(SETTINGS)
+      await screen.findByRole('article', { name: 'Movies settings' })
+      await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+      await start(user)
+      await requested.promise
+      const detail = screen.getByRole('article', { name: 'Movies settings' })
+      state.socket.publish('LibraryStatusChanged', {
+        data: { libraryStatusChanged: { ...MOVIES, status: busy } },
+      })
+      await waitFor(() => expect(detail).toHaveTextContent(busy))
+      state.socket.publish('LibraryStatusChanged', {
+        data: { libraryStatusChanged: { ...MOVIES, scanCompletedOn: '2026-10-15T12:05:00Z' } },
+      })
+      await waitFor(() => expect(detail).toHaveTextContent('HEALTHY'))
+
+      answer.resolve()
+
+      const scan = within(detail).getByRole('button', { name: 'Scan library' })
+      await waitFor(() => expect(scan).toBeEnabled())
+      expect(detail).toHaveTextContent('HEALTHY')
+    },
+  )
+
+  it.each([
     { operationName: 'StartLibraryScan', field: 'startLibraryScan', start: scanMovies },
     { operationName: 'StartLibraryRefresh', field: 'startLibraryRefresh', start: refreshMovies },
   ])(

@@ -7,6 +7,7 @@ import {
   LibraryAddedDocument,
   LibraryRemovedDocument,
   LibraryStatusChangedDocument,
+  ManagedLibraryFieldsFragmentDoc,
   RemoveLibraryDocument,
   StartLibraryRefreshDocument,
   StartLibraryScanDocument,
@@ -24,6 +25,29 @@ type LibraryOperationError = NonNullable<
   StartLibraryScanMutation['startLibraryScan']
 >['userErrors'][number]
 
+type LibraryOperationPayload = {
+  library?: ManagedLibraryFieldsFragment | null
+  userErrors: readonly LibraryOperationError[]
+}
+
+// The server orders no live change against a mutation response: a run can end, and its live
+// change arrive, before the response that started or refused the run. Each cache counts the live
+// changes it applied for each library, so a command can tell whether one arrived meanwhile.
+const liveChangeCounts = new WeakMap<ApolloCache, Map<string, number>>()
+
+function liveChangeCount(cache: ApolloCache, libraryId: string): number {
+  return liveChangeCounts.get(cache)?.get(libraryId) ?? 0
+}
+
+function countLiveChange(cache: ApolloCache, libraryId: string) {
+  let counts = liveChangeCounts.get(cache)
+  if (!counts) {
+    counts = new Map()
+    liveChangeCounts.set(cache, counts)
+  }
+  counts.set(libraryId, liveChangeCount(cache, libraryId) + 1)
+}
+
 /** Why live inventory changes stopped: the server refused them, or they ended another way. */
 export type LiveInventoryStop = 'forbidden' | 'failed'
 
@@ -39,7 +63,9 @@ function useLiveInventoryChanges(): {
   const removedIds = useRef(new Set<string>())
   const onError = (error: ErrorLike) => setStop(isForbidden(error) ? 'forbidden' : 'failed')
   const holdFrom = (library: ManagedLibraryFieldsFragment | undefined, cache: ApolloCache) => {
-    if (library && !removedIds.current.has(library.id)) holdLibrary(cache, library)
+    if (!library) return
+    countLiveChange(cache, library.id)
+    if (!removedIds.current.has(library.id)) holdLibrary(cache, library)
   }
   useSubscription(LibraryStatusChangedDocument, {
     ignoreResults: true,
@@ -57,6 +83,7 @@ function useLiveInventoryChanges(): {
       const removal = data.data?.libraryRemoved
       if (!removal) return
       removedIds.current.add(removal.libraryId)
+      countLiveChange(client.cache, removal.libraryId)
       dropLibrary(client.cache, removal.libraryId)
     },
     onError,
@@ -89,7 +116,7 @@ export function useAdminLibraries() {
  * One in-flight library command per caller. A null result means the request failed, was refused,
  * was a duplicate, or outlived the caller; creation's userErrors ride the returned payload. Scan
  * and refresh success means the server started the operation, not that it finished: the returned
- * library already shows the busy status.
+ * library shows the busy status, and the cache shows it too unless a newer live change arrived.
  */
 export function useLibraryCommands() {
   const client = useApolloClient()
@@ -125,15 +152,9 @@ export function useLibraryCommands() {
   }
 
   // The payload when the server did what was asked; a refusal shows its message instead.
-  function accepted<P extends { userErrors: readonly LibraryOperationError[] }>(
-    libraryId: string,
-    payload: P | null | undefined,
-  ): P | null {
+  function accepted<P extends LibraryOperationPayload>(payload: P | null | undefined): P | null {
     if (!payload) throw new Error('Missing library operation result')
     if (payload.userErrors.length === 0) return payload
-    for (const error of payload.userErrors) {
-      if (error.__typename === 'LibraryBusyError') showStatus(client.cache, libraryId, error.status)
-    }
     if (active.current) setFailure(payload.userErrors.map(userErrorMessage).join(' '))
     return null
   }
@@ -153,27 +174,35 @@ export function useLibraryCommands() {
       }, NOTHING_ADDED),
     scan: (libraryId: string) =>
       execute(async () => {
+        const writeOutcome = outcomeWriter(client.cache, libraryId)
         const { data } = await client.mutate({
           mutation: StartLibraryScanDocument,
           variables: { input: { libraryId } },
+          fetchPolicy: 'no-cache',
+          update: (cache, { data }) => writeOutcome(cache, data?.startLibraryScan),
         })
-        return startedLibrary(accepted(libraryId, data?.startLibraryScan))
+        return startedLibrary(accepted(data?.startLibraryScan))
       }),
     refresh: (libraryId: string, imageRefreshMode: ImageRefreshMode) =>
       execute(async () => {
+        const writeOutcome = outcomeWriter(client.cache, libraryId)
         const { data } = await client.mutate({
           mutation: StartLibraryRefreshDocument,
           variables: { input: { libraryId, imageRefreshMode } },
+          fetchPolicy: 'no-cache',
+          update: (cache, { data }) => writeOutcome(cache, data?.startLibraryRefresh),
         })
-        return startedLibrary(accepted(libraryId, data?.startLibraryRefresh))
+        return startedLibrary(accepted(data?.startLibraryRefresh))
       }),
     remove: (libraryId: string, onRemoved: () => void) =>
       execute(async () => {
+        const writeOutcome = outcomeWriter(client.cache, libraryId)
         const { data } = await client.mutate({
           mutation: RemoveLibraryDocument,
           variables: { input: { libraryId } },
+          update: (cache, { data }) => writeOutcome(cache, data?.removeLibrary),
         })
-        const payload = accepted(libraryId, data?.removeLibrary)
+        const payload = accepted(data?.removeLibrary)
         if (!payload) return null
         if (!payload.removedLibraryId) throw new Error('Removal was not confirmed')
         if (active.current) onRemoved()
@@ -184,13 +213,28 @@ export function useLibraryCommands() {
   }
 }
 
-// Normalization has already written the returned library, busy status included, into the cache.
 function startedLibrary(
-  payload: { library: ManagedLibraryFieldsFragment | null } | null,
+  payload: LibraryOperationPayload | null,
 ): ManagedLibraryFieldsFragment | null {
   if (!payload) return null
   if (!payload.library) throw new Error('Missing started library')
   return payload.library
+}
+
+// The returned library, or the status a busy refusal carries, writes into the cache unless a live
+// change for the library arrived during the request: that change can already say the run ended.
+// The write happens in the mutation's own cache update, so the library shows its new status by
+// the time the command returns.
+function outcomeWriter(cache: ApolloCache, libraryId: string) {
+  const liveChangesBefore = liveChangeCount(cache, libraryId)
+  return (target: ApolloCache, payload: LibraryOperationPayload | null | undefined) => {
+    if (!payload || liveChangeCount(target, libraryId) !== liveChangesBefore) return
+    if (payload.library)
+      target.writeFragment({ fragment: ManagedLibraryFieldsFragmentDoc, data: payload.library })
+    for (const error of payload.userErrors) {
+      if (error.__typename === 'LibraryBusyError') showStatus(target, libraryId, error.status)
+    }
+  }
 }
 
 // The inventory changes at once from the payload; the refetch then confirms it.
