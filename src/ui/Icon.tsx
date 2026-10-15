@@ -12,6 +12,7 @@ import {
   Eye,
   EyeOff,
   Folder,
+  Gauge,
   LockKeyhole,
   LogOut,
   Maximize,
@@ -65,6 +66,7 @@ const icons = {
   scan: ScanLine,
   refresh: RefreshCw,
   settings: Settings,
+  encoding: Gauge,
   close: X,
 } as const
 

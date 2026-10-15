@@ -101,6 +101,9 @@
       "ShareNotFoundError",
       "ShareNotPendingError"
     ],
+    "ChangeEncoderPresetError": [
+      "UnknownEncoderPresetError"
+    ],
     "ChangeProfileKindError": [
       "MaximumAllowedRatingAgeInvalidError",
       "ProfileNotFoundError",
@@ -128,6 +131,7 @@
     "CreateStreamSessionError": [
       "InvalidIdError",
       "InvalidMediaFileError",
+      "MediaFileFrameRateUnknownError",
       "MediaFileHasNoVideoError",
       "MediaFileNotFoundError",
       "MediaFileProbeNotReadyError",
@@ -253,7 +257,8 @@
       "SameHouseholdError",
       "ShareNotActiveError",
       "ShareNotFoundError",
-      "ShareNotPendingError"
+      "ShareNotPendingError",
+      "UnknownEncoderPresetError"
     ],
     "InviteProfileManagerError": [
       "AccountNotFoundError",
@@ -330,6 +335,7 @@
       "ManagementAlreadyRemovedError",
       "ManagerInvitationNotFoundError",
       "MaximumAllowedRatingAgeInvalidError",
+      "MediaFileFrameRateUnknownError",
       "MediaFileHasNoVideoError",
       "MediaFileNotFoundError",
       "MediaFileProbeNotReadyError",
@@ -362,7 +368,8 @@
       "ShareNotActiveError",
       "ShareNotFoundError",
       "ShareNotPendingError",
-      "TranscodeCapacityUnavailableError"
+      "TranscodeCapacityUnavailableError",
+      "UnknownEncoderPresetError"
     ],
     "OfferProfileShareError": [
       "HouseholdNotFoundError",

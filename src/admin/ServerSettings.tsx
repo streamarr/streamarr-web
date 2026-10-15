@@ -1,11 +1,26 @@
 import { useQuery } from '@apollo/client/react'
 import { Alert, Center, Loader } from '@mantine/core'
-import { Link, Outlet } from '@tanstack/react-router'
+import { Link, Outlet, useMatchRoute } from '@tanstack/react-router'
 import { MeDocument } from '../graphql/generated/graphql'
-import { Icon } from '../ui/Icon'
+import { Icon, type IconName } from '../ui/Icon'
 import { RetryAlert } from '../ui/RetryAlert'
 import { canManageServer } from './access'
 import styles from './Settings.module.css'
+
+const SECTIONS = [
+  {
+    to: '/settings/server/libraries',
+    icon: 'folder',
+    label: 'Libraries',
+    region: 'Library administration',
+  },
+  { to: '/settings/server/encoding', icon: 'encoding', label: 'Encoding', region: 'Encoding' },
+] as const satisfies readonly {
+  to: string
+  icon: IconName
+  label: string
+  region: string
+}[]
 
 /** The settings shell: sections mount only after the server confirms the admin's access on entry. */
 export function ServerSettings() {
@@ -31,16 +46,29 @@ export function ServerSettings() {
       </Alert>
     )
 
+  return <SettingsRail />
+}
+
+function SettingsRail() {
+  const matchRoute = useMatchRoute()
+  const current = SECTIONS.find((section) => matchRoute({ to: section.to, fuzzy: true }))
   return (
     <div className={`${styles.settings} ${styles.railLayout}`}>
       <nav className={styles.settingsRail} aria-label="Server settings">
         <div className={styles.railTitle}>Server settings</div>
-        <Link to="/settings/server/libraries" className={styles.sectionActive} aria-current="page">
-          <Icon name="folder" />
-          Libraries
-        </Link>
+        {SECTIONS.map((section) => (
+          <Link
+            key={section.to}
+            to={section.to}
+            className={styles.section}
+            aria-current={section === current ? 'page' : undefined}
+          >
+            <Icon name={section.icon} />
+            {section.label}
+          </Link>
+        ))}
       </nav>
-      <section className={styles.railContent} aria-label="Library administration">
+      <section className={styles.railContent} aria-label={current?.region}>
         <Outlet />
       </section>
     </div>
