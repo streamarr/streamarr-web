@@ -30,8 +30,10 @@ export default defineConfig({
     headers: {
       'Service-Worker-Allowed': '/',
     },
+    // Subscriptions upgrade /graphql to a WebSocket. Host stays the dev origin, which the server's
+    // same-origin check compares with Origin.
     proxy: {
-      '/graphql': apiTarget,
+      '/graphql': { target: apiTarget, ws: true },
       '/api': apiTarget,
     },
   },
