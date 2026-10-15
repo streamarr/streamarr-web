@@ -97,7 +97,7 @@ export function createSubscriptionTransport({
     })
 
   const notifySubscribed = (): void => {
-    for (const listener of [...subscribedListeners]) listener()
+    for (const listener of subscribedListeners) listener()
   }
 
   const renewBeforeReconnecting = async (connection: Connection): Promise<void> => {
@@ -192,7 +192,7 @@ export function createSubscriptionTransport({
     resubscribeTimer = undefined
     // Detaching fences the retired socket: a frame it still delivers reaches no operation.
     for (const live of operations) live.detach()
-    for (const wake of [...pendingWakes]) wake()
+    for (const wake of pendingWakes) wake()
     if (retired) {
       void Promise.resolve(retired.client.dispose()).catch(() => {})
     }
