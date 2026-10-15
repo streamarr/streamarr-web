@@ -104,7 +104,10 @@ export function useLibraryCommands() {
     }
   }, [])
 
-  async function execute<T>(operation: () => Promise<T>): Promise<T | null> {
+  async function execute<T>(
+    operation: () => Promise<T>,
+    nothingStarted = NOTHING_STARTED,
+  ): Promise<T | null> {
     if (inFlight.current) return null
     inFlight.current = true
     setPending(true)
@@ -113,12 +116,7 @@ export function useLibraryCommands() {
       const result = await operation()
       return active.current ? result : null
     } catch (error) {
-      if (active.current)
-        setFailure(
-          isForbidden(error)
-            ? NO_LONGER_PERMITTED
-            : "Couldn't confirm the operation. Refresh the page to check the library state before trying again.",
-        )
+      if (active.current) setFailure(failureMessage(error, nothingStarted))
       return null
     } finally {
       inFlight.current = false
@@ -151,7 +149,7 @@ export function useLibraryCommands() {
         if (data.addLibrary.library && data.addLibrary.userErrors.length === 0)
           refreshLibraryViews(client)
         return data.addLibrary
-      }),
+      }, NOTHING_ADDED),
     scan: (libraryId: string) =>
       execute(async () => {
         const { data } = await client.mutate({
@@ -212,6 +210,17 @@ function refreshLibraryViews(client: ApolloClient, removedId?: string) {
 
 /** The message for a refusal that says the admin lost the right to manage libraries. */
 export const NO_LONGER_PERMITTED = 'You no longer have permission to manage libraries.'
+
+// The server rolled back everything the request wrote, so these failures have a known outcome.
+const NOTHING_STARTED = 'Nothing started. The library is unchanged. Try again.'
+const NOTHING_ADDED = 'Nothing started. The library was not added. Try again.'
+
+function failureMessage(error: unknown, nothingStarted: string): string {
+  if (isForbidden(error)) return NO_LONGER_PERMITTED
+  if (extractAuthContext(error).graphqlCodes?.includes('LIBRARY_OPERATION_NOT_STARTED'))
+    return nothingStarted
+  return "Couldn't confirm the operation. Refresh the page to check the library state before trying again."
+}
 
 function isForbidden(error: unknown): boolean {
   const context = extractAuthContext(error)

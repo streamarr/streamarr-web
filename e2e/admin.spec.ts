@@ -373,6 +373,64 @@ test('refresh expands in place with aligned controls and acknowledges the starte
   ).toEqual({ input: { libraryId: 'movies', imageRefreshMode: 'REFRESH_IF_CHANGED' } })
 })
 
+async function answer(page: Page, operationName: string, body: object) {
+  await page.route('**/graphql', async (route) => {
+    const request = route.request().postDataJSON() as { operationName: string }
+    if (request.operationName !== operationName) return route.fallback()
+    return route.fulfill({ json: body })
+  })
+}
+
+test('a busy refusal shows its message and the status it carries', async ({ page }) => {
+  await fixture(page)
+  await answer(page, 'StartLibraryScan', {
+    data: {
+      startLibraryScan: {
+        library: null,
+        userErrors: [
+          {
+            __typename: 'LibraryBusyError',
+            message: 'A library scan is already in progress.',
+            status: 'SCANNING',
+          },
+        ],
+      },
+    },
+  })
+  await page.goto(SETTINGS)
+  const detail = page.getByRole('article', { name: 'Movies settings' })
+
+  await detail.getByRole('button', { name: 'Scan library' }).click()
+
+  await expect(detail.getByRole('alert')).toHaveText('A library scan is already in progress.')
+  await expect(detail.locator('[data-library-status]')).toHaveText('SCANNING')
+  await expect(detail.getByRole('button', { name: 'Scan library' })).toBeDisabled()
+})
+
+test('a scan the server could not start says that nothing started', async ({ page }) => {
+  await fixture(page)
+  await answer(page, 'StartLibraryScan', {
+    data: { startLibraryScan: null },
+    errors: [
+      {
+        message: 'Service unavailable',
+        path: ['startLibraryScan'],
+        extensions: { classification: 'UNAVAILABLE', code: 'LIBRARY_OPERATION_NOT_STARTED' },
+      },
+    ],
+  })
+  await page.goto(SETTINGS)
+  const detail = page.getByRole('article', { name: 'Movies settings' })
+
+  await detail.getByRole('button', { name: 'Scan library' }).click()
+
+  await expect(detail.getByRole('alert')).toHaveText(
+    'Nothing started. The library is unchanged. Try again.',
+  )
+  await expect(detail.locator('[data-library-status]')).toHaveText('HEALTHY')
+  await expect(detail.getByRole('button', { name: 'Scan library' })).toBeEnabled()
+})
+
 test("keyboard focus draws the theme ring on the page's own controls", async ({ page }) => {
   await fixture(page)
   await page.goto(SETTINGS)

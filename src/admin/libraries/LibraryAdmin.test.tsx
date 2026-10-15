@@ -54,6 +54,20 @@ function serve(libraries = [MOVIES, SHOWS], me = ADMIN) {
   return state
 }
 
+type User = ReturnType<typeof renderAppAt>['user']
+
+async function scanMovies(user: User) {
+  const detail = await screen.findByRole('article', { name: 'Movies settings' })
+  await user.click(within(detail).getByRole('button', { name: 'Scan library' }))
+}
+
+async function refreshMovies(user: User) {
+  const detail = await screen.findByRole('article', { name: 'Movies settings' })
+  await user.click(within(detail).getByRole('button', { name: 'Refresh metadata' }))
+  const editor = await screen.findByRole('region', { name: 'Refresh metadata for Movies' })
+  await user.click(within(editor).getByRole('button', { name: 'Refresh metadata' }))
+}
+
 function removed(removedLibraryId: string) {
   return { data: { removeLibrary: { removedLibraryId, userErrors: [] } } }
 }
@@ -252,6 +266,34 @@ describe('library administration', () => {
       /cannot add another library|Something went wrong/,
     )
     expect(screen.getByRole('textbox', { name: /Server folder/ })).toHaveValue('/media/movies')
+  })
+
+  it('shouldSayNothingStartedAndKeepTheDraftWhenCreationFailsWithTheNotStartedCode', async () => {
+    serve([])
+    server.use(
+      graphql.mutation('AddLibrary', () =>
+        HttpResponse.json({
+          data: { addLibrary: null },
+          errors: [
+            {
+              message: 'Service unavailable',
+              path: ['addLibrary'],
+              extensions: { classification: 'UNAVAILABLE', code: 'LIBRARY_OPERATION_NOT_STARTED' },
+            },
+          ],
+        }),
+      ),
+    )
+    const { user } = renderAppAt(`${SETTINGS}/new`)
+    await user.type(await screen.findByRole('textbox', { name: /Library name/ }), 'Family')
+    await user.type(screen.getByRole('textbox', { name: /Server folder/ }), '/media/family')
+
+    await user.click(screen.getByRole('button', { name: 'Add library' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Nothing started. The library was not added. Try again.',
+    )
+    expect(screen.getByRole('textbox', { name: /Server folder/ })).toHaveValue('/media/family')
   })
 
   it('shouldPreventDuplicateCreationAndPreserveDraftAfterTransportFailure', async () => {
@@ -486,6 +528,43 @@ describe('library administration', () => {
     await waitFor(() => expect(detail).toHaveTextContent('REFRESHING'))
     expect(state.libraries).toContain(MOVIES)
   })
+
+  it.each([
+    { operationName: 'StartLibraryScan', field: 'startLibraryScan', start: scanMovies },
+    { operationName: 'StartLibraryRefresh', field: 'startLibraryRefresh', start: refreshMovies },
+  ])(
+    'shouldSayNothingStartedWhenTheNotStartedCodeAnswers$operationName',
+    async ({ operationName, field, start }) => {
+      serve()
+      server.use(
+        graphql.mutation(operationName, () =>
+          HttpResponse.json({
+            data: { [field]: null },
+            errors: [
+              {
+                message: 'Service unavailable',
+                path: [field],
+                extensions: {
+                  classification: 'UNAVAILABLE',
+                  code: 'LIBRARY_OPERATION_NOT_STARTED',
+                },
+              },
+            ],
+          }),
+        ),
+      )
+      const { user } = renderAppAt(SETTINGS)
+
+      await start(user)
+
+      const detail = screen.getByRole('article', { name: 'Movies settings' })
+      expect(await within(detail).findByRole('alert')).toHaveTextContent(
+        'Nothing started. The library is unchanged. Try again.',
+      )
+      expect(detail).toHaveTextContent('HEALTHY')
+      expect(within(detail).getByRole('button', { name: 'Scan library' })).toBeEnabled()
+    },
+  )
 
   it('shouldShowEachStatusChangeLiveWithoutReadingTheInventoryAgain', async () => {
     const state = serve()
