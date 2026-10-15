@@ -22,7 +22,7 @@ export type LiveInventoryStop = 'forbidden' | 'failed'
 /**
  * Applies every library change as it commits: status and scan times update in place, an added
  * library joins the inventory once, and a removed one leaves it. The server replays nothing a
- * late subscriber missed, so mount this before the inventory query reads.
+ * late subscriber missed, so the inventory reads again once these operations subscribe.
  */
 export function useLiveInventoryChanges(): LiveInventoryStop | null {
   const [stop, setStop] = useState<LiveInventoryStop | null>(null)

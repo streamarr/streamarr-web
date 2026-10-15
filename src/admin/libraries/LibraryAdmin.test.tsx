@@ -80,7 +80,8 @@ describe('library administration', () => {
     )
     const { router } = renderAppAt(SETTINGS)
     await waitFor(() => expect(router.state.location.pathname).toBe('/select-profile'))
-    expect(state.inventoryRequests).toBe(1)
+    // The read once live status subscribes may land before the page leaves.
+    expect(state.inventoryRequests).toBeGreaterThan(0)
   })
 
   it('shouldRestoreLibrarySelectionFromHistoryAfterProfileMenuEntry', async () => {
@@ -436,6 +437,27 @@ describe('library administration', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Live status stopped. Reload the page to see the latest status.',
     )
+  })
+
+  it('shouldReadTheInventoryAgainOnceLiveStatusIsSubscribed', async () => {
+    const state = serve()
+    server.use(
+      graphql.query('AdminLibraries', async () => {
+        const libraries = state.libraries
+        if (state.inventoryRequests++ === 0) {
+          // A scan starts after this read and before the socket subscribes, so no change reports it.
+          state.libraries = [{ ...MOVIES, status: 'SCANNING' }, SHOWS]
+          await vi.waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+        }
+        return HttpResponse.json({ data: { libraries } })
+      }),
+    )
+
+    renderAppAt(SETTINGS)
+
+    const detail = await screen.findByRole('article', { name: 'Movies settings' })
+    await waitFor(() => expect(detail).toHaveTextContent('SCANNING'))
+    expect(state.inventoryRequests).toBe(2)
   })
 
   it('shouldReadTheInventoryAgainAfterTheSocketReconnects', async () => {

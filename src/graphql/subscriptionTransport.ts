@@ -28,7 +28,10 @@ export interface SubscriptionTransport {
    * operation on a new socket. Frames that the closed socket still delivers are dropped.
    */
   replaceSocket(): void
-  /** Calls the listener whenever live operations resume after a gap that may have missed changes. */
+  /**
+   * Calls the listener each time a socket has sent the subscribe frames of the live operations.
+   * A change committed before then reached no operation, so the listener reads again.
+   */
   onSubscribed(listener: () => void): () => void
 }
 
@@ -68,7 +71,6 @@ export function createSubscriptionTransport({
   const subscribedListeners = new Set<() => void>()
   const pendingWakes = new Set<() => void>()
   let current: Connection | undefined
-  let connectedBefore = false
   let resubscribeTimer: ReturnType<typeof setTimeout> | undefined
   let resubscribeAttempts = 0
 
@@ -103,12 +105,18 @@ export function createSubscriptionTransport({
     }
   }
 
+  // graphql-ws sends each subscribe frame after the connect promise it awaits settles, and that
+  // promise settles after the connected event; one task later every frame is on the socket.
+  const notifyOnceSubscribed = (connection: Connection): void => {
+    setTimeout(() => {
+      if (connection === current) notifySubscribed()
+    }, 0)
+  }
+
   const onConnected = (connection: Connection): void => {
     connection.acknowledged = true
     resubscribeAttempts = 0
-    if (connection !== current) return
-    if (connectedBefore) notifySubscribed()
-    connectedBefore = true
+    if (connection === current) notifyOnceSubscribed(connection)
   }
 
   // graphql-ws hands the browser's CloseEvent through untyped.
@@ -160,10 +168,10 @@ export function createSubscriptionTransport({
     const due = [...awaitingResubscribe]
     awaitingResubscribe.clear()
     if (due.length === 0) return
-    const socketOpen = current?.acknowledged === true
+    const open = current?.acknowledged === true ? current : undefined
     for (const live of due) live.start()
-    // A new socket reports its own recovery once it connects.
-    if (socketOpen) notifySubscribed()
+    // A socket that is not open yet reports once it connects.
+    if (open) notifyOnceSubscribed(open)
   }
 
   const resubscribeLater = (live: LiveOperation): void => {
@@ -175,7 +183,6 @@ export function createSubscriptionTransport({
   const retireConnection = (): void => {
     const retired = current
     current = undefined
-    connectedBefore = false
     clearTimeout(resubscribeTimer)
     resubscribeTimer = undefined
     // Detaching fences the retired socket: a frame it still delivers reaches no operation.

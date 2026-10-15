@@ -116,8 +116,11 @@ function setup({
     random,
   })
   const client = createApolloClient(vi.fn(), transport.link)
-  const recovered = vi.fn()
-  transport.onSubscribed(recovered)
+  // Each report keeps how many subscribe frames the newest socket had sent by then.
+  const framesAtEachReport: number[] = []
+  transport.onSubscribed(() => {
+    framesAtEachReport.push(latestSocket().subscriptionIds().length)
+  })
   const results: { data?: unknown; error?: unknown }[] = []
   const completed = vi.fn()
   const subscribe = () =>
@@ -131,7 +134,7 @@ function setup({
     transport,
     renewal,
     onSignedOut,
-    recovered,
+    framesAtEachReport,
     results,
     completed,
     subscribe,
@@ -279,7 +282,7 @@ describe('subscription transport', () => {
   )
 
   it('shouldReconnectAndSubscribeEveryOperationAgainAfterAnUnexpectedServerFailure', async () => {
-    const { subscribe, subscribeToAdditions, results, recovered } = setup()
+    const { subscribe, subscribeToAdditions, results, framesAtEachReport } = setup()
     subscribeToAdditions()
     const first = await connectAndSubscribe(subscribe)
 
@@ -293,7 +296,7 @@ describe('subscription transport', () => {
     await settle()
     expect(second.subscriptionIds()).toHaveLength(2)
     expect(results).toEqual([])
-    expect(recovered).toHaveBeenCalledOnce()
+    expect(framesAtEachReport).toEqual([2, 2])
   })
 
   it('shouldKeepRetryingPastFiveAttemptsWithDelaysCappedAtThirtySeconds', async () => {
@@ -380,7 +383,7 @@ describe('subscription transport', () => {
   })
 
   it('shouldMoveLiveOperationsToANewSocketAndDropLateFramesWhenTheIdentityChanges', async () => {
-    const { subscribe, transport, results, recovered } = setup()
+    const { subscribe, transport, results, framesAtEachReport } = setup()
     const earlier = await connectAndSubscribe(subscribe)
     const earlierId = earlier.subscriptionIds()[0]
 
@@ -402,11 +405,11 @@ describe('subscription transport', () => {
         },
       },
     ])
-    expect(recovered).not.toHaveBeenCalled()
+    expect(framesAtEachReport).toEqual([1, 1])
   })
 
   it('shouldIgnoreTheEarlierSocketsHandshakeAfterTheIdentityChanges', async () => {
-    const { subscribe, transport, recovered } = setup()
+    const { subscribe, transport, framesAtEachReport } = setup()
     subscribe()
     await settle()
     const earlier = latestSocket()
@@ -422,7 +425,7 @@ describe('subscription transport', () => {
     expect(next).not.toBe(earlier)
     expect(earlier.subscriptionIds()).toEqual([])
     expect(next.subscriptionIds()).toHaveLength(1)
-    expect(recovered).not.toHaveBeenCalled()
+    expect(framesAtEachReport).toEqual([1])
   })
 
   it('shouldOpenNoSocketWhenTheIdentityChangesWithNothingSubscribed', async () => {
@@ -434,17 +437,29 @@ describe('subscription transport', () => {
     expect(FakeWebSocket.instances).toHaveLength(0)
   })
 
-  it('shouldReportRecoveryOnlyWhenASocketConnectsAgain', async () => {
-    const { subscribe, recovered } = setup()
+  it('shouldReportEachSocketOnceItHasSentTheSubscribeFrames', async () => {
+    const { subscribe, framesAtEachReport } = setup()
     const first = await connectAndSubscribe(subscribe)
-    expect(recovered).not.toHaveBeenCalled()
+    expect(framesAtEachReport).toEqual([1])
 
     first.serverClose(1001, 'Going away')
     await vi.advanceTimersByTimeAsync(1_000)
     latestSocket().accept()
     await settle()
 
-    expect(recovered).toHaveBeenCalledOnce()
+    expect(framesAtEachReport).toEqual([1, 1])
+  })
+
+  it('shouldReportNothingForASocketStoppedBeforeItsSubscribeFramesWent', async () => {
+    const { subscribe, transport, framesAtEachReport } = setup()
+    subscribe()
+    await settle()
+
+    latestSocket().accept()
+    transport.stop()
+    await settle()
+
+    expect(framesAtEachReport).toEqual([])
   })
 
   it('shouldStopReportingRecoveryToARemovedListener', async () => {
@@ -459,26 +474,28 @@ describe('subscription transport', () => {
     latestSocket().accept()
     await settle()
 
-    expect(listener).not.toHaveBeenCalled()
+    expect(listener).toHaveBeenCalledOnce()
   })
 
   it('shouldSubscribeAgainOnTheSameSocketAndRecoverWhenOneOperationOverflows', async () => {
-    const { subscribe, subscribeToAdditions, results, recovered } = setup()
+    const { subscribe, subscribeToAdditions, results, framesAtEachReport } = setup()
     subscribeToAdditions()
     const socket = await connectAndSubscribe(subscribe)
     const [first] = socket.subscriptionIds()
 
     socket.deliver({ type: 'error', id: first, payload: errorCodes('SUBSCRIPTION_OVERFLOW') })
     await vi.advanceTimersByTimeAsync(1_000)
+    // The fake clock holds a zero-delay timer set during a tick for one millisecond.
+    await vi.advanceTimersByTimeAsync(1)
 
     expect(FakeWebSocket.instances).toHaveLength(1)
     expect(socket.subscriptionIds()).toHaveLength(3)
     expect(results).toEqual([])
-    expect(recovered).toHaveBeenCalledOnce()
+    expect(framesAtEachReport).toEqual([2, 3])
   })
 
   it('shouldReconnectAndRecoverWhenTheOnlyOperationOverflows', async () => {
-    const { subscribe, recovered } = setup()
+    const { subscribe, framesAtEachReport } = setup()
     const socket = await connectAndSubscribe(subscribe)
 
     socket.deliver({
@@ -493,7 +510,7 @@ describe('subscription transport', () => {
 
     expect(next).not.toBe(socket)
     expect(next.subscriptionIds()).toHaveLength(1)
-    expect(recovered).toHaveBeenCalledOnce()
+    expect(framesAtEachReport).toEqual([1, 1])
   })
 
   it('shouldSubscribeAgainWhenAuthorizationIsUnavailable', async () => {
@@ -544,7 +561,7 @@ describe('subscription transport', () => {
   })
 
   it('shouldNotSubscribeAgainForAnOperationThatEndedWhileWaiting', async () => {
-    const { subscribe, recovered } = setup()
+    const { subscribe, framesAtEachReport } = setup()
     const operation = subscribe()
     await settle()
     const socket = latestSocket()
@@ -561,7 +578,7 @@ describe('subscription transport', () => {
     await vi.advanceTimersByTimeAsync(120_000)
 
     expect(socket.subscriptionIds()).toHaveLength(1)
-    expect(recovered).not.toHaveBeenCalled()
+    expect(framesAtEachReport).toEqual([1])
   })
 
   it('shouldCloseTheSocketWhenTheLastOperationEnds', async () => {

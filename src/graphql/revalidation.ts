@@ -11,8 +11,8 @@ interface RevalidationDependencies {
 }
 
 /**
- * Refetches the active queries after a gap in which live changes may have been missed: the
- * subscription socket recovered, the network came back, or the page returned from the
+ * Refetches the active queries after a gap in which live changes may have been missed: a socket
+ * subscribed after the queries read, the network came back, or the page returned from the
  * background. Overlapping triggers share one refetch, and nothing runs on a timer. Returns the
  * uninstaller.
  */
