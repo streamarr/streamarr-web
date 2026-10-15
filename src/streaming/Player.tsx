@@ -106,27 +106,37 @@ export function Player({
     }
 
     function report(state: PlaybackState, positionSeconds: number) {
+      enqueueReport((id) =>
+        sendReport({ sessionId: id, positionSeconds: Math.floor(positionSeconds), state }),
+      )
+    }
+
+    function enqueueReport(send: (sessionId: string) => Promise<void>) {
       if (!sessionId) {
         return
       }
-      const variables = { sessionId, positionSeconds: Math.floor(positionSeconds), state }
+      const id = sessionId
       // The server accepts arrival order, including reports that precede the final STOPPED.
       timelineReports = timelineReports
         .then(async () => {
           if (reportCancellation.signal.aborted) {
             return
           }
-          await client.mutate({
-            mutation: ReportStreamSessionTimelineDocument,
-            variables,
-            context: { fetchOptions: { signal: reportCancellation.signal } },
-            update: (cache, { data }) => {
-              if (data?.reportStreamSessionTimeline) discardWatchedState(cache)
-            },
-            onQueryUpdated: refetchWatchedQuery,
-          })
+          await send(id)
         })
         .catch(ignoreTimelineReportFailure)
+    }
+
+    async function sendReport(variables: ReportStreamSessionTimelineMutationVariables) {
+      await client.mutate({
+        mutation: ReportStreamSessionTimelineDocument,
+        variables,
+        context: { fetchOptions: { signal: reportCancellation.signal } },
+        update: (cache, { data }) => {
+          if (data?.reportStreamSessionTimeline) discardWatchedState(cache)
+        },
+        onQueryUpdated: refetchWatchedQuery,
+      })
     }
 
     let playRequested = false
