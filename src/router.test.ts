@@ -58,7 +58,10 @@ describe('app composition', () => {
 
     socket.closeAll(4100, 'Access token expired')
 
-    await waitFor(() => expect(router.history.location.pathname).toBe('/login'))
+    // The renewal waits for the first retry delay, which jitters up to one second.
+    await waitFor(() => expect(router.history.location.pathname).toBe('/login'), {
+      timeout: 3_000,
+    })
     expect(renewal.refreshNow).toHaveBeenCalledOnce()
     expect(completed).toHaveBeenCalledOnce()
     expect(socket.state.connections).toBe(1)
