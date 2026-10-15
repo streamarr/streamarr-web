@@ -17,6 +17,11 @@ const RESUBSCRIBE_CODES = new Set(['SUBSCRIPTION_OVERFLOW', 'AUTHORIZATION_UNAVA
 /**
  * The WebSocket side of the GraphQL client. One lazy socket carries every subscription operation
  * and lives no longer than the identity that opened it.
+ *
+ * The socket opens when the first operation starts and closes when the last one ends. A consumer
+ * attaches by running a subscription document through the shared Apollo client, for example with
+ * `useSubscription`. Its operation lives as long as the component that runs it, and it moves to
+ * each replacement socket without the consumer doing anything.
  */
 export interface SubscriptionTransport {
   /** The terminating link for subscription operations. */
