@@ -117,7 +117,7 @@ function setup({
   })
   const client = createApolloClient(vi.fn(), transport.link)
   const recovered = vi.fn()
-  transport.onRecovered(recovered)
+  transport.onSubscribed(recovered)
   const results: { data?: unknown; error?: unknown }[] = []
   const completed = vi.fn()
   const subscribe = () =>
@@ -450,7 +450,7 @@ describe('subscription transport', () => {
   it('shouldStopReportingRecoveryToARemovedListener', async () => {
     const { subscribe, transport } = setup()
     const listener = vi.fn()
-    const remove = transport.onRecovered(listener)
+    const remove = transport.onSubscribed(listener)
     const first = await connectAndSubscribe(subscribe)
 
     remove()

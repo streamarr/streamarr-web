@@ -5,7 +5,7 @@ interface EventSource {
 
 interface RevalidationDependencies {
   refetchActive: () => Promise<unknown>
-  onRecovered: (listener: () => void) => () => void
+  onSubscribed: (listener: () => void) => () => void
   window: EventSource
   document: EventSource & { readonly visibilityState: DocumentVisibilityState }
 }
@@ -18,7 +18,7 @@ interface RevalidationDependencies {
  */
 export function installRevalidation({
   refetchActive,
-  onRecovered,
+  onSubscribed,
   window,
   document,
 }: RevalidationDependencies): () => void {
@@ -43,11 +43,11 @@ export function installRevalidation({
     if (returning) revalidate()
   }
 
-  const stopRecovered = onRecovered(revalidate)
+  const stopSubscribed = onSubscribed(revalidate)
   window.addEventListener('online', revalidate)
   document.addEventListener('visibilitychange', onVisibilityChange)
   return () => {
-    stopRecovered()
+    stopSubscribed()
     window.removeEventListener('online', revalidate)
     document.removeEventListener('visibilitychange', onVisibilityChange)
   }

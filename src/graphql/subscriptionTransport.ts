@@ -29,7 +29,7 @@ export interface SubscriptionTransport {
    */
   replaceSocket(): void
   /** Calls the listener whenever live operations resume after a gap that may have missed changes. */
-  onRecovered(listener: () => void): () => void
+  onSubscribed(listener: () => void): () => void
 }
 
 interface SubscriptionTransportDependencies {
@@ -65,7 +65,7 @@ export function createSubscriptionTransport({
 }: SubscriptionTransportDependencies): SubscriptionTransport {
   const operations = new Set<LiveOperation>()
   const awaitingResubscribe = new Set<LiveOperation>()
-  const recoveredListeners = new Set<() => void>()
+  const subscribedListeners = new Set<() => void>()
   const pendingWakes = new Set<() => void>()
   let current: Connection | undefined
   let connectedBefore = false
@@ -89,8 +89,8 @@ export function createSubscriptionTransport({
       pendingWakes.add(wake)
     })
 
-  const notifyRecovered = (): void => {
-    for (const listener of [...recoveredListeners]) listener()
+  const notifySubscribed = (): void => {
+    for (const listener of [...subscribedListeners]) listener()
   }
 
   const renewBeforeReconnecting = async (connection: Connection): Promise<void> => {
@@ -107,7 +107,7 @@ export function createSubscriptionTransport({
     connection.acknowledged = true
     resubscribeAttempts = 0
     if (connection !== current) return
-    if (connectedBefore) notifyRecovered()
+    if (connectedBefore) notifySubscribed()
     connectedBefore = true
   }
 
@@ -163,7 +163,7 @@ export function createSubscriptionTransport({
     const socketOpen = current?.acknowledged === true
     for (const live of due) live.start()
     // A new socket reports its own recovery once it connects.
-    if (socketOpen) notifyRecovered()
+    if (socketOpen) notifySubscribed()
   }
 
   const resubscribeLater = (live: LiveOperation): void => {
@@ -271,9 +271,9 @@ export function createSubscriptionTransport({
       retireConnection()
       for (const live of operations) live.start()
     },
-    onRecovered(listener) {
-      recoveredListeners.add(listener)
-      return () => recoveredListeners.delete(listener)
+    onSubscribed(listener) {
+      subscribedListeners.add(listener)
+      return () => subscribedListeners.delete(listener)
     },
   }
 }
