@@ -116,7 +116,7 @@ export function useAdminLibraries() {
  * One in-flight library command per caller. A null result means the request failed, was refused,
  * was a duplicate, or outlived the caller; creation's userErrors ride the returned payload. Scan
  * and refresh success means the server started the operation, not that it finished: the returned
- * library shows the busy status, and the cache shows it too unless a newer live change arrived.
+ * library shows the busy status unless a live change already reported that the run ended.
  */
 export function useLibraryCommands() {
   const client = useApolloClient()
@@ -181,7 +181,7 @@ export function useLibraryCommands() {
           fetchPolicy: 'no-cache',
           update: (cache, { data }) => writeOutcome(cache, data?.startLibraryScan),
         })
-        return startedLibrary(accepted(data?.startLibraryScan))
+        return startedLibrary(client.cache, accepted(data?.startLibraryScan))
       }),
     refresh: (libraryId: string, imageRefreshMode: ImageRefreshMode) =>
       execute(async () => {
@@ -192,7 +192,7 @@ export function useLibraryCommands() {
           fetchPolicy: 'no-cache',
           update: (cache, { data }) => writeOutcome(cache, data?.startLibraryRefresh),
         })
-        return startedLibrary(accepted(data?.startLibraryRefresh))
+        return startedLibrary(client.cache, accepted(data?.startLibraryRefresh))
       }),
     remove: (libraryId: string, onRemoved: () => void) =>
       execute(async () => {
@@ -213,12 +213,15 @@ export function useLibraryCommands() {
   }
 }
 
+// A live change that arrived during the request is newer than the returned library.
 function startedLibrary(
+  cache: ApolloCache,
   payload: LibraryOperationPayload | null,
 ): ManagedLibraryFieldsFragment | null {
   if (!payload) return null
   if (!payload.library) throw new Error('Missing started library')
-  return payload.library
+  const id = cache.identify(payload.library)
+  return cache.readFragment({ fragment: ManagedLibraryFieldsFragmentDoc, id }) ?? payload.library
 }
 
 // The returned library, or the status a busy refusal carries, writes into the cache unless a live

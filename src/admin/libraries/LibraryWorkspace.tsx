@@ -226,6 +226,11 @@ function LibraryDetails({
     else actionNotice.current?.focus({ preventScroll: true })
   }, [refreshOpen, commands.pending])
 
+  // A run that already ended needs no acknowledgement: the status and last scan show its outcome.
+  function acknowledge(started: ManagedLibrary, text: string) {
+    if (!canMaintainLibrary(started)) setAcknowledgement({ text, status: started.status })
+  }
+
   function closeRefresh() {
     restoreRefreshFocus.current = true
     setRefreshOpen(false)
@@ -271,10 +276,7 @@ function LibraryDetails({
               if (disabled) return
               const started = await commands.refresh(library.id, imageMode)
               if (!started) return
-              setAcknowledgement({
-                text: `Metadata refresh requested for ${name}.`,
-                status: started.status,
-              })
+              acknowledge(started, `Metadata refresh requested for ${name}.`)
               closeRefresh()
             }}
           >
@@ -336,8 +338,7 @@ function LibraryDetails({
             onClick={async () => {
               setRefreshOpen(false)
               const started = await commands.scan(library.id)
-              if (started)
-                setAcknowledgement({ text: `Scan requested for ${name}.`, status: started.status })
+              if (started) acknowledge(started, `Scan requested for ${name}.`)
             }}
           >
             Scan library
