@@ -18,11 +18,19 @@ import {
   libraryTypeLabel,
   type ManagedLibrary,
 } from './libraryModel'
-import { useAdminLibraries, useLibraryCommands } from './useLibraryAdmin'
+import {
+  NO_LONGER_PERMITTED,
+  useAdminLibraries,
+  useLibraryCommands,
+  useLiveInventoryChanges,
+  type LiveInventoryStop,
+} from './useLibraryAdmin'
 import styles from '../Settings.module.css'
 
-// Until #32 delivers live status, every acknowledgement points at a reload.
-const REFRESH_PAGE_FOR_STATUS = 'Refresh the page to see the latest status.'
+const LIVE_INVENTORY_STOP_MESSAGES = {
+  forbidden: NO_LONGER_PERMITTED,
+  failed: 'Live status stopped. Reload the page to see the latest status.',
+} as const satisfies Record<LiveInventoryStop, string>
 
 const IMAGE_REFRESH_OPTIONS = [
   { value: 'PRESERVE', label: 'Keep existing images' },
@@ -42,6 +50,7 @@ export function LibraryWorkspace({
   selectedId?: string
   onSelect: (id: string) => void
 }>) {
+  const liveStop = useLiveInventoryChanges()
   const query = useAdminLibraries()
   const [notice, setNotice] = useState('')
   const heading = useRef<HTMLHeadingElement>(null)
@@ -75,6 +84,11 @@ export function LibraryWorkspace({
             <Icon name="close" size={16} />
           </button>
         </output>
+      )}
+      {liveStop && (
+        <Alert role="alert" color="red" mb="md">
+          {LIVE_INVENTORY_STOP_MESSAGES[liveStop]}
+        </Alert>
       )}
       {query.error && (
         <FailureRow className={styles.failureRow} onRetry={query.refetch}>
@@ -247,7 +261,7 @@ function LibraryDetails({
               event.preventDefault()
               if (disabled) return
               if (await commands.refresh(library.id, imageMode)) {
-                setNotice(`Metadata refresh requested for ${name}. ${REFRESH_PAGE_FOR_STATUS}`)
+                setNotice(`Metadata refresh requested for ${name}.`)
                 closeRefresh()
               }
             }}
@@ -309,8 +323,7 @@ function LibraryDetails({
             leftSection={<Icon name="scan" />}
             onClick={async () => {
               setRefreshOpen(false)
-              if (await commands.scan(library.id))
-                setNotice(`Scan requested for ${name}. ${REFRESH_PAGE_FOR_STATUS}`)
+              if (await commands.scan(library.id)) setNotice(`Scan requested for ${name}.`)
             }}
           >
             Scan library
@@ -347,7 +360,7 @@ function LibraryDetails({
           {!maintainable && (
             <p>
               {library.status === 'SCANNING' || library.status === 'REFRESHING'
-                ? `Maintenance is in progress. ${REFRESH_PAGE_FOR_STATUS} You can still view this library.`
+                ? 'Maintenance is in progress. You can still view this library.'
                 : 'Maintenance is unavailable for this library status.'}
             </p>
           )}

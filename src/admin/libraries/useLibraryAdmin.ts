@@ -1,20 +1,60 @@
-import type { ApolloCache, ApolloClient, Reference } from '@apollo/client'
-import { useApolloClient, useQuery } from '@apollo/client/react'
+import type { ApolloCache, ApolloClient, ErrorLike, Reference } from '@apollo/client'
+import { useApolloClient, useQuery, useSubscription } from '@apollo/client/react'
 import { useEffect, useRef, useState } from 'react'
 import {
   AddLibraryDocument,
   AdminLibrariesDocument,
+  LibraryAddedDocument,
+  LibraryRemovedDocument,
+  LibraryStatusChangedDocument,
   RefreshLibraryDocument,
   RemoveLibraryDocument,
   ScanLibraryDocument,
   type AddLibraryInput,
   type ImageRefreshMode,
+  type ManagedLibraryFieldsFragment,
 } from '../../graphql/generated/graphql'
 import { extractAuthContext } from '../../graphql/errorRouting'
 
+/** Why live inventory changes stopped: the server refused them, or they ended another way. */
+export type LiveInventoryStop = 'forbidden' | 'failed'
+
 /**
- * The inventory as of entry or reload: no polling and no refetch on focus. A failed refetch
- * keeps the last inventory, so callers disable maintenance while `error` is set.
+ * Applies every library change as it commits: status and scan times update in place, an added
+ * library joins the inventory once, and a removed one leaves it. The server replays nothing a
+ * late subscriber missed, so mount this before the inventory query reads.
+ */
+export function useLiveInventoryChanges(): LiveInventoryStop | null {
+  const [stop, setStop] = useState<LiveInventoryStop | null>(null)
+  const onError = (error: ErrorLike) => setStop(isForbidden(error) ? 'forbidden' : 'failed')
+  const holdFrom = (library: ManagedLibraryFieldsFragment | undefined, cache: ApolloCache) => {
+    if (library) holdLibrary(cache, library)
+  }
+  useSubscription(LibraryStatusChangedDocument, {
+    ignoreResults: true,
+    onData: ({ client, data }) => holdFrom(data.data?.libraryStatusChanged, client.cache),
+    onError,
+  })
+  useSubscription(LibraryAddedDocument, {
+    ignoreResults: true,
+    onData: ({ client, data }) => holdFrom(data.data?.libraryAdded, client.cache),
+    onError,
+  })
+  useSubscription(LibraryRemovedDocument, {
+    ignoreResults: true,
+    onData: ({ client, data }) => {
+      const removal = data.data?.libraryRemoved
+      if (removal) dropLibrary(client.cache, removal.libraryId)
+    },
+    onError,
+  })
+  return stop
+}
+
+/**
+ * The inventory as of entry or reload, kept current by live changes: no polling and no refetch
+ * on focus. A failed refetch keeps the last inventory, so callers disable maintenance while
+ * `error` is set.
  */
 export function useAdminLibraries() {
   const query = useQuery(AdminLibrariesDocument, {
@@ -50,13 +90,10 @@ export function useLibraryCommands() {
       const result = await operation()
       return active.current ? result : null
     } catch (error) {
-      const context = extractAuthContext(error)
-      const denied =
-        context.graphqlCodes?.includes('FORBIDDEN') || context.networkCode === 'FORBIDDEN'
       if (active.current)
         setFailure(
-          denied
-            ? 'You no longer have permission to manage libraries.'
+          isForbidden(error)
+            ? NO_LONGER_PERMITTED
             : "Couldn't confirm the operation. Refresh the page to check the library state before trying again.",
         )
       return null
@@ -119,6 +156,27 @@ function refreshLibraryViews(client: ApolloClient, removedId?: string) {
       },
     })
     .catch(() => {})
+}
+
+/** The message for a refusal that says the admin lost the right to manage libraries. */
+export const NO_LONGER_PERMITTED = 'You no longer have permission to manage libraries.'
+
+function isForbidden(error: unknown): boolean {
+  const context = extractAuthContext(error)
+  return !!context.graphqlCodes?.includes('FORBIDDEN') || context.networkCode === 'FORBIDDEN'
+}
+
+// The change already wrote the library itself; every cached library list gains it once.
+function holdLibrary(cache: ApolloCache, library: ManagedLibraryFieldsFragment) {
+  cache.modify<{ libraries: readonly Reference[] }>({
+    fields: {
+      libraries: (existing, { readField, toReference }) => {
+        if (existing.some((held) => readField('id', held) === library.id)) return existing
+        const added = toReference(library)
+        return added ? [...existing, added] : existing
+      },
+    },
+  })
 }
 
 // Every cached library list drops the library at once; the refetch then confirms the inventory.

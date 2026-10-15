@@ -1,6 +1,7 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import { delay, graphql, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
+import { serveGraphqlSocket } from '../../test/graphqlSocket'
 import { meFixture } from '../../test/meFixture'
 import { renderAppAt } from '../../test/render'
 import { server } from '../../test/server'
@@ -32,7 +33,7 @@ const SHOWS: ManagedLibrary = {
 const SETTINGS = '/settings/server/libraries'
 
 function serve(libraries = [MOVIES, SHOWS], me = ADMIN) {
-  const state = { libraries, me, inventoryRequests: 0 }
+  const state = { libraries, me, inventoryRequests: 0, socket: serveGraphqlSocket() }
   server.use(
     graphql.query('Me', () => HttpResponse.json({ data: { me: state.me } })),
     graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: state.libraries } })),
@@ -291,7 +292,7 @@ describe('library administration', () => {
     const detail = await screen.findByRole('article', { name: 'Movies settings' })
     const requests = state.inventoryRequests
     await user.click(within(detail).getByRole('button', { name: 'Scan library' }))
-    await screen.findByText('Scan requested for Movies. Refresh the page to see the latest status.')
+    await screen.findByText('Scan requested for Movies.')
     expect(detail).toHaveTextContent('HEALTHY')
     expect(state.inventoryRequests).toBe(requests)
     state.libraries = [{ ...MOVIES, status: 'UNHEALTHY', scanCompletedOn: '2026-09-22T13:00:00Z' }]
@@ -301,6 +302,156 @@ describe('library administration', () => {
       'UNHEALTHY',
     )
     expect(screen.getByRole('article')).not.toHaveTextContent('Not scanned yet')
+  })
+
+  it('shouldShowEachStatusChangeLiveWithoutReadingTheInventoryAgain', async () => {
+    const state = serve()
+    renderAppAt(SETTINGS)
+    const detail = await screen.findByRole('article', { name: 'Movies settings' })
+    await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+    const requests = state.inventoryRequests
+
+    state.socket.publish('LibraryStatusChanged', {
+      data: {
+        libraryStatusChanged: {
+          ...MOVIES,
+          status: 'SCANNING',
+          scanStartedOn: '2026-10-15T12:00:00Z',
+        },
+      },
+    })
+    await waitFor(() => expect(detail).toHaveTextContent('SCANNING'))
+    expect(within(detail).getByRole('button', { name: 'Scan library' })).toBeDisabled()
+    expect(detail).toHaveTextContent('Maintenance is in progress. You can still view this library.')
+    expect(detail).toHaveTextContent('Not completed yet')
+
+    state.socket.publish('LibraryStatusChanged', {
+      data: {
+        libraryStatusChanged: {
+          ...MOVIES,
+          status: 'HEALTHY',
+          scanStartedOn: '2026-10-15T12:00:00Z',
+          scanCompletedOn: '2026-10-15T12:05:00Z',
+        },
+      },
+    })
+    await waitFor(() => expect(detail).toHaveTextContent('HEALTHY'))
+    expect(within(detail).getByRole('button', { name: 'Scan library' })).toBeEnabled()
+    expect(detail).not.toHaveTextContent('Not completed yet')
+    expect(state.inventoryRequests).toBe(requests)
+  })
+
+  it('shouldWatchStatusAdditionsAndRemovalsOverOneSocket', async () => {
+    const state = serve()
+
+    renderAppAt(SETTINGS)
+
+    await screen.findByRole('article', { name: 'Movies settings' })
+    await waitFor(() =>
+      expect([...state.socket.state.subscribes].sort()).toEqual([
+        'LibraryAdded',
+        'LibraryRemoved',
+        'LibraryStatusChanged',
+      ]),
+    )
+    expect(state.socket.state.connections).toBe(1)
+  })
+
+  it('shouldListALibraryAnotherSessionAddedOnlyOnce', async () => {
+    const state = serve()
+    renderAppAt(SETTINGS)
+    await screen.findByRole('article', { name: 'Movies settings' })
+    await waitFor(() => expect(state.socket.isLive('LibraryAdded')).toBe(true))
+    const family = { ...MOVIES, id: 'family', name: 'Family', status: 'SCANNING' as const }
+
+    state.socket.publish('LibraryAdded', { data: { libraryAdded: family } })
+    state.socket.publish('LibraryAdded', { data: { libraryAdded: family } })
+
+    const inventory = screen.getByRole('navigation', { name: 'Libraries to manage' })
+    await within(inventory).findByRole('button', { name: /Family/ })
+    expect(within(inventory).getAllByRole('button')).toHaveLength(3)
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Libraries3')
+  })
+
+  it('shouldListALibraryWhoseStatusChangeArrivesBeforeItsAddition', async () => {
+    const state = serve()
+    renderAppAt(SETTINGS)
+    await screen.findByRole('article', { name: 'Movies settings' })
+    await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+
+    state.socket.publish('LibraryStatusChanged', {
+      data: { libraryStatusChanged: { ...MOVIES, id: 'family', name: 'Family' } },
+    })
+
+    await within(screen.getByRole('navigation', { name: 'Libraries to manage' })).findByRole(
+      'button',
+      { name: /Family/ },
+    )
+  })
+
+  it('shouldDropALibraryAnotherSessionRemoved', async () => {
+    const state = serve()
+    renderAppAt(SETTINGS)
+    await screen.findByRole('article', { name: 'Movies settings' })
+    await waitFor(() => expect(state.socket.isLive('LibraryRemoved')).toBe(true))
+
+    state.socket.publish('LibraryRemoved', {
+      data: { libraryRemoved: { __typename: 'LibraryRemoval', libraryId: 'shows' } },
+    })
+
+    const inventory = screen.getByRole('navigation', { name: 'Libraries to manage' })
+    await waitFor(() =>
+      expect(within(inventory).queryByRole('button', { name: /TV shows/ })).not.toBeInTheDocument(),
+    )
+    expect(screen.getByRole('article', { name: 'Movies settings' })).toBeInTheDocument()
+  })
+
+  it('shouldSayWhenTheServerNoLongerAllowsLiveStatus', async () => {
+    const state = serve()
+    renderAppAt(SETTINGS)
+    await screen.findByRole('article', { name: 'Movies settings' })
+    await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+
+    state.socket.publish('LibraryStatusChanged', {
+      errors: [{ message: 'Forbidden', extensions: { code: 'FORBIDDEN' } }],
+    })
+    state.socket.complete('LibraryStatusChanged')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'You no longer have permission to manage libraries.',
+    )
+    expect(state.socket.state.subscribes.filter((name) => name === 'LibraryStatusChanged')).toEqual(
+      ['LibraryStatusChanged'],
+    )
+  })
+
+  it('shouldSayWhenLiveStatusStopsForAnotherReason', async () => {
+    const state = serve()
+    renderAppAt(SETTINGS)
+    await screen.findByRole('article', { name: 'Movies settings' })
+    await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+
+    state.socket.closeAll(4400, 'Invalid message')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Live status stopped. Reload the page to see the latest status.',
+    )
+  })
+
+  it('shouldReadTheInventoryAgainAfterTheSocketReconnects', async () => {
+    const state = serve()
+    renderAppAt(SETTINGS)
+    const detail = await screen.findByRole('article', { name: 'Movies settings' })
+    await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+    const requests = state.inventoryRequests
+    state.libraries = [{ ...MOVIES, status: 'REFRESHING' }, SHOWS]
+
+    state.socket.closeAll(1001, 'Going away')
+
+    await waitFor(() => expect(detail).toHaveTextContent('REFRESHING'), { timeout: 3_000 })
+    await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+    expect(state.socket.state.connections).toBe(2)
+    expect(state.inventoryRequests).toBe(requests + 1)
   })
 
   it('shouldSubmitSelectedImagePolicyAndRestoreRefreshTriggerFocus', async () => {
@@ -329,9 +480,7 @@ describe('library administration', () => {
         { name: 'Refresh metadata' },
       ),
     )
-    await screen.findByText(
-      'Metadata refresh requested for Movies. Refresh the page to see the latest status.',
-    )
+    await screen.findByText('Metadata refresh requested for Movies.')
     expect(submitted).toEqual({ id: 'movies', imageRefreshMode: 'FORCE_REFRESH' })
     expect(state.inventoryRequests).toBe(requests)
     expect(trigger).toHaveFocus()
