@@ -19,12 +19,9 @@ import { extractAuthContext } from '../../graphql/errorRouting'
 /** Why live inventory changes stopped: the server refused them, or they ended another way. */
 export type LiveInventoryStop = 'forbidden' | 'failed'
 
-/**
- * Applies every library change as it commits: status and scan times update in place, an added
- * library joins the inventory once, and a removed one leaves it for good. The server replays
- * nothing a late subscriber missed, so the inventory reads again once these operations subscribe.
- */
-export function useLiveInventoryChanges(): LiveInventoryStop | null {
+// Applies every library change as it commits: status and scan times update in place, an added
+// library joins the inventory once, and a removed one leaves it for good.
+function useLiveInventoryChanges(): LiveInventoryStop | null {
   const [stop, setStop] = useState<LiveInventoryStop | null>(null)
   // The server orders no frames across fields: a change committed before a removal can arrive
   // after it. A library id never returns once removed.
@@ -59,13 +56,15 @@ export function useLiveInventoryChanges(): LiveInventoryStop | null {
 /**
  * The inventory as of entry or reload, kept current by live changes: no polling and no refetch
  * on focus. A failed refetch keeps the last inventory, so callers disable maintenance while
- * `error` is set.
+ * `error` is set. `liveStop` says why live changes stopped, if they did. The server replays
+ * nothing a late subscriber missed, so the inventory reads again once the changes subscribe.
  */
 export function useAdminLibraries() {
+  const liveStop = useLiveInventoryChanges()
   const query = useQuery(AdminLibrariesDocument, {
     fetchPolicy: 'cache-and-network',
   })
-  return { ...query, data: query.data ?? query.previousData }
+  return { ...query, data: query.data ?? query.previousData, liveStop }
 }
 
 /**

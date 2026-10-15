@@ -22,7 +22,6 @@ import {
   NO_LONGER_PERMITTED,
   useAdminLibraries,
   useLibraryCommands,
-  useLiveInventoryChanges,
   type LiveInventoryStop,
 } from './useLibraryAdmin'
 import styles from '../Settings.module.css'
@@ -50,8 +49,8 @@ export function LibraryWorkspace({
   selectedId?: string
   onSelect: (id: string) => void
 }>) {
-  const liveStop = useLiveInventoryChanges()
   const query = useAdminLibraries()
+  const { liveStop } = query
   const [notice, setNotice] = useState('')
   const heading = useRef<HTMLHeadingElement>(null)
   const libraries = query.data?.libraries
