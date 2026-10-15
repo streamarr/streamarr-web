@@ -47,6 +47,16 @@ function setup({ visibilityState }: { visibilityState?: DocumentVisibilityState 
   }
 }
 
+// Lets every promise continuation that is already queued run.
+async function settled() {
+  vi.useFakeTimers()
+  try {
+    await vi.advanceTimersByTimeAsync(0)
+  } finally {
+    vi.useRealTimers()
+  }
+}
+
 describe('revalidation', () => {
   it('shouldRefetchOnceWhenRecoveryOnlineAndAReturnOverlap', () => {
     const page = setup()
@@ -57,6 +67,23 @@ describe('revalidation', () => {
     page.becomeVisible()
 
     expect(page.refetchActive).toHaveBeenCalledOnce()
+  })
+
+  it('shouldRefetchOnceMoreWhenASocketSubscribesDuringAnEarlierRefetch', async () => {
+    const page = setup()
+    page.goOnline()
+
+    page.recover()
+    page.recover()
+    page.becomeHidden()
+    page.becomeVisible()
+    expect(page.refetchActive).toHaveBeenCalledOnce()
+    page.finishRefetch()
+
+    await vi.waitFor(() => expect(page.refetchActive).toHaveBeenCalledTimes(2))
+    page.finishRefetch()
+    await settled()
+    expect(page.refetchActive).toHaveBeenCalledTimes(2)
   })
 
   it('shouldRefetchAgainAfterTheEarlierRefetchSettles', async () => {

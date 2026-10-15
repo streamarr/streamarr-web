@@ -13,8 +13,8 @@ interface RevalidationDependencies {
 /**
  * Refetches the active queries after a gap in which live changes may have been missed: a socket
  * subscribed after the queries read, the network came back, or the page returned from the
- * background. Overlapping triggers share one refetch, and nothing runs on a timer. Returns the
- * uninstaller.
+ * background. Overlapping triggers share one refetch, except that a socket subscribing during a
+ * refetch earns one more after it. Nothing runs on a timer. Returns the uninstaller.
  */
 export function installRevalidation({
   refetchActive,
@@ -23,6 +23,7 @@ export function installRevalidation({
   document,
 }: RevalidationDependencies): () => void {
   let inFlight: Promise<void> | null = null
+  let readAgainAfterInFlight = false
   let hidden = document.visibilityState === 'hidden'
 
   // Silent: a failed refetch surfaces through the queries that ran it.
@@ -34,7 +35,17 @@ export function installRevalidation({
       )
       .finally(() => {
         inFlight = null
+        if (!readAgainAfterInFlight) return
+        readAgainAfterInFlight = false
+        revalidate()
       })
+  }
+
+  // A refetch that began before the socket subscribed can miss a change committed in between, and
+  // no frame reports that change, so one more refetch follows it.
+  const onSocketSubscribed = (): void => {
+    if (inFlight) readAgainAfterInFlight = true
+    revalidate()
   }
 
   const onVisibilityChange = (): void => {
@@ -43,7 +54,7 @@ export function installRevalidation({
     if (returning) revalidate()
   }
 
-  const stopSubscribed = onSubscribed(revalidate)
+  const stopSubscribed = onSubscribed(onSocketSubscribed)
   window.addEventListener('online', revalidate)
   document.addEventListener('visibilitychange', onVisibilityChange)
   return () => {
