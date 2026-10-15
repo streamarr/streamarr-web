@@ -65,6 +65,19 @@ function streamSessionCreated() {
   )
 }
 
+// A browser that reaches the end fires timeupdate, then pause, then ended.
+async function playMovieToItsEnd() {
+  const { user, router } = renderAppAt('/movie/m1')
+  await user.click(await screen.findByRole('link', { name: 'Play' }))
+  await waitFor(() => expect(hls.loadSource).toHaveBeenCalled())
+  const video = document.querySelector('video')!
+  Object.defineProperty(video, 'currentTime', { writable: true, configurable: true, value: 5400 })
+  fireEvent(video, new Event('timeupdate'))
+  fireEvent(video, new Event('pause'))
+  fireEvent(video, new Event('ended'))
+  return { router, video }
+}
+
 describe('watched state across routes', () => {
   it('shouldUpdateTheSeriesActionFromTheMarkedSeasonWithoutLoadingTheSeriesAgain', async () => {
     let seriesRequests = 0
@@ -283,15 +296,7 @@ describe('watched state across routes', () => {
         return HttpResponse.json({ data: { destroyStreamSession: true } })
       }),
     )
-    const { user, router } = renderAppAt('/movie/m1')
-    await user.click(await screen.findByRole('link', { name: 'Play' }))
-    await waitFor(() => expect(hls.loadSource).toHaveBeenCalled())
-    const video = document.querySelector('video')!
-    Object.defineProperty(video, 'currentTime', { writable: true, configurable: true, value: 5400 })
-
-    fireEvent(video, new Event('timeupdate'))
-    fireEvent(video, new Event('pause'))
-    fireEvent(video, new Event('ended'))
+    const { router } = await playMovieToItsEnd()
 
     await waitFor(() => expect(stoppedPositions).toEqual([5400]))
     await act(async () => {
@@ -327,14 +332,7 @@ describe('watched state across routes', () => {
         HttpResponse.json({ data: { destroyStreamSession: true } }),
       ),
     )
-    const { user, router } = renderAppAt('/movie/m1')
-    await user.click(await screen.findByRole('link', { name: 'Play' }))
-    await waitFor(() => expect(hls.loadSource).toHaveBeenCalled())
-    const video = document.querySelector('video')!
-    Object.defineProperty(video, 'currentTime', { writable: true, configurable: true, value: 5400 })
-    fireEvent(video, new Event('timeupdate'))
-    fireEvent(video, new Event('pause'))
-    fireEvent(video, new Event('ended'))
+    const { router } = await playMovieToItsEnd()
     await waitFor(() => expect(refusedStop).toBe(true))
 
     await act(async () => {
@@ -371,14 +369,7 @@ describe('watched state across routes', () => {
         HttpResponse.json({ data: { destroyStreamSession: true } }),
       ),
     )
-    const { user, router } = renderAppAt('/movie/m1')
-    await user.click(await screen.findByRole('link', { name: 'Play' }))
-    await waitFor(() => expect(hls.loadSource).toHaveBeenCalled())
-    const video = document.querySelector('video')!
-    Object.defineProperty(video, 'currentTime', { writable: true, configurable: true, value: 5400 })
-    fireEvent(video, new Event('timeupdate'))
-    fireEvent(video, new Event('pause'))
-    fireEvent(video, new Event('ended'))
+    const { router, video } = await playMovieToItsEnd()
     await waitFor(() => expect(refusedStop).toBe(true))
 
     video.currentTime = 30
@@ -415,14 +406,7 @@ describe('watched state across routes', () => {
         HttpResponse.json({ data: { destroyStreamSession: true } }),
       ),
     )
-    const { user, router } = renderAppAt('/movie/m1')
-    await user.click(await screen.findByRole('link', { name: 'Play' }))
-    await waitFor(() => expect(hls.loadSource).toHaveBeenCalled())
-    const video = document.querySelector('video')!
-    Object.defineProperty(video, 'currentTime', { writable: true, configurable: true, value: 5400 })
-    fireEvent(video, new Event('timeupdate'))
-    fireEvent(video, new Event('pause'))
-    fireEvent(video, new Event('ended'))
+    const { router, video } = await playMovieToItsEnd()
     await waitFor(() => expect(pauseReceived).toBe(true))
 
     video.currentTime = 30

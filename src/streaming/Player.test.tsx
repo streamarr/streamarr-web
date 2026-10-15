@@ -42,6 +42,21 @@ function recordTimelineReports(): TimelineReport[] {
   return reports
 }
 
+function refuseTheFirstStoppedReport(reports: TimelineReport[]): () => boolean {
+  let refused = false
+  server.use(
+    graphql.mutation('ReportStreamSessionTimeline', ({ variables }) => {
+      reports.push(variables as unknown as TimelineReport)
+      if (variables.state === 'STOPPED' && !refused) {
+        refused = true
+        return HttpResponse.json({ errors: [{ message: 'Temporarily unavailable' }] })
+      }
+      return HttpResponse.json({ data: { reportStreamSessionTimeline: true } })
+    }),
+  )
+  return () => refused
+}
+
 function refuseSession() {
   server.use(
     graphql.mutation('CreateStreamSession', () =>
@@ -1465,21 +1480,11 @@ describe('Player', () => {
 
   it('shouldReportStoppedAgainOnLeavingWhenTheEndOfPlaybackReportFailed', async () => {
     const reports = serveSession()
-    let failNextStop = true
-    server.use(
-      graphql.mutation('ReportStreamSessionTimeline', ({ variables }) => {
-        reports.push(variables as unknown as TimelineReport)
-        if (variables.state === 'STOPPED' && failNextStop) {
-          failNextStop = false
-          return HttpResponse.json({ errors: [{ message: 'Temporarily unavailable' }] })
-        }
-        return HttpResponse.json({ data: { reportStreamSessionTimeline: true } })
-      }),
-    )
+    const stopRefused = refuseTheFirstStoppedReport(reports)
     const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
     const video = await attachedVideo()
     playedToTheEnd(video, 5400)
-    await waitFor(() => expect(failNextStop).toBe(false))
+    await waitFor(() => expect(stopRefused()).toBe(true))
 
     unmount()
 
@@ -1493,21 +1498,11 @@ describe('Player', () => {
 
   it('shouldReportStoppedAtTheFinalPositionOnLeavingWhenTheEndOfPlaybackReportFailedBeforeAReplay', async () => {
     const reports = serveSession()
-    let failNextStop = true
-    server.use(
-      graphql.mutation('ReportStreamSessionTimeline', ({ variables }) => {
-        reports.push(variables as unknown as TimelineReport)
-        if (variables.state === 'STOPPED' && failNextStop) {
-          failNextStop = false
-          return HttpResponse.json({ errors: [{ message: 'Temporarily unavailable' }] })
-        }
-        return HttpResponse.json({ data: { reportStreamSessionTimeline: true } })
-      }),
-    )
+    const stopRefused = refuseTheFirstStoppedReport(reports)
     const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
     const video = await attachedVideo()
     playedToTheEnd(video, 5400)
-    await waitFor(() => expect(failNextStop).toBe(false))
+    await waitFor(() => expect(stopRefused()).toBe(true))
 
     playheadAt(video, 30)
     unmount()
