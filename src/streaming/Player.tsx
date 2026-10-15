@@ -160,6 +160,11 @@ export function Player({
         lastKnownPosition = element.currentTime
         report('PAUSED', element.currentTime)
       },
+      onEnded: (element) => {
+        // The final position already carries STOPPED, so leaving the page must not repeat it.
+        lastKnownPosition = null
+        report('STOPPED', element.currentTime)
+      },
     })
 
     const startupDeadline = createStartupDeadline(() => {
@@ -309,22 +314,26 @@ function attachTimeline(
     onTimeUpdate: TimelineHandler
     onPlay: TimelineHandler
     onPause: TimelineHandler
+    onEnded: TimelineHandler
   },
 ): { detach: () => void } {
   const onLoadedMetadata = () => handlers.onLoadedMetadata(video)
   const onTimeUpdate = () => handlers.onTimeUpdate(video)
   const onPlay = () => handlers.onPlay(video)
   const onPause = () => handlers.onPause(video)
+  const onEnded = () => handlers.onEnded(video)
   video.addEventListener('loadedmetadata', onLoadedMetadata)
   video.addEventListener('timeupdate', onTimeUpdate)
   video.addEventListener('play', onPlay)
   video.addEventListener('pause', onPause)
+  video.addEventListener('ended', onEnded)
   return {
     detach: () => {
       video.removeEventListener('loadedmetadata', onLoadedMetadata)
       video.removeEventListener('timeupdate', onTimeUpdate)
       video.removeEventListener('play', onPlay)
       video.removeEventListener('pause', onPause)
+      video.removeEventListener('ended', onEnded)
     },
   }
 }

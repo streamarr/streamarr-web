@@ -385,6 +385,13 @@ const NATIVE_WAITING_POINTS = [
   ],
 ] as const
 
+// A browser that reaches the end fires timeupdate, then pause, then ended.
+function playedToTheEnd(video: HTMLVideoElement, durationSeconds: number) {
+  playheadAt(video, durationSeconds)
+  fireEvent(video, new Event('pause'))
+  fireEvent(video, new Event('ended'))
+}
+
 function Harness() {
   const [mediaFileId, setMediaFileId] = useState('a')
   return (
@@ -1428,6 +1435,51 @@ describe('Player', () => {
 
     await waitFor(() => expect(reports).toHaveLength(2))
     expect(reports[1]).toEqual({ sessionId: 'sess-1', positionSeconds: 42, state: 'STOPPED' })
+  })
+
+  it('shouldReportStoppedOnceAtTheFinalPositionWhenPlaybackReachesTheEnd', async () => {
+    const reports = serveSession()
+    let destroyed = false
+    server.use(
+      graphql.mutation('DestroyStreamSession', () => {
+        destroyed = true
+        return HttpResponse.json({ data: { destroyStreamSession: true } })
+      }),
+    )
+    const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
+    const video = await attachedVideo()
+
+    playedToTheEnd(video, 5400)
+
+    await waitFor(() =>
+      expect(reports.at(-1)).toEqual({
+        sessionId: 'sess-1',
+        positionSeconds: 5400,
+        state: 'STOPPED',
+      }),
+    )
+    unmount()
+    await waitFor(() => expect(destroyed).toBe(true))
+    expect(reports.filter((report) => report.state === 'STOPPED')).toHaveLength(1)
+  })
+
+  it('shouldReportStoppedAtTheLastKnownPositionWhenTheViewerReplaysAfterTheEndAndLeaves', async () => {
+    const reports = serveSession()
+    const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
+    const video = await attachedVideo()
+    playedToTheEnd(video, 5400)
+    await waitFor(() => expect(reports.at(-1)?.state).toBe('STOPPED'))
+
+    playheadAt(video, 30)
+    unmount()
+
+    await waitFor(() =>
+      expect(reports.at(-1)).toEqual({
+        sessionId: 'sess-1',
+        positionSeconds: 30,
+        state: 'STOPPED',
+      }),
+    )
   })
 
   describe('controls', () => {

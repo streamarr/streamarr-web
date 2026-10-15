@@ -210,6 +210,84 @@ describe('watched state across routes', () => {
     expect(screen.queryByRole('heading', { name: 'Continue watching' })).not.toBeInTheDocument()
     expect(homeRequests).toBe(2)
   })
+  it('shouldShowTheMovieWatchedAfterPlaybackReachesItsEndWithoutLeavingThePlayer', async () => {
+    let watched = false
+    let destroyed = false
+    const stoppedPositions: number[] = []
+    server.use(
+      graphql.query('Me', () =>
+        HttpResponse.json({ data: { me: meFixture({ scope: 'profile' }) } }),
+      ),
+      graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
+      graphql.query('MovieDetail', () =>
+        HttpResponse.json({
+          data: {
+            movie: {
+              __typename: 'Movie',
+              id: 'm1',
+              title: 'Everlight',
+              tagline: null,
+              summary: null,
+              runtime: 90,
+              releaseDate: '2024-01-01',
+              contentRating: null,
+              genres: [],
+              directors: [],
+              cast: [],
+              ratings: [],
+              files: [{ __typename: 'MediaFile', id: 'f1' }],
+              watchStatus: watched ? 'WATCHED' : 'UNWATCHED',
+              watchProgress: null,
+              backdropImages: [],
+              posterImages: [],
+            },
+          },
+        }),
+      ),
+      graphql.mutation('CreateStreamSession', () =>
+        HttpResponse.json({
+          data: {
+            createStreamSession: {
+              session: {
+                id: 'stream1',
+                streamUrl: '/api/stream/f1/main.m3u8?t=playback',
+                transcodeMode: 'REMUX',
+              },
+              userErrors: [],
+            },
+          },
+        }),
+      ),
+      graphql.mutation('ReportStreamSessionTimeline', ({ variables }) => {
+        if (variables.state === 'STOPPED') {
+          stoppedPositions.push(variables.positionSeconds as number)
+          watched = true
+        }
+        return HttpResponse.json({ data: { reportStreamSessionTimeline: true } })
+      }),
+      graphql.mutation('DestroyStreamSession', () => {
+        destroyed = true
+        return HttpResponse.json({ data: { destroyStreamSession: true } })
+      }),
+    )
+    const { user, router } = renderAppAt('/movie/m1')
+    await user.click(await screen.findByRole('link', { name: 'Play' }))
+    await waitFor(() => expect(hls.loadSource).toHaveBeenCalled())
+    const video = document.querySelector('video')!
+    Object.defineProperty(video, 'currentTime', { writable: true, configurable: true, value: 5400 })
+
+    fireEvent(video, new Event('timeupdate'))
+    fireEvent(video, new Event('pause'))
+    fireEvent(video, new Event('ended'))
+
+    await waitFor(() => expect(stoppedPositions).toEqual([5400]))
+    await act(async () => {
+      router.history.back()
+    })
+    await screen.findByRole('button', { name: 'Mark unwatched' })
+    await waitFor(() => expect(destroyed).toBe(true))
+    expect(stoppedPositions).toEqual([5400])
+  })
   it('shouldResumeFromReportedProgressAfterReturningToTheMovie', async () => {
     let position = 20
     let holdMovie = false
