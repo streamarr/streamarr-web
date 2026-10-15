@@ -281,9 +281,9 @@ describe('SeriesDetailScreen', () => {
         }),
       ),
       graphql.mutation('MarkWatched', ({ variables }) => {
-        markedIds.push(variables.id as string)
+        markedIds.push((variables.input as { itemId: string }).itemId)
         watched = true
-        return HttpResponse.json({ data: { markWatched: true } })
+        return HttpResponse.json({ data: { markWatched: { userErrors: [] } } })
       }),
     )
     const { user } = renderAppAt('/series/series-1')
@@ -315,8 +315,8 @@ describe('SeriesDetailScreen', () => {
         HttpResponse.json({ data: seriesData({ watchStatus: 'WATCHED' }) }),
       ),
       graphql.mutation('MarkUnwatched', ({ variables }) => {
-        markedIds.push(variables.id as string)
-        return HttpResponse.json({ data: { markUnwatched: true } })
+        markedIds.push((variables.input as { itemId: string }).itemId)
+        return HttpResponse.json({ data: { markUnwatched: { userErrors: [] } } })
       }),
     )
     const { user } = renderAppAt('/series/series-1')

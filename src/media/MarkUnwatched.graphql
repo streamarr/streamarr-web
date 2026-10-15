@@ -1,3 +1,10 @@
-mutation MarkUnwatched($id: ID!) {
-  markUnwatched(id: $id)
+mutation MarkUnwatched($input: MarkUnwatchedInput!) {
+  markUnwatched(input: $input) {
+    userErrors {
+      __typename
+      ... on MutationError {
+        message
+      }
+    }
+  }
 }

@@ -228,6 +228,7 @@
       "InvalidIdError",
       "InvalidProfilePinError",
       "InvitationNotPendingError",
+      "ItemNotFoundError",
       "LibraryNameRequiredError",
       "LibraryPathAlreadyRegisteredError",
       "LibraryPathNotDirectoryError",
@@ -296,6 +297,14 @@
       "ReasonRequiredError",
       "ReauthenticationRequiredError"
     ],
+    "MarkUnwatchedError": [
+      "InvalidIdError",
+      "ItemNotFoundError"
+    ],
+    "MarkWatchedError": [
+      "InvalidIdError",
+      "ItemNotFoundError"
+    ],
     "Media": [
       "Movie",
       "Series"
@@ -321,6 +330,7 @@
       "InvalidMediaFileError",
       "InvalidProfilePinError",
       "InvitationNotPendingError",
+      "ItemNotFoundError",
       "LastAccountNotFoundError",
       "LastHouseholdAccountError",
       "LastHouseholdAdminError",
@@ -492,6 +502,12 @@
       "EsnBlockNotFoundError",
       "EsnInvalidError",
       "EsnRequiredError"
+    ],
+    "WatchStateItem": [
+      "Episode",
+      "Movie",
+      "Season",
+      "Series"
     ]
   }
 }

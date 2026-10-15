@@ -159,7 +159,7 @@ describe('/library/$libraryId', () => {
       ),
       graphql.mutation('MarkUnwatched', () => {
         watched = false
-        return HttpResponse.json({ data: { markUnwatched: true } })
+        return HttpResponse.json({ data: { markUnwatched: { userErrors: [] } } })
       }),
     )
     const { user, router } = renderAppAt(`/library/${LIBRARY_ID}?watchStatus=UNWATCHED`)

@@ -88,7 +88,7 @@ describe('watched state across routes', () => {
       ),
       graphql.mutation('MarkWatched', () => {
         watched = true
-        return HttpResponse.json({ data: { markWatched: true } })
+        return HttpResponse.json({ data: { markWatched: { userErrors: [] } } })
       }),
     )
     const { user } = renderAppAt('/series/r1')

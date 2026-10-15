@@ -263,9 +263,9 @@ describe('MovieDetailScreen', () => {
         HttpResponse.json({ data: movieData({ watchStatus: watched ? 'WATCHED' : 'UNWATCHED' }) }),
       ),
       graphql.mutation('MarkWatched', ({ variables }) => {
-        markedIds.push(variables.id as string)
+        markedIds.push((variables.input as { itemId: string }).itemId)
         watched = true
-        return HttpResponse.json({ data: { markWatched: true } })
+        return HttpResponse.json({ data: { markWatched: { userErrors: [] } } })
       }),
     )
     const { user } = renderAppAt('/movie/m1')

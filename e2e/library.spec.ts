@@ -756,7 +756,7 @@ for (const { seek, failRecovery } of [
       }
       if (operation.operationName === 'MarkWatched') {
         watched = true
-        return route.fulfill({ json: { data: { markWatched: true } } })
+        return route.fulfill({ json: { data: { markWatched: { userErrors: [] } } } })
       }
       return route.continue()
     })

@@ -290,9 +290,9 @@ describe('SeasonDetailScreen', () => {
         }),
       ),
       graphql.mutation('MarkWatched', ({ variables }) => {
-        markedIds.push(variables.id as string)
+        markedIds.push((variables.input as { itemId: string }).itemId)
         watched = true
-        return HttpResponse.json({ data: { markWatched: true } })
+        return HttpResponse.json({ data: { markWatched: { userErrors: [] } } })
       }),
     )
     const { user } = renderAppAt('/season/season-2')
