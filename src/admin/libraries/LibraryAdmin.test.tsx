@@ -1,6 +1,7 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import { delay, graphql, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
+import { deferred } from '../../test/deferred'
 import { serveGraphqlSocket } from '../../test/graphqlSocket'
 import { meFixture } from '../../test/meFixture'
 import { renderAppAt } from '../../test/render'
@@ -431,6 +432,43 @@ describe('library administration', () => {
 
     await waitFor(() => expect(detail).toHaveTextContent('SCANNING'))
     expect(within(inventory).queryByRole('button', { name: /TV shows/ })).not.toBeInTheDocument()
+  })
+
+  it('shouldKeepARemovedLibraryOutWhenAnEarlierReadArrivesLate', async () => {
+    const state = serve()
+    renderAppAt(SETTINGS)
+    const detail = await screen.findByRole('article', { name: 'Movies settings' })
+    await waitFor(() => expect(state.socket.isLive('LibraryRemoved')).toBe(true))
+    const inventory = screen.getByRole('navigation', { name: 'Libraries to manage' })
+    const removalApplied = deferred()
+    const requests = state.inventoryRequests
+    server.use(
+      graphql.query('AdminLibraries', async () => {
+        // This read takes its snapshot before another session removes TV shows.
+        const libraries = [{ ...MOVIES, status: 'REFRESHING' as const }, SHOWS]
+        state.inventoryRequests++
+        await removalApplied.promise
+        return HttpResponse.json({ data: { libraries } })
+      }),
+    )
+
+    act(() => {
+      window.dispatchEvent(new Event('online'))
+    })
+    await waitFor(() => expect(state.inventoryRequests).toBe(requests + 1))
+    state.socket.publish('LibraryRemoved', {
+      data: { libraryRemoved: { __typename: 'LibraryRemoval', libraryId: 'shows' } },
+    })
+    await waitFor(() =>
+      expect(within(inventory).queryByRole('button', { name: /TV shows/ })).not.toBeInTheDocument(),
+    )
+    removalApplied.resolve()
+
+    await waitFor(() => expect(detail).toHaveTextContent('REFRESHING'))
+    await waitFor(() =>
+      expect(within(inventory).queryByRole('button', { name: /TV shows/ })).not.toBeInTheDocument(),
+    )
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Libraries1')
   })
 
   it('shouldSayWhenTheServerNoLongerAllowsLiveStatus', async () => {

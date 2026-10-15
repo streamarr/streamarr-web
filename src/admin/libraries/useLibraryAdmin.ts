@@ -1,6 +1,6 @@
 import type { ApolloCache, ApolloClient, ErrorLike, Reference } from '@apollo/client'
 import { useApolloClient, useQuery, useSubscription } from '@apollo/client/react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import {
   AddLibraryDocument,
   AdminLibrariesDocument,
@@ -21,7 +21,10 @@ export type LiveInventoryStop = 'forbidden' | 'failed'
 
 // Applies every library change as it commits: status and scan times update in place, an added
 // library joins the inventory once, and a removed one leaves it for good.
-function useLiveInventoryChanges(): LiveInventoryStop | null {
+function useLiveInventoryChanges(): {
+  stop: LiveInventoryStop | null
+  removedIds: RefObject<ReadonlySet<string>>
+} {
   const [stop, setStop] = useState<LiveInventoryStop | null>(null)
   // The server orders no frames across fields: a change committed before a removal can arrive
   // after it. A library id never returns once removed.
@@ -50,7 +53,7 @@ function useLiveInventoryChanges(): LiveInventoryStop | null {
     },
     onError,
   })
-  return stop
+  return { stop, removedIds }
 }
 
 /**
@@ -60,11 +63,18 @@ function useLiveInventoryChanges(): LiveInventoryStop | null {
  * nothing a late subscriber missed, so the inventory reads again once the changes subscribe.
  */
 export function useAdminLibraries() {
-  const liveStop = useLiveInventoryChanges()
+  const { stop: liveStop, removedIds } = useLiveInventoryChanges()
   const query = useQuery(AdminLibrariesDocument, {
     fetchPolicy: 'cache-and-network',
   })
-  return { ...query, data: query.data ?? query.previousData, liveStop }
+  const { client, data } = query
+  // A read that took its snapshot before a removal can land after it.
+  useEffect(() => {
+    for (const library of data?.libraries ?? []) {
+      if (removedIds.current.has(library.id)) dropLibrary(client.cache, library.id)
+    }
+  }, [client, data, removedIds])
+  return { ...query, data: data ?? query.previousData, liveStop }
 }
 
 /**
