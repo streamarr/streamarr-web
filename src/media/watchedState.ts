@@ -1,6 +1,6 @@
 import type { ApolloCache, NormalizedCacheObject } from '@apollo/client'
 
-export function invalidateWatchedState(cache: ApolloCache) {
+export function discardWatchedState(cache: ApolloCache) {
   cache.evict({ fieldName: 'continueWatching' })
   // Boolean mutation results cannot update aggregates on cached parents or descendants.
   for (const id of Object.keys(cache.extract() as NormalizedCacheObject)) {

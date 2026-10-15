@@ -12,7 +12,7 @@ import {
 } from '../graphql/generated/graphql'
 import { userErrorMessage } from '../graphql/userErrors'
 import { DetailBackButton } from '../media/DetailBack'
-import { invalidateWatchedState } from '../media/watchedState'
+import { discardWatchedState } from '../media/watchedState'
 import focusStyles from '../styles/focus.module.css'
 import { BufferingRing } from './BufferingRing'
 import styles from './Player.module.css'
@@ -121,7 +121,7 @@ export function Player({
             variables,
             context: { fetchOptions: { signal: reportCancellation.signal } },
             update: (cache, { data }) => {
-              if (data?.reportStreamSessionTimeline) invalidateWatchedState(cache)
+              if (data?.reportStreamSessionTimeline) discardWatchedState(cache)
             },
             onQueryUpdated: refetchWatchedQuery,
           })

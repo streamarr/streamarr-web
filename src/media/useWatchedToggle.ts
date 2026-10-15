@@ -2,7 +2,7 @@ import type { DocumentNode } from '@apollo/client'
 import { useMutation } from '@apollo/client/react'
 import { MarkUnwatchedDocument, MarkWatchedDocument } from '../graphql/generated/graphql'
 import { requestFailureMessage } from '../graphql/requestErrors'
-import { invalidateWatchedState } from './watchedState'
+import { discardWatchedState } from './watchedState'
 
 const FAILURE_MESSAGE = "Couldn't update the watched state."
 
@@ -11,7 +11,7 @@ const FAILURE_MESSAGE = "Couldn't update the watched state."
 export function useWatchedToggle(id: string, detailQuery: DocumentNode) {
   const [markWatched, watchedState] = useMutation(MarkWatchedDocument, {
     update: (cache, { data }) => {
-      if (data?.markWatched?.userErrors.length === 0) invalidateWatchedState(cache)
+      if (data?.markWatched?.userErrors.length === 0) discardWatchedState(cache)
     },
     onQueryUpdated: (query) => query.refetch(),
     refetchQueries: [detailQuery],
@@ -19,7 +19,7 @@ export function useWatchedToggle(id: string, detailQuery: DocumentNode) {
   })
   const [markUnwatched, unwatchedState] = useMutation(MarkUnwatchedDocument, {
     update: (cache, { data }) => {
-      if (data?.markUnwatched?.userErrors.length === 0) invalidateWatchedState(cache)
+      if (data?.markUnwatched?.userErrors.length === 0) discardWatchedState(cache)
     },
     onQueryUpdated: (query) => query.refetch(),
     refetchQueries: [detailQuery],
