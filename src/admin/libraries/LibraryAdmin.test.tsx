@@ -406,6 +406,50 @@ describe('library administration', () => {
       'A library scan is already in progress.',
     )
     expect(detail).not.toHaveTextContent('Scan requested')
+    await waitFor(() => expect(detail).toHaveTextContent('SCANNING'))
+    expect(
+      within(screen.getByRole('navigation', { name: 'Libraries to manage' })).getByRole('button', {
+        name: /Movies/,
+      }),
+    ).toHaveTextContent('SCANNING')
+    expect(within(detail).getByRole('button', { name: 'Scan library' })).toBeDisabled()
+  })
+
+  it('shouldShowTheStatusABusyRefusalCarriesWhenARefreshMeetsARunningScan', async () => {
+    serve()
+    server.use(
+      graphql.mutation('StartLibraryRefresh', () =>
+        HttpResponse.json({
+          data: {
+            startLibraryRefresh: {
+              library: null,
+              userErrors: [
+                {
+                  __typename: 'LibraryBusyError',
+                  message: 'A library scan is already in progress.',
+                  status: 'SCANNING',
+                },
+              ],
+            },
+          },
+        }),
+      ),
+    )
+    const { user } = renderAppAt(SETTINGS)
+    const detail = await screen.findByRole('article', { name: 'Movies settings' })
+    await user.click(within(detail).getByRole('button', { name: 'Refresh metadata' }))
+
+    await user.click(
+      within(await screen.findByRole('region', { name: 'Refresh metadata for Movies' })).getByRole(
+        'button',
+        { name: 'Refresh metadata' },
+      ),
+    )
+
+    expect(await within(detail).findByRole('alert')).toHaveTextContent(
+      'A library scan is already in progress.',
+    )
+    await waitFor(() => expect(detail).toHaveTextContent('SCANNING'))
   })
 
   it('shouldShowTheBusyRefusalInTheRemovalDialog', async () => {
@@ -438,7 +482,8 @@ describe('library administration', () => {
     expect(await within(screen.getByRole('dialog')).findByRole('alert')).toHaveTextContent(
       'A library refresh is already in progress.',
     )
-    expect(screen.getByRole('article', { name: 'Movies settings' })).toBeInTheDocument()
+    const detail = screen.getByRole('article', { name: 'Movies settings' })
+    await waitFor(() => expect(detail).toHaveTextContent('REFRESHING'))
     expect(state.libraries).toContain(MOVIES)
   })
 

@@ -12,6 +12,7 @@ import {
   StartLibraryScanDocument,
   type AddLibraryInput,
   type ImageRefreshMode,
+  type LibraryStatus,
   type ManagedLibraryFieldsFragment,
   type StartLibraryScanMutation,
 } from '../../graphql/generated/graphql'
@@ -127,10 +128,14 @@ export function useLibraryCommands() {
 
   // The payload when the server did what was asked; a refusal shows its message instead.
   function accepted<P extends { userErrors: readonly LibraryOperationError[] }>(
+    libraryId: string,
     payload: P | null | undefined,
   ): P | null {
     if (!payload) throw new Error('Missing library operation result')
     if (payload.userErrors.length === 0) return payload
+    for (const error of payload.userErrors) {
+      if (error.__typename === 'LibraryBusyError') showStatus(client.cache, libraryId, error.status)
+    }
     if (active.current) setFailure(payload.userErrors.map(userErrorMessage).join(' '))
     return null
   }
@@ -153,7 +158,7 @@ export function useLibraryCommands() {
           mutation: StartLibraryScanDocument,
           variables: { input: { libraryId } },
         })
-        return startedLibrary(accepted(data?.startLibraryScan))
+        return startedLibrary(accepted(libraryId, data?.startLibraryScan))
       }),
     refresh: (libraryId: string, imageRefreshMode: ImageRefreshMode) =>
       execute(async () => {
@@ -161,7 +166,7 @@ export function useLibraryCommands() {
           mutation: StartLibraryRefreshDocument,
           variables: { input: { libraryId, imageRefreshMode } },
         })
-        return startedLibrary(accepted(data?.startLibraryRefresh))
+        return startedLibrary(accepted(libraryId, data?.startLibraryRefresh))
       }),
     remove: (libraryId: string, onRemoved: () => void) =>
       execute(async () => {
@@ -169,7 +174,7 @@ export function useLibraryCommands() {
           mutation: RemoveLibraryDocument,
           variables: { input: { libraryId } },
         })
-        const payload = accepted(data?.removeLibrary)
+        const payload = accepted(libraryId, data?.removeLibrary)
         if (!payload) return null
         if (!payload.removedLibraryId) throw new Error('Removal was not confirmed')
         if (active.current) onRemoved()
@@ -223,6 +228,14 @@ function holdLibrary(cache: ApolloCache, library: ManagedLibraryFieldsFragment) 
         return added ? [...existing, added] : existing
       },
     },
+  })
+}
+
+// A busy refusal names no library, so normalization cannot apply the status it carries.
+function showStatus(cache: ApolloCache, libraryId: string, status: LibraryStatus) {
+  cache.modify<ManagedLibraryFieldsFragment>({
+    id: cache.identify({ __typename: 'Library', id: libraryId }),
+    fields: { status: () => status },
   })
 }
 
