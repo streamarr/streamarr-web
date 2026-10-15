@@ -1,6 +1,7 @@
 import { ApolloClient, ApolloLink, HttpLink, InMemoryCache } from '@apollo/client'
 import { SetContextLink } from '@apollo/client/link/context'
 import { ErrorLink } from '@apollo/client/link/error'
+import { OperationTypeNode } from 'graphql'
 import { map } from 'rxjs'
 import { csrfHeaders, isCsrfRejection } from '../auth/csrf'
 import generatedIntrospection from './generated/possibleTypes.json'
@@ -42,8 +43,11 @@ function discardResponsesSentBeforeStoreReset(cache: ResetCountingCache) {
 const CSRF_RETRY_ATTEMPTED = 'csrfRetryAttempted'
 
 // No auth link: cookies and the service worker own the session; the CSRF echo is the only header
-// the client adds.
-export function createApolloClient(onAuthRoute: (route: AuthRoute) => void): ApolloClient {
+// the client adds. Subscriptions take the WebSocket link when one is given; everything else posts.
+export function createApolloClient(
+  onAuthRoute: (route: AuthRoute) => void,
+  subscriptionLink?: ApolloLink,
+): ApolloClient {
   const errorLink = new ErrorLink(({ error, operation, forward }) => {
     const context = extractAuthContext(error)
     if (
@@ -78,15 +82,21 @@ export function createApolloClient(onAuthRoute: (route: AuthRoute) => void): Apo
   // fields silently.
   const cache = new ResetCountingCache({ possibleTypes: generatedIntrospection.possibleTypes })
 
-  return new ApolloClient({
-    // Error link next: forward() on a CSRF rejection re-enters the CSRF link, which re-reads the
-    // re-minted cookie before the HTTP link sends.
-    link: ApolloLink.from([
-      discardResponsesSentBeforeStoreReset(cache),
-      errorLink,
-      csrfLink,
-      httpLink,
-    ]),
-    cache,
-  })
+  // Error link next: forward() on a CSRF rejection re-enters the CSRF link, which re-reads the
+  // re-minted cookie before the HTTP link sends.
+  const httpChain = ApolloLink.from([
+    discardResponsesSentBeforeStoreReset(cache),
+    errorLink,
+    csrfLink,
+    httpLink,
+  ])
+  const link = subscriptionLink
+    ? ApolloLink.split(
+        ({ operationType }) => operationType === OperationTypeNode.SUBSCRIPTION,
+        subscriptionLink,
+        httpChain,
+      )
+    : httpChain
+
+  return new ApolloClient({ link, cache })
 }

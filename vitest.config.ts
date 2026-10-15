@@ -1,6 +1,7 @@
 import { defineConfig } from 'vitest/config'
 
-// Only the session-renewal core is gated; the rest of src/ is reported, not enforced.
+// Only the session core is gated: renewal and the subscription socket that renews through it. The
+// rest of src/ is reported, not enforced.
 const renewalCoreThresholds = { statements: 95, branches: 95, functions: 95, lines: 95 }
 
 export default defineConfig({
@@ -36,6 +37,7 @@ export default defineConfig({
         perFile: true,
         'src/auth/renewal{Bridge,Protocol,Scheduler,SharedWorker}.ts': renewalCoreThresholds,
         'src/sw/{decisions,sessionRenewal,worker}.ts': renewalCoreThresholds,
+        'src/graphql/subscriptionTransport.ts': renewalCoreThresholds,
       },
     },
   },
