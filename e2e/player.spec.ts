@@ -770,8 +770,7 @@ test('Space plays the video, and opens no menu, on an Audio chip clicked before 
   await page.goto('/play/file-1')
   const chip = page.getByRole('button', { name: /^Audio/ })
   await expect(chip).toHaveAttribute('aria-disabled', 'true')
-  // Playwright refuses to click an aria-disabled button, but a mouse can still click and focus it.
-  await chip.click({ force: true })
+  await clickAriaDisabled(page, chip)
   answerMultivariant()
   await expect(page.getByRole('button', { name: 'Audio: English' })).toBeFocused()
   await expect(page.getByRole('button', { name: 'Play' })).toBeEnabled()
