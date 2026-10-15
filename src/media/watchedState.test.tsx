@@ -301,6 +301,48 @@ describe('watched state across routes', () => {
     await waitFor(() => expect(destroyed).toBe(true))
     expect(stoppedPositions).toEqual([5400])
   })
+  it('shouldShowTheMovieWatchedAfterLeavingWhenTheEndOfPlaybackReportFailed', async () => {
+    let watched = false
+    let refusedStop = false
+    server.use(
+      ...profileSelectedWithoutLibraries(),
+      graphql.query('MovieDetail', () =>
+        HttpResponse.json({
+          data: { movie: movieDetail({ watchStatus: watched ? 'WATCHED' : 'UNWATCHED' }) },
+        }),
+      ),
+      streamSessionCreated(),
+      graphql.mutation('ReportStreamSessionTimeline', ({ variables }) => {
+        if (variables.state !== 'STOPPED') {
+          return HttpResponse.json({ data: { reportStreamSessionTimeline: true } })
+        }
+        if (!refusedStop) {
+          refusedStop = true
+          return HttpResponse.json({ errors: [{ message: 'Temporarily unavailable' }] })
+        }
+        watched = true
+        return HttpResponse.json({ data: { reportStreamSessionTimeline: true } })
+      }),
+      graphql.mutation('DestroyStreamSession', () =>
+        HttpResponse.json({ data: { destroyStreamSession: true } }),
+      ),
+    )
+    const { user, router } = renderAppAt('/movie/m1')
+    await user.click(await screen.findByRole('link', { name: 'Play' }))
+    await waitFor(() => expect(hls.loadSource).toHaveBeenCalled())
+    const video = document.querySelector('video')!
+    Object.defineProperty(video, 'currentTime', { writable: true, configurable: true, value: 5400 })
+    fireEvent(video, new Event('timeupdate'))
+    fireEvent(video, new Event('pause'))
+    fireEvent(video, new Event('ended'))
+    await waitFor(() => expect(refusedStop).toBe(true))
+
+    await act(async () => {
+      router.history.back()
+    })
+
+    expect(await screen.findByRole('button', { name: 'Mark unwatched' })).toBeInTheDocument()
+  })
   it('shouldResumeFromReportedProgressAfterReturningToTheMovie', async () => {
     let position = 20
     let holdMovie = false

@@ -111,6 +111,25 @@ export function Player({
       )
     }
 
+    // Reads the playhead only when its turn in the queue comes. An acknowledged STOPPED clears the
+    // playhead it sent unless a replay has moved it, so leaving repeats only a failed STOPPED.
+    function reportStopped() {
+      enqueueReport(async (id) => {
+        const stoppedAt = lastKnownPosition
+        if (stoppedAt === null) {
+          return
+        }
+        await sendReport({
+          sessionId: id,
+          positionSeconds: Math.floor(stoppedAt),
+          state: 'STOPPED',
+        })
+        if (lastKnownPosition === stoppedAt) {
+          lastKnownPosition = null
+        }
+      })
+    }
+
     function enqueueReport(send: (sessionId: string) => Promise<void>) {
       if (!sessionId) {
         return
@@ -171,9 +190,8 @@ export function Player({
         report('PAUSED', element.currentTime)
       },
       onEnded: (element) => {
-        // The final position already carries STOPPED, so leaving the page must not repeat it.
-        lastKnownPosition = null
-        report('STOPPED', element.currentTime)
+        lastKnownPosition = element.currentTime
+        reportStopped()
       },
     })
 
@@ -266,9 +284,7 @@ export function Player({
     return () => {
       cancelled = true
       startupDeadline.end()
-      if (lastKnownPosition !== null) {
-        report('STOPPED', lastKnownPosition)
-      }
+      reportStopped()
       detachSource()
       requestCleanup()
     }
