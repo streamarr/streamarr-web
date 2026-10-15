@@ -532,6 +532,75 @@ describe('subscription transport', () => {
     expect(completed).not.toHaveBeenCalled()
   })
 
+  it('shouldDoubleTheResubscribeDelayWhileTheOnlyOperationKeepsFailing', async () => {
+    const { subscribe } = setup()
+    let socket = await connectAndSubscribe(subscribe)
+
+    for (const delay of [1_000, 2_000, 4_000]) {
+      socket.deliver({
+        type: 'error',
+        id: socket.subscriptionIds()[0],
+        payload: errorCodes('AUTHORIZATION_UNAVAILABLE'),
+      })
+      await vi.advanceTimersByTimeAsync(delay - 1)
+      expect(latestSocket()).toBe(socket)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(latestSocket()).not.toBe(socket)
+      socket = latestSocket()
+      socket.accept()
+      await settle()
+    }
+  })
+
+  it('shouldKeepGrowingTheResubscribeDelayWhileAnotherOperationReceivesChanges', async () => {
+    const { subscribe, subscribeToAdditions } = setup()
+    subscribeToAdditions()
+    const socket = await connectAndSubscribe(subscribe)
+    const [additions, statuses] = socket.subscriptionIds()
+
+    socket.deliver({ type: 'error', id: statuses, payload: errorCodes('SUBSCRIPTION_OVERFLOW') })
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(socket.subscriptionIds()).toHaveLength(3)
+    socket.deliver({
+      type: 'next',
+      id: additions,
+      payload: { data: { libraryAdded: { __typename: 'Library', id: 'shows' } } },
+    })
+    socket.deliver({
+      type: 'error',
+      id: socket.subscriptionIds()[2],
+      payload: errorCodes('SUBSCRIPTION_OVERFLOW'),
+    })
+    await vi.advanceTimersByTimeAsync(1_999)
+
+    expect(socket.subscriptionIds()).toHaveLength(3)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(socket.subscriptionIds()).toHaveLength(4)
+  })
+
+  it('shouldStartTheResubscribeDelayOverOnceTheOperationReceivesAChange', async () => {
+    const { subscribe, subscribeToAdditions, results } = setup()
+    subscribeToAdditions()
+    const socket = await connectAndSubscribe(subscribe)
+
+    socket.deliver({
+      type: 'error',
+      id: socket.subscriptionIds()[1],
+      payload: errorCodes('SUBSCRIPTION_OVERFLOW'),
+    })
+    await vi.advanceTimersByTimeAsync(1_000)
+    socket.deliver(statusFrame(socket.subscriptionIds()[2], 'SCANNING'))
+    socket.deliver({
+      type: 'error',
+      id: socket.subscriptionIds()[2],
+      payload: errorCodes('SUBSCRIPTION_OVERFLOW'),
+    })
+    await vi.advanceTimersByTimeAsync(1_000)
+
+    expect(results).toHaveLength(1)
+    expect(socket.subscriptionIds()).toHaveLength(4)
+  })
+
   it('shouldEndTheOperationWithoutSubscribingAgainWhenForbidden', async () => {
     const { subscribe, results, completed } = setup()
     const socket = await connectAndSubscribe(subscribe)

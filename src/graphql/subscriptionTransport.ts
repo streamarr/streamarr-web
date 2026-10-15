@@ -77,7 +77,6 @@ export function createSubscriptionTransport({
   const pendingWakes = new Set<() => void>()
   let current: Connection | undefined
   let resubscribeTimer: ReturnType<typeof setTimeout> | undefined
-  let resubscribeAttempts = 0
 
   const retryDelay = (attempt: number): number => {
     const ceiling = Math.min(MAX_RETRY_DELAY_MS, FIRST_RETRY_DELAY_MS * 2 ** attempt)
@@ -120,7 +119,6 @@ export function createSubscriptionTransport({
 
   const onConnected = (connection: Connection): void => {
     connection.acknowledged = true
-    resubscribeAttempts = 0
     if (connection === current) notifyOnceSubscribed(connection)
   }
 
@@ -179,10 +177,10 @@ export function createSubscriptionTransport({
     if (open) notifyOnceSubscribed(open)
   }
 
-  const resubscribeLater = (live: LiveOperation): void => {
+  const resubscribeLater = (live: LiveOperation, delay: number): void => {
     awaitingResubscribe.add(live)
     if (resubscribeTimer !== undefined) return
-    resubscribeTimer = setTimeout(resubscribeAwaiting, retryDelay(resubscribeAttempts++))
+    resubscribeTimer = setTimeout(resubscribeAwaiting, delay)
   }
 
   const retireConnection = (): void => {
@@ -211,6 +209,8 @@ export function createSubscriptionTransport({
     observer: LinkObserver,
   ): LiveOperation => {
     let subscription: Subscription | undefined
+    // Only a change delivered to this operation shows that it recovered.
+    let resubscribeAttempts = 0
     const finish = (): void => {
       subscription = undefined
       operations.delete(live)
@@ -232,7 +232,7 @@ export function createSubscriptionTransport({
           error: (error: unknown) => {
             subscription = undefined
             if (shouldResubscribe(error, connection)) {
-              resubscribeLater(live)
+              resubscribeLater(live, retryDelay(resubscribeAttempts++))
               return
             }
             finish()
@@ -241,7 +241,7 @@ export function createSubscriptionTransport({
           complete: () => {
             subscription = undefined
             if (resubscribeOnComplete) {
-              resubscribeLater(live)
+              resubscribeLater(live, retryDelay(resubscribeAttempts++))
               return
             }
             finish()
