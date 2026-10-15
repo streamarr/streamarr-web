@@ -199,6 +199,14 @@ async function tapAcross(page: Page, control: Locator, fraction: number) {
   await page.touchscreen.tap(x + width * fraction, y + height / 2)
 }
 
+// A mouse still clicks and focuses an aria-disabled button, which Playwright's click refuses as
+// disabled. Hovering waits for the button to be visible, stable and unobscured instead.
+async function clickAriaDisabled(page: Page, control: Locator) {
+  await control.hover()
+  await page.mouse.down()
+  await page.mouse.up()
+}
+
 function sliderTrack(page: Page, name: string): Locator {
   return page
     .locator('.mantine-Slider-trackContainer')
@@ -542,8 +550,7 @@ test('a clicked Quality chip, which opens nothing, shows no focus ring while Spa
   await openPlayerFromThePlayLink(page, request)
   await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible()
   const quality = page.getByRole('button', { name: /^Quality/ })
-  // Playwright refuses to click an aria-disabled button, but a mouse can still click and focus it.
-  await quality.click({ force: true })
+  await clickAriaDisabled(page, quality)
 
   await page.keyboard.press('Space')
 
