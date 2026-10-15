@@ -195,6 +195,13 @@ function LibraryDetails({
     text: string
     status: ManagedLibrary['status']
   } | null>(null)
+  // A later run that reaches the same status belongs to someone else, so a change of status to
+  // any other value ends the acknowledgement for good.
+  const [shownStatus, setShownStatus] = useState(library.status)
+  if (shownStatus !== library.status) {
+    setShownStatus(library.status)
+    if (acknowledgement && acknowledgement.status !== library.status) setAcknowledgement(null)
+  }
   const notice = acknowledgement?.status === library.status ? acknowledgement.text : ''
   const refreshTrigger = useRef<HTMLButtonElement>(null)
   const actionNotice = useRef<HTMLOutputElement>(null)

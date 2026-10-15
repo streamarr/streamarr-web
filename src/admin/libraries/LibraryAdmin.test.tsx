@@ -397,6 +397,39 @@ describe('library administration', () => {
     expect(detail).not.toHaveTextContent('Scan requested for Movies.')
   })
 
+  it('shouldNotShowAnEarlierScanAcknowledgementWhenALaterScanStartsElsewhere', async () => {
+    const state = serve()
+    server.use(
+      graphql.mutation('StartLibraryScan', () => {
+        const library = { ...MOVIES, status: 'SCANNING' as const }
+        return HttpResponse.json({ data: { startLibraryScan: { library, userErrors: [] } } })
+      }),
+    )
+    const { user } = renderAppAt(SETTINGS)
+    await scanMovies(user)
+    const detail = screen.getByRole('article', { name: 'Movies settings' })
+    await within(detail).findByText('Scan requested for Movies.')
+    await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+    state.socket.publish('LibraryStatusChanged', {
+      data: { libraryStatusChanged: { ...MOVIES, scanCompletedOn: '2026-10-15T12:05:00Z' } },
+    })
+    await waitFor(() => expect(detail).toHaveTextContent('HEALTHY'))
+
+    state.socket.publish('LibraryStatusChanged', {
+      data: {
+        libraryStatusChanged: {
+          ...MOVIES,
+          status: 'SCANNING',
+          scanStartedOn: '2026-10-15T13:00:00Z',
+          scanCompletedOn: '2026-10-15T12:05:00Z',
+        },
+      },
+    })
+
+    await waitFor(() => expect(detail).toHaveTextContent('SCANNING'))
+    expect(detail).not.toHaveTextContent('Scan requested for Movies.')
+  })
+
   it.each([
     { __typename: 'LibraryNotFoundError', message: 'This library no longer exists.' },
     { __typename: 'InvalidIdError', message: 'This library id is not valid.' },
