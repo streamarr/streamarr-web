@@ -1,5 +1,6 @@
 import { createRootRouteWithContext, Outlet, useRouterState } from '@tanstack/react-router'
 import type { SessionStore } from '../auth/session'
+import type { SubscriptionTransport } from '../graphql/subscriptionTransport'
 import type { FileRouteTypes } from '../routeTree.gen'
 import { AmbientScope } from '../media/AmbientScope'
 import { AmbientThemeProvider, useAmbientTheme } from '../media/ambientThemeContext'
@@ -8,6 +9,7 @@ import { TopBar } from '../ui/TopBar'
 
 interface RouterContext {
   session: SessionStore
+  subscriptions: SubscriptionTransport
 }
 
 export const Route = createRootRouteWithContext<RouterContext>()({

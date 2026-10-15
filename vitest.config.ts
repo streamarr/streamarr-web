@@ -37,7 +37,7 @@ export default defineConfig({
         perFile: true,
         'src/auth/renewal{Bridge,Protocol,Scheduler,SharedWorker}.ts': renewalCoreThresholds,
         'src/sw/{decisions,sessionRenewal,worker}.ts': renewalCoreThresholds,
-        'src/graphql/subscriptionTransport.ts': renewalCoreThresholds,
+        'src/graphql/{revalidation,subscriptionTransport}.ts': renewalCoreThresholds,
       },
     },
   },

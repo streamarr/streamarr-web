@@ -1,6 +1,6 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import { delay, graphql, HttpResponse } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { meFixture } from '../../test/meFixture'
 import { renderAppAt } from '../../test/render'
 import { server } from '../../test/server'
@@ -467,6 +467,29 @@ describe('library administration', () => {
     await act(() => router.navigate({ to: `${SETTINGS}/new` }))
     const guidance = await screen.findByText('The initial scan starts automatically.')
     expect(guidance.querySelector('svg')).toHaveAttribute('width', '16')
+  })
+
+  it('shouldReadTheInventoryAgainOnceWhenTheNetworkAndThePageReturnTogether', async () => {
+    const state = serve()
+    let visibility: DocumentVisibilityState = 'visible'
+    vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility)
+    renderAppAt(SETTINGS)
+    await screen.findByRole('article', { name: 'Movies settings' })
+    const requests = state.inventoryRequests
+    state.libraries = [{ ...MOVIES, status: 'SCANNING' }, SHOWS]
+
+    act(() => {
+      visibility = 'hidden'
+      document.dispatchEvent(new Event('visibilitychange'))
+      window.dispatchEvent(new Event('online'))
+      visibility = 'visible'
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+
+    expect(await screen.findByRole('article', { name: 'Movies settings' })).toHaveTextContent(
+      'SCANNING',
+    )
+    expect(state.inventoryRequests).toBe(requests + 1)
   })
 
   it('shouldShowUnavailableLibraryForRemovedDeepLinks', async () => {

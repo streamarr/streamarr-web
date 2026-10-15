@@ -23,11 +23,16 @@ export function createAppRouter(
     }
     return answer
   })
+  const subscriptions = createSubscriptionTransport({
+    url: graphqlSocketUrl(window.location),
+    renewal,
+    onSignedOut: () => routeAuth('/login'),
+  })
   // Back returns to where the reader was: the window on ambient pages and any scrolled panel.
   const router = createRouter({
     routeTree,
     history,
-    context: { session },
+    context: { session, subscriptions },
     scrollRestoration: true,
   })
   const routeAuth = (route: AuthRoute): void => {
@@ -41,11 +46,6 @@ export function createAppRouter(
     session.markAnonymous()
     void router.navigate({ to: route, search: { redirect: router.state.location.href } })
   }
-  const subscriptions = createSubscriptionTransport({
-    url: graphqlSocketUrl(window.location),
-    renewal,
-    onSignedOut: () => routeAuth('/login'),
-  })
   apolloClient = createApolloClient(routeAuth, subscriptions.link)
   return { router, apolloClient, session, subscriptions }
 }
