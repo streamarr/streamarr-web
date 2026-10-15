@@ -1,8 +1,9 @@
 import { screen, waitFor } from '@testing-library/react'
-import { graphql, HttpResponse } from 'msw'
+import { graphql, HttpResponse, http } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { MovieDetailQuery } from '../graphql/generated/graphql'
-import { meFixture } from '../test/meFixture'
+import { deferred } from '../test/deferred'
+import { meFixture, profileFixture } from '../test/meFixture'
 import { failsOnceThen, invalidIdResponse } from '../test/graphqlResponses'
 import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
@@ -278,6 +279,56 @@ describe('MovieDetailScreen', () => {
     expect(screen.getByRole('link', { name: 'Play' })).toBeInTheDocument()
     expect(markedIds).toEqual(['m1'])
     expect(requestedIds).toEqual(['m1'])
+  })
+
+  it('shouldKeepTheNextProfilesWatchStateWhenTheEarlierProfilesMarkAnswersAfterTheSwitch', async () => {
+    const requestedIds: string[] = []
+    const markSent = deferred()
+    const markAnswer = deferred()
+    serve(movieData({ watchStatus: 'UNWATCHED' }), requestedIds)
+    const household = meFixture({
+      scope: 'profile',
+      profiles: [
+        profileFixture({ id: 'p-alex', name: 'Alex', selected: true }),
+        profileFixture({ id: 'p-sam', name: 'Sam', personal: false }),
+      ],
+    })
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ data: { me: household } })),
+      http.post('/api/auth/select-profile', () =>
+        HttpResponse.json({
+          accessToken: 'access',
+          accessTokenExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+          scope: 'profile',
+        }),
+      ),
+      graphql.mutation('MarkWatched', async () => {
+        markSent.resolve()
+        await markAnswer.promise
+        return HttpResponse.json({
+          data: {
+            markWatched: {
+              item: { __typename: 'Movie', id: 'm1', watchStatus: 'WATCHED', watchProgress: null },
+              userErrors: [],
+            },
+          },
+        })
+      }),
+    )
+    const { user } = renderAppAt('/movie/m1')
+    await user.click(await screen.findByRole('button', { name: 'Mark watched' }))
+    await markSent.promise
+
+    await user.click(screen.getByRole('button', { name: /profile menu \(alex\)/i }))
+    await user.click(screen.getByRole('button', { name: 'Sam' }))
+    await waitFor(() => expect(requestedIds).toEqual(['m1', 'm1']))
+    markAnswer.resolve()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /^Couldn't update the watched state\.$/,
+    )
+    expect(screen.getByRole('button', { name: 'Mark watched' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: 'Mark unwatched' })).not.toBeInTheDocument()
   })
 
   it('shouldShowTheServerMessageWhenTheMarkIsRefused', async () => {

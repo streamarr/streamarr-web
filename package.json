@@ -56,7 +56,8 @@
     "motion": "^13.4.1",
     "lucide-react": "^1.47.0",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "rxjs": "^7.8.2"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
