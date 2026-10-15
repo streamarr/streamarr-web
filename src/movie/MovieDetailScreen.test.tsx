@@ -85,7 +85,7 @@ describe('MovieDetailScreen', () => {
     renderAppAt('/movie/m1')
     expect(await screen.findByRole('link', { name: 'Play' })).toHaveAttribute(
       'href',
-      '/play/file-1',
+      '/play/file-1?movie=m1',
     )
   })
 
@@ -153,7 +153,10 @@ describe('MovieDetailScreen', () => {
     serve(movieData())
     renderAppAt('/movie/m1')
     await waitFor(() =>
-      expect(screen.getByRole('link', { name: 'Play' })).toHaveAttribute('href', '/play/file-1'),
+      expect(screen.getByRole('link', { name: 'Play' })).toHaveAttribute(
+        'href',
+        '/play/file-1?movie=m1',
+      ),
     )
   })
 
@@ -168,7 +171,7 @@ describe('MovieDetailScreen', () => {
     await waitFor(() =>
       expect(screen.getByRole('link', { name: 'Resume' })).toHaveAttribute(
         'href',
-        '/play/file-1?position=120',
+        '/play/file-1?movie=m1&position=120',
       ),
     )
   })

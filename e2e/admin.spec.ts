@@ -4,6 +4,7 @@ import type {
   ManagedLibraryFieldsFragment,
 } from '../src/graphql/generated/graphql'
 import { meFixture, profileFixture } from '../src/test/meFixture'
+import { RING, ringOnActiveElement } from './focusRing'
 
 test.use({ serviceWorkers: 'block' })
 
@@ -245,20 +246,7 @@ test("keyboard focus draws the theme ring on the page's own controls", async ({ 
   await page.goto(SETTINGS)
   await page.getByRole('button', { name: 'Refresh metadata', exact: true }).focus()
   await page.keyboard.press('Tab')
-  const ring = await page.evaluate(() => {
-    const active = document.activeElement as HTMLElement
-    const style = getComputedStyle(active)
-    return {
-      name: active.textContent?.trim(),
-      outline: `${style.outlineWidth} ${style.outlineStyle} ${style.outlineColor}`,
-      offset: style.outlineOffset,
-    }
-  })
-  expect(ring).toEqual({
-    name: 'Remove library',
-    outline: '2px solid rgb(92, 192, 232)',
-    offset: '2px',
-  })
+  expect(await ringOnActiveElement(page)).toEqual({ name: 'Remove library', ...RING })
 })
 
 test('the confirm dialog centers in the viewport, not in the pane that opened it', async ({

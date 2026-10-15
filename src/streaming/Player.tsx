@@ -1,6 +1,6 @@
 import type { ApolloClient, ObservableQuery } from '@apollo/client'
 import { useApolloClient, useMutation } from '@apollo/client/react'
-import { Alert, AspectRatio, Button, Stack } from '@mantine/core'
+import { Alert, Button } from '@mantine/core'
 import Hls from 'hls.js'
 import { useEffect, useRef, useState } from 'react'
 import {
@@ -11,7 +11,21 @@ import {
   type ReportStreamSessionTimelineMutationVariables,
 } from '../graphql/generated/graphql'
 import { userErrorMessage } from '../graphql/userErrors'
+import { DetailBackButton } from '../media/DetailBack'
 import { invalidateWatchedState } from '../media/watchedState'
+import focusStyles from '../styles/focus.module.css'
+import { BufferingRing } from './BufferingRing'
+import styles from './Player.module.css'
+import {
+  PlayerControls,
+  type PlayerTitle,
+  type TrackPickerKind,
+  pickerOffersChoice,
+} from './PlayerControls'
+import { hlsTrackSource, nativeTrackSource, type TrackSource } from './trackSources'
+import { useIdle } from './useIdle'
+import { useStreamTracks } from './useStreamTracks'
+import { useVideoState } from './useVideoState'
 
 // Progress is only worth a round trip once the playhead has moved this far since the last report.
 const TIMELINE_REPORT_INTERVAL_SECONDS = 10
@@ -23,29 +37,50 @@ const PLAYBACK_FAILURE_MESSAGE = "Playback couldn't start. Try again."
 type PlaybackState = ReportStreamSessionTimelineMutationVariables['state']
 type StreamSessionPayload = CreateStreamSessionMutation['createStreamSession']
 
+type SourcePhase =
+  { at: 'starting' } | { at: 'attached'; tracks: TrackSource } | { at: 'failed'; message: string }
+
+const STARTING: SourcePhase = { at: 'starting' }
+
 const pendingCleanups = new WeakMap<ApolloClient, () => Promise<void>>()
 
 export function Player({
   mediaFileId,
   startPositionSeconds,
+  title,
 }: Readonly<{
   mediaFileId: string
   startPositionSeconds?: number
+  title?: PlayerTitle
 }>) {
+  const playerRef = useRef<HTMLElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
+  const controlsRef = useRef<HTMLDivElement>(null)
+  const backRef = useRef<HTMLDivElement>(null)
   const [createStreamSession] = useMutation(CreateStreamSessionDocument)
   const client = useApolloClient()
-  const [failure, setFailure] = useState<string | null>(null)
+  const [sourcePhase, setSourcePhase] = useState(STARTING)
   const [attempt, setAttempt] = useState(0)
+  const [picker, setPicker] = useState<TrackPickerKind | null>(null)
+  const tracks = sourcePhase.at === 'attached' ? sourcePhase.tracks : null
+  const streamTracks = useStreamTracks(tracks)
+  const openPicker = picker !== null && pickerOffersChoice(picker, streamTracks) ? picker : null
+  // A picker that loses its choices, or its stream with them, closes rather than reopen later.
+  if (picker !== openPicker) {
+    setPicker(null)
+  }
+  const videoState = useVideoState(videoRef)
+  const controlsHeld = videoState.paused || sourcePhase.at === 'failed' || openPicker !== null
+  const idle = useIdle(controlsHeld, [controlsRef, backRef])
 
   useEffect(() => {
     const video = videoRef.current
     if (!video) {
       return undefined
     }
-    setFailure(null)
+    setSourcePhase(STARTING)
 
-    let hls: Hls | null = null
+    let source: StreamSource | null = null
     let cancelled = false
     let sessionId: string | null = null
     let lastReportedPosition = startPositionSeconds ?? 0
@@ -94,12 +129,22 @@ export function Player({
         .catch(ignoreTimelineReportFailure)
     }
 
+    let playRequested = false
     const timeline = attachTimeline(video, {
       // Seeking before metadata is loaded is unreliable across browsers; the event is the safe point.
       onLoadedMetadata: (element) => {
         if (startPositionSeconds) {
           element.currentTime = startPositionSeconds
         }
+        // Before metadata, only the viewer can ask to play. Their choice stands, even a later Pause.
+        if (playRequested) {
+          return
+        }
+        // Asked only after the seek, so the first frame to play is at the start position.
+        void element.play().catch(ignoreRefusedStart)
+      },
+      onPlay: () => {
+        playRequested = true
       },
       onTimeUpdate: (element) => {
         lastKnownPosition = element.currentTime
@@ -117,11 +162,12 @@ export function Player({
       },
     })
 
-    const startupDeadline = setTimeout(() => {
+    const startupDeadline = createStartupDeadline(() => {
       cancelled = true
-      setFailure('Playback is taking too long to start. Try again.')
+      detachSource()
+      setSourcePhase({ at: 'failed', message: 'Playback is taking too long to start. Try again.' })
       requestCleanup()
-    }, PLAYBACK_START_TIMEOUT_MS)
+    })
     const startup = Promise.resolve()
       .then(async () => {
         await previousCleanup?.()
@@ -138,20 +184,31 @@ export function Player({
           return
         }
         if (!session) {
-          setFailure(refusalMessage(payload))
+          showFailure(refusalMessage(payload))
           return
         }
-        hls = attach(video, session.streamUrl, () => {
-          hls = null
-          setFailure(PLAYBACK_FAILURE_MESSAGE)
+        source = attach(video, session.streamUrl, {
+          startupDeadline,
+          onFatal: () => {
+            if (cancelled) {
+              return
+            }
+            detachSource()
+            showFailure(PLAYBACK_FAILURE_MESSAGE)
+          },
         })
+        setSourcePhase({ at: 'attached', tracks: source.tracks })
       })
       .catch(() => {
         if (!cancelled) {
-          setFailure(PLAYBACK_FAILURE_MESSAGE)
+          showFailure(PLAYBACK_FAILURE_MESSAGE)
         }
       })
-      .finally(() => clearTimeout(startupDeadline))
+
+    function showFailure(message: string) {
+      startupDeadline.end()
+      setSourcePhase({ at: 'failed', message })
+    }
 
     function releaseSession(): Promise<void> {
       if (cleanupInFlight) {
@@ -178,6 +235,13 @@ export function Player({
       }
     }
 
+    function detachSource() {
+      // Releasing the stream rewinds the element; the timeline must not record the rewind.
+      timeline.detach()
+      source?.detach()
+      source = null
+    }
+
     function requestCleanup() {
       // A failed or pending destroy retains ownership; a later startup can retry the same cleanup.
       pendingCleanups.set(client, releaseSession)
@@ -186,30 +250,47 @@ export function Player({
 
     return () => {
       cancelled = true
-      clearTimeout(startupDeadline)
-      timeline.detach()
+      startupDeadline.end()
       if (lastKnownPosition !== null) {
         report('STOPPED', lastKnownPosition)
       }
-      hls?.destroy()
+      detachSource()
       requestCleanup()
     }
   }, [mediaFileId, startPositionSeconds, createStreamSession, client, attempt])
 
   return (
-    <Stack maw={960}>
-      {failure && (
-        <Alert color="red" role="alert">
-          {failure}
+    <section
+      ref={playerRef}
+      aria-label="Player"
+      className={`${styles.player} ${focusStyles.focusRing}`}
+      data-idle={idle || undefined}
+    >
+      <video ref={videoRef} className={styles.video} playsInline />
+      {videoState.buffering && <BufferingRing />}
+      {sourcePhase.at === 'failed' && (
+        <Alert className={styles.failure} color="red" role="alert">
+          {sourcePhase.message}
           <Button display="block" mt="sm" onClick={() => setAttempt((value) => value + 1)}>
             Retry playback
           </Button>
         </Alert>
       )}
-      <AspectRatio ratio={16 / 9}>
-        <video ref={videoRef} controls style={{ width: '100%' }} />
-      </AspectRatio>
-    </Stack>
+      <div ref={backRef} className={`${styles.back} ${styles.chrome}`}>
+        <DetailBackButton />
+      </div>
+      <PlayerControls
+        ref={controlsRef}
+        className={styles.chrome}
+        playerRef={playerRef}
+        videoRef={videoRef}
+        videoState={videoState}
+        tracks={tracks}
+        openPicker={openPicker}
+        onOpenPicker={setPicker}
+        title={title}
+      />
+    </section>
   )
 }
 
@@ -226,20 +307,67 @@ function attachTimeline(
   handlers: {
     onLoadedMetadata: TimelineHandler
     onTimeUpdate: TimelineHandler
+    onPlay: TimelineHandler
     onPause: TimelineHandler
   },
 ): { detach: () => void } {
   const onLoadedMetadata = () => handlers.onLoadedMetadata(video)
   const onTimeUpdate = () => handlers.onTimeUpdate(video)
+  const onPlay = () => handlers.onPlay(video)
   const onPause = () => handlers.onPause(video)
   video.addEventListener('loadedmetadata', onLoadedMetadata)
   video.addEventListener('timeupdate', onTimeUpdate)
+  video.addEventListener('play', onPlay)
   video.addEventListener('pause', onPause)
   return {
     detach: () => {
       video.removeEventListener('loadedmetadata', onLoadedMetadata)
       video.removeEventListener('timeupdate', onTimeUpdate)
+      video.removeEventListener('play', onPlay)
       video.removeEventListener('pause', onPause)
+    },
+  }
+}
+
+interface StartupDeadline {
+  end: () => void
+  hold: () => void
+  rearm: () => void
+}
+
+type StartupPhase =
+  { at: 'armed'; timer: ReturnType<typeof setTimeout> } | { at: 'held' } | { at: 'ended' }
+
+function createStartupDeadline(onExpired: () => void): StartupDeadline {
+  let phase = arm()
+
+  function arm(): StartupPhase {
+    const timer = setTimeout(() => {
+      phase = { at: 'ended' }
+      onExpired()
+    }, PLAYBACK_START_TIMEOUT_MS)
+    return { at: 'armed', timer }
+  }
+
+  return {
+    end: () => {
+      if (phase.at === 'armed') {
+        clearTimeout(phase.timer)
+      }
+      phase = { at: 'ended' }
+    },
+    hold: () => {
+      if (phase.at !== 'armed') {
+        return
+      }
+      clearTimeout(phase.timer)
+      phase = { at: 'held' }
+    },
+    rearm: () => {
+      if (phase.at !== 'held') {
+        return
+      }
+      phase = arm()
     },
   }
 }
@@ -249,16 +377,30 @@ function refusalMessage(payload: StreamSessionPayload | undefined): string {
   return refusal ? userErrorMessage(refusal) : PLAYBACK_FAILURE_MESSAGE
 }
 
+function ignoreRefusedStart() {
+  // A browser may refuse to start playback until the viewer interacts with the page, and a released
+  // stream interrupts the start. The element stays paused either way, and the controls show it.
+}
+
 function ignoreTimelineReportFailure() {
   // A missed progress report costs nothing the next one doesn't restore, and playback must never
   // surface it.
 }
 
+interface StreamSource {
+  detach: () => void
+  tracks: TrackSource
+}
+
+interface StreamSourceOptions {
+  onFatal: () => void
+  startupDeadline: StartupDeadline
+}
+
 // The stream URL carries the playback ?t= token; relative segment requests inherit it.
-function attach(video: HTMLVideoElement, url: string, onFatal: () => void): Hls | null {
+function attach(video: HTMLVideoElement, url: string, options: StreamSourceOptions): StreamSource {
   if (!Hls.isSupported()) {
-    video.src = url
-    return null
+    return attachNative(video, url, options)
   }
   const hls = new Hls()
   hls.on(Hls.Events.ERROR, (_event, data) => {
@@ -266,10 +408,49 @@ function attach(video: HTMLVideoElement, url: string, onFatal: () => void): Hls 
       return
     }
     // An expired ?t= token or a restarted server: the instance cannot recover.
-    hls.destroy()
-    onFatal()
+    options.onFatal()
   })
+  video.addEventListener('loadedmetadata', options.startupDeadline.end)
   hls.loadSource(url)
   hls.attachMedia(video)
-  return hls
+  return {
+    detach: () => {
+      video.removeEventListener('loadedmetadata', options.startupDeadline.end)
+      hls.destroy()
+    },
+    tracks: hlsTrackSource(hls),
+  }
+}
+
+// Without MSE the element plays HLS itself and reports failure only through its error event.
+function attachNative(
+  video: HTMLVideoElement,
+  url: string,
+  { onFatal, startupDeadline }: StreamSourceOptions,
+): StreamSource {
+  // WebKit loads metadata from the playlists alone, so startup ends on the first frame. A browser
+  // may withhold that frame until the viewer presses play, so a suspend while paused holds startup
+  // until then. A playing element that suspends is still owed its first frame.
+  const holdWhilePaused = () => {
+    if (video.paused) {
+      startupDeadline.hold()
+    }
+  }
+  video.addEventListener('error', onFatal)
+  video.addEventListener('loadeddata', startupDeadline.end)
+  video.addEventListener('suspend', holdWhilePaused)
+  video.addEventListener('play', startupDeadline.rearm)
+  video.src = url
+  return {
+    detach: () => {
+      video.removeEventListener('error', onFatal)
+      video.removeEventListener('loadeddata', startupDeadline.end)
+      video.removeEventListener('suspend', holdWhilePaused)
+      video.removeEventListener('play', startupDeadline.rearm)
+      // The same reset hls.js performs on detach: the element stops fetching the stream.
+      video.removeAttribute('src')
+      video.load()
+    },
+    tracks: nativeTrackSource(video),
+  }
 }

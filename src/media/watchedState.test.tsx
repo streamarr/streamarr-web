@@ -2,28 +2,12 @@ import { deferred } from '../test/deferred'
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { graphql, HttpResponse } from 'msw'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { hls } from '../test/fakeHls'
 import { meFixture } from '../test/meFixture'
 import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
 
-const hls = vi.hoisted(() => ({
-  loadSource: vi.fn(),
-  attachMedia: vi.fn(),
-  destroy: vi.fn(),
-  on: vi.fn(),
-}))
-vi.mock('hls.js', () => ({
-  default: class {
-    static Events = { ERROR: 'hlsError' }
-    static isSupported() {
-      return true
-    }
-    loadSource = hls.loadSource
-    attachMedia = hls.attachMedia
-    destroy = hls.destroy
-    on = hls.on
-  },
-}))
+vi.mock('hls.js', async () => (await import('../test/fakeHls')).hlsModule)
 
 afterEach(async () => {
   await act(async () => cleanup())
@@ -226,7 +210,7 @@ describe('watched state across routes', () => {
       router.history.back()
     })
     const resume = await screen.findByRole('link', { name: 'Resume' })
-    expect(resume).toHaveAttribute('href', '/play/f1?position=80')
+    expect(resume).toHaveAttribute('href', '/play/f1?movie=m1&position=80')
     holdMovie = true
     stop.resolve()
     try {

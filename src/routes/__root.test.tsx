@@ -133,6 +133,31 @@ describe('the root layout', () => {
     expect(document.querySelector(`.${styles.homeShell}`)).toBeNull()
   })
 
+  it('shouldRenderThePlayerWithoutTheSignedInChrome', async () => {
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
+      graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
+      graphql.mutation('CreateStreamSession', () =>
+        HttpResponse.json({
+          data: {
+            createStreamSession: {
+              session: null,
+              userErrors: [
+                { __typename: 'TranscodeCapacityUnavailableError', message: 'Every slot is busy.' },
+              ],
+            },
+          },
+        }),
+      ),
+    )
+    renderAppAt('/play/file-1')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Every slot is busy.')
+    expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument()
+    expect(screen.queryByRole('banner')).not.toBeInTheDocument()
+    expect(document.querySelector(`.${styles.homeShell}`)).toBeNull()
+  })
+
   it('shouldWrapASignedInPageInTheChrome', async () => {
     server.use(
       graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
