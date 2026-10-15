@@ -407,6 +407,32 @@ describe('library administration', () => {
     expect(screen.getByRole('article', { name: 'Movies settings' })).toBeInTheDocument()
   })
 
+  it('shouldKeepARemovedLibraryOutWhenItsEarlierChangesArriveLate', async () => {
+    const state = serve()
+    renderAppAt(SETTINGS)
+    const detail = await screen.findByRole('article', { name: 'Movies settings' })
+    await waitFor(() => expect(state.socket.isLive('LibraryRemoved')).toBe(true))
+    const inventory = screen.getByRole('navigation', { name: 'Libraries to manage' })
+
+    state.socket.publish('LibraryRemoved', {
+      data: { libraryRemoved: { __typename: 'LibraryRemoval', libraryId: 'shows' } },
+    })
+    await waitFor(() =>
+      expect(within(inventory).queryByRole('button', { name: /TV shows/ })).not.toBeInTheDocument(),
+    )
+    // Fields share no order, so a change committed before the removal can arrive after it.
+    state.socket.publish('LibraryStatusChanged', {
+      data: { libraryStatusChanged: { ...SHOWS, status: 'HEALTHY' } },
+    })
+    state.socket.publish('LibraryAdded', { data: { libraryAdded: SHOWS } })
+    state.socket.publish('LibraryStatusChanged', {
+      data: { libraryStatusChanged: { ...MOVIES, status: 'SCANNING' } },
+    })
+
+    await waitFor(() => expect(detail).toHaveTextContent('SCANNING'))
+    expect(within(inventory).queryByRole('button', { name: /TV shows/ })).not.toBeInTheDocument()
+  })
+
   it('shouldSayWhenTheServerNoLongerAllowsLiveStatus', async () => {
     const state = serve()
     renderAppAt(SETTINGS)

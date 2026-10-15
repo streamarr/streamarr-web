@@ -21,14 +21,17 @@ export type LiveInventoryStop = 'forbidden' | 'failed'
 
 /**
  * Applies every library change as it commits: status and scan times update in place, an added
- * library joins the inventory once, and a removed one leaves it. The server replays nothing a
- * late subscriber missed, so the inventory reads again once these operations subscribe.
+ * library joins the inventory once, and a removed one leaves it for good. The server replays
+ * nothing a late subscriber missed, so the inventory reads again once these operations subscribe.
  */
 export function useLiveInventoryChanges(): LiveInventoryStop | null {
   const [stop, setStop] = useState<LiveInventoryStop | null>(null)
+  // The server orders no frames across fields: a change committed before a removal can arrive
+  // after it. A library id never returns once removed.
+  const removedIds = useRef(new Set<string>())
   const onError = (error: ErrorLike) => setStop(isForbidden(error) ? 'forbidden' : 'failed')
   const holdFrom = (library: ManagedLibraryFieldsFragment | undefined, cache: ApolloCache) => {
-    if (library) holdLibrary(cache, library)
+    if (library && !removedIds.current.has(library.id)) holdLibrary(cache, library)
   }
   useSubscription(LibraryStatusChangedDocument, {
     ignoreResults: true,
@@ -44,7 +47,9 @@ export function useLiveInventoryChanges(): LiveInventoryStop | null {
     ignoreResults: true,
     onData: ({ client, data }) => {
       const removal = data.data?.libraryRemoved
-      if (removal) dropLibrary(client.cache, removal.libraryId)
+      if (!removal) return
+      removedIds.current.add(removal.libraryId)
+      dropLibrary(client.cache, removal.libraryId)
     },
     onError,
   })
