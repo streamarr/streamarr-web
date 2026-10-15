@@ -146,8 +146,9 @@ export function useLibraryCommands() {
       execute(async () => {
         const { data } = await client.mutate({ mutation: AddLibraryDocument, variables: { input } })
         if (!data?.addLibrary) throw new Error('Missing creation result')
-        if (data.addLibrary.library && data.addLibrary.userErrors.length === 0)
-          refreshLibraryViews(client)
+        const { library, userErrors } = data.addLibrary
+        if (library && userErrors.length === 0)
+          refreshLibraryViews(client, (cache) => holdLibrary(cache, library))
         return data.addLibrary
       }, NOTHING_ADDED),
     scan: (libraryId: string) =>
@@ -176,7 +177,8 @@ export function useLibraryCommands() {
         if (!payload) return null
         if (!payload.removedLibraryId) throw new Error('Removal was not confirmed')
         if (active.current) onRemoved()
-        refreshLibraryViews(client, payload.removedLibraryId)
+        const { removedLibraryId } = payload
+        refreshLibraryViews(client, (cache) => dropLibrary(cache, removedLibraryId))
         return payload.removedLibraryId
       }),
   }
@@ -191,14 +193,14 @@ function startedLibrary(
   return payload.library
 }
 
-function refreshLibraryViews(client: ApolloClient, removedId?: string) {
+// The inventory changes at once from the payload; the refetch then confirms it.
+function refreshLibraryViews(client: ApolloClient, changeInventory: (cache: ApolloCache) => void) {
   // Evict inactive query fields too: returning Home or following an old library link must not
-  // resurrect an inventory or media detail cached before a creation/removal operation.
+  // resurrect media detail cached before a creation/removal operation.
   void client
     .refetchQueries({
       updateCache(cache) {
-        if (removedId) dropLibrary(cache, removedId)
-        else cache.evict({ id: 'ROOT_QUERY', fieldName: 'libraries' })
+        changeInventory(cache)
         for (const fieldName of ['library', 'continueWatching', 'movie', 'series', 'season']) {
           cache.evict({ id: 'ROOT_QUERY', fieldName })
         }

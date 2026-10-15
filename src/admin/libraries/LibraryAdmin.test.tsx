@@ -226,6 +226,40 @@ describe('library administration', () => {
     ).toBeInTheDocument()
   })
 
+  it('shouldShowTheAddedLibraryAsScanningFromItsPayloadBeforeAnyInventoryRead', async () => {
+    serve([MOVIES])
+    const family = {
+      ...MOVIES,
+      id: 'family',
+      name: 'Family',
+      filepathUri: '/media/family',
+      status: 'SCANNING' as const,
+    }
+    server.use(
+      graphql.mutation('AddLibrary', () =>
+        HttpResponse.json({ data: { addLibrary: { library: family, userErrors: [] } } }),
+      ),
+    )
+    const { user } = renderAppAt(SETTINGS)
+    await screen.findByRole('article', { name: 'Movies settings' })
+    await user.click(screen.getByRole('link', { name: 'Add library' }))
+    await user.type(await screen.findByRole('textbox', { name: /Library name/ }), 'Family')
+    await user.type(screen.getByRole('textbox', { name: /Server folder/ }), '/media/family')
+    // No inventory read answers: what the admin sees comes from the creation itself.
+    server.use(
+      graphql.query('AdminLibraries', () => delay('infinite')),
+      graphql.query('Libraries', () => delay('infinite')),
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Add library' }))
+
+    const detail = await screen.findByRole('article', { name: 'Family settings' })
+    expect(detail).toHaveTextContent('SCANNING')
+    expect(within(detail).getByRole('button', { name: 'Scan library' })).toBeDisabled()
+    const inventory = screen.getByRole('navigation', { name: 'Libraries to manage' })
+    expect(within(inventory).getAllByRole('button')).toHaveLength(2)
+  })
+
   it('shouldStartTheNameEmptyAndLeaveItAloneWhenTheTypeChanges', async () => {
     serve([])
     const { user } = renderAppAt(`${SETTINGS}/new`)
