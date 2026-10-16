@@ -211,6 +211,18 @@ export function useLibraryCommands() {
     }
   }
 
+  // Sends a command that answers with the library, and returns the library as the cache now holds
+  // it, or null after a refusal.
+  async function commandLibrary<P extends LibraryOperationPayload>(
+    libraryId: string,
+    send: (write: OperationOutcome['write']) => Promise<P | null | undefined>,
+  ): Promise<ManagedLibraryFieldsFragment | null> {
+    const outcome = operationOutcome(client.cache, libraryId)
+    const payload = await send((cache, answer) => outcome.write(cache, answer))
+    await outcome.readInventoryAgainAfterMissedChanges(client)
+    return currentLibrary(client.cache, accepted(payload))
+  }
+
   // The payload when the server did what was asked; a refusal shows its message instead.
   function accepted<P extends LibraryOperationPayload>(payload: P | null | undefined): P | null {
     if (!payload) throw new Error('Missing library operation result')
@@ -233,29 +245,29 @@ export function useLibraryCommands() {
         return data.addLibrary
       }, NOTHING_ADDED),
     scan: (libraryId: string) =>
-      execute(async () => {
-        const outcome = operationOutcome(client.cache, libraryId)
-        const { data } = await client.mutate({
-          mutation: StartLibraryScanDocument,
-          variables: { input: { libraryId } },
-          fetchPolicy: 'no-cache',
-          update: (cache, { data }) => outcome.write(cache, data?.startLibraryScan),
-        })
-        await outcome.readInventoryAgainAfterMissedChanges(client)
-        return startedLibrary(client.cache, accepted(data?.startLibraryScan))
-      }),
+      execute(() =>
+        commandLibrary(libraryId, async (write) => {
+          const { data } = await client.mutate({
+            mutation: StartLibraryScanDocument,
+            variables: { input: { libraryId } },
+            fetchPolicy: 'no-cache',
+            update: (cache, { data }) => write(cache, data?.startLibraryScan),
+          })
+          return data?.startLibraryScan
+        }),
+      ),
     refresh: (libraryId: string, imageRefreshMode: ImageRefreshMode) =>
-      execute(async () => {
-        const outcome = operationOutcome(client.cache, libraryId)
-        const { data } = await client.mutate({
-          mutation: StartLibraryRefreshDocument,
-          variables: { input: { libraryId, imageRefreshMode } },
-          fetchPolicy: 'no-cache',
-          update: (cache, { data }) => outcome.write(cache, data?.startLibraryRefresh),
-        })
-        await outcome.readInventoryAgainAfterMissedChanges(client)
-        return startedLibrary(client.cache, accepted(data?.startLibraryRefresh))
-      }),
+      execute(() =>
+        commandLibrary(libraryId, async (write) => {
+          const { data } = await client.mutate({
+            mutation: StartLibraryRefreshDocument,
+            variables: { input: { libraryId, imageRefreshMode } },
+            fetchPolicy: 'no-cache',
+            update: (cache, { data }) => write(cache, data?.startLibraryRefresh),
+          })
+          return data?.startLibraryRefresh
+        }),
+      ),
     remove: (libraryId: string, onRemoved: () => void) =>
       execute(async () => {
         const outcome = operationOutcome(client.cache, libraryId)
@@ -277,12 +289,12 @@ export function useLibraryCommands() {
 }
 
 // The cache can hold newer state than the returned library: a live change, or a read after it.
-function startedLibrary(
+function currentLibrary(
   cache: ApolloCache,
   payload: LibraryOperationPayload | null,
 ): ManagedLibraryFieldsFragment | null {
   if (!payload) return null
-  if (!payload.library) throw new Error('Missing started library')
+  if (!payload.library) throw new Error('Missing library in the operation result')
   const id = cache.identify(payload.library)
   return cache.readFragment({ fragment: ManagedLibraryFieldsFragmentDoc, id }) ?? payload.library
 }
@@ -291,6 +303,8 @@ function startedLibrary(
 // change for the library arrived during the request: that change can already say the run ended.
 // The write happens in the mutation's own cache update, so the library shows its new status by
 // the time the command returns.
+type OperationOutcome = ReturnType<typeof operationOutcome>
+
 function operationOutcome(cache: ApolloCache, libraryId: string) {
   const liveChangesBefore = liveChangeCount(cache, libraryId)
   const missedChangesBefore = missedChangeCount(cache)
