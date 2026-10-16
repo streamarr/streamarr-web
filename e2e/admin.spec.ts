@@ -4,6 +4,7 @@ import type {
   ChangeEncoderPresetInput,
   EncoderPresetSettingFieldsFragment,
   ManagedLibraryFieldsFragment,
+  RemoveLibraryInput,
 } from '../src/graphql/generated/graphql'
 import { meFixture, profileFixture } from '../src/test/meFixture'
 import { RING, ringOnActiveElement } from './focusRing'
@@ -98,14 +99,18 @@ async function fixture(page: Page, libraries = [movie, shows]) {
       state.libraries.push(library)
       return reply({ addLibrary: { library, userErrors: [] } })
     }
-    if (operationName === 'ScanLibrary' || operationName === 'RefreshLibrary') {
+    if (operationName === 'StartLibraryScan' || operationName === 'StartLibraryRefresh') {
+      const { libraryId } = variables.input as { libraryId: string }
+      const status = operationName === 'StartLibraryScan' ? 'SCANNING' : 'REFRESHING'
       state.libraries = state.libraries.map((library) =>
-        library.id === variables.id
-          ? { ...library, status: operationName === 'ScanLibrary' ? 'SCANNING' : 'REFRESHING' }
-          : library,
+        library.id === libraryId ? { ...library, status } : library,
       )
+      const library = state.libraries.find((candidate) => candidate.id === libraryId)
+      const payload = { library, userErrors: [] }
       return reply(
-        operationName === 'ScanLibrary' ? { scanLibrary: true } : { refreshLibrary: true },
+        operationName === 'StartLibraryScan'
+          ? { startLibraryScan: payload }
+          : { startLibraryRefresh: payload },
       )
     }
     if (operationName === 'EncoderPresetSetting')
@@ -121,8 +126,9 @@ async function fixture(page: Page, libraries = [movie, shows]) {
       })
     }
     if (operationName === 'RemoveLibrary') {
-      state.libraries = state.libraries.filter((library) => library.id !== variables.id)
-      return reply({ removeLibrary: true })
+      const { libraryId } = variables.input as RemoveLibraryInput
+      state.libraries = state.libraries.filter((library) => library.id !== libraryId)
+      return reply({ removeLibrary: { removedLibraryId: libraryId, userErrors: [] } })
     }
     return route.continue()
   })
@@ -312,7 +318,7 @@ test('returning to the page reads the inventory again once', async ({ page }) =>
   expect(inventoryReads(state)).toBe(reads + 1)
 })
 
-test('refresh expands in place with aligned controls and returns focus', async ({
+test('refresh expands in place with aligned controls and acknowledges the started refresh', async ({
   page,
 }, testInfo) => {
   const state = await fixture(page)
@@ -356,18 +362,15 @@ test('refresh expands in place with aligned controls and returns focus', async (
     (call) => call.operationName === 'AdminLibraries',
   ).length
   await editor.getByRole('button', { name: 'Refresh metadata' }).click()
-  await expect(page.getByRole('article')).toContainText('Metadata refresh requested for Movies.')
-  await expect(trigger).toBeFocused()
-  await expect(page.getByRole('article').locator('[data-library-status]')).toHaveText('HEALTHY')
+  await expect(page.getByText('Metadata refresh requested for Movies.')).toBeFocused()
+  await expect(page.getByRole('article').locator('[data-library-status]')).toHaveText('REFRESHING')
+  await expect(trigger).toBeDisabled()
   expect(state.calls.filter((call) => call.operationName === 'AdminLibraries')).toHaveLength(
     inventoryRequests,
   )
-  expect(state.calls.find((call) => call.operationName === 'RefreshLibrary')?.variables).toEqual({
-    id: 'movies',
-    imageRefreshMode: 'REFRESH_IF_CHANGED',
-  })
-  await page.reload()
-  await expect(page.getByRole('article').locator('[data-library-status]')).toHaveText('REFRESHING')
+  expect(
+    state.calls.find((call) => call.operationName === 'StartLibraryRefresh')?.variables,
+  ).toEqual({ input: { libraryId: 'movies', imageRefreshMode: 'REFRESH_IF_CHANGED' } })
 })
 
 test("keyboard focus draws the theme ring on the page's own controls", async ({ page }) => {

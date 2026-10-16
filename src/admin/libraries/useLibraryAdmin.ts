@@ -7,14 +7,21 @@ import {
   LibraryAddedDocument,
   LibraryRemovedDocument,
   LibraryStatusChangedDocument,
-  RefreshLibraryDocument,
   RemoveLibraryDocument,
-  ScanLibraryDocument,
+  StartLibraryRefreshDocument,
+  StartLibraryScanDocument,
   type AddLibraryInput,
   type ImageRefreshMode,
   type ManagedLibraryFieldsFragment,
+  type StartLibraryScanMutation,
 } from '../../graphql/generated/graphql'
 import { extractAuthContext } from '../../graphql/errorRouting'
+import { userErrorMessage } from '../../graphql/userErrors'
+
+// Scan, refresh and removal share one refusal union.
+type LibraryOperationError = NonNullable<
+  StartLibraryScanMutation['startLibraryScan']
+>['userErrors'][number]
 
 /** Why live inventory changes stopped: the server refused them, or they ended another way. */
 export type LiveInventoryStop = 'forbidden' | 'failed'
@@ -78,9 +85,10 @@ export function useAdminLibraries() {
 }
 
 /**
- * One in-flight library command per caller. A null result means the request failed, was a
- * duplicate, or outlived the caller; creation's userErrors ride the returned payload. Scan and
- * refresh success means the server accepted the request, not that it finished.
+ * One in-flight library command per caller. A null result means the request failed, was refused,
+ * was a duplicate, or outlived the caller; creation's userErrors ride the returned payload. Scan
+ * and refresh success means the server started the operation, not that it finished: the returned
+ * library already shows the busy status.
  */
 export function useLibraryCommands() {
   const client = useApolloClient()
@@ -117,6 +125,16 @@ export function useLibraryCommands() {
     }
   }
 
+  // The payload when the server did what was asked; a refusal shows its message instead.
+  function accepted<P extends { userErrors: readonly LibraryOperationError[] }>(
+    payload: P | null | undefined,
+  ): P | null {
+    if (!payload) throw new Error('Missing library operation result')
+    if (payload.userErrors.length === 0) return payload
+    if (active.current) setFailure(payload.userErrors.map(userErrorMessage).join(' '))
+    return null
+  }
+
   return {
     pending,
     error: failure,
@@ -129,30 +147,45 @@ export function useLibraryCommands() {
           refreshLibraryViews(client)
         return data.addLibrary
       }),
-    scan: (id: string) =>
-      execute(async () => {
-        const { data } = await client.mutate({ mutation: ScanLibraryDocument, variables: { id } })
-        if (data?.scanLibrary !== true) throw new Error('Scan was not accepted')
-        return true
-      }),
-    refresh: (id: string, imageRefreshMode: ImageRefreshMode) =>
+    scan: (libraryId: string) =>
       execute(async () => {
         const { data } = await client.mutate({
-          mutation: RefreshLibraryDocument,
-          variables: { id, imageRefreshMode },
+          mutation: StartLibraryScanDocument,
+          variables: { input: { libraryId } },
         })
-        if (data?.refreshLibrary !== true) throw new Error('Refresh was not accepted')
-        return true
+        return startedLibrary(accepted(data?.startLibraryScan))
       }),
-    remove: (id: string, onRemoved: () => void) =>
+    refresh: (libraryId: string, imageRefreshMode: ImageRefreshMode) =>
       execute(async () => {
-        const { data } = await client.mutate({ mutation: RemoveLibraryDocument, variables: { id } })
-        if (data?.removeLibrary !== true) throw new Error('Removal was not confirmed')
+        const { data } = await client.mutate({
+          mutation: StartLibraryRefreshDocument,
+          variables: { input: { libraryId, imageRefreshMode } },
+        })
+        return startedLibrary(accepted(data?.startLibraryRefresh))
+      }),
+    remove: (libraryId: string, onRemoved: () => void) =>
+      execute(async () => {
+        const { data } = await client.mutate({
+          mutation: RemoveLibraryDocument,
+          variables: { input: { libraryId } },
+        })
+        const payload = accepted(data?.removeLibrary)
+        if (!payload) return null
+        if (!payload.removedLibraryId) throw new Error('Removal was not confirmed')
         if (active.current) onRemoved()
-        refreshLibraryViews(client, id)
-        return true
+        refreshLibraryViews(client, payload.removedLibraryId)
+        return payload.removedLibraryId
       }),
   }
+}
+
+// Normalization has already written the returned library, busy status included, into the cache.
+function startedLibrary(
+  payload: { library: ManagedLibraryFieldsFragment | null } | null,
+): ManagedLibraryFieldsFragment | null {
+  if (!payload) return null
+  if (!payload.library) throw new Error('Missing started library')
+  return payload.library
 }
 
 function refreshLibraryViews(client: ApolloClient, removedId?: string) {

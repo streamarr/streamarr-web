@@ -190,8 +190,14 @@ function LibraryDetails({
   const [refreshOpen, setRefreshOpen] = useState(false)
   const [removing, setRemoving] = useState(false)
   const [imageMode, setImageMode] = useState<ImageRefreshMode>('PRESERVE')
-  const [notice, setNotice] = useState('')
+  // An acknowledgement lasts while the library keeps the status its operation started.
+  const [acknowledgement, setAcknowledgement] = useState<{
+    text: string
+    status: ManagedLibrary['status']
+  } | null>(null)
+  const notice = acknowledgement?.status === library.status ? acknowledgement.text : ''
   const refreshTrigger = useRef<HTMLButtonElement>(null)
+  const actionNotice = useRef<HTMLOutputElement>(null)
   const restoreRefreshFocus = useRef(false)
   const reduceMotion = useReducedMotion()
   const maintainable = canMaintainLibrary(library)
@@ -203,17 +209,14 @@ function LibraryDetails({
   if (!removalError && !maintainable)
     removalError = 'This library cannot be removed while maintenance is in progress.'
 
-  const [previousStatus, setPreviousStatus] = useState(library.status)
-  if (previousStatus !== library.status) {
-    setPreviousStatus(library.status)
-    setNotice('')
-  }
   useEffect(() => {
-    // A successful submit must re-enable the trigger before focus can return to it.
-    if (restoreRefreshFocus.current && !refreshOpen && !commands.pending) {
-      restoreRefreshFocus.current = false
-      refreshTrigger.current?.focus({ preventScroll: true })
-    }
+    // A finished request must re-enable the trigger before focus can return to it. A started
+    // refresh leaves the trigger disabled, so its acknowledgement takes focus instead.
+    if (!restoreRefreshFocus.current || refreshOpen || commands.pending) return
+    restoreRefreshFocus.current = false
+    const trigger = refreshTrigger.current
+    if (trigger && !trigger.disabled) trigger.focus({ preventScroll: true })
+    else actionNotice.current?.focus({ preventScroll: true })
   }, [refreshOpen, commands.pending])
 
   function closeRefresh() {
@@ -259,10 +262,13 @@ function LibraryDetails({
             onSubmit={async (event) => {
               event.preventDefault()
               if (disabled) return
-              if (await commands.refresh(library.id, imageMode)) {
-                setNotice(`Metadata refresh requested for ${name}.`)
-                closeRefresh()
-              }
+              const started = await commands.refresh(library.id, imageMode)
+              if (!started) return
+              setAcknowledgement({
+                text: `Metadata refresh requested for ${name}.`,
+                status: started.status,
+              })
+              closeRefresh()
             }}
           >
             <Select
@@ -322,7 +328,9 @@ function LibraryDetails({
             leftSection={<Icon name="scan" />}
             onClick={async () => {
               setRefreshOpen(false)
-              if (await commands.scan(library.id)) setNotice(`Scan requested for ${name}.`)
+              const started = await commands.scan(library.id)
+              if (started)
+                setAcknowledgement({ text: `Scan requested for ${name}.`, status: started.status })
             }}
           >
             Scan library
@@ -364,7 +372,11 @@ function LibraryDetails({
             </p>
           )}
         </div>
-        {notice && <output className={styles.actionNotice}>{notice}</output>}
+        {notice && (
+          <output ref={actionNotice} tabIndex={-1} className={styles.actionNotice}>
+            {notice}
+          </output>
+        )}
         {commands.error && !removing && (
           <Alert role="alert" color="red" mt="md">
             {commands.error}

@@ -33,14 +33,51 @@ mutation AddLibrary($input: AddLibraryInput!) {
   }
 }
 
-mutation ScanLibrary($id: ID!) {
-  scanLibrary(id: $id)
+mutation StartLibraryScan($input: StartLibraryScanInput!) {
+  startLibraryScan(input: $input) {
+    library {
+      ...ManagedLibraryFields
+    }
+    userErrors {
+      __typename
+      ... on MutationError {
+        message
+      }
+      ... on LibraryBusyError {
+        status
+      }
+    }
+  }
 }
 
-mutation RefreshLibrary($id: ID!, $imageRefreshMode: ImageRefreshMode!) {
-  refreshLibrary(id: $id, imageRefreshMode: $imageRefreshMode)
+mutation StartLibraryRefresh($input: StartLibraryRefreshInput!) {
+  startLibraryRefresh(input: $input) {
+    library {
+      ...ManagedLibraryFields
+    }
+    userErrors {
+      __typename
+      ... on MutationError {
+        message
+      }
+      ... on LibraryBusyError {
+        status
+      }
+    }
+  }
 }
 
-mutation RemoveLibrary($id: ID!) {
-  removeLibrary(id: $id)
+mutation RemoveLibrary($input: RemoveLibraryInput!) {
+  removeLibrary(input: $input) {
+    removedLibraryId
+    userErrors {
+      __typename
+      ... on MutationError {
+        message
+      }
+      ... on LibraryBusyError {
+        status
+      }
+    }
+  }
 }
