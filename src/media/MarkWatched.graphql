@@ -1,3 +1,13 @@
-mutation MarkWatched($id: ID!) {
-  markWatched(id: $id)
+mutation MarkWatched($input: MarkWatchedInput!) {
+  markWatched(input: $input) {
+    item {
+      ...WatchStateItemFields
+    }
+    userErrors {
+      __typename
+      ... on MutationError {
+        message
+      }
+    }
+  }
 }

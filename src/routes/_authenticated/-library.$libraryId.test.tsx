@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { HttpResponse, graphql, type GraphQLQuery } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type {
@@ -140,6 +140,42 @@ function mockLibraryPage(
   )
 }
 
+async function markEverlightWatchedFromItsDetail(libraryPath: string) {
+  let libraryRequests = 0
+  server.use(
+    graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
+    graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
+    graphql.query('LibraryPage', () => {
+      libraryRequests += 1
+      const data = libraryWithEverlight()
+      return HttpResponse.json({ data: { library: { ...data.library, __typename: 'Library' } } })
+    }),
+    graphql.query('MovieDetail', () => HttpResponse.json({ data: EVERLIGHT_DETAIL })),
+    graphql.mutation('MarkWatched', () =>
+      HttpResponse.json({
+        data: {
+          markWatched: {
+            item: { __typename: 'Movie', id: 'm1', watchStatus: 'WATCHED', watchProgress: null },
+            userErrors: [],
+          },
+        },
+      }),
+    ),
+  )
+  const { user, router } = renderAppAt(libraryPath)
+  const card = await screen.findByRole('link', { name: /Everlight/ })
+  expect(within(card).queryByLabelText('Watched')).not.toBeInTheDocument()
+  await act(async () => {
+    await router.navigate({ to: '/movie/$movieId', params: { movieId: 'm1' } })
+  })
+  await user.click(await screen.findByRole('button', { name: 'Mark watched' }))
+  await screen.findByRole('button', { name: 'Mark unwatched' })
+  await act(async () => {
+    router.history.back()
+  })
+  return () => libraryRequests
+}
+
 describe('/library/$libraryId', () => {
   it('shouldRefreshAnEmptyFilteredLibraryAfterMarkingATitleUnwatched', async () => {
     let watched = true
@@ -159,7 +195,19 @@ describe('/library/$libraryId', () => {
       ),
       graphql.mutation('MarkUnwatched', () => {
         watched = false
-        return HttpResponse.json({ data: { markUnwatched: true } })
+        return HttpResponse.json({
+          data: {
+            markUnwatched: {
+              item: {
+                __typename: 'Movie',
+                id: 'm1',
+                watchStatus: 'UNWATCHED',
+                watchProgress: null,
+              },
+              userErrors: [],
+            },
+          },
+        })
       }),
     )
     const { user, router } = renderAppAt(`/library/${LIBRARY_ID}?watchStatus=UNWATCHED`)
@@ -172,6 +220,23 @@ describe('/library/$libraryId', () => {
     await act(async () => {
       router.history.back()
     })
+    expect(await screen.findByRole('link', { name: /Everlight/ })).toBeVisible()
+  })
+
+  it('shouldShowTheMarkedBadgeInATitleSortedLibraryWithoutLoadingItAgain', async () => {
+    const libraryRequests = await markEverlightWatchedFromItsDetail(`/library/${LIBRARY_ID}`)
+
+    const returnedCard = await screen.findByRole('link', { name: /Everlight/ })
+    expect(within(returnedCard).getByLabelText('Watched')).toBeInTheDocument()
+    expect(libraryRequests()).toBe(1)
+  })
+
+  it('shouldReloadALastWatchedLibraryAfterMarkingATitle', async () => {
+    const libraryRequests = await markEverlightWatchedFromItsDetail(
+      `/library/${LIBRARY_ID}?by=LAST_WATCHED&direction=DESC`,
+    )
+
+    await waitFor(() => expect(libraryRequests()).toBe(2))
     expect(await screen.findByRole('link', { name: /Everlight/ })).toBeVisible()
   })
 

@@ -1,0 +1,74 @@
+# A mark cascades to related items, so the payload selects each one the server changed. The
+# normalized cache then updates every cached badge and verb without a refetch.
+fragment WatchStateItemFields on WatchStateItem {
+  __typename
+  ... on Movie {
+    ...MovieWatchState
+  }
+  ... on Episode {
+    ...EpisodeWatchState
+    season {
+      ...SeasonWatchState
+      series {
+        ...SeriesWatchState
+      }
+    }
+  }
+  ... on Season {
+    ...SeasonWatchState
+    episodes {
+      ...EpisodeWatchState
+    }
+    series {
+      ...SeriesWatchState
+    }
+  }
+  ... on Series {
+    ...SeriesWatchState
+    seasons {
+      ...SeasonWatchState
+      episodes {
+        ...EpisodeWatchState
+      }
+    }
+  }
+}
+
+fragment MovieWatchState on Movie {
+  id
+  watchStatus
+  watchProgress {
+    ...WatchProgressFields
+  }
+}
+
+fragment EpisodeWatchState on Episode {
+  id
+  watchStatus
+  watchProgress {
+    ...WatchProgressFields
+  }
+}
+
+fragment SeasonWatchState on Season {
+  id
+  watchStatus
+  watchProgress {
+    ...WatchProgressFields
+  }
+}
+
+fragment SeriesWatchState on Series {
+  id
+  watchStatus
+  watchProgress {
+    ...WatchProgressFields
+  }
+}
+
+# Every field, so replacing a cached watchProgress never drops one another query selected.
+fragment WatchProgressFields on WatchProgress {
+  positionSeconds
+  percentComplete
+  durationSeconds
+}

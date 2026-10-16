@@ -14,16 +14,15 @@ afterEach(async () => {
 })
 
 describe('watched state across routes', () => {
-  it('shouldRefreshTheSeriesActionAfterMarkingItsSeasonWatched', async () => {
-    let watched = false
-    const status = () => (watched ? 'WATCHED' : 'UNWATCHED')
+  it('shouldUpdateTheSeriesActionFromTheMarkedSeasonWithoutLoadingTheSeriesAgain', async () => {
+    let seriesRequests = 0
     const episode = () => ({
       __typename: 'Episode',
       id: 'e1',
       title: 'First',
       episodeNumber: 1,
       runtime: 45,
-      watchStatus: status(),
+      watchStatus: 'UNWATCHED',
       watchProgress: null,
       files: [{ __typename: 'MediaFile', id: 'f1' }],
       stillImages: [],
@@ -35,7 +34,7 @@ describe('watched state across routes', () => {
       seasonNumber: 1,
       overview: 'One season',
       airDate: '2024-01-01',
-      watchStatus: status(),
+      watchStatus: 'UNWATCHED',
       watchProgress: null,
       episodes: [episode()],
       posterImages: [],
@@ -47,6 +46,7 @@ describe('watched state across routes', () => {
       ),
       graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
       graphql.query('SeriesDetail', () => {
+        seriesRequests += 1
         return HttpResponse.json({
           data: {
             series: {
@@ -60,7 +60,7 @@ describe('watched state across routes', () => {
               genres: [],
               directors: [],
               cast: [],
-              watchStatus: status(),
+              watchStatus: 'UNWATCHED',
               seasons: [season()],
               backdropImages: [],
               posterImages: [],
@@ -87,8 +87,21 @@ describe('watched state across routes', () => {
         }),
       ),
       graphql.mutation('MarkWatched', () => {
-        watched = true
-        return HttpResponse.json({ data: { markWatched: true } })
+        const watched = { watchStatus: 'WATCHED', watchProgress: null }
+        return HttpResponse.json({
+          data: {
+            markWatched: {
+              item: {
+                __typename: 'Season',
+                id: 's1',
+                ...watched,
+                episodes: [{ __typename: 'Episode', id: 'e1', ...watched }],
+                series: { __typename: 'Series', id: 'r1', ...watched },
+              },
+              userErrors: [],
+            },
+          },
+        })
       }),
     )
     const { user } = renderAppAt('/series/r1')
@@ -104,6 +117,98 @@ describe('watched state across routes', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Mark series unwatched' })).toBeInTheDocument(),
     )
+    expect(screen.getByLabelText('Watched')).toBeInTheDocument()
+    expect(seriesRequests).toBe(1)
+  })
+  it('shouldLoadContinueWatchingAgainAfterMarkingItsMovieWatched', async () => {
+    let watched = false
+    let homeRequests = 0
+    server.use(
+      graphql.query('Me', () =>
+        HttpResponse.json({ data: { me: meFixture({ scope: 'profile' }) } }),
+      ),
+      graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
+      graphql.query('Home', () => {
+        homeRequests += 1
+        return HttpResponse.json({
+          data: {
+            libraries: [],
+            continueWatching: watched
+              ? []
+              : [
+                  {
+                    __typename: 'Movie',
+                    id: 'm1',
+                    title: 'Everlight',
+                    tagline: null,
+                    summary: null,
+                    runtime: 90,
+                    createdOn: '2024-01-01T00:00:00Z',
+                    genres: [],
+                    images: [],
+                    files: [{ id: 'f1' }],
+                    watchProgress: {
+                      positionSeconds: 20,
+                      percentComplete: 2,
+                      durationSeconds: 5400,
+                    },
+                  },
+                ],
+          },
+        })
+      }),
+      graphql.query('MovieDetail', () =>
+        HttpResponse.json({
+          data: {
+            movie: {
+              __typename: 'Movie',
+              id: 'm1',
+              title: 'Everlight',
+              tagline: null,
+              summary: null,
+              runtime: 90,
+              releaseDate: '2024-01-01',
+              contentRating: null,
+              genres: [],
+              directors: [],
+              cast: [],
+              ratings: [],
+              files: [{ __typename: 'MediaFile', id: 'f1' }],
+              watchStatus: 'IN_PROGRESS',
+              watchProgress: { positionSeconds: 20, percentComplete: 2, durationSeconds: 5400 },
+              backdropImages: [],
+              posterImages: [],
+            },
+          },
+        }),
+      ),
+      graphql.mutation('MarkWatched', () => {
+        watched = true
+        return HttpResponse.json({
+          data: {
+            markWatched: {
+              item: { __typename: 'Movie', id: 'm1', watchStatus: 'WATCHED', watchProgress: null },
+              userErrors: [],
+            },
+          },
+        })
+      }),
+    )
+    const { user, router } = renderAppAt('/')
+    await screen.findByRole('heading', { name: 'Continue watching' })
+    await act(async () => {
+      await router.navigate({ to: '/movie/$movieId', params: { movieId: 'm1' } })
+    })
+
+    await user.click(await screen.findByRole('button', { name: 'Mark watched' }))
+    await screen.findByRole('button', { name: 'Mark unwatched' })
+    await act(async () => {
+      router.history.back()
+    })
+
+    await screen.findByRole('heading', { name: 'Nothing to watch yet' })
+    expect(screen.queryByRole('heading', { name: 'Continue watching' })).not.toBeInTheDocument()
+    expect(homeRequests).toBe(2)
   })
   it('shouldResumeFromReportedProgressAfterReturningToTheMovie', async () => {
     let position = 20

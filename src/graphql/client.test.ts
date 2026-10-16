@@ -1,8 +1,10 @@
+import { gql, type NormalizedCacheObject } from '@apollo/client'
 import { HttpResponse, graphql, http } from 'msw'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { server } from '../test/server'
+import { deferred } from '../test/deferred'
 import { createApolloClient } from './client'
-import { MeDocument } from './generated/graphql'
+import { MarkWatchedDocument, MeDocument } from './generated/graphql'
 import { meFixture } from '../test/meFixture'
 
 const ME = meFixture({ scope: 'profile' })
@@ -111,4 +113,60 @@ describe('apollo client', () => {
     await expect(createApolloClient(vi.fn()).query({ query: MeDocument })).rejects.toBeDefined()
     expect(attempts).toBe(1)
   })
+
+  it.each(['resetStore', 'clearStore'] as const)(
+    'shouldKeepAResponseSentBeforeAStoreResetOutOfTheCacheWhenCalling %s',
+    async (reset) => {
+      const requested = deferred()
+      const answer = deferred()
+      server.use(
+        graphql.mutation('MarkWatched', async () => {
+          requested.resolve()
+          await answer.promise
+          return HttpResponse.json({
+            data: {
+              markWatched: {
+                item: {
+                  __typename: 'Movie',
+                  id: 'm1',
+                  watchStatus: 'WATCHED',
+                  watchProgress: null,
+                },
+                userErrors: [],
+              },
+            },
+          })
+        }),
+      )
+      const client = createApolloClient(vi.fn())
+      const mark = client.mutate({
+        mutation: MarkWatchedDocument,
+        variables: { input: { itemId: 'm1' } },
+      })
+      await requested.promise
+
+      await client[reset]()
+      const nextIdentityMovie = { __typename: 'Movie', id: 'm1', watchStatus: 'UNWATCHED' }
+      client.cache.writeFragment({
+        fragment: gql`
+          fragment NextIdentityMovie on Movie {
+            id
+            watchStatus
+          }
+        `,
+        data: nextIdentityMovie,
+      })
+      answer.resolve()
+
+      const outcome = await mark.then(
+        () => 'saved',
+        () => 'discarded',
+      )
+
+      expect((client.cache.extract() as NormalizedCacheObject)['Movie:m1']).toMatchObject(
+        nextIdentityMovie,
+      )
+      expect(outcome).toBe('discarded')
+    },
+  )
 })

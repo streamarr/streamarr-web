@@ -1,36 +1,44 @@
-import type { DocumentNode } from '@apollo/client'
 import { useMutation } from '@apollo/client/react'
 import { MarkUnwatchedDocument, MarkWatchedDocument } from '../graphql/generated/graphql'
 import { requestFailureMessage } from '../graphql/requestErrors'
+import { userErrorMessage, type UserErrorLike } from '../graphql/userErrors'
 import { invalidateWatchedState } from './watchedState'
 
-// markWatched/markUnwatched take any collectable id; the server cascades a series or season to
-// its episodes. The detail query is refetched so the verb flips only once the server agrees.
-export function useWatchedToggle(id: string, detailQuery: DocumentNode) {
+const FAILURE_MESSAGE = "Couldn't update the watched state."
+
+// markWatched/markUnwatched take any item id; the server cascades a series or season to its
+// episodes. The payload's item and its related items update the cache, so no query is refetched.
+export function useWatchedToggle(id: string) {
   const [markWatched, watchedState] = useMutation(MarkWatchedDocument, {
     update: (cache, { data }) => {
-      if (data?.markWatched) invalidateWatchedState(cache)
+      if (data?.markWatched?.item) invalidateWatchedState(cache)
     },
-    onQueryUpdated: (query) => query.refetch(),
-    refetchQueries: [detailQuery],
-    awaitRefetchQueries: true,
   })
   const [markUnwatched, unwatchedState] = useMutation(MarkUnwatchedDocument, {
     update: (cache, { data }) => {
-      if (data?.markUnwatched) invalidateWatchedState(cache)
+      if (data?.markUnwatched?.item) invalidateWatchedState(cache)
     },
-    onQueryUpdated: (query) => query.refetch(),
-    refetchQueries: [detailQuery],
-    awaitRefetchQueries: true,
   })
 
-  const error = watchedState.error ?? unwatchedState.error
   return {
-    markWatched: () => markWatched({ variables: { id } }).catch(ignoreReportedFailure),
-    markUnwatched: () => markUnwatched({ variables: { id } }).catch(ignoreReportedFailure),
+    markWatched: () =>
+      markWatched({ variables: { input: { itemId: id } } }).catch(ignoreReportedFailure),
+    markUnwatched: () =>
+      markUnwatched({ variables: { input: { itemId: id } } }).catch(ignoreReportedFailure),
     pending: watchedState.loading || unwatchedState.loading,
-    failure: error ? requestFailureMessage(error, "Couldn't update the watched state.") : null,
+    failure:
+      failureMessage(watchedState.error, watchedState.data?.markWatched?.userErrors) ??
+      failureMessage(unwatchedState.error, unwatchedState.data?.markUnwatched?.userErrors),
   }
+}
+
+function failureMessage(
+  error: unknown,
+  userErrors: readonly UserErrorLike[] | undefined,
+): string | null {
+  if (userErrors?.length) return userErrorMessage(userErrors[0])
+  if (error) return requestFailureMessage(error, FAILURE_MESSAGE)
+  return null
 }
 
 function ignoreReportedFailure() {

@@ -1,3 +1,13 @@
-mutation MarkUnwatched($id: ID!) {
-  markUnwatched(id: $id)
+mutation MarkUnwatched($input: MarkUnwatchedInput!) {
+  markUnwatched(input: $input) {
+    item {
+      ...WatchStateItemFields
+    }
+    userErrors {
+      __typename
+      ... on MutationError {
+        message
+      }
+    }
+  }
 }

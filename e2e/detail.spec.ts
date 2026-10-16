@@ -182,3 +182,51 @@ test('cast artwork stays portrait-shaped in the shared shelf on desktop and a ph
     expect(bounds!.width).toBeLessThan(bounds!.height)
   }
 })
+
+// Registered after openMovie, so it sees only the requests that follow the first load.
+async function answerMarkWatched(page: Page, markWatched: Record<string, unknown>) {
+  const later = { movieRequests: 0 }
+  await page.route('**/graphql', async (route) => {
+    const { operationName } = route.request().postDataJSON() as { operationName?: string }
+    if (operationName === 'MovieDetail') later.movieRequests += 1
+    if (operationName !== 'MarkWatched') return route.fallback()
+    return route.fulfill({ json: { data: { markWatched } } })
+  })
+  return later
+}
+
+test('marking the movie watched flips the verb from the returned movie without loading it again', async ({
+  page,
+  request,
+}) => {
+  await openMovie(page, request)
+  const later = await answerMarkWatched(page, {
+    item: { __typename: 'Movie', id: 'm1', watchStatus: 'WATCHED', watchProgress: null },
+    userErrors: [],
+  })
+
+  await page.getByRole('button', { name: 'Mark watched', exact: true }).click()
+
+  await expect(page.getByRole('button', { name: 'Mark unwatched', exact: true })).toBeVisible()
+  expect(later.movieRequests).toBe(0)
+})
+
+test('a refused mark shows the server message and keeps the verb', async ({ page, request }) => {
+  await openMovie(page, request)
+  await answerMarkWatched(page, {
+    item: null,
+    userErrors: [
+      {
+        __typename: 'ItemNotFoundError',
+        message: 'No movie, episode, season or series has the given ID.',
+      },
+    ],
+  })
+
+  await page.getByRole('button', { name: 'Mark watched', exact: true }).click()
+
+  await expect(page.getByRole('alert')).toContainText(
+    'No movie, episode, season or series has the given ID.',
+  )
+  await expect(page.getByRole('button', { name: 'Mark watched', exact: true })).toBeEnabled()
+})
