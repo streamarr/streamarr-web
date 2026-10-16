@@ -85,6 +85,7 @@ export function Player({
     let sessionId: string | null = null
     let lastReportedPosition = startPositionSeconds ?? 0
     let lastKnownPosition: number | null = null
+    let unacknowledgedEndPosition: number | null = null
     let timelineReports = Promise.resolve()
     const reportCancellation = new AbortController()
     let previousCleanup = pendingCleanups.get(client)
@@ -106,27 +107,59 @@ export function Player({
     }
 
     function report(state: PlaybackState, positionSeconds: number) {
+      enqueueReport((id) =>
+        sendReport({ sessionId: id, positionSeconds: Math.floor(positionSeconds), state }),
+      )
+    }
+
+    // Reads the position only when its turn in the queue comes. An acknowledged STOPPED clears each
+    // position it sent, so leaving repeats only a failed STOPPED, even after a replay.
+    function reportStopped(readStoppedAt: () => number | null) {
+      enqueueReport(async (id) => {
+        const stoppedAt = readStoppedAt()
+        if (stoppedAt === null) {
+          return
+        }
+        await sendReport({
+          sessionId: id,
+          positionSeconds: Math.floor(stoppedAt),
+          state: 'STOPPED',
+        })
+        if (unacknowledgedEndPosition === stoppedAt) {
+          unacknowledgedEndPosition = null
+        }
+        if (lastKnownPosition === stoppedAt) {
+          lastKnownPosition = null
+        }
+      })
+    }
+
+    function enqueueReport(send: (sessionId: string) => Promise<void>) {
       if (!sessionId) {
         return
       }
-      const variables = { sessionId, positionSeconds: Math.floor(positionSeconds), state }
+      const id = sessionId
       // The server accepts arrival order, including reports that precede the final STOPPED.
       timelineReports = timelineReports
         .then(async () => {
           if (reportCancellation.signal.aborted) {
             return
           }
-          await client.mutate({
-            mutation: ReportStreamSessionTimelineDocument,
-            variables,
-            context: { fetchOptions: { signal: reportCancellation.signal } },
-            update: (cache, { data }) => {
-              if (data?.reportStreamSessionTimeline) discardWatchedState(cache)
-            },
-            onQueryUpdated: refetchWatchedQuery,
-          })
+          await send(id)
         })
         .catch(ignoreTimelineReportFailure)
+    }
+
+    async function sendReport(variables: ReportStreamSessionTimelineMutationVariables) {
+      await client.mutate({
+        mutation: ReportStreamSessionTimelineDocument,
+        variables,
+        context: { fetchOptions: { signal: reportCancellation.signal } },
+        update: (cache, { data }) => {
+          if (data?.reportStreamSessionTimeline) discardWatchedState(cache)
+        },
+        onQueryUpdated: refetchWatchedQuery,
+      })
     }
 
     let playRequested = false
@@ -159,6 +192,13 @@ export function Player({
       onPause: (element) => {
         lastKnownPosition = element.currentTime
         report('PAUSED', element.currentTime)
+      },
+      onEnded: (element) => {
+        const endedAt = element.currentTime
+        lastKnownPosition = endedAt
+        unacknowledgedEndPosition = endedAt
+        // A replay can move the playhead while an earlier report holds the queue.
+        reportStopped(() => endedAt)
       },
     })
 
@@ -251,9 +291,8 @@ export function Player({
     return () => {
       cancelled = true
       startupDeadline.end()
-      if (lastKnownPosition !== null) {
-        report('STOPPED', lastKnownPosition)
-      }
+      reportStopped(() => unacknowledgedEndPosition)
+      reportStopped(() => lastKnownPosition)
       detachSource()
       requestCleanup()
     }
@@ -309,22 +348,26 @@ function attachTimeline(
     onTimeUpdate: TimelineHandler
     onPlay: TimelineHandler
     onPause: TimelineHandler
+    onEnded: TimelineHandler
   },
 ): { detach: () => void } {
   const onLoadedMetadata = () => handlers.onLoadedMetadata(video)
   const onTimeUpdate = () => handlers.onTimeUpdate(video)
   const onPlay = () => handlers.onPlay(video)
   const onPause = () => handlers.onPause(video)
+  const onEnded = () => handlers.onEnded(video)
   video.addEventListener('loadedmetadata', onLoadedMetadata)
   video.addEventListener('timeupdate', onTimeUpdate)
   video.addEventListener('play', onPlay)
   video.addEventListener('pause', onPause)
+  video.addEventListener('ended', onEnded)
   return {
     detach: () => {
       video.removeEventListener('loadedmetadata', onLoadedMetadata)
       video.removeEventListener('timeupdate', onTimeUpdate)
       video.removeEventListener('play', onPlay)
       video.removeEventListener('pause', onPause)
+      video.removeEventListener('ended', onEnded)
     },
   }
 }
