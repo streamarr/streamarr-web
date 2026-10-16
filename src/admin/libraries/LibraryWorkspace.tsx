@@ -18,11 +18,18 @@ import {
   libraryTypeLabel,
   type ManagedLibrary,
 } from './libraryModel'
-import { useAdminLibraries, useLibraryCommands } from './useLibraryAdmin'
+import {
+  NO_LONGER_PERMITTED,
+  useAdminLibraries,
+  useLibraryCommands,
+  type LiveInventoryStop,
+} from './useLibraryAdmin'
 import styles from '../Settings.module.css'
 
-// Until #32 delivers live status, every acknowledgement points at a reload.
-const REFRESH_PAGE_FOR_STATUS = 'Refresh the page to see the latest status.'
+const LIVE_INVENTORY_STOP_MESSAGES = {
+  forbidden: NO_LONGER_PERMITTED,
+  failed: 'Live status stopped. Reload the page to see the latest status.',
+} as const satisfies Record<LiveInventoryStop, string>
 
 const IMAGE_REFRESH_OPTIONS = [
   { value: 'PRESERVE', label: 'Keep existing images' },
@@ -43,6 +50,7 @@ export function LibraryWorkspace({
   onSelect: (id: string) => void
 }>) {
   const query = useAdminLibraries()
+  const { liveStop } = query
   const [notice, setNotice] = useState('')
   const heading = useRef<HTMLHeadingElement>(null)
   const libraries = query.data?.libraries
@@ -75,6 +83,11 @@ export function LibraryWorkspace({
             <Icon name="close" size={16} />
           </button>
         </output>
+      )}
+      {liveStop && (
+        <Alert role="alert" color="red" mb="md">
+          {LIVE_INVENTORY_STOP_MESSAGES[liveStop]}
+        </Alert>
       )}
       {query.error && (
         <FailureRow className={styles.failureRow} onRetry={query.refetch}>
@@ -177,8 +190,21 @@ function LibraryDetails({
   const [refreshOpen, setRefreshOpen] = useState(false)
   const [removing, setRemoving] = useState(false)
   const [imageMode, setImageMode] = useState<ImageRefreshMode>('PRESERVE')
-  const [notice, setNotice] = useState('')
+  // An acknowledgement lasts while the library keeps the status its operation started.
+  const [acknowledgement, setAcknowledgement] = useState<{
+    text: string
+    status: ManagedLibrary['status']
+  } | null>(null)
+  // A later run that reaches the same status belongs to someone else, so a change of status to
+  // any other value ends the acknowledgement for good.
+  const [shownStatus, setShownStatus] = useState(library.status)
+  if (shownStatus !== library.status) {
+    setShownStatus(library.status)
+    if (acknowledgement && acknowledgement.status !== library.status) setAcknowledgement(null)
+  }
+  const notice = acknowledgement?.status === library.status ? acknowledgement.text : ''
   const refreshTrigger = useRef<HTMLButtonElement>(null)
+  const actionNotice = useRef<HTMLOutputElement>(null)
   const restoreRefreshFocus = useRef(false)
   const reduceMotion = useReducedMotion()
   const maintainable = canMaintainLibrary(library)
@@ -190,18 +216,20 @@ function LibraryDetails({
   if (!removalError && !maintainable)
     removalError = 'This library cannot be removed while maintenance is in progress.'
 
-  const [previousStatus, setPreviousStatus] = useState(library.status)
-  if (previousStatus !== library.status) {
-    setPreviousStatus(library.status)
-    setNotice('')
-  }
   useEffect(() => {
-    // A successful submit must re-enable the trigger before focus can return to it.
-    if (restoreRefreshFocus.current && !refreshOpen && !commands.pending) {
-      restoreRefreshFocus.current = false
-      refreshTrigger.current?.focus({ preventScroll: true })
-    }
+    // A finished request must re-enable the trigger before focus can return to it. A started
+    // refresh leaves the trigger disabled, so its acknowledgement takes focus instead.
+    if (!restoreRefreshFocus.current || refreshOpen || commands.pending) return
+    restoreRefreshFocus.current = false
+    const trigger = refreshTrigger.current
+    if (trigger && !trigger.disabled) trigger.focus({ preventScroll: true })
+    else actionNotice.current?.focus({ preventScroll: true })
   }, [refreshOpen, commands.pending])
+
+  // A run that already ended needs no acknowledgement: the status and last scan show its outcome.
+  function acknowledge(started: ManagedLibrary, text: string) {
+    if (!canMaintainLibrary(started)) setAcknowledgement({ text, status: started.status })
+  }
 
   function closeRefresh() {
     restoreRefreshFocus.current = true
@@ -246,10 +274,10 @@ function LibraryDetails({
             onSubmit={async (event) => {
               event.preventDefault()
               if (disabled) return
-              if (await commands.refresh(library.id, imageMode)) {
-                setNotice(`Metadata refresh requested for ${name}. ${REFRESH_PAGE_FOR_STATUS}`)
-                closeRefresh()
-              }
+              const started = await commands.refresh(library.id, imageMode)
+              if (!started) return
+              acknowledge(started, `Metadata refresh requested for ${name}.`)
+              closeRefresh()
             }}
           >
             <Select
@@ -309,8 +337,8 @@ function LibraryDetails({
             leftSection={<Icon name="scan" />}
             onClick={async () => {
               setRefreshOpen(false)
-              if (await commands.scan(library.id))
-                setNotice(`Scan requested for ${name}. ${REFRESH_PAGE_FOR_STATUS}`)
+              const started = await commands.scan(library.id)
+              if (started) acknowledge(started, `Scan requested for ${name}.`)
             }}
           >
             Scan library
@@ -347,12 +375,16 @@ function LibraryDetails({
           {!maintainable && (
             <p>
               {library.status === 'SCANNING' || library.status === 'REFRESHING'
-                ? `Maintenance is in progress. ${REFRESH_PAGE_FOR_STATUS} You can still view this library.`
+                ? 'Maintenance is in progress. You can still view this library.'
                 : 'Maintenance is unavailable for this library status.'}
             </p>
           )}
         </div>
-        {notice && <output className={styles.actionNotice}>{notice}</output>}
+        {notice && (
+          <output ref={actionNotice} tabIndex={-1} className={styles.actionNotice}>
+            {notice}
+          </output>
+        )}
         {commands.error && !removing && (
           <Alert role="alert" color="red" mt="md">
             {commands.error}

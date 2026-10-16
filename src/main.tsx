@@ -17,7 +17,7 @@ import { decideRegistration } from './sw/registration'
 import { cssVariablesResolver, theme } from './theme'
 
 const renewal = 'serviceWorker' in navigator ? createBrowserRenewalBridge() : inactiveRenewalBridge
-const { router, apolloClient, session } = createAppRouter(undefined, renewal)
+const { router, apolloClient, session, subscriptions } = createAppRouter(undefined, renewal)
 
 if ('serviceWorker' in navigator) {
   const { scriptUrl, options } = decideRegistration(import.meta.env.DEV)
@@ -38,7 +38,7 @@ createRoot(document.getElementById('root')!).render(
     >
       <MotionConfig reducedMotion="user">
         <ApolloProvider client={apolloClient}>
-          <AuthProvider sessionStore={session} renewal={renewal}>
+          <AuthProvider sessionStore={session} renewal={renewal} subscriptions={subscriptions}>
             <RouterProvider router={router} />
           </AuthProvider>
         </ApolloProvider>

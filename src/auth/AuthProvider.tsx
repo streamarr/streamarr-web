@@ -12,6 +12,7 @@ import {
   type LoginInput,
   type SetupInput,
 } from './api'
+import type { SubscriptionTransport } from '../graphql/subscriptionTransport'
 import { postCsrfTokenToServiceWorker } from './csrf'
 import type { RenewalBridge } from './renewalBridge'
 import type { SessionStore } from './session'
@@ -36,10 +37,12 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 export function AuthProvider({
   sessionStore,
   renewal,
+  subscriptions,
   children,
 }: {
   sessionStore: SessionStore
   renewal: Pick<RenewalBridge, 'adoptExpiry' | 'stop'>
+  subscriptions: Pick<SubscriptionTransport, 'stop' | 'replaceSocket'>
   children: ReactNode
 }) {
   const [session, setSession] = useState<Session | null>(null)
@@ -82,29 +85,32 @@ export function AuthProvider({
     [adoptNewIdentity],
   )
   // A different Household or Profile is a different identity: nothing cached survives the switch.
-  const selectHousehold = useCallback(
-    async (id: string) => {
-      const tokens = await apiSelectHousehold(id).then(adopt)
+  // The socket keeps the authority it opened with, so it goes first; otherwise its next frame could
+  // land in the cache the refetch is rebuilding.
+  const switchIdentity = useCallback(
+    async (tokens: AuthTokens): Promise<AuthTokens> => {
+      subscriptions.replaceSocket()
       await apollo.resetStore()
       return tokens
     },
-    [adopt, apollo],
+    [apollo, subscriptions],
+  )
+  const selectHousehold = useCallback(
+    (id: string) => apiSelectHousehold(id).then(adopt).then(switchIdentity),
+    [adopt, switchIdentity],
   )
   const selectProfile = useCallback(
-    async (id: string, pin?: string) => {
-      const tokens = await apiSelectProfile(id, pin).then(adopt)
-      await apollo.resetStore()
-      return tokens
-    },
-    [adopt, apollo],
+    (id: string, pin?: string) => apiSelectProfile(id, pin).then(adopt).then(switchIdentity),
+    [adopt, switchIdentity],
   )
   const logout = useCallback(async () => {
     sessionStore.markAnonymous()
     setSession(null)
     renewal.stop()
+    subscriptions.stop()
     await apollo.clearStore()
     await apiLogout()
-  }, [apollo, renewal, sessionStore])
+  }, [apollo, renewal, sessionStore, subscriptions])
 
   const value = useMemo(
     () => ({ session, login, setup, acceptInvitation, selectHousehold, selectProfile, logout }),

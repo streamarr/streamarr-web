@@ -4,9 +4,11 @@ import type {
   ChangeEncoderPresetInput,
   EncoderPresetSettingFieldsFragment,
   ManagedLibraryFieldsFragment,
+  RemoveLibraryInput,
 } from '../src/graphql/generated/graphql'
 import { meFixture, profileFixture } from '../src/test/meFixture'
 import { RING, ringOnActiveElement } from './focusRing'
+import { routeGraphqlSocket } from './graphqlSocket'
 
 test.use({ serviceWorkers: 'block' })
 
@@ -50,6 +52,7 @@ async function fixture(page: Page, libraries = [movie, shows]) {
         av1: 'FASTER',
       },
     } as EncoderPresetSettingFieldsFragment,
+    socket: await routeGraphqlSocket(page),
   }
   await page.route('**/graphql', async (route) => {
     const { operationName, variables } = route.request().postDataJSON() as {
@@ -96,14 +99,18 @@ async function fixture(page: Page, libraries = [movie, shows]) {
       state.libraries.push(library)
       return reply({ addLibrary: { library, userErrors: [] } })
     }
-    if (operationName === 'ScanLibrary' || operationName === 'RefreshLibrary') {
+    if (operationName === 'StartLibraryScan' || operationName === 'StartLibraryRefresh') {
+      const { libraryId } = variables.input as { libraryId: string }
+      const status = operationName === 'StartLibraryScan' ? 'SCANNING' : 'REFRESHING'
       state.libraries = state.libraries.map((library) =>
-        library.id === variables.id
-          ? { ...library, status: operationName === 'ScanLibrary' ? 'SCANNING' : 'REFRESHING' }
-          : library,
+        library.id === libraryId ? { ...library, status } : library,
       )
+      const library = state.libraries.find((candidate) => candidate.id === libraryId)
+      const payload = { library, userErrors: [] }
       return reply(
-        operationName === 'ScanLibrary' ? { scanLibrary: true } : { refreshLibrary: true },
+        operationName === 'StartLibraryScan'
+          ? { startLibraryScan: payload }
+          : { startLibraryRefresh: payload },
       )
     }
     if (operationName === 'EncoderPresetSetting')
@@ -119,8 +126,9 @@ async function fixture(page: Page, libraries = [movie, shows]) {
       })
     }
     if (operationName === 'RemoveLibrary') {
-      state.libraries = state.libraries.filter((library) => library.id !== variables.id)
-      return reply({ removeLibrary: true })
+      const { libraryId } = variables.input as RemoveLibraryInput
+      state.libraries = state.libraries.filter((library) => library.id !== libraryId)
+      return reply({ removeLibrary: { removedLibraryId: libraryId, userErrors: [] } })
     }
     return route.continue()
   })
@@ -175,9 +183,7 @@ test('settings reuse the app chrome and preserve selection across reload and bac
   await expect(page.getByRole('banner')).toHaveCount(1)
 })
 
-test('settings fetch again only on reload, not timers, focus, or visibility changes', async ({
-  page,
-}) => {
+test('settings never read the inventory again on a timer or on focus', async ({ page }) => {
   const state = await fixture(page)
   await page.clock.install()
   await page.goto(SETTINGS)
@@ -205,7 +211,114 @@ test('settings fetch again only on reload, not timers, focus, or visibility chan
   expect(reads()).toBeGreaterThan(initialReads)
 })
 
-test('refresh expands in place with aligned controls and returns focus', async ({
+const inventoryReads = (state: Awaited<ReturnType<typeof fixture>>) =>
+  state.calls.filter((call) => call.operationName === 'AdminLibraries').length
+
+test('library status changes show live without reading the inventory again', async ({ page }) => {
+  const state = await fixture(page)
+  await page.goto(SETTINGS)
+  const detail = page.getByRole('article', { name: 'Movies settings' })
+  const status = detail.locator('[data-library-status]')
+  await expect(status).toHaveText('HEALTHY')
+  await expect.poll(() => state.socket.isLive('LibraryStatusChanged')).toBe(true)
+  const reads = inventoryReads(state)
+
+  state.socket.publish('LibraryStatusChanged', {
+    data: { libraryStatusChanged: { ...movie, status: 'SCANNING' } },
+  })
+  await expect(status).toHaveText('SCANNING')
+  await expect(detail.getByRole('button', { name: 'Scan library' })).toBeDisabled()
+
+  state.socket.publish('LibraryStatusChanged', {
+    data: {
+      libraryStatusChanged: {
+        ...movie,
+        scanStartedOn: '2026-10-15T13:00:00Z',
+        scanCompletedOn: '2026-10-15T13:05:00Z',
+      },
+    },
+  })
+  await expect(status).toHaveText('HEALTHY')
+  await expect(detail.getByRole('button', { name: 'Scan library' })).toBeEnabled()
+  await expect(detail).toContainText('Oct 15, 2026')
+  expect(inventoryReads(state)).toBe(reads)
+})
+
+test("another session's added and removed libraries join and leave the inventory live", async ({
+  page,
+}) => {
+  const state = await fixture(page)
+  await page.goto(SETTINGS)
+  const inventory = page.getByRole('navigation', { name: 'Libraries to manage' })
+  await expect(inventory.getByRole('button')).toHaveCount(2)
+  await expect.poll(() => state.socket.isLive('LibraryAdded')).toBe(true)
+  const family = { ...movie, id: 'family', name: 'Family', status: 'SCANNING' as const }
+
+  state.socket.publish('LibraryAdded', { data: { libraryAdded: family } })
+  state.socket.publish('LibraryAdded', { data: { libraryAdded: family } })
+  await expect(inventory.getByRole('button', { name: /Family/ })).toHaveCount(1)
+  await expect(inventory.getByRole('button')).toHaveCount(3)
+  await expect(
+    page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Family' }),
+  ).toBeVisible()
+
+  state.socket.publish('LibraryRemoved', {
+    data: { libraryRemoved: { __typename: 'LibraryRemoval', libraryId: 'shows' } },
+  })
+  await expect(inventory.getByRole('button', { name: /TV shows/ })).toHaveCount(0)
+  await expect(
+    page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'TV shows' }),
+  ).toHaveCount(0)
+})
+
+test('a server restart reconnects, subscribes again, and reads the inventory once', async ({
+  page,
+}) => {
+  const state = await fixture(page)
+  await page.goto(SETTINGS)
+  const status = page
+    .getByRole('article', { name: 'Movies settings' })
+    .locator('[data-library-status]')
+  await expect(status).toHaveText('HEALTHY')
+  await expect.poll(() => state.socket.isLive('LibraryStatusChanged')).toBe(true)
+  const reads = inventoryReads(state)
+  state.libraries = [{ ...movie, status: 'REFRESHING' }, shows]
+
+  await state.socket.closeAll(1001, 'Going away')
+
+  await expect(status).toHaveText('REFRESHING')
+  await expect.poll(() => state.socket.isLive('LibraryStatusChanged')).toBe(true)
+  expect(state.socket.state.connections).toBe(2)
+  expect(inventoryReads(state)).toBe(reads + 1)
+})
+
+test('returning to the page reads the inventory again once', async ({ page }) => {
+  const state = await fixture(page)
+  await page.goto(SETTINGS)
+  const status = page
+    .getByRole('article', { name: 'Movies settings' })
+    .locator('[data-library-status]')
+  await expect(status).toHaveText('HEALTHY')
+  const reads = inventoryReads(state)
+  state.libraries = [{ ...movie, status: 'UNHEALTHY' }, shows]
+
+  await page.evaluate(() => {
+    let visibility: DocumentVisibilityState = 'hidden'
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => visibility,
+    })
+    document.dispatchEvent(new Event('visibilitychange'))
+    window.dispatchEvent(new Event('online'))
+    visibility = 'visible'
+    document.dispatchEvent(new Event('visibilitychange'))
+  })
+
+  await expect(status).toHaveText('UNHEALTHY')
+  expect(inventoryReads(state)).toBe(reads + 1)
+})
+
+test('refresh expands in place with aligned controls and acknowledges the started refresh', async ({
   page,
 }, testInfo) => {
   const state = await fixture(page)
@@ -249,20 +362,73 @@ test('refresh expands in place with aligned controls and returns focus', async (
     (call) => call.operationName === 'AdminLibraries',
   ).length
   await editor.getByRole('button', { name: 'Refresh metadata' }).click()
-  await expect(page.getByRole('article')).toContainText(
-    'Metadata refresh requested for Movies. Refresh the page to see the latest status.',
-  )
-  await expect(trigger).toBeFocused()
-  await expect(page.getByRole('article').locator('[data-library-status]')).toHaveText('HEALTHY')
+  await expect(page.getByText('Metadata refresh requested for Movies.')).toBeFocused()
+  await expect(page.getByRole('article').locator('[data-library-status]')).toHaveText('REFRESHING')
+  await expect(trigger).toBeDisabled()
   expect(state.calls.filter((call) => call.operationName === 'AdminLibraries')).toHaveLength(
     inventoryRequests,
   )
-  expect(state.calls.find((call) => call.operationName === 'RefreshLibrary')?.variables).toEqual({
-    id: 'movies',
-    imageRefreshMode: 'REFRESH_IF_CHANGED',
+  expect(
+    state.calls.find((call) => call.operationName === 'StartLibraryRefresh')?.variables,
+  ).toEqual({ input: { libraryId: 'movies', imageRefreshMode: 'REFRESH_IF_CHANGED' } })
+})
+
+async function answer(page: Page, operationName: string, body: object) {
+  await page.route('**/graphql', async (route) => {
+    const request = route.request().postDataJSON() as { operationName: string }
+    if (request.operationName !== operationName) return route.fallback()
+    return route.fulfill({ json: body })
   })
-  await page.reload()
-  await expect(page.getByRole('article').locator('[data-library-status]')).toHaveText('REFRESHING')
+}
+
+test('a busy refusal shows its message and the status it carries', async ({ page }) => {
+  await fixture(page)
+  await answer(page, 'StartLibraryScan', {
+    data: {
+      startLibraryScan: {
+        library: null,
+        userErrors: [
+          {
+            __typename: 'LibraryBusyError',
+            message: 'A library scan is already in progress.',
+            status: 'SCANNING',
+          },
+        ],
+      },
+    },
+  })
+  await page.goto(SETTINGS)
+  const detail = page.getByRole('article', { name: 'Movies settings' })
+
+  await detail.getByRole('button', { name: 'Scan library' }).click()
+
+  await expect(detail.getByRole('alert')).toHaveText('A library scan is already in progress.')
+  await expect(detail.locator('[data-library-status]')).toHaveText('SCANNING')
+  await expect(detail.getByRole('button', { name: 'Scan library' })).toBeDisabled()
+})
+
+test('a scan the server could not start says that nothing started', async ({ page }) => {
+  await fixture(page)
+  await answer(page, 'StartLibraryScan', {
+    data: { startLibraryScan: null },
+    errors: [
+      {
+        message: 'Service unavailable',
+        path: ['startLibraryScan'],
+        extensions: { classification: 'UNAVAILABLE', code: 'LIBRARY_OPERATION_NOT_STARTED' },
+      },
+    ],
+  })
+  await page.goto(SETTINGS)
+  const detail = page.getByRole('article', { name: 'Movies settings' })
+
+  await detail.getByRole('button', { name: 'Scan library' }).click()
+
+  await expect(detail.getByRole('alert')).toHaveText(
+    'Nothing started. The library is unchanged. Try again.',
+  )
+  await expect(detail.locator('[data-library-status]')).toHaveText('HEALTHY')
+  await expect(detail.getByRole('button', { name: 'Scan library' })).toBeEnabled()
 })
 
 test("keyboard focus draws the theme ring on the page's own controls", async ({ page }) => {

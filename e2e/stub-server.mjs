@@ -1,7 +1,11 @@
 // Deterministic API stub for the browser E2E: speaks just enough of the server's auth contract
 // to drive the service worker's renewal decisions. The spec switches behavior through
-// POST /__test/mode, which also invalidates the simulated access token.
+// POST /__test/mode, which also invalidates the simulated access token. It also accepts the
+// GraphQL WebSocket upgrade, so a spec can prove the dev proxy forwards one: GET /__test/socket
+// reports each upgrade's headers and the live operations, and POST /__test/socket/publish sends
+// a change to every live operation of a name.
 import { createServer } from 'node:http'
+import { WebSocketServer } from 'ws'
 
 const port = Number(process.env.STUB_PORT ?? 5198)
 
@@ -69,7 +73,49 @@ server.on('error', (error) => {
   console.error(`stub server failed on port ${port}:`, error)
   process.exit(1)
 })
+server.on('upgrade', acceptGraphqlSocket)
 server.listen(port)
+
+const graphqlSockets = new WebSocketServer({ noServer: true })
+const upgrades = []
+const operations = new Map()
+
+function acceptGraphqlSocket(request, socket, head) {
+  if (new URL(request.url, `http://localhost:${port}`).pathname !== '/graphql') {
+    socket.destroy()
+    return
+  }
+  upgrades.push({
+    host: request.headers.host ?? null,
+    origin: request.headers.origin ?? null,
+    cookie: request.headers.cookie ?? null,
+  })
+  graphqlSockets.handleUpgrade(request, socket, head, (client) => {
+    client.on('message', (data) => answerFrame(client, JSON.parse(String(data))))
+    client.on('close', () => {
+      for (const [id, operation] of operations) {
+        if (operation.client === client) operations.delete(id)
+      }
+    })
+  })
+}
+
+function answerFrame(client, frame) {
+  if (frame.type === 'connection_init') client.send(JSON.stringify({ type: 'connection_ack' }))
+  if (frame.type === 'ping') client.send(JSON.stringify({ type: 'pong' }))
+  if (frame.type === 'complete') operations.delete(frame.id)
+  if (frame.type === 'subscribe') {
+    operations.set(frame.id, { client, operationName: frame.payload?.operationName })
+  }
+}
+
+function publish({ operationName, payload }) {
+  for (const [id, operation] of operations) {
+    if (operation.operationName === operationName) {
+      operation.client.send(JSON.stringify({ type: 'next', id, payload }))
+    }
+  }
+}
 
 function route(request, response, raw) {
   const { pathname } = new URL(request.url, `http://localhost:${port}`)
@@ -88,6 +134,14 @@ function route(request, response, raw) {
     mode = next
     accessValid = false
     return json(response, 200, { mode })
+  }
+  if (request.method === 'GET' && pathname === '/__test/socket') {
+    const live = [...operations.values()].map((operation) => operation.operationName)
+    return json(response, 200, { upgrades, live })
+  }
+  if (request.method === 'POST' && pathname === '/__test/socket/publish') {
+    publish(JSON.parse(raw))
+    return json(response, 200, {})
   }
   if (request.method === 'GET' && pathname === '/api/auth/status') {
     return json(response, 200, { setupComplete: true, devicePairingEnabled: false })

@@ -230,6 +230,7 @@
       "InvitationNotPendingError",
       "ItemNotFoundError",
       "LibraryNameRequiredError",
+      "LibraryNotFoundError",
       "LibraryPathAlreadyRegisteredError",
       "LibraryPathNotDirectoryError",
       "LibraryPathNotFoundError",
@@ -335,7 +336,9 @@
       "LastHouseholdAccountError",
       "LastHouseholdAdminError",
       "LastServerAdminError",
+      "LibraryBusyError",
       "LibraryNameRequiredError",
+      "LibraryNotFoundError",
       "LibraryPathAlreadyRegisteredError",
       "LibraryPathNotDirectoryError",
       "LibraryPathNotFoundError",
@@ -394,6 +397,11 @@
       "ManagementAlreadyRemovedError",
       "ProfileNotFoundError",
       "ProfileRequiresEligibleManagerError"
+    ],
+    "RemoveLibraryError": [
+      "InvalidIdError",
+      "LibraryBusyError",
+      "LibraryNotFoundError"
     ],
     "RemoveProfileManagerError": [
       "NotAManagerError",
@@ -457,6 +465,16 @@
     "SetProfilePinError": [
       "InvalidProfilePinError",
       "ProfileNotFoundError"
+    ],
+    "StartLibraryRefreshError": [
+      "InvalidIdError",
+      "LibraryBusyError",
+      "LibraryNotFoundError"
+    ],
+    "StartLibraryScanError": [
+      "InvalidIdError",
+      "LibraryBusyError",
+      "LibraryNotFoundError"
     ],
     "TransferAccountError": [
       "AccountNotFoundError",

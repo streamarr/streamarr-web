@@ -1,0 +1,17 @@
+subscription LibraryStatusChanged {
+  libraryStatusChanged {
+    ...ManagedLibraryFields
+  }
+}
+
+subscription LibraryAdded {
+  libraryAdded {
+    ...ManagedLibraryFields
+  }
+}
+
+subscription LibraryRemoved {
+  libraryRemoved {
+    libraryId
+  }
+}

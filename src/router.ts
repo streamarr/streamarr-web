@@ -2,7 +2,8 @@ import type { ApolloClient } from '@apollo/client'
 import { createRouter, type RouterHistory } from '@tanstack/react-router'
 import { inactiveRenewalBridge, type RenewalBridge } from './auth/renewalBridge'
 import { createSessionStore, probeSession } from './auth/session'
-import { createApolloClient } from './graphql/client'
+import { type AuthRoute, createApolloClient } from './graphql/client'
+import { createSubscriptionTransport } from './graphql/subscriptionTransport'
 import { routeTree } from './routeTree.gen'
 
 /**
@@ -22,24 +23,38 @@ export function createAppRouter(
     }
     return answer
   })
+  const subscriptions = createSubscriptionTransport({
+    url: graphqlSocketUrl(window.location),
+    renewal,
+    onSignedOut: () => routeAuth('/login'),
+  })
   // Back returns to where the reader was: the window on ambient pages and any scrolled panel.
   const router = createRouter({
     routeTree,
     history,
-    context: { session },
+    context: { session, subscriptions },
     scrollRestoration: true,
   })
-  apolloClient = createApolloClient((route) => {
+  const routeAuth = (route: AuthRoute): void => {
     if (route === '/select-profile') {
       void router.navigate({ to: route })
       return
     }
-    // An eviction: record it so the guard cannot wave a back-navigation through on a stale
-    // answer, then bounce carrying the way back.
+    // An eviction ends the socket with the session. Recording it stops the guard from waving a
+    // back-navigation through on a stale answer, and the bounce carries the way back.
+    subscriptions.stop()
     session.markAnonymous()
     void router.navigate({ to: route, search: { redirect: router.state.location.href } })
-  })
-  return { router, apolloClient, session }
+  }
+  apolloClient = createApolloClient(routeAuth, subscriptions.link)
+  return { router, apolloClient, session, subscriptions }
+}
+
+// Same origin as the page, so the handshake carries the session cookie.
+function graphqlSocketUrl(location: Location): string {
+  const url = new URL('/graphql', location.href)
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+  return url.href
 }
 
 declare module '@tanstack/react-router' {

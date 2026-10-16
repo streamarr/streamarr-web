@@ -1,11 +1,13 @@
 import { useApolloClient } from '@apollo/client/react'
 import { Center, Loader } from '@mantine/core'
-import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
+import { createFileRoute, Outlet, redirect, useRouter } from '@tanstack/react-router'
+import { useEffect } from 'react'
 import { getSetupStatus, ServerStatusUnavailableError } from '../auth/api'
 import { CSRF_REJECTION_CAUSE, isCsrfRejection } from '../auth/csrf'
 import { SessionUnconfirmedError, type SessionStore } from '../auth/session'
 import { extractAuthContext } from '../graphql/errorRouting'
 import { requestFailureMessage } from '../graphql/requestErrors'
+import { installRevalidation } from '../graphql/revalidation'
 import { FailurePanel } from '../ui/Failure'
 
 // Only the server's answer counts (the httpOnly cookies are unreadable), and only on arrival:
@@ -24,6 +26,7 @@ export const Route = createFileRoute('/_authenticated')({
   pendingMs: 0,
   pendingComponent: CheckingSession,
   errorComponent: AuthenticatedLayoutFailure,
+  component: Authenticated,
 })
 
 async function confirmSession(session: SessionStore) {
@@ -32,6 +35,29 @@ async function confirmSession(session: SessionStore) {
   } catch (cause) {
     throw new SessionUnconfirmedError(cause)
   }
+}
+
+// Live changes keep a signed-in page current; a revalidation covers any gap they may have left.
+function Authenticated() {
+  const client = useApolloClient()
+  const { subscriptions } = Route.useRouteContext()
+  useEffect(
+    () =>
+      installRevalidation({
+        // Every read settles first: a refetch that joined a still-pending read would share it.
+        refetchActive: () =>
+          Promise.allSettled(client.refetchQueries({ include: 'active' }).results),
+        isReading: () =>
+          [...client.getObservableQueries('active')].some(
+            (query) => query.getCurrentResult().loading,
+          ),
+        onSubscribed: (listener) => subscriptions.onSubscribed(listener),
+        window,
+        document,
+      }),
+    [client, subscriptions],
+  )
+  return <Outlet />
 }
 
 function CheckingSession() {
