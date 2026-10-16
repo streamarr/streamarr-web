@@ -1554,17 +1554,24 @@ describe('library administration', () => {
     )
 
     it.each(STOPS)(
-      'shouldFollowStoppingLiveToTheEarlierStatusWithoutReadingTheInventoryAfterStoppingA$kind',
+      'shouldKeepTheEarlierStatusWithoutReadingTheInventoryWhenTheStopEndsBeforeTheResponseToStoppingA$kind',
       async ({ busy, action, operationName, field }) => {
         const state = serve([{ ...MOVIES, status: busy }, SHOWS])
-        server.use(graphql.mutation(operationName, () => HttpResponse.json(stopping(field))))
+        const requested = deferred()
+        const answer = deferred()
+        server.use(
+          graphql.mutation(operationName, async () => {
+            requested.resolve()
+            await answer.promise
+            return HttpResponse.json(stopping(field))
+          }),
+        )
         const { user } = renderAppAt(SETTINGS)
         const detail = await screen.findByRole('article', { name: 'Movies settings' })
         await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
         const requests = state.inventoryRequests
         await user.click(within(detail).getByRole('button', { name: action }))
-        await waitFor(() => expect(detail).toHaveTextContent('STOPPING'))
-
+        await requested.promise
         state.socket.publish('LibraryStatusChanged', {
           data: { libraryStatusChanged: { ...MOVIES, status: 'STOPPING' } },
         })
@@ -1572,10 +1579,15 @@ describe('library administration', () => {
         state.socket.publish('LibraryStatusChanged', {
           data: { libraryStatusChanged: { ...MOVIES, status: 'UNHEALTHY' } },
         })
-
         await waitFor(() => expect(detail).toHaveTextContent('UNHEALTHY'))
+        const scan = within(detail).getByRole('button', { name: 'Scan library' })
+        expect(scan).toBeDisabled()
+
+        answer.resolve()
+
+        await waitFor(() => expect(scan).toBeEnabled())
+        expect(detail.querySelector('[data-library-status]')).toHaveTextContent(/^UNHEALTHY$/)
         expect(moviesRow()).toHaveTextContent('UNHEALTHY')
-        expect(within(detail).getByRole('button', { name: 'Scan library' })).toBeEnabled()
         expect(state.inventoryRequests).toBe(requests)
       },
     )
