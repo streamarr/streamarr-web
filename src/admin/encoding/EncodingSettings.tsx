@@ -17,7 +17,6 @@ type KnownChoice = Exclude<EncoderPresetChoice, '%future added value'>
 
 const CHOICES: readonly { value: KnownChoice; label: string }[] = [
   { value: 'AUTOMATIC', label: 'Automatic' },
-  { value: 'ULTRAFAST', label: 'ultrafast' },
   { value: 'SUPERFAST', label: 'superfast' },
   { value: 'VERYFAST', label: 'veryfast' },
   { value: 'FASTER', label: 'faster' },
