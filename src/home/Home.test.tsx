@@ -3,7 +3,17 @@ import { graphql, http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { HomeQuery } from '../graphql/generated/graphql'
 import { deferred } from '../test/deferred'
-import { answersThenHolds, comeBackOnline, failsOnceThen } from '../test/graphqlResponses'
+import {
+  answersInTurn,
+  answersThenHolds,
+  answerWith,
+  comeBackOnline,
+  comeBackOnlineUntil,
+  failsOnceThen,
+  heldAnswer,
+  networkFailure,
+  serverFailure,
+} from '../test/graphqlResponses'
 import { meFixture } from '../test/meFixture'
 import { renderAppAt, renderWithProviders } from '../test/render'
 import { server } from '../test/server'
@@ -321,6 +331,96 @@ describe('Home', () => {
 
     expect(await screen.findByRole('link', { name: /Breakage/ })).toBeInTheDocument()
     expect(shelf).toBeInTheDocument()
+  })
+
+  it.each([
+    ['NetworkError', networkFailure],
+    ['ServerError', serverFailure],
+  ])('shouldKeepTheShelvesWhenReadingThemAgainEndsInA%s', async (_kind, failure) => {
+    const fresh = heldAnswer(
+      homeData({ continueWatching: [continueWatchingMovie(), continueWatchingEpisode()] }),
+    )
+    const home = answersInTurn(
+      answerWith(homeData({ continueWatching: [continueWatchingMovie()] })),
+      failure,
+      fresh.answer,
+    )
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
+      graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
+      graphql.query('Home', home.resolver),
+    )
+    renderAppAt('/')
+    const shelf = await screen.findByRole('heading', { name: 'Continue watching' })
+
+    await comeBackOnlineUntil(home, 3)
+    expect(shelf).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Breakage/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    fresh.release()
+
+    expect(await screen.findByRole('link', { name: /Breakage/ })).toBeInTheDocument()
+    expect(shelf).toBeInTheDocument()
+  })
+
+  it('shouldShowHomeOnceTheBrowserComesBackOnlineAfterAFailedFirstRead', async () => {
+    const home = answersInTurn(
+      networkFailure,
+      answerWith(homeData({ continueWatching: [continueWatchingMovie()] })),
+    )
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
+      graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
+      graphql.query('Home', home.resolver),
+    )
+    renderAppAt('/')
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load your library.")
+
+    comeBackOnline()
+
+    expect(await screen.findByRole('heading', { name: 'Everlight' })).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('shouldShowTheRefusalWhenReadingHomeAgainIsForbidden', async () => {
+    const home = answersInTurn(
+      answerWith(homeData({ continueWatching: [continueWatchingMovie()] })),
+      () =>
+        HttpResponse.json({
+          errors: [{ message: 'This Profile is not shared.', extensions: { code: 'FORBIDDEN' } }],
+        }),
+    )
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
+      graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
+      graphql.query('Home', home.resolver),
+    )
+    renderAppAt('/')
+    await screen.findByRole('heading', { name: 'Continue watching' })
+
+    comeBackOnline()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('This Profile is not shared.')
+    expect(screen.queryByRole('heading', { name: 'Continue watching' })).not.toBeInTheDocument()
+  })
+
+  it('shouldSignInAgainWhenReadingHomeAgainFindsTheSessionGone', async () => {
+    const home = answersInTurn(
+      answerWith(homeData({ continueWatching: [continueWatchingMovie()] })),
+      () => HttpResponse.json({ code: 'AUTHENTICATION_REQUIRED' }, { status: 401 }),
+    )
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
+      graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
+      graphql.query('Home', home.resolver),
+    )
+    const { router } = renderAppAt('/')
+    await screen.findByRole('heading', { name: 'Continue watching' })
+
+    comeBackOnline()
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
+    expect(router.state.location.search).toEqual({ redirect: '/' })
   })
 
   it('shouldShowTheServersWordsWhenHomeFails', async () => {

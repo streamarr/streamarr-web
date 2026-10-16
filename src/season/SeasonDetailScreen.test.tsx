@@ -4,10 +4,15 @@ import { describe, expect, it } from 'vitest'
 import type { SeasonDetailQuery } from '../graphql/generated/graphql'
 import { meFixture } from '../test/meFixture'
 import {
+  answersInTurn,
   answersThenHolds,
+  answerWith,
   comeBackOnline,
+  comeBackOnlineUntil,
   failsOnceThen,
+  heldAnswer,
   invalidIdResponse,
+  networkFailure,
 } from '../test/graphqlResponses'
 import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
@@ -178,6 +183,23 @@ describe('SeasonDetailScreen', () => {
     await waitFor(() => expect(season.calls).toBe(2))
     expect(title).toBeInTheDocument()
     season.release()
+
+    expect(await screen.findByText('The team splits up.')).toBeInTheDocument()
+    expect(title).toBeInTheDocument()
+  })
+
+  it('shouldKeepTheSeasonWhenReadingItAgainFails', async () => {
+    serve(seasonData())
+    const fresh = heldAnswer(seasonData({ overview: 'The team splits up.' }))
+    const season = answersInTurn(answerWith(seasonData()), networkFailure, fresh.answer)
+    server.use(graphql.query('SeasonDetail', season.resolver))
+    renderAppAt('/season/season-2')
+    const title = await screen.findByRole('heading', { level: 1, name: 'Season 2' })
+
+    await comeBackOnlineUntil(season, 3)
+    expect(title).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    fresh.release()
 
     expect(await screen.findByText('The team splits up.')).toBeInTheDocument()
     expect(title).toBeInTheDocument()
