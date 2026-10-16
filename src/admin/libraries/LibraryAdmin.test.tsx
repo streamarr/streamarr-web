@@ -123,6 +123,8 @@ const STOPS = [
     otherAction: 'Stop refresh',
     operationName: 'StopLibraryScan',
     field: 'stopLibraryScan',
+    stopped:
+      'Scan stopped. Details such as cast photos can still appear for titles the scan already processed.',
   },
   {
     kind: 'Refresh',
@@ -131,6 +133,8 @@ const STOPS = [
     otherAction: 'Stop scan',
     operationName: 'StopLibraryRefresh',
     field: 'stopLibraryRefresh',
+    stopped:
+      'Metadata refresh stopped. Details such as cast photos can still appear for titles the refresh already processed.',
   },
 ]
 
@@ -1680,6 +1684,89 @@ describe('library administration', () => {
         expect(within(detail).getByRole('button', { name: offered })).toBeEnabled()
       },
     )
+
+    it.each(STOPS)(
+      'shouldSayTheRunStoppedAndThatDetailsCanStillArriveOnceTheLibraryLeavesStoppingAfterA$kind',
+      async ({ busy, action, operationName, field, stopped }) => {
+        const state = serve([{ ...MOVIES, status: busy }, SHOWS])
+        server.use(graphql.mutation(operationName, () => HttpResponse.json(stopping(field))))
+        const { user } = renderAppAt(SETTINGS)
+        const detail = await screen.findByRole('article', { name: 'Movies settings' })
+        await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+        await user.click(within(detail).getByRole('button', { name: action }))
+        await waitFor(() => expect(detail).toHaveTextContent('STOPPING'))
+        expect(detail).not.toHaveTextContent(stopped)
+
+        state.socket.publish('LibraryStatusChanged', { data: { libraryStatusChanged: MOVIES } })
+
+        expect(await within(detail).findByText(stopped)).toBeInTheDocument()
+        expect(detail).toHaveTextContent('HEALTHY')
+      },
+    )
+
+    it('shouldSayTheScanStoppedWhenAnotherSessionStoppedIt', async () => {
+      const state = serve([{ ...MOVIES, status: 'SCANNING' }, SHOWS])
+      renderAppAt(SETTINGS)
+      const detail = await screen.findByRole('article', { name: 'Movies settings' })
+      await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+      state.socket.publish('LibraryStatusChanged', {
+        data: { libraryStatusChanged: { ...MOVIES, status: 'STOPPING' } },
+      })
+      await waitFor(() => expect(detail).toHaveTextContent('STOPPING'))
+
+      state.socket.publish('LibraryStatusChanged', { data: { libraryStatusChanged: MOVIES } })
+
+      expect(await within(detail).findByText(STOPS[0].stopped)).toBeInTheDocument()
+    })
+
+    it('shouldSayTheRunStoppedWithoutNamingItsKindWhenThePanelFirstShowedStopping', async () => {
+      const state = serve([{ ...MOVIES, status: 'STOPPING' }, SHOWS])
+      renderAppAt(SETTINGS)
+      const detail = await screen.findByRole('article', { name: 'Movies settings' })
+      await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+
+      state.socket.publish('LibraryStatusChanged', {
+        data: { libraryStatusChanged: { ...MOVIES, status: 'UNHEALTHY' } },
+      })
+
+      expect(
+        await within(detail).findByText(
+          'Scan or metadata refresh stopped. Details such as cast photos can still appear for titles already processed.',
+        ),
+      ).toBeInTheDocument()
+    })
+
+    it('shouldDropTheStoppedNoteWhenTheLibraryStatusChangesAgain', async () => {
+      const state = serve([{ ...MOVIES, status: 'SCANNING' }, SHOWS])
+      renderAppAt(SETTINGS)
+      const detail = await screen.findByRole('article', { name: 'Movies settings' })
+      await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+      state.socket.publish('LibraryStatusChanged', {
+        data: { libraryStatusChanged: { ...MOVIES, status: 'STOPPING' } },
+      })
+      await waitFor(() => expect(detail).toHaveTextContent('STOPPING'))
+      state.socket.publish('LibraryStatusChanged', { data: { libraryStatusChanged: MOVIES } })
+      await within(detail).findByText(STOPS[0].stopped)
+
+      state.socket.publish('LibraryStatusChanged', {
+        data: { libraryStatusChanged: { ...MOVIES, status: 'REFRESHING' } },
+      })
+
+      await waitFor(() => expect(detail).toHaveTextContent('REFRESHING'))
+      expect(detail).not.toHaveTextContent(STOPS[0].stopped)
+    })
+
+    it('shouldNotSayARunStoppedWhenItFinishesWithoutAStop', async () => {
+      const state = serve([{ ...MOVIES, status: 'SCANNING' }, SHOWS])
+      renderAppAt(SETTINGS)
+      const detail = await screen.findByRole('article', { name: 'Movies settings' })
+      await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+
+      state.socket.publish('LibraryStatusChanged', { data: { libraryStatusChanged: MOVIES } })
+
+      await waitFor(() => expect(detail).toHaveTextContent('HEALTHY'))
+      expect(detail).not.toHaveTextContent('stopped')
+    })
 
     it('shouldShowStoppingAndThenTheRestoredStatusWhenAnotherSessionStopsTheScan', async () => {
       const state = serve([{ ...MOVIES, status: 'SCANNING' }, SHOWS])
