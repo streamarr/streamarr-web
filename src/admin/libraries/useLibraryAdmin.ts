@@ -233,7 +233,7 @@ export function useLibraryCommands() {
     payloadOf: (data: TData | null | undefined) => LibraryOperationPayload | null | undefined
   }): Promise<ManagedLibraryFieldsFragment | null> {
     const outcome = operationOutcome(client.cache, libraryId)
-    const { data } = await client.mutate<TData, TVariables>({
+    const { data } = await client.mutate({
       mutation,
       variables,
       fetchPolicy: 'no-cache',
