@@ -22,6 +22,12 @@ export function decideAuthRoute(ctx: AuthErrorContext): '/login' | '/select-prof
   return null
 }
 
+/** Whether the server refused the request because the identity may not make it. */
+export function isForbidden(error: unknown): boolean {
+  const context = extractAuthContext(error)
+  return !!context.graphqlCodes?.includes('FORBIDDEN') || context.networkCode === 'FORBIDDEN'
+}
+
 /**
  * By shape: CombinedGraphQLErrors carries `errors[].extensions.code`; a ServerError carries
  * `statusCode` and a JSON `bodyText`. Never throws inside the error link.
