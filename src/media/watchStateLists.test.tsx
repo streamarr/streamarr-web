@@ -1,7 +1,7 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import { graphql, HttpResponse, type GraphQLQuery } from 'msw'
 import { describe, expect, it } from 'vitest'
-import type { LibraryPageQueryVariables } from '../graphql/generated/graphql'
+import type { HomeQueryVariables, LibraryPageQueryVariables } from '../graphql/generated/graphql'
 import { serveGraphqlSocket } from '../test/graphqlSocket'
 import { meFixture, profileFixture } from '../test/meFixture'
 import { renderAppAt } from '../test/render'
@@ -76,6 +76,25 @@ function continueWatchingCard(movie: Title) {
   }
 }
 
+// A Home rail caches every field a Continue Watching card shows for its titles.
+function recentlyAddedRail(titles: Title[]) {
+  return {
+    __typename: 'Library',
+    id: MOVIES,
+    name: 'Movies',
+    type: 'MOVIE',
+    items: {
+      edges: titles.map((each) => {
+        const { images, ...shown } = continueWatchingCard(each)
+        return {
+          cursor: each.id,
+          node: { ...card(each), ...shown, backdropImages: images },
+        }
+      }),
+    },
+  }
+}
+
 // The item a watch-state change carries for a movie: its card fields and its watch state.
 function changed(movie: Title) {
   return {
@@ -95,7 +114,7 @@ function byLastWatchedNewestFirst(a: Title, b: Title) {
 
 // Plays a server that holds each title's watch state. A test saves a change, then publishes it,
 // so a read that lands after the change answers with the same state the change carried.
-function serve(titles: Title[], { pageSize = 48 } = {}) {
+function serve(titles: Title[], { pageSize = 48, recentlyAdded = [] as Title[] } = {}) {
   const saved = new Map(titles.map((each) => [each.id, each]))
   const reads: Record<string, number> = {}
   const count = (operationName: string) => {
@@ -140,13 +159,15 @@ function serve(titles: Title[], { pageSize = 48 } = {}) {
         },
       })
     }),
-    graphql.query('Home', () => {
+    graphql.query<GraphQLQuery, HomeQueryVariables>('Home', ({ variables }) => {
       count('Home')
       const continueWatching = [...saved.values()]
         .filter((each) => each.watchStatus === 'IN_PROGRESS')
         .sort(byLastWatchedNewestFirst)
+        .slice(0, variables.continueWatchingFirst)
         .map(continueWatchingCard)
-      return HttpResponse.json({ data: { continueWatching, libraries: [] } })
+      const libraries = recentlyAdded.length === 0 ? [] : [recentlyAddedRail(recentlyAdded)]
+      return HttpResponse.json({ data: { continueWatching, libraries } })
     }),
   )
   const socket = serveGraphqlSocket()
@@ -183,9 +204,13 @@ function shownTitles() {
   return grid ? titlesIn(within(grid).queryAllByRole('link')) : []
 }
 
-function continueWatchingTitles() {
+function shelfLinks() {
   const shelf = screen.queryByRole('heading', { name: 'Continue watching' })?.closest('section')
-  return shelf ? titlesIn(within(shelf).queryAllByRole('link')) : []
+  return shelf ? within(shelf).queryAllByRole('link') : []
+}
+
+function continueWatchingTitles() {
+  return titlesIn(shelfLinks())
 }
 
 const EVERLIGHT = title('m1', 'Everlight')
@@ -439,6 +464,43 @@ describe('watch-state lists', () => {
       save({ ...EVERLIGHT, watchStatus: 'WATCHED', lastWatchedAt: '2026-10-16T10:00:00Z' })
 
       await waitFor(() => expect(continueWatchingTitles()).toEqual(['Northern Line']))
+      expect(reads).toEqual(readsBeforeChange)
+    })
+
+    it('shouldReadHomeAgainWhenATitleLeavesAFullShelf', async () => {
+      const full = Array.from({ length: 13 }, (_, index) =>
+        title(`w${index}`, index === 0 ? 'Everlight' : `Title ${index}`, {
+          watchStatus: 'IN_PROGRESS',
+          lastWatchedAt: `2026-10-16T09:${String(59 - index).padStart(2, '0')}:00Z`,
+        }),
+      )
+      const { reads, socket, save } = serve(full)
+      await open('/', socket, /Everlight/)
+      const homeReads = reads.Home
+
+      save({ ...full[0], watchStatus: 'WATCHED', lastWatchedAt: '2026-10-16T10:00:00Z' })
+
+      await waitFor(() => expect(reads.Home).toBe(homeReads + 1))
+      await waitFor(() => expect(shelfLinks()).toHaveLength(12))
+    })
+
+    it('shouldKeepAFullShelfAtItsLimitWhenATitleStartsAtTheHead', async () => {
+      const full = Array.from({ length: 12 }, (_, index) =>
+        title(`w${index}`, index === 0 ? 'Everlight' : `Title ${index}`, {
+          watchStatus: 'IN_PROGRESS',
+          lastWatchedAt: `2026-10-16T09:${String(59 - index).padStart(2, '0')}:00Z`,
+        }),
+      )
+      const { reads, socket, save } = serve([...full, NORTHERN_LINE], {
+        recentlyAdded: [NORTHERN_LINE],
+      })
+      await open('/', socket, /Everlight/)
+      const readsBeforeChange = { ...reads }
+
+      save({ ...NORTHERN_LINE, watchStatus: 'IN_PROGRESS', lastWatchedAt: '2026-10-16T10:00:00Z' })
+
+      await waitFor(() => expect(continueWatchingTitles()[0]).toBe('Northern Line'))
+      expect(shelfLinks()).toHaveLength(12)
       expect(reads).toEqual(readsBeforeChange)
     })
 
