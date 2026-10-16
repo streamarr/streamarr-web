@@ -118,7 +118,7 @@ function setup({
   const client = createApolloClient(vi.fn(), transport.link)
   // Each report keeps how many subscribe frames the newest socket had sent by then.
   const framesAtEachReport: number[] = []
-  transport.onSubscribed(() => {
+  transport.onMissedChanges(() => {
     framesAtEachReport.push(latestSocket().subscriptionIds().length)
   })
   const results: { data?: unknown; error?: unknown }[] = []
@@ -487,7 +487,7 @@ describe('subscription transport', () => {
   it('shouldStopReportingRecoveryToARemovedListener', async () => {
     const { subscribe, transport } = setup()
     const listener = vi.fn()
-    const remove = transport.onSubscribed(listener)
+    const remove = transport.onMissedChanges(listener)
     const first = await connectAndSubscribe(subscribe)
 
     remove()

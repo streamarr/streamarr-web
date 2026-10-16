@@ -7,7 +7,7 @@ interface RevalidationDependencies {
   refetchActive: () => Promise<unknown>
   /** Whether any active query has a read in flight. */
   isReading: () => boolean
-  onSubscribed: (listener: () => void) => () => void
+  onMissedChanges: (listener: () => void) => () => void
   window: EventSource
   document: EventSource & { readonly visibilityState: DocumentVisibilityState }
 }
@@ -21,7 +21,7 @@ interface RevalidationDependencies {
 export function installRevalidation({
   refetchActive,
   isReading,
-  onSubscribed,
+  onMissedChanges,
   window,
   document,
 }: RevalidationDependencies): () => void {
@@ -46,7 +46,7 @@ export function installRevalidation({
 
   // A read that began before the socket subscribed can miss a change committed in between, and no
   // frame reports that change. A refetch now would share that read, so one more follows it.
-  const onSocketSubscribed = (): void => {
+  const onChangesMissed = (): void => {
     if (inFlight || isReading()) readAgainAfterInFlight = true
     revalidate()
   }
@@ -57,11 +57,11 @@ export function installRevalidation({
     if (returning) revalidate()
   }
 
-  const stopSubscribed = onSubscribed(onSocketSubscribed)
+  const stopMissedChanges = onMissedChanges(onChangesMissed)
   window.addEventListener('online', revalidate)
   document.addEventListener('visibilitychange', onVisibilityChange)
   return () => {
-    stopSubscribed()
+    stopMissedChanges()
     window.removeEventListener('online', revalidate)
     document.removeEventListener('visibilitychange', onVisibilityChange)
   }

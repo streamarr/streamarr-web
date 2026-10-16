@@ -51,7 +51,7 @@ function Authenticated() {
           [...client.getObservableQueries('active')].some(
             (query) => query.getCurrentResult().loading,
           ),
-        onSubscribed: (listener) => subscriptions.onSubscribed(listener),
+        onMissedChanges: (listener) => subscriptions.onMissedChanges(listener),
         window,
         document,
       }),

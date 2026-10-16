@@ -46,10 +46,10 @@ function countedLiveChanges(cache: ApolloCache, target: LiveChangeTarget): numbe
 }
 
 function liveChangeCount(cache: ApolloCache, libraryId: string): number {
-  return countedLiveChanges(cache, libraryId) + resubscriptionCount(cache)
+  return countedLiveChanges(cache, libraryId) + missedChangeCount(cache)
 }
 
-function resubscriptionCount(cache: ApolloCache): number {
+function missedChangeCount(cache: ApolloCache): number {
   return countedLiveChanges(cache, EVERY_LIBRARY)
 }
 
@@ -75,7 +75,7 @@ function useLiveInventoryChanges(): {
   const client = useApolloClient()
   const { subscriptions } = useRouteContext({ from: '__root__' })
   useEffect(
-    () => subscriptions.onSubscribed(() => countLiveChange(client.cache, EVERY_LIBRARY)),
+    () => subscriptions.onMissedChanges(() => countLiveChange(client.cache, EVERY_LIBRARY)),
     [client, subscriptions],
   )
   // The server orders no frames across fields: a change committed before a removal can arrive
@@ -204,7 +204,7 @@ export function useLibraryCommands() {
           fetchPolicy: 'no-cache',
           update: (cache, { data }) => outcome.write(cache, data?.startLibraryScan),
         })
-        await outcome.readInventoryAgainAfterResubscription(client)
+        await outcome.readInventoryAgainAfterMissedChanges(client)
         return startedLibrary(client.cache, accepted(data?.startLibraryScan))
       }),
     refresh: (libraryId: string, imageRefreshMode: ImageRefreshMode) =>
@@ -216,7 +216,7 @@ export function useLibraryCommands() {
           fetchPolicy: 'no-cache',
           update: (cache, { data }) => outcome.write(cache, data?.startLibraryRefresh),
         })
-        await outcome.readInventoryAgainAfterResubscription(client)
+        await outcome.readInventoryAgainAfterMissedChanges(client)
         return startedLibrary(client.cache, accepted(data?.startLibraryRefresh))
       }),
     remove: (libraryId: string, onRemoved: () => void) =>
@@ -227,7 +227,7 @@ export function useLibraryCommands() {
           variables: { input: { libraryId } },
           update: (cache, { data }) => outcome.write(cache, data?.removeLibrary),
         })
-        await outcome.readInventoryAgainAfterResubscription(client)
+        await outcome.readInventoryAgainAfterMissedChanges(client)
         const payload = accepted(data?.removeLibrary)
         if (!payload) return null
         if (!payload.removedLibraryId) throw new Error('Removal was not confirmed')
@@ -256,7 +256,7 @@ function startedLibrary(
 // the time the command returns.
 function operationOutcome(cache: ApolloCache, libraryId: string) {
   const liveChangesBefore = liveChangeCount(cache, libraryId)
-  const resubscriptionsBefore = resubscriptionCount(cache)
+  const missedChangesBefore = missedChangeCount(cache)
   return {
     write(target: ApolloCache, payload: LibraryOperationPayload | null | undefined) {
       if (!payload || liveChangeCount(target, libraryId) !== liveChangesBefore) return
@@ -268,8 +268,8 @@ function operationOutcome(cache: ApolloCache, libraryId: string) {
     },
     // A socket that subscribed during the request may have missed the operation's own change, and
     // the read that followed it may predate the operation. A read after the response cannot.
-    async readInventoryAgainAfterResubscription(client: ApolloClient) {
-      if (resubscriptionCount(client.cache) === resubscriptionsBefore) return
+    async readInventoryAgainAfterMissedChanges(client: ApolloClient) {
+      if (missedChangeCount(client.cache) === missedChangesBefore) return
       // A read still in flight can predate the operation, and a refetch now would join it.
       if (isReadingInventory(client)) await readInventory(client)
       await readInventory(client)
