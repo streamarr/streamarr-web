@@ -15,31 +15,27 @@ type ShareNode = PendingOffer & ProfileShareRow & { __typename: 'ProfileShare' }
 const OFFER_ID = '77777777-7777-7777-7777-777777777777'
 const OTHER_HOUSEHOLD_ID = '55555555-5555-5555-5555-555555555555'
 
-function serverAnswersOverview(overrides: { offers?: ShareNode[]; shares?: ShareNode[] } = {}) {
+type OverviewRows = { offers?: ShareNode[]; shares?: ShareNode[] }
+
+function overviewData(overrides: OverviewRows = {}) {
+  return {
+    pendingShareOffers: {
+      __typename: 'ProfileShareConnection',
+      edges: (overrides.offers ?? []).map((node) => ({ __typename: 'ProfileShareEdge', node })),
+    },
+    profileShares: {
+      __typename: 'ProfileShareConnection',
+      edges: (overrides.shares ?? []).map((node) => ({ __typename: 'ProfileShareEdge', node })),
+    },
+  }
+}
+
+function serverAnswersOverview(overrides: OverviewRows = {}) {
   server.use(
     graphql.query('Me', () =>
       HttpResponse.json({ data: { me: meFixture({ profiles: [profileFixture()] }) } }),
     ),
-    graphql.query('SharingOverview', () =>
-      HttpResponse.json({
-        data: {
-          pendingShareOffers: {
-            __typename: 'ProfileShareConnection',
-            edges: (overrides.offers ?? []).map((node) => ({
-              __typename: 'ProfileShareEdge',
-              node,
-            })),
-          },
-          profileShares: {
-            __typename: 'ProfileShareConnection',
-            edges: (overrides.shares ?? []).map((node) => ({
-              __typename: 'ProfileShareEdge',
-              node,
-            })),
-          },
-        },
-      }),
-    ),
+    graphql.query('SharingOverview', () => HttpResponse.json({ data: overviewData(overrides) })),
   )
 }
 
