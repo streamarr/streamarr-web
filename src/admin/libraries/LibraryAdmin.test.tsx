@@ -869,6 +869,68 @@ describe('library administration', () => {
     },
   )
 
+  it.each([
+    { answer: 'NoPayload', body: { data: { startLibraryScan: null } } },
+    {
+      answer: 'APayloadWithoutALibrary',
+      body: { data: { startLibraryScan: { library: null, userErrors: [] } } },
+    },
+  ])('shouldSayTheScanIsUnconfirmedWhenTheServerAnswersWith$answer', async ({ body }) => {
+    serve()
+    server.use(graphql.mutation('StartLibraryScan', () => HttpResponse.json(body)))
+    const { user } = renderAppAt(SETTINGS)
+
+    await scanMovies(user)
+
+    const detail = screen.getByRole('article', { name: 'Movies settings' })
+    expect(await within(detail).findByRole('alert')).toHaveTextContent(
+      "Couldn't confirm the operation",
+    )
+    expect(detail).toHaveTextContent('HEALTHY')
+  })
+
+  it('shouldSayThePermissionIsGoneWhenTheServerForbidsAScan', async () => {
+    serve()
+    server.use(
+      graphql.mutation('StartLibraryScan', () =>
+        HttpResponse.json({
+          data: { startLibraryScan: null },
+          errors: [
+            { message: 'Forbidden', path: ['startLibraryScan'], extensions: { code: 'FORBIDDEN' } },
+          ],
+        }),
+      ),
+    )
+    const { user } = renderAppAt(SETTINGS)
+
+    await scanMovies(user)
+
+    const detail = screen.getByRole('article', { name: 'Movies settings' })
+    expect(await within(detail).findByRole('alert')).toHaveTextContent(
+      'You no longer have permission to manage libraries.',
+    )
+  })
+
+  it('shouldKeepTheLibraryWhenARemovalAnswersWithoutTheRemovedId', async () => {
+    serve()
+    server.use(
+      graphql.mutation('RemoveLibrary', () =>
+        HttpResponse.json({ data: { removeLibrary: { removedLibraryId: null, userErrors: [] } } }),
+      ),
+    )
+    const { user } = renderAppAt(SETTINGS)
+    await user.click(await screen.findByRole('button', { name: 'Remove library' }))
+
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove library' }),
+    )
+
+    expect(await within(screen.getByRole('dialog')).findByRole('alert')).toHaveTextContent(
+      "Couldn't confirm the operation",
+    )
+    expect(screen.getByRole('article', { name: 'Movies settings' })).toBeInTheDocument()
+  })
+
   it('shouldShowEachStatusChangeLiveWithoutReadingTheInventoryAgain', async () => {
     const state = serve()
     renderAppAt(SETTINGS)
