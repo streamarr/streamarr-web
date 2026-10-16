@@ -31,8 +31,9 @@ type LibraryOperationPayload = {
   userErrors: readonly LibraryOperationError[]
 }
 
-// A socket that subscribes again ends a gap whose changes reached no operation, for any library.
-// A response to a request sent before then no longer settles the library's status on its own.
+// A socket that subscribes again ends a gap whose changes reached no operation, and a change with
+// a failed field arrives without its library: either can concern any library. A response to a
+// request sent before then no longer settles the library's status on its own.
 const EVERY_LIBRARY = Symbol('every library')
 
 // The server orders no live change against a mutation response: a run can end, and its live

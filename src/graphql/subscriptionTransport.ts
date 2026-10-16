@@ -36,7 +36,8 @@ export interface SubscriptionTransport {
   /**
    * Calls the listener each time live operations may have missed changes: a socket has sent the
    * subscribe frames of the live operations, and a change committed before then reached no
-   * operation. The listener reads again.
+   * operation; or an operation delivered a change with field errors, and the change arrived
+   * without the data that failed. The listener reads again.
    */
   onMissedChanges(listener: () => void): () => void
 }
@@ -229,6 +230,8 @@ export function createSubscriptionTransport({
             }
             resubscribeAttempts = 0
             observer.next(result)
+            // A field error delivers its change without the data, and the operation keeps running.
+            if (result.data != null && (result.errors?.length ?? 0) > 0) notifyMissedChanges()
           },
           error: (error: unknown) => {
             subscription = undefined

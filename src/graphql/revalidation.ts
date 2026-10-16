@@ -14,8 +14,8 @@ interface RevalidationDependencies {
 
 /**
  * Refetches the active queries after a gap in which live changes may have been missed: a socket
- * subscribed after the queries read, the network came back, or the page returned from the
- * background. Overlapping triggers share one refetch, except that a socket subscribing during any
+ * subscribed after the queries read, a change arrived without the data of a field that failed,
+ * the network came back, or the page returned from the background. Overlapping triggers share one refetch, except that a socket subscribing during any
  * read earns one more after it. Nothing runs on a timer. Returns the uninstaller.
  */
 export function installRevalidation({
@@ -44,8 +44,8 @@ export function installRevalidation({
       })
   }
 
-  // A read that began before the socket subscribed can miss a change committed in between, and no
-  // frame reports that change. A refetch now would share that read, so one more follows it.
+  // A read that began before the socket subscribed, or before a change arrived without its data,
+  // can miss that change. A refetch now would share that read, so one more follows it.
   const onChangesMissed = (): void => {
     if (inFlight || isReading()) readAgainAfterInFlight = true
     revalidate()

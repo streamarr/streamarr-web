@@ -623,8 +623,32 @@ describe('subscription transport', () => {
     expect(socket.subscriptionIds()).toHaveLength(4)
   })
 
+  it('shouldReportMissedChangesAndKeepTheOperationWhenAChangeArrivesWithAFailedField', async () => {
+    const { subscribe, results, completed, framesAtEachReport } = setup()
+    const socket = await connectAndSubscribe(subscribe)
+    const [first] = socket.subscriptionIds()
+
+    socket.deliver({
+      type: 'next',
+      id: first,
+      payload: {
+        data: { libraryStatusChanged: null },
+        errors: [{ message: 'Status unavailable', path: ['libraryStatusChanged', 'status'] }],
+      },
+    })
+    socket.deliver(statusFrame(first, 'SCANNING'))
+    await settle()
+
+    expect(framesAtEachReport).toEqual([1, 1])
+    expect(results.at(-1)).toEqual({
+      data: { libraryStatusChanged: { __typename: 'Library', id: 'movies', status: 'SCANNING' } },
+    })
+    expect(socket.subscriptionIds()).toHaveLength(1)
+    expect(completed).not.toHaveBeenCalled()
+  })
+
   it('shouldEndTheOperationWithoutSubscribingAgainWhenForbidden', async () => {
-    const { subscribe, results, completed } = setup()
+    const { subscribe, results, completed, framesAtEachReport } = setup()
     const socket = await connectAndSubscribe(subscribe)
     const [first] = socket.subscriptionIds()
 
@@ -636,6 +660,7 @@ describe('subscription transport', () => {
     expect(results).toHaveLength(1)
     expect(results[0].error).toMatchObject({ errors: errorCodes('FORBIDDEN') })
     expect(completed).toHaveBeenCalledOnce()
+    expect(framesAtEachReport).toEqual([1])
   })
 
   it('shouldEndTheOperationWhenTheServerRefusesIt', async () => {
