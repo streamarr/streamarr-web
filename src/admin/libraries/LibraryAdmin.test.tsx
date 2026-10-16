@@ -1525,6 +1525,35 @@ describe('library administration', () => {
     )
 
     it.each(STOPS)(
+      'shouldSendOneStopWhenTheStopIsChosenAgainWhileTheFirstIsInFlightDuringA$kind',
+      async ({ busy, action, operationName, field }) => {
+        serve([{ ...MOVIES, status: busy }, SHOWS])
+        const requested = deferred()
+        const answer = deferred()
+        let stopRequests = 0
+        server.use(
+          graphql.mutation(operationName, async () => {
+            stopRequests++
+            requested.resolve()
+            await answer.promise
+            return HttpResponse.json(stopping(field))
+          }),
+        )
+        const { user } = renderAppAt(SETTINGS)
+        const detail = await screen.findByRole('article', { name: 'Movies settings' })
+        const stop = within(detail).getByRole('button', { name: action })
+        await user.click(stop)
+        await requested.promise
+
+        await user.click(stop)
+        answer.resolve()
+
+        await waitFor(() => expect(detail).toHaveTextContent('STOPPING'))
+        expect(stopRequests).toBe(1)
+      },
+    )
+
+    it.each(STOPS)(
       'shouldFollowStoppingLiveToTheEarlierStatusWithoutReadingTheInventoryAfterStoppingA$kind',
       async ({ busy, action, operationName, field }) => {
         const state = serve([{ ...MOVIES, status: busy }, SHOWS])
