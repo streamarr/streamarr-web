@@ -131,6 +131,7 @@ function setup({
   // A second operation keeps the socket open while the first one ends.
   const subscribeToAdditions = () => client.subscribe({ query: LIBRARY_ADDED }).subscribe({})
   return {
+    client,
     transport,
     renewal,
     onSignedOut,
@@ -204,6 +205,27 @@ describe('subscription transport', () => {
       },
     ])
   })
+
+  it.each(['resetStore', 'clearStore'] as const)(
+    'shouldKeepDeliveringChangesAfterTheClientCalls %s',
+    async (reset) => {
+      const { client, subscribe, results, completed } = setup()
+      const socket = await connectAndSubscribe(subscribe)
+
+      await client[reset]()
+      socket.deliver(statusFrame(socket.subscriptionIds()[0], 'SCANNING'))
+      await settle()
+
+      expect(results).toEqual([
+        {
+          data: {
+            libraryStatusChanged: { __typename: 'Library', id: 'movies', status: 'SCANNING' },
+          },
+        },
+      ])
+      expect(completed).not.toHaveBeenCalled()
+    },
+  )
 
   it('shouldRenewThenReconnectAndSubscribeAgainWhenTheAccessTokenExpires', async () => {
     const order: string[] = []
