@@ -661,6 +661,125 @@ describe('library administration', () => {
     },
   )
 
+  it.each(START_RESPONSES)(
+    'shouldKeepTheStatusReadAfterAReconnectWhenTheRunEndsUnseenBeforeTheResponseTo$response',
+    async ({ operationName, start, payload }) => {
+      const state = serve()
+      const requested = deferred()
+      const answer = deferred()
+      server.use(
+        graphql.mutation(operationName, async () => {
+          requested.resolve()
+          await answer.promise
+          return HttpResponse.json({ data: payload })
+        }),
+      )
+      const { user } = renderAppAt(SETTINGS)
+      const detail = await screen.findByRole('article', { name: 'Movies settings' })
+      await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+      await start(user)
+      await requested.promise
+      const requests = state.inventoryRequests
+      state.libraries = [{ ...MOVIES, scanCompletedOn: '2026-10-15T12:05:00Z' }, SHOWS]
+
+      state.socket.closeAll(1001, 'Going away')
+      await waitFor(() => expect(state.inventoryRequests).toBe(requests + 1), { timeout: 3_000 })
+      await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+      answer.resolve()
+
+      const scan = within(detail).getByRole('button', { name: 'Scan library' })
+      await waitFor(() => expect(scan).toBeEnabled())
+      expect(detail).toHaveTextContent('HEALTHY')
+    },
+  )
+
+  it.each(START_RESPONSES)(
+    'shouldReadAgainWhenTheReadAfterAReconnectCameBeforeTheResponseTo$response',
+    async ({ operationName, start, busy, payload }) => {
+      const state = serve()
+      const requested = deferred()
+      const answer = deferred()
+      server.use(
+        graphql.mutation(operationName, async () => {
+          requested.resolve()
+          await answer.promise
+          return HttpResponse.json({ data: payload })
+        }),
+      )
+      const { user } = renderAppAt(SETTINGS)
+      const detail = await screen.findByRole('article', { name: 'Movies settings' })
+      await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+      await start(user)
+      await requested.promise
+      const requests = state.inventoryRequests
+
+      state.socket.closeAll(1001, 'Going away')
+      await waitFor(() => expect(state.inventoryRequests).toBe(requests + 1), { timeout: 3_000 })
+      await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+      state.libraries = [{ ...MOVIES, status: busy }, SHOWS]
+      answer.resolve()
+
+      await waitFor(() => expect(state.inventoryRequests).toBe(requests + 2))
+      await waitFor(() => expect(detail).toHaveTextContent(busy))
+      expect(within(detail).getByRole('button', { name: 'Scan library' })).toBeDisabled()
+    },
+  )
+
+  it.each(START_RESPONSES)(
+    'shouldReadAgainAfterAReconnectReadThatStillRunsWhenTheResponseTo$response',
+    async ({ operationName, start, busy, payload }) => {
+      const state = serve()
+      const requested = deferred()
+      const answer = deferred()
+      const reconnectReadHeld = deferred()
+      server.use(
+        graphql.mutation(operationName, async () => {
+          requested.resolve()
+          await answer.promise
+          return HttpResponse.json({ data: payload })
+        }),
+      )
+      const { user } = renderAppAt(SETTINGS)
+      const detail = await screen.findByRole('article', { name: 'Movies settings' })
+      await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+      await start(user)
+      await requested.promise
+      const requests = state.inventoryRequests
+      server.use(
+        graphql.query(
+          'AdminLibraries',
+          async () => {
+            state.inventoryRequests++
+            const snapshot = state.libraries
+            await reconnectReadHeld.promise
+            return HttpResponse.json({ data: { libraries: snapshot } })
+          },
+          { once: true },
+        ),
+      )
+
+      state.socket.closeAll(1001, 'Going away')
+      await waitFor(() => expect(state.inventoryRequests).toBe(requests + 1), { timeout: 3_000 })
+      await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+      state.libraries = [{ ...MOVIES, status: busy }, SHOWS]
+      const responseDelivered = new Promise<void>((resolve) => {
+        const delivered = () => {
+          server.events.removeListener('response:mocked', delivered)
+          resolve()
+        }
+        server.events.on('response:mocked', delivered)
+      })
+      answer.resolve()
+      await responseDelivered
+      await new Promise((resolve) => setTimeout(resolve))
+      reconnectReadHeld.resolve()
+
+      await waitFor(() => expect(state.inventoryRequests).toBe(requests + 2))
+      await waitFor(() => expect(detail).toHaveTextContent(busy))
+      expect(within(detail).getByRole('button', { name: 'Scan library' })).toBeDisabled()
+    },
+  )
+
   it.each([
     {
       operationName: 'StartLibraryScan',

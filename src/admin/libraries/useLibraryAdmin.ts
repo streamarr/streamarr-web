@@ -1,5 +1,6 @@
 import type { ApolloCache, ApolloClient, ErrorLike, Reference } from '@apollo/client'
 import { useApolloClient, useQuery, useSubscription } from '@apollo/client/react'
+import { useRouteContext } from '@tanstack/react-router'
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import {
   AddLibraryDocument,
@@ -30,22 +31,30 @@ type LibraryOperationPayload = {
   userErrors: readonly LibraryOperationError[]
 }
 
+// A socket that subscribes again ends a gap whose changes reached no operation, for any library.
+// A response to a request sent before then no longer settles the library's status on its own.
+const EVERY_LIBRARY = Symbol('every library')
+
 // The server orders no live change against a mutation response: a run can end, and its live
 // change arrive, before the response that started or refused the run. Each cache counts the live
 // changes it applied for each library, so a command can tell whether one arrived meanwhile.
-const liveChangeCounts = new WeakMap<ApolloCache, Map<string, number>>()
+const liveChangeCounts = new WeakMap<ApolloCache, Map<string | typeof EVERY_LIBRARY, number>>()
 
 function liveChangeCount(cache: ApolloCache, libraryId: string): number {
-  return liveChangeCounts.get(cache)?.get(libraryId) ?? 0
+  return (liveChangeCounts.get(cache)?.get(libraryId) ?? 0) + resubscriptionCount(cache)
 }
 
-function countLiveChange(cache: ApolloCache, libraryId: string) {
+function resubscriptionCount(cache: ApolloCache): number {
+  return liveChangeCounts.get(cache)?.get(EVERY_LIBRARY) ?? 0
+}
+
+function countLiveChange(cache: ApolloCache, libraryId: string | typeof EVERY_LIBRARY) {
   let counts = liveChangeCounts.get(cache)
   if (!counts) {
     counts = new Map()
     liveChangeCounts.set(cache, counts)
   }
-  counts.set(libraryId, liveChangeCount(cache, libraryId) + 1)
+  counts.set(libraryId, (counts.get(libraryId) ?? 0) + 1)
 }
 
 /** Why live inventory changes stopped: the server refused them, or they ended another way. */
@@ -58,6 +67,12 @@ function useLiveInventoryChanges(): {
   removedIds: RefObject<ReadonlySet<string>>
 } {
   const [stop, setStop] = useState<LiveInventoryStop | null>(null)
+  const client = useApolloClient()
+  const { subscriptions } = useRouteContext({ from: '__root__' })
+  useEffect(
+    () => subscriptions.onSubscribed(() => countLiveChange(client.cache, EVERY_LIBRARY)),
+    [client, subscriptions],
+  )
   // The server orders no frames across fields: a change committed before a removal can arrive
   // after it. A library id never returns once removed.
   const removedIds = useRef(new Set<string>())
@@ -174,34 +189,37 @@ export function useLibraryCommands() {
       }, NOTHING_ADDED),
     scan: (libraryId: string) =>
       execute(async () => {
-        const writeOutcome = outcomeWriter(client.cache, libraryId)
+        const outcome = operationOutcome(client.cache, libraryId)
         const { data } = await client.mutate({
           mutation: StartLibraryScanDocument,
           variables: { input: { libraryId } },
           fetchPolicy: 'no-cache',
-          update: (cache, { data }) => writeOutcome(cache, data?.startLibraryScan),
+          update: (cache, { data }) => outcome.write(cache, data?.startLibraryScan),
         })
+        await outcome.readInventoryAgainAfterResubscription(client)
         return startedLibrary(client.cache, accepted(data?.startLibraryScan))
       }),
     refresh: (libraryId: string, imageRefreshMode: ImageRefreshMode) =>
       execute(async () => {
-        const writeOutcome = outcomeWriter(client.cache, libraryId)
+        const outcome = operationOutcome(client.cache, libraryId)
         const { data } = await client.mutate({
           mutation: StartLibraryRefreshDocument,
           variables: { input: { libraryId, imageRefreshMode } },
           fetchPolicy: 'no-cache',
-          update: (cache, { data }) => writeOutcome(cache, data?.startLibraryRefresh),
+          update: (cache, { data }) => outcome.write(cache, data?.startLibraryRefresh),
         })
+        await outcome.readInventoryAgainAfterResubscription(client)
         return startedLibrary(client.cache, accepted(data?.startLibraryRefresh))
       }),
     remove: (libraryId: string, onRemoved: () => void) =>
       execute(async () => {
-        const writeOutcome = outcomeWriter(client.cache, libraryId)
+        const outcome = operationOutcome(client.cache, libraryId)
         const { data } = await client.mutate({
           mutation: RemoveLibraryDocument,
           variables: { input: { libraryId } },
-          update: (cache, { data }) => writeOutcome(cache, data?.removeLibrary),
+          update: (cache, { data }) => outcome.write(cache, data?.removeLibrary),
         })
+        await outcome.readInventoryAgainAfterResubscription(client)
         const payload = accepted(data?.removeLibrary)
         if (!payload) return null
         if (!payload.removedLibraryId) throw new Error('Removal was not confirmed')
@@ -213,7 +231,7 @@ export function useLibraryCommands() {
   }
 }
 
-// A live change that arrived during the request is newer than the returned library.
+// The cache can hold newer state than the returned library: a live change, or a read after it.
 function startedLibrary(
   cache: ApolloCache,
   payload: LibraryOperationPayload | null,
@@ -228,16 +246,38 @@ function startedLibrary(
 // change for the library arrived during the request: that change can already say the run ended.
 // The write happens in the mutation's own cache update, so the library shows its new status by
 // the time the command returns.
-function outcomeWriter(cache: ApolloCache, libraryId: string) {
+function operationOutcome(cache: ApolloCache, libraryId: string) {
   const liveChangesBefore = liveChangeCount(cache, libraryId)
-  return (target: ApolloCache, payload: LibraryOperationPayload | null | undefined) => {
-    if (!payload || liveChangeCount(target, libraryId) !== liveChangesBefore) return
-    if (payload.library)
-      target.writeFragment({ fragment: ManagedLibraryFieldsFragmentDoc, data: payload.library })
-    for (const error of payload.userErrors) {
-      if (error.__typename === 'LibraryBusyError') showStatus(target, libraryId, error.status)
-    }
+  const resubscriptionsBefore = resubscriptionCount(cache)
+  return {
+    write(target: ApolloCache, payload: LibraryOperationPayload | null | undefined) {
+      if (!payload || liveChangeCount(target, libraryId) !== liveChangesBefore) return
+      if (payload.library)
+        target.writeFragment({ fragment: ManagedLibraryFieldsFragmentDoc, data: payload.library })
+      for (const error of payload.userErrors) {
+        if (error.__typename === 'LibraryBusyError') showStatus(target, libraryId, error.status)
+      }
+    },
+    // A socket that subscribed during the request may have missed the operation's own change, and
+    // the read that followed it may predate the operation. A read after the response cannot.
+    async readInventoryAgainAfterResubscription(client: ApolloClient) {
+      if (resubscriptionCount(client.cache) === resubscriptionsBefore) return
+      // A read still in flight can predate the operation, and a refetch now would join it.
+      if (isReadingInventory(client)) await readInventory(client)
+      await readInventory(client)
+    },
   }
+}
+
+function isReadingInventory(client: ApolloClient): boolean {
+  return [...client.getObservableQueries([AdminLibrariesDocument])].some(
+    (query) => query.getCurrentResult().loading,
+  )
+}
+
+// Silent: a failed read surfaces through the query that ran it.
+async function readInventory(client: ApolloClient) {
+  await Promise.allSettled(client.refetchQueries({ include: [AdminLibrariesDocument] }).results)
 }
 
 // The inventory changes at once from the payload; the refetch then confirms it.
