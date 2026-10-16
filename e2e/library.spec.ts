@@ -15,6 +15,7 @@ const movies = Array.from({ length: 26 * 12 }, (_, index) => {
     releaseDate: '2024-01-01',
     runtime: 90,
     watchStatus: 'UNWATCHED' as const,
+    lastWatchedAt: null,
     watchProgress: null,
     images: [],
   }

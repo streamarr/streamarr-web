@@ -24,6 +24,7 @@ const EVERLIGHT_CARD = {
   releaseDate: '2024-01-01',
   runtime: 100,
   watchStatus: 'UNWATCHED',
+  lastWatchedAt: null,
   watchProgress: null,
   images: [],
 }
@@ -63,6 +64,7 @@ const CONTINUE_WATCHING_MOVIE = {
   summary: null,
   runtime: 100,
   createdOn: '2026-08-26T12:00:00Z',
+  lastWatchedAt: '2026-10-16T09:00:00Z',
   genres: [],
   images: [],
   watchProgress: PROGRESS,
