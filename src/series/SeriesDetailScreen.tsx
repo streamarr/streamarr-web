@@ -31,7 +31,7 @@ export function SeriesDetailScreen({ seriesId }: Readonly<{ seriesId: string }>)
   const ambient = series ? resolveAmbientColors(series.backdropImages, series.posterImages) : null
   usePublishAmbientTheme(ambient?.theme ?? null)
 
-  if (loading || error || !series) {
+  if (error || !series) {
     return (
       <MediaTitleFallback
         kind="series"
