@@ -17,10 +17,12 @@ import { useMe } from '../identity/useMe'
 import { canManageServer } from '../admin/access'
 import { EmptyLibraries } from '../admin/libraries/EmptyLibraries'
 import { FailurePanel, FailureRow } from '../ui/Failure'
-import { showContinueWatching } from '../media/watchStateLists'
+import { CONTINUE_WATCHING_LIMIT, showContinueWatching } from '../media/watchStateLists'
 
 export function Home() {
-  const { data, loading, error, refetch } = useQuery(HomeDocument)
+  const { data, loading, error, refetch } = useQuery(HomeDocument, {
+    variables: { continueWatchingFirst: CONTINUE_WATCHING_LIMIT },
+  })
   const { cache } = useApolloClient()
   useEffect(() => showContinueWatching(cache), [cache])
 
