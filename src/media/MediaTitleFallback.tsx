@@ -28,7 +28,8 @@ const ROOT_FIELD = {
 
 /**
  * What a media title's page shows in place of the title while it loads or when it cannot. `title`
- * is the query's root field: null when the server has no such title.
+ * is the query's root field: undefined until the server answers, and null when the server has no
+ * such title.
  */
 export function MediaTitleFallback({
   kind,
@@ -43,7 +44,7 @@ export function MediaTitleFallback({
   title: object | null | undefined
   onRetry: () => unknown
 }>) {
-  if (loading) {
+  if (loading && title === undefined) {
     return (
       <Center h={200}>
         <Loader />

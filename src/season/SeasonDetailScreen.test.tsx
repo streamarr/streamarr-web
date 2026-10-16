@@ -3,7 +3,12 @@ import { graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { SeasonDetailQuery } from '../graphql/generated/graphql'
 import { meFixture } from '../test/meFixture'
-import { failsOnceThen, invalidIdResponse } from '../test/graphqlResponses'
+import {
+  answersThenHolds,
+  comeBackOnline,
+  failsOnceThen,
+  invalidIdResponse,
+} from '../test/graphqlResponses'
 import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
 
@@ -160,6 +165,22 @@ describe('SeasonDetailScreen', () => {
       'href',
       '/play/file-e4?episode=e4',
     )
+  })
+
+  it('shouldKeepTheSeasonOnScreenWhileItIsReadAgain', async () => {
+    serve(seasonData())
+    const season = answersThenHolds(seasonData(), seasonData({ overview: 'The team splits up.' }))
+    server.use(graphql.query('SeasonDetail', season.resolver))
+    renderAppAt('/season/season-2')
+    const title = await screen.findByRole('heading', { level: 1, name: 'Season 2' })
+
+    comeBackOnline()
+    await waitFor(() => expect(season.calls).toBe(2))
+    expect(title).toBeInTheDocument()
+    season.release()
+
+    expect(await screen.findByText('The team splits up.')).toBeInTheDocument()
+    expect(title).toBeInTheDocument()
   })
 
   it('shouldRetryTheSeasonAfterItFailsToLoad', async () => {

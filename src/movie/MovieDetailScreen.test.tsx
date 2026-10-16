@@ -4,7 +4,12 @@ import { describe, expect, it } from 'vitest'
 import type { MovieDetailQuery } from '../graphql/generated/graphql'
 import { deferred } from '../test/deferred'
 import { meFixture, profileFixture } from '../test/meFixture'
-import { failsOnceThen, invalidIdResponse } from '../test/graphqlResponses'
+import {
+  answersThenHolds,
+  comeBackOnline,
+  failsOnceThen,
+  invalidIdResponse,
+} from '../test/graphqlResponses'
 import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
 
@@ -89,6 +94,36 @@ describe('MovieDetailScreen', () => {
       'href',
       '/play/file-1?movie=m1',
     )
+  })
+
+  it('shouldKeepTheMovieOnScreenWhileItIsReadAgain', async () => {
+    serve(movieData())
+    const movie = answersThenHolds(movieData(), movieData({ tagline: 'Every light goes out.' }))
+    server.use(graphql.query('MovieDetail', movie.resolver))
+    renderAppAt('/movie/m1')
+    const title = await screen.findByRole('heading', { level: 1, name: 'Everlight' })
+
+    comeBackOnline()
+    await waitFor(() => expect(movie.calls).toBe(2))
+    expect(title).toBeInTheDocument()
+    movie.release()
+
+    expect(await screen.findByText('Every light goes out.')).toBeInTheDocument()
+    expect(title).toBeInTheDocument()
+  })
+
+  it('shouldKeepNotFoundOnScreenWhileTheMovieIsReadAgain', async () => {
+    serve({ movie: null })
+    const movie = answersThenHolds({ movie: null }, { movie: null })
+    server.use(graphql.query('MovieDetail', movie.resolver))
+    renderAppAt('/movie/m1')
+    const notFound = await screen.findByRole('alert')
+
+    comeBackOnline()
+    await waitFor(() => expect(movie.calls).toBe(2))
+    expect(notFound).toBeInTheDocument()
+    expect(notFound).toHaveTextContent("This movie doesn't exist or was removed.")
+    movie.release()
   })
 
   it('shouldRetryTheMovieAfterItFailsToLoad', async () => {
