@@ -1096,6 +1096,62 @@ describe('library administration', () => {
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Libraries1')
   })
 
+  it.each([
+    { operationName: 'LibraryStatusChanged', field: 'libraryStatusChanged' },
+    { operationName: 'LibraryAdded', field: 'libraryAdded' },
+    { operationName: 'LibraryRemoved', field: 'libraryRemoved' },
+  ])(
+    'shouldKeepLiveStatusAndReadTheInventoryAgainWhenAChangeArrivesAsNull $field',
+    async ({ operationName, field }) => {
+      const state = serve()
+      renderAppAt(SETTINGS)
+      const detail = await screen.findByRole('article', { name: 'Movies settings' })
+      await waitFor(() => expect(state.socket.isLive(operationName)).toBe(true))
+      const requests = state.inventoryRequests
+      state.libraries = [{ ...MOVIES, status: 'REFRESHING' }, SHOWS]
+
+      state.socket.publish(operationName, {
+        data: { [field]: null },
+        errors: [{ message: 'Library unavailable', path: [field] }],
+      })
+
+      await waitFor(() => expect(detail).toHaveTextContent('REFRESHING'))
+      expect(state.inventoryRequests).toBe(requests + 1)
+      state.socket.publish('LibraryStatusChanged', {
+        data: { libraryStatusChanged: { ...MOVIES, status: 'SCANNING' } },
+      })
+      await waitFor(() => expect(detail).toHaveTextContent('SCANNING'))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    },
+  )
+
+  it('shouldListAnAddedLibraryWhoseChangeCarriesAFailedFieldBeforeTheInventoryReadsAgain', async () => {
+    const state = serve()
+    renderAppAt(SETTINGS)
+    await screen.findByRole('article', { name: 'Movies settings' })
+    await waitFor(() => expect(state.socket.isLive('LibraryAdded')).toBe(true))
+    const readAgain = deferred()
+    server.use(
+      graphql.query('AdminLibraries', async () => {
+        state.inventoryRequests++
+        await readAgain.promise
+        return HttpResponse.json({ data: { libraries: state.libraries } })
+      }),
+    )
+    const family = { ...MOVIES, id: 'family', name: 'Family', scanStartedOn: null }
+    state.libraries = [MOVIES, SHOWS, family]
+
+    state.socket.publish('LibraryAdded', {
+      data: { libraryAdded: family },
+      errors: [{ message: 'Scan start unavailable', path: ['libraryAdded', 'scanStartedOn'] }],
+    })
+
+    const inventory = screen.getByRole('navigation', { name: 'Libraries to manage' })
+    await within(inventory).findByRole('button', { name: /Family/ })
+    readAgain.resolve()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
   it('shouldSayWhenTheServerNoLongerAllowsLiveStatus', async () => {
     const state = serve()
     renderAppAt(SETTINGS)

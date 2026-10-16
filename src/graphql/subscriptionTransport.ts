@@ -34,10 +34,12 @@ export interface SubscriptionTransport {
    */
   replaceSocket(): void
   /**
-   * Calls the listener each time a socket has sent the subscribe frames of the live operations.
-   * A change committed before then reached no operation, so the listener reads again.
+   * Calls the listener each time live operations may have missed changes: a socket has sent the
+   * subscribe frames of the live operations, and a change committed before then reached no
+   * operation; or an operation delivered a change with field errors, and the change arrived
+   * without the data that failed. The listener reads again.
    */
-  onSubscribed(listener: () => void): () => void
+  onMissedChanges(listener: () => void): () => void
 }
 
 interface SubscriptionTransportDependencies {
@@ -73,7 +75,7 @@ export function createSubscriptionTransport({
 }: SubscriptionTransportDependencies): SubscriptionTransport {
   const operations = new Set<LiveOperation>()
   const awaitingResubscribe = new Set<LiveOperation>()
-  const subscribedListeners = new Set<() => void>()
+  const missedChangeListeners = new Set<() => void>()
   const pendingWakes = new Set<() => void>()
   let current: Connection | undefined
   let resubscribeTimer: ReturnType<typeof setTimeout> | undefined
@@ -95,8 +97,8 @@ export function createSubscriptionTransport({
       pendingWakes.add(wake)
     })
 
-  const notifySubscribed = (): void => {
-    for (const listener of subscribedListeners) listener()
+  const notifyMissedChanges = (): void => {
+    for (const listener of missedChangeListeners) listener()
   }
 
   const renewBeforeReconnecting = async (connection: Connection): Promise<void> => {
@@ -113,7 +115,7 @@ export function createSubscriptionTransport({
   // promise settles after the connected event; one task later every frame is on the socket.
   const notifyOnceSubscribed = (connection: Connection): void => {
     setTimeout(() => {
-      if (connection === current) notifySubscribed()
+      if (connection === current) notifyMissedChanges()
     }, 0)
   }
 
@@ -228,6 +230,8 @@ export function createSubscriptionTransport({
             }
             resubscribeAttempts = 0
             observer.next(result)
+            // A field error delivers its change without the data, and the operation keeps running.
+            if (result.data != null && (result.errors?.length ?? 0) > 0) notifyMissedChanges()
           },
           error: (error: unknown) => {
             subscription = undefined
@@ -283,9 +287,9 @@ export function createSubscriptionTransport({
       retireConnection()
       for (const live of operations) live.start()
     },
-    onSubscribed(listener) {
-      subscribedListeners.add(listener)
-      return () => subscribedListeners.delete(listener)
+    onMissedChanges(listener) {
+      missedChangeListeners.add(listener)
+      return () => missedChangeListeners.delete(listener)
     },
   }
 }

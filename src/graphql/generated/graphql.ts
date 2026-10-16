@@ -326,17 +326,17 @@ export type RemoveLibraryMutation = { removeLibrary: { removedLibraryId: string 
 export type LibraryStatusChangedSubscriptionVariables = Exact<{ [key: string]: never; }>;
 
 
-export type LibraryStatusChangedSubscription = { libraryStatusChanged: { __typename: 'Library', id: string, name: string | null, type: MediaType, backend: LibraryBackend, filepathUri: string, status: LibraryStatus, scanStartedOn: string | null, scanCompletedOn: string | null } };
+export type LibraryStatusChangedSubscription = { libraryStatusChanged: { __typename: 'Library', id: string, name: string | null, type: MediaType, backend: LibraryBackend, filepathUri: string, status: LibraryStatus, scanStartedOn: string | null, scanCompletedOn: string | null } | null };
 
 export type LibraryAddedSubscriptionVariables = Exact<{ [key: string]: never; }>;
 
 
-export type LibraryAddedSubscription = { libraryAdded: { __typename: 'Library', id: string, name: string | null, type: MediaType, backend: LibraryBackend, filepathUri: string, status: LibraryStatus, scanStartedOn: string | null, scanCompletedOn: string | null } };
+export type LibraryAddedSubscription = { libraryAdded: { __typename: 'Library', id: string, name: string | null, type: MediaType, backend: LibraryBackend, filepathUri: string, status: LibraryStatus, scanStartedOn: string | null, scanCompletedOn: string | null } | null };
 
 export type LibraryRemovedSubscriptionVariables = Exact<{ [key: string]: never; }>;
 
 
-export type LibraryRemovedSubscription = { libraryRemoved: { libraryId: string } };
+export type LibraryRemovedSubscription = { libraryRemoved: { libraryId: string } | null };
 
 export type CreateStreamSessionMutationVariables = Exact<{
   input: CreateStreamSessionInput;

@@ -1,5 +1,11 @@
-import type { ApolloCache, ApolloClient, ErrorLike, Reference } from '@apollo/client'
-import { useApolloClient, useQuery, useSubscription } from '@apollo/client/react'
+import type {
+  ApolloCache,
+  ApolloClient,
+  ErrorLike,
+  Reference,
+  TypedDocumentNode,
+} from '@apollo/client'
+import { useApolloClient, useQuery } from '@apollo/client/react'
 import { useRouteContext } from '@tanstack/react-router'
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import {
@@ -31,8 +37,9 @@ type LibraryOperationPayload = {
   userErrors: readonly LibraryOperationError[]
 }
 
-// A socket that subscribes again ends a gap whose changes reached no operation, for any library.
-// A response to a request sent before then no longer settles the library's status on its own.
+// A socket that subscribes again ends a gap whose changes reached no operation, and a change with
+// a failed field arrives without its library: either can concern any library. A response to a
+// request sent before then no longer settles the library's status on its own.
 const EVERY_LIBRARY = Symbol('every library')
 
 // The server orders no live change against a mutation response: a run can end, and its live
@@ -46,10 +53,10 @@ function countedLiveChanges(cache: ApolloCache, target: LiveChangeTarget): numbe
 }
 
 function liveChangeCount(cache: ApolloCache, libraryId: string): number {
-  return countedLiveChanges(cache, libraryId) + resubscriptionCount(cache)
+  return countedLiveChanges(cache, libraryId) + missedChangeCount(cache)
 }
 
-function resubscriptionCount(cache: ApolloCache): number {
+function missedChangeCount(cache: ApolloCache): number {
   return countedLiveChanges(cache, EVERY_LIBRARY)
 }
 
@@ -75,40 +82,72 @@ function useLiveInventoryChanges(): {
   const client = useApolloClient()
   const { subscriptions } = useRouteContext({ from: '__root__' })
   useEffect(
-    () => subscriptions.onSubscribed(() => countLiveChange(client.cache, EVERY_LIBRARY)),
+    () => subscriptions.onMissedChanges(() => countLiveChange(client.cache, EVERY_LIBRARY)),
     [client, subscriptions],
   )
   // The server orders no frames across fields: a change committed before a removal can arrive
   // after it. A library id never returns once removed.
   const removedIds = useRef(new Set<string>())
-  const onError = (error: ErrorLike) => setStop(isForbidden(error) ? 'forbidden' : 'failed')
-  const holdFrom = (library: ManagedLibraryFieldsFragment | undefined, cache: ApolloCache) => {
-    if (!library) return
-    countLiveChange(cache, library.id)
-    if (!removedIds.current.has(library.id)) holdLibrary(cache, library)
-  }
-  useSubscription(LibraryStatusChangedDocument, {
-    ignoreResults: true,
-    onData: ({ client, data }) => holdFrom(data.data?.libraryStatusChanged, client.cache),
-    onError,
-  })
-  useSubscription(LibraryAddedDocument, {
-    ignoreResults: true,
-    onData: ({ client, data }) => holdFrom(data.data?.libraryAdded, client.cache),
-    onError,
-  })
-  useSubscription(LibraryRemovedDocument, {
-    ignoreResults: true,
-    onData: ({ client, data }) => {
-      const removal = data.data?.libraryRemoved
+  useEffect(() => {
+    const onStop = (error: ErrorLike) => setStop(isForbidden(error) ? 'forbidden' : 'failed')
+    const holdFrom = (library: ManagedLibraryFieldsFragment | null) => {
+      if (!library) return
+      countLiveChange(client.cache, library.id)
+      if (!removedIds.current.has(library.id)) holdLibrary(client.cache, library)
+    }
+    const dropFrom = (removal: { libraryId: string } | null) => {
       if (!removal) return
       removedIds.current.add(removal.libraryId)
       countLiveChange(client.cache, removal.libraryId)
       dropLibrary(client.cache, removal.libraryId)
-    },
-    onError,
-  })
+    }
+    const unwatch = [
+      watchLiveChanges(client, LibraryStatusChangedDocument, {
+        apply: (data) => holdFrom(data.libraryStatusChanged),
+        onStop,
+      }),
+      watchLiveChanges(client, LibraryAddedDocument, {
+        apply: (data) => holdFrom(data.libraryAdded),
+        onStop,
+      }),
+      watchLiveChanges(client, LibraryRemovedDocument, {
+        apply: (data) => dropFrom(data.libraryRemoved),
+        onStop,
+      }),
+    ]
+    return () => {
+      for (const stopWatching of unwatch) stopWatching()
+    }
+  }, [client])
   return { stop, removedIds }
+}
+
+// With errorPolicy 'all', a change whose field failed arrives with its errors, and the operation
+// keeps running: the change applies whatever data it carries, a null field carries none, and the
+// transport reports the change missed so the inventory reads again. A result without data ends the
+// operation.
+function watchLiveChanges<TData>(
+  client: ApolloClient,
+  query: TypedDocumentNode<TData, Record<string, never>>,
+  { apply, onStop }: { apply: (data: TData) => void; onStop: (error: ErrorLike) => void },
+): () => void {
+  let stopped = false
+  const subscription = client
+    .subscribe({ query, errorPolicy: 'all' })
+    .subscribe(({ data, error }) => {
+      if (stopped) return
+      if (data) {
+        apply(data)
+        return
+      }
+      if (error) onStop(error)
+    })
+  // A remount that subscribes before this task runs joins the same operation, as useSubscription's
+  // does, instead of ending it and starting another.
+  return () => {
+    stopped = true
+    setTimeout(() => subscription.unsubscribe())
+  }
 }
 
 /**
@@ -201,7 +240,7 @@ export function useLibraryCommands() {
           fetchPolicy: 'no-cache',
           update: (cache, { data }) => outcome.write(cache, data?.startLibraryScan),
         })
-        await outcome.readInventoryAgainAfterResubscription(client)
+        await outcome.readInventoryAgainAfterMissedChanges(client)
         return startedLibrary(client.cache, accepted(data?.startLibraryScan))
       }),
     refresh: (libraryId: string, imageRefreshMode: ImageRefreshMode) =>
@@ -213,7 +252,7 @@ export function useLibraryCommands() {
           fetchPolicy: 'no-cache',
           update: (cache, { data }) => outcome.write(cache, data?.startLibraryRefresh),
         })
-        await outcome.readInventoryAgainAfterResubscription(client)
+        await outcome.readInventoryAgainAfterMissedChanges(client)
         return startedLibrary(client.cache, accepted(data?.startLibraryRefresh))
       }),
     remove: (libraryId: string, onRemoved: () => void) =>
@@ -224,7 +263,7 @@ export function useLibraryCommands() {
           variables: { input: { libraryId } },
           update: (cache, { data }) => outcome.write(cache, data?.removeLibrary),
         })
-        await outcome.readInventoryAgainAfterResubscription(client)
+        await outcome.readInventoryAgainAfterMissedChanges(client)
         const payload = accepted(data?.removeLibrary)
         if (!payload) return null
         if (!payload.removedLibraryId) throw new Error('Removal was not confirmed')
@@ -253,7 +292,7 @@ function startedLibrary(
 // the time the command returns.
 function operationOutcome(cache: ApolloCache, libraryId: string) {
   const liveChangesBefore = liveChangeCount(cache, libraryId)
-  const resubscriptionsBefore = resubscriptionCount(cache)
+  const missedChangesBefore = missedChangeCount(cache)
   return {
     write(target: ApolloCache, payload: LibraryOperationPayload | null | undefined) {
       if (!payload || liveChangeCount(target, libraryId) !== liveChangesBefore) return
@@ -265,8 +304,8 @@ function operationOutcome(cache: ApolloCache, libraryId: string) {
     },
     // A socket that subscribed during the request may have missed the operation's own change, and
     // the read that followed it may predate the operation. A read after the response cannot.
-    async readInventoryAgainAfterResubscription(client: ApolloClient) {
-      if (resubscriptionCount(client.cache) === resubscriptionsBefore) return
+    async readInventoryAgainAfterMissedChanges(client: ApolloClient) {
+      if (missedChangeCount(client.cache) === missedChangesBefore) return
       // A read still in flight can predate the operation, and a refetch now would join it.
       if (isReadingInventory(client)) await readInventory(client)
       await readInventory(client)

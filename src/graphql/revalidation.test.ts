@@ -24,15 +24,15 @@ function setup({
 }: { visibilityState?: DocumentVisibilityState; reading?: boolean } = {}) {
   const window = new EventTarget()
   const page = fakeDocument(visibilityState)
-  const subscribedListeners = new Set<() => void>()
+  const missedChangeListeners = new Set<() => void>()
   let pending = deferred()
   const refetchActive = vi.fn(() => pending.promise)
   const uninstall = installRevalidation({
     refetchActive,
     isReading: () => reading,
-    onSubscribed: (listener) => {
-      subscribedListeners.add(listener)
-      return () => subscribedListeners.delete(listener)
+    onMissedChanges: (listener) => {
+      missedChangeListeners.add(listener)
+      return () => missedChangeListeners.delete(listener)
     },
     window,
     document: page.document,
@@ -41,13 +41,13 @@ function setup({
     ...page,
     refetchActive,
     uninstall,
-    recover: () => subscribedListeners.forEach((listener) => listener()),
+    recover: () => missedChangeListeners.forEach((listener) => listener()),
     goOnline: () => window.dispatchEvent(new Event('online')),
     finishRefetch() {
       pending.resolve()
       pending = deferred()
     },
-    listeningForRecovery: () => subscribedListeners.size > 0,
+    listeningForRecovery: () => missedChangeListeners.size > 0,
   }
 }
 
@@ -142,7 +142,7 @@ describe('revalidation', () => {
     installRevalidation({
       refetchActive,
       isReading: () => false,
-      onSubscribed: () => () => {},
+      onMissedChanges: () => () => {},
       window,
       document: fakeDocument().document,
     })

@@ -5,7 +5,8 @@ import { server } from './server'
 export const GRAPHQL_SOCKET_URL = 'wss://streamarr.test/graphql'
 
 type SocketClient = WebSocketHandlerConnection['client']
-type Payload = { data: unknown } | { errors: { message: string; extensions?: object }[] }
+type PayloadError = { message: string; path?: readonly (string | number)[]; extensions?: object }
+type Payload = { data: unknown; errors?: PayloadError[] } | { errors: PayloadError[] }
 
 interface Operation {
   client: SocketClient
