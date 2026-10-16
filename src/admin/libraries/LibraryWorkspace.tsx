@@ -16,7 +16,9 @@ import {
   libraryIcon,
   libraryName,
   libraryTypeLabel,
+  stoppableRun,
   type ManagedLibrary,
+  type StoppableRun,
 } from './libraryModel'
 import {
   NO_LONGER_PERMITTED,
@@ -36,6 +38,27 @@ const IMAGE_REFRESH_OPTIONS = [
   { value: 'REFRESH_IF_CHANGED', label: 'Update changed images' },
   { value: 'FORCE_REFRESH', label: 'Download all images again' },
 ] satisfies { value: ImageRefreshMode; label: string }[]
+
+const STOP_ACTIONS = {
+  scan: {
+    label: 'Stop scan',
+    description:
+      'Stopping lets the files and titles already in progress finish. Nothing is rolled back, and titles the scan already added stay.',
+  },
+  refresh: {
+    label: 'Stop refresh',
+    description:
+      'Stopping lets the titles already in progress finish. Nothing is rolled back, and titles the refresh already updated keep their new details.',
+  },
+} as const satisfies Record<StoppableRun, { label: string; description: string }>
+
+function maintenanceGuidance(status: ManagedLibrary['status']): string {
+  if (status === 'SCANNING' || status === 'REFRESHING')
+    return 'Maintenance is in progress. You can still view this library.'
+  if (status === 'STOPPING')
+    return 'The scan or refresh is stopping. You can still view this library.'
+  return 'Maintenance is unavailable for this library status.'
+}
 
 /**
  * Library inventory and selected-library workspace. Selection belongs to the route so reload/back
@@ -211,6 +234,8 @@ function LibraryDetails({
   const disabled = stale || !maintainable || commands.pending
   const name = libraryName(library)
   const refreshId = `refresh-${library.id}`
+  const running = stoppableRun(library)
+  const stopDescriptionId = `stop-${library.id}`
   let removalError = commands.error
   if (!removalError && stale) removalError = 'Refresh the library state before removing it.'
   if (!removalError && !maintainable)
@@ -362,6 +387,20 @@ function LibraryDetails({
           >
             Refresh metadata
           </Button>
+          {running && (
+            <Button
+              variant="default"
+              disabled={stale || commands.pending}
+              aria-describedby={stopDescriptionId}
+              onClick={() =>
+                running === 'scan'
+                  ? commands.stopScan(library.id)
+                  : commands.stopRefresh(library.id)
+              }
+            >
+              {STOP_ACTIONS[running].label}
+            </Button>
+          )}
           <DestructiveButton
             disabled={disabled}
             onClick={() => {
@@ -372,13 +411,8 @@ function LibraryDetails({
           >
             Remove library
           </DestructiveButton>
-          {!maintainable && (
-            <p>
-              {library.status === 'SCANNING' || library.status === 'REFRESHING'
-                ? 'Maintenance is in progress. You can still view this library.'
-                : 'Maintenance is unavailable for this library status.'}
-            </p>
-          )}
+          {!maintainable && <p>{maintenanceGuidance(library.status)}</p>}
+          {running && <p id={stopDescriptionId}>{STOP_ACTIONS[running].description}</p>}
         </div>
         {notice && (
           <output ref={actionNotice} tabIndex={-1} className={styles.actionNotice}>
