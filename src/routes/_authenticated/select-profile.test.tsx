@@ -172,7 +172,12 @@ describe('/select-profile', () => {
       profileFixture({ id: 'p-toni', name: 'Toni', personal: false, pinConfigured: true }),
     ]
     const fresh = heldAnswer({
-      me: meFixture({ profiles: [...profiles, profileFixture({ id: 'p-sam', name: 'Sam' })] }),
+      me: meFixture({
+        profiles: [
+          profiles[0],
+          profileFixture({ id: 'p-toni', name: 'Toni R', personal: false, pinConfigured: true }),
+        ],
+      }),
     })
     const me = answersInTurn(
       answerWith({ me: meFixture({ profiles }) }),
@@ -190,9 +195,10 @@ describe('/select-profile', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     fresh.release()
 
+    expect(await screen.findByRole('heading', { name: /enter toni r/i })).toBeInTheDocument()
+    expect(pinInput).toBeInTheDocument()
     await user.type(pinInput, '34')
     expect(screen.getByRole('button', { name: 'Unlock' })).toBeEnabled()
-    expect(pinInput).toBeInTheDocument()
   })
 
   it('shouldFallBackToTheGridWhenTheGatedProfileIsLocked', async () => {
