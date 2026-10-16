@@ -1,0 +1,22 @@
+# Each item carries only its own watch state. The server lists the season and the series of each
+# changed episode as items of their own, and one change can list every episode of a series, so a
+# nested selection would repeat them and could overfill the socket's send buffer.
+subscription WatchStateChanged {
+  watchStateChanged {
+    items {
+      __typename
+      ... on Movie {
+        ...MovieWatchState
+      }
+      ... on Episode {
+        ...EpisodeWatchState
+      }
+      ... on Season {
+        ...SeasonWatchState
+      }
+      ... on Series {
+        ...SeriesWatchState
+      }
+    }
+  }
+}
