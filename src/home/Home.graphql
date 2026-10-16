@@ -1,92 +1,6 @@
-query Home {
-  continueWatching(first: 12) {
-    __typename
-    ... on Movie {
-      id
-      title
-      tagline
-      summary
-      runtime
-      createdOn
-      genres {
-        id
-        name
-      }
-      images(type: BACKDROP) {
-        aspectRatio
-        blurHash
-        variants {
-          id
-          size
-          width
-          height
-          url
-        }
-      }
-      watchProgress {
-        positionSeconds
-        percentComplete
-        durationSeconds
-      }
-      files {
-        id
-      }
-    }
-    ... on Episode {
-      id
-      title
-      episodeNumber
-      overview
-      runtime
-      images(type: STILL) {
-        aspectRatio
-        blurHash
-        variants {
-          id
-          size
-          width
-          height
-          url
-        }
-      }
-      watchProgress {
-        positionSeconds
-        percentComplete
-        durationSeconds
-      }
-      files {
-        id
-      }
-      season {
-        id
-        seasonNumber
-        series {
-          id
-          title
-          tagline
-          summary
-          createdOn
-          genres {
-            id
-            name
-          }
-          seasons {
-            id
-          }
-          images(type: BACKDROP) {
-            aspectRatio
-            blurHash
-            variants {
-              id
-              size
-              width
-              height
-              url
-            }
-          }
-        }
-      }
-    }
+query Home($continueWatchingFirst: Int!) {
+  continueWatching(first: $continueWatchingFirst) {
+    ...ContinueWatchingItemFields
   }
   libraries {
     id
@@ -139,6 +53,98 @@ query Home {
                 url
               }
             }
+          }
+        }
+      }
+    }
+  }
+}
+
+fragment ContinueWatchingItemFields on ContinueWatchingMedia {
+  __typename
+  ... on Movie {
+    id
+    title
+    tagline
+    summary
+    runtime
+    createdOn
+    genres {
+      id
+      name
+    }
+    images(type: BACKDROP) {
+      aspectRatio
+      blurHash
+      variants {
+        id
+        size
+        width
+        height
+        url
+      }
+    }
+    lastWatchedAt
+    watchProgress {
+      positionSeconds
+      percentComplete
+      durationSeconds
+    }
+    files {
+      id
+    }
+  }
+  ... on Episode {
+    id
+    title
+    episodeNumber
+    overview
+    runtime
+    images(type: STILL) {
+      aspectRatio
+      blurHash
+      variants {
+        id
+        size
+        width
+        height
+        url
+      }
+    }
+    lastWatchedAt
+    watchProgress {
+      positionSeconds
+      percentComplete
+      durationSeconds
+    }
+    files {
+      id
+    }
+    season {
+      id
+      seasonNumber
+      series {
+        id
+        title
+        tagline
+        summary
+        createdOn
+        genres {
+          id
+          name
+        }
+        seasons {
+          id
+        }
+        images(type: BACKDROP) {
+          aspectRatio
+          blurHash
+          variants {
+            id
+            size
+            width
+            height
+            url
           }
         }
       }

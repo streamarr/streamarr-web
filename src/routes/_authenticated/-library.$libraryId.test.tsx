@@ -47,6 +47,7 @@ const EVERLIGHT_CARD = {
   releaseDate: '2024-01-01',
   runtime: 100,
   watchStatus: 'UNWATCHED',
+  lastWatchedAt: null,
   watchProgress: null,
   images: [],
 }
