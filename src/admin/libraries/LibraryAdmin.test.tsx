@@ -1430,7 +1430,7 @@ describe('library administration', () => {
     let visibility: DocumentVisibilityState = 'visible'
     vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility)
     renderAppAt(SETTINGS)
-    await screen.findByRole('article', { name: 'Movies settings' })
+    const detail = await screen.findByRole('article', { name: 'Movies settings' })
     const requests = state.inventoryRequests
     state.libraries = [{ ...MOVIES, status: 'SCANNING' }, SHOWS]
 
@@ -1442,9 +1442,7 @@ describe('library administration', () => {
       document.dispatchEvent(new Event('visibilitychange'))
     })
 
-    expect(await screen.findByRole('article', { name: 'Movies settings' })).toHaveTextContent(
-      'SCANNING',
-    )
+    await waitFor(() => expect(detail).toHaveTextContent('SCANNING'))
     expect(state.inventoryRequests).toBe(requests + 1)
   })
 

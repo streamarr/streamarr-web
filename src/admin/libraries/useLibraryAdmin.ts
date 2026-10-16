@@ -25,6 +25,7 @@ import {
   type StartLibraryScanMutation,
 } from '../../graphql/generated/graphql'
 import { extractAuthContext, isForbidden } from '../../graphql/errorRouting'
+import { isReadingAgain } from '../../graphql/readAgain'
 import { userErrorMessage } from '../../graphql/userErrors'
 
 // Scan, refresh and removal share one refusal union.
@@ -315,7 +316,7 @@ function operationOutcome(cache: ApolloCache, libraryId: string) {
 
 function isReadingInventory(client: ApolloClient): boolean {
   return [...client.getObservableQueries([AdminLibrariesDocument])].some(
-    (query) => query.getCurrentResult().loading,
+    (query) => query.getCurrentResult().loading || isReadingAgain(query),
   )
 }
 
