@@ -52,6 +52,30 @@ const STOP_ACTIONS = {
   },
 } as const satisfies Record<StoppableRun, { label: string; description: string }>
 
+// The run a STOPPING library stops, if the panel saw that run before the stop.
+type StoppedRun = StoppableRun | 'unseen'
+
+// A stop does not wait for background artwork, so details can still arrive after it.
+const STOPPED_NOTES = {
+  scan: 'Scan stopped. Details such as cast photos can still appear for titles the scan already processed.',
+  refresh:
+    'Metadata refresh stopped. Details such as cast photos can still appear for titles the refresh already processed.',
+  unseen:
+    'Scan or metadata refresh stopped. Details such as cast photos can still appear for titles already processed.',
+} as const satisfies Record<StoppedRun, string>
+
+type Acknowledgement = { text: string; status: ManagedLibrary['status'] }
+
+// A library that leaves STOPPING says its run stopped; otherwise an acknowledgement lasts while
+// the library keeps the status its operation started.
+function acknowledgementAfter(
+  current: Acknowledgement | null,
+  change: { from: ManagedLibrary['status']; to: ManagedLibrary['status']; stopped: StoppedRun },
+): Acknowledgement | null {
+  if (change.from === 'STOPPING') return { text: STOPPED_NOTES[change.stopped], status: change.to }
+  return current?.status === change.to ? current : null
+}
+
 function maintenanceGuidance(status: ManagedLibrary['status']): string {
   if (status === 'SCANNING' || status === 'REFRESHING')
     return 'Maintenance is in progress. You can still view this library.'
@@ -213,17 +237,17 @@ function LibraryDetails({
   const [refreshOpen, setRefreshOpen] = useState(false)
   const [removing, setRemoving] = useState(false)
   const [imageMode, setImageMode] = useState<ImageRefreshMode>('PRESERVE')
-  // An acknowledgement lasts while the library keeps the status its operation started.
-  const [acknowledgement, setAcknowledgement] = useState<{
-    text: string
-    status: ManagedLibrary['status']
-  } | null>(null)
+  const [acknowledgement, setAcknowledgement] = useState<Acknowledgement | null>(null)
   // A later run that reaches the same status belongs to someone else, so a change of status to
   // any other value ends the acknowledgement for good.
   const [shownStatus, setShownStatus] = useState(library.status)
+  const [stopped, setStopped] = useState<StoppedRun>('unseen')
   if (shownStatus !== library.status) {
     setShownStatus(library.status)
-    if (acknowledgement && acknowledgement.status !== library.status) setAcknowledgement(null)
+    if (library.status === 'STOPPING') setStopped(stoppableRun({ status: shownStatus }) ?? 'unseen')
+    setAcknowledgement(
+      acknowledgementAfter(acknowledgement, { from: shownStatus, to: library.status, stopped }),
+    )
   }
   const notice = acknowledgement?.status === library.status ? acknowledgement.text : ''
   const refreshTrigger = useRef<HTMLButtonElement>(null)
