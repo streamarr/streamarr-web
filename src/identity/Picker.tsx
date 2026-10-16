@@ -3,7 +3,9 @@ import { useState } from 'react'
 import { useAuth } from '../auth/AuthProvider'
 import { AuthApiError, type AuthTokens } from '../auth/api'
 import type { MeQuery } from '../graphql/generated/graphql'
+import { requestFailureMessage } from '../graphql/requestErrors'
 import { AuthTitle } from '../ui/AuthShell'
+import { FailurePanel } from '../ui/Failure'
 import { ProfileTile } from '../ui/ProfileTile'
 import { PinGate } from './PinGate'
 import { useMe } from './useMe'
@@ -27,7 +29,7 @@ export function Picker({
   onProfileSelected: (tokens: AuthTokens) => void
   onUnauthenticated: () => void
 }) {
-  const { data, loading, error } = useMe()
+  const { data, loading, error, refetch } = useMe()
   const { selectHousehold, selectProfile } = useAuth()
   const [busy, setBusy] = useState<string | null>(null)
   const [switching, setSwitching] = useState(false)
@@ -43,9 +45,9 @@ export function Picker({
 
   if (error || !data) {
     return (
-      <Alert color="red" role="alert">
-        Couldn't load your profiles. Try again.
-      </Alert>
+      <FailurePanel layout="ceremony" onRetry={refetch}>
+        {requestFailureMessage(error, "Couldn't load your profiles.")}
+      </FailurePanel>
     )
   }
 
@@ -63,7 +65,7 @@ export function Picker({
       // The auth boundary resets the Apollo store, which refetches the active Me.
       await selectHousehold(householdId)
     } catch (error) {
-      refuse(error, "Couldn't switch Households. Try again.")
+      refuse(error, "Couldn't switch Households.")
     } finally {
       setSwitching(false)
     }
@@ -102,7 +104,7 @@ export function Picker({
     try {
       onProfileSelected(await selectProfile(profile.id))
     } catch (error) {
-      refuse(error, "Couldn't select that Profile. Try again.")
+      refuse(error, "Couldn't select that Profile.")
     } finally {
       setBusy(null)
     }

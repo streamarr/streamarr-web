@@ -1,5 +1,4 @@
 import { useQuery } from '@apollo/client/react'
-import { Alert, Center, Loader } from '@mantine/core'
 import { Link } from '@tanstack/react-router'
 import { SeriesDetailDocument, type SeriesDetailQuery } from '../graphql/generated/graphql'
 import { usePublishAmbientTheme } from '../media/ambientThemeContext'
@@ -8,6 +7,7 @@ import { CastCard } from '../media/CastCard'
 import { ContentShelf } from '../media/ContentShelf'
 import { DetailBackButton } from '../media/DetailBack'
 import { detailAction, DetailHeader } from '../media/DetailHeader'
+import { MediaTitleFallback } from '../media/MediaTitleFallback'
 import { formatEpisodeLabel, formatLongDate, formatYear } from '../media/formatting'
 import { Icon } from '../ui/Icon'
 import { pickImageVariant } from '../media/images'
@@ -23,25 +23,23 @@ type Season = NonNullable<Series['seasons'][number]>
 type Episode = NonNullable<Season['episodes'][number]>
 
 export function SeriesDetailScreen({ seriesId }: Readonly<{ seriesId: string }>) {
-  const { data, loading, error } = useQuery(SeriesDetailDocument, { variables: { id: seriesId } })
+  const { data, loading, error, refetch } = useQuery(SeriesDetailDocument, {
+    variables: { id: seriesId },
+  })
   const bulkWatched = useBulkWatchedAction({ kind: 'series', id: seriesId, detail: data?.series })
   const series = data?.series
   const ambient = series ? resolveAmbientColors(series.backdropImages, series.posterImages) : null
   usePublishAmbientTheme(ambient?.theme ?? null)
 
-  if (loading) {
+  if (loading || error || !series) {
     return (
-      <Center h={200}>
-        <Loader />
-      </Center>
-    )
-  }
-
-  if (error || !series) {
-    return (
-      <Alert color="red" role="alert">
-        Couldn't load this series. Try again.
-      </Alert>
+      <MediaTitleFallback
+        kind="series"
+        loading={loading}
+        error={error}
+        title={data?.series}
+        onRetry={refetch}
+      />
     )
   }
 

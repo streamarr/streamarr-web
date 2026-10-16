@@ -23,33 +23,45 @@ import {
   SharingOverviewDocument,
   type SharingOverviewQuery,
 } from '../graphql/generated/graphql'
+import { requestFailureMessage } from '../graphql/requestErrors'
 import { userErrorMessage, type UserErrorLike } from '../graphql/userErrors'
+import { FailurePanel } from '../ui/Failure'
 import { useMe } from './useMe'
 
 type PendingOffer = SharingOverviewQuery['pendingShareOffers']['edges'][number]['node']
 type ProfileShareRow = SharingOverviewQuery['profileShares']['edges'][number]['node']
 
 const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const FAILURE_MESSAGE = 'Something went wrong. Please try again.'
+const UPDATE_FAILED_MESSAGE = "Couldn't update sharing."
 
 export function SharingScreen() {
-  const { data: meData, loading: meLoading, error: meError } = useMe()
+  const { data: meData, loading: meLoading, error: meError, refetch: refetchMe } = useMe()
 
   if (meLoading) {
     return <SharingLoading />
   }
 
-  const personal = meData?.me.selectableProfiles.edges
+  if (meError || !meData) {
+    return <SharingUnavailable error={meError} onRetry={refetchMe} />
+  }
+
+  const household = meData.me.contextHousehold
+  const personal = meData.me.selectableProfiles.edges
     .map((edge) => edge.node)
     .find((profile) => profile.personal)
-  if (meError || !meData || !personal) {
-    return <SharingUnavailable />
+  if (!personal) {
+    return (
+      <Stack>
+        <Title order={2}>Sharing</Title>
+        <Text c="dimmed">You have no Profile of your own in {household.name} to share.</Text>
+      </Stack>
+    )
   }
 
   return (
     <Sharing
-      householdId={meData.me.contextHousehold.id}
-      householdName={meData.me.contextHousehold.name}
+      householdId={household.id}
+      householdName={household.name}
       profileId={personal.id}
       profileName={personal.name}
     />
@@ -77,7 +89,7 @@ function Sharing({
   }
 
   if (overview.error || !overview.data) {
-    return <SharingUnavailable />
+    return <SharingUnavailable error={overview.error} onRetry={refetch} />
   }
 
   const offers = overview.data.pendingShareOffers.edges.map((edge) => edge.node)
@@ -106,11 +118,14 @@ function SharingLoading() {
   )
 }
 
-function SharingUnavailable() {
+function SharingUnavailable({
+  error,
+  onRetry,
+}: Readonly<{ error: unknown; onRetry: () => unknown }>) {
   return (
-    <Alert color="red" role="alert">
-      Couldn't load sharing. Try again.
-    </Alert>
+    <FailurePanel onRetry={onRetry}>
+      {requestFailureMessage(error, "Couldn't load sharing.")}
+    </FailurePanel>
   )
 }
 
@@ -133,8 +148,8 @@ function OffersIntoHousehold({
     setBusy(offer.id)
     try {
       await applyDecision(offer, decision)
-    } catch {
-      setFailure(FAILURE_MESSAGE)
+    } catch (error) {
+      setFailure(requestFailureMessage(error, UPDATE_FAILED_MESSAGE))
     } finally {
       setBusy(null)
     }
@@ -219,8 +234,8 @@ function OfferForm({
     setFailure(null)
     try {
       await sendOffer()
-    } catch {
-      setFailure(FAILURE_MESSAGE)
+    } catch (error) {
+      setFailure(requestFailureMessage(error, UPDATE_FAILED_MESSAGE))
     }
   }
 
@@ -287,8 +302,8 @@ function OwnShares({
     setBusy(share.id)
     try {
       await applyChange(share)
-    } catch {
-      setFailure(FAILURE_MESSAGE)
+    } catch (error) {
+      setFailure(requestFailureMessage(error, UPDATE_FAILED_MESSAGE))
     } finally {
       setBusy(null)
     }

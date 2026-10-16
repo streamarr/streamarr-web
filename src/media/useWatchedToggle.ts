@@ -1,6 +1,7 @@
 import type { DocumentNode } from '@apollo/client'
 import { useMutation } from '@apollo/client/react'
 import { MarkUnwatchedDocument, MarkWatchedDocument } from '../graphql/generated/graphql'
+import { requestFailureMessage } from '../graphql/requestErrors'
 import { invalidateWatchedState } from './watchedState'
 
 // markWatched/markUnwatched take any collectable id; the server cascades a series or season to
@@ -23,14 +24,15 @@ export function useWatchedToggle(id: string, detailQuery: DocumentNode) {
     awaitRefetchQueries: true,
   })
 
+  const error = watchedState.error ?? unwatchedState.error
   return {
     markWatched: () => markWatched({ variables: { id } }).catch(ignoreReportedFailure),
     markUnwatched: () => markUnwatched({ variables: { id } }).catch(ignoreReportedFailure),
     pending: watchedState.loading || unwatchedState.loading,
-    failed: Boolean(watchedState.error || unwatchedState.error),
+    failure: error ? requestFailureMessage(error, "Couldn't update the watched state.") : null,
   }
 }
 
 function ignoreReportedFailure() {
-  // The hook surfaces the failure through `failed`; the rejected promise carries nothing more.
+  // The hook surfaces the failure through `failure`; the rejected promise carries nothing more.
 }

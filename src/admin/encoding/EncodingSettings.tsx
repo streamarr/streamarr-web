@@ -8,8 +8,9 @@ import {
   type EncoderPresetChoice,
   type EncoderPresetSettingFieldsFragment,
 } from '../../graphql/generated/graphql'
+import { requestFailureMessage } from '../../graphql/requestErrors'
 import { userErrorMessage } from '../../graphql/userErrors'
-import { RetryAlert } from '../../ui/RetryAlert'
+import { FailureRow } from '../../ui/Failure'
 import styles from '../Settings.module.css'
 
 type KnownChoice = Exclude<EncoderPresetChoice, '%future added value'>
@@ -87,13 +88,13 @@ export function EncodingSettings() {
         <h1>Encoding</h1>
       </div>
       {setting && query.error && (
-        <RetryAlert mb="md" onRetry={query.refetch}>
-          Couldn't load the latest encoder preset.
-        </RetryAlert>
+        <FailureRow className={styles.failureRow} onRetry={query.refetch}>
+          {requestFailureMessage(query.error, "Couldn't load the latest encoder preset.")}
+        </FailureRow>
       )}
       <EncodingContent
         setting={setting}
-        error={!setting && !!query.error}
+        error={setting ? undefined : query.error}
         onRetry={query.refetch}
         saving={saving}
         refusal={refusal}
@@ -112,13 +113,18 @@ function EncodingContent({
   onChoose,
 }: Readonly<{
   setting: EncoderPresetSettingFieldsFragment | undefined
-  error: boolean
+  error: unknown
   onRetry: () => Promise<unknown>
   saving: boolean
   refusal: string | null
   onChoose: (value: string | null) => void
 }>) {
-  if (error) return <RetryAlert onRetry={onRetry}>Couldn't load the encoder preset.</RetryAlert>
+  if (error)
+    return (
+      <FailureRow onRetry={onRetry}>
+        {requestFailureMessage(error, "Couldn't load the encoder preset.")}
+      </FailureRow>
+    )
   if (!setting)
     return (
       <Center h={200}>

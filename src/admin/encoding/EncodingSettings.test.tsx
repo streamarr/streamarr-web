@@ -232,7 +232,7 @@ describe('encoding settings', () => {
     expect(await screen.findByText("Couldn't load the latest encoder preset.")).toBeInTheDocument()
     expect(await presetSelect()).toHaveValue('medium')
     state.setting = { ...state.setting, preset: 'SLOW' }
-    await user.click(screen.getByRole('button', { name: 'Try again' }))
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
     await waitFor(async () => expect(await presetSelect()).toHaveValue('slow'))
     expect(screen.queryByText("Couldn't load the latest encoder preset.")).not.toBeInTheDocument()
   })
@@ -303,9 +303,25 @@ describe('encoding settings', () => {
       ),
     )
     const { user } = renderAppAt(ENCODING)
-    await user.click(await screen.findByRole('button', { name: 'Try again' }))
+    await user.click(await screen.findByRole('button', { name: 'Retry' }))
     expect(await presetSelect()).toHaveValue('Automatic')
     expect(state.settingReads).toBe(1)
+  })
+
+  it('shouldShowServerSentenceWhenFirstReadFailsWithCode', async () => {
+    serve()
+    server.use(
+      graphql.query('EncoderPresetSetting', () =>
+        HttpResponse.json({
+          errors: [
+            { message: 'Settings storage is offline.', extensions: { code: 'UNAVAILABLE' } },
+          ],
+        }),
+      ),
+    )
+    renderAppAt(ENCODING)
+    expect(await screen.findByRole('alert')).toHaveTextContent('Settings storage is offline.')
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
   })
 
   it('shouldMarkEncodingAsCurrentSectionWhenEncodingIsOpen', async () => {

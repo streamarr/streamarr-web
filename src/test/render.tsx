@@ -33,9 +33,7 @@ export function renderWithProviders(ui: ReactElement): Rendered {
 export function renderAppAt(
   path: string,
   renewal: RenewalBridge = inactiveRenewalBridge,
-): Rendered & {
-  router: ReturnType<typeof createAppRouter>['router']
-} {
+): Rendered & Pick<ReturnType<typeof createAppRouter>, 'router' | 'apolloClient'> {
   const { router, apolloClient, session } = createAppRouter(
     createMemoryHistory({ initialEntries: [path] }),
     renewal,
@@ -43,6 +41,7 @@ export function renderAppAt(
   return {
     ...renderUnderProviders(apolloClient, session, renewal, <RouterProvider router={router} />),
     router,
+    apolloClient,
   }
 }
 

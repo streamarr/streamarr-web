@@ -16,6 +16,14 @@ export interface SessionStore {
   markAnonymous(): void
 }
 
+/** The server could not say whether a session exists; the rejected probe is the `cause`. */
+export class SessionUnconfirmedError extends Error {
+  constructor(cause: unknown) {
+    super("Couldn't confirm you're signed in.", { cause })
+    this.name = 'SessionUnconfirmedError'
+  }
+}
+
 export function createSessionStore(probe: () => Promise<SessionAnswer>): SessionStore {
   let known: SessionAnswer | null = null
   let inFlight: Promise<SessionAnswer> | null = null

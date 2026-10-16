@@ -3,10 +3,11 @@ import { useReducedMotion } from '@mantine/hooks'
 import { Link } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import type { ImageRefreshMode } from '../../graphql/generated/graphql'
+import { requestFailureMessage } from '../../graphql/requestErrors'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { DestructiveButton } from '../../ui/DestructiveButton'
+import { FailureRow } from '../../ui/Failure'
 import { Icon } from '../../ui/Icon'
-import { RetryAlert } from '../../ui/RetryAlert'
 import { EmptyLibraries } from './EmptyLibraries'
 import { LibraryStatus } from './LibraryStatus'
 import {
@@ -76,9 +77,9 @@ export function LibraryWorkspace({
         </output>
       )}
       {query.error && (
-        <RetryAlert mb="md" onRetry={query.refetch}>
-          Couldn't load the latest library state.
-        </RetryAlert>
+        <FailureRow className={styles.failureRow} onRetry={query.refetch}>
+          {requestFailureMessage(query.error, "Couldn't load the latest library state.")}
+        </FailureRow>
       )}
       <LibraryInventory
         libraries={libraries}
