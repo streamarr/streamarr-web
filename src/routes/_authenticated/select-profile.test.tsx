@@ -1,6 +1,7 @@
 import { screen, waitFor } from '@testing-library/react'
 import { graphql, HttpResponse, http } from 'msw'
 import { describe, expect, it } from 'vitest'
+import { answersThenHolds, comeBackOnline } from '../../test/graphqlResponses'
 import { meFixture, profileFixture } from '../../test/meFixture'
 import { renderAppAt } from '../../test/render'
 import { server } from '../../test/server'
@@ -129,6 +130,32 @@ describe('/select-profile', () => {
     renderAppAt('/select-profile?profile=p-toni')
 
     expect(await screen.findByRole('heading', { name: /enter toni/i })).toBeInTheDocument()
+  })
+
+  it('shouldKeepTheTypedPinWhileTheProfilesAreReadAgain', async () => {
+    const data = {
+      me: meFixture({
+        profiles: [
+          profileFixture({ id: 'p-alex', name: 'Alex' }),
+          profileFixture({ id: 'p-toni', name: 'Toni', personal: false, pinConfigured: true }),
+        ],
+      }),
+    }
+    const me = answersThenHolds(data, data)
+    server.use(graphql.query('Me', me.resolver))
+    const { user } = renderAppAt('/select-profile?profile=p-toni')
+    const pinInput = await screen.findByTestId('pin-input')
+    await user.type(pinInput, '12')
+
+    comeBackOnline()
+    await waitFor(() => expect(me.calls).toBeGreaterThan(1))
+    expect(pinInput).toBeInTheDocument()
+    me.release()
+
+    expect(await screen.findByRole('heading', { name: /enter toni/i })).toBeInTheDocument()
+    expect(pinInput).toBeInTheDocument()
+    await user.type(pinInput, '34')
+    expect(screen.getByRole('button', { name: 'Unlock' })).toBeEnabled()
   })
 
   it('shouldFallBackToTheGridWhenTheGatedProfileIsLocked', async () => {

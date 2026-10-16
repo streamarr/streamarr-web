@@ -35,7 +35,7 @@ export function Picker({
   const [switching, setSwitching] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
 
-  if (loading) {
+  if (loading && !data) {
     return (
       <Center h={200}>
         <Loader />

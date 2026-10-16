@@ -2,9 +2,9 @@ import { screen, waitFor } from '@testing-library/react'
 import { graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { SharingOverviewQuery } from '../graphql/generated/graphql'
-import { failsOnceThen } from '../test/graphqlResponses'
+import { answersThenHolds, comeBackOnline, failsOnceThen } from '../test/graphqlResponses'
 import { HOUSEHOLD_ID, meFixture, PROFILE_ID, profileFixture } from '../test/meFixture'
-import { renderWithProviders } from '../test/render'
+import { renderAppAt, renderWithProviders } from '../test/render'
 import { server } from '../test/server'
 import { SharingScreen } from './SharingScreen'
 
@@ -211,6 +211,32 @@ describe('SharingScreen', () => {
     await user.click(endButtons[0])
 
     await waitFor(() => expect(ended).toBe(true))
+  })
+
+  it('shouldKeepTheOfferBeingTypedWhileSharingIsReadAgain', async () => {
+    const me = answersThenHolds(
+      { me: meFixture({ profiles: [profileFixture()] }) },
+      { me: meFixture({ profiles: [profileFixture()] }) },
+    )
+    const overview = answersThenHolds(overviewData(), overviewData({ offers: [shareRow()] }))
+    server.use(
+      graphql.query('Me', me.resolver),
+      graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
+      graphql.query('SharingOverview', overview.resolver),
+    )
+    const { user } = renderAppAt('/sharing')
+    const target = await screen.findByRole('textbox', { name: 'Household id' })
+    await user.type(target, 'abc')
+
+    comeBackOnline()
+    await waitFor(() => expect(me.calls + overview.calls).toBeGreaterThan(3))
+    expect(target).toBeInTheDocument()
+    me.release()
+    overview.release()
+
+    expect(await screen.findByRole('button', { name: 'Accept' })).toBeInTheDocument()
+    expect(target).toBeInTheDocument()
+    expect(target).toHaveValue('abc')
   })
 
   it('shouldRetryWhenTheAccountFailsToLoad', async () => {
