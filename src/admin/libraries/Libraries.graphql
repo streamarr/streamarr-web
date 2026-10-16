@@ -67,6 +67,40 @@ mutation StartLibraryRefresh($input: StartLibraryRefreshInput!) {
   }
 }
 
+mutation StopLibraryScan($input: StopLibraryScanInput!) {
+  stopLibraryScan(input: $input) {
+    library {
+      ...ManagedLibraryFields
+    }
+    userErrors {
+      __typename
+      ... on MutationError {
+        message
+      }
+      ... on LibraryScanNotInProgressError {
+        status
+      }
+    }
+  }
+}
+
+mutation StopLibraryRefresh($input: StopLibraryRefreshInput!) {
+  stopLibraryRefresh(input: $input) {
+    library {
+      ...ManagedLibraryFields
+    }
+    userErrors {
+      __typename
+      ... on MutationError {
+        message
+      }
+      ... on LibraryRefreshNotInProgressError {
+        status
+      }
+    }
+  }
+}
+
 mutation RemoveLibrary($input: RemoveLibraryInput!) {
   removeLibrary(input: $input) {
     removedLibraryId

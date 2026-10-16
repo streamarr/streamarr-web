@@ -16,7 +16,9 @@ import {
   libraryIcon,
   libraryName,
   libraryTypeLabel,
+  stoppableRun,
   type ManagedLibrary,
+  type StoppableRun,
 } from './libraryModel'
 import {
   NO_LONGER_PERMITTED,
@@ -36,6 +38,58 @@ const IMAGE_REFRESH_OPTIONS = [
   { value: 'REFRESH_IF_CHANGED', label: 'Update changed images' },
   { value: 'FORCE_REFRESH', label: 'Download all images again' },
 ] satisfies { value: ImageRefreshMode; label: string }[]
+
+const STOP_ACTIONS = {
+  scan: {
+    label: 'Stop scan',
+    description:
+      'Stopping lets the files and titles already in progress finish. Nothing is rolled back, and titles the scan already added stay.',
+  },
+  refresh: {
+    label: 'Stop refresh',
+    description:
+      'Stopping lets the titles already in progress finish. Nothing is rolled back, and titles the refresh already updated keep their new details.',
+  },
+} as const satisfies Record<StoppableRun, { label: string; description: string }>
+
+// The run a STOPPING library stops, if the panel saw that run before the stop.
+type StoppedRun = StoppableRun | 'unseen'
+
+// A stop does not wait for background artwork, so details can still arrive after it.
+const STOPPED_NOTES = {
+  scan: 'Scan stopped. Details such as cast photos can still appear for titles the scan already processed.',
+  refresh:
+    'Metadata refresh stopped. Details such as cast photos can still appear for titles the refresh already processed.',
+  unseen:
+    'Scan or metadata refresh stopped. Details such as cast photos can still appear for titles already processed.',
+} as const satisfies Record<StoppedRun, string>
+
+type Acknowledgement = { text: string; status: ManagedLibrary['status'] }
+
+// A library that leaves STOPPING for its restored status says its run stopped. A busy status
+// right after STOPPING belongs to a later run, which a missed change or a read can reveal first.
+// Otherwise an acknowledgement lasts while the library keeps the status its operation started.
+function acknowledgementAfter(
+  current: Acknowledgement | null,
+  change: { from: ManagedLibrary['status']; to: ManagedLibrary['status']; stopped: StoppedRun },
+): Acknowledgement | null {
+  const restored = canMaintainLibrary({ status: change.to })
+  if (change.from === 'STOPPING' && restored)
+    return { text: STOPPED_NOTES[change.stopped], status: change.to }
+  return current?.status === change.to ? current : null
+}
+
+function isFocusLost(): boolean {
+  return document.activeElement === null || document.activeElement === document.body
+}
+
+function maintenanceGuidance(status: ManagedLibrary['status']): string {
+  if (status === 'SCANNING' || status === 'REFRESHING')
+    return 'Maintenance is in progress. You can still view this library.'
+  if (status === 'STOPPING')
+    return 'The scan or refresh is stopping. You can still view this library.'
+  return 'Maintenance is unavailable for this library status.'
+}
 
 /**
  * Library inventory and selected-library workspace. Selection belongs to the route so reload/back
@@ -190,17 +244,17 @@ function LibraryDetails({
   const [refreshOpen, setRefreshOpen] = useState(false)
   const [removing, setRemoving] = useState(false)
   const [imageMode, setImageMode] = useState<ImageRefreshMode>('PRESERVE')
-  // An acknowledgement lasts while the library keeps the status its operation started.
-  const [acknowledgement, setAcknowledgement] = useState<{
-    text: string
-    status: ManagedLibrary['status']
-  } | null>(null)
+  const [acknowledgement, setAcknowledgement] = useState<Acknowledgement | null>(null)
   // A later run that reaches the same status belongs to someone else, so a change of status to
   // any other value ends the acknowledgement for good.
   const [shownStatus, setShownStatus] = useState(library.status)
+  const [stopped, setStopped] = useState<StoppedRun>('unseen')
   if (shownStatus !== library.status) {
     setShownStatus(library.status)
-    if (acknowledgement && acknowledgement.status !== library.status) setAcknowledgement(null)
+    if (library.status === 'STOPPING') setStopped(stoppableRun({ status: shownStatus }) ?? 'unseen')
+    setAcknowledgement(
+      acknowledgementAfter(acknowledgement, { from: shownStatus, to: library.status, stopped }),
+    )
   }
   const notice = acknowledgement?.status === library.status ? acknowledgement.text : ''
   const refreshTrigger = useRef<HTMLButtonElement>(null)
@@ -211,6 +265,10 @@ function LibraryDetails({
   const disabled = stale || !maintainable || commands.pending
   const name = libraryName(library)
   const refreshId = `refresh-${library.id}`
+  const running = stoppableRun(library)
+  const stopDescriptionId = `stop-${library.id}`
+  const statusOutput = useRef<HTMLOutputElement>(null)
+  const stopWasOffered = useRef(running !== null)
   let removalError = commands.error
   if (!removalError && stale) removalError = 'Refresh the library state before removing it.'
   if (!removalError && !maintainable)
@@ -225,6 +283,13 @@ function LibraryDetails({
     if (trigger && !trigger.disabled) trigger.focus({ preventScroll: true })
     else actionNotice.current?.focus({ preventScroll: true })
   }, [refreshOpen, commands.pending])
+
+  useEffect(() => {
+    const stopLeft = stopWasOffered.current && running === null
+    stopWasOffered.current = running !== null
+    // Focus that the Stop action took with it would otherwise restart at the top of the page.
+    if (stopLeft && isFocusLost()) statusOutput.current?.focus({ preventScroll: true })
+  }, [running])
 
   // A run that already ended needs no acknowledgement: the status and last scan show its outcome.
   function acknowledge(started: ManagedLibrary, text: string) {
@@ -244,7 +309,7 @@ function LibraryDetails({
           <Icon name={libraryIcon(library.type)} label={libraryTypeLabel(library.type)} />
         </div>
         <h2>{name}</h2>
-        <output className={styles.detailStatus}>
+        <output ref={statusOutput} tabIndex={-1} className={styles.detailStatus}>
           <LibraryStatus status={library.status} />
         </output>
       </div>
@@ -362,6 +427,21 @@ function LibraryDetails({
           >
             Refresh metadata
           </Button>
+          {running && (
+            <Button
+              variant="default"
+              disabled={stale || commands.pending}
+              leftSection={<Icon name="stop" />}
+              aria-describedby={stopDescriptionId}
+              onClick={() =>
+                running === 'scan'
+                  ? commands.stopScan(library.id)
+                  : commands.stopRefresh(library.id)
+              }
+            >
+              {STOP_ACTIONS[running].label}
+            </Button>
+          )}
           <DestructiveButton
             disabled={disabled}
             onClick={() => {
@@ -372,13 +452,8 @@ function LibraryDetails({
           >
             Remove library
           </DestructiveButton>
-          {!maintainable && (
-            <p>
-              {library.status === 'SCANNING' || library.status === 'REFRESHING'
-                ? 'Maintenance is in progress. You can still view this library.'
-                : 'Maintenance is unavailable for this library status.'}
-            </p>
-          )}
+          {!maintainable && <p>{maintenanceGuidance(library.status)}</p>}
+          {running && <p id={stopDescriptionId}>{STOP_ACTIONS[running].description}</p>}
         </div>
         {notice && (
           <output ref={actionNotice} tabIndex={-1} className={styles.actionNotice}>
