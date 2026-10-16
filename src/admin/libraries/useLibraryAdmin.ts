@@ -1,5 +1,11 @@
-import type { ApolloCache, ApolloClient, ErrorLike, Reference } from '@apollo/client'
-import { useApolloClient, useQuery, useSubscription } from '@apollo/client/react'
+import type {
+  ApolloCache,
+  ApolloClient,
+  ErrorLike,
+  Reference,
+  TypedDocumentNode,
+} from '@apollo/client'
+import { useApolloClient, useQuery } from '@apollo/client/react'
 import { useRouteContext } from '@tanstack/react-router'
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import {
@@ -82,37 +88,66 @@ function useLiveInventoryChanges(): {
   // The server orders no frames across fields: a change committed before a removal can arrive
   // after it. A library id never returns once removed.
   const removedIds = useRef(new Set<string>())
-  const onError = (error: ErrorLike) => setStop(isForbidden(error) ? 'forbidden' : 'failed')
-  const holdFrom = (
-    library: ManagedLibraryFieldsFragment | null | undefined,
-    cache: ApolloCache,
-  ) => {
-    if (!library) return
-    countLiveChange(cache, library.id)
-    if (!removedIds.current.has(library.id)) holdLibrary(cache, library)
-  }
-  useSubscription(LibraryStatusChangedDocument, {
-    ignoreResults: true,
-    onData: ({ client, data }) => holdFrom(data.data?.libraryStatusChanged, client.cache),
-    onError,
-  })
-  useSubscription(LibraryAddedDocument, {
-    ignoreResults: true,
-    onData: ({ client, data }) => holdFrom(data.data?.libraryAdded, client.cache),
-    onError,
-  })
-  useSubscription(LibraryRemovedDocument, {
-    ignoreResults: true,
-    onData: ({ client, data }) => {
-      const removal = data.data?.libraryRemoved
+  useEffect(() => {
+    const onStop = (error: ErrorLike) => setStop(isForbidden(error) ? 'forbidden' : 'failed')
+    const holdFrom = (library: ManagedLibraryFieldsFragment | null) => {
+      if (!library) return
+      countLiveChange(client.cache, library.id)
+      if (!removedIds.current.has(library.id)) holdLibrary(client.cache, library)
+    }
+    const dropFrom = (removal: { libraryId: string } | null) => {
       if (!removal) return
       removedIds.current.add(removal.libraryId)
       countLiveChange(client.cache, removal.libraryId)
       dropLibrary(client.cache, removal.libraryId)
-    },
-    onError,
-  })
+    }
+    const unwatch = [
+      watchLiveChanges(client, LibraryStatusChangedDocument, {
+        apply: (data) => holdFrom(data.libraryStatusChanged),
+        onStop,
+      }),
+      watchLiveChanges(client, LibraryAddedDocument, {
+        apply: (data) => holdFrom(data.libraryAdded),
+        onStop,
+      }),
+      watchLiveChanges(client, LibraryRemovedDocument, {
+        apply: (data) => dropFrom(data.libraryRemoved),
+        onStop,
+      }),
+    ]
+    return () => {
+      for (const stopWatching of unwatch) stopWatching()
+    }
+  }, [client])
   return { stop, removedIds }
+}
+
+// With errorPolicy 'all', a change whose field failed arrives with its errors, and the operation
+// keeps running: the change applies whatever data it carries, a null field carries none, and the
+// transport reports the change missed so the inventory reads again. A result without data ends the
+// operation.
+function watchLiveChanges<TData>(
+  client: ApolloClient,
+  query: TypedDocumentNode<TData, Record<string, never>>,
+  { apply, onStop }: { apply: (data: TData) => void; onStop: (error: ErrorLike) => void },
+): () => void {
+  let stopped = false
+  const subscription = client
+    .subscribe({ query, errorPolicy: 'all' })
+    .subscribe(({ data, error }) => {
+      if (stopped) return
+      if (data) {
+        apply(data)
+        return
+      }
+      if (error) onStop(error)
+    })
+  // A remount that subscribes before this task runs joins the same operation, as useSubscription's
+  // does, instead of ending it and starting another.
+  return () => {
+    stopped = true
+    setTimeout(() => subscription.unsubscribe())
+  }
 }
 
 /**
