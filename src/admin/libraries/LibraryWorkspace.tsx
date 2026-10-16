@@ -76,6 +76,10 @@ function acknowledgementAfter(
   return current?.status === change.to ? current : null
 }
 
+function isFocusLost(): boolean {
+  return document.activeElement === null || document.activeElement === document.body
+}
+
 function maintenanceGuidance(status: ManagedLibrary['status']): string {
   if (status === 'SCANNING' || status === 'REFRESHING')
     return 'Maintenance is in progress. You can still view this library.'
@@ -260,6 +264,8 @@ function LibraryDetails({
   const refreshId = `refresh-${library.id}`
   const running = stoppableRun(library)
   const stopDescriptionId = `stop-${library.id}`
+  const statusOutput = useRef<HTMLOutputElement>(null)
+  const stopWasOffered = useRef(running !== null)
   let removalError = commands.error
   if (!removalError && stale) removalError = 'Refresh the library state before removing it.'
   if (!removalError && !maintainable)
@@ -274,6 +280,13 @@ function LibraryDetails({
     if (trigger && !trigger.disabled) trigger.focus({ preventScroll: true })
     else actionNotice.current?.focus({ preventScroll: true })
   }, [refreshOpen, commands.pending])
+
+  useEffect(() => {
+    const stopLeft = stopWasOffered.current && running === null
+    stopWasOffered.current = running !== null
+    // Focus that the Stop action took with it would otherwise restart at the top of the page.
+    if (stopLeft && isFocusLost()) statusOutput.current?.focus({ preventScroll: true })
+  }, [running])
 
   // A run that already ended needs no acknowledgement: the status and last scan show its outcome.
   function acknowledge(started: ManagedLibrary, text: string) {
@@ -293,7 +306,7 @@ function LibraryDetails({
           <Icon name={libraryIcon(library.type)} label={libraryTypeLabel(library.type)} />
         </div>
         <h2>{name}</h2>
-        <output className={styles.detailStatus}>
+        <output ref={statusOutput} tabIndex={-1} className={styles.detailStatus}>
           <LibraryStatus status={library.status} />
         </output>
       </div>
