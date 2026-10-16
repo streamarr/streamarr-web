@@ -1757,6 +1757,27 @@ describe('library administration', () => {
       ).toBeInTheDocument()
     })
 
+    it('shouldNotSayTheScanStoppedWhenTheReadAfterAReconnectFindsANewScanRunning', async () => {
+      const state = serve([{ ...MOVIES, status: 'SCANNING' }, SHOWS])
+      renderAppAt(SETTINGS)
+      const detail = await screen.findByRole('article', { name: 'Movies settings' })
+      await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+      state.socket.publish('LibraryStatusChanged', {
+        data: { libraryStatusChanged: { ...MOVIES, status: 'STOPPING' } },
+      })
+      await waitFor(() => expect(detail).toHaveTextContent('STOPPING'))
+      const requests = state.inventoryRequests
+      // The stop finished and another session started a new scan while the socket was closed.
+      state.libraries = [{ ...MOVIES, status: 'SCANNING' }, SHOWS]
+
+      state.socket.closeAll(1012, 'Service restart')
+
+      await waitFor(() => expect(state.inventoryRequests).toBe(requests + 1), { timeout: 3_000 })
+      await waitFor(() => expect(detail).toHaveTextContent('SCANNING'))
+      expect(within(detail).getByRole('button', { name: 'Stop scan' })).toBeEnabled()
+      expect(detail).not.toHaveTextContent(STOPS[0].stopped)
+    })
+
     it('shouldDropTheStoppedNoteWhenTheLibraryStatusChangesAgain', async () => {
       const state = serve([{ ...MOVIES, status: 'SCANNING' }, SHOWS])
       renderAppAt(SETTINGS)
