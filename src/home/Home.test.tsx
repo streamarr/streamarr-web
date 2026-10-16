@@ -3,7 +3,7 @@ import { graphql, http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { HomeQuery } from '../graphql/generated/graphql'
 import { deferred } from '../test/deferred'
-import { failsOnceThen } from '../test/graphqlResponses'
+import { answersThenHolds, comeBackOnline, failsOnceThen } from '../test/graphqlResponses'
 import { meFixture } from '../test/meFixture'
 import { renderAppAt, renderWithProviders } from '../test/render'
 import { server } from '../test/server'
@@ -299,6 +299,28 @@ describe('Home', () => {
 
     expect(await screen.findByRole('heading', { name: 'Everlight' })).toBeInTheDocument()
     expect(home.calls).toBe(2)
+  })
+
+  it('shouldKeepTheShelvesOnScreenWhileHomeReadsThemAgain', async () => {
+    const home = answersThenHolds(
+      homeData({ continueWatching: [continueWatchingMovie()] }),
+      homeData({ continueWatching: [continueWatchingMovie(), continueWatchingEpisode()] }),
+    )
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
+      graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
+      graphql.query('Home', home.resolver),
+    )
+    renderAppAt('/')
+    const shelf = await screen.findByRole('heading', { name: 'Continue watching' })
+
+    comeBackOnline()
+    await waitFor(() => expect(home.calls).toBe(2))
+    expect(shelf).toBeInTheDocument()
+    home.release()
+
+    expect(await screen.findByRole('link', { name: /Breakage/ })).toBeInTheDocument()
+    expect(shelf).toBeInTheDocument()
   })
 
   it('shouldShowTheServersWordsWhenHomeFails', async () => {
