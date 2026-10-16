@@ -30,6 +30,7 @@ test('an Unwatched view drops a movie that another device finishes', async ({ pa
   const socket = await routeGraphqlSocket(page)
   // A read after the change answers as the server would: without the finished movie.
   let finished = false
+  let libraryPageRequests = 0
   const unwatched = (): LibraryPageQuery => ({
     library: {
       id: LIBRARY_ID,
@@ -56,7 +57,10 @@ test('an Unwatched view drops a movie that another device finishes', async ({ pa
     const reply = (data: unknown) => route.fulfill({ json: { data } })
     if (operationName === 'Me') return reply({ me })
     if (operationName === 'Libraries') return reply({ libraries: [] })
-    if (operationName === 'LibraryPage') return reply(unwatched())
+    if (operationName === 'LibraryPage') {
+      libraryPageRequests += 1
+      return reply(unwatched())
+    }
     return route.continue()
   })
 
@@ -64,6 +68,8 @@ test('an Unwatched view drops a movie that another device finishes', async ({ pa
   const grid = page.getByRole('grid', { name: 'Items' })
   await expect(grid.getByRole('link', { name: /Everlight/ })).toBeVisible()
   await expect.poll(() => socket.isLive('WatchStateChanged')).toBe(true)
+  // The list reads once on entry and once more after the changes subscribe.
+  await expect.poll(() => libraryPageRequests).toBe(2)
 
   finished = true
   socket.publish('WatchStateChanged', {
@@ -85,4 +91,6 @@ test('an Unwatched view drops a movie that another device finishes', async ({ pa
 
   await expect(grid.getByRole('link', { name: /Everlight/ })).toHaveCount(0)
   await expect(grid.getByRole('link', { name: /Northern Line/ })).toBeVisible()
+  // The change itself drops the movie: the list is not read again.
+  expect(libraryPageRequests).toBe(2)
 })
