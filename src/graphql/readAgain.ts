@@ -28,9 +28,14 @@ export function readActiveQueriesAgain(client: ApolloClient): Promise<unknown> {
   )
 }
 
-/** Whether `readActiveQueriesAgain` is reading `query` now. A refetch would join that read. */
-export function isReadingAgain(query: ObservableQuery): boolean {
+// Whether `readActiveQueriesAgain` is reading `query` now.
+function isReadingAgain(query: ObservableQuery): boolean {
   return readsOf(query).count > 0
+}
+
+/** Whether `query` has a read in flight, its own or one beside it. A refetch would join that read. */
+export function isReading(query: ObservableQuery): boolean {
+  return query.getCurrentResult().loading || isReadingAgain(query)
 }
 
 async function readAgain(client: ApolloClient, query: ObservableQuery): Promise<unknown> {
