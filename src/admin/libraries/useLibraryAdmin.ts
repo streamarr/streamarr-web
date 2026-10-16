@@ -82,7 +82,10 @@ function useLiveInventoryChanges(): {
   // after it. A library id never returns once removed.
   const removedIds = useRef(new Set<string>())
   const onError = (error: ErrorLike) => setStop(isForbidden(error) ? 'forbidden' : 'failed')
-  const holdFrom = (library: ManagedLibraryFieldsFragment | undefined, cache: ApolloCache) => {
+  const holdFrom = (
+    library: ManagedLibraryFieldsFragment | null | undefined,
+    cache: ApolloCache,
+  ) => {
     if (!library) return
     countLiveChange(cache, library.id)
     if (!removedIds.current.has(library.id)) holdLibrary(cache, library)
