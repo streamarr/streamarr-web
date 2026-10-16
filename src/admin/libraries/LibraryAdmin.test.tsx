@@ -72,6 +72,46 @@ function removed(removedLibraryId: string) {
   return { data: { removeLibrary: { removedLibraryId, userErrors: [] } } }
 }
 
+// Each response that can show a busy status for a run the client started.
+const START_RESPONSES = [
+  {
+    response: 'AStartedScan',
+    operationName: 'StartLibraryScan',
+    start: scanMovies,
+    busy: 'SCANNING' as const,
+    payload: {
+      startLibraryScan: { library: { ...MOVIES, status: 'SCANNING' }, userErrors: [] },
+    },
+  },
+  {
+    response: 'AStartedRefresh',
+    operationName: 'StartLibraryRefresh',
+    start: refreshMovies,
+    busy: 'REFRESHING' as const,
+    payload: {
+      startLibraryRefresh: { library: { ...MOVIES, status: 'REFRESHING' }, userErrors: [] },
+    },
+  },
+  {
+    response: 'ABusyRefusal',
+    operationName: 'StartLibraryScan',
+    start: scanMovies,
+    busy: 'SCANNING' as const,
+    payload: {
+      startLibraryScan: {
+        library: null,
+        userErrors: [
+          {
+            __typename: 'LibraryBusyError',
+            message: 'A library scan is already in progress.',
+            status: 'SCANNING',
+          },
+        ],
+      },
+    },
+  },
+]
+
 describe('library administration', () => {
   it.each([
     { ...ADMIN, serverAdmin: false },
@@ -585,44 +625,7 @@ describe('library administration', () => {
     expect(state.libraries).toContain(MOVIES)
   })
 
-  it.each([
-    {
-      response: 'AStartedScan',
-      operationName: 'StartLibraryScan',
-      start: scanMovies,
-      busy: 'SCANNING' as const,
-      payload: {
-        startLibraryScan: { library: { ...MOVIES, status: 'SCANNING' }, userErrors: [] },
-      },
-    },
-    {
-      response: 'AStartedRefresh',
-      operationName: 'StartLibraryRefresh',
-      start: refreshMovies,
-      busy: 'REFRESHING' as const,
-      payload: {
-        startLibraryRefresh: { library: { ...MOVIES, status: 'REFRESHING' }, userErrors: [] },
-      },
-    },
-    {
-      response: 'ABusyRefusal',
-      operationName: 'StartLibraryScan',
-      start: scanMovies,
-      busy: 'SCANNING' as const,
-      payload: {
-        startLibraryScan: {
-          library: null,
-          userErrors: [
-            {
-              __typename: 'LibraryBusyError',
-              message: 'A library scan is already in progress.',
-              status: 'SCANNING',
-            },
-          ],
-        },
-      },
-    },
-  ])(
+  it.each(START_RESPONSES)(
     'shouldKeepTheLiveStatusWhenTheRunEndsBeforeTheResponseTo$response',
     async ({ operationName, start, busy, payload }) => {
       const state = serve()
