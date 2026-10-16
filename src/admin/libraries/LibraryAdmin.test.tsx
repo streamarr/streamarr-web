@@ -1586,6 +1586,23 @@ describe('library administration', () => {
       },
     )
 
+    it('shouldDisableStopWhenTheLatestLibraryStateFailedToLoad', async () => {
+      serve([{ ...MOVIES, status: 'SCANNING' }, SHOWS])
+      const { router } = renderAppAt(SETTINGS)
+      await screen.findByRole('article', { name: 'Movies settings' })
+      await act(() => router.navigate({ to: '/' }))
+      server.use(
+        graphql.query('AdminLibraries', () =>
+          HttpResponse.json({ errors: [{ message: 'offline' }] }),
+        ),
+      )
+
+      await act(() => router.navigate({ to: SETTINGS }))
+
+      await screen.findByRole('alert')
+      expect(screen.getByRole('button', { name: 'Stop scan' })).toBeDisabled()
+    })
+
     it('shouldDisableEveryLibraryActionWhileTheLibraryShowsStopping', async () => {
       serve([{ ...MOVIES, status: 'STOPPING' }, SHOWS])
       renderAppAt(SETTINGS)
