@@ -1,5 +1,5 @@
-query Home {
-  continueWatching(first: 12) {
+query Home($continueWatchingFirst: Int!) {
+  continueWatching(first: $continueWatchingFirst) {
     ...ContinueWatchingItemFields
   }
   libraries {

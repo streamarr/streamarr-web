@@ -29,6 +29,9 @@ interface LiveLists {
 }
 
 const LOCAL_CURSOR_PREFIX = 'local:'
+
+/** How many Continue Watching entries Home reads. */
+export const CONTINUE_WATCHING_LIMIT = 12
 const liveListsByCache = new WeakMap<ApolloCache, LiveLists>()
 
 function liveListsFor(cache: ApolloCache): LiveLists {
@@ -105,7 +108,8 @@ function applyToContinueWatching(
     return
   }
   let unplaceable = false
-  cache.updateQuery({ query: HomeDocument }, (data) => {
+  const variables = { continueWatchingFirst: CONTINUE_WATCHING_LIMIT }
+  cache.updateQuery({ query: HomeDocument, variables }, (data) => {
     if (!data) return undefined
     let entries = data.continueWatching
     for (const candidate of candidates) {
@@ -122,15 +126,19 @@ function applyToContinueWatching(
 }
 
 // Continue Watching holds each movie and episode in progress, newest last watched first, then by
-// id. The server cuts the list at its limit, so an item that belongs past the last entry stays out.
+// id. A full list may stop short of the server's: an entry that leaves it, or moves past its last
+// entry, leaves a place that only the server can fill.
 function placeInContinueWatching(
   cache: ApolloCache,
   entries: ContinueWatchingItemFieldsFragment[],
   candidate: ContinueWatchingCandidate,
 ): ContinueWatchingItemFieldsFragment[] | 'unplaceable' {
   const index = entries.findIndex((entry) => entry.id === candidate.id)
+  const full = entries.length >= CONTINUE_WATCHING_LIMIT
   const others = index < 0 ? entries : entries.toSpliced(index, 1)
-  if (candidate.watchStatus !== 'IN_PROGRESS') return others
+  if (candidate.watchStatus !== 'IN_PROGRESS') {
+    return index >= 0 && full ? 'unplaceable' : others
+  }
   const entry = cache.readFragment({
     fragment: ContinueWatchingItemFieldsFragmentDoc,
     fragmentName: 'ContinueWatchingItemFields',
@@ -139,8 +147,8 @@ function placeInContinueWatching(
   if (!entry) return 'unplaceable'
   const position = positionAmong(others, entry, compareNewestWatchedFirst)
   if (position === index) return entries
-  if (position === others.length && others.length > 0) return others
-  return others.toSpliced(position, 0, entry)
+  if (position === others.length && full) return index < 0 ? entries : 'unplaceable'
+  return others.toSpliced(position, 0, entry).slice(0, CONTINUE_WATCHING_LIMIT)
 }
 
 function applyToLibraryView(
