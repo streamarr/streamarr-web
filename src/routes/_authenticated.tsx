@@ -44,7 +44,9 @@ function Authenticated() {
   useEffect(
     () =>
       installRevalidation({
-        refetchActive: () => client.refetchQueries({ include: 'active' }),
+        // Every read settles first: a refetch that joined a still-pending read would share it.
+        refetchActive: () =>
+          Promise.allSettled(client.refetchQueries({ include: 'active' }).results),
         isReading: () =>
           [...client.getObservableQueries('active')].some(
             (query) => query.getCurrentResult().loading,

@@ -526,6 +526,36 @@ describe('library administration', () => {
     expect(state.inventoryRequests).toBe(2)
   })
 
+  it('shouldReadTheInventoryAgainOnceLiveStatusIsSubscribedWhenAnotherQueryFailsItsRead', async () => {
+    const state = serve()
+    let navigationReads = 0
+    server.use(
+      graphql.query('Libraries', () =>
+        navigationReads++ === 0
+          ? HttpResponse.json({ data: { libraries: state.libraries } })
+          : HttpResponse.json({ errors: [{ message: 'unavailable' }] }),
+      ),
+      graphql.query('AdminLibraries', async () => {
+        const libraries = state.libraries
+        if (state.inventoryRequests++ === 0) {
+          // A scan starts after this read and before the socket subscribes, so no change reports it.
+          state.libraries = [{ ...MOVIES, status: 'SCANNING' }, SHOWS]
+          await vi.waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+          // The navigation's refetch fails while this read is still in flight.
+          await vi.waitFor(() => expect(navigationReads).toBeGreaterThan(1))
+          await delay(200)
+        }
+        return HttpResponse.json({ data: { libraries } })
+      }),
+    )
+
+    renderAppAt(SETTINGS)
+
+    const detail = await screen.findByRole('article', { name: 'Movies settings' })
+    await waitFor(() => expect(detail).toHaveTextContent('SCANNING'))
+    expect(state.inventoryRequests).toBe(2)
+  })
+
   it('shouldReadTheInventoryAgainAfterTheSocketReconnects', async () => {
     const state = serve()
     renderAppAt(SETTINGS)
