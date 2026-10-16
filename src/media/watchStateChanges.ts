@@ -11,9 +11,10 @@ type WatchStateChange = NonNullable<WatchStateChangedSubscription['watchStateCha
 /**
  * Applies the selected Profile's watch-state changes to the cache until the returned function
  * runs. Normalization carries each item's watched status and resume position to every cached
- * view of that item, and each shown list takes in, moves or drops the item by the server's rules. A change whose fields failed applies only the items that resolved; the
- * transport then reports the change missed, and the active queries read again. A refusal or a
- * normal end stops the changes for good.
+ * view of that item, and each shown list takes in, moves or drops the item by the server's
+ * rules. A change whose fields failed applies only the items that resolved; the transport then
+ * reports the change missed, and the active queries read again. A refusal or a normal end stops
+ * the changes for good.
  */
 export function subscribeToWatchStateChanges(client: ApolloClient): () => void {
   let stopped = false
