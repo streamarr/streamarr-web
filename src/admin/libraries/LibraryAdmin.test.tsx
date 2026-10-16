@@ -147,6 +147,10 @@ function moviesRow() {
   )
 }
 
+function panelStatus(detail: HTMLElement) {
+  return detail.querySelector('[data-library-status]')?.closest('output')
+}
+
 function statusGlyph(container: HTMLElement) {
   return container.querySelector('[data-library-status] svg')?.getAttribute('class')
 }
@@ -1751,6 +1755,61 @@ describe('library administration', () => {
 
       await waitFor(() => expect(detail).toHaveTextContent('HEALTHY'))
       expect(detail).not.toHaveTextContent('stopped')
+    })
+
+    it.each(STOPS)(
+      'shouldMoveFocusToThePanelStatusWhenTheChosenStopLeavesDuringA$kind',
+      async ({ busy, action, operationName, field }) => {
+        serve([{ ...MOVIES, status: busy }, SHOWS])
+        server.use(graphql.mutation(operationName, () => HttpResponse.json(stopping(field))))
+        const { user } = renderAppAt(SETTINGS)
+        const detail = await screen.findByRole('article', { name: 'Movies settings' })
+
+        await user.click(within(detail).getByRole('button', { name: action }))
+
+        await waitFor(() => expect(detail).toHaveTextContent('STOPPING'))
+        await waitFor(() => expect(panelStatus(detail)).toHaveFocus())
+      },
+    )
+
+    it('shouldMoveFocusToThePanelStatusWhenAnotherSessionsStopRemovesTheFocusedStop', async () => {
+      const state = serve([{ ...MOVIES, status: 'SCANNING' }, SHOWS])
+      renderAppAt(SETTINGS)
+      const detail = await screen.findByRole('article', { name: 'Movies settings' })
+      await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+      act(() => within(detail).getByRole('button', { name: 'Stop scan' }).focus())
+
+      state.socket.publish('LibraryStatusChanged', {
+        data: { libraryStatusChanged: { ...MOVIES, status: 'STOPPING' } },
+      })
+
+      await waitFor(() => expect(detail).toHaveTextContent('STOPPING'))
+      await waitFor(() => expect(panelStatus(detail)).toHaveFocus())
+    })
+
+    it('shouldLeaveFocusWhereItIsWhenTheStopLeavesWhileAnotherControlHasFocus', async () => {
+      const state = serve([{ ...MOVIES, status: 'SCANNING' }, SHOWS])
+      renderAppAt(SETTINGS)
+      const detail = await screen.findByRole('article', { name: 'Movies settings' })
+      await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+      const view = within(detail).getByRole('link', { name: 'View library' })
+      act(() => view.focus())
+
+      state.socket.publish('LibraryStatusChanged', {
+        data: { libraryStatusChanged: { ...MOVIES, status: 'STOPPING' } },
+      })
+
+      await waitFor(() => expect(detail).toHaveTextContent('STOPPING'))
+      expect(view).toHaveFocus()
+    })
+
+    it('shouldLeaveFocusAloneWhenThePanelOpensWithoutAStop', async () => {
+      serve([{ ...MOVIES, status: 'STOPPING' }, SHOWS])
+      renderAppAt(SETTINGS)
+
+      const detail = await screen.findByRole('article', { name: 'Movies settings' })
+
+      expect(panelStatus(detail)).not.toHaveFocus()
     })
 
     it('shouldShowStoppingAndThenTheRestoredStatusWhenAnotherSessionStopsTheScan', async () => {
