@@ -37,7 +37,7 @@ const UPDATE_FAILED_MESSAGE = "Couldn't update sharing."
 export function SharingScreen() {
   const { data: meData, loading: meLoading, error: meError, refetch: refetchMe } = useMe()
 
-  if (meLoading) {
+  if (meLoading && !meData) {
     return <SharingLoading />
   }
 
@@ -84,7 +84,7 @@ function Sharing({
   })
   const refetch = () => overview.refetch()
 
-  if (overview.loading) {
+  if (overview.loading && !overview.data) {
     return <SharingLoading />
   }
 
