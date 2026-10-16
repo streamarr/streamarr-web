@@ -91,6 +91,19 @@ function serve(data: MovieDetailQuery, requestedIds: string[] = []) {
   )
 }
 
+function markWatchedAnswers() {
+  return graphql.mutation('MarkWatched', () =>
+    HttpResponse.json({
+      data: {
+        markWatched: {
+          item: { __typename: 'Movie', id: 'm1', watchStatus: 'WATCHED', watchProgress: null },
+          userErrors: [],
+        },
+      },
+    }),
+  )
+}
+
 describe('MovieDetailScreen', () => {
   it('shouldPlayTheFirstAvailableFileWhenTheFileListStartsWithNull', async () => {
     serve(movieData({ files: [null, { id: 'file-1' }] }))
@@ -311,13 +324,21 @@ describe('MovieDetailScreen', () => {
     expect(screen.getByTestId('ambient-scope').style.getPropertyValue('--ambient-accent')).toBe('')
   })
 
-  it('shouldFlipTheVerbFromTheMarkedItemWithoutLoadingTheMovieAgain', async () => {
+  it('shouldFlipTheVerbFromTheMarkedItemAndThenReadTheMovieAgain', async () => {
+    const markAnswer = deferred()
+    let watchStatus = 'IN_PROGRESS'
     const requestedIds: string[] = []
     const markedIds: string[] = []
-    serve(movieData({ watchStatus: 'IN_PROGRESS' }), requestedIds)
+    serve(movieData({ watchStatus }), requestedIds)
     server.use(
-      graphql.mutation('MarkWatched', ({ variables }) => {
+      graphql.query('MovieDetail', ({ variables }) => {
+        requestedIds.push(variables.id as string)
+        return HttpResponse.json({ data: movieData({ watchStatus }) })
+      }),
+      graphql.mutation('MarkWatched', async ({ variables }) => {
         markedIds.push((variables.input as { itemId: string }).itemId)
+        watchStatus = 'WATCHED'
+        await markAnswer.promise
         return HttpResponse.json({
           data: {
             markWatched: {
@@ -331,43 +352,20 @@ describe('MovieDetailScreen', () => {
     const { user } = renderAppAt('/movie/m1')
 
     await user.click(await screen.findByRole('button', { name: 'Mark watched' }))
+    markAnswer.resolve()
 
     expect(await screen.findByRole('button', { name: 'Mark unwatched' })).toBeEnabled()
-    expect(screen.getByRole('link', { name: 'Play' })).toBeInTheDocument()
     expect(markedIds).toEqual(['m1'])
-    expect(requestedIds).toEqual(['m1'])
+    await waitFor(() => expect(requestedIds).toEqual(['m1', 'm1']))
+    expect(screen.getByRole('button', { name: 'Mark unwatched' })).toBeEnabled()
   })
 
-  it('shouldEndOnTheMarkedStateWhenAQuietRefreshFromBeforeTheMarkAnswersAfterIt', async () => {
+  it('shouldEndOnTheMarkedStateWhenAReadFromBeforeTheMarkAnswersAfterTheMark', async () => {
     serve(movieData())
-    const staleRelease = deferred()
-    let staleAnswered = false
-    let readsAfterTheStaleAnswer = 0
-    const movie = answersInTurn(
-      answerWith(movieData()),
-      async () => {
-        await staleRelease.promise
-        staleAnswered = true
-        return HttpResponse.json({ data: movieData() })
-      },
-      () => {
-        if (staleAnswered) readsAfterTheStaleAnswer += 1
-        return HttpResponse.json({ data: movieData({ watchStatus: 'WATCHED' }) })
-      },
-    )
-    server.use(
-      graphql.query('MovieDetail', movie.resolver),
-      graphql.mutation('MarkWatched', () =>
-        HttpResponse.json({
-          data: {
-            markWatched: {
-              item: { __typename: 'Movie', id: 'm1', watchStatus: 'WATCHED', watchProgress: null },
-              userErrors: [],
-            },
-          },
-        }),
-      ),
-    )
+    const earlier = heldAnswer(movieData())
+    const after = heldAnswer(movieData({ watchStatus: 'WATCHED' }))
+    const movie = answersInTurn(answerWith(movieData()), earlier.answer, after.answer)
+    server.use(graphql.query('MovieDetail', movie.resolver), markWatchedAnswers())
     const { user } = renderAppAt('/movie/m1')
     const mark = await screen.findByRole('button', { name: 'Mark watched' })
     comeBackOnline()
@@ -375,40 +373,59 @@ describe('MovieDetailScreen', () => {
 
     await user.click(mark)
     await screen.findByRole('button', { name: 'Mark unwatched' })
-    staleRelease.resolve()
+    // The read after the mark is a request of its own, not a share of the earlier read.
+    await waitFor(() => expect(movie.calls).toBe(3))
+    earlier.release()
+    expect(await screen.findByRole('button', { name: 'Mark watched' })).toBeInTheDocument()
+    after.release()
 
-    await waitFor(() => expect(readsAfterTheStaleAnswer).toBe(1))
     expect(await screen.findByRole('button', { name: 'Mark unwatched' })).toBeEnabled()
-    expect(screen.queryByRole('button', { name: 'Mark watched' })).not.toBeInTheDocument()
   })
 
-  it('shouldFinishTheMarkWhileAnotherQuietReadIsStillAnswering', async () => {
+  it('shouldFinishTheMarkWhileTheReadAfterItIsStillAnswering', async () => {
     serve(movieData())
-    const libraries = answersThenHolds({ libraries: [] }, { libraries: [] })
-    server.use(
-      graphql.query('Libraries', libraries.resolver),
-      graphql.mutation('MarkWatched', () =>
-        HttpResponse.json({
-          data: {
-            markWatched: {
-              item: { __typename: 'Movie', id: 'm1', watchStatus: 'WATCHED', watchProgress: null },
-              userErrors: [],
-            },
-          },
-        }),
-      ),
-    )
+    const after = heldAnswer(movieData({ watchStatus: 'WATCHED' }))
+    const movie = answersInTurn(answerWith(movieData()), after.answer)
+    server.use(graphql.query('MovieDetail', movie.resolver), markWatchedAnswers())
     const { user } = renderAppAt('/movie/m1')
-    const mark = await screen.findByRole('button', { name: 'Mark watched' })
-    comeBackOnline()
-    await waitFor(() => expect(libraries.calls).toBe(2))
 
-    await user.click(mark)
+    await user.click(await screen.findByRole('button', { name: 'Mark watched' }))
+    await waitFor(() => expect(movie.calls).toBe(2))
 
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Mark unwatched' })).toBeEnabled(),
     )
-    libraries.release()
+    after.release()
+  })
+
+  it('shouldCancelTheReadAfterTheMarkWhenASignOutClearsTheCache', async () => {
+    serve(movieData())
+    const cancelled = deferred()
+    const release = deferred()
+    let reads = 0
+    server.use(
+      graphql.query('MovieDetail', async ({ request }) => {
+        reads += 1
+        if (reads === 1) return HttpResponse.json({ data: movieData() })
+        request.signal.addEventListener('abort', () => cancelled.resolve())
+        await release.promise
+        return HttpResponse.json({ data: movieData({ watchStatus: 'WATCHED' }) })
+      }),
+      markWatchedAnswers(),
+      http.post('/api/auth/refresh/revoke', () => new HttpResponse(null, { status: 204 })),
+    )
+    const { apolloClient, router, user } = renderAppAt('/movie/m1')
+    await user.click(await screen.findByRole('button', { name: 'Mark watched' }))
+    await waitFor(() => expect(reads).toBe(2))
+
+    await user.click(screen.getByRole('button', { name: /profile menu/i }))
+    await user.click(screen.getByRole('button', { name: /sign out/i }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
+
+    // Clearing the store cancels the read, so its answer never reaches the cache.
+    await cancelled.promise
+    release.resolve()
+    expect(apolloClient.cache.extract()).not.toHaveProperty('Movie:m1')
   })
 
   it('shouldKeepTheNextProfilesWatchStateWhenTheEarlierProfilesMarkAnswersAfterTheSwitch', async () => {
