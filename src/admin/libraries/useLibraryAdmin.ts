@@ -2,6 +2,7 @@ import type {
   ApolloCache,
   ApolloClient,
   ErrorLike,
+  OperationVariables,
   Reference,
   TypedDocumentNode,
 } from '@apollo/client'
@@ -221,14 +222,26 @@ export function useLibraryCommands() {
 
   // Sends a command that answers with the library, and returns the library as the cache now holds
   // it, or null after a refusal.
-  async function commandLibrary<P extends LibraryOperationPayload>(
-    libraryId: string,
-    send: (write: OperationOutcome['write']) => Promise<P | null | undefined>,
-  ): Promise<ManagedLibraryFieldsFragment | null> {
+  async function commandLibrary<TData, TVariables extends OperationVariables>({
+    libraryId,
+    mutation,
+    variables,
+    payloadOf,
+  }: {
+    libraryId: string
+    mutation: TypedDocumentNode<TData, TVariables>
+    variables: TVariables
+    payloadOf: (data: TData | null | undefined) => LibraryOperationPayload | null | undefined
+  }): Promise<ManagedLibraryFieldsFragment | null> {
     const outcome = operationOutcome(client.cache, libraryId)
-    const payload = await send((cache, answer) => outcome.write(cache, answer))
+    const { data } = await client.mutate<TData, TVariables>({
+      mutation,
+      variables,
+      fetchPolicy: 'no-cache',
+      update: (cache, { data }) => outcome.write(cache, payloadOf(data)),
+    })
     await outcome.readInventoryAgainAfterMissedChanges(client)
-    return currentLibrary(client.cache, accepted(payload))
+    return currentLibrary(client.cache, accepted(payloadOf(data)))
   }
 
   // The payload when the server did what was asked; a refusal shows its message instead.
@@ -254,50 +267,38 @@ export function useLibraryCommands() {
       }, NOTHING_ADDED),
     scan: (libraryId: string) =>
       execute(() =>
-        commandLibrary(libraryId, async (write) => {
-          const { data } = await client.mutate({
-            mutation: StartLibraryScanDocument,
-            variables: { input: { libraryId } },
-            fetchPolicy: 'no-cache',
-            update: (cache, { data }) => write(cache, data?.startLibraryScan),
-          })
-          return data?.startLibraryScan
+        commandLibrary({
+          libraryId,
+          mutation: StartLibraryScanDocument,
+          variables: { input: { libraryId } },
+          payloadOf: (data) => data?.startLibraryScan,
         }),
       ),
     refresh: (libraryId: string, imageRefreshMode: ImageRefreshMode) =>
       execute(() =>
-        commandLibrary(libraryId, async (write) => {
-          const { data } = await client.mutate({
-            mutation: StartLibraryRefreshDocument,
-            variables: { input: { libraryId, imageRefreshMode } },
-            fetchPolicy: 'no-cache',
-            update: (cache, { data }) => write(cache, data?.startLibraryRefresh),
-          })
-          return data?.startLibraryRefresh
+        commandLibrary({
+          libraryId,
+          mutation: StartLibraryRefreshDocument,
+          variables: { input: { libraryId, imageRefreshMode } },
+          payloadOf: (data) => data?.startLibraryRefresh,
         }),
       ),
     stopScan: (libraryId: string) =>
       execute(() =>
-        commandLibrary(libraryId, async (write) => {
-          const { data } = await client.mutate({
-            mutation: StopLibraryScanDocument,
-            variables: { input: { libraryId } },
-            fetchPolicy: 'no-cache',
-            update: (cache, { data }) => write(cache, data?.stopLibraryScan),
-          })
-          return data?.stopLibraryScan
+        commandLibrary({
+          libraryId,
+          mutation: StopLibraryScanDocument,
+          variables: { input: { libraryId } },
+          payloadOf: (data) => data?.stopLibraryScan,
         }),
       ),
     stopRefresh: (libraryId: string) =>
       execute(() =>
-        commandLibrary(libraryId, async (write) => {
-          const { data } = await client.mutate({
-            mutation: StopLibraryRefreshDocument,
-            variables: { input: { libraryId } },
-            fetchPolicy: 'no-cache',
-            update: (cache, { data }) => write(cache, data?.stopLibraryRefresh),
-          })
-          return data?.stopLibraryRefresh
+        commandLibrary({
+          libraryId,
+          mutation: StopLibraryRefreshDocument,
+          variables: { input: { libraryId } },
+          payloadOf: (data) => data?.stopLibraryRefresh,
         }),
       ),
     remove: (libraryId: string, onRemoved: () => void) =>
@@ -335,8 +336,6 @@ function currentLibrary(
 // change for the library arrived during the request: that change can already say the run ended.
 // The write happens in the mutation's own cache update, so the library shows its new status by
 // the time the command returns.
-type OperationOutcome = ReturnType<typeof operationOutcome>
-
 function operationOutcome(cache: ApolloCache, libraryId: string) {
   const liveChangesBefore = liveChangeCount(cache, libraryId)
   const missedChangesBefore = missedChangeCount(cache)
