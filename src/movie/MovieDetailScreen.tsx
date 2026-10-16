@@ -28,7 +28,7 @@ export function MovieDetailScreen({ movieId }: Readonly<{ movieId: string }>) {
   const ambient = movie ? resolveAmbientColors(movie.backdropImages, movie.posterImages) : null
   usePublishAmbientTheme(ambient?.theme ?? null)
 
-  if (loading || error || !movie) {
+  if (error || !movie) {
     return (
       <MediaTitleFallback
         kind="movie"
