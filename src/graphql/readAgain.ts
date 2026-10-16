@@ -39,9 +39,10 @@ export function isReading(query: ObservableQuery): boolean {
 }
 
 /**
- * When `query` has a read in flight, reads it again beside its screen once that read settles, so
- * no answer to a read sent earlier can land after this one. Returns undefined when no read is in
- * flight. Failures stay quiet.
+ * When `query` has a read in flight, reads it again beside its screen once that read answers, so
+ * no answer to a read sent earlier can land after this one. A read in flight that fails, or that
+ * a store reset cancels, wrote nothing, so nothing follows it. Returns undefined when no read is
+ * in flight. Failures stay quiet.
  */
 export function readAgainAfterTheReadInFlight(
   client: ApolloClient,
@@ -50,8 +51,11 @@ export function readAgainAfterTheReadInFlight(
   if (!isReading(query)) return undefined
   return (async () => {
     // Deduplication makes this read share the one in flight, so it waits for that answer.
-    await readAgain(client, query).catch(leaveTheLastResult)
-    await readAgain(client, query).catch(leaveTheLastResult)
+    const earlierReadAnswered = await readAgain(client, query).then(
+      () => true,
+      () => false,
+    )
+    if (earlierReadAnswered) await readAgain(client, query).catch(leaveTheLastResult)
   })()
 }
 
