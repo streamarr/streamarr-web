@@ -10,26 +10,28 @@ const FAILURE_MESSAGE = "Couldn't update the watched state."
 
 // markWatched/markUnwatched take any item id; the server cascades a series or season to its
 // episodes. The payload's item and its related items update the cache, so no query is refetched,
-// except one still reading when the mark answers: that read may answer with the earlier watch
+// except one still reading when a mark succeeds: that read may answer with the earlier watch
 // state, so the query reads once more after it.
 export function useWatchedToggle(id: string) {
   const client = useApolloClient()
-  const readAgainAfterReadsFromBeforeTheMark = {
-    refetchQueries: 'active' as const,
-    // Never false: false would also keep the mark's cache write from reaching the query.
-    onQueryUpdated: (query: ObservableQuery) => readAgainAfterTheReadInFlight(client, query),
+  // Apollo waits for a promise that onQueryUpdated returns before the mark settles, so the reads
+  // run on their own. Returning false would also keep the mark's cache write from the query.
+  const readAgainAfterReadsFromBeforeTheMark = (query: ObservableQuery) => {
+    void readAgainAfterTheReadInFlight(client, query)
   }
   const [markWatched, watchedState] = useMutation(MarkWatchedDocument, {
     update: (cache, { data }) => {
       if (data?.markWatched?.item) invalidateWatchedState(cache)
     },
-    ...readAgainAfterReadsFromBeforeTheMark,
+    refetchQueries: ({ data }) => (data?.markWatched?.item ? 'active' : []),
+    onQueryUpdated: readAgainAfterReadsFromBeforeTheMark,
   })
   const [markUnwatched, unwatchedState] = useMutation(MarkUnwatchedDocument, {
     update: (cache, { data }) => {
       if (data?.markUnwatched?.item) invalidateWatchedState(cache)
     },
-    ...readAgainAfterReadsFromBeforeTheMark,
+    refetchQueries: ({ data }) => (data?.markUnwatched?.item ? 'active' : []),
+    onQueryUpdated: readAgainAfterReadsFromBeforeTheMark,
   })
 
   return {
