@@ -124,6 +124,8 @@ export type LibraryStatus =
   | 'HEALTHY'
   | 'REFRESHING'
   | 'SCANNING'
+  /** A ServerAdmin stopped the library's scan or refresh. Its admitted tasks finish, and then the library returns to the status it had before the scan or refresh started. */
+  | 'STOPPING'
   | 'UNHEALTHY'
   | '%future added value';
 

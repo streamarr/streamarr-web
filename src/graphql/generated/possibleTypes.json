@@ -349,6 +349,8 @@
       "LibraryPathNotFoundError",
       "LibraryPathNotReadableError",
       "LibraryPathRequiredError",
+      "LibraryRefreshNotInProgressError",
+      "LibraryScanNotInProgressError",
       "LinkProfileNotFoundError",
       "ManagementAlreadyRemovedError",
       "ManagerInvitationNotFoundError",
@@ -512,6 +514,16 @@
       "InvalidIdError",
       "LibraryBusyError",
       "LibraryNotFoundError"
+    ],
+    "StopLibraryRefreshError": [
+      "InvalidIdError",
+      "LibraryNotFoundError",
+      "LibraryRefreshNotInProgressError"
+    ],
+    "StopLibraryScanError": [
+      "InvalidIdError",
+      "LibraryNotFoundError",
+      "LibraryScanNotInProgressError"
     ],
     "TransferAccountError": [
       "AccountNotFoundError",
