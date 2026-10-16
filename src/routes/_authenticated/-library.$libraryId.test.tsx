@@ -8,6 +8,13 @@ import type {
   MovieDetailQuery,
 } from '../../graphql/generated/graphql'
 import styles from '../../library/LibraryScreen.module.css'
+import { deferred } from '../../test/deferred'
+import {
+  answersInTurn,
+  answerWith,
+  comeBackOnline,
+  serverFailure,
+} from '../../test/graphqlResponses'
 import { meFixture } from '../../test/meFixture'
 import { renderAppAt } from '../../test/render'
 import { server } from '../../test/server'
@@ -415,6 +422,37 @@ describe('/library/$libraryId', () => {
 
     const landing = await screen.findByRole('link', { name: /Northern Line/ })
     expect(grid).toContainElement(landing)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('shouldKeepTheGridWithoutAFailureWhenReadingItAgainFails', async () => {
+    // The Libraries read of the same revalidation answers only after the failed one, so the
+    // library it adds to the top bar shows once the failure has reached the screen.
+    const failureSent = deferred()
+    const library = answersInTurn(answerWith(titlePage([titleCard('m-a', 'Alright')])), () => {
+      failureSent.resolve()
+      return serverFailure()
+    })
+    const libraries = answersInTurn(answerWith({ libraries: [] }), async () => {
+      await failureSent.promise
+      return HttpResponse.json({
+        data: {
+          libraries: [{ __typename: 'Library', id: 'shows', name: 'Shows', type: 'SERIES' }],
+        },
+      })
+    })
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
+      graphql.query('Libraries', libraries.resolver),
+      graphql.query('LibraryPage', library.resolver),
+    )
+    renderAppAt(`/library/${LIBRARY_ID}?by=TITLE&direction=ASC`)
+    const alright = await screen.findByRole('link', { name: /Alright/ })
+
+    comeBackOnline()
+
+    expect(await screen.findByRole('link', { name: 'Shows' })).toBeInTheDocument()
+    expect(alright).toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 

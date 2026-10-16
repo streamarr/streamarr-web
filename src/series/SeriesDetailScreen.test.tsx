@@ -5,10 +5,15 @@ import type { SeriesDetailQuery } from '../graphql/generated/graphql'
 import { deferred } from '../test/deferred'
 import { meFixture } from '../test/meFixture'
 import {
+  answersInTurn,
   answersThenHolds,
+  answerWith,
   comeBackOnline,
+  comeBackOnlineUntil,
   failsOnceThen,
+  heldAnswer,
   invalidIdResponse,
+  serverFailure,
 } from '../test/graphqlResponses'
 import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
@@ -174,6 +179,23 @@ describe('SeriesDetailScreen', () => {
     await waitFor(() => expect(series.calls).toBe(2))
     expect(title).toBeInTheDocument()
     series.release()
+
+    expect(await screen.findByText('One more stop.')).toBeInTheDocument()
+    expect(title).toBeInTheDocument()
+  })
+
+  it('shouldKeepTheShowWhenReadingItAgainFails', async () => {
+    serve(seriesData())
+    const fresh = heldAnswer(seriesData({ tagline: 'One more stop.' }))
+    const series = answersInTurn(answerWith(seriesData()), serverFailure, fresh.answer)
+    server.use(graphql.query('SeriesDetail', series.resolver))
+    renderAppAt('/series/series-1')
+    const title = await screen.findByRole('heading', { level: 1, name: 'Northern Line' })
+
+    await comeBackOnlineUntil(series, 3)
+    expect(title).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    fresh.release()
 
     expect(await screen.findByText('One more stop.')).toBeInTheDocument()
     expect(title).toBeInTheDocument()
