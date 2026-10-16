@@ -38,23 +38,28 @@ const EVERY_LIBRARY = Symbol('every library')
 // The server orders no live change against a mutation response: a run can end, and its live
 // change arrive, before the response that started or refused the run. Each cache counts the live
 // changes it applied for each library, so a command can tell whether one arrived meanwhile.
-const liveChangeCounts = new WeakMap<ApolloCache, Map<string | typeof EVERY_LIBRARY, number>>()
+type LiveChangeTarget = string | typeof EVERY_LIBRARY
+const liveChangeCounts = new WeakMap<ApolloCache, Map<LiveChangeTarget, number>>()
+
+function countedLiveChanges(cache: ApolloCache, target: LiveChangeTarget): number {
+  return liveChangeCounts.get(cache)?.get(target) ?? 0
+}
 
 function liveChangeCount(cache: ApolloCache, libraryId: string): number {
-  return (liveChangeCounts.get(cache)?.get(libraryId) ?? 0) + resubscriptionCount(cache)
+  return countedLiveChanges(cache, libraryId) + resubscriptionCount(cache)
 }
 
 function resubscriptionCount(cache: ApolloCache): number {
-  return liveChangeCounts.get(cache)?.get(EVERY_LIBRARY) ?? 0
+  return countedLiveChanges(cache, EVERY_LIBRARY)
 }
 
-function countLiveChange(cache: ApolloCache, libraryId: string | typeof EVERY_LIBRARY) {
+function countLiveChange(cache: ApolloCache, target: LiveChangeTarget) {
   let counts = liveChangeCounts.get(cache)
   if (!counts) {
     counts = new Map()
     liveChangeCounts.set(cache, counts)
   }
-  counts.set(libraryId, (counts.get(libraryId) ?? 0) + 1)
+  counts.set(target, countedLiveChanges(cache, target) + 1)
 }
 
 /** Why live inventory changes stopped: the server refused them, or they ended another way. */
