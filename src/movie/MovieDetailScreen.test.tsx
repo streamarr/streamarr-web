@@ -338,6 +338,50 @@ describe('MovieDetailScreen', () => {
     expect(requestedIds).toEqual(['m1'])
   })
 
+  it('shouldEndOnTheMarkedStateWhenAQuietRefreshFromBeforeTheMarkAnswersAfterIt', async () => {
+    serve(movieData())
+    const staleRelease = deferred()
+    let staleAnswered = false
+    let readsAfterTheStaleAnswer = 0
+    const movie = answersInTurn(
+      answerWith(movieData()),
+      async () => {
+        await staleRelease.promise
+        staleAnswered = true
+        return HttpResponse.json({ data: movieData() })
+      },
+      () => {
+        if (staleAnswered) readsAfterTheStaleAnswer += 1
+        return HttpResponse.json({ data: movieData({ watchStatus: 'WATCHED' }) })
+      },
+    )
+    server.use(
+      graphql.query('MovieDetail', movie.resolver),
+      graphql.mutation('MarkWatched', () =>
+        HttpResponse.json({
+          data: {
+            markWatched: {
+              item: { __typename: 'Movie', id: 'm1', watchStatus: 'WATCHED', watchProgress: null },
+              userErrors: [],
+            },
+          },
+        }),
+      ),
+    )
+    const { user } = renderAppAt('/movie/m1')
+    const mark = await screen.findByRole('button', { name: 'Mark watched' })
+    comeBackOnline()
+    await waitFor(() => expect(movie.calls).toBe(2))
+
+    await user.click(mark)
+    await screen.findByRole('button', { name: 'Mark unwatched' })
+    staleRelease.resolve()
+
+    await waitFor(() => expect(readsAfterTheStaleAnswer).toBe(1))
+    expect(await screen.findByRole('button', { name: 'Mark unwatched' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: 'Mark watched' })).not.toBeInTheDocument()
+  })
+
   it('shouldKeepTheNextProfilesWatchStateWhenTheEarlierProfilesMarkAnswersAfterTheSwitch', async () => {
     const requestedIds: string[] = []
     const markSent = deferred()
