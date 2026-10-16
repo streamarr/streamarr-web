@@ -382,6 +382,35 @@ describe('MovieDetailScreen', () => {
     expect(screen.queryByRole('button', { name: 'Mark watched' })).not.toBeInTheDocument()
   })
 
+  it('shouldFinishTheMarkWhileAnotherQuietReadIsStillAnswering', async () => {
+    serve(movieData())
+    const libraries = answersThenHolds({ libraries: [] }, { libraries: [] })
+    server.use(
+      graphql.query('Libraries', libraries.resolver),
+      graphql.mutation('MarkWatched', () =>
+        HttpResponse.json({
+          data: {
+            markWatched: {
+              item: { __typename: 'Movie', id: 'm1', watchStatus: 'WATCHED', watchProgress: null },
+              userErrors: [],
+            },
+          },
+        }),
+      ),
+    )
+    const { user } = renderAppAt('/movie/m1')
+    const mark = await screen.findByRole('button', { name: 'Mark watched' })
+    comeBackOnline()
+    await waitFor(() => expect(libraries.calls).toBe(2))
+
+    await user.click(mark)
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Mark unwatched' })).toBeEnabled(),
+    )
+    libraries.release()
+  })
+
   it('shouldKeepTheNextProfilesWatchStateWhenTheEarlierProfilesMarkAnswersAfterTheSwitch', async () => {
     const requestedIds: string[] = []
     const markSent = deferred()
