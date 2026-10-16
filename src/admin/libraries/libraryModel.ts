@@ -9,8 +9,8 @@ export const LIBRARY_STATUS_ICONS = {
   HEALTHY: 'check',
   SCANNING: 'scan',
   REFRESHING: 'refresh',
-  // streamarr-ux has approved no STOPPING glyph yet; pause is the closest approved one.
-  STOPPING: 'pause',
+  // Stop scan and Stop refresh share this glyph. A stop never resumes, so pause never means stop.
+  STOPPING: 'stop',
   UNHEALTHY: 'alert',
 } as const satisfies Record<string, IconName>
 

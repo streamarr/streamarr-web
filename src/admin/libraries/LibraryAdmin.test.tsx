@@ -1685,6 +1685,31 @@ describe('library administration', () => {
       expect(otherGlyphs).not.toContain(statusGlyph(detail))
     })
 
+    // ICONOGRAPHY.md approves one stop glyph, a square inside a circle, for STOPPING and Stop.
+    it.each(STOPS)(
+      'shouldShowTheStoppingGlyphAsADecorativeSquareInACircleBesideTheStopForA$kind',
+      async ({ busy, action }) => {
+        serve([
+          { ...MOVIES, status: busy },
+          { ...SHOWS, status: 'STOPPING' },
+        ])
+        renderAppAt(SETTINGS)
+        const detail = await screen.findByRole('article', { name: 'Movies settings' })
+        const inventory = screen.getByRole('navigation', { name: 'Libraries to manage' })
+
+        const stopGlyph = within(detail).getByRole('button', { name: action }).querySelector('svg')
+        const stoppingGlyph = within(inventory)
+          .getByRole('button', { name: /^TV shows/ })
+          .querySelector('[data-library-status] svg')
+
+        expect(stopGlyph).toHaveAttribute('aria-hidden', 'true')
+        expect(stopGlyph?.innerHTML).toBe(stoppingGlyph?.innerHTML)
+        expect(stopGlyph?.querySelectorAll('circle')).toHaveLength(1)
+        expect(stopGlyph?.querySelectorAll('rect')).toHaveLength(1)
+        expect(stopGlyph).toHaveAttribute('fill', 'none')
+      },
+    )
+
     it.each([
       {
         refusal: 'LibraryScanNotInProgressError',

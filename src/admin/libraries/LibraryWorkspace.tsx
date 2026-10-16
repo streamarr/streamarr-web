@@ -431,6 +431,7 @@ function LibraryDetails({
             <Button
               variant="default"
               disabled={stale || commands.pending}
+              leftSection={<Icon name="stop" />}
               aria-describedby={stopDescriptionId}
               onClick={() =>
                 running === 'scan'
