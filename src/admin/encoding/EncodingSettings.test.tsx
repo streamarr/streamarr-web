@@ -93,7 +93,6 @@ describe('encoding settings', () => {
     const options = screen.getAllByRole('option', { hidden: true })
     expect(options.map((option) => option.textContent)).toEqual([
       'Automatic',
-      'ultrafast',
       'superfast',
       'veryfast',
       'faster',
@@ -198,8 +197,8 @@ describe('encoding settings', () => {
     const select = await presetSelect()
     select.focus()
     await user.keyboard('{ArrowDown}{ArrowDown}{Enter}')
-    await waitFor(() => expect(state.changes).toEqual(['ULTRAFAST']))
-    await waitFor(() => expect(select).toHaveValue('ultrafast'))
+    await waitFor(() => expect(state.changes).toEqual(['SUPERFAST']))
+    await waitFor(() => expect(select).toHaveValue('superfast'))
   })
 
   it('shouldShowSettingSavedElsewhereWhenAdminReturnsToEncoding', async () => {

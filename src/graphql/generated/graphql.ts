@@ -68,7 +68,6 @@ export type EncoderPreset =
   | 'SLOW'
   | 'SLOWER'
   | 'SUPERFAST'
-  | 'ULTRAFAST'
   | 'VERYFAST'
   | 'VERYSLOW'
   | '%future added value';
@@ -82,7 +81,6 @@ export type EncoderPresetChoice =
   | 'SLOW'
   | 'SLOWER'
   | 'SUPERFAST'
-  | 'ULTRAFAST'
   | 'VERYFAST'
   | 'VERYSLOW'
   | '%future added value';
