@@ -25,6 +25,7 @@ function movie(index: number) {
     images: [],
     backdropImages: [],
     watchStatus: 'IN_PROGRESS' as const,
+    lastWatchedAt: null,
     watchProgress: { positionSeconds: 600, percentComplete: 25, durationSeconds: 2400 },
     files: [{ id: `home-file-${index}` }],
   }

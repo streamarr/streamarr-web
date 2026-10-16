@@ -28,6 +28,7 @@ function continueWatchingMovie(
         ],
       },
     ],
+    lastWatchedAt: null,
     watchProgress: null,
     files: [{ id: 'file-1' }],
     ...overrides,
@@ -45,6 +46,7 @@ function continueWatchingEpisode(
     overview: 'The team regroups.',
     runtime: 47,
     images: [],
+    lastWatchedAt: null,
     watchProgress: { positionSeconds: 600, percentComplete: 40, durationSeconds: 1500 },
     files: [{ id: 'file-2' }],
     season: {
@@ -84,6 +86,7 @@ function recentMovie(
     releaseDate: '2024-01-01',
     runtime: 90,
     watchStatus: 'UNWATCHED',
+    lastWatchedAt: null,
     watchProgress: null,
     images: [],
     tagline: 'Change begins with a whisper.',

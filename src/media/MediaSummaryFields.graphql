@@ -7,6 +7,7 @@ fragment MediaSummaryFields on Media {
     releaseDate
     runtime
     watchStatus
+    lastWatchedAt
     watchProgress {
       percentComplete
     }
@@ -31,6 +32,7 @@ fragment MediaSummaryFields on Media {
       id
     }
     watchStatus
+    lastWatchedAt
     watchProgress {
       percentComplete
     }

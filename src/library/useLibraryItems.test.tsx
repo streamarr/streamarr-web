@@ -1,6 +1,7 @@
 import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { graphql, HttpResponse, type GraphQLQuery } from 'msw'
+import { useApolloClient } from '@apollo/client/react'
 import { useEffect, useState } from 'react'
 import { describe, expect, it } from 'vitest'
 import type {
@@ -9,6 +10,8 @@ import type {
   MediaFilter,
   MediaSort,
 } from '../graphql/generated/graphql'
+import { subscribeToWatchStateChanges } from '../media/watchStateChanges'
+import { serveGraphqlSocket } from '../test/graphqlSocket'
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
 import { useLibraryItems } from './useLibraryItems'
@@ -25,6 +28,7 @@ function movieNode(id: string, title: string) {
     releaseDate: '2024-01-01',
     runtime: 100,
     watchStatus: 'UNWATCHED' as const,
+    lastWatchedAt: null,
     watchProgress: null,
     images: [],
   }
@@ -95,6 +99,23 @@ function Harness({ initialFilter = {} }: { initialFilter?: MediaFilter }) {
       <button type="button" onClick={() => setFilter({ watchStatus: 'UNWATCHED' })}>
         Unwatched only
       </button>
+    </div>
+  )
+}
+
+// A view kept current by watch-state changes, as the authenticated layout keeps every view.
+function LiveHarness({ filter }: { filter: MediaFilter }) {
+  const client = useApolloClient()
+  useEffect(() => subscribeToWatchStateChanges(client), [client])
+  const result = useLibraryItems({ libraryId: LIBRARY_ID, sort: TITLE_ASC, filter })
+  return (
+    <div>
+      <div data-testid="landing">{result.landing?.cursor ?? ''}</div>
+      <ul>
+        {result.edges.map((edge) => (
+          <li key={edge.cursor}>{edge.node.title}</li>
+        ))}
+      </ul>
     </div>
   )
 }
@@ -472,5 +493,83 @@ describe('useLibraryItems', () => {
 
     await waitFor(() => expect(screen.getByText('Unwatched Title')).toBeInTheDocument())
     expect(screen.queryByText('Everlight')).not.toBeInTheDocument()
+  })
+
+  it('shouldKeepTheLetterLandingOnAServerItemWhenAChangePlacesATitleBeforeIt', async () => {
+    server.use(
+      graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) => {
+        const earlier = Boolean(variables.before)
+        return HttpResponse.json({
+          data: libraryResponse({
+            edges: [
+              earlier
+                ? { cursor: 'm', node: movieNode('m', 'Middle') }
+                : { cursor: 'n', node: movieNode('n', 'Northern Line') },
+            ],
+            hasPreviousPage: !earlier,
+          }),
+        })
+      }),
+    )
+    const socket = serveGraphqlSocket()
+    renderWithProviders(<LiveHarness filter={{ watchStatus: 'IN_PROGRESS', startLetter: 'N' }} />)
+    await screen.findByText('Middle')
+    await waitFor(() => expect(socket.isLive('WatchStateChanged')).toBe(true))
+
+    socket.publish('WatchStateChanged', {
+      data: {
+        watchStateChanged: {
+          __typename: 'WatchStateChange',
+          items: [
+            {
+              ...movieNode('nadir', 'Nadir'),
+              watchStatus: 'IN_PROGRESS',
+              lastWatchedAt: '2026-10-16T10:00:00Z',
+              unmatched: false,
+              library: { __typename: 'Library', id: LIBRARY_ID },
+            },
+          ],
+        },
+      },
+    })
+
+    await screen.findByText('Nadir')
+    expect(screen.getAllByRole('listitem').map((item) => item.textContent)).toEqual([
+      'Middle',
+      'Nadir',
+      'Northern Line',
+    ])
+    expect(screen.getByTestId('landing').textContent).toBe('n')
+  })
+
+  it('shouldShowATitleOnceWhenTheNextPageBringsBackOneAlreadyLoaded', async () => {
+    server.use(
+      graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) => {
+        const edges = variables.after
+          ? [
+              { cursor: 'c2', node: movieNode('2', 'Northern Line') },
+              { cursor: 'c3', node: movieNode('3', 'Ocean') },
+            ]
+          : [
+              { cursor: 'c1', node: movieNode('1', 'Everlight') },
+              { cursor: 'c2', node: movieNode('2', 'Northern Line') },
+            ]
+        return HttpResponse.json({
+          data: libraryResponse({ edges, hasNextPage: !variables.after }),
+        })
+      }),
+    )
+    const user = userEvent.setup()
+    renderWithProviders(<Harness />)
+    await waitFor(() => expect(screen.getByTestId('hasNextPage')).toHaveTextContent('true'))
+
+    await user.click(screen.getByText('Load more'))
+
+    await screen.findByText('Ocean')
+    expect(screen.getAllByRole('listitem').map((item) => item.textContent)).toEqual([
+      'Everlight',
+      'Northern Line',
+      'Ocean',
+    ])
   })
 })

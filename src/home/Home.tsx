@@ -1,5 +1,6 @@
-import { useQuery } from '@apollo/client/react'
+import { useApolloClient, useQuery } from '@apollo/client/react'
 import { Center, Loader, Text } from '@mantine/core'
+import { useEffect } from 'react'
 import { HomeDocument, type HomeQuery } from '../graphql/generated/graphql'
 import { requestFailureMessage } from '../graphql/requestErrors'
 import { definedEdges } from '../media/edges'
@@ -16,9 +17,12 @@ import { useMe } from '../identity/useMe'
 import { canManageServer } from '../admin/access'
 import { EmptyLibraries } from '../admin/libraries/EmptyLibraries'
 import { FailurePanel, FailureRow } from '../ui/Failure'
+import { showContinueWatching } from '../media/watchStateLists'
 
 export function Home() {
   const { data, loading, error, refetch } = useQuery(HomeDocument)
+  const { cache } = useApolloClient()
+  useEffect(() => showContinueWatching(cache), [cache])
 
   if (loading) {
     return (

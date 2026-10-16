@@ -10,6 +10,7 @@ import {
 import { definedEdges } from '../media/edges'
 import { alphabetLetterFromTitle } from '../media/alphabetLetter'
 import { trackLibraryItemsConnection } from '../media/watchedState'
+import { isLocalCursor, showLibraryItems } from '../media/watchStateLists'
 
 const PAGE_SIZE = 48
 type LibraryWindow = { before: number; after: number; anchor: string | null }
@@ -63,6 +64,10 @@ export function useLibraryItems({
       })
     },
     [client, data, libraryId, sort, filter],
+  )
+  useEffect(
+    () => showLibraryItems(client.cache, { libraryId, args: { first: PAGE_SIZE, sort, filter } }),
+    [client, libraryId, sort, filter],
   )
   const [pageFailure, setPageFailure] = useState<PageFailure | null>(null)
   let currentPageFailure = pageFailure
@@ -294,7 +299,8 @@ function findLetterLandingCursor(
   previousAnchor: string | null | undefined,
 ) {
   if (!letter) return null
-  const resolvedEdges = definedEdges(edges)
+  // An item a watch-state change placed has no position on the server to land on.
+  const resolvedEdges = definedEdges(edges).filter((edge) => !isLocalCursor(edge.cursor))
   const landingEdge = resolvedEdges.find(
     (edge) => alphabetLetterFromTitle(edge.node.titleSort ?? edge.node.title ?? '') === letter,
   )
@@ -305,7 +311,7 @@ function findLetterLandingCursor(
 function appendItemsPage(loaded: LibraryItems, next: LibraryItems): LibraryItems {
   return {
     ...loaded,
-    edges: [...(loaded.edges ?? []), ...(next.edges ?? [])],
+    edges: [...(loaded.edges ?? []), ...withoutLoadedItems(next.edges, loaded.edges)],
     pageInfo: {
       ...loaded.pageInfo,
       hasNextPage: next.pageInfo.hasNextPage,
@@ -317,11 +323,17 @@ function appendItemsPage(loaded: LibraryItems, next: LibraryItems): LibraryItems
 function prependItemsPage(loaded: LibraryItems, previous: LibraryItems): LibraryItems {
   return {
     ...loaded,
-    edges: [...(previous.edges ?? []), ...(loaded.edges ?? [])],
+    edges: [...withoutLoadedItems(previous.edges, loaded.edges), ...(loaded.edges ?? [])],
     pageInfo: {
       ...loaded.pageInfo,
       hasPreviousPage: previous.pageInfo.hasPreviousPage,
       startCursor: previous.pageInfo.startCursor,
     },
   }
+}
+
+// A watch-state change can move an item, so a page can bring back an item already loaded.
+function withoutLoadedItems(page: LibraryItems['edges'], loaded: LibraryItems['edges']) {
+  const loadedIds = new Set(definedEdges(loaded).map((edge) => edge.node.id))
+  return (page ?? []).filter((edge) => !edge?.node || !loadedIds.has(edge.node.id))
 }

@@ -34,6 +34,7 @@ function movieNode(
     releaseDate: '2024-01-01',
     runtime: 100,
     watchStatus: (overrides.watchStatus as 'UNWATCHED' | 'IN_PROGRESS' | 'WATCHED') ?? 'UNWATCHED',
+    lastWatchedAt: null,
     watchProgress:
       overrides.percentComplete != null ? { percentComplete: overrides.percentComplete } : null,
     images: [],
@@ -49,6 +50,7 @@ function seriesNode(overrides: Partial<{ id: string; title: string }> = {}) {
     firstAirDate: '2017-07-21',
     seasons: [{ id: 'season-1' }],
     watchStatus: 'UNWATCHED' as const,
+    lastWatchedAt: null,
     watchProgress: null,
     images: [],
   }
