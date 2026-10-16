@@ -3,7 +3,16 @@ import { isForbidden } from './errorRouting'
 
 // A read beside a query leaves the query's own status alone, so the reads in flight are counted
 // here for callers that must wait for them.
-const readsInFlight = new WeakMap<ObservableQuery, number>()
+const readsInFlight = new WeakMap<ObservableQuery, { count: number }>()
+
+function readsOf(query: ObservableQuery): { count: number } {
+  let reads = readsInFlight.get(query)
+  if (!reads) {
+    reads = { count: 0 }
+    readsInFlight.set(query, reads)
+  }
+  return reads
+}
 
 /**
  * Reads every active query again beside the screens that watch it, and settles once every read
@@ -21,15 +30,16 @@ export function readActiveQueriesAgain(client: ApolloClient): Promise<unknown> {
 
 /** Whether `readActiveQueriesAgain` is reading `query` now. A refetch would join that read. */
 export function isReadingAgain(query: ObservableQuery): boolean {
-  return (readsInFlight.get(query) ?? 0) > 0
+  return readsOf(query).count > 0
 }
 
 async function readAgain(client: ApolloClient, query: ObservableQuery): Promise<unknown> {
-  readsInFlight.set(query, (readsInFlight.get(query) ?? 0) + 1)
+  const reads = readsOf(query)
+  reads.count += 1
   try {
     return await readKeepingTheLastResult(client, query)
   } finally {
-    readsInFlight.set(query, (readsInFlight.get(query) ?? 1) - 1)
+    reads.count -= 1
   }
 }
 
