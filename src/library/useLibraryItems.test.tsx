@@ -554,9 +554,10 @@ describe('useLibraryItems', () => {
               { cursor: 'c1', node: movieNode('1', 'Everlight') },
               { cursor: 'c2', node: movieNode('2', 'Northern Line') },
             ]
-        return HttpResponse.json({
-          data: libraryResponse({ edges, hasNextPage: !variables.after }),
-        })
+        const response = libraryResponse({ edges, hasNextPage: !variables.after })
+        // A title that no longer resolves stays a gap in the page.
+        if (variables.after) response.library.items.edges!.push(null)
+        return HttpResponse.json({ data: response })
       }),
     )
     const user = userEvent.setup()
