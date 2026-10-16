@@ -3,6 +3,7 @@ import { delay, graphql, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { deferred } from '../../test/deferred'
 import { serveGraphqlSocket } from '../../test/graphqlSocket'
+import { comeBackOnline } from '../../test/graphqlResponses'
 import { meFixture } from '../../test/meFixture'
 import { renderAppAt } from '../../test/render'
 import { server } from '../../test/server'
@@ -158,6 +159,21 @@ describe('library administration', () => {
     expect(router.state.location.search).toEqual({ library: 'shows' })
     act(() => router.history.back())
     await screen.findByRole('article', { name: 'Movies settings' })
+  })
+
+  it('shouldEnterOnceTheBrowserComesBackOnlineAfterTheAccessCheckFailed', async () => {
+    serve()
+    const { user } = renderAppAt('/')
+    await user.click(await screen.findByRole('button', { name: /Profile menu/ }))
+    server.use(graphql.query('Me', () => HttpResponse.error()))
+    await user.click(screen.getByRole('button', { name: 'Server settings' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't confirm your access")
+    server.use(graphql.query('Me', () => HttpResponse.json({ data: { me: ADMIN } })))
+
+    comeBackOnline()
+
+    expect(await screen.findByRole('article', { name: 'Movies settings' })).toBeInTheDocument()
+    expect(screen.queryByText(/Couldn't confirm your access/)).not.toBeInTheDocument()
   })
 
   it('shouldDenyEntryWhenIdentityCannotBeConfirmed', async () => {
@@ -1430,7 +1446,7 @@ describe('library administration', () => {
     let visibility: DocumentVisibilityState = 'visible'
     vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility)
     renderAppAt(SETTINGS)
-    await screen.findByRole('article', { name: 'Movies settings' })
+    const detail = await screen.findByRole('article', { name: 'Movies settings' })
     const requests = state.inventoryRequests
     state.libraries = [{ ...MOVIES, status: 'SCANNING' }, SHOWS]
 
@@ -1442,9 +1458,7 @@ describe('library administration', () => {
       document.dispatchEvent(new Event('visibilitychange'))
     })
 
-    expect(await screen.findByRole('article', { name: 'Movies settings' })).toHaveTextContent(
-      'SCANNING',
-    )
+    await waitFor(() => expect(detail).toHaveTextContent('SCANNING'))
     expect(state.inventoryRequests).toBe(requests + 1)
   })
 

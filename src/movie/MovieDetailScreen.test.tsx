@@ -5,10 +5,15 @@ import type { MovieDetailQuery } from '../graphql/generated/graphql'
 import { deferred } from '../test/deferred'
 import { meFixture, profileFixture } from '../test/meFixture'
 import {
+  answersInTurn,
   answersThenHolds,
+  answerWith,
   comeBackOnline,
+  comeBackOnlineUntil,
   failsOnceThen,
+  heldAnswer,
   invalidIdResponse,
+  networkFailure,
 } from '../test/graphqlResponses'
 import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
@@ -124,6 +129,23 @@ describe('MovieDetailScreen', () => {
     expect(notFound).toBeInTheDocument()
     expect(notFound).toHaveTextContent("This movie doesn't exist or was removed.")
     movie.release()
+  })
+
+  it('shouldKeepTheMovieWhenReadingItAgainFails', async () => {
+    serve(movieData())
+    const fresh = heldAnswer(movieData({ tagline: 'Every light goes out.' }))
+    const movie = answersInTurn(answerWith(movieData()), networkFailure, fresh.answer)
+    server.use(graphql.query('MovieDetail', movie.resolver))
+    renderAppAt('/movie/m1')
+    const title = await screen.findByRole('heading', { level: 1, name: 'Everlight' })
+
+    await comeBackOnlineUntil(movie, 3)
+    expect(title).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    fresh.release()
+
+    expect(await screen.findByText('Every light goes out.')).toBeInTheDocument()
+    expect(title).toBeInTheDocument()
   })
 
   it('shouldRetryTheMovieAfterItFailsToLoad', async () => {

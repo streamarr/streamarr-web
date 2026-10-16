@@ -2,7 +2,16 @@ import { screen, waitFor } from '@testing-library/react'
 import { graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { SharingOverviewQuery } from '../graphql/generated/graphql'
-import { answersThenHolds, comeBackOnline, failsOnceThen } from '../test/graphqlResponses'
+import {
+  answersInTurn,
+  answersThenHolds,
+  answerWith,
+  comeBackOnline,
+  comeBackOnlineUntil,
+  failsOnceThen,
+  heldAnswer,
+  serverFailure,
+} from '../test/graphqlResponses'
 import { HOUSEHOLD_ID, meFixture, PROFILE_ID, profileFixture } from '../test/meFixture'
 import { renderAppAt, renderWithProviders } from '../test/render'
 import { server } from '../test/server'
@@ -233,6 +242,30 @@ describe('SharingScreen', () => {
     expect(target).toBeInTheDocument()
     me.release()
     overview.release()
+
+    expect(await screen.findByRole('button', { name: 'Accept' })).toBeInTheDocument()
+    expect(target).toBeInTheDocument()
+    expect(target).toHaveValue('abc')
+  })
+
+  it('shouldKeepTheOfferBeingTypedWhenReadingSharingAgainFails', async () => {
+    const fresh = heldAnswer(overviewData({ offers: [shareRow()] }))
+    const overview = answersInTurn(answerWith(overviewData()), serverFailure, fresh.answer)
+    server.use(
+      graphql.query('Me', () =>
+        HttpResponse.json({ data: { me: meFixture({ profiles: [profileFixture()] }) } }),
+      ),
+      graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
+      graphql.query('SharingOverview', overview.resolver),
+    )
+    const { user } = renderAppAt('/sharing')
+    const target = await screen.findByRole('textbox', { name: 'Household id' })
+    await user.type(target, 'abc')
+
+    await comeBackOnlineUntil(overview, 3)
+    expect(target).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    fresh.release()
 
     expect(await screen.findByRole('button', { name: 'Accept' })).toBeInTheDocument()
     expect(target).toBeInTheDocument()

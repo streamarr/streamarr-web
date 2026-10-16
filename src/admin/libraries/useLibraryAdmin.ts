@@ -24,7 +24,8 @@ import {
   type ManagedLibraryFieldsFragment,
   type StartLibraryScanMutation,
 } from '../../graphql/generated/graphql'
-import { extractAuthContext } from '../../graphql/errorRouting'
+import { extractAuthContext, isForbidden } from '../../graphql/errorRouting'
+import { isReadingAgain } from '../../graphql/readAgain'
 import { userErrorMessage } from '../../graphql/userErrors'
 
 // Scan, refresh and removal share one refusal union.
@@ -315,7 +316,7 @@ function operationOutcome(cache: ApolloCache, libraryId: string) {
 
 function isReadingInventory(client: ApolloClient): boolean {
   return [...client.getObservableQueries([AdminLibrariesDocument])].some(
-    (query) => query.getCurrentResult().loading,
+    (query) => query.getCurrentResult().loading || isReadingAgain(query),
   )
 }
 
@@ -353,11 +354,6 @@ function failureMessage(error: unknown, nothingStarted: string): string {
   if (extractAuthContext(error).graphqlCodes?.includes('LIBRARY_OPERATION_NOT_STARTED'))
     return nothingStarted
   return "Couldn't confirm the operation. Refresh the page to check the library state before trying again."
-}
-
-function isForbidden(error: unknown): boolean {
-  const context = extractAuthContext(error)
-  return !!context.graphqlCodes?.includes('FORBIDDEN') || context.networkCode === 'FORBIDDEN'
 }
 
 // The change already wrote the library itself; every cached library list gains it once.
