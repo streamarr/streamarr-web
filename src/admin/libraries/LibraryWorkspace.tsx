@@ -66,13 +66,16 @@ const STOPPED_NOTES = {
 
 type Acknowledgement = { text: string; status: ManagedLibrary['status'] }
 
-// A library that leaves STOPPING says its run stopped; otherwise an acknowledgement lasts while
-// the library keeps the status its operation started.
+// A library that leaves STOPPING for its restored status says its run stopped. A busy status
+// right after STOPPING belongs to a later run, which a missed change or a read can reveal first.
+// Otherwise an acknowledgement lasts while the library keeps the status its operation started.
 function acknowledgementAfter(
   current: Acknowledgement | null,
   change: { from: ManagedLibrary['status']; to: ManagedLibrary['status']; stopped: StoppedRun },
 ): Acknowledgement | null {
-  if (change.from === 'STOPPING') return { text: STOPPED_NOTES[change.stopped], status: change.to }
+  const restored = canMaintainLibrary({ status: change.to })
+  if (change.from === 'STOPPING' && restored)
+    return { text: STOPPED_NOTES[change.stopped], status: change.to }
   return current?.status === change.to ? current : null
 }
 
