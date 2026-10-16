@@ -18,20 +18,26 @@ import {
   RemoveLibraryDocument,
   StartLibraryRefreshDocument,
   StartLibraryScanDocument,
+  StopLibraryRefreshDocument,
+  StopLibraryScanDocument,
   type AddLibraryInput,
   type ImageRefreshMode,
   type LibraryStatus,
   type ManagedLibraryFieldsFragment,
   type StartLibraryScanMutation,
+  type StopLibraryRefreshMutation,
+  type StopLibraryScanMutation,
 } from '../../graphql/generated/graphql'
 import { extractAuthContext, isForbidden } from '../../graphql/errorRouting'
 import { isReading } from '../../graphql/readAgain'
 import { userErrorMessage } from '../../graphql/userErrors'
 
-// Scan, refresh and removal share one refusal union.
-type LibraryOperationError = NonNullable<
-  StartLibraryScanMutation['startLibraryScan']
->['userErrors'][number]
+// Starts and removal share one refusal union; each stop adds its own refusal for a run that is
+// not in progress.
+type LibraryOperationError =
+  | NonNullable<StartLibraryScanMutation['startLibraryScan']>['userErrors'][number]
+  | NonNullable<StopLibraryScanMutation['stopLibraryScan']>['userErrors'][number]
+  | NonNullable<StopLibraryRefreshMutation['stopLibraryRefresh']>['userErrors'][number]
 
 type LibraryOperationPayload = {
   library?: ManagedLibraryFieldsFragment | null
@@ -176,7 +182,9 @@ export function useAdminLibraries() {
  * One in-flight library command per caller. A null result means the request failed, was refused,
  * was a duplicate, or outlived the caller; creation's userErrors ride the returned payload. Scan
  * and refresh success means the server started the operation, not that it finished: the returned
- * library shows the busy status unless a live change already reported that the run ended.
+ * library shows the busy status unless a live change already reported that the run ended. Stop
+ * success likewise means the server stored the stop: the returned library shows STOPPING until
+ * the run's admitted work finishes.
  */
 export function useLibraryCommands() {
   const client = useApolloClient()
@@ -268,6 +276,30 @@ export function useLibraryCommands() {
           return data?.startLibraryRefresh
         }),
       ),
+    stopScan: (libraryId: string) =>
+      execute(() =>
+        commandLibrary(libraryId, async (write) => {
+          const { data } = await client.mutate({
+            mutation: StopLibraryScanDocument,
+            variables: { input: { libraryId } },
+            fetchPolicy: 'no-cache',
+            update: (cache, { data }) => write(cache, data?.stopLibraryScan),
+          })
+          return data?.stopLibraryScan
+        }),
+      ),
+    stopRefresh: (libraryId: string) =>
+      execute(() =>
+        commandLibrary(libraryId, async (write) => {
+          const { data } = await client.mutate({
+            mutation: StopLibraryRefreshDocument,
+            variables: { input: { libraryId } },
+            fetchPolicy: 'no-cache',
+            update: (cache, { data }) => write(cache, data?.stopLibraryRefresh),
+          })
+          return data?.stopLibraryRefresh
+        }),
+      ),
     remove: (libraryId: string, onRemoved: () => void) =>
       execute(async () => {
         const outcome = operationOutcome(client.cache, libraryId)
@@ -299,7 +331,7 @@ function currentLibrary(
   return cache.readFragment({ fragment: ManagedLibraryFieldsFragmentDoc, id }) ?? payload.library
 }
 
-// The returned library, or the status a busy refusal carries, writes into the cache unless a live
+// The returned library, or the status a refusal carries, writes into the cache unless a live
 // change for the library arrived during the request: that change can already say the run ended.
 // The write happens in the mutation's own cache update, so the library shows its new status by
 // the time the command returns.
@@ -314,7 +346,8 @@ function operationOutcome(cache: ApolloCache, libraryId: string) {
       if (payload.library)
         target.writeFragment({ fragment: ManagedLibraryFieldsFragmentDoc, data: payload.library })
       for (const error of payload.userErrors) {
-        if (error.__typename === 'LibraryBusyError') showStatus(target, libraryId, error.status)
+        const status = refusedStatus(error)
+        if (status) showStatus(target, libraryId, status)
       }
     },
     // A socket that subscribed during the request may have missed the operation's own change, and
@@ -381,7 +414,19 @@ function holdLibrary(cache: ApolloCache, library: ManagedLibraryFieldsFragment) 
   })
 }
 
-// A busy refusal names no library, so normalization cannot apply the status it carries.
+// The status a refusal reports for the library, if its member carries one.
+function refusedStatus(error: LibraryOperationError): LibraryStatus | null {
+  switch (error.__typename) {
+    case 'LibraryBusyError':
+    case 'LibraryScanNotInProgressError':
+    case 'LibraryRefreshNotInProgressError':
+      return error.status
+    default:
+      return null
+  }
+}
+
+// A refusal names no library, so normalization cannot apply the status it carries.
 function showStatus(cache: ApolloCache, libraryId: string, status: LibraryStatus) {
   cache.modify<ManagedLibraryFieldsFragment>({
     id: cache.identify({ __typename: 'Library', id: libraryId }),
