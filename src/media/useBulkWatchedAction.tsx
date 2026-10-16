@@ -1,6 +1,11 @@
 import { Alert } from '@mantine/core'
 import { useState } from 'react'
-import type { SeasonDetailQuery, SeriesDetailQuery } from '../graphql/generated/graphql'
+import {
+  SeasonDetailDocument,
+  SeriesDetailDocument,
+  type SeasonDetailQuery,
+  type SeriesDetailQuery,
+} from '../graphql/generated/graphql'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { WatchedActionButton } from './WatchedActionButton'
 import { useWatchedToggle } from './useWatchedToggle'
@@ -18,7 +23,10 @@ type BulkWatchedTarget = Readonly<
 type BulkVerb = 'watched' | 'unwatched'
 
 export function useBulkWatchedAction(target: BulkWatchedTarget) {
-  const watched = useWatchedToggle(target.id)
+  const watched = useWatchedToggle(
+    target.id,
+    target.kind === 'series' ? SeriesDetailDocument : SeasonDetailDocument,
+  )
   const [confirming, setConfirming] = useState<BulkVerb | null>(null)
   const subject = describeTarget(target)
   if (!subject) return { action: null, feedback: null, dialog: null }
