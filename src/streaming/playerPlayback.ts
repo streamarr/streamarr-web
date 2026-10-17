@@ -28,6 +28,12 @@ type PlaybackSessionPayload = CreatePlaybackSessionMutation['createPlaybackSessi
 export type SourcePhase =
   { at: 'starting' } | { at: 'attached'; tracks: TrackSource } | { at: 'failed'; message: string }
 
+interface PlaybackStatusCheck {
+  controller: AbortController
+  generation: number
+  fatal: boolean
+}
+
 const pendingCleanups = new WeakMap<ApolloClient, () => Promise<void>>()
 
 export function startPlayerPlayback({
@@ -49,7 +55,7 @@ export function startPlayerPlayback({
   let playbackSessionId: string | null = null
   let sourceGeneration = 0
   let reportingFormat = false
-  let statusCheck: { controller: AbortController; generation: number; fatal: boolean } | undefined
+  let statusCheck: PlaybackStatusCheck | undefined
   let resume: { position: number; playing: boolean } | undefined
   let lastReportedPosition = startPositionSeconds ?? 0
   let lastKnownPosition: number | null = null
@@ -333,40 +339,52 @@ export function startPlayerPlayback({
       !cancelled && statusCheck === check && check.generation === sourceGeneration
     const deadline = setTimeout(() => check.controller.abort(), PLAYBACK_START_TIMEOUT_MS)
     try {
-      while (current() && !check.controller.signal.aborted) {
-        const result = await client.query({
-          query: PlaybackSessionDocument,
-          variables: { id: playbackSessionId },
-          fetchPolicy: 'no-cache',
-          context: { fetchOptions: { signal: check.controller.signal } },
-        })
-        if (!current()) return
-        const playback = result.data?.playbackSession
-        const attempt = playback?.currentFormatAttempt
-        if (
-          attempt?.__typename === 'ReadyPlaybackFormatAttempt' &&
-          attempt.streamSession.id === sessionId
-        ) {
-          // The worker wakes HTTP waiters before publishing the logical replacement event.
-          await waitForPlaybackStatus(check.controller.signal)
-          continue
-        }
-        beginHandover()
-        check.generation = sourceGeneration
-        const resolved = playback
-          ? await awaitReadyPlayback(playback, check.controller.signal, current)
-          : undefined
-        if (!current()) return
-        if (check.controller.signal.aborted) break
-        adoptPlayback(resolved)
-        return
-      }
-      if (current() && check.fatal) failSource()
+      await pollForReplacement({ check, current, id: playbackSessionId })
+      if (current() && check.controller.signal.aborted && check.fatal) failSource()
     } catch {
       if (current() && check.fatal) failSource()
     } finally {
       clearTimeout(deadline)
       if (statusCheck === check) statusCheck = undefined
+    }
+  }
+
+  async function pollForReplacement({
+    check,
+    current,
+    id,
+  }: {
+    check: PlaybackStatusCheck
+    current: () => boolean
+    id: string
+  }) {
+    while (current() && !check.controller.signal.aborted) {
+      const result = await client.query({
+        query: PlaybackSessionDocument,
+        variables: { id },
+        fetchPolicy: 'no-cache',
+        context: { fetchOptions: { signal: check.controller.signal } },
+      })
+      if (!current()) return
+      const playback = result.data?.playbackSession
+      const attempt = playback?.currentFormatAttempt
+      if (
+        attempt?.__typename === 'ReadyPlaybackFormatAttempt' &&
+        attempt.streamSession.id === sessionId
+      ) {
+        // The worker wakes HTTP waiters before publishing the logical replacement event.
+        await waitForPlaybackStatus(check.controller.signal)
+        continue
+      }
+      beginHandover()
+      check.generation = sourceGeneration
+      const resolved = playback
+        ? await awaitReadyPlayback(playback, check.controller.signal, current)
+        : undefined
+      if (!current()) return
+      if (check.controller.signal.aborted) break
+      adoptPlayback(resolved)
+      return
     }
   }
 
