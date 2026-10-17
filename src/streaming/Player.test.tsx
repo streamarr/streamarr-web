@@ -627,7 +627,9 @@ describe('Player', () => {
       loadMetadata(video)
       playheadAt(video, 73.25)
       if (!playing) pressPause(video)
-      video.muted = true
+      act(() => {
+        video.muted = true
+      })
       hls.destroy.mockImplementationOnce(() => video.load())
       const oldError = hls.on.mock.calls.find(([event]) => event === 'hlsError')?.[1]
       assert(oldError)
@@ -961,7 +963,7 @@ describe('Player', () => {
       }),
     )
     const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
-    await statusStarted.promise
+    await act(() => statusStarted.promise)
 
     unmount()
     await waitFor(() =>
