@@ -1,7 +1,7 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import type { UserEvent } from '@testing-library/user-event'
 import { graphql, HttpResponse } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type {
   ChangeEncoderPresetMutation,
   ChangeEncoderPresetMutationVariables,
@@ -200,6 +200,58 @@ describe('encoding settings', () => {
     await waitFor(() => expect(state.changes).toEqual(['SUPERFAST']))
     await waitFor(() => expect(select).toHaveValue('superfast'))
   })
+
+  it('shouldSaveHighlightedPresetWhenOpeningRefreshArrivesAfterKeyboardNavigation', async () => {
+    const state = serve()
+    renderAppAt(ENCODING)
+    const select = await presetSelect()
+    // user-event yields through RTL's timer after each action, which would deliver the opening
+    // refresh before keyboard navigation can overtake it.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      fireEvent.click(select)
+      fireEvent.keyDown(select, { key: 'ArrowDown', code: 'ArrowDown' })
+      fireEvent.keyDown(select, { key: 'ArrowDown', code: 'ArrowDown' })
+      expect(screen.getByRole('option', { name: 'superfast', hidden: true })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      )
+      await act(() => vi.runOnlyPendingTimers())
+      expect(screen.getByRole('option', { name: 'superfast', hidden: true })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      )
+      fireEvent.keyDown(select, { key: 'Enter', code: 'Enter' })
+    } finally {
+      vi.useRealTimers()
+    }
+    await waitFor(() => expect(state.changes).toEqual(['SUPERFAST']))
+    expect(select).toHaveValue('superfast')
+  })
+
+  it.each([
+    { preset: 'AUTOMATIC', expected: 'SUPERFAST', label: 'superfast' },
+    { preset: 'MEDIUM', expected: 'SLOW', label: 'slow' },
+  ] as const)(
+    'shouldNavigateFromSavedPresetBeforeOpeningRefreshRuns($preset)',
+    async ({ preset, expected, label }) => {
+      const state = serve({ ...SAVED_AUTOMATIC, preset })
+      renderAppAt(ENCODING)
+      const select = await presetSelect()
+      select.focus()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      try {
+        fireEvent.keyDown(select, { key: 'ArrowDown', code: 'ArrowDown' })
+        fireEvent.keyDown(select, { key: 'ArrowDown', code: 'ArrowDown' })
+        await act(() => vi.runOnlyPendingTimers())
+        fireEvent.keyDown(select, { key: 'Enter', code: 'Enter' })
+      } finally {
+        vi.useRealTimers()
+      }
+      await waitFor(() => expect(state.changes).toEqual([expected]))
+      expect(select).toHaveValue(label)
+    },
+  )
 
   it('shouldShowSettingSavedElsewhereWhenAdminReturnsToEncoding', async () => {
     const state = serve()
