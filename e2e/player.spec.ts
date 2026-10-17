@@ -110,12 +110,20 @@ function operationName(call: Request): string {
 }
 
 const PLAYER_OPERATIONS: Record<string, unknown> = {
-  CreateStreamSession: {
-    createStreamSession: {
-      session: {
-        id: 'sess-1',
-        streamUrl: '/api/stream/e2e/multivariant.m3u8?t=playback-token',
-        transcodeMode: 'REMUX',
+  CreatePlaybackSession: {
+    createPlaybackSession: {
+      playbackSession: {
+        id: 'playback-1',
+        formatAttemptCount: 1,
+        maximumFormatAttempts: 3,
+        currentFormatAttempt: {
+          __typename: 'ReadyPlaybackFormatAttempt',
+          streamSession: {
+            id: 'sess-1',
+            streamUrl: '/api/stream/e2e/multivariant.m3u8?t=playback-token',
+            transcodeMode: 'REMUX',
+          },
+        },
       },
       userErrors: [],
     },
@@ -135,12 +143,14 @@ const PLAYER_OPERATIONS: Record<string, unknown> = {
     },
   },
   ReportStreamSessionTimeline: { reportStreamSessionTimeline: true },
-  DestroyStreamSession: { destroyStreamSession: true },
+  DestroyPlaybackSession: {
+    destroyPlaybackSession: { playbackSessionId: 'playback-1', userErrors: [] },
+  },
 }
 
 const CAPACITY_REFUSAL = {
-  createStreamSession: {
-    session: null,
+  createPlaybackSession: {
+    playbackSession: null,
     userErrors: [
       {
         __typename: 'TranscodeCapacityUnavailableError',
@@ -656,12 +666,12 @@ test('a refusal keeps Retry above the control bar on a phone held sideways', asy
   request,
 }) => {
   await page.setViewportSize({ width: 667, height: 375 })
-  await routePlayer(page, request, { operations: { CreateStreamSession: CAPACITY_REFUSAL } })
+  await routePlayer(page, request, { operations: { CreatePlaybackSession: CAPACITY_REFUSAL } })
   await page.goto(PLAYER_PATH)
   const retry = page.getByRole('button', { name: 'Retry playback' })
   await expect(retry).toBeVisible()
 
-  const retried = page.waitForRequest((call) => operationName(call) === 'CreateStreamSession')
+  const retried = page.waitForRequest((call) => operationName(call) === 'CreatePlaybackSession')
   await retry.click()
   await retried
 })

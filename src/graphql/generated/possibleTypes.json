@@ -119,6 +119,17 @@
     "CreateHouseholdError": [
       "HouseholdNameRequiredError"
     ],
+    "CreatePlaybackSessionError": [
+      "InvalidIdError",
+      "InvalidMediaFileError",
+      "MediaFileFrameRateUnknownError",
+      "MediaFileHasNoVideoError",
+      "MediaFileNotFoundError",
+      "MediaFileProbeNotReadyError",
+      "NoEligibleVideoFormatError",
+      "PlaybackSessionClosedError",
+      "TranscodeCapacityUnavailableError"
+    ],
     "CreateProfileError": [
       "AccountNotFoundError",
       "HouseholdNotFoundError",
@@ -127,15 +138,6 @@
       "ProfileNameRequiredError",
       "ProfileNameTakenError",
       "ProfileRequiresEligibleManagerError"
-    ],
-    "CreateStreamSessionError": [
-      "InvalidIdError",
-      "InvalidMediaFileError",
-      "MediaFileFrameRateUnknownError",
-      "MediaFileHasNoVideoError",
-      "MediaFileNotFoundError",
-      "MediaFileProbeNotReadyError",
-      "TranscodeCapacityUnavailableError"
     ],
     "DeclineManagerInvitationError": [
       "ManagerInvitationNotFoundError"
@@ -182,6 +184,9 @@
       "ProfileNotDeletableError",
       "ProfileNotFoundError",
       "ReauthenticationRequiredError"
+    ],
+    "DestroyPlaybackSessionError": [
+      "InvalidIdError"
     ],
     "DisableAccountError": [
       "AccountNotFoundError",
@@ -353,8 +358,14 @@
       "MediaFileNotFoundError",
       "MediaFileProbeNotReadyError",
       "MembershipShareCannotEndError",
+      "NoEligibleVideoFormatError",
       "NotAManagerError",
       "OfferInvalidatedError",
+      "PlaybackFormatAttemptsExhaustedError",
+      "PlaybackFormatRejectedError",
+      "PlaybackOutputMismatchError",
+      "PlaybackSessionClosedError",
+      "PlaybackStartupFailedError",
       "ProfileAlreadyLinkedError",
       "ProfileAlreadySharedError",
       "ProfileBelongsToAccountError",
@@ -388,6 +399,24 @@
       "HouseholdNotFoundError",
       "ProfileAlreadySharedError",
       "ProfileNotFoundError"
+    ],
+    "PlaybackFormatAttempt": [
+      "FailedPlaybackFormatAttempt",
+      "PendingPlaybackFormatAttempt",
+      "ReadyPlaybackFormatAttempt"
+    ],
+    "PlaybackFormatAttemptError": [
+      "InvalidMediaFileError",
+      "MediaFileFrameRateUnknownError",
+      "MediaFileHasNoVideoError",
+      "MediaFileNotFoundError",
+      "MediaFileProbeNotReadyError",
+      "NoEligibleVideoFormatError",
+      "PlaybackFormatAttemptsExhaustedError",
+      "PlaybackFormatRejectedError",
+      "PlaybackOutputMismatchError",
+      "PlaybackStartupFailedError",
+      "TranscodeCapacityUnavailableError"
     ],
     "RejectProfileShareError": [
       "ShareNotFoundError",
@@ -434,6 +463,10 @@
       "ProfileNameRequiredError",
       "ProfileNameTakenError",
       "ProfileNotFoundError"
+    ],
+    "ReportPlaybackFormatFailureError": [
+      "InvalidIdError",
+      "PlaybackSessionClosedError"
     ],
     "RevokeDeviceRegistrationError": [
       "RegistrationNotActiveError",

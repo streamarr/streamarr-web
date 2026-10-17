@@ -1,3 +1,4 @@
+import { readyPlaybackSession, destroyedPlaybackSession } from '../test/playbackSession'
 import { deferred } from '../test/deferred'
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { graphql, HttpResponse } from 'msw'
@@ -49,15 +50,17 @@ function movieDetail({
 }
 
 function streamSessionCreated() {
-  return graphql.mutation('CreateStreamSession', () =>
+  return graphql.mutation('CreatePlaybackSession', () =>
     HttpResponse.json({
       data: {
-        createStreamSession: {
-          session: {
-            id: 'stream1',
-            streamUrl: '/api/stream/f1/main.m3u8?t=playback',
-            transcodeMode: 'REMUX',
-          },
+        createPlaybackSession: {
+          playbackSession: readyPlaybackSession({
+            streamSession: {
+              id: 'stream1',
+              streamUrl: '/api/stream/f1/main.m3u8?t=playback',
+              transcodeMode: 'REMUX',
+            },
+          }),
           userErrors: [],
         },
       },
@@ -291,9 +294,11 @@ describe('watched state across routes', () => {
         }
         return HttpResponse.json({ data: { reportStreamSessionTimeline: true } })
       }),
-      graphql.mutation('DestroyStreamSession', () => {
+      graphql.mutation('DestroyPlaybackSession', ({ variables }) => {
         destroyed = true
-        return HttpResponse.json({ data: { destroyStreamSession: true } })
+        return HttpResponse.json({
+          data: { destroyPlaybackSession: destroyedPlaybackSession(variables) },
+        })
       }),
     )
     const { router } = await playMovieToItsEnd()
@@ -328,8 +333,10 @@ describe('watched state across routes', () => {
         watched = true
         return HttpResponse.json({ data: { reportStreamSessionTimeline: true } })
       }),
-      graphql.mutation('DestroyStreamSession', () =>
-        HttpResponse.json({ data: { destroyStreamSession: true } }),
+      graphql.mutation('DestroyPlaybackSession', ({ variables }) =>
+        HttpResponse.json({
+          data: { destroyPlaybackSession: destroyedPlaybackSession(variables) },
+        }),
       ),
     )
     const { router } = await playMovieToItsEnd()
@@ -365,8 +372,10 @@ describe('watched state across routes', () => {
         }
         return HttpResponse.json({ data: { reportStreamSessionTimeline: true } })
       }),
-      graphql.mutation('DestroyStreamSession', () =>
-        HttpResponse.json({ data: { destroyStreamSession: true } }),
+      graphql.mutation('DestroyPlaybackSession', ({ variables }) =>
+        HttpResponse.json({
+          data: { destroyPlaybackSession: destroyedPlaybackSession(variables) },
+        }),
       ),
     )
     const { router, video } = await playMovieToItsEnd()
@@ -402,8 +411,10 @@ describe('watched state across routes', () => {
         }
         return HttpResponse.json({ data: { reportStreamSessionTimeline: true } })
       }),
-      graphql.mutation('DestroyStreamSession', () =>
-        HttpResponse.json({ data: { destroyStreamSession: true } }),
+      graphql.mutation('DestroyPlaybackSession', ({ variables }) =>
+        HttpResponse.json({
+          data: { destroyPlaybackSession: destroyedPlaybackSession(variables) },
+        }),
       ),
     )
     const { router, video } = await playMovieToItsEnd()
@@ -466,9 +477,11 @@ describe('watched state across routes', () => {
           },
         })
       }),
-      graphql.mutation('DestroyStreamSession', () => {
+      graphql.mutation('DestroyPlaybackSession', ({ variables }) => {
         destroyed = true
-        return HttpResponse.json({ data: { destroyStreamSession: true } })
+        return HttpResponse.json({
+          data: { destroyPlaybackSession: destroyedPlaybackSession(variables) },
+        })
       }),
       streamSessionCreated(),
       graphql.mutation('ReportStreamSessionTimeline', async ({ variables }) => {

@@ -1,0 +1,11 @@
+mutation DestroyPlaybackSession($input: DestroyPlaybackSessionInput!) {
+  destroyPlaybackSession(input: $input) {
+    playbackSessionId
+    userErrors {
+      __typename
+      ... on MutationError {
+        message
+      }
+    }
+  }
+}

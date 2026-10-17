@@ -1,8 +1,12 @@
 import type { ApolloClient, ObservableQuery } from '@apollo/client'
-import Hls from 'hls.js'
+import Hls, { type ErrorData } from 'hls.js'
 import {
-  type CreateStreamSessionMutation,
-  DestroyStreamSessionDocument,
+  type CreatePlaybackSessionMutation,
+  DestroyPlaybackSessionDocument,
+  PlaybackSessionDocument,
+  type PlaybackSessionFieldsFragment,
+  type PlaybackFormatFailure,
+  ReportPlaybackFormatFailureDocument,
   ReportStreamSessionTimelineDocument,
   type ReportStreamSessionTimelineMutationVariables,
 } from '../graphql/generated/graphql'
@@ -14,38 +18,51 @@ import { hlsTrackSource, nativeTrackSource, type TrackSource } from './trackSour
 const TIMELINE_REPORT_INTERVAL_SECONDS = 10
 const TIMELINE_CLEANUP_TIMEOUT_MS = 10_000
 const PLAYBACK_START_TIMEOUT_MS = 30_000
+const PLAYBACK_STATUS_INTERVAL_MS = 500
 
 const PLAYBACK_FAILURE_MESSAGE = "Playback couldn't start. Try again."
 
 type PlaybackState = ReportStreamSessionTimelineMutationVariables['state']
-type StreamSessionPayload = CreateStreamSessionMutation['createStreamSession']
+type PlaybackSessionPayload = CreatePlaybackSessionMutation['createPlaybackSession']
 
 export type SourcePhase =
   { at: 'starting' } | { at: 'attached'; tracks: TrackSource } | { at: 'failed'; message: string }
+
+interface PlaybackStatusCheck {
+  controller: AbortController
+  generation: number
+  fatal: boolean
+}
 
 const pendingCleanups = new WeakMap<ApolloClient, () => Promise<void>>()
 
 export function startPlayerPlayback({
   video,
   client,
-  createStreamSession,
+  createPlaybackSession,
   startPositionSeconds,
   onSourcePhase,
 }: {
   video: HTMLVideoElement
   client: ApolloClient
-  createStreamSession: () => Promise<{ data?: CreateStreamSessionMutation | null }>
+  createPlaybackSession: () => Promise<{ data?: CreatePlaybackSessionMutation | null }>
   startPositionSeconds?: number
   onSourcePhase: (phase: SourcePhase) => void
 }): () => void {
   let source: StreamSource | null = null
   let cancelled = false
   let sessionId: string | null = null
+  let playbackSessionId: string | null = null
+  let sourceGeneration = 0
+  let reportingFormat = false
+  let statusCheck: PlaybackStatusCheck | undefined
+  let resume: { position: number; playing: boolean } | undefined
   let lastReportedPosition = startPositionSeconds ?? 0
   let lastKnownPosition: number | null = null
   let unacknowledgedEndPosition: number | null = null
   let timelineReports = Promise.resolve()
   const reportCancellation = new AbortController()
+  const statusCancellation = new AbortController()
   let previousCleanup = pendingCleanups.get(client)
   let cleanupInFlight: Promise<void> | undefined
 
@@ -54,13 +71,14 @@ export function startPlayerPlayback({
     const deadline = setTimeout(() => controller.abort(), PLAYBACK_START_TIMEOUT_MS)
     const result = await client
       .mutate({
-        mutation: DestroyStreamSessionDocument,
-        variables: { sessionId: id },
+        mutation: DestroyPlaybackSessionDocument,
+        variables: { input: { playbackSessionId: id } },
         context: { fetchOptions: { signal: controller.signal } },
       })
       .finally(() => clearTimeout(deadline))
-    if (!result.data?.destroyStreamSession) {
-      throw new Error('Stream session destruction was not acknowledged')
+    const payload = result.data?.destroyPlaybackSession
+    if (payload?.playbackSessionId !== id || payload.userErrors.length > 0) {
+      throw new Error('Playback session destruction was not acknowledged')
     }
   }
 
@@ -100,7 +118,7 @@ export function startPlayerPlayback({
     // The server accepts arrival order, including reports that precede the final STOPPED.
     timelineReports = timelineReports
       .then(async () => {
-        if (reportCancellation.signal.aborted) {
+        if (reportCancellation.signal.aborted || id !== sessionId) {
           return
         }
         await send(id)
@@ -121,49 +139,66 @@ export function startPlayerPlayback({
   }
 
   let playRequested = false
-  const timeline = attachTimeline(video, {
-    // Seeking before metadata is loaded is unreliable across browsers; the event is the safe point.
-    onLoadedMetadata: (element) => {
-      if (startPositionSeconds) {
-        element.currentTime = startPositionSeconds
-      }
-      // Before metadata, only the viewer can ask to play. Their choice stands, even a later Pause.
-      if (playRequested) {
-        return
-      }
-      // Asked only after the seek, so the first frame to play is at the start position.
-      void element.play().catch(ignoreRefusedStart)
-    },
-    onPlay: () => {
-      playRequested = true
-    },
-    onTimeUpdate: (element) => {
-      lastKnownPosition = element.currentTime
-      if (Math.abs(element.currentTime - lastReportedPosition) < TIMELINE_REPORT_INTERVAL_SECONDS) {
-        return
-      }
-      lastReportedPosition = element.currentTime
-      report('PLAYING', element.currentTime)
-    },
-    onPause: (element) => {
-      lastKnownPosition = element.currentTime
-      report('PAUSED', element.currentTime)
-    },
-    onEnded: (element) => {
-      const endedAt = element.currentTime
-      lastKnownPosition = endedAt
-      unacknowledgedEndPosition = endedAt
-      // A replay can move the playhead while an earlier report holds the queue.
-      reportStopped(() => endedAt)
-    },
-  })
+  function trackTimeline() {
+    return attachTimeline(video, {
+      // Seeking before metadata is loaded is unreliable across browsers; the event is the safe point.
+      onLoadedMetadata: (element) => {
+        if (resume) {
+          const previous = resume
+          resume = undefined
+          element.currentTime = previous.position
+          if (previous.playing) void element.play().catch(ignoreRefusedStart)
+          return
+        }
+        if (startPositionSeconds) {
+          element.currentTime = startPositionSeconds
+        }
+        // Before metadata, only the viewer can ask to play. Their choice stands, even a later Pause.
+        if (playRequested) {
+          return
+        }
+        // Asked only after the seek, so the first frame to play is at the start position.
+        void element.play().catch(ignoreRefusedStart)
+      },
+      onPlay: () => {
+        if (resume) resume.playing = true
+        playRequested = true
+      },
+      onTimeUpdate: (element) => {
+        lastKnownPosition = element.currentTime
+        if (
+          Math.abs(element.currentTime - lastReportedPosition) < TIMELINE_REPORT_INTERVAL_SECONDS
+        ) {
+          return
+        }
+        lastReportedPosition = element.currentTime
+        report('PLAYING', element.currentTime)
+      },
+      onPause: (element) => {
+        if (resume) resume.playing = false
+        lastKnownPosition = element.currentTime
+        report('PAUSED', element.currentTime)
+      },
+      onEnded: (element) => {
+        const endedAt = element.currentTime
+        lastKnownPosition = endedAt
+        unacknowledgedEndPosition = endedAt
+        // A replay can move the playhead while an earlier report holds the queue.
+        reportStopped(() => endedAt)
+      },
+    })
+  }
+  let timeline = trackTimeline()
 
-  const startupDeadline = createStartupDeadline(() => {
+  function expireStartup() {
     cancelled = true
+    statusCancellation.abort()
+    stopStatusCheck()
     detachSource()
     onSourcePhase({ at: 'failed', message: 'Playback is taking too long to start. Try again.' })
     requestCleanup()
-  })
+  }
+  let startupDeadline = createStartupDeadline(expireStartup)
   const startup = Promise.resolve()
     .then(async () => {
       await previousCleanup?.()
@@ -172,34 +207,219 @@ export function startPlayerPlayback({
         return
       }
       // The UI deadline must not discard a late session ID that still needs destruction.
-      const result = await createStreamSession()
-      const payload = result.data?.createStreamSession
-      const session = payload?.session
-      sessionId = session?.id ?? null
+      const result = await createPlaybackSession()
+      const payload = result.data?.createPlaybackSession
+      const initialPlayback = payload?.playbackSession
+      playbackSessionId = initialPlayback?.id ?? null
       if (cancelled) {
         return
       }
-      if (!session) {
+      if (!initialPlayback) {
         showFailure(refusalMessage(payload))
         return
       }
-      source = attach(video, session.streamUrl, {
-        startupDeadline,
-        onFatal: () => {
-          if (cancelled) {
-            return
-          }
-          detachSource()
-          showFailure(PLAYBACK_FAILURE_MESSAGE)
-        },
-      })
-      onSourcePhase({ at: 'attached', tracks: source.tracks })
+      const playback = await awaitReadyPlayback(initialPlayback)
+      if (cancelled) {
+        return
+      }
+      adoptPlayback(playback)
     })
     .catch(() => {
       if (!cancelled) {
         showFailure(PLAYBACK_FAILURE_MESSAGE)
       }
     })
+
+  function adoptPlayback(playback: PlaybackSessionFieldsFragment | null | undefined) {
+    const attempt = playback?.currentFormatAttempt
+    if (attempt?.__typename === 'FailedPlaybackFormatAttempt') {
+      showFailure(userErrorMessage(attempt.error))
+      return
+    }
+    if (attempt?.__typename !== 'ReadyPlaybackFormatAttempt') {
+      showFailure(PLAYBACK_FAILURE_MESSAGE)
+      return
+    }
+    sessionId = attempt.streamSession.id
+    const generation = sourceGeneration
+    timeline.detach()
+    timeline = trackTimeline()
+    source = attach(video, attempt.streamSession.streamUrl, {
+      startupDeadline,
+      onFormatFailure: (reason) => {
+        void reportFormatFailure(reason, generation)
+      },
+      onStatusRequired: (fatal) => {
+        void reconcilePlaybackStatus({ generation, fatal })
+      },
+      onFatal: () => {
+        if (cancelled || generation !== sourceGeneration) return
+        stopStatusCheck()
+        detachSource()
+        showFailure(PLAYBACK_FAILURE_MESSAGE)
+      },
+    })
+    onSourcePhase({ at: 'attached', tracks: source.tracks })
+  }
+
+  async function reportFormatFailure(reason: PlaybackFormatFailure, generation: number) {
+    if (
+      cancelled ||
+      generation !== sourceGeneration ||
+      reportingFormat ||
+      !playbackSessionId ||
+      !sessionId
+    )
+      return
+    reportingFormat = true
+    const streamSessionId = sessionId
+    stopStatusCheck()
+    beginHandover()
+    try {
+      const result = await client.mutate({
+        mutation: ReportPlaybackFormatFailureDocument,
+        variables: { input: { playbackSessionId, streamSessionId, reason } },
+        fetchPolicy: 'no-cache',
+        context: { fetchOptions: { signal: statusCancellation.signal } },
+      })
+      if (cancelled) return
+      const payload = result.data?.reportPlaybackFormatFailure
+      if (!payload?.playbackSession) {
+        showFailure(refusalMessage(payload))
+        return
+      }
+      const playback = await awaitReadyPlayback(payload.playbackSession)
+      if (cancelled) return
+      reportingFormat = false
+      adoptPlayback(playback)
+    } catch {
+      if (!cancelled) showFailure(PLAYBACK_FAILURE_MESSAGE)
+    } finally {
+      reportingFormat = false
+    }
+  }
+
+  function beginHandover() {
+    resume ??= {
+      position:
+        video.readyState >= HTMLMediaElement.HAVE_METADATA
+          ? video.currentTime
+          : (startPositionSeconds ?? video.currentTime),
+      playing: !playRequested || !video.paused,
+    }
+    detachSource()
+    sessionId = null
+    startupDeadline.end()
+    startupDeadline = createStartupDeadline(expireStartup)
+    onSourcePhase({ at: 'starting' })
+  }
+
+  function stopStatusCheck() {
+    const previous = statusCheck
+    statusCheck = undefined
+    previous?.controller.abort()
+  }
+
+  async function reconcilePlaybackStatus({
+    generation,
+    fatal,
+  }: {
+    generation: number
+    fatal: boolean
+  }) {
+    if (cancelled || generation !== sourceGeneration || reportingFormat || !playbackSessionId)
+      return
+    if (statusCheck) {
+      statusCheck.fatal ||= fatal
+      return
+    }
+    const check = { controller: new AbortController(), generation, fatal }
+    statusCheck = check
+    const current = () =>
+      !cancelled && statusCheck === check && check.generation === sourceGeneration
+    const deadline = setTimeout(() => check.controller.abort(), PLAYBACK_START_TIMEOUT_MS)
+    try {
+      await pollForReplacement({ check, current, id: playbackSessionId })
+      if (current() && check.controller.signal.aborted && check.fatal) failSource()
+    } catch {
+      if (current() && check.fatal) failSource()
+    } finally {
+      clearTimeout(deadline)
+      if (statusCheck === check) statusCheck = undefined
+    }
+  }
+
+  async function pollForReplacement({
+    check,
+    current,
+    id,
+  }: {
+    check: PlaybackStatusCheck
+    current: () => boolean
+    id: string
+  }) {
+    while (current() && !check.controller.signal.aborted) {
+      const result = await client.query({
+        query: PlaybackSessionDocument,
+        variables: { id },
+        fetchPolicy: 'no-cache',
+        context: { fetchOptions: { signal: check.controller.signal } },
+      })
+      if (!current()) return
+      const playback = result.data?.playbackSession
+      const attempt = playback?.currentFormatAttempt
+      if (
+        attempt?.__typename === 'ReadyPlaybackFormatAttempt' &&
+        attempt.streamSession.id === sessionId
+      ) {
+        // The worker wakes HTTP waiters before publishing the logical replacement event.
+        await waitForPlaybackStatus(check.controller.signal)
+        continue
+      }
+      beginHandover()
+      check.generation = sourceGeneration
+      const resolved = playback
+        ? await awaitReadyPlayback(playback, check.controller.signal, current)
+        : undefined
+      if (!current()) return
+      if (check.controller.signal.aborted) break
+      adoptPlayback(resolved)
+      return
+    }
+  }
+
+  function failSource() {
+    detachSource()
+    showFailure(PLAYBACK_FAILURE_MESSAGE)
+  }
+
+  async function awaitReadyPlayback(
+    initial: PlaybackSessionFieldsFragment,
+    signal = statusCancellation.signal,
+    current = () => !cancelled,
+  ) {
+    let playback: PlaybackSessionFieldsFragment | null | undefined = initial
+    while (
+      current() &&
+      !signal.aborted &&
+      playback?.currentFormatAttempt.__typename === 'PendingPlaybackFormatAttempt'
+    ) {
+      const result = await client.query({
+        query: PlaybackSessionDocument,
+        variables: { id: initial.id },
+        fetchPolicy: 'no-cache',
+        context: { fetchOptions: { signal } },
+      })
+      if (!current()) {
+        return undefined
+      }
+      playback = result.data?.playbackSession
+      if (playback?.currentFormatAttempt.__typename === 'PendingPlaybackFormatAttempt') {
+        await waitForPlaybackStatus(signal)
+      }
+    }
+    return playback
+  }
 
   function showFailure(message: string) {
     startupDeadline.end()
@@ -222,8 +442,9 @@ export function startPlayerPlayback({
     previousCleanup = undefined
     const deadline = setTimeout(() => reportCancellation.abort(), TIMELINE_CLEANUP_TIMEOUT_MS)
     await timelineReports.finally(() => clearTimeout(deadline))
-    if (sessionId) {
-      await destroySession(sessionId)
+    if (playbackSessionId) {
+      await destroySession(playbackSessionId)
+      playbackSessionId = null
       sessionId = null
     }
     if (pendingCleanups.get(client) === releaseSession) {
@@ -232,6 +453,7 @@ export function startPlayerPlayback({
   }
 
   function detachSource() {
+    sourceGeneration += 1
     // Releasing the stream rewinds the element; the timeline must not record the rewind.
     timeline.detach()
     source?.detach()
@@ -246,12 +468,29 @@ export function startPlayerPlayback({
 
   return () => {
     cancelled = true
+    statusCancellation.abort()
+    stopStatusCheck()
     startupDeadline.end()
     reportStopped(() => unacknowledgedEndPosition)
     reportStopped(() => lastKnownPosition)
     detachSource()
     requestCleanup()
   }
+}
+
+function waitForPlaybackStatus(signal: AbortSignal): Promise<void> {
+  if (signal.aborted) {
+    return Promise.resolve()
+  }
+  return new Promise((resolve) => {
+    const finish = () => {
+      clearTimeout(timer)
+      signal.removeEventListener('abort', finish)
+      resolve()
+    }
+    const timer = setTimeout(finish, PLAYBACK_STATUS_INTERVAL_MS)
+    signal.addEventListener('abort', finish, { once: true })
+  })
 }
 
 type TimelineHandler = (video: HTMLVideoElement) => void
@@ -336,7 +575,7 @@ function createStartupDeadline(onExpired: () => void): StartupDeadline {
   }
 }
 
-function refusalMessage(payload: StreamSessionPayload | undefined): string {
+function refusalMessage(payload: PlaybackSessionPayload | undefined): string {
   const refusal = payload?.userErrors[0]
   return refusal ? userErrorMessage(refusal) : PLAYBACK_FAILURE_MESSAGE
 }
@@ -358,6 +597,8 @@ interface StreamSource {
 
 interface StreamSourceOptions {
   onFatal: () => void
+  onFormatFailure: (reason: PlaybackFormatFailure) => void
+  onStatusRequired: (fatal: boolean) => void
   startupDeadline: StartupDeadline
 }
 
@@ -368,21 +609,57 @@ function attach(video: HTMLVideoElement, url: string, options: StreamSourceOptio
   }
   const hls = new Hls()
   hls.on(Hls.Events.ERROR, (_event, data) => {
+    if (data.type === Hls.ErrorTypes.NETWORK_ERROR && data.response?.code === 503) {
+      options.onStatusRequired(data.fatal)
+      return
+    }
     if (!data.fatal) {
       return
     }
-    // An expired ?t= token or a restarted server: the instance cannot recover.
+    if (isUnsupportedFormat(data)) {
+      options.onFormatFailure('UNSUPPORTED_FORMAT')
+      return
+    }
     options.onFatal()
   })
+  const onVideoError = () => handleVideoError(video, options)
+  video.addEventListener('error', onVideoError)
   video.addEventListener('loadedmetadata', options.startupDeadline.end)
   hls.loadSource(url)
   hls.attachMedia(video)
   return {
     detach: () => {
       video.removeEventListener('loadedmetadata', options.startupDeadline.end)
+      video.removeEventListener('error', onVideoError)
       hls.destroy()
     },
     tracks: hlsTrackSource(hls),
+  }
+}
+
+function handleVideoError(video: HTMLVideoElement, options: StreamSourceOptions) {
+  switch (video.error?.code) {
+    case 3:
+      options.onFormatFailure('DECODE_ERROR')
+      return
+    case 4:
+      options.onStatusRequired(true)
+      return
+    default:
+      options.onFatal()
+  }
+}
+
+function isUnsupportedFormat(data: ErrorData): boolean {
+  if (data.type !== Hls.ErrorTypes.MEDIA_ERROR) return false
+  switch (data.details) {
+    case Hls.ErrorDetails.MANIFEST_INCOMPATIBLE_CODECS_ERROR:
+    case Hls.ErrorDetails.BUFFER_INCOMPATIBLE_CODECS_ERROR:
+      return true
+    case Hls.ErrorDetails.BUFFER_ADD_CODEC_ERROR:
+      return data.error.name === 'NotSupportedError'
+    default:
+      return false
   }
 }
 
@@ -390,8 +667,10 @@ function attach(video: HTMLVideoElement, url: string, options: StreamSourceOptio
 function attachNative(
   video: HTMLVideoElement,
   url: string,
-  { onFatal, startupDeadline }: StreamSourceOptions,
+  options: StreamSourceOptions,
 ): StreamSource {
+  const { startupDeadline } = options
+  const onVideoError = () => handleVideoError(video, options)
   // WebKit loads metadata from the playlists alone, so startup ends on the first frame. A browser
   // may withhold that frame until the viewer presses play, so a suspend while paused holds startup
   // until then. A playing element that suspends is still owed its first frame.
@@ -400,14 +679,14 @@ function attachNative(
       startupDeadline.hold()
     }
   }
-  video.addEventListener('error', onFatal)
+  video.addEventListener('error', onVideoError)
   video.addEventListener('loadeddata', startupDeadline.end)
   video.addEventListener('suspend', holdWhilePaused)
   video.addEventListener('play', startupDeadline.rearm)
   video.src = url
   return {
     detach: () => {
-      video.removeEventListener('error', onFatal)
+      video.removeEventListener('error', onVideoError)
       video.removeEventListener('loadeddata', startupDeadline.end)
       video.removeEventListener('suspend', holdWhilePaused)
       video.removeEventListener('play', startupDeadline.rearm)

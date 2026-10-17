@@ -27,6 +27,7 @@ jobs:
           cache: npm
       # No dependency needs its lifecycle scripts here, so none of them run.
       - run: npm ci --ignore-scripts
+      - run: npm run dependencies:patch
       - run: npm run format:check
       - run: npm run lint
       - run: npm run typecheck

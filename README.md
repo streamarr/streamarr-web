@@ -20,6 +20,18 @@ npm run format # Prettier; format:check is the CI gate
 npm run build  # production bundle
 ```
 
+### Dependency patches
+
+`npm install` applies the reviewed patches in `patches/`. After an install with
+`--ignore-scripts`, run `npm run dependencies:patch` before testing or building;
+CI does this explicitly while keeping dependency lifecycle scripts disabled.
+Patch failures and version mismatches fail the command.
+
+`@mantine/core` is pinned while its combobox patch cancels deferred option-index
+refreshes superseded by keyboard selection. Without it, Enter can choose the
+previous value even while the next option is highlighted. Recheck the rendered
+Encoding and Library controls before updating the package or retiring the patch.
+
 ### Pointing at a server elsewhere
 
 The dev proxy defaults to `localhost:8080`. To develop against a server on another
