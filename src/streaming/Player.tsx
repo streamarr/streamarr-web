@@ -1,7 +1,7 @@
 import { useApolloClient, useMutation } from '@apollo/client/react'
 import { Alert, Button } from '@mantine/core'
 import { useEffect, useRef, useState } from 'react'
-import { CreateStreamSessionDocument } from '../graphql/generated/graphql'
+import { CreatePlaybackSessionDocument } from '../graphql/generated/graphql'
 import { DetailBackButton } from '../media/DetailBack'
 import focusStyles from '../styles/focus.module.css'
 import { BufferingRing } from './BufferingRing'
@@ -32,7 +32,9 @@ export function Player({
   const videoRef = useRef<HTMLVideoElement>(null)
   const controlsRef = useRef<HTMLDivElement>(null)
   const backRef = useRef<HTMLDivElement>(null)
-  const [createStreamSession] = useMutation(CreateStreamSessionDocument)
+  const [createPlaybackSession] = useMutation(CreatePlaybackSessionDocument, {
+    fetchPolicy: 'no-cache',
+  })
   const client = useApolloClient()
   const [sourcePhase, setSourcePhase] = useState(STARTING)
   const [attempt, setAttempt] = useState(0)
@@ -58,11 +60,11 @@ export function Player({
     return startPlayerPlayback({
       video,
       client,
-      createStreamSession: () => createStreamSession({ variables: { input: { mediaFileId } } }),
+      createPlaybackSession: () => createPlaybackSession({ variables: { input: { mediaFileId } } }),
       startPositionSeconds,
       onSourcePhase: setSourcePhase,
     })
-  }, [mediaFileId, startPositionSeconds, createStreamSession, client, attempt])
+  }, [mediaFileId, startPositionSeconds, createPlaybackSession, client, attempt])
 
   return (
     <section

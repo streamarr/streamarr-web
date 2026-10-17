@@ -137,11 +137,11 @@ describe('the root layout', () => {
     server.use(
       graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
       graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
-      graphql.mutation('CreateStreamSession', () =>
+      graphql.mutation('CreatePlaybackSession', () =>
         HttpResponse.json({
           data: {
-            createStreamSession: {
-              session: null,
+            createPlaybackSession: {
+              playbackSession: null,
               userErrors: [
                 { __typename: 'TranscodeCapacityUnavailableError', message: 'Every slot is busy.' },
               ],

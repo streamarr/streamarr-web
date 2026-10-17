@@ -1,0 +1,27 @@
+fragment PlaybackSessionFields on PlaybackSession {
+  id
+  formatAttemptCount
+  maximumFormatAttempts
+  currentFormatAttempt {
+    __typename
+    ... on PendingPlaybackFormatAttempt {
+      streamSessionId
+    }
+    ... on ReadyPlaybackFormatAttempt {
+      streamSession {
+        id
+        streamUrl
+        transcodeMode
+      }
+    }
+    ... on FailedPlaybackFormatAttempt {
+      streamSessionId
+      error {
+        __typename
+        ... on MutationError {
+          message
+        }
+      }
+    }
+  }
+}
