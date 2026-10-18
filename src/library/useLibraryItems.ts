@@ -64,6 +64,9 @@ export function useLibraryItems({
     contents?.subscribe ?? neverChanges,
     () => contents?.isRemoved(libraryId) ?? false,
   )
+  const refusal = useSyncExternalStore(contents?.subscribe ?? neverChanges, () =>
+    contents?.refusalFor(libraryId),
+  )
   const { data, previousData, loading, error, refetch } = useQuery(LibraryPageDocument, {
     variables: { libraryId, first: PAGE_SIZE, sort, filter },
     skip: removed,
@@ -316,18 +319,22 @@ export function useLibraryItems({
 
   return {
     removed,
-    loading: !removed && loading && !rendered,
+    loading: !removed && refusal === undefined && loading && !rendered,
     pending: (loading && !data && !!previousData) || staged,
     staged,
     accept,
-    error: error ?? currentPageFailure?.error,
-    library: removed ? null : (rendered?.library ?? null),
+    error: refusal ?? error ?? currentPageFailure?.error,
+    library: removed || refusal !== undefined ? null : (rendered?.library ?? null),
     edges: definedEdges(rendered?.library.items.edges ?? null),
     hasNextPage: rendered?.library.items.pageInfo.hasNextPage ?? false,
     hasPreviousPage: rendered?.library.items.pageInfo.hasPreviousPage ?? false,
     loadMore,
     loadPrevious,
     retry: () => {
+      if (refusal !== undefined) {
+        void contents?.retry(libraryId, refetch).catch(() => undefined)
+        return
+      }
       if (currentPageFailure && scopeRef.current?.query === queryKey) {
         scopeRef.current.failed = false
         setPageFailure(null)
