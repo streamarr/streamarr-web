@@ -502,22 +502,40 @@ describe('watch-state lists', () => {
       expect(reads).toEqual(readsBeforeChange)
     })
 
-    it('shouldReadHomeAgainWhenATitleLeavesAFullShelf', async () => {
-      const full = Array.from({ length: 13 }, (_, index) =>
-        title(`w${index}`, index === 0 ? 'Everlight' : `Title ${index}`, {
-          watchStatus: 'IN_PROGRESS',
-          lastWatchedAt: `2026-10-16T09:${String(59 - index).padStart(2, '0')}:00Z`,
-        }),
-      )
-      const { reads, socket, save } = serve(full)
-      await open('/', socket, /Everlight/)
-      const homeReads = reads.Home
+    it.each(['WATCHED', 'IN_PROGRESS'] as const)(
+      'shouldShrinkAFullShelfWithoutReadingHomeWhenATitleLeavesItsRangeAs%s',
+      async (watchStatus) => {
+        const full = Array.from({ length: 13 }, (_, index) =>
+          title(`w${index}`, index === 0 ? 'Everlight' : `Title ${index}`, {
+            watchStatus: 'IN_PROGRESS',
+            lastWatchedAt: `2026-10-16T09:${String(59 - index).padStart(2, '0')}:00Z`,
+          }),
+        )
+        const { reads, socket, save } = serve(full)
+        await open('/', socket, /Everlight/)
+        const homeReads = reads.Home
 
-      save({ ...full[0], watchStatus: 'WATCHED', lastWatchedAt: '2026-10-16T10:00:00Z' })
+        save({ ...full[0], watchStatus, lastWatchedAt: '2026-10-15T10:00:00Z' })
 
-      await waitFor(() => expect(reads.Home).toBe(homeReads + 1))
-      await waitFor(() => expect(shelfLinks()).toHaveLength(12))
-    })
+        await waitFor(() => expect(shelfLinks()).toHaveLength(11))
+        expect(
+          shelfLinks().map((link) => within(link).getByText(/^Title \d+$/).textContent),
+        ).toEqual([
+          'Title 1',
+          'Title 2',
+          'Title 3',
+          'Title 4',
+          'Title 5',
+          'Title 6',
+          'Title 7',
+          'Title 8',
+          'Title 9',
+          'Title 10',
+          'Title 11',
+        ])
+        expect(reads.Home).toBe(homeReads)
+      },
+    )
 
     it('shouldKeepAFullShelfAtItsLimitWhenATitleStartsAtTheHead', async () => {
       const full = Array.from({ length: 12 }, (_, index) =>
