@@ -91,40 +91,4 @@ describe('applyWatchStateToLists', () => {
       }),
     ).toBeNull()
   })
-
-  it('shouldReadContinueWatchingAgainWhenATitleMovesPastTheEndOfAFullShelf', () => {
-    const cache = setup()
-    const variables = { continueWatchingFirst: CONTINUE_WATCHING_LIMIT }
-    const entries = Array.from({ length: CONTINUE_WATCHING_LIMIT }, (_, index) => ({
-      __typename: 'Movie',
-      id: `w${index}`,
-      title: `Title ${index}`,
-      tagline: null,
-      summary: null,
-      runtime: null,
-      createdOn: '2026-08-26T12:00:00Z',
-      lastWatchedAt: `2026-10-16T09:${String(59 - index).padStart(2, '0')}:00Z`,
-      genres: [],
-      images: [],
-      watchProgress: null,
-      files: [],
-    }))
-    cache.writeQuery({
-      query: HomeDocument,
-      variables,
-      data: { continueWatching: entries, libraries: [] } as never,
-    })
-    showContinueWatching(cache)
-
-    apply(cache, [
-      {
-        id: 'w0',
-        title: 'Title 0',
-        watchStatus: 'IN_PROGRESS',
-        lastWatchedAt: '2026-10-16T08:00:00Z',
-      },
-    ])
-
-    expect(cache.readQuery({ query: HomeDocument, variables })).toBeNull()
-  })
 })

@@ -73,8 +73,7 @@ function applyToContinueWatching(
 }
 
 // Continue Watching holds each movie and episode in progress, newest last watched first, then by
-// id. A full list may stop short of the server's: an entry that leaves it, or moves past its last
-// entry, leaves a place that only the server can fill.
+// id. This bounded preview shrinks when an entry leaves its range, without fetching replacements.
 function placeInContinueWatching(
   cache: ApolloCache,
   entries: ContinueWatchingItemFieldsFragment[],
@@ -84,7 +83,7 @@ function placeInContinueWatching(
   const full = entries.length >= CONTINUE_WATCHING_LIMIT
   const others = index < 0 ? entries : entries.toSpliced(index, 1)
   if (candidate.watchStatus !== 'IN_PROGRESS') {
-    return index >= 0 && full ? 'unplaceable' : others
+    return others
   }
   const entry = cache.readFragment({
     fragment: ContinueWatchingItemFieldsFragmentDoc,
@@ -94,7 +93,7 @@ function placeInContinueWatching(
   if (!entry) return 'unplaceable'
   const position = positionAmong(others, entry, compareNewestWatchedFirst)
   if (position === index) return entries
-  if (position === others.length && full) return index < 0 ? entries : 'unplaceable'
+  if (position === others.length && full) return others
   return others.toSpliced(position, 0, entry).slice(0, CONTINUE_WATCHING_LIMIT)
 }
 
