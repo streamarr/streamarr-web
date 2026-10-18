@@ -1,8 +1,10 @@
+import { readyPlaybackSession, destroyedPlaybackSession } from '../test/playbackSession'
+import { useApolloClient } from '@apollo/client/react'
 import { deferred } from '../test/deferred'
 import { act, cleanup, configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import type { UserEvent } from '@testing-library/user-event'
 import { HttpResponse, graphql } from 'msw'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { afterEach, assert, beforeEach, describe, expect, it, vi } from 'vitest'
 import { type FakeHlsTrack, hls, resetFakeHls } from '../test/fakeHls'
 import { type FakeAudioTrack, type FakeTextTrack, giveElementTracks } from '../test/mediaTracks'
@@ -13,7 +15,7 @@ import { Player } from './Player'
 vi.mock('hls.js', async () => (await import('../test/fakeHls')).hlsModule)
 
 const STREAM_URL = '/api/stream/abcd/multivariant.m3u8?t=playback-token'
-const SESSION = { id: 'sess-1', streamUrl: STREAM_URL, transcodeMode: 'REMUX' }
+const SESSION = { id: 'sess-1', streamUrl: STREAM_URL, transcodeMode: 'REMUX' } as const
 const CAPACITY_REFUSAL = 'Every transcode slot is busy. Try again in a moment.'
 
 interface TimelineReport {
@@ -24,8 +26,15 @@ interface TimelineReport {
 
 function serveSession(): TimelineReport[] {
   server.use(
-    graphql.mutation('CreateStreamSession', () =>
-      HttpResponse.json({ data: { createStreamSession: { session: SESSION, userErrors: [] } } }),
+    graphql.mutation('CreatePlaybackSession', () =>
+      HttpResponse.json({
+        data: {
+          createPlaybackSession: {
+            playbackSession: readyPlaybackSession({ streamSession: SESSION }),
+            userErrors: [],
+          },
+        },
+      }),
     ),
   )
   return recordTimelineReports()
@@ -59,11 +68,11 @@ function refuseTheFirstStoppedReport(reports: TimelineReport[]): () => boolean {
 
 function refuseSession() {
   server.use(
-    graphql.mutation('CreateStreamSession', () =>
+    graphql.mutation('CreatePlaybackSession', () =>
       HttpResponse.json({
         data: {
-          createStreamSession: {
-            session: null,
+          createPlaybackSession: {
+            playbackSession: null,
             userErrors: [
               { __typename: 'TranscodeCapacityUnavailableError', message: CAPACITY_REFUSAL },
             ],
@@ -76,7 +85,7 @@ function refuseSession() {
 
 function failSessionCreation() {
   server.use(
-    graphql.mutation('CreateStreamSession', () =>
+    graphql.mutation('CreatePlaybackSession', () =>
       HttpResponse.json({ errors: [{ message: 'boom' }] }, { status: 200 }),
     ),
   )
@@ -93,7 +102,7 @@ function serveSingleWorkerSlot({
 } = {}): Set<string> {
   const activeSessions = new Set<string>()
   server.use(
-    graphql.mutation('CreateStreamSession', async ({ variables }) => {
+    graphql.mutation('CreatePlaybackSession', async ({ variables }) => {
       const { mediaFileId } = variables.input as { mediaFileId: string }
       onCreateAttempt?.(mediaFileId)
       if (activeSessions.size > 0) {
@@ -106,16 +115,19 @@ function serveSingleWorkerSlot({
         id: `sess-${mediaFileId}`,
         streamUrl: `/api/stream/${mediaFileId}/multivariant.m3u8?t=playback-token`,
       }
-      activeSessions.add(session.id)
+      const playbackSession = readyPlaybackSession({ streamSession: session })
+      activeSessions.add(playbackSession.id)
       await beforeCreated?.(mediaFileId)
       return HttpResponse.json({
-        data: { createStreamSession: { session, userErrors: [] } },
+        data: { createPlaybackSession: { playbackSession, userErrors: [] } },
       })
     }),
-    graphql.mutation('DestroyStreamSession', async ({ variables }) => {
+    graphql.mutation('DestroyPlaybackSession', async ({ variables }) => {
       await beforeDestroyed?.()
-      activeSessions.delete(variables.sessionId as string)
-      return HttpResponse.json({ data: { destroyStreamSession: true } })
+      activeSessions.delete(destroyedPlaybackSession(variables).playbackSessionId)
+      return HttpResponse.json({
+        data: { destroyPlaybackSession: destroyedPlaybackSession(variables) },
+      })
     }),
   )
   return activeSessions
@@ -436,8 +448,10 @@ describe('Player', () => {
     vi.clearAllMocks()
     resetFakeHls()
     server.use(
-      graphql.mutation('DestroyStreamSession', () =>
-        HttpResponse.json({ data: { destroyStreamSession: true } }),
+      graphql.mutation('DestroyPlaybackSession', ({ variables }) =>
+        HttpResponse.json({
+          data: { destroyPlaybackSession: destroyedPlaybackSession(variables) },
+        }),
       ),
     )
   })
@@ -446,6 +460,847 @@ describe('Player', () => {
     vi.useRealTimers()
     await act(async () => cleanup())
     configure({ reactStrictMode: false })
+  })
+
+  it('shouldOwnOneLogicalPlaybackSessionWhenItsReadyStreamIsAttached', async () => {
+    serveSession()
+    const created: unknown[] = []
+    const destroyed: unknown[] = []
+    server.use(
+      graphql.mutation('CreatePlaybackSession', ({ variables }) => {
+        created.push(variables)
+        return HttpResponse.json({
+          data: {
+            createPlaybackSession: {
+              playbackSession: {
+                id: 'playback-1',
+                formatAttemptCount: 1,
+                maximumFormatAttempts: 3,
+                currentFormatAttempt: {
+                  __typename: 'ReadyPlaybackFormatAttempt',
+                  streamSession: SESSION,
+                },
+              },
+              userErrors: [],
+            },
+          },
+        })
+      }),
+      graphql.mutation('DestroyPlaybackSession', ({ variables }) => {
+        destroyed.push(variables)
+        return HttpResponse.json({
+          data: { destroyPlaybackSession: destroyedPlaybackSession(variables) },
+        })
+      }),
+    )
+    const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
+
+    await attachedVideo()
+    expect(created).toEqual([{ input: { mediaFileId: 'abcd' } }])
+    unmount()
+    await waitFor(() => expect(destroyed).toEqual([{ input: { playbackSessionId: 'playback-1' } }]))
+  })
+
+  it('shouldAttachTheReadyChildWhenInitialPlaybackIsPending', async () => {
+    serveSession()
+    const queries: unknown[] = []
+    server.use(
+      graphql.mutation('CreatePlaybackSession', () =>
+        HttpResponse.json({
+          data: {
+            createPlaybackSession: {
+              playbackSession: {
+                ...readyPlaybackSession({ streamSession: SESSION }),
+                currentFormatAttempt: {
+                  __typename: 'PendingPlaybackFormatAttempt',
+                  streamSessionId: SESSION.id,
+                },
+              },
+              userErrors: [],
+            },
+          },
+        }),
+      ),
+      graphql.query('PlaybackSession', ({ variables }) => {
+        queries.push(variables)
+        const playbackSession = readyPlaybackSession({ streamSession: SESSION })
+        return HttpResponse.json({
+          data: {
+            playbackSession:
+              queries.length === 1
+                ? {
+                    ...playbackSession,
+                    currentFormatAttempt: {
+                      __typename: 'PendingPlaybackFormatAttempt',
+                      streamSessionId: SESSION.id,
+                    },
+                  }
+                : playbackSession,
+          },
+        })
+      }),
+    )
+
+    renderWithProviders(<Player mediaFileId="abcd" />)
+
+    await attachedVideo()
+    expect(queries).toEqual([{ id: 'playback-sess-1' }, { id: 'playback-sess-1' }])
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('shouldShowTheTypedFailureWhenInitialPlaybackHasFailed', async () => {
+    server.use(
+      graphql.mutation('CreatePlaybackSession', () =>
+        HttpResponse.json({
+          data: {
+            createPlaybackSession: {
+              playbackSession: {
+                ...readyPlaybackSession({ streamSession: SESSION }),
+                currentFormatAttempt: {
+                  __typename: 'FailedPlaybackFormatAttempt',
+                  streamSessionId: SESSION.id,
+                  error: {
+                    __typename: 'PlaybackOutputMismatchError',
+                    message: 'The source video cannot be copied for playback.',
+                  },
+                },
+              },
+              userErrors: [],
+            },
+          },
+        }),
+      ),
+    )
+
+    renderWithProviders(<Player mediaFileId="abcd" />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The source video cannot be copied for playback.',
+    )
+    expect(hls.loadSource).not.toHaveBeenCalled()
+  })
+
+  it.each([true, false])(
+    'shouldPreserveSecondsAndPlaybackIntentWhenAFormatIsRejected(%s)',
+    async (playing) => {
+      const timelineReports = serveSession()
+      const failures: unknown[] = []
+      let statusQueries = 0
+      const nextStream = {
+        ...SESSION,
+        id: 'sess-2',
+        streamUrl: '/api/stream/second/multivariant.m3u8?t=next-token',
+      }
+      server.use(
+        graphql.mutation('ReportPlaybackFormatFailure', ({ variables }) => {
+          failures.push(variables)
+          return HttpResponse.json({
+            data: {
+              reportPlaybackFormatFailure: {
+                playbackSession: {
+                  ...readyPlaybackSession({ streamSession: SESSION }),
+                  formatAttemptCount: 2,
+                  currentFormatAttempt: {
+                    __typename: 'PendingPlaybackFormatAttempt',
+                    streamSessionId: 'sess-2',
+                  },
+                },
+                userErrors: [],
+              },
+            },
+          })
+        }),
+        graphql.query('PlaybackSession', () => {
+          statusQueries += 1
+          return HttpResponse.json({
+            data: {
+              playbackSession: {
+                ...readyPlaybackSession({ id: 'playback-sess-1', streamSession: nextStream }),
+                formatAttemptCount: 2,
+              },
+            },
+          })
+        }),
+      )
+      renderWithProviders(<Player mediaFileId="abcd" startPositionSeconds={12} />)
+      const video = await attachedVideo()
+      loadMetadata(video)
+      playheadAt(video, 73.25)
+      if (!playing) pressPause(video)
+      act(() => {
+        video.muted = true
+      })
+      hls.destroy.mockImplementationOnce(() => video.load())
+      const oldError = hls.on.mock.calls.find(([event]) => event === 'hlsError')?.[1]
+      assert(oldError)
+
+      act(() => {
+        oldError('hlsError', {
+          fatal: true,
+          type: 'mediaError',
+          details: 'manifestIncompatibleCodecsError',
+        })
+        oldError('hlsError', {
+          fatal: true,
+          type: 'mediaError',
+          details: 'manifestIncompatibleCodecsError',
+        })
+      })
+
+      await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(nextStream.streamUrl))
+      loadMetadata(video)
+      expect(video.currentTime).toBe(73.25)
+      expect(video.paused).toBe(!playing)
+      expect(video.muted).toBe(true)
+      expect(failures).toEqual([
+        {
+          input: {
+            playbackSessionId: 'playback-sess-1',
+            streamSessionId: 'sess-1',
+            reason: 'UNSUPPORTED_FORMAT',
+          },
+        },
+      ])
+      act(() => {
+        oldError('hlsError', {
+          fatal: true,
+          type: 'mediaError',
+          details: 'manifestIncompatibleCodecsError',
+        })
+        oldError('hlsError', { fatal: true, type: 'networkError', response: { code: 503 } })
+      })
+      playheadAt(video, 85.5)
+      await waitFor(() =>
+        expect(timelineReports).toContainEqual({
+          sessionId: 'sess-2',
+          positionSeconds: 85,
+          state: 'PLAYING',
+        }),
+      )
+      expect(failures).toHaveLength(1)
+      expect(statusQueries).toBe(1)
+      expect(timelineReports).not.toContainEqual(expect.objectContaining({ positionSeconds: 0 }))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    },
+  )
+
+  it.each([
+    { mse: true, pauseBeforeMetadata: false },
+    { mse: false, pauseBeforeMetadata: false },
+    { mse: true, pauseBeforeMetadata: true },
+    { mse: false, pauseBeforeMetadata: true },
+  ])(
+    'shouldPreserveLatestIntentAfterConcreteDecodeFailure($mse, $pauseBeforeMetadata)',
+    async ({ mse, pauseBeforeMetadata }) => {
+      serveSession()
+      hls.supported = mse
+      const failures: unknown[] = []
+      const nextStream = {
+        ...SESSION,
+        id: 'sess-2',
+        streamUrl: '/api/stream/decoded/multivariant.m3u8?t=next-token',
+      }
+      server.use(
+        graphql.mutation('ReportPlaybackFormatFailure', ({ variables }) => {
+          failures.push(variables)
+          return HttpResponse.json({
+            data: {
+              reportPlaybackFormatFailure: {
+                playbackSession: readyPlaybackSession({
+                  id: 'playback-sess-1',
+                  streamSession: nextStream,
+                }),
+                userErrors: [],
+              },
+            },
+          })
+        }),
+      )
+      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await (mse ? attachedVideo() : nativeVideo())
+      loadMetadata(video)
+      playheadAt(video, 44.75)
+      if (mse) hls.destroy.mockImplementationOnce(() => video.load())
+      Object.defineProperty(video, 'error', { configurable: true, value: { code: 3 } })
+
+      fireEvent(video, new Event('error'))
+      fireEvent(video, new Event('error'))
+
+      await waitFor(() => {
+        if (mse) expect(hls.loadSource).toHaveBeenCalledWith(nextStream.streamUrl)
+        if (!mse) expect(video).toHaveAttribute('src', nextStream.streamUrl)
+      })
+      if (pauseBeforeMetadata) {
+        await user.click(screen.getByRole('button', { name: 'Play' }))
+        await user.click(screen.getByRole('button', { name: 'Pause' }))
+      }
+      loadMetadata(video)
+      expect(video.currentTime).toBe(44.75)
+      expect(video.paused).toBe(pauseBeforeMetadata)
+      expect(failures).toEqual([
+        {
+          input: {
+            playbackSessionId: 'playback-sess-1',
+            streamSessionId: 'sess-1',
+            reason: 'DECODE_ERROR',
+          },
+        },
+      ])
+    },
+  )
+
+  it.each([true, false])(
+    'shouldReconcileThePublicationGapWithoutReportingAFormatFailureOn503(%s)',
+    async (fatal) => {
+      serveSession()
+      const failures: unknown[] = []
+      let queries = 0
+      const nextStream = {
+        ...SESSION,
+        id: 'sess-2',
+        streamUrl: '/api/stream/recovered/multivariant.m3u8?t=next-token',
+      }
+      server.use(
+        graphql.mutation('ReportPlaybackFormatFailure', ({ variables }) => {
+          failures.push(variables)
+          return HttpResponse.json({ errors: [{ message: 'Unexpected format failure report' }] })
+        }),
+        graphql.query('PlaybackSession', () => {
+          queries += 1
+          if (queries === 1)
+            return HttpResponse.json({
+              data: { playbackSession: readyPlaybackSession({ streamSession: SESSION }) },
+            })
+          if (queries === 2)
+            return HttpResponse.json({
+              data: {
+                playbackSession: {
+                  ...readyPlaybackSession({ streamSession: SESSION }),
+                  formatAttemptCount: 2,
+                  currentFormatAttempt: {
+                    __typename: 'PendingPlaybackFormatAttempt',
+                    streamSessionId: 'sess-2',
+                  },
+                },
+              },
+            })
+          return HttpResponse.json({
+            data: {
+              playbackSession: {
+                ...readyPlaybackSession({ id: 'playback-sess-1', streamSession: nextStream }),
+                formatAttemptCount: 2,
+              },
+            },
+          })
+        }),
+      )
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await attachedVideo()
+      loadMetadata(video)
+      playheadAt(video, 61.5)
+      const oldError = hls.on.mock.calls.find(([event]) => event === 'hlsError')?.[1]
+      assert(oldError)
+
+      act(() =>
+        oldError('hlsError', {
+          fatal,
+          type: 'networkError',
+          details: 'fragLoadError',
+          response: { code: 503 },
+        }),
+      )
+
+      await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(nextStream.streamUrl), {
+        timeout: 2500,
+      })
+      loadMetadata(video)
+      expect(video.currentTime).toBe(61.5)
+      expect(queries).toBe(3)
+      expect(failures).toEqual([])
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    },
+  )
+
+  it.each(['native unsupported', 'network becomes fatal', 'network remains recoverable'])(
+    'shouldBoundStatusReconciliationWithoutSpendingAFormatAttempt(%s)',
+    async (kind) => {
+      serveSession()
+      hls.supported = kind !== 'native unsupported'
+      const observed = deferred()
+      const failures: unknown[] = []
+      server.use(
+        graphql.query('PlaybackSession', () => {
+          observed.resolve()
+          return HttpResponse.json({
+            data: { playbackSession: readyPlaybackSession({ streamSession: SESSION }) },
+          })
+        }),
+        graphql.mutation('ReportPlaybackFormatFailure', ({ variables }) => {
+          failures.push(variables)
+          return HttpResponse.json({ errors: [{ message: 'Unexpected format report' }] })
+        }),
+      )
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await (hls.supported ? attachedVideo() : nativeVideo())
+      loadMetadata(video)
+      loadFirstFrame(video)
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      if (kind === 'native unsupported') {
+        Object.defineProperty(video, 'error', { configurable: true, value: { code: 4 } })
+        fireEvent(video, new Event('error'))
+      }
+      const onError = hls.on.mock.calls.find(([event]) => event === 'hlsError')?.[1]
+      if (kind !== 'native unsupported') {
+        act(() =>
+          onError?.('hlsError', { fatal: false, type: 'networkError', response: { code: 503 } }),
+        )
+      }
+      await observed.promise
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      if (kind === 'network becomes fatal') {
+        act(() =>
+          onError?.('hlsError', { fatal: true, type: 'networkError', response: { code: 503 } }),
+        )
+      }
+
+      await act(async () => vi.advanceTimersByTimeAsync(30_000))
+
+      if (kind === 'network remains recoverable') {
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+        expect(hls.destroy).not.toHaveBeenCalled()
+      } else {
+        expect(screen.getByRole('alert')).toHaveTextContent("Playback couldn't start.")
+      }
+      expect(failures).toEqual([])
+    },
+  )
+
+  it('shouldDiscardAnOldStatusResponseWhenAConcreteFormatReportReplacesItsStream', async () => {
+    serveSession()
+    const statusStarted = deferred()
+    const statusResponse = deferred()
+    const nextStream = {
+      ...SESSION,
+      id: 'sess-2',
+      streamUrl: '/api/stream/current/multivariant.m3u8?t=next-token',
+    }
+    server.use(
+      graphql.query('PlaybackSession', async () => {
+        statusStarted.resolve()
+        await statusResponse.promise
+        return HttpResponse.json({
+          data: { playbackSession: readyPlaybackSession({ streamSession: SESSION }) },
+        })
+      }),
+      graphql.mutation('ReportPlaybackFormatFailure', () =>
+        HttpResponse.json({
+          data: {
+            reportPlaybackFormatFailure: {
+              playbackSession: readyPlaybackSession({
+                id: 'playback-sess-1',
+                streamSession: nextStream,
+              }),
+              userErrors: [],
+            },
+          },
+        }),
+      ),
+    )
+    renderWithProviders(<Player mediaFileId="abcd" />)
+    await attachedVideo()
+    const onError = hls.on.mock.calls.find(([event]) => event === 'hlsError')?.[1]
+    assert(onError)
+    act(() => onError('hlsError', { fatal: false, type: 'networkError', response: { code: 503 } }))
+    await statusStarted.promise
+
+    act(() =>
+      onError('hlsError', {
+        fatal: true,
+        type: 'mediaError',
+        details: 'bufferIncompatibleCodecsError',
+      }),
+    )
+    await waitFor(() => expect(hls.loadSource).toHaveBeenLastCalledWith(nextStream.streamUrl))
+    await act(async () => statusResponse.resolve())
+
+    expect(hls.loadSource.mock.calls).toEqual([[STREAM_URL], [nextStream.streamUrl]])
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('shouldCloseTheLogicalSessionAndIgnorePendingStatusWhenThePlayerLeaves', async () => {
+    const statusStarted = deferred()
+    const statusResponse = deferred()
+    const destroyed: unknown[] = []
+    server.use(
+      graphql.mutation('CreatePlaybackSession', () =>
+        HttpResponse.json({
+          data: {
+            createPlaybackSession: {
+              playbackSession: {
+                ...readyPlaybackSession({ streamSession: SESSION }),
+                currentFormatAttempt: {
+                  __typename: 'PendingPlaybackFormatAttempt',
+                  streamSessionId: SESSION.id,
+                },
+              },
+              userErrors: [],
+            },
+          },
+        }),
+      ),
+      graphql.query('PlaybackSession', async () => {
+        statusStarted.resolve()
+        await statusResponse.promise
+        return HttpResponse.json({
+          data: { playbackSession: readyPlaybackSession({ streamSession: SESSION }) },
+        })
+      }),
+      graphql.mutation('DestroyPlaybackSession', ({ variables }) => {
+        destroyed.push(variables)
+        return HttpResponse.json({
+          data: { destroyPlaybackSession: destroyedPlaybackSession(variables) },
+        })
+      }),
+    )
+    const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
+    await act(() => statusStarted.promise)
+
+    unmount()
+    await waitFor(() =>
+      expect(destroyed).toEqual([{ input: { playbackSessionId: 'playback-sess-1' } }]),
+    )
+    await act(async () => statusResponse.resolve())
+
+    expect(hls.loadSource).not.toHaveBeenCalled()
+    expect(destroyed).toHaveLength(1)
+  })
+
+  it.each([
+    { type: 'networkError', details: 'fragLoadError' },
+    { type: 'mediaError', details: 'bufferStalledError' },
+    { type: 'mediaError', details: 'bufferFullError' },
+    { type: 'mediaError', details: 'bufferNudgeOnStall' },
+    { type: 'mediaError', details: 'mediaSourceRequiresReset' },
+    { type: 'mediaError', details: 'fragParsingError' },
+    {
+      type: 'mediaError',
+      details: 'bufferAppendError',
+      error: new DOMException('Quota', 'QuotaExceededError'),
+    },
+    {
+      type: 'mediaError',
+      details: 'bufferAddCodecError',
+      error: new DOMException('State', 'InvalidStateError'),
+    },
+  ])('shouldNotReportAFormatFailureForAnIndeterminateHlsError($details)', async (error) => {
+    serveSession()
+    const failures: unknown[] = []
+    server.use(
+      graphql.mutation('ReportPlaybackFormatFailure', ({ variables }) => {
+        failures.push(variables)
+        return HttpResponse.json({ errors: [{ message: 'Unexpected format report' }] })
+      }),
+    )
+    renderWithProviders(<Player mediaFileId="abcd" />)
+    await attachedVideo()
+    const onError = hls.on.mock.calls.find(([event]) => event === 'hlsError')?.[1]
+    assert(onError)
+
+    act(() => onError('hlsError', { fatal: true, ...error }))
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(failures).toEqual([])
+  })
+
+  it('shouldPreserveTheRequestedResumeWhenTheInitialCodecFailsBeforeMetadata', async () => {
+    serveSession()
+    const nextStream = {
+      ...SESSION,
+      id: 'sess-2',
+      streamUrl: '/api/stream/resumed/multivariant.m3u8?t=next-token',
+    }
+    server.use(
+      graphql.mutation('ReportPlaybackFormatFailure', () =>
+        HttpResponse.json({
+          data: {
+            reportPlaybackFormatFailure: {
+              playbackSession: readyPlaybackSession({
+                id: 'playback-sess-1',
+                streamSession: nextStream,
+              }),
+              userErrors: [],
+            },
+          },
+        }),
+      ),
+    )
+    renderWithProviders(<Player mediaFileId="abcd" startPositionSeconds={143.5} />)
+    const video = await attachedVideo()
+    const onError = hls.on.mock.calls.find(([event]) => event === 'hlsError')?.[1]
+    assert(onError)
+
+    act(() =>
+      onError('hlsError', {
+        fatal: true,
+        type: 'mediaError',
+        details: 'manifestIncompatibleCodecsError',
+      }),
+    )
+    await waitFor(() => expect(hls.loadSource).toHaveBeenLastCalledWith(nextStream.streamUrl))
+    loadMetadata(video)
+
+    expect(video.currentTime).toBe(143.5)
+    expect(video.paused).toBe(false)
+  })
+
+  it('shouldKeepQueuedTimelineReportsBoundToTheirChildDuringHandover', async () => {
+    serveSession()
+    const reportStarted = deferred()
+    const reportResponse = deferred()
+    const reports: unknown[] = []
+    const nextStream = {
+      ...SESSION,
+      id: 'sess-2',
+      streamUrl: '/api/stream/timeline/multivariant.m3u8?t=next-token',
+    }
+    server.use(
+      graphql.mutation('ReportStreamSessionTimeline', async ({ variables }) => {
+        reports.push(variables)
+        if (variables.sessionId === SESSION.id) {
+          reportStarted.resolve()
+          await reportResponse.promise
+        }
+        return HttpResponse.json({ data: { reportStreamSessionTimeline: true } })
+      }),
+      graphql.mutation('ReportPlaybackFormatFailure', () =>
+        HttpResponse.json({
+          data: {
+            reportPlaybackFormatFailure: {
+              playbackSession: readyPlaybackSession({
+                id: 'playback-sess-1',
+                streamSession: nextStream,
+              }),
+              userErrors: [],
+            },
+          },
+        }),
+      ),
+    )
+    renderWithProviders(<Player mediaFileId="abcd" />)
+    const video = await attachedVideo()
+    loadMetadata(video)
+    playheadAt(video, 12)
+    await reportStarted.promise
+    playheadAt(video, 25)
+    const onError = hls.on.mock.calls.find(([event]) => event === 'hlsError')?.[1]
+    assert(onError)
+
+    act(() =>
+      onError('hlsError', {
+        fatal: true,
+        type: 'mediaError',
+        details: 'bufferIncompatibleCodecsError',
+      }),
+    )
+    await waitFor(() => expect(hls.loadSource).toHaveBeenLastCalledWith(nextStream.streamUrl))
+    loadMetadata(video)
+    playheadAt(video, 38)
+    await act(async () => reportResponse.resolve())
+
+    await waitFor(() =>
+      expect(reports).toEqual([
+        { sessionId: 'sess-1', positionSeconds: 12, state: 'PLAYING' },
+        { sessionId: 'sess-2', positionSeconds: 38, state: 'PLAYING' },
+      ]),
+    )
+  })
+
+  it.each(['closed', 'transport', 'exhausted'])(
+    'shouldShowTheFailureWithoutCreatingAnotherSessionWhenAFormatReportFails(%s)',
+    async (kind) => {
+      serveSession()
+      let reports = 0
+      server.use(
+        graphql.mutation('ReportPlaybackFormatFailure', () => {
+          reports += 1
+          if (kind === 'transport')
+            return HttpResponse.json({ errors: [{ message: 'Unavailable' }] })
+          if (kind === 'closed')
+            return HttpResponse.json({
+              data: {
+                reportPlaybackFormatFailure: {
+                  playbackSession: null,
+                  userErrors: [
+                    {
+                      __typename: 'PlaybackSessionClosedError',
+                      message: 'This playback session has ended.',
+                    },
+                  ],
+                },
+              },
+            })
+          return HttpResponse.json({
+            data: {
+              reportPlaybackFormatFailure: {
+                playbackSession: {
+                  ...readyPlaybackSession({ streamSession: SESSION }),
+                  currentFormatAttempt: {
+                    __typename: 'FailedPlaybackFormatAttempt',
+                    streamSessionId: SESSION.id,
+                    error: {
+                      __typename: 'PlaybackFormatAttemptsExhaustedError',
+                      message: 'No format attempts remain.',
+                    },
+                  },
+                },
+                userErrors: [],
+              },
+            },
+          })
+        }),
+      )
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      await attachedVideo()
+      const onError = hls.on.mock.calls.find(([event]) => event === 'hlsError')?.[1]
+      assert(onError)
+
+      act(() =>
+        onError('hlsError', {
+          fatal: true,
+          type: 'mediaError',
+          details: 'bufferAddCodecError',
+          error: new DOMException('Unsupported', 'NotSupportedError'),
+        }),
+      )
+
+      const message = {
+        closed: 'This playback session has ended.',
+        transport: "Playback couldn't start.",
+        exhausted: 'No format attempts remain.',
+      }[kind]
+      expect(await screen.findByRole('alert')).toHaveTextContent(message ?? '')
+      expect(reports).toBe(1)
+      expect(hls.loadSource).toHaveBeenCalledOnce()
+    },
+  )
+
+  it.each(['absent', 'transport'])(
+    'shouldShowFailureWhenStatusCannotRecoverAFatalStream(%s)',
+    async (kind) => {
+      serveSession()
+      server.use(
+        graphql.query('PlaybackSession', () =>
+          kind === 'absent'
+            ? HttpResponse.json({ data: { playbackSession: null } })
+            : HttpResponse.json({ errors: [{ message: 'Unavailable' }] }),
+        ),
+      )
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      await attachedVideo()
+      const onError = hls.on.mock.calls.find(([event]) => event === 'hlsError')?.[1]
+      assert(onError)
+
+      act(() => onError('hlsError', { fatal: true, type: 'networkError', response: { code: 503 } }))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent("Playback couldn't start.")
+      expect(hls.loadSource).toHaveBeenCalledOnce()
+    },
+  )
+
+  it('shouldReleaseOwnershipWhileAFormatReportIsPendingAfterUnmount', async () => {
+    serveSession()
+    const reportStarted = deferred()
+    const reportResponse = deferred()
+    const destroyed: unknown[] = []
+    server.use(
+      graphql.mutation('ReportPlaybackFormatFailure', async () => {
+        reportStarted.resolve()
+        await reportResponse.promise
+        return HttpResponse.json({
+          data: {
+            reportPlaybackFormatFailure: {
+              playbackSession: readyPlaybackSession({ streamSession: SESSION }),
+              userErrors: [],
+            },
+          },
+        })
+      }),
+      graphql.mutation('DestroyPlaybackSession', ({ variables }) => {
+        destroyed.push(variables)
+        return HttpResponse.json({
+          data: { destroyPlaybackSession: destroyedPlaybackSession(variables) },
+        })
+      }),
+    )
+    const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
+    await attachedVideo()
+    const onError = hls.on.mock.calls.find(([event]) => event === 'hlsError')?.[1]
+    assert(onError)
+    act(() =>
+      onError('hlsError', {
+        fatal: true,
+        type: 'mediaError',
+        details: 'bufferIncompatibleCodecsError',
+      }),
+    )
+    await reportStarted.promise
+
+    unmount()
+    await waitFor(() =>
+      expect(destroyed).toEqual([{ input: { playbackSessionId: 'playback-sess-1' } }]),
+    )
+    await act(async () => reportResponse.resolve())
+
+    expect(hls.loadSource).toHaveBeenCalledOnce()
+  })
+
+  it('shouldKeepPlaybackTokensOutOfTheApolloCacheAcrossHandover', async () => {
+    serveSession()
+    let readCache: (() => string) | undefined
+    function ObservedPlayer() {
+      const client = useApolloClient()
+      useEffect(() => {
+        readCache = () => JSON.stringify(client.cache.extract())
+      }, [client])
+      return <Player mediaFileId="abcd" />
+    }
+    const nextStream = {
+      ...SESSION,
+      id: 'sess-2',
+      streamUrl: '/api/stream/secret/multivariant.m3u8?t=next-secret',
+    }
+    server.use(
+      graphql.mutation('ReportPlaybackFormatFailure', () =>
+        HttpResponse.json({
+          data: {
+            reportPlaybackFormatFailure: {
+              playbackSession: readyPlaybackSession({
+                id: 'playback-sess-1',
+                streamSession: nextStream,
+              }),
+              userErrors: [],
+            },
+          },
+        }),
+      ),
+    )
+    renderWithProviders(<ObservedPlayer />)
+    await attachedVideo()
+    assert(readCache)
+    expect(readCache()).not.toContain('playback-token')
+    const onError = hls.on.mock.calls.find(([event]) => event === 'hlsError')?.[1]
+    assert(onError)
+
+    act(() =>
+      onError('hlsError', {
+        fatal: true,
+        type: 'mediaError',
+        details: 'manifestIncompatibleCodecsError',
+      }),
+    )
+    await waitFor(() => expect(hls.loadSource).toHaveBeenLastCalledWith(nextStream.streamUrl))
+
+    expect(readCache()).not.toContain('next-secret')
   })
 
   it('shouldAbandonStalledTimelineReportsAndReleaseTheSessionBeforeReplacement', async () => {
@@ -482,7 +1337,7 @@ describe('Player', () => {
     )
     expect(reportAborted).toBe(true)
     expect(reports).toEqual([{ sessionId: 'sess-a', positionSeconds: 12, state: 'PLAYING' }])
-    expect(activeSessions).toEqual(new Set(['sess-b']))
+    expect(activeSessions).toEqual(new Set(['playback-sess-b']))
     reportResponse.resolve()
     unmount()
     await waitFor(() => expect(activeSessions.size).toBe(0))
@@ -540,7 +1395,7 @@ describe('Player', () => {
     vi.useRealTimers()
     expect(screen.getByRole('alert')).toHaveTextContent('Playback is taking too long to start.')
     expect(attempts).toEqual(['a'])
-    expect(activeSessions).toEqual(new Set(['sess-a']))
+    expect(activeSessions).toEqual(new Set(['playback-sess-a']))
 
     destructionResponse.resolve()
     await waitFor(() => expect(activeSessions.size).toBe(0))
@@ -565,14 +1420,18 @@ describe('Player', () => {
       })
       let destructions = 0
       server.use(
-        graphql.mutation('DestroyStreamSession', ({ variables }) => {
+        graphql.mutation('DestroyPlaybackSession', ({ variables }) => {
           destructions += 1
           if (destructions > 1) {
-            activeSessions.delete(variables.sessionId as string)
-            return HttpResponse.json({ data: { destroyStreamSession: true } })
+            activeSessions.delete(destroyedPlaybackSession(variables).playbackSessionId)
+            return HttpResponse.json({
+              data: { destroyPlaybackSession: destroyedPlaybackSession(variables) },
+            })
           }
           return outcome === 'unacknowledged'
-            ? HttpResponse.json({ data: { destroyStreamSession: false } })
+            ? HttpResponse.json({
+                data: { destroyPlaybackSession: { playbackSessionId: null, userErrors: [] } },
+              })
             : HttpResponse.json({ errors: [{ message: 'Cleanup temporarily unavailable' }] })
         }),
       )
@@ -582,7 +1441,7 @@ describe('Player', () => {
       await user.click(screen.getByRole('button', { name: 'Next' }))
       await screen.findByRole('alert')
       expect(attempts).toEqual(['a'])
-      expect(activeSessions).toEqual(new Set(['sess-a']))
+      expect(activeSessions).toEqual(new Set(['playback-sess-a']))
 
       await user.click(screen.getByRole('button', { name: 'Retry playback' }))
       await waitFor(() =>
@@ -591,7 +1450,7 @@ describe('Player', () => {
         ),
       )
       expect(destructions).toBe(2)
-      expect(activeSessions).toEqual(new Set(['sess-b']))
+      expect(activeSessions).toEqual(new Set(['playback-sess-b']))
       unmount()
       await waitFor(() => expect(activeSessions.size).toBe(0))
     },
@@ -609,7 +1468,7 @@ describe('Player', () => {
     let destructionCount = 0
     let firstAborted = false
     server.use(
-      graphql.mutation('DestroyStreamSession', async ({ variables, request }) => {
+      graphql.mutation('DestroyPlaybackSession', async ({ variables, request }) => {
         destructionCount += 1
         if (destructionCount === 1) {
           request.signal.addEventListener('abort', () => {
@@ -622,8 +1481,10 @@ describe('Player', () => {
           recoveryStarted.resolve()
           await recoveryResponse.promise
         }
-        activeSessions.delete(variables.sessionId as string)
-        return HttpResponse.json({ data: { destroyStreamSession: true } })
+        activeSessions.delete(destroyedPlaybackSession(variables).playbackSessionId)
+        return HttpResponse.json({
+          data: { destroyPlaybackSession: destroyedPlaybackSession(variables) },
+        })
       }),
     )
     const { user, unmount } = renderWithProviders(<Harness />)
@@ -639,7 +1500,7 @@ describe('Player', () => {
     expect(attempts).toEqual(['a'])
     await user.click(screen.getByRole('button', { name: 'Retry playback' }))
     await recoveryStarted.promise
-    expect(activeSessions).toEqual(new Set(['sess-a']))
+    expect(activeSessions).toEqual(new Set(['playback-sess-a']))
     recoveryResponse.resolve()
 
     await waitFor(() =>
@@ -647,7 +1508,7 @@ describe('Player', () => {
         '/api/stream/b/multivariant.m3u8?t=playback-token',
       ),
     )
-    expect(activeSessions).toEqual(new Set(['sess-b']))
+    expect(activeSessions).toEqual(new Set(['playback-sess-b']))
     firstResponse.resolve()
     unmount()
     await waitFor(() => expect(activeSessions.size).toBe(0))
@@ -682,7 +1543,7 @@ describe('Player', () => {
     await attachedVideo()
     expect(hls.attachMedia).toHaveBeenCalledOnce()
     expect(attempts).toEqual(['abcd', 'abcd'])
-    expect(activeSessions).toEqual(new Set(['sess-abcd']))
+    expect(activeSessions).toEqual(new Set(['playback-sess-abcd']))
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     unmount()
     await waitFor(() => expect(activeSessions.size).toBe(0))
@@ -707,7 +1568,7 @@ describe('Player', () => {
 
     await waitFor(() => expect(hls.attachMedia).toHaveBeenCalledTimes(2))
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    expect(activeSessions).toEqual(new Set(['sess-abcd']))
+    expect(activeSessions).toEqual(new Set(['playback-sess-abcd']))
     unmount()
     await waitFor(() => expect(activeSessions.size).toBe(0))
   })
@@ -729,7 +1590,7 @@ describe('Player', () => {
 
     await attachedVideo()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    expect(activeSessions).toEqual(new Set(['sess-abcd']))
+    expect(activeSessions).toEqual(new Set(['playback-sess-abcd']))
 
     unmount()
     await waitFor(() => expect(activeSessions.size).toBe(0))
@@ -767,7 +1628,7 @@ describe('Player', () => {
       ),
     )
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    expect(activeSessions).toEqual(new Set(['sess-b']))
+    expect(activeSessions).toEqual(new Set(['playback-sess-b']))
 
     unmount()
     await waitFor(() => expect(activeSessions.size).toBe(0))
@@ -799,7 +1660,7 @@ describe('Player', () => {
 
     await user.click(screen.getByRole('button', { name: 'Next' }))
     await reportStarted.promise
-    expect(activeSessions).toEqual(new Set(['sess-a']))
+    expect(activeSessions).toEqual(new Set(['playback-sess-a']))
     reportResponse.resolve()
     await destructionStarted.promise
     expect(saved).toEqual([{ sessionId: 'sess-a', positionSeconds: 5, state: 'STOPPED' }])
@@ -811,7 +1672,7 @@ describe('Player', () => {
       ),
     )
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    expect(activeSessions).toEqual(new Set(['sess-b']))
+    expect(activeSessions).toEqual(new Set(['playback-sess-b']))
 
     unmount()
     await waitFor(() => expect(activeSessions.size).toBe(0))
@@ -859,9 +1720,11 @@ describe('Player', () => {
         saved.push(variables)
         return HttpResponse.json({ data: { reportStreamSessionTimeline: true } })
       }),
-      graphql.mutation('DestroyStreamSession', () => {
+      graphql.mutation('DestroyPlaybackSession', ({ variables }) => {
         destroyed = true
-        return HttpResponse.json({ data: { destroyStreamSession: true } })
+        return HttpResponse.json({
+          data: { destroyPlaybackSession: destroyedPlaybackSession(variables) },
+        })
       }),
     )
     const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
@@ -877,10 +1740,15 @@ describe('Player', () => {
   it('shouldCreateSessionAndFeedTokenedUrlToHls', async () => {
     let variables: unknown
     server.use(
-      graphql.mutation('CreateStreamSession', ({ variables: v }) => {
+      graphql.mutation('CreatePlaybackSession', ({ variables: v }) => {
         variables = v
         return HttpResponse.json({
-          data: { createStreamSession: { session: SESSION, userErrors: [] } },
+          data: {
+            createPlaybackSession: {
+              playbackSession: readyPlaybackSession({ streamSession: SESSION }),
+              userErrors: [],
+            },
+          },
         })
       }),
     )
@@ -897,16 +1765,23 @@ describe('Player', () => {
     const started = deferred()
     const destroyed: unknown[] = []
     server.use(
-      graphql.mutation('CreateStreamSession', async () => {
+      graphql.mutation('CreatePlaybackSession', async () => {
         started.resolve()
         await gate.promise
         return HttpResponse.json({
-          data: { createStreamSession: { session: SESSION, userErrors: [] } },
+          data: {
+            createPlaybackSession: {
+              playbackSession: readyPlaybackSession({ streamSession: SESSION }),
+              userErrors: [],
+            },
+          },
         })
       }),
-      graphql.mutation('DestroyStreamSession', ({ variables }) => {
-        destroyed.push(variables.sessionId)
-        return HttpResponse.json({ data: { destroyStreamSession: true } })
+      graphql.mutation('DestroyPlaybackSession', ({ variables }) => {
+        destroyed.push(destroyedPlaybackSession(variables).playbackSessionId)
+        return HttpResponse.json({
+          data: { destroyPlaybackSession: destroyedPlaybackSession(variables) },
+        })
       }),
     )
     const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
@@ -914,7 +1789,7 @@ describe('Player', () => {
     unmount()
     gate.resolve()
 
-    await waitFor(() => expect(destroyed).toEqual(['sess-1']))
+    await waitFor(() => expect(destroyed).toEqual(['playback-sess-1']))
     expect(hls.attachMedia).not.toHaveBeenCalled()
   })
 
@@ -930,9 +1805,11 @@ describe('Player', () => {
         completed.push('STOPPED')
         return HttpResponse.json({ data: { reportStreamSessionTimeline: true } })
       }),
-      graphql.mutation('DestroyStreamSession', () => {
+      graphql.mutation('DestroyPlaybackSession', ({ variables }) => {
         completed.push('DESTROYED')
-        return HttpResponse.json({ data: { destroyStreamSession: true } })
+        return HttpResponse.json({
+          data: { destroyPlaybackSession: destroyedPlaybackSession(variables) },
+        })
       }),
     )
     const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
@@ -964,8 +1841,15 @@ describe('Player', () => {
 
   it('shouldReportAFatalStreamErrorAndTearDownHls', async () => {
     server.use(
-      graphql.mutation('CreateStreamSession', () =>
-        HttpResponse.json({ data: { createStreamSession: { session: SESSION, userErrors: [] } } }),
+      graphql.mutation('CreatePlaybackSession', () =>
+        HttpResponse.json({
+          data: {
+            createPlaybackSession: {
+              playbackSession: readyPlaybackSession({ streamSession: SESSION }),
+              userErrors: [],
+            },
+          },
+        }),
       ),
     )
     renderWithProviders(<Player mediaFileId="abcd" />)
@@ -997,13 +1881,18 @@ describe('Player', () => {
     const retryResponse = deferred()
     let creations = 0
     server.use(
-      graphql.mutation('CreateStreamSession', async () => {
+      graphql.mutation('CreatePlaybackSession', async () => {
         creations += 1
         if (creations > 1) {
           await retryResponse.promise
         }
         return HttpResponse.json({
-          data: { createStreamSession: { session: SESSION, userErrors: [] } },
+          data: {
+            createPlaybackSession: {
+              playbackSession: readyPlaybackSession({ streamSession: SESSION }),
+              userErrors: [],
+            },
+          },
         })
       }),
     )
@@ -1124,7 +2013,7 @@ describe('Player', () => {
       vi.useRealTimers()
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
       expect(video).toHaveAttribute('src', STREAM_URL)
-      expect(activeSessions).toEqual(new Set(['sess-abcd']))
+      expect(activeSessions).toEqual(new Set(['playback-sess-abcd']))
     },
   )
 
@@ -1191,7 +2080,7 @@ describe('Player', () => {
     vi.useRealTimers()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(video).toHaveAttribute('src', STREAM_URL)
-    expect(activeSessions).toEqual(new Set(['sess-abcd']))
+    expect(activeSessions).toEqual(new Set(['playback-sess-abcd']))
   })
 
   it('shouldNotRestartTheStartupDeadlineWhenTheViewerPlaysALoadedNativeStream', async () => {
@@ -1247,11 +2136,16 @@ describe('Player', () => {
 
   it('shouldRecoverWhenTheNextMediaFileStartsAfterAFailedOne', async () => {
     server.use(
-      graphql.mutation('CreateStreamSession', ({ variables }) =>
+      graphql.mutation('CreatePlaybackSession', ({ variables }) =>
         (variables as { input: { mediaFileId: string } }).input.mediaFileId === 'a'
           ? HttpResponse.json({ errors: [{ message: 'boom' }] }, { status: 200 })
           : HttpResponse.json({
-              data: { createStreamSession: { session: SESSION, userErrors: [] } },
+              data: {
+                createPlaybackSession: {
+                  playbackSession: readyPlaybackSession({ streamSession: SESSION }),
+                  userErrors: [],
+                },
+              },
             }),
       ),
     )
@@ -1456,9 +2350,11 @@ describe('Player', () => {
     const reports = serveSession()
     let destroyed = false
     server.use(
-      graphql.mutation('DestroyStreamSession', () => {
+      graphql.mutation('DestroyPlaybackSession', ({ variables }) => {
         destroyed = true
-        return HttpResponse.json({ data: { destroyStreamSession: true } })
+        return HttpResponse.json({
+          data: { destroyPlaybackSession: destroyedPlaybackSession(variables) },
+        })
       }),
     )
     const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
@@ -1526,9 +2422,11 @@ describe('Player', () => {
         if (variables.state === 'STOPPED') await acknowledgement.promise
         return HttpResponse.json({ data: { reportStreamSessionTimeline: true } })
       }),
-      graphql.mutation('DestroyStreamSession', () => {
+      graphql.mutation('DestroyPlaybackSession', ({ variables }) => {
         destroyed = true
-        return HttpResponse.json({ data: { destroyStreamSession: true } })
+        return HttpResponse.json({
+          data: { destroyPlaybackSession: destroyedPlaybackSession(variables) },
+        })
       }),
     )
     const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)

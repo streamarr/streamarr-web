@@ -1,0 +1,13 @@
+mutation CreatePlaybackSession($input: CreatePlaybackSessionInput!) {
+  createPlaybackSession(input: $input) {
+    playbackSession {
+      ...PlaybackSessionFields
+    }
+    userErrors {
+      __typename
+      ... on MutationError {
+        message
+      }
+    }
+  }
+}

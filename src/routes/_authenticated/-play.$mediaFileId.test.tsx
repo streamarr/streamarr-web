@@ -1,3 +1,4 @@
+import { readyPlaybackSession, destroyedPlaybackSession } from '../../test/playbackSession'
 import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
 import { HttpResponse, graphql } from 'msw'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -13,16 +14,18 @@ const STREAM_URL = '/api/stream/file-1/multivariant.m3u8?t=playback-token'
 
 function serveApp() {
   server.use(
-    graphql.mutation('DestroyStreamSession', () =>
-      HttpResponse.json({ data: { destroyStreamSession: true } }),
+    graphql.mutation('DestroyPlaybackSession', ({ variables }) =>
+      HttpResponse.json({ data: { destroyPlaybackSession: destroyedPlaybackSession(variables) } }),
     ),
     graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
     graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
-    graphql.mutation('CreateStreamSession', () =>
+    graphql.mutation('CreatePlaybackSession', () =>
       HttpResponse.json({
         data: {
-          createStreamSession: {
-            session: { id: 'sess-1', streamUrl: STREAM_URL, transcodeMode: 'REMUX' },
+          createPlaybackSession: {
+            playbackSession: readyPlaybackSession({
+              streamSession: { id: 'sess-1', streamUrl: STREAM_URL, transcodeMode: 'REMUX' },
+            }),
             userErrors: [],
           },
         },

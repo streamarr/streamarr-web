@@ -1,0 +1,5 @@
+query PlaybackSession($id: ID!) {
+  playbackSession(id: $id) {
+    ...PlaybackSessionFields
+  }
+}

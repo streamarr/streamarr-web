@@ -38,6 +38,12 @@ export function resetFakeHls() {
 }
 
 class FakeHls {
+  static ErrorTypes = { NETWORK_ERROR: 'networkError', MEDIA_ERROR: 'mediaError' }
+  static ErrorDetails = {
+    MANIFEST_INCOMPATIBLE_CODECS_ERROR: 'manifestIncompatibleCodecsError',
+    BUFFER_INCOMPATIBLE_CODECS_ERROR: 'bufferIncompatibleCodecsError',
+    BUFFER_ADD_CODEC_ERROR: 'bufferAddCodecError',
+  }
   static Events = {
     ERROR: 'hlsError',
     AUDIO_TRACKS_UPDATED: 'hlsAudioTracksUpdated',
