@@ -1,3 +1,4 @@
+import { CombinedGraphQLErrors } from '@apollo/client/errors'
 import type { ApolloClient, OperationVariables, TypedDocumentNode } from '@apollo/client'
 import {
   LibraryCountsChangedDocument,
@@ -22,7 +23,13 @@ type Bounds = { first: string | null; last: string | null }
 
 /** Owns one library view through its detail routes. Query recovery uses the retained observer. */
 export function createLibraryContents({ client }: { client: ApolloClient }) {
-  let active: { key: string; variables: View['variables']; stop: () => void } | null = null
+  let active: {
+    key: string
+    variables: View['variables']
+    stop: () => void
+    restart: () => void
+    refusal: unknown
+  } | null = null
   const removed = new Set<string>()
   const listeners = new Set<() => void>()
 
@@ -45,11 +52,23 @@ export function createLibraryContents({ client }: { client: ApolloClient }) {
     if (active?.key === key || removed.has(view.variables.libraryId)) return
     release(true)
     const libraryId = view.variables.libraryId
-    const scope = { key, variables: view.variables, stop: () => {} }
+    const scope: NonNullable<typeof active> = {
+      key,
+      variables: view.variables,
+      stop: () => {},
+      restart: () => select(view),
+      refusal: undefined,
+    }
     active = scope
     scope.stop = subscribeToLibraryContents({
       client,
       view,
+      onRefused: (error) => {
+        if (active !== scope) return
+        scope.refusal = error
+        scope.stop()
+        for (const listener of listeners) listener()
+      },
       onRemoved: () => {
         if (active !== scope) return
         removed.add(libraryId)
@@ -57,7 +76,7 @@ export function createLibraryContents({ client }: { client: ApolloClient }) {
         for (const listener of listeners) listener()
       },
     })
-    if (active !== scope) scope.stop()
+    if (active !== scope || scope.refusal !== undefined) scope.stop()
   }
 
   return {
@@ -72,6 +91,18 @@ export function createLibraryContents({ client }: { client: ApolloClient }) {
       release(true)
     },
     isRemoved: (libraryId: string) => removed.has(libraryId),
+    refusalFor: (libraryId: string) =>
+      active?.variables.libraryId === libraryId ? active.refusal : undefined,
+    async retry(libraryId: string, read: () => Promise<unknown>) {
+      const scope = active
+      if (scope?.variables.libraryId !== libraryId || scope.refusal === undefined) return
+      await read()
+      if (active !== scope) return
+      const restart = scope.restart
+      release()
+      restart()
+      for (const listener of listeners) listener()
+    },
     subscribe(this: void, listener: () => void) {
       listeners.add(listener)
       return () => {
@@ -86,10 +117,12 @@ function subscribeToLibraryContents({
   client,
   view,
   onRemoved,
+  onRefused,
 }: {
   client: ApolloClient
   view: View
   onRemoved: () => void
+  onRefused: (error: unknown) => void
 }) {
   const { variables, onItemsChanged } = view
   const { libraryId, sort, filter } = variables
@@ -114,17 +147,26 @@ function subscribeToLibraryContents({
     apply: (data: TData) => void,
   ) {
     if (stopped) return
+    let refusal: unknown
     subscriptions.push(
       client
         .subscribe({ query, variables: args, fetchPolicy: 'no-cache', errorPolicy: 'all' })
         .subscribe({
           next: ({ data, error }) => {
+            if (isTerminalRefusal(error)) refusal = error
             // A failed position or item is not a removal. Shared recovery reads incomplete changes again.
             if (!stopped && data && !error) apply(data)
           },
-          error: stop,
+          error: (error: unknown) => {
+            if (!stopped) onRefused(error)
+          },
           complete: () => {
-            if (!stopped) onRemoved()
+            if (stopped) return
+            if (refusal !== undefined) {
+              onRefused(refusal)
+              return
+            }
+            onRemoved()
           },
         }),
     )
@@ -241,4 +283,15 @@ function withEdges(items: Items, edges: Items['edges']): Items {
         : (resolved.at(-1)?.cursor ?? items.pageInfo.endCursor),
     },
   }
+}
+
+function isTerminalRefusal(error: unknown) {
+  return (
+    CombinedGraphQLErrors.is(error) &&
+    error.errors.some(
+      (entry) =>
+        (entry.extensions?.code === 'FORBIDDEN' || entry.extensions?.code === 'PROFILE_REQUIRED') &&
+        (entry.path?.length ?? 0) <= 1,
+    )
+  )
 }

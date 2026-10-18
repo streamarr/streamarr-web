@@ -140,6 +140,110 @@ function removal(id: string) {
 }
 
 describe('library contents', () => {
+  it.each(['FORBIDDEN', 'PROFILE_REQUIRED'])(
+    'shouldShowATerminal%sRefusalUntilAnExplicitRetry',
+    async (code) => {
+      const { reads, socket } = serve()
+      const { user } = await open(socket)
+      await waitFor(() => expect(reads.library).toBe(2))
+      act(() => {
+        socket.publish('LibraryItemUpdated', {
+          errors: [{ message: 'Access to this Library was refused.', extensions: { code } }],
+        })
+        socket.complete('LibraryItemUpdated')
+      })
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Access to this Library was refused.',
+      )
+      expect(
+        screen.queryByText("This library doesn't exist or was removed."),
+      ).not.toBeInTheDocument()
+      expect(screen.queryByRole('link', { name: /Alpha/ })).not.toBeInTheDocument()
+      await waitFor(() => expect(socket.isLive('LibraryItemAdded')).toBe(false))
+      act(() => {
+        window.dispatchEvent(new Event('online'))
+      })
+      await waitFor(() => expect(reads.library).toBe(3))
+      expect(socket.isLive('LibraryItemAdded')).toBe(false)
+      expect(screen.getByRole('alert')).toHaveTextContent('Access to this Library was refused.')
+      await user.click(screen.getByRole('button', { name: 'Retry' }))
+      expect(await screen.findByRole('link', { name: /Alpha/ })).toBeInTheDocument()
+      await waitFor(() => expect(socket.isLive('LibraryItemAdded')).toBe(true))
+    },
+  )
+
+  it('shouldKeepANewerRefusalWhenAnEarlierViewRetryFinishes', async () => {
+    const { reads, socket } = serve()
+    const { user, router } = await open(socket)
+    await waitFor(() => expect(reads.library).toBe(2))
+    const refuse = (message: string) => {
+      act(() => {
+        socket.publish('LibraryItemUpdated', {
+          errors: [{ message, extensions: { code: 'FORBIDDEN' } }],
+        })
+        socket.complete('LibraryItemUpdated')
+      })
+    }
+    refuse('The earlier view was refused.')
+    await screen.findByText('The earlier view was refused.')
+    let release!: () => void
+    const pending = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let retryStarted = false
+    server.use(
+      graphql.query(
+        'LibraryPage',
+        async () => {
+          retryStarted = true
+          await pending
+          return HttpResponse.json({
+            data: {
+              library: {
+                __typename: 'Library',
+                id: LIBRARY,
+                name: 'Movies',
+                status: 'HEALTHY',
+                scanCompletedOn: null,
+                itemCount: 80,
+                alphabetIndex: [],
+                items: {
+                  edges: [edge({ id: 'a', title: 'Alpha' })],
+                  pageInfo: {
+                    hasNextPage: false,
+                    hasPreviousPage: false,
+                    startCursor: 'a',
+                    endCursor: 'a',
+                  },
+                },
+              },
+            },
+          })
+        },
+        { once: true },
+      ),
+    )
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+    await waitFor(() => expect(retryStarted).toBe(true))
+    await act(async () => {
+      await router.navigate({
+        to: '/library/$libraryId',
+        params: { libraryId: LIBRARY },
+        search: { by: 'TITLE', direction: 'DESC' },
+      })
+    })
+    await waitFor(() => expect(socket.isLive('LibraryItemAdded')).toBe(true))
+    refuse('The current view was refused.')
+    await screen.findByText('The current view was refused.')
+    await act(async () => {
+      release()
+      await pending
+    })
+    await waitFor(() => expect(reads.library).toBeGreaterThan(2))
+    expect(screen.getByRole('alert')).toHaveTextContent('The current view was refused.')
+    expect(socket.isLive('LibraryItemAdded')).toBe(false)
+  })
+
   it.each(['clearStore', 'resetStore'] as const)(
     'shouldDiscardPrivateLibraryStateOn%s',
     async (reset) => {
@@ -238,6 +342,26 @@ describe('library contents', () => {
     expect(reads.library).toBe(3)
     expect(socket.isLive('LibraryItemUpdated')).toBe(true)
   })
+
+  it.each([undefined, 'FORBIDDEN'])(
+    'shouldTreatCompletionAfterAFieldErrorAsRemovalFor%s',
+    async (code) => {
+      const { socket } = serve()
+      await open(socket)
+      act(() => {
+        socket.publish('LibraryItemUpdated', {
+          ...addition(),
+          errors: [
+            { message: 'Position unavailable', path: ['change', 'position'], extensions: { code } },
+          ],
+        })
+        socket.complete('LibraryItemUpdated')
+      })
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        "This library doesn't exist or was removed.",
+      )
+    },
+  )
 
   it('shouldOfferExplicitPaginationWhenRemovalsEmptyTheVisibleWindow', async () => {
     const { reads, socket } = serve({ next: [edge({ id: 'z', title: 'Zulu' })] })
