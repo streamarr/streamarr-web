@@ -11,6 +11,22 @@ const watchDependentConnectionsByCache = new WeakMap<
   Map<string, LibraryItemsConnection>
 >()
 
+const retainedConnectionsByCache = new WeakMap<ApolloCache, Set<string>>()
+
+/** A content subscription owns membership until its library scope ends. */
+export function retainLibraryItemsConnection(
+  cache: ApolloCache,
+  connection: LibraryItemsConnection,
+) {
+  const retained = retainedConnectionsByCache.get(cache) ?? new Set<string>()
+  retainedConnectionsByCache.set(cache, retained)
+  const key = JSON.stringify(connection)
+  retained.add(key)
+  return () => {
+    retained.delete(key)
+  }
+}
+
 /**
  * Remembers a loaded `Library.items` connection when its membership or order follows watch
  * state, so `invalidateWatchedState` can evict it. Other connections are not remembered.
@@ -34,20 +50,17 @@ export function trackLibraryItemsConnection(
  */
 export function invalidateWatchedState(cache: ApolloCache) {
   cache.evict({ fieldName: 'continueWatching' })
-  evictWatchDependentConnections(cache, () => false)
+  evictWatchDependentConnections(cache)
 }
 
 /**
- * Evicts each remembered watch-dependent `Library.items` connection that `keep` rejects, and
+ * Evicts each remembered watch-dependent `Library.items` connection without a live consumer, and
  * forgets it, so the next read of that connection asks the server again.
  */
-export function evictWatchDependentConnections(
-  cache: ApolloCache,
-  keep: (connection: LibraryItemsConnection) => boolean,
-) {
+export function evictWatchDependentConnections(cache: ApolloCache) {
   const connections = watchDependentConnectionsByCache.get(cache)
   for (const [key, connection] of connections ?? []) {
-    if (keep(connection)) continue
+    if (retainedConnectionsByCache.get(cache)?.has(key)) continue
     cache.evict({
       id: cache.identify({ __typename: 'Library', id: connection.libraryId }),
       fieldName: 'items',

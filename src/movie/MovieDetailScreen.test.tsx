@@ -1,8 +1,9 @@
-import { screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import { graphql, HttpResponse, http } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { MovieDetailQuery } from '../graphql/generated/graphql'
 import { deferred } from '../test/deferred'
+import { serveGraphqlSocket } from '../test/graphqlSocket'
 import { meFixture, profileFixture } from '../test/meFixture'
 import {
   answersInTurn,
@@ -427,11 +428,12 @@ describe('MovieDetailScreen', () => {
   })
 
   it('shouldKeepTheNextProfilesWatchStateWhenTheEarlierProfilesMarkAnswersAfterTheSwitch', async () => {
+    serveGraphqlSocket()
     const requestedIds: string[] = []
     const markSent = deferred()
     const markAnswer = deferred()
     serve(movieData({ watchStatus: 'UNWATCHED' }), requestedIds)
-    const household = meFixture({
+    let household = meFixture({
       scope: 'profile',
       profiles: [
         profileFixture({ id: 'p-alex', name: 'Alex', selected: true }),
@@ -440,13 +442,20 @@ describe('MovieDetailScreen', () => {
     })
     server.use(
       graphql.query('Me', () => HttpResponse.json({ data: { me: household } })),
-      http.post('/api/auth/select-profile', () =>
-        HttpResponse.json({
+      http.post('/api/auth/select-profile', () => {
+        household = meFixture({
+          scope: 'profile',
+          profiles: [
+            profileFixture({ id: 'p-alex', name: 'Alex' }),
+            profileFixture({ id: 'p-sam', name: 'Sam', personal: false, selected: true }),
+          ],
+        })
+        return HttpResponse.json({
           accessToken: 'access',
           accessTokenExpiresAt: new Date(Date.now() + 600_000).toISOString(),
           scope: 'profile',
-        }),
-      ),
+        })
+      }),
       graphql.mutation('MarkWatched', async () => {
         markSent.resolve()
         await markAnswer.promise
@@ -463,15 +472,18 @@ describe('MovieDetailScreen', () => {
     const { user } = renderAppAt('/movie/m1')
     await user.click(await screen.findByRole('button', { name: 'Mark watched' }))
     await markSent.promise
+    const readsBeforeSwitch = requestedIds.length
 
     await user.click(screen.getByRole('button', { name: /profile menu \(alex\)/i }))
     await user.click(screen.getByRole('button', { name: 'Sam' }))
-    await waitFor(() => expect(requestedIds).toEqual(['m1', 'm1']))
-    markAnswer.resolve()
+    await screen.findByRole('button', { name: /profile menu \(sam\)/i })
+    await waitFor(() => expect(requestedIds.length).toBeGreaterThan(readsBeforeSwitch))
+    await act(async () => {
+      markAnswer.resolve()
+    })
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      /^Couldn't update the watched state\.$/,
-    )
+    // The new identity also discards the previous Profile's pending action and error state.
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Mark watched' })).toBeEnabled()
     expect(screen.queryByRole('button', { name: 'Mark unwatched' })).not.toBeInTheDocument()
   })

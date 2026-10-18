@@ -3,22 +3,16 @@ import { describe, expect, it } from 'vitest'
 import possibleTypes from '../graphql/generated/possibleTypes.json'
 import {
   HomeDocument,
-  LibraryPageDocument,
   WatchStateChangedDocument,
-  type MediaFilter,
-  type MediaSort,
   type WatchStatus,
 } from '../graphql/generated/graphql'
 import {
   applyWatchStateToLists,
   CONTINUE_WATCHING_LIMIT,
   showContinueWatching,
-  showLibraryItems,
 } from './watchStateLists'
 
 const LIBRARY_ID = 'library-1'
-const TITLE_ASC: MediaSort = { by: 'TITLE', direction: 'ASC' }
-const LAST_WATCHED_ASC: MediaSort = { by: 'LAST_WATCHED', direction: 'ASC' }
 
 interface Item {
   id: string
@@ -58,66 +52,6 @@ function setup() {
   return new InMemoryCache({ possibleTypes: possibleTypes.possibleTypes })
 }
 
-function viewArgs(sort: MediaSort, filter: MediaFilter) {
-  return { first: 48, sort, filter }
-}
-
-// Writes a loaded library view and shows it, as a mounted library screen does.
-function showView(
-  cache: InMemoryCache,
-  {
-    sort = TITLE_ASC,
-    filter = { watchStatus: 'IN_PROGRESS' },
-    items,
-    hasNextPage = false,
-    hasPreviousPage = false,
-  }: {
-    sort?: MediaSort
-    filter?: MediaFilter
-    items: Item[] | null
-    hasNextPage?: boolean
-    hasPreviousPage?: boolean
-  },
-) {
-  const args = viewArgs(sort, filter)
-  cache.writeQuery({
-    query: LibraryPageDocument,
-    variables: { libraryId: LIBRARY_ID, ...args },
-    data: {
-      library: {
-        __typename: 'Library',
-        id: LIBRARY_ID,
-        name: 'Movies',
-        status: 'HEALTHY',
-        scanCompletedOn: null,
-        alphabetIndex: [],
-        items: {
-          __typename: 'MediaConnection',
-          edges:
-            items?.map((item) => ({
-              __typename: 'MediaEdge',
-              cursor: item.id,
-              node: node(item),
-            })) ?? null,
-          pageInfo: {
-            __typename: 'PageInfo',
-            hasNextPage,
-            hasPreviousPage,
-            startCursor: null,
-            endCursor: null,
-          },
-        },
-      },
-    } as never,
-  })
-  const release = showLibraryItems(cache, { libraryId: LIBRARY_ID, args })
-  const shown = () =>
-    cache
-      .readQuery({ query: LibraryPageDocument, variables: { libraryId: LIBRARY_ID, ...args } })
-      ?.library.items.edges?.map((edge) => edge?.node?.id ?? null) ?? null
-  return { shown, release }
-}
-
 function apply(cache: InMemoryCache, items: Item[], { written = true } = {}) {
   const payload = items.map(changed)
   if (written) {
@@ -133,124 +67,6 @@ function apply(cache: InMemoryCache, items: Item[], { written = true } = {}) {
 const started = { watchStatus: 'IN_PROGRESS', lastWatchedAt: '2026-10-16T10:00:00Z' } as const
 
 describe('applyWatchStateToLists', () => {
-  it('shouldReadAViewAgainWhenItsSortCannotPlaceAnItem', () => {
-    const cache = setup()
-    const { shown } = showView(cache, {
-      sort: { by: 'ADDED', direction: 'DESC' },
-      items: [{ id: 'a', title: 'Alpha', ...started }],
-    })
-
-    apply(cache, [{ id: 'b', title: 'Bravo', ...started }])
-
-    expect(shown()).toBeNull()
-  })
-
-  it('shouldReadAViewAgainWhenItsFilterHasCriteriaAChangeCannotCheck', () => {
-    const cache = setup()
-    const { shown } = showView(cache, {
-      filter: { watchStatus: 'IN_PROGRESS', genreIds: ['drama'] },
-      items: [{ id: 'a', title: 'Alpha', ...started }],
-    })
-
-    apply(cache, [{ id: 'b', title: 'Bravo', ...started }])
-
-    expect(shown()).toBeNull()
-  })
-
-  it('shouldReadAViewAgainWhenTheCacheCannotBuildTheItemsCard', () => {
-    const cache = setup()
-    const { shown } = showView(cache, { items: [{ id: 'a', title: 'Alpha', ...started }] })
-
-    apply(cache, [{ id: 'b', title: 'Bravo', ...started }], { written: false })
-
-    expect(shown()).toBeNull()
-  })
-
-  it('shouldDropAnItemThatNoLongerMatchesTheUnmatchedFilter', () => {
-    const cache = setup()
-    const { shown } = showView(cache, {
-      filter: { watchStatus: 'IN_PROGRESS', unmatched: true },
-      items: [
-        { id: 'a', title: 'Alpha', ...started },
-        { id: 'b', title: 'Bravo', ...started },
-      ],
-    })
-
-    apply(cache, [{ id: 'a', title: 'Alpha', ...started, unmatched: false }])
-
-    expect(shown()).toEqual(['b'])
-  })
-
-  it('shouldPlaceASeriesByItsStartLetterUnderLastWatchedOrder', () => {
-    const cache = setup()
-    const { shown } = showView(cache, {
-      sort: LAST_WATCHED_ASC,
-      filter: { startLetter: 'B' },
-      items: [
-        { id: 'b1', title: 'Bravo', watchStatus: 'WATCHED', lastWatchedAt: '2026-10-16T08:00:00Z' },
-      ],
-    })
-
-    apply(cache, [
-      { id: 'b2', title: 'Brook', typename: 'Series', ...started },
-      { id: 'c1', title: 'Charlie', typename: 'Series', ...started },
-    ])
-
-    expect(shown()).toEqual(['b1', 'b2'])
-  })
-
-  it('shouldOrderNeverWatchedItemsLastByIdThenEqualTitlesById', () => {
-    const cache = setup()
-    const lastWatched = showView(cache, {
-      sort: LAST_WATCHED_ASC,
-      filter: {},
-      items: [
-        { id: 'a', title: 'Alpha', lastWatchedAt: '2026-10-16T08:00:00Z' },
-        { id: 'c', title: 'Charlie' },
-      ],
-    })
-    const byTitleDescending = showView(cache, {
-      sort: { by: 'TITLE', direction: 'DESC' },
-      filter: { watchStatus: 'UNWATCHED' },
-      items: [
-        { id: 'z', title: 'Same' },
-        { id: 'x', title: null, titleSort: null },
-      ],
-    })
-
-    apply(cache, [
-      { id: 'b', title: 'Bravo', watchStatus: 'UNWATCHED', lastWatchedAt: null },
-      { id: 'y', title: 'Same', watchStatus: 'UNWATCHED' },
-    ])
-
-    expect(lastWatched.shown()).toEqual(['a', 'b', 'c', 'y'])
-    expect(byTitleDescending.shown()).toEqual(['z', 'y', 'b', 'x'])
-  })
-
-  it('shouldLeaveAViewWithoutLoadedEdgesAndAViewItCannotReadAlone', () => {
-    const cache = setup()
-    const { shown } = showView(cache, { items: null })
-    showLibraryItems(cache, {
-      libraryId: LIBRARY_ID,
-      args: viewArgs(TITLE_ASC, { watchStatus: 'WATCHED' }),
-    })
-
-    apply(cache, [{ id: 'a', title: 'Alpha', ...started }])
-
-    expect(shown()).toEqual(['a'])
-  })
-
-  it('shouldKeepAViewShownWhileAnotherScreenStillShowsIt', () => {
-    const cache = setup()
-    const first = showView(cache, { items: [{ id: 'a', title: 'Alpha', ...started }] })
-    const second = showView(cache, { items: [{ id: 'a', title: 'Alpha', ...started }] })
-
-    second.release()
-    apply(cache, [{ id: 'b', title: 'Bravo', ...started }])
-
-    expect(first.shown()).toEqual(['a', 'b'])
-  })
-
   it('shouldLeaveContinueWatchingWhenAChangeHoldsNoMovieOrEpisode', () => {
     const cache = setup()
     showContinueWatching(cache)

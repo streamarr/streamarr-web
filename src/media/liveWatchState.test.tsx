@@ -118,14 +118,15 @@ function serve(me = WATCHER) {
             name: 'Movies',
             status: 'HEALTHY',
             scanCompletedOn: '2026-08-28T11:46:00Z',
+            itemCount: 2,
             alphabetIndex: [
               { letter: 'E', count: 1 },
               { letter: 'N', count: 1 },
             ],
             items: {
               edges: [
-                { cursor: 'm1', node: withSaved(EVERLIGHT_CARD) },
-                { cursor: 'm2', node: withSaved(NORTHERN_LINE_CARD) },
+                { cursor: 'm1', orderKey: 'Everlight', node: withSaved(EVERLIGHT_CARD) },
+                { cursor: 'm2', orderKey: 'Northern Line', node: withSaved(NORTHERN_LINE_CARD) },
               ],
               pageInfo: {
                 hasNextPage: false,

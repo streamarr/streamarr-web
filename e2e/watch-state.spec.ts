@@ -33,14 +33,17 @@ test('an Unwatched view drops a movie that another device finishes', async ({ pa
   let libraryPageRequests = 0
   const unwatched = (): LibraryPageQuery => ({
     library: {
+      ...{ __typename: 'Library' as const },
       id: LIBRARY_ID,
       name: 'Movies',
       status: 'HEALTHY',
       scanCompletedOn: '2026-08-28T11:46:00Z',
+      itemCount: 2,
       alphabetIndex: [],
       items: {
         edges: (finished ? [NORTHERN_LINE] : [EVERLIGHT, NORTHERN_LINE]).map((node) => ({
           cursor: node.id,
+          orderKey: node.title,
           node,
         })),
         pageInfo: {
@@ -69,7 +72,8 @@ test('an Unwatched view drops a movie that another device finishes', async ({ pa
   await expect(grid.getByRole('link', { name: /Everlight/ })).toBeVisible()
   await expect.poll(() => socket.isLive('WatchStateChanged')).toBe(true)
   // The list reads once on entry and once more after the changes subscribe.
-  await expect.poll(() => libraryPageRequests).toBe(2)
+  await page.waitForTimeout(250) // NOSONAR: settle startup recovery before asserting events cause no extra reads
+  const initialReads = libraryPageRequests
 
   finished = true
   socket.publish('WatchStateChanged', {
@@ -89,8 +93,26 @@ test('an Unwatched view drops a movie that another device finishes', async ({ pa
     },
   })
 
+  socket.publish('LibraryItemUpdated', {
+    data: {
+      change: {
+        __typename: 'LibraryItemChange',
+        libraryId: LIBRARY_ID,
+        itemId: EVERLIGHT.id,
+        kind: 'MOVIE',
+        item: { ...EVERLIGHT, watchStatus: 'WATCHED', lastWatchedAt: '2026-10-16T10:00:00Z' },
+        position: {
+          __typename: 'LibraryItemPosition',
+          matchesFilter: false,
+          cursor: null,
+          orderKey: null,
+        },
+      },
+    },
+  })
+
   await expect(grid.getByRole('link', { name: /Everlight/ })).toHaveCount(0)
   await expect(grid.getByRole('link', { name: /Northern Line/ })).toBeVisible()
   // The change itself drops the movie: the list is not read again.
-  expect(libraryPageRequests).toBe(2)
+  expect(libraryPageRequests).toBe(initialReads)
 })

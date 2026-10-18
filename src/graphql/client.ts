@@ -80,7 +80,10 @@ export function createApolloClient(
 
   // Generated possibleTypes keep fragment matching correct across unions; a mismatch drops
   // fields silently.
-  const cache = new ResetCountingCache({ possibleTypes: generatedIntrospection.possibleTypes })
+  const cache = new ResetCountingCache({
+    possibleTypes: generatedIntrospection.possibleTypes,
+    typePolicies: { Library: { fields: { alphabetIndex: { merge: false } } } },
+  })
 
   // Error link next: forward() on a CSRF rejection re-enters the CSRF link, which re-reads the
   // re-minted cookie before the HTTP link sends.

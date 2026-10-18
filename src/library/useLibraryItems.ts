@@ -1,16 +1,25 @@
 import type { ApolloClient } from '@apollo/client'
 import { useApolloClient, useQuery } from '@apollo/client/react'
-import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 import {
   LibraryPageDocument,
   type LibraryPageQuery,
+  type LibraryPageQueryVariables,
   type MediaFilter,
   type MediaSort,
 } from '../graphql/generated/graphql'
 import { definedEdges } from '../media/edges'
 import { alphabetLetterFromTitle } from '../media/alphabetLetter'
 import { trackLibraryItemsConnection } from '../media/watchedState'
-import { isLocalCursor, showLibraryItems } from '../media/watchStateLists'
+import { useLibraryContents } from './LibraryContentsProvider'
 
 const PAGE_SIZE = 48
 type LibraryWindow = { before: number; after: number; anchor: string | null }
@@ -50,8 +59,14 @@ export function useLibraryItems({
 }) {
   const client = useApolloClient()
   const windows = windowsFor(client)
-  const { data, previousData, loading, error, fetchMore, refetch } = useQuery(LibraryPageDocument, {
+  const contents = useLibraryContents()
+  const removed = useSyncExternalStore(
+    contents?.subscribe ?? neverChanges,
+    () => contents?.isRemoved(libraryId) ?? false,
+  )
+  const { data, previousData, loading, error, refetch } = useQuery(LibraryPageDocument, {
     variables: { libraryId, first: PAGE_SIZE, sort, filter },
+    skip: removed,
   })
 
   const queryKey = JSON.stringify({ libraryId, sort, filter })
@@ -65,10 +80,31 @@ export function useLibraryItems({
     },
     [client, data, libraryId, sort, filter],
   )
-  useEffect(
-    () => showLibraryItems(client.cache, { libraryId, args: { first: PAGE_SIZE, sort, filter } }),
-    [client, libraryId, sort, filter],
-  )
+  useLayoutEffect(() => {
+    contents?.select({
+      variables: { libraryId, first: PAGE_SIZE, sort, filter },
+      onItemsChanged(previous, next) {
+        const saved = windows.get(queryKey)
+        if (!saved) return
+        const split = (items: LibraryItems, anchor: string | null) => {
+          const edges = definedEdges(items.edges)
+          const before = Math.max(
+            0,
+            edges.findIndex((edge) => edge.cursor === anchor),
+          )
+          return { before, after: edges.length - before }
+        }
+        const anchor = findLetterLandingCursor(next.edges, filter.startLetter ?? null, saved.anchor)
+        const oldSize = split(previous, saved.anchor)
+        const newSize = split(next, anchor)
+        windows.set(queryKey, {
+          anchor,
+          before: Math.max(0, saved.before + newSize.before - oldSize.before),
+          after: Math.max(0, saved.after + newSize.after - oldSize.after),
+        })
+      },
+    })
+  }, [contents, windows, queryKey, libraryId, sort, filter])
   const [pageFailure, setPageFailure] = useState<PageFailure | null>(null)
   let currentPageFailure = pageFailure
   if (pageFailure && pageFailure.query !== queryKey) {
@@ -124,8 +160,7 @@ export function useLibraryItems({
       anchor: landingCursor,
     })
   }, [windows, queryKey, data, staged, before, after, landingCursor])
-  // Each committed query owns its in-flight pages. Apollo applies updateQuery to the current
-  // variables, so a response from an earlier query must not write into the new result.
+  // Each committed query owns its in-flight pages; a result from an earlier view is discarded.
   const scopeRef = useRef<RequestScope | null>(null)
   useLayoutEffect(
     function activateCommittedQuery() {
@@ -158,14 +193,35 @@ export function useLibraryItems({
     })
   }
 
+  // Apollo suppresses cache notifications during fetchMore. Read beside the watched query so
+  // subscription payloads still render while a continuation is in flight.
+  async function readPage({
+    variables,
+    update,
+  }: {
+    variables: LibraryPageQueryVariables
+    update: (previous: LibraryPageQuery, page: LibraryPageQuery) => LibraryPageQuery
+  }) {
+    const { data: page } = await client.query({
+      query: LibraryPageDocument,
+      variables,
+      fetchPolicy: 'no-cache',
+    })
+    if (!page) return undefined
+    client.cache.updateQuery(
+      { query: LibraryPageDocument, variables: { libraryId, first: PAGE_SIZE, sort, filter } },
+      (previous) => (previous ? update(previous, page) : undefined),
+    )
+    return page
+  }
+
   function loadMore() {
     const scope = committedScope()
     if (!scope || !pageInfo?.hasNextPage || scope.fetchingNext) {
       return
     }
     scope.fetchingNext = true
-    void fetchMore({
-      // fetchMore merges onto the current variables — last/before must be cleared explicitly.
+    void readPage({
       variables: {
         libraryId,
         first: PAGE_SIZE,
@@ -175,13 +231,13 @@ export function useLibraryItems({
         sort,
         filter,
       },
-      updateQuery: (previous, { fetchMoreResult }) =>
+      update: (previous, page) =>
         !scope.active || previous.library.items.pageInfo.endCursor !== pageInfo.endCursor
           ? previous
           : {
               library: {
-                ...fetchMoreResult.library,
-                items: appendItemsPage(previous.library.items, fetchMoreResult.library.items),
+                ...page.library,
+                items: appendItemsPage(previous.library.items, page.library.items),
               },
             },
     })
@@ -200,7 +256,7 @@ export function useLibraryItems({
     }
     // A `before` cursor replaces the letter seek anchor (ADR 0023).
     const { startLetter: _startLetter, ...continuationFilter } = filter
-    scope.previousRequest = fetchMore({
+    scope.previousRequest = readPage({
       variables: {
         libraryId,
         first: undefined,
@@ -210,17 +266,17 @@ export function useLibraryItems({
         sort,
         filter: continuationFilter,
       },
-      updateQuery: (previous, { fetchMoreResult }) =>
+      update: (previous, page) =>
         !scope.active || previous.library.items.pageInfo.startCursor !== pageInfo.startCursor
           ? previous
           : {
               library: {
-                ...fetchMoreResult.library,
-                items: prependItemsPage(previous.library.items, fetchMoreResult.library.items),
+                ...page.library,
+                items: prependItemsPage(previous.library.items, page.library.items),
               },
             },
     })
-      .then((result) => result.data?.library.items.pageInfo.startCursor ?? null)
+      .then((page) => page?.library.items.pageInfo.startCursor ?? null)
       .catch((error: unknown) => {
         failPage(scope, 'previous', error)
         return null
@@ -264,12 +320,13 @@ export function useLibraryItems({
     data && !staged && !restoringWindow ? { key: queryKey, cursor: landingCursor } : null
 
   return {
-    loading: loading && !rendered,
+    removed,
+    loading: !removed && loading && !rendered,
     pending: (loading && !data && !!previousData) || staged,
     staged,
     accept,
     error: error ?? currentPageFailure?.error,
-    library: rendered?.library ?? null,
+    library: removed ? null : (rendered?.library ?? null),
     edges: definedEdges(rendered?.library.items.edges ?? null),
     hasNextPage: rendered?.library.items.pageInfo.hasNextPage ?? false,
     hasPreviousPage: rendered?.library.items.pageInfo.hasPreviousPage ?? false,
@@ -299,8 +356,7 @@ function findLetterLandingCursor(
   previousAnchor: string | null | undefined,
 ) {
   if (!letter) return null
-  // An item a watch-state change placed has no position on the server to land on.
-  const resolvedEdges = definedEdges(edges).filter((edge) => !isLocalCursor(edge.cursor))
+  const resolvedEdges = definedEdges(edges)
   const landingEdge = resolvedEdges.find(
     (edge) => alphabetLetterFromTitle(edge.node.titleSort ?? edge.node.title ?? '') === letter,
   )
@@ -336,4 +392,8 @@ function prependItemsPage(loaded: LibraryItems, previous: LibraryItems): Library
 function withoutLoadedItems(page: LibraryItems['edges'], loaded: LibraryItems['edges']) {
   const loadedIds = new Set(definedEdges(loaded).map((edge) => edge.node.id))
   return (page ?? []).filter((edge) => !edge?.node || !loadedIds.has(edge.node.id))
+}
+
+function neverChanges() {
+  return () => {}
 }
