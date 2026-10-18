@@ -404,6 +404,34 @@ describe('Home', () => {
     expect(screen.queryByRole('heading', { name: 'Continue watching' })).not.toBeInTheDocument()
   })
 
+  it.each(['reconnect', 'retry'])('shouldKeepRefusedHomeHiddenDuring%s', async (recovery) => {
+    const data = homeData({ continueWatching: [continueWatchingMovie()] })
+    const fresh = heldAnswer(data)
+    const refused = () =>
+      HttpResponse.json({
+        errors: [{ message: 'This Profile is not shared.', extensions: { code: 'FORBIDDEN' } }],
+      })
+    const home = answersInTurn(answerWith(data), refused, refused, fresh.answer)
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
+      graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
+      graphql.query('Home', home.resolver),
+    )
+    const { user } = renderAppAt('/')
+    await screen.findByRole('heading', { name: 'Continue watching' })
+    comeBackOnline()
+    expect(await screen.findByRole('alert')).toHaveTextContent('This Profile is not shared.')
+
+    if (recovery === 'retry') await user.click(screen.getByRole('button', { name: 'Retry' }))
+    else comeBackOnline()
+    await waitFor(() => expect(home.calls).toBe(4))
+    expect(screen.queryByRole('heading', { name: 'Continue watching' })).not.toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('This Profile is not shared.')
+    fresh.release()
+    expect(await screen.findByRole('heading', { name: 'Continue watching' })).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
   it('shouldSignInAgainWhenReadingHomeAgainFindsTheSessionGone', async () => {
     const home = answersInTurn(
       answerWith(homeData({ continueWatching: [continueWatchingMovie()] })),
