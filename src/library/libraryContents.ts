@@ -19,7 +19,12 @@ type View = {
   variables: LibraryPageQueryVariables & { libraryId: string }
   onItemsChanged: (previous: Items, next: Items) => void
 }
-type Bounds = { first: string | null; last: string | null }
+type Bounds = {
+  first: string | null
+  last: string | null
+  startCursor?: string | null
+  endCursor?: string | null
+}
 
 /** Owns one library view through its detail routes. Query recovery uses the retained observer. */
 export function createLibraryContents({ client }: { client: ApolloClient }) {
@@ -237,6 +242,13 @@ function subscribeToLibraryContents({
 }
 
 function expandBounds(bounds: Bounds, items: Items) {
+  const startCursor = items.pageInfo.hasPreviousPage ? items.pageInfo.startCursor : null
+  const endCursor = items.pageInfo.hasNextPage ? items.pageInfo.endCursor : null
+  // Server anchors change on recovery and continuation, but survive live removals.
+  if (bounds.startCursor !== startCursor) bounds.first = null
+  if (bounds.endCursor !== endCursor) bounds.last = null
+  bounds.startCursor = startCursor
+  bounds.endCursor = endCursor
   const edges = definedEdges(items.edges)
   for (const edge of edges) {
     if (bounds.first === null || edge.orderKey < bounds.first) bounds.first = edge.orderKey
