@@ -199,30 +199,14 @@ export function LibraryScreen({
 
       <div className={styles.body}>
         {edges.length === 0 ? (
-          <div className={styles.empty}>
-            <Text>
-              {hasPreviousPage || hasNextPage
-                ? 'No titles remain in this loaded range.'
-                : 'No items match this filter.'}
-            </Text>
-            <Group justify="center">
-              {hasPreviousPage && (
-                <Button
-                  variant="subtle"
-                  onClick={() => {
-                    void loadPrevious()
-                  }}
-                >
-                  Load previous titles
-                </Button>
-              )}
-              {hasNextPage && (
-                <Button variant="subtle" onClick={loadMore}>
-                  Load more titles
-                </Button>
-              )}
-            </Group>
-          </div>
+          <EmptyLibraryRange
+            hasPreviousPage={hasPreviousPage}
+            hasNextPage={hasNextPage}
+            onPrevious={() => {
+              void loadPrevious()
+            }}
+            onNext={loadMore}
+          />
         ) : (
           <LibraryGrid
             edges={edges}
@@ -296,4 +280,38 @@ function directionOfJump(
   const position = (letter: string | null) =>
     letter === 'HASH' ? -1 : index.findIndex((entry) => entry.letter === letter)
   return position(to) < position(from) ? 'backward' : 'forward'
+}
+
+function EmptyLibraryRange({
+  hasPreviousPage,
+  hasNextPage,
+  onPrevious,
+  onNext,
+}: Readonly<{
+  hasPreviousPage: boolean
+  hasNextPage: boolean
+  onPrevious: () => void
+  onNext: () => void
+}>) {
+  return (
+    <div className={styles.empty}>
+      <Text>
+        {hasPreviousPage || hasNextPage
+          ? 'No titles remain in this loaded range.'
+          : 'No items match this filter.'}
+      </Text>
+      <Group justify="center">
+        {hasPreviousPage && (
+          <Button variant="subtle" onClick={onPrevious}>
+            Load previous titles
+          </Button>
+        )}
+        {hasNextPage && (
+          <Button variant="subtle" onClick={onNext}>
+            Load more titles
+          </Button>
+        )}
+      </Group>
+    </div>
+  )
 }

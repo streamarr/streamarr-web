@@ -105,12 +105,7 @@ export function useLibraryItems({
       },
     })
   }, [contents, windows, queryKey, libraryId, sort, filter])
-  const [pageFailure, setPageFailure] = useState<PageFailure | null>(null)
-  let currentPageFailure = pageFailure
-  if (pageFailure && pageFailure.query !== queryKey) {
-    setPageFailure(null)
-    currentPageFailure = null
-  }
+  const [currentPageFailure, setPageFailure] = usePageFailure(queryKey)
   // A new query renders its predecessor's page until its own arrives and the screen accepts it,
   // so a letter jump never blanks the grid and the screen can animate the swap. The first result
   // has no predecessor and shows at once.
@@ -396,4 +391,13 @@ function withoutLoadedItems(page: LibraryItems['edges'], loaded: LibraryItems['e
 
 function neverChanges() {
   return () => {}
+}
+
+function usePageFailure(queryKey: string) {
+  const [pageFailure, setPageFailure] = useState<PageFailure | null>(null)
+  if (pageFailure && pageFailure.query !== queryKey) {
+    setPageFailure(null)
+    return [null, setPageFailure] as const
+  }
+  return [pageFailure, setPageFailure] as const
 }

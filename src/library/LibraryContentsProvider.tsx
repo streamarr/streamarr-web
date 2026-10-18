@@ -9,11 +9,11 @@ export function LibraryContentsProvider({
   profileId,
   pathname,
   children,
-}: {
+}: Readonly<{
   profileId: string | undefined
   pathname: string
   children: ReactNode
-}) {
+}>) {
   const client = useApolloClient()
   const [generation, setGeneration] = useState(0)
   const identity = profileId ? `${profileId}:${generation}` : null
