@@ -140,7 +140,7 @@ function subscribeToLibraryContents({
   }
 
   function applyChange(change: LibraryItemChangeFieldsFragment | null | undefined) {
-    if (!change || change.libraryId !== libraryId) return
+    if (change?.libraryId !== libraryId) return
     client.cache.batch({
       update(cache) {
         const item = change.item
@@ -170,7 +170,7 @@ function subscribeToLibraryContents({
     applyChange(change),
   )
   listen(LibraryItemRemovedDocument, { libraryId }, ({ change }) => {
-    if (!change || change.libraryId !== libraryId) return
+    if (change?.libraryId !== libraryId) return
     if (change.kind !== 'MOVIE' && change.kind !== 'SERIES') return
     client.cache.batch({
       update(cache) {
