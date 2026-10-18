@@ -100,6 +100,7 @@ function Window({
         ))}
       </ol>
       <button onClick={view.loadMore}>More</button>
+      <button onClick={view.retry}>Retry</button>
       <button
         onClick={() => {
           void view.loadPrevious()
@@ -267,6 +268,128 @@ describe('library contents', () => {
       )
     },
   )
+
+  it('shouldUseTheRecoveredWindowForLiveAdditionsAndContinueInOrder', async () => {
+    let dataset = ['Alpha', 'Delta', 'Foxtrot', 'Golf', 'Hotel', 'Zulu']
+    const { socket } = serve()
+    server.use(
+      graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) => {
+        const offset = variables.after
+          ? dataset.findIndex((title) => `cursor-${title}` === variables.after) + 1
+          : 0
+        const page = dataset.slice(offset, offset + 2).map((title) => edge({ id: title, title }))
+        return HttpResponse.json({
+          data: {
+            library: {
+              __typename: 'Library',
+              id: LIBRARY,
+              name: 'Movies',
+              status: 'HEALTHY',
+              scanCompletedOn: null,
+              itemCount: dataset.length,
+              alphabetIndex: [],
+              items: {
+                edges: page,
+                pageInfo: {
+                  hasPreviousPage: offset > 0,
+                  hasNextPage: offset + 2 < dataset.length,
+                  startCursor: page[0]?.cursor ?? null,
+                  endCursor: page.at(-1)?.cursor ?? null,
+                },
+              },
+            },
+          },
+        })
+      }),
+    )
+    const { user } = await openWindow(socket)
+    await user.click(screen.getByRole('button', { name: 'More' }))
+    await waitFor(() => expect(loadedTitles()).toEqual(['Alpha', 'Delta', 'Foxtrot', 'Golf']))
+    dataset = ['Alpha', 'Bravo', 'Charlie', 'Delta', 'Foxtrot', 'Golf', 'Hotel', 'Zulu']
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+    await waitFor(() => expect(loadedTitles()).toEqual(['Alpha', 'Bravo', 'Charlie', 'Delta']))
+    dataset.splice(5, 0, 'Fuego')
+    act(() => {
+      socket.publish('LibraryItemAdded', addition({ id: 'Fuego', title: 'Fuego' }))
+      socket.publish('LibraryCountsChanged', {
+        data: {
+          change: {
+            __typename: 'Library',
+            id: LIBRARY,
+            itemCount: 9,
+            alphabetIndex: [],
+          },
+        },
+      })
+    })
+    await screen.findByText('9 items')
+    expect(loadedTitles()).toEqual(['Alpha', 'Bravo', 'Charlie', 'Delta'])
+    await user.click(screen.getByRole('button', { name: 'More' }))
+    await waitFor(() =>
+      expect(loadedTitles()).toEqual(['Alpha', 'Bravo', 'Charlie', 'Delta', 'Foxtrot', 'Fuego']),
+    )
+  })
+
+  it('shouldUseTheRecoveredStartBoundaryWhenPagingBackwards', async () => {
+    let dataset = ['Alpha', 'Delta', 'Foxtrot', 'Golf', 'Hotel']
+    const { socket } = serve()
+    server.use(
+      graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) => {
+        const end = variables.before
+          ? dataset.findIndex((title) => `cursor-${title}` === variables.before)
+          : dataset.length
+        const offset = Math.max(0, end - 2)
+        const page = dataset.slice(offset, end).map((title) => edge({ id: title, title }))
+        return HttpResponse.json({
+          data: {
+            library: {
+              __typename: 'Library',
+              id: LIBRARY,
+              name: 'Movies',
+              status: 'HEALTHY',
+              scanCompletedOn: null,
+              itemCount: dataset.length,
+              alphabetIndex: [],
+              items: {
+                edges: page,
+                pageInfo: {
+                  hasPreviousPage: offset > 0,
+                  hasNextPage: end < dataset.length,
+                  startCursor: page[0]?.cursor ?? null,
+                  endCursor: page.at(-1)?.cursor ?? null,
+                },
+              },
+            },
+          },
+        })
+      }),
+    )
+    const { user } = await openWindow(socket, { filter: { startLetter: 'G' } })
+    await waitFor(() => expect(loadedTitles()).toEqual(['Delta', 'Foxtrot', 'Golf', 'Hotel']))
+    dataset = ['Alpha', 'Delta', 'Echo', 'Foxtrot', 'Golf', 'Hotel']
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+    await waitFor(() => expect(loadedTitles()).toEqual(['Echo', 'Foxtrot', 'Golf', 'Hotel']))
+    dataset.splice(2, 0, 'Eagle')
+    act(() => {
+      socket.publish('LibraryItemAdded', addition({ id: 'Eagle', title: 'Eagle' }))
+      socket.publish('LibraryCountsChanged', {
+        data: {
+          change: {
+            __typename: 'Library',
+            id: LIBRARY,
+            itemCount: 7,
+            alphabetIndex: [],
+          },
+        },
+      })
+    })
+    await screen.findByText('7 items')
+    expect(loadedTitles()).toEqual(['Echo', 'Foxtrot', 'Golf', 'Hotel'])
+    await user.click(screen.getByRole('button', { name: 'Previous' }))
+    await waitFor(() =>
+      expect(loadedTitles()).toEqual(['Delta', 'Eagle', 'Echo', 'Foxtrot', 'Golf', 'Hotel']),
+    )
+  })
 
   it('shouldApplyHiddenTabEventsAndRevalidateWhenTheTabReturns', async () => {
     const { reads, socket } = serve()
