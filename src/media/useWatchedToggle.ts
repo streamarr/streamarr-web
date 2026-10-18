@@ -27,13 +27,15 @@ export function useWatchedToggle(id: string, titleDetail: TitleDetailDocument) {
     update: (cache, { data }) => {
       if (data?.markWatched?.item) invalidateWatchedState(cache)
     },
-    refetchQueries: readTitleAgain,
+    refetchQueries: ({ data }) =>
+      data?.markWatched?.userErrors.length === 0 ? readTitleAgain : [],
   })
   const [markUnwatched, unwatchedState] = useMutation(MarkUnwatchedDocument, {
     update: (cache, { data }) => {
       if (data?.markUnwatched?.item) invalidateWatchedState(cache)
     },
-    refetchQueries: readTitleAgain,
+    refetchQueries: ({ data }) =>
+      data?.markUnwatched?.userErrors.length === 0 ? readTitleAgain : [],
   })
 
   return {

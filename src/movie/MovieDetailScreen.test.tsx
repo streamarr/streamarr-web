@@ -478,34 +478,52 @@ describe('MovieDetailScreen', () => {
     expect(screen.queryByRole('button', { name: 'Mark unwatched' })).not.toBeInTheDocument()
   })
 
-  it('shouldShowTheServerMessageWhenTheMarkIsRefused', async () => {
-    serve(movieData())
-    server.use(
-      graphql.mutation('MarkWatched', () =>
-        HttpResponse.json({
-          data: {
-            markWatched: {
-              item: null,
-              userErrors: [
-                {
-                  __typename: 'ItemNotFoundError',
-                  message: 'No movie, episode, season or series has the given ID.',
-                },
-              ],
+  it.each([
+    {
+      operation: 'MarkWatched',
+      field: 'markWatched',
+      watchStatus: 'UNWATCHED',
+      action: 'Mark watched',
+    },
+    {
+      operation: 'MarkUnwatched',
+      field: 'markUnwatched',
+      watchStatus: 'WATCHED',
+      action: 'Mark unwatched',
+    },
+  ])(
+    'shouldShowTheRefusalWithoutReadingAgainAfter$operation',
+    async ({ operation, field, watchStatus, action }) => {
+      const requestedIds: string[] = []
+      serve(movieData({ watchStatus }), requestedIds)
+      server.use(
+        graphql.mutation(operation, () =>
+          HttpResponse.json({
+            data: {
+              [field]: {
+                item: null,
+                userErrors: [
+                  {
+                    __typename: 'ItemNotFoundError',
+                    message: 'No movie, episode, season or series has the given ID.',
+                  },
+                ],
+              },
             },
-          },
-        }),
-      ),
-    )
-    const { user } = renderAppAt('/movie/m1')
+          }),
+        ),
+      )
+      const { user } = renderAppAt('/movie/m1')
 
-    await user.click(await screen.findByRole('button', { name: 'Mark watched' }))
+      await user.click(await screen.findByRole('button', { name: action }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'No movie, episode, season or series has the given ID.',
-    )
-    expect(screen.getByRole('button', { name: 'Mark watched' })).toBeEnabled()
-  })
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'No movie, episode, season or series has the given ID.',
+      )
+      expect(screen.getByRole('button', { name: action })).toBeEnabled()
+      expect(requestedIds).toEqual(['m1'])
+    },
+  )
 
   it('shouldShowAGenericFailureWhenTheMarkCannotReachTheServer', async () => {
     serve(movieData())
