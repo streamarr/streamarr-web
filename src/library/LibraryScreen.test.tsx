@@ -1,4 +1,3 @@
-import { ObservableQuery } from '@apollo/client'
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { graphql, HttpResponse, type GraphQLQuery } from 'msw'
@@ -71,13 +70,17 @@ function libraryData(
       name: 'Movies',
       status: 'HEALTHY',
       scanCompletedOn: overrides.scanCompletedOn ?? '2026-08-28T11:46:00Z',
+      itemCount: overrides.alphabetIndex?.reduce((sum, entry) => sum + entry.count, 0) ?? 3,
       alphabetIndex: overrides.alphabetIndex ?? [
         { letter: 'A', count: 1 },
         { letter: 'E', count: 1 },
         { letter: 'N', count: 1 },
       ],
       items: {
-        edges: overrides.edges ?? [{ cursor: 'c1', node: movieNode() }],
+        edges: (overrides.edges ?? [{ cursor: 'c1', node: movieNode() }]).map((edge) => ({
+          ...edge,
+          orderKey: edge.node.title,
+        })),
         pageInfo: {
           hasNextPage: overrides.hasNextPage ?? false,
           hasPreviousPage: false,
@@ -436,7 +439,7 @@ describe('LibraryScreen', () => {
   })
 
   it('does not apply an abandoned backward page measurement after changing the watch filter', async () => {
-    const fetchMore = vi.spyOn(ObservableQuery.prototype, 'fetchMore')
+    const requests = vi.spyOn(globalThis, 'fetch')
     let release!: () => void
     const pending = new Promise<void>((resolve) => {
       release = resolve
@@ -489,7 +492,7 @@ describe('LibraryScreen', () => {
       ),
     )
     await waitFor(() => expect(backwardRequested).toBe(true))
-    const backwardCompletion = fetchMore.mock.results[0].value as Promise<unknown>
+    const backwardCompletion = requests.mock.results.at(-1)!.value as Promise<unknown>
 
     await user.click(screen.getByRole('button', { name: 'Unwatched' }))
     await screen.findByText('Available Alpha')
@@ -527,7 +530,9 @@ describe('LibraryScreen', () => {
             library: {
               ...libraryData().library,
               items: {
-                edges: [{ cursor: 'c1', node: movieNode({ id: '1', title: 'Beta' }) }],
+                edges: [
+                  { cursor: 'c1', orderKey: 'Beta', node: movieNode({ id: '1', title: 'Beta' }) },
+                ],
                 pageInfo: {
                   hasNextPage: false,
                   hasPreviousPage: true,
@@ -623,7 +628,11 @@ describe('LibraryScreen', () => {
                 ...libraryData().library,
                 items: {
                   edges: [
-                    { cursor: 'c-northern', node: movieNode({ id: 'n', title: 'Northern Line' }) },
+                    {
+                      cursor: 'c-northern',
+                      orderKey: 'Northern Line',
+                      node: movieNode({ id: 'n', title: 'Northern Line' }),
+                    },
                   ],
                   pageInfo: {
                     hasNextPage: false,

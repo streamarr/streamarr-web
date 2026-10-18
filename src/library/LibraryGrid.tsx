@@ -93,9 +93,9 @@ export function LibraryGrid({
   const [geometry, setGeometry] = useState(UNMEASURED_ROWS)
   // Focus is the viewer's place in the grid, as on tvOS: the focused card's row stays mounted
   // however far the viewer scrolls, so focus is never lost to the body.
-  const [focusedCursor, setFocusedCursor] = useState<string | null>(null)
+  const [focusedItemId, setFocusedItemId] = useState<string | null>(null)
   const focusedIndex =
-    focusedCursor === null ? -1 : edges.findIndex((edge) => edge.cursor === focusedCursor)
+    focusedItemId === null ? -1 : edges.findIndex((edge) => edge.node.id === focusedItemId)
   const focusedRow = focusedIndex < 0 ? null : Math.floor(focusedIndex / geometry.columns)
   const cardFocus = useRef<CardFocus>({ cards: new Map(), requested: null })
   // Arrow keys move between cards, Home and End along the row (WAI-ARIA grid).
@@ -118,9 +118,9 @@ export function LibraryGrid({
     if (target === focusedIndex) {
       return
     }
-    const cursor = edges[target].cursor
-    cardFocus.current.requested = cursor
-    setFocusedCursor(cursor)
+    const itemId = edges[target].node.id
+    cardFocus.current.requested = itemId
+    setFocusedItemId(itemId)
   }
   const rowCount = Math.ceil(edges.length / geometry.columns)
   const { virtualizer, rows, totalSize, topRow } = useVirtualRows({
@@ -131,7 +131,7 @@ export function LibraryGrid({
     overscan: OVERSCAN_ROWS,
     rangeExtractor: (range) => rowsNearTheViewport(range, focusedRow),
     // Keyed by first title, so a page prepended in whole rows keeps the rows in view mounted.
-    getItemKey: (row) => edges[row * geometry.columns]?.cursor ?? row,
+    getItemKey: (row) => edges[row * geometry.columns]?.node.id ?? row,
   })
 
   // Measured once rows exist, and again whenever the grid's size changes.
@@ -199,23 +199,23 @@ export function LibraryGrid({
 
   // A page prepended above moves every row down by whole rows; the viewer's rows stay put. Only
   // within one result: another query's rows may repeat a title without having grown above it.
-  const firstCursor = edges[0]?.cursor
-  const previousFirstRef = useRef({ key: landingKey, cursor: firstCursor })
+  const firstItemId = edges[0]?.node.id
+  const previousFirstRef = useRef({ key: landingKey, itemId: firstItemId })
   useLayoutEffect(
     function keepRowsInPlaceAcrossPrepend() {
       const previous = previousFirstRef.current
-      previousFirstRef.current = { key: landingKey, cursor: firstCursor }
+      previousFirstRef.current = { key: landingKey, itemId: firstItemId }
       const grid = gridNodeRef.current
-      if (!grid || previous.key !== landingKey || previous.cursor === firstCursor) {
+      if (!grid || previous.key !== landingKey || previous.itemId === firstItemId) {
         return
       }
-      const shifted = edges.findIndex((edge) => edge.cursor === previous.cursor)
+      const shifted = edges.findIndex((edge) => edge.node.id === previous.itemId)
       if (shifted <= 0) {
         return
       }
       grid.scrollTop += rowStart(virtualizer, Math.floor(shifted / geometry.columns))
     },
-    [landingKey, firstCursor, edges, gridElement, geometry.columns, virtualizer],
+    [landingKey, firstItemId, edges, gridElement, geometry.columns, virtualizer],
   )
 
   // Before paint, once per result: later pages merge into the same result without moving it.
@@ -258,7 +258,7 @@ export function LibraryGrid({
       // A short page scrolls to the letter's row, through the frame the slide cannot move.
       frameRef.current?.scrollIntoView({ block: 'start' })
       const focus = repeated ? repeat.focus : focusLanding
-      cardFocus.current.requested = focus ? edges[cursorIndex].cursor : null
+      cardFocus.current.requested = focus ? edges[cursorIndex].node.id : null
     },
     [
       landingKey,
@@ -291,7 +291,7 @@ export function LibraryGrid({
     }
     // A card that left with its result will never mount again; its request must not stand in
     // for the next card unmounted while focused.
-    if (!edges.some((edge) => edge.cursor === requested)) {
+    if (!edges.some((edge) => edge.node.id === requested)) {
       cardFocus.current.requested = null
     }
   })
@@ -361,11 +361,11 @@ export function LibraryGrid({
               >
                 {edges.slice(first, first + geometry.columns).map((edge, column) => (
                   <LibraryCard
-                    key={edge.cursor}
+                    key={edge.node.id}
                     edge={edge}
                     tabStop={first + column === tabStopIndex}
                     focus={cardFocus}
-                    onFocus={setFocusedCursor}
+                    onFocus={setFocusedItemId}
                   />
                 ))}
               </div>
@@ -470,7 +470,7 @@ function cardAfterKey({
   return target < 0 || target >= count ? index : target
 }
 
-// The rendered cards by cursor, and the cursor of a card asked to take focus once rendered.
+// The rendered cards by item ID, and the item asked to take focus once rendered.
 type CardFocus = { cards: Map<string, HTMLAnchorElement>; requested: string | null }
 
 function LibraryCard({
@@ -482,7 +482,7 @@ function LibraryCard({
   edge: LibraryEdge
   tabStop: boolean
   focus: RefObject<CardFocus>
-  onFocus: (cursor: string) => void
+  onFocus: (itemId: string) => void
 }>) {
   const summary = summarizeMedia(edge.node)
   // One identity for the card's life: React re-runs a changed ref's cleanup on the mounted node,
@@ -492,22 +492,22 @@ function LibraryCard({
       if (!node) {
         return
       }
-      focus.current.cards.set(edge.cursor, node)
+      focus.current.cards.set(edge.node.id, node)
       return () => {
-        focus.current.cards.delete(edge.cursor)
+        focus.current.cards.delete(edge.node.id)
         // Unmounted while focused: the row was re-keyed, and the card returns in a new element.
         // Unless focus is already on its way elsewhere, as when a key moved it off this row.
         if (document.activeElement === node && focus.current.requested === null) {
-          focus.current.requested = edge.cursor
+          focus.current.requested = edge.node.id
         }
       }
     },
-    [edge.cursor, focus],
+    [edge.node.id, focus],
   )
   const linkProps = {
     className: styles.cardLink,
     tabIndex: tabStop ? 0 : -1,
-    onFocus: () => onFocus(edge.cursor),
+    onFocus: () => onFocus(edge.node.id),
     ref: registerCard,
   }
   const card = (
