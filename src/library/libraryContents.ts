@@ -22,7 +22,7 @@ type Bounds = { first: string | null; last: string | null }
 
 /** Owns one library view through its detail routes. Query recovery uses the retained observer. */
 export function createLibraryContents({ client }: { client: ApolloClient }) {
-  let active: { key: string; libraryId: string; stop: () => void } | null = null
+  let active: { key: string; variables: View['variables']; stop: () => void } | null = null
   const removed = new Set<string>()
   const listeners = new Set<() => void>()
 
@@ -31,9 +31,11 @@ export function createLibraryContents({ client }: { client: ApolloClient }) {
     active = null
     previous?.stop()
     if (evict && previous) {
+      const { libraryId, ...args } = previous.variables
       client.cache.evict({
-        id: client.cache.identify({ __typename: 'Library', id: previous.libraryId }),
+        id: client.cache.identify({ __typename: 'Library', id: libraryId }),
         fieldName: 'items',
+        args,
       })
     }
   }
@@ -43,7 +45,7 @@ export function createLibraryContents({ client }: { client: ApolloClient }) {
     if (active?.key === key || removed.has(view.variables.libraryId)) return
     release(true)
     const libraryId = view.variables.libraryId
-    const scope = { key, libraryId, stop: () => {} }
+    const scope = { key, variables: view.variables, stop: () => {} }
     active = scope
     scope.stop = subscribeToLibraryContents({
       client,
@@ -63,7 +65,7 @@ export function createLibraryContents({ client }: { client: ApolloClient }) {
     leaveUnlessWithin(pathname: string) {
       if (!active) return
       if (
-        pathname === `/library/${active.libraryId}` ||
+        pathname === `/library/${active.variables.libraryId}` ||
         /^\/(movie|series|season)\//.test(pathname)
       )
         return

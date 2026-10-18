@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import { graphql, http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { HomeQuery } from '../graphql/generated/graphql'
@@ -14,7 +14,9 @@ import {
   networkFailure,
   serverFailure,
 } from '../test/graphqlResponses'
-import { meFixture } from '../test/meFixture'
+import { meFixture, profileFixture } from '../test/meFixture'
+import { LIBRARY, edge } from '../test/libraryContentsFixtures'
+import { serveGraphqlSocket } from '../test/graphqlSocket'
 import { renderAppAt, renderWithProviders } from '../test/render'
 import { server } from '../test/server'
 import { Home } from './Home'
@@ -138,6 +140,84 @@ function serve(data: HomeQuery) {
 }
 
 describe('Home', () => {
+  it('shouldKeepRecentlyAddedCachedWhenReturningFromLibrary', async () => {
+    const resume = deferred()
+    let reads = 0
+    const data = homeData({
+      libraries: [
+        library({
+          __typename: 'Library',
+          id: LIBRARY,
+          items: { edges: [{ cursor: 'movie', node: recentMovie({ lastWatchedAt: null }) }] },
+        }),
+      ],
+    })
+    server.use(
+      graphql.query('Me', () =>
+        HttpResponse.json({
+          data: {
+            me: meFixture({
+              scope: 'profile',
+              profiles: [profileFixture({ selected: true })],
+            }),
+          },
+        }),
+      ),
+      graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
+      graphql.query('Home', async () => {
+        reads++
+        if (reads > 2) await resume.promise
+        return HttpResponse.json({ data })
+      }),
+      graphql.query('LibraryPage', () =>
+        HttpResponse.json({
+          data: {
+            library: {
+              __typename: 'Library',
+              id: LIBRARY,
+              name: 'Movies',
+              status: 'HEALTHY',
+              scanCompletedOn: null,
+              itemCount: 1,
+              alphabetIndex: [{ letter: 'A', count: 1 }],
+              items: {
+                edges: [edge()],
+                pageInfo: {
+                  hasNextPage: false,
+                  hasPreviousPage: false,
+                  startCursor: 'cursor-a',
+                  endCursor: 'cursor-a',
+                },
+              },
+            },
+          },
+        }),
+      ),
+    )
+    const socket = serveGraphqlSocket()
+    const { router } = renderAppAt('/')
+    await screen.findByRole('heading', { name: 'Grid Movie' })
+    await waitFor(() => expect(reads).toBe(2))
+    await act(async () => {
+      await router.navigate({
+        to: '/library/$libraryId',
+        params: { libraryId: LIBRARY },
+        search: { by: 'TITLE', direction: 'ASC' },
+      })
+    })
+    await screen.findByRole('link', { name: /Alpha/ })
+    await waitFor(() => expect(socket.isLive('LibraryItemAdded')).toBe(true))
+    try {
+      await act(async () => {
+        await router.navigate({ to: '/' })
+      })
+      expect(await screen.findByRole('heading', { name: 'Grid Movie' })).toBeInTheDocument()
+      expect(reads).toBe(2)
+    } finally {
+      resume.resolve()
+    }
+  })
+
   it('shouldPlayARecentMovieWhenItsFirstFileIsNull', async () => {
     serve(
       homeData({
