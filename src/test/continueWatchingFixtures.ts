@@ -1,7 +1,6 @@
 interface Placement {
   id: string
   orderKey: string | null
-  matchesFilter?: boolean
 }
 
 export function watchingMovie({ id }: Placement) {

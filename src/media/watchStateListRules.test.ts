@@ -35,11 +35,6 @@ function node(item: Item) {
     watchStatus: item.watchStatus ?? 'UNWATCHED',
     lastWatchedAt: item.lastWatchedAt ?? null,
     watchProgress: null,
-    continueWatchingPosition: {
-      __typename: 'ContinueWatchingPosition',
-      matchesFilter: item.watchStatus === 'IN_PROGRESS',
-      orderKey: '10',
-    },
     images: [],
   }
   if (typename === 'Series') return { ...shared, firstAirDate: null, seasons: [] }
