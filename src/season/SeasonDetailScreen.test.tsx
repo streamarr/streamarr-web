@@ -326,10 +326,9 @@ describe('SeasonDetailScreen', () => {
   })
 
   it('shouldConfirmAndThenUpdateEveryEpisodeFromTheMarkedSeason', async () => {
-    const requestedIds: string[] = []
     const markedIds: string[] = []
     const data = seasonData()
-    serve(data, requestedIds)
+    serve(data)
     const watchedState = { watchStatus: 'WATCHED', watchProgress: null }
     const marked = {
       season: {
@@ -338,10 +337,12 @@ describe('SeasonDetailScreen', () => {
         episodes: data.season!.episodes.map((episode) => ({ ...episode!, ...watchedState })),
       },
     } as SeasonDetailQuery
+    const after = heldAnswer(marked)
+    const season = answersInTurn(answerWith(data), after.answer)
     server.use(
+      graphql.query('SeasonDetail', season.resolver),
       graphql.mutation('MarkWatched', ({ variables }) => {
         markedIds.push((variables.input as { itemId: string }).itemId)
-        serve(marked, requestedIds)
         return HttpResponse.json({
           data: {
             markWatched: {
@@ -376,7 +377,8 @@ describe('SeasonDetailScreen', () => {
     expect(await screen.findByRole('button', { name: 'Mark season unwatched' })).toBeEnabled()
     expect(screen.getByRole('progressbar', { name: '3 of 3 watched' })).toBeInTheDocument()
     expect(markedIds).toEqual(['season-2'])
-    await waitFor(() => expect(requestedIds).toEqual(['season-2', 'season-2']))
+    await waitFor(() => expect(season.calls).toBe(2))
     expect(screen.getByRole('progressbar', { name: '3 of 3 watched' })).toBeInTheDocument()
+    after.release()
   })
 })
