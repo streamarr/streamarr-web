@@ -578,6 +578,7 @@ describe('library contents', () => {
     })
     await waitFor(() => expect(socket.isLive('LibraryItemAdded')).toBe(false))
     expect(socket.isLive('WatchStateChanged')).toBe(true)
+    expect(reads.library).toBe(2)
   })
 
   it('shouldRevalidateTheRetainedLibraryWhileDetailIsOpenWithoutReplacingItsConsumer', async () => {
