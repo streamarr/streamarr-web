@@ -12,6 +12,7 @@ import {
   type LibraryPageQueryVariables,
 } from '../graphql/generated/graphql'
 import { definedEdges } from '../media/edges'
+import { responsePathHasError } from '../graphql/responseErrors'
 import { retainLibraryItemsConnection } from '../media/watchedState'
 
 type Items = LibraryPageQuery['library']['items']
@@ -161,8 +162,8 @@ function subscribeToLibraryContents({
         .subscribe({
           next: ({ data, error }) => {
             if (error && (data == null || isTerminalRefusal(error))) refusal = error
-            // A failed position or item is not a removal. Shared recovery reads incomplete changes again.
-            if (!stopped && data && !error) apply(data)
+            // A failed edge or item is not a removal. Shared recovery reads incomplete changes again.
+            if (!stopped && data && !responsePathHasError(error, ['change'])) apply(data)
           },
           error: (error: unknown) => {
             if (!stopped) onRefused(error)
@@ -267,18 +268,17 @@ function removeItem(items: Items, id: string): Items {
 
 function placeItem(items: Items, change: LibraryItemChangeFieldsFragment, bounds: Bounds): Items {
   const others = definedEdges(items.edges).filter((edge) => edge.node.id !== change.itemId)
-  const { item, position } = change
-  if (!position.matchesFilter || !item) return withEdges(items, others)
-  if (item.__typename !== 'Movie' && item.__typename !== 'Series') return items
-  const { cursor, orderKey } = position
-  if (cursor === null || orderKey === null) return items
+  const { edge } = change
+  if (edge === null) return withEdges(items, others)
+  if (!edge?.node) return items
+  if (edge.node.__typename !== 'Movie' && edge.node.__typename !== 'Series') return items
+  const { orderKey, node } = edge
   const { hasPreviousPage, hasNextPage } = items.pageInfo
   const beforeWindow = hasPreviousPage && (bounds.first === null || orderKey < bounds.first)
   const afterWindow = hasNextPage && (bounds.last === null || orderKey > bounds.last)
   if (beforeWindow || afterWindow) return withEdges(items, others)
   const index = others.findIndex((edge) => edge.orderKey > orderKey)
-  const edge = { __typename: 'MediaEdge' as const, cursor, orderKey, node: item }
-  return withEdges(items, others.toSpliced(index < 0 ? others.length : index, 0, edge))
+  return withEdges(items, others.toSpliced(index < 0 ? others.length : index, 0, { ...edge, node }))
 }
 
 function withEdges(items: Items, edges: Items['edges']): Items {

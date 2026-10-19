@@ -32,11 +32,11 @@ export function addition(options: MovieOptions = {}) {
         itemId: item.id,
         kind: 'MOVIE',
         item,
-        position: {
-          __typename: 'LibraryItemPosition',
-          matchesFilter: true,
+        edge: {
+          __typename: 'MediaEdge',
           cursor: `cursor-${item.id}`,
           orderKey: item.title,
+          node: item,
         },
       },
     },
