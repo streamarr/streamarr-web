@@ -158,7 +158,7 @@ function subscribeToLibraryContents({
         .subscribe({ query, variables: args, fetchPolicy: 'no-cache', errorPolicy: 'all' })
         .subscribe({
           next: ({ data, error }) => {
-            if (isTerminalRefusal(error)) refusal = error
+            if (error && (data == null || isTerminalRefusal(error))) refusal = error
             // A failed position or item is not a removal. Shared recovery reads incomplete changes again.
             if (!stopped && data && !error) apply(data)
           },

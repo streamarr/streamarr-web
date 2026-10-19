@@ -141,7 +141,7 @@ function removal(id: string) {
 }
 
 describe('library contents', () => {
-  it.each(['FORBIDDEN', 'PROFILE_REQUIRED'])(
+  it.each(['FORBIDDEN', 'PROFILE_REQUIRED', 'TOO_MANY_OPERATIONS', 'INTERNAL_ERROR'])(
     'shouldShowATerminal%sRefusalUntilAnExplicitRetry',
     async (code) => {
       const { reads, socket } = serve()
@@ -172,6 +172,18 @@ describe('library contents', () => {
       await waitFor(() => expect(socket.isLive('LibraryItemAdded')).toBe(true))
     },
   )
+
+  it('shouldOfferRetryInsteadOfRemovingTheLibraryWhenTheSocketEndsFatally', async () => {
+    const { socket } = serve()
+    const { user } = await open(socket)
+    act(() => socket.closeAll(4400, 'Invalid operation'))
+    expect(await screen.findByRole('alert')).not.toHaveTextContent(
+      "This library doesn't exist or was removed.",
+    )
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(await screen.findByRole('link', { name: /Alpha/ })).toBeInTheDocument()
+    await waitFor(() => expect(socket.isLive('LibraryItemAdded')).toBe(true))
+  })
 
   it('shouldKeepANewerRefusalWhenAnEarlierViewRetryFinishes', async () => {
     const { reads, socket } = serve()
