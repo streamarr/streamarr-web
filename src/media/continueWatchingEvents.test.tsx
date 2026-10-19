@@ -27,15 +27,7 @@ describe('Continue Watching event cards', () => {
         reads++
         return HttpResponse.json({
           data: {
-            continueWatching: {
-              edges: [],
-              pageInfo: {
-                hasNextPage: false,
-                hasPreviousPage: false,
-                startCursor: null,
-                endCursor: null,
-              },
-            },
+            continueWatching: { edges: [] },
             libraries: [],
           },
         })
