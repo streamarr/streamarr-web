@@ -19,6 +19,13 @@ established content usable; access refusals hide it until a successful retry. A 
 subscription refusal displays the server's message and requires explicit Retry or a new selection.
 Normal completion marks the Library unavailable.
 
+Web and Apple treat each Library item's card data and list membership as one update. If that
+payload has field errors, both preserve the existing card and membership until shared recovery
+succeeds, even when its position is usable. This avoids normalizing failure-null fields or inserting
+an incomplete card; it deliberately delays a usable move or removal. Watch-state batches still
+apply their other usable items. This is the clients' documented exception to applying every usable
+field immediately.
+
 Home's Continue Watching preview stays capped at 12. Removal leaves a shorter shelf without a
 backfill read, as proposed in [ADR 0046](https://github.com/streamarr/streamarr-adr/pull/57).
 Successful watched/unwatched actions retain their explicit detail reread; refused actions do not.
