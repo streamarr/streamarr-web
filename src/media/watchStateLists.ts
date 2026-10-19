@@ -7,7 +7,9 @@ import {
 import { evictWatchDependentConnections } from './watchedState'
 
 type ContinueWatchingChange = NonNullable<
-  NonNullable<WatchStateChangedSubscription['watchStateChanged']>['continueWatching'][number]
+  NonNullable<
+    NonNullable<WatchStateChangedSubscription['watchStateChanged']>['continueWatching']
+  >[number]
 >
 interface LiveLists {
   continueWatching: number
@@ -70,5 +72,4 @@ function applyToContinueWatching(
       .slice(0, CONTINUE_WATCHING_LIMIT)
     return { ...data, continueWatching: { ...data.continueWatching, edges } }
   })
-
 }
