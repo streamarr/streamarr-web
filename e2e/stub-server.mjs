@@ -169,15 +169,7 @@ function route(request, response, raw) {
     if (operationName === 'Home') {
       return json(response, 200, {
         data: {
-          continueWatching: {
-            edges: [],
-            pageInfo: {
-              hasNextPage: false,
-              hasPreviousPage: false,
-              startCursor: null,
-              endCursor: null,
-            },
-          },
+          continueWatching: { edges: [] },
           libraries: libraries.map((library) => ({ ...library, items: { edges: [] } })),
         },
       })

@@ -71,7 +71,6 @@ export function watchingConnection<T>(nodes: T[]) {
       orderKey: String(index).padStart(3, '0'),
       node,
     })),
-    pageInfo: { hasNextPage: false, hasPreviousPage: false, startCursor: null, endCursor: null },
   }
 }
 
