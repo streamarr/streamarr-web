@@ -35,11 +35,6 @@ function continueWatchingMovie(overrides: Record<string, unknown> = {}) {
     createdOn: '2026-08-26T12:00:00Z',
     genres: [{ id: 'g1', name: 'Drama' }],
     images: [],
-    continueWatchingPosition: {
-      __typename: 'ContinueWatchingPosition',
-      matchesFilter: true,
-      orderKey: '10',
-    },
     watchProgress: { positionSeconds: 10, percentComplete: 5, durationSeconds: 200 },
     files: [{ id: 'file-1' }],
     ...overrides,
@@ -55,11 +50,6 @@ function continueWatchingEpisode(overrides: Record<string, unknown> = {}) {
     overview: 'The team regroups.',
     runtime: 47,
     images: [],
-    continueWatchingPosition: {
-      __typename: 'ContinueWatchingPosition',
-      matchesFilter: true,
-      orderKey: '20',
-    },
     watchProgress: { positionSeconds: 600, percentComplete: 40, durationSeconds: 1500 },
     files: [{ id: 'file-2' }],
     season: {

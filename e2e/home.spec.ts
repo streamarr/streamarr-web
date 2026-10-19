@@ -27,7 +27,6 @@ function movie(index: number) {
     backdropImages: [],
     watchStatus: 'IN_PROGRESS' as const,
     lastWatchedAt: null,
-    continueWatchingPosition: { matchesFilter: true, orderKey: String(index).padStart(2, '0') },
     watchProgress: { positionSeconds: 600, percentComplete: 25, durationSeconds: 2400 },
     files: [{ id: `home-file-${index}` }],
   }
