@@ -249,6 +249,52 @@ describe('subscribeToWatchStateChanges', () => {
     release()
   })
 
+  it.each(['failed-list', 'failed-change'] as const)(
+    'shouldDropAHiddenShelfWhenItsMembershipIsUnknownFor%s',
+    async (outcome) => {
+      const { client, watchStatusOf } = setup()
+      const query = {
+        query: HomeDocument,
+        variables: { continueWatchingFirst: CONTINUE_WATCHING_LIMIT },
+      }
+      client.cache.writeQuery({
+        ...query,
+        data: {
+          continueWatching: watchingConnection([watchingMovie({ id: 'a', orderKey: 'a' })]),
+          libraries: [],
+        },
+      })
+      const socket = await connectAndSubscribe(() => subscribeToWatchStateChanges(client))
+      socket.deliver({
+        type: 'next',
+        id: socket.subscriptionIds()[0],
+        payload: {
+          data: {
+            watchStateChanged: {
+              __typename: 'WatchStateChange',
+              items: [
+                { __typename: 'Movie', id: 'a', watchStatus: 'WATCHED', watchProgress: null },
+              ],
+              continueWatching: outcome === 'failed-list' ? null : [{ itemId: 'a', edge: null }],
+            },
+          },
+          errors: [
+            {
+              message: 'Unavailable',
+              path:
+                outcome === 'failed-list'
+                  ? ['watchStateChanged', 'continueWatching']
+                  : ['watchStateChanged', 'continueWatching', 0, 'edge'],
+            },
+          ],
+        },
+      })
+      await settle()
+      expect(watchStatusOf('a')).toBe('WATCHED')
+      expect(client.cache.readQuery(query)).toBeNull()
+    },
+  )
+
   it('shouldNotSubscribeAgainAfterTheServerForbidsTheChanges', async () => {
     const { client } = setup()
     const socket = await connectAndSubscribe(() => subscribeToWatchStateChanges(client))

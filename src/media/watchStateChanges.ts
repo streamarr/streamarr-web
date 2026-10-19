@@ -4,7 +4,7 @@ import {
   WatchStateChangedDocument,
   type WatchStateChangedSubscription,
 } from '../graphql/generated/graphql'
-import { applyWatchStateToLists } from './watchStateLists'
+import { applyWatchStateToLists, evictHiddenContinueWatching } from './watchStateLists'
 
 type WatchStateChange = NonNullable<WatchStateChangedSubscription['watchStateChanged']>
 
@@ -49,6 +49,10 @@ function applyWatchStateChange(
       item !== null &&
       !responsePathHasError(error, ['watchStateChanged', 'continueWatching', index]),
   )
+  // Recovery reads only shown queries again, so a hidden shelf cannot wait for it.
+  if (continueWatching.length !== change.continueWatching?.length) {
+    evictHiddenContinueWatching(cache)
+  }
   if (items.length === 0 && continueWatching.length === 0) return
   cache.writeQuery({
     query: WatchStateChangedDocument,

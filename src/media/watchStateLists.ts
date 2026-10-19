@@ -37,6 +37,12 @@ export function showContinueWatching(cache: ApolloCache): () => void {
   }
 }
 
+/** Drops Home's cached Continue Watching unless a caller shows it, so Home reads it again. */
+export function evictHiddenContinueWatching(cache: ApolloCache) {
+  if (liveListsFor(cache).continueWatching > 0) return
+  cache.evict({ fieldName: 'continueWatching' })
+}
+
 /** Updates Continue Watching; library content subscriptions own library membership. */
 export function applyWatchStateToLists(
   cache: ApolloCache,
