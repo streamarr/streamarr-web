@@ -427,7 +427,11 @@ describe('Home', () => {
     await waitFor(() => expect(home.calls).toBe(4))
     expect(screen.queryByRole('heading', { name: 'Continue watching' })).not.toBeInTheDocument()
     expect(screen.getByRole('alert')).toHaveTextContent('This Profile is not shared.')
-    fresh.release()
+    try {
+      if (recovery === 'retry') expect(screen.getByRole('button', { name: 'Retry' })).toBeDisabled()
+    } finally {
+      fresh.release()
+    }
     expect(await screen.findByRole('heading', { name: 'Continue watching' })).toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
