@@ -503,7 +503,7 @@ describe('watch-state lists', () => {
       expect(reads).toEqual(readsBeforeChange)
     })
 
-    it.each(['WATCHED', 'IN_PROGRESS'] as const)(
+    it.each(['WATCHED'] as const)(
       'shouldShrinkAFullShelfWithoutReadingHomeWhenATitleLeavesItsRangeAs%s',
       async (watchStatus) => {
         const full = Array.from({ length: 13 }, (_, index) =>
@@ -537,6 +537,40 @@ describe('watch-state lists', () => {
         expect(reads.Home).toBe(homeReads)
       },
     )
+
+    it('shouldRetainAnEligibleTitleAtTheTailOfAFullShelfWithoutReadingHome', async () => {
+      const full = Array.from({ length: 13 }, (_, index) =>
+        title(`w${index}`, index === 0 ? 'Everlight' : `Title ${index}`, {
+          watchStatus: 'IN_PROGRESS',
+          lastWatchedAt: `2026-10-16T09:${String(59 - index).padStart(2, '0')}:00Z`,
+        }),
+      )
+      const { reads, socket, save } = serve(full)
+      await open('/', socket, /Everlight/)
+      const homeReads = reads.Home
+
+      save({ ...full[0], lastWatchedAt: '2026-10-15T10:00:00Z' })
+
+      await waitFor(() =>
+        expect(
+          shelfLinks().map((link) => within(link).getByText(/^(Title \d+|Everlight)$/).textContent),
+        ).toEqual([
+          'Title 1',
+          'Title 2',
+          'Title 3',
+          'Title 4',
+          'Title 5',
+          'Title 6',
+          'Title 7',
+          'Title 8',
+          'Title 9',
+          'Title 10',
+          'Title 11',
+          'Everlight',
+        ]),
+      )
+      expect(reads.Home).toBe(homeReads)
+    })
 
     it('shouldKeepAFullShelfAtItsLimitWhenATitleStartsAtTheHead', async () => {
       const full = Array.from({ length: 12 }, (_, index) =>
