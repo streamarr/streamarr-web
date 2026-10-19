@@ -48,6 +48,8 @@ export function createLibraryContents({ client }: { client: ApolloClient }) {
         id: client.cache.identify({ __typename: 'Library', id: libraryId }),
         fieldName: 'items',
         args,
+        // Apollo detaches the closing screen's observer on a later tick.
+        broadcast: false,
       })
     }
   }
