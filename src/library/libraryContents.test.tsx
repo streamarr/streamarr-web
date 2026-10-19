@@ -24,6 +24,7 @@ function serve({
   hasPreviousPage = false,
   next = [] as ReturnType<typeof edge>[],
   pause = Promise.resolve(),
+  recovery = Promise.resolve(),
 } = {}) {
   const reads = { library: 0 }
   server.use(
@@ -31,6 +32,7 @@ function serve({
     graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
     graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', async ({ variables }) => {
       reads.library++
+      if (reads.library > 2 && !variables.after) await recovery
       if (variables.after) await pause
       const page = variables.after ? next : edges
       return HttpResponse.json({
@@ -530,16 +532,33 @@ describe('library contents', () => {
 
   it('shouldRecoverAPartialErrorPayloadWithoutTreatingItAsARemoval', async () => {
     const edges = [edge({ id: 'a', title: 'Alpha' }), edge({ id: 'd', title: 'Delta' })]
-    const { reads, socket } = serve({ edges })
+    let releaseRecovery = () => {}
+    const recovery = new Promise<void>((resolve) => {
+      releaseRecovery = resolve
+    })
+    const { reads, socket } = serve({ edges, recovery })
     await open(socket)
     await waitFor(() => expect(reads.library).toBe(2))
     edges[0] = edge({ id: 'a', title: 'Alpha recovered' })
     act(() =>
       socket.publish('LibraryItemUpdated', {
-        data: { change: null },
-        errors: [{ message: 'Edge unavailable', path: ['change', 'edge'] }],
+        data: {
+          change: {
+            __typename: 'LibraryItemChange',
+            libraryId: LIBRARY,
+            itemId: 'a',
+            kind: 'MOVIE',
+            item: movie({ id: 'a', title: 'Alpha changed' }),
+            edge: null,
+          },
+        },
+        errors: [{ message: 'Edge unavailable', path: ['change', 'edge', 'orderKey'] }],
       }),
     )
+    await waitFor(() => expect(reads.library).toBe(3))
+    expect(screen.getByRole('link', { name: /Alpha/ })).toBeInTheDocument()
+    expect(titles()).toEqual(['Alpha', 'Delta'])
+    releaseRecovery()
     await screen.findByRole('link', { name: /Alpha recovered/ })
     expect(reads.library).toBe(3)
     expect(socket.isLive('LibraryItemUpdated')).toBe(true)
