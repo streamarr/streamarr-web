@@ -66,11 +66,6 @@ const CONTINUE_WATCHING_MOVIE = {
   runtime: 100,
   createdOn: '2026-08-26T12:00:00Z',
   lastWatchedAt: '2026-10-16T09:00:00Z',
-  continueWatchingPosition: {
-    __typename: 'ContinueWatchingPosition',
-    matchesFilter: true,
-    orderKey: '10',
-  },
   genres: [],
   images: [],
   watchProgress: PROGRESS,
@@ -186,11 +181,6 @@ function movie(id: string, watchStatus: string, watchProgress: unknown = null): 
     id,
     watchStatus,
     watchProgress,
-    continueWatchingPosition: {
-      __typename: 'ContinueWatchingPosition',
-      matchesFilter: watchStatus === 'IN_PROGRESS',
-      orderKey: '10',
-    },
   }
 }
 

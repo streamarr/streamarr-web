@@ -1,5 +1,5 @@
-# Movie and Episode payloads carry the same card fields as Home, so uncached additions can
-# enter Continue Watching without a query. Related Seasons and Series keep their own watch state.
+# Continue Watching edges carry full cards for uncached additions. Keep items limited to
+# identity and watch state so a series-wide mark does not repeat every episode card.
 subscription WatchStateChanged {
   watchStateChanged {
     continueWatching {
