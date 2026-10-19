@@ -1,3 +1,4 @@
+import { watchingConnection } from '../test/continueWatchingFixtures'
 import { screen, waitFor } from '@testing-library/react'
 import { HttpResponse, graphql, http } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
@@ -10,7 +11,7 @@ function homeHandlers() {
   return [
     graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
     graphql.query('Home', () =>
-      HttpResponse.json({ data: { continueWatching: [], libraries: [] } }),
+      HttpResponse.json({ data: { continueWatching: watchingConnection([]), libraries: [] } }),
     ),
   ]
 }

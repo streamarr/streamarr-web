@@ -1,3 +1,4 @@
+import { watchingConnection } from '../src/test/continueWatchingFixtures'
 import { expect, test, type Page } from '@playwright/test'
 import type {
   AddLibraryInput,
@@ -69,7 +70,7 @@ async function fixture(page: Page, libraries = [movie, shows]) {
     }
     if (operationName === 'Home')
       return reply({
-        continueWatching: [],
+        continueWatching: watchingConnection([]),
         libraries: state.libraries.map((library) => ({ ...library, items: { edges: [] } })),
       })
     if (operationName === 'AddLibrary') {

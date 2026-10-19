@@ -1,3 +1,4 @@
+import { watchingConnection } from '../test/continueWatchingFixtures'
 import { act, screen, waitFor, within } from '@testing-library/react'
 import { graphql, http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
@@ -34,7 +35,11 @@ function continueWatchingMovie(overrides: Record<string, unknown> = {}) {
     createdOn: '2026-08-26T12:00:00Z',
     genres: [{ id: 'g1', name: 'Drama' }],
     images: [],
-    lastWatchedAt: '2026-09-02T20:00:00Z',
+    continueWatchingPosition: {
+      __typename: 'ContinueWatchingPosition',
+      matchesFilter: true,
+      orderKey: '10',
+    },
     watchProgress: { positionSeconds: 10, percentComplete: 5, durationSeconds: 200 },
     files: [{ id: 'file-1' }],
     ...overrides,
@@ -50,7 +55,11 @@ function continueWatchingEpisode(overrides: Record<string, unknown> = {}) {
     overview: 'The team regroups.',
     runtime: 47,
     images: [],
-    lastWatchedAt: '2026-09-01T20:00:00Z',
+    continueWatchingPosition: {
+      __typename: 'ContinueWatchingPosition',
+      matchesFilter: true,
+      orderKey: '20',
+    },
     watchProgress: { positionSeconds: 600, percentComplete: 40, durationSeconds: 1500 },
     files: [{ id: 'file-2' }],
     season: {
@@ -126,7 +135,7 @@ function homeData(
   overrides: Partial<{ continueWatching: unknown[]; libraries: unknown[] }> = {},
 ): HomeQuery {
   return {
-    continueWatching: overrides.continueWatching ?? [],
+    continueWatching: watchingConnection(overrides.continueWatching ?? []),
     libraries: overrides.libraries ?? [],
   } as HomeQuery
 }

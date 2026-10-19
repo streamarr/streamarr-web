@@ -1,3 +1,4 @@
+import { watchingConnection } from '../../test/continueWatchingFixtures'
 import { readyPlaybackSession, destroyedPlaybackSession } from '../../test/playbackSession'
 import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
 import { HttpResponse, graphql } from 'msw'
@@ -241,7 +242,7 @@ describe('/play/$mediaFileId', () => {
     serveApp()
     server.use(
       graphql.query('Home', () =>
-        HttpResponse.json({ data: { continueWatching: [], libraries: [] } }),
+        HttpResponse.json({ data: { continueWatching: watchingConnection([]), libraries: [] } }),
       ),
     )
     const { user, router } = renderAppAt('/play/file-1')

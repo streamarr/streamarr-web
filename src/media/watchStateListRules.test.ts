@@ -1,3 +1,4 @@
+import { watchingChange } from '../test/continueWatchingFixtures'
 import { InMemoryCache } from '@apollo/client'
 import { describe, expect, it } from 'vitest'
 import possibleTypes from '../graphql/generated/possibleTypes.json'
@@ -34,6 +35,11 @@ function node(item: Item) {
     watchStatus: item.watchStatus ?? 'UNWATCHED',
     lastWatchedAt: item.lastWatchedAt ?? null,
     watchProgress: null,
+    continueWatchingPosition: {
+      __typename: 'ContinueWatchingPosition',
+      matchesFilter: item.watchStatus === 'IN_PROGRESS',
+      orderKey: '10',
+    },
     images: [],
   }
   if (typename === 'Series') return { ...shared, firstAirDate: null, seasons: [] }
@@ -58,10 +64,16 @@ function apply(cache: InMemoryCache, items: Item[], { written = true } = {}) {
     cache.writeQuery({
       query: WatchStateChangedDocument,
       id: 'ROOT_SUBSCRIPTION',
-      data: { watchStateChanged: { __typename: 'WatchStateChange', items: payload } } as never,
+      data: {
+        watchStateChanged: {
+          continueWatching: payload.map((item) => watchingChange(item, '10')),
+          __typename: 'WatchStateChange',
+          items: payload,
+        },
+      } as never,
     })
   }
-  applyWatchStateToLists(cache, payload as never)
+  applyWatchStateToLists(cache, payload.map((item) => watchingChange(item, '10')) as never)
 }
 
 const started = { watchStatus: 'IN_PROGRESS', lastWatchedAt: '2026-10-16T10:00:00Z' } as const
@@ -71,9 +83,7 @@ describe('applyWatchStateToLists', () => {
     const cache = setup()
     showContinueWatching(cache)
 
-    applyWatchStateToLists(cache, [
-      { __typename: 'Season', id: 's1', watchStatus: 'WATCHED', watchProgress: null },
-    ])
+    applyWatchStateToLists(cache, [])
 
     expect(cache.extract().ROOT_QUERY).toBeUndefined()
   })

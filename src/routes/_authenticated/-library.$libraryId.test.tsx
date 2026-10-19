@@ -1,3 +1,4 @@
+import { watchingConnection } from '../../test/continueWatchingFixtures'
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { HttpResponse, graphql, type GraphQLQuery } from 'msw'
 import { describe, expect, it } from 'vitest'
@@ -289,7 +290,7 @@ describe('/library/$libraryId', () => {
       graphql.query('Home', () =>
         HttpResponse.json({
           data: {
-            continueWatching: [],
+            continueWatching: watchingConnection([]),
             libraries: [
               {
                 ...library,

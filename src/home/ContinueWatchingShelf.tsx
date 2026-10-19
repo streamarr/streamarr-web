@@ -7,7 +7,9 @@ import { StillCard } from '../media/StillCard'
 import type { MediaTitleSearch } from '../streaming/usePlayerTitle'
 import styles from './ContinueWatchingShelf.module.css'
 
-type ContinueWatchingItem = HomeQuery['continueWatching'][number]
+type ContinueWatchingItem = NonNullable<
+  NonNullable<HomeQuery['continueWatching']['edges'][number]>['node']
+>
 
 export function ContinueWatchingShelf({ items }: Readonly<{ items: ContinueWatchingItem[] }>) {
   if (items.length === 0) {

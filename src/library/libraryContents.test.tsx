@@ -1,3 +1,4 @@
+import { watchingConnection } from '../test/continueWatchingFixtures'
 import { LIBRARY, movie, edge, addition } from '../test/libraryContentsFixtures'
 import { act, screen, waitFor, within } from '@testing-library/react'
 import { graphql, HttpResponse, type GraphQLQuery } from 'msw'
@@ -640,7 +641,7 @@ describe('library contents', () => {
         }),
       ),
       graphql.query('Home', () =>
-        HttpResponse.json({ data: { continueWatching: [], libraries: [] } }),
+        HttpResponse.json({ data: { continueWatching: watchingConnection([]), libraries: [] } }),
       ),
     )
     const { router, user } = await open(socket)

@@ -79,6 +79,7 @@ test('an Unwatched view drops a movie that another device finishes', async ({ pa
   socket.publish('WatchStateChanged', {
     data: {
       watchStateChanged: {
+        continueWatching: [],
         __typename: 'WatchStateChange',
         items: [
           {
