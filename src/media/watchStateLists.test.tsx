@@ -196,15 +196,16 @@ function serve(titles: Title[], { pageSize = 48, recentlyAdded = [] as Title[] }
               itemId: each.id,
               kind: 'MOVIE',
               item: card(each),
-              position: {
-                __typename: 'LibraryItemPosition',
-                matchesFilter:
-                  !each.unmatched &&
-                  (!current?.filter?.watchStatus ||
-                    current.filter.watchStatus === each.watchStatus),
-                cursor: each.id,
-                orderKey: orderKey(each),
-              },
+              edge:
+                !each.unmatched &&
+                (!current?.filter?.watchStatus || current.filter.watchStatus === each.watchStatus)
+                  ? {
+                      __typename: 'MediaEdge',
+                      cursor: each.id,
+                      orderKey: orderKey(each),
+                      node: card(each),
+                    }
+                  : null,
             },
           },
         })
