@@ -72,21 +72,20 @@ describe('shared live-list conformance', () => {
     })
     try {
       for (const step of cases.continueWatching.steps) {
-        const item = watchingMovie(step.item)
+        const item = watchingMovie({
+          id: step.change.itemId,
+          orderKey: step.change.edge?.orderKey ?? null,
+        })
         cache.writeQuery({
           query: WatchStateChangedDocument,
           data: {
             watchStateChanged: {
               items: [item],
-              continueWatching: [
-                watchingChange(item, step.item.matchesFilter ? step.item.orderKey : null),
-              ],
+              continueWatching: [watchingChange(item, step.change.edge?.orderKey ?? null)],
             },
           },
         })
-        applyWatchStateToLists(cache, [
-          watchingChange(item, step.item.matchesFilter ? step.item.orderKey : null),
-        ])
+        applyWatchStateToLists(cache, [watchingChange(item, step.change.edge?.orderKey ?? null)])
         expect(
           cache.readQuery(query)?.continueWatching.edges.map((entry) => entry?.node?.id),
           step.name,

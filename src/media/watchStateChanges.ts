@@ -44,7 +44,7 @@ function applyWatchStateChange(
     (item, index): item is NonNullable<typeof item> =>
       item !== null && !responsePathHasError(error, ['watchStateChanged', 'items', index]),
   )
-  const continueWatching = change.continueWatching.filter(
+  const continueWatching = (change.continueWatching ?? []).filter(
     (item, index): item is NonNullable<typeof item> =>
       item !== null &&
       !responsePathHasError(error, ['watchStateChanged', 'continueWatching', index]),

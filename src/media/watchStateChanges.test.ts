@@ -1,3 +1,4 @@
+import cases from '../test/contracts/live-lists.json'
 import { watchingMovie, watchingConnection } from '../test/continueWatchingFixtures'
 import { showContinueWatching, CONTINUE_WATCHING_LIMIT } from './watchStateLists'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -193,6 +194,60 @@ describe('subscribeToWatchStateChanges', () => {
       release()
     },
   )
+
+  it.each(cases.edgeCases)('shouldApplySharedEdgeCase: $name', async (scenario) => {
+    const { client, watchStatusOf } = setup()
+    const release = showContinueWatching(client.cache)
+    const query = {
+      query: HomeDocument,
+      variables: { continueWatchingFirst: CONTINUE_WATCHING_LIMIT },
+    }
+    client.cache.writeQuery({
+      ...query,
+      data: {
+        continueWatching: watchingConnection(
+          ['a', 'b'].map((id) => watchingMovie({ id, orderKey: id })),
+        ),
+        libraries: [],
+      },
+    })
+    const socket = await connectAndSubscribe(() => subscribeToWatchStateChanges(client))
+    socket.deliver({
+      type: 'next',
+      id: socket.subscriptionIds()[0],
+      payload: {
+        data: {
+          watchStateChanged: {
+            __typename: 'WatchStateChange',
+            items: [
+              { __typename: 'Movie', id: 'movie-1', watchStatus: 'WATCHED', watchProgress: null },
+              null,
+            ],
+            continueWatching:
+              scenario.changes?.map((change) => ({
+                ...change,
+                edge:
+                  change.edge === null
+                    ? null
+                    : {
+                        ...change.edge,
+                        __typename: 'ContinueWatchingEdge',
+                        cursor: 'cursor',
+                        node: null,
+                      },
+              })) ?? null,
+          },
+        },
+        errors: scenario.errorPaths.map((path) => ({ message: 'Unavailable', path })),
+      },
+    })
+    await settle()
+    expect(watchStatusOf('movie-1')).toBe('WATCHED')
+    expect(
+      client.cache.readQuery(query)?.continueWatching.edges.map((edge) => edge?.node?.id),
+    ).toEqual(scenario.expected)
+    release()
+  })
 
   it('shouldNotSubscribeAgainAfterTheServerForbidsTheChanges', async () => {
     const { client } = setup()
