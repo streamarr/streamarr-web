@@ -1,3 +1,4 @@
+import { watchingConnection } from '../test/continueWatchingFixtures'
 import { act, screen, waitFor, within } from '@testing-library/react'
 import { graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
@@ -65,6 +66,11 @@ const CONTINUE_WATCHING_MOVIE = {
   runtime: 100,
   createdOn: '2026-08-26T12:00:00Z',
   lastWatchedAt: '2026-10-16T09:00:00Z',
+  continueWatchingPosition: {
+    __typename: 'ContinueWatchingPosition',
+    matchesFilter: true,
+    orderKey: '10',
+  },
   genres: [],
   images: [],
   watchProgress: PROGRESS,
@@ -147,7 +153,7 @@ function serve(me = WATCHER) {
       count('Home')
       return HttpResponse.json({
         data: {
-          continueWatching: [withSaved(CONTINUE_WATCHING_MOVIE)],
+          continueWatching: watchingConnection([withSaved(CONTINUE_WATCHING_MOVIE)]),
           libraries: [
             {
               ...RECENTLY_ADDED,
@@ -169,11 +175,23 @@ function serve(me = WATCHER) {
 type Item = Record<string, unknown> | null
 
 function change(items: Item[]) {
-  return { data: { watchStateChanged: { __typename: 'WatchStateChange', items } } }
+  return {
+    data: { watchStateChanged: { continueWatching: [], __typename: 'WatchStateChange', items } },
+  }
 }
 
 function movie(id: string, watchStatus: string, watchProgress: unknown = null): Item {
-  return { __typename: 'Movie', id, watchStatus, watchProgress }
+  return {
+    __typename: 'Movie',
+    id,
+    watchStatus,
+    watchProgress,
+    continueWatchingPosition: {
+      __typename: 'ContinueWatchingPosition',
+      matchesFilter: watchStatus === 'IN_PROGRESS',
+      orderKey: '10',
+    },
+  }
 }
 
 async function openLibrary(socket: ReturnType<typeof serveGraphqlSocket>) {

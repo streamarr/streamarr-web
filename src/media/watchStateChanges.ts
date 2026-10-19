@@ -1,5 +1,5 @@
 import type { ApolloCache, ApolloClient, ErrorLike } from '@apollo/client'
-import { CombinedGraphQLErrors } from '@apollo/client/errors'
+import { responsePathHasError } from '../graphql/responseErrors'
 import {
   WatchStateChangedDocument,
   type WatchStateChangedSubscription,
@@ -40,24 +40,20 @@ function applyWatchStateChange(
   change: WatchStateChange,
   error: ErrorLike | undefined,
 ): void {
-  const failed = failedItemIndexes(error)
   const items = change.items.filter(
-    (item, index): item is NonNullable<typeof item> => item !== null && !failed.has(index),
+    (item, index): item is NonNullable<typeof item> =>
+      item !== null && !responsePathHasError(error, ['watchStateChanged', 'items', index]),
   )
-  if (items.length === 0) return
+  const continueWatching = change.continueWatching.filter(
+    (item, index): item is NonNullable<typeof item> =>
+      item !== null &&
+      !responsePathHasError(error, ['watchStateChanged', 'continueWatching', index]),
+  )
+  if (items.length === 0 && continueWatching.length === 0) return
   cache.writeQuery({
     query: WatchStateChangedDocument,
     id: 'ROOT_SUBSCRIPTION',
-    data: { watchStateChanged: { ...change, items } },
+    data: { watchStateChanged: { ...change, items, continueWatching } },
   })
-  applyWatchStateToLists(cache, items)
-}
-
-// An error's path names the item whose field failed: watchStateChanged.items.<index>.<field>.
-function failedItemIndexes(error: ErrorLike | undefined): ReadonlySet<number> {
-  if (!CombinedGraphQLErrors.is(error)) return new Set()
-  const indexes = error.errors.map(({ path }) =>
-    path?.[0] === 'watchStateChanged' && path[1] === 'items' ? path[2] : undefined,
-  )
-  return new Set(indexes.filter((index) => typeof index === 'number'))
+  applyWatchStateToLists(cache, continueWatching)
 }

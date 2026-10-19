@@ -54,7 +54,9 @@ export function Home() {
   return (
     <div className={styles.home}>
       <BillboardHero content={billboard} />
-      <ContinueWatchingShelf items={data.continueWatching} />
+      <ContinueWatchingShelf
+        items={definedEdges(data.continueWatching.edges).map((edge) => edge.node)}
+      />
       {libraries.length > 0 && (
         <div className={styles.recentlyAdded}>
           {libraries.map((library) => (
@@ -100,9 +102,8 @@ function EmptyHome({ hasLibraries }: Readonly<{ hasLibraries: boolean }>) {
 // The billboard fallback reuses data Home already fetched (no second query): when nobody has
 // started anything, the newest of the Recently Added rails' head items stands in.
 function billboardContentFor(data: HomeQuery): BillboardContent | null {
-  if (data.continueWatching.length > 0) {
-    return billboardFromContinueWatching(data.continueWatching[0])
-  }
+  const first = definedEdges(data.continueWatching.edges)[0]
+  if (first) return billboardFromContinueWatching(first.node)
 
   const candidates = data.libraries
     .filter((library) => library.type === 'MOVIE' || library.type === 'SERIES')

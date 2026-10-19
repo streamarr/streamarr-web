@@ -50,3 +50,10 @@ await writeFile(
 console.log(
   `Wrote ${files.length} files to src/graphql/schema/ from ${pin.repository}@${pin.commit}`,
 )
+
+const conformance = join(root, 'src/test/contracts')
+await mkdir(conformance, { recursive: true })
+await writeFile(
+  join(conformance, 'live-lists.json'),
+  await fetchBytes(rawUrl(pin, pin.liveListConformance)),
+)

@@ -21,7 +21,9 @@ export interface BillboardContent {
   ctaPositionSeconds: number | null
 }
 
-type ContinueWatchingItem = HomeQuery['continueWatching'][number]
+type ContinueWatchingItem = NonNullable<
+  NonNullable<HomeQuery['continueWatching']['edges'][number]>['node']
+>
 type ContinueWatchingMovie = Extract<ContinueWatchingItem, { __typename: 'Movie' }>
 type ContinueWatchingEpisode = Extract<ContinueWatchingItem, { __typename: 'Episode' }>
 type RecentlyAddedNode = NonNullable<

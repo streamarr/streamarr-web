@@ -1,3 +1,4 @@
+import { watchingConnection } from '../../test/continueWatchingFixtures'
 import { act, screen, waitFor, within } from '@testing-library/react'
 import { delay, graphql, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
@@ -46,7 +47,7 @@ function serve(libraries = [MOVIES, SHOWS], me = ADMIN) {
     graphql.query('Home', () =>
       HttpResponse.json({
         data: {
-          continueWatching: [],
+          continueWatching: watchingConnection([]),
           libraries: state.libraries.map((library) => ({ ...library, items: { edges: [] } })),
         },
       }),

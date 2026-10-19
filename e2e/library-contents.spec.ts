@@ -1,3 +1,4 @@
+import { watchingConnection } from '../src/test/continueWatchingFixtures'
 import { LIBRARY, movie, addition as change } from '../src/test/libraryContentsFixtures'
 import { expect, test } from '@playwright/test'
 import type { LibraryPageQuery } from '../src/graphql/generated/graphql'
@@ -50,7 +51,8 @@ test('library frames update cards and counts through detail navigation and recon
     const reply = (data: unknown) => route.fulfill({ json: { data } })
     if (operationName === 'Me') return reply({ me })
     if (operationName === 'Libraries') return reply({ libraries: [] })
-    if (operationName === 'Home') return reply({ continueWatching: [], libraries: [] })
+    if (operationName === 'Home')
+      return reply({ continueWatching: watchingConnection([]), libraries: [] })
     if (operationName === 'LibraryPage') {
       reads++
       return reply(library())

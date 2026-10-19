@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import type { HomeQuery } from '../graphql/generated/graphql'
 import { billboardFromContinueWatching, billboardFromRecentlyAdded } from './billboardContent'
 
-type ContinueWatchingItem = HomeQuery['continueWatching'][number]
+type ContinueWatchingItem = NonNullable<
+  NonNullable<HomeQuery['continueWatching']['edges'][number]>['node']
+>
 type RecentlyAddedNode = NonNullable<
   NonNullable<HomeQuery['libraries'][number]['items']['edges']>[number]
 >['node']
@@ -28,7 +30,6 @@ function continueWatchingMovie(
         ],
       },
     ],
-    lastWatchedAt: null,
     watchProgress: null,
     files: [{ id: 'file-1' }],
     ...overrides,
@@ -46,7 +47,6 @@ function continueWatchingEpisode(
     overview: 'The team regroups.',
     runtime: 47,
     images: [],
-    lastWatchedAt: null,
     watchProgress: { positionSeconds: 600, percentComplete: 40, durationSeconds: 1500 },
     files: [{ id: 'file-2' }],
     season: {
