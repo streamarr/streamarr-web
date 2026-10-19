@@ -5,10 +5,12 @@ fragment LibraryItemChangeFields on LibraryItemChange {
   item {
     ...MediaSummaryFields
   }
-  position(sort: $sort, filter: $filter) {
-    matchesFilter
+  edge(sort: $sort, filter: $filter) {
     cursor
     orderKey
+    node {
+      ...MediaSummaryFields
+    }
   }
 }
 

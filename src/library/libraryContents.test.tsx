@@ -14,6 +14,7 @@ import type {
   MediaSort,
 } from '../graphql/generated/graphql'
 import { useEffect } from 'react'
+import { MediaSummaryFieldsFragmentDoc } from '../graphql/generated/graphql'
 
 const WATCHER = meFixture({ scope: 'profile', profiles: [profileFixture({ selected: true })] })
 
@@ -141,6 +142,70 @@ function removal(id: string) {
 }
 
 describe('library contents', () => {
+  it('shouldKeepUpdatedEntityFieldsWhenANullEdgeRemovesMembership', async () => {
+    const { reads, socket } = serve()
+    const { apolloClient } = await open(socket)
+    await waitFor(() => expect(reads.library).toBe(2))
+    const update = addition({ id: 'a', title: 'Alpha revised' })
+    act(() =>
+      socket.publish('LibraryItemUpdated', {
+        data: { change: { ...update.data.change, edge: null } },
+      }),
+    )
+    await waitFor(() => expect(titles()).toEqual(['Delta']))
+    expect(
+      apolloClient.cache.readFragment({
+        id: apolloClient.cache.identify(update.data.change.item),
+        fragment: MediaSummaryFieldsFragmentDoc,
+        fragmentName: 'MediaSummaryFields',
+      }),
+    ).toMatchObject({ id: 'a', title: 'Alpha revised' })
+    expect(reads.library).toBe(2)
+  })
+
+  it('shouldPreserveMembershipWhenAnEdgeHasANullNode', async () => {
+    const { reads, socket } = serve()
+    await openWindow(socket)
+    const update = addition({ id: 'a', title: 'Alpha' })
+    act(() =>
+      socket.publish('LibraryItemUpdated', {
+        data: {
+          change: { ...update.data.change, edge: { ...update.data.change.edge, node: null } },
+        },
+      }),
+    )
+    expect(loadedTitles()).toEqual(['Alpha', 'Delta'])
+    expect(reads.library).toBe(1)
+  })
+
+  it('shouldInsertTheServerEdgeWithoutReadingTheLibraryAgain', async () => {
+    const { reads, socket } = serve()
+    await openWindow(socket)
+    const initialReads = reads.library
+    const item = movie({ id: 'b', title: 'Bravo' })
+    act(() =>
+      socket.publish('LibraryItemAdded', {
+        data: {
+          change: {
+            __typename: 'LibraryItemChange',
+            libraryId: LIBRARY,
+            itemId: item.id,
+            kind: 'MOVIE',
+            item,
+            edge: {
+              __typename: 'MediaEdge',
+              cursor: 'bravo-server-cursor',
+              orderKey: 'Bravo',
+              node: item,
+            },
+          },
+        },
+      }),
+    )
+    await waitFor(() => expect(loadedTitles()).toEqual(['Alpha', 'Bravo', 'Delta']))
+    expect(reads.library).toBe(initialReads)
+  })
+
   it.each(['FORBIDDEN', 'PROFILE_REQUIRED', 'TOO_MANY_OPERATIONS', 'INTERNAL_ERROR'])(
     'shouldShowATerminal%sRefusalUntilAnExplicitRetry',
     async (code) => {
@@ -427,31 +492,33 @@ describe('library contents', () => {
     await open(socket)
     await waitFor(() => expect(reads.library).toBe(2))
     const update = addition({ id: 'a', title: 'Alpha' })
+    const item = {
+      ...update.data.change.item,
+      images: [
+        {
+          __typename: 'Image',
+          aspectRatio: 0.67,
+          blurHash: null,
+          variants: [
+            {
+              __typename: 'ImageVariant',
+              id: 'poster',
+              size: 'W342',
+              width: 342,
+              height: 513,
+              url: '/api/images/new-poster.png',
+            },
+          ],
+        },
+      ],
+    }
     act(() =>
       socket.publish('LibraryItemUpdated', {
         data: {
           change: {
             ...update.data.change,
-            item: {
-              ...update.data.change.item,
-              images: [
-                {
-                  __typename: 'Image',
-                  aspectRatio: 0.67,
-                  blurHash: null,
-                  variants: [
-                    {
-                      __typename: 'ImageVariant',
-                      id: 'poster',
-                      size: 'W342',
-                      width: 342,
-                      height: 513,
-                      url: '/api/images/new-poster.png',
-                    },
-                  ],
-                },
-              ],
-            },
+            item,
+            edge: { ...update.data.change.edge, node: item },
           },
         },
       }),
@@ -470,7 +537,7 @@ describe('library contents', () => {
     act(() =>
       socket.publish('LibraryItemUpdated', {
         data: { change: null },
-        errors: [{ message: 'Position unavailable', path: ['change', 'position'] }],
+        errors: [{ message: 'Edge unavailable', path: ['change', 'edge'] }],
       }),
     )
     await screen.findByRole('link', { name: /Alpha recovered/ })
@@ -486,9 +553,7 @@ describe('library contents', () => {
       act(() => {
         socket.publish('LibraryItemUpdated', {
           ...addition(),
-          errors: [
-            { message: 'Position unavailable', path: ['change', 'position'], extensions: { code } },
-          ],
+          errors: [{ message: 'Edge unavailable', path: ['change', 'edge'], extensions: { code } }],
         })
         socket.complete('LibraryItemUpdated')
       })
@@ -699,11 +764,14 @@ describe('library contents', () => {
       filter: { genreIds: ['drama'], years: [2024] },
     })
     const update = addition({ id: 'z', title: 'Zulu' })
-    update.data.change.position.orderKey = '000-newest'
+    update.data.change.edge.orderKey = '000-newest'
     act(() => socket.publish('LibraryItemAdded', update))
     await waitFor(() => expect(loadedTitles()).toEqual(['Zulu', 'Alpha']))
-    update.data.change.position.matchesFilter = false
-    act(() => socket.publish('LibraryItemUpdated', update))
+    act(() =>
+      socket.publish('LibraryItemUpdated', {
+        data: { change: { ...update.data.change, edge: null } },
+      }),
+    )
     await waitFor(() => expect(loadedTitles()).toEqual(['Alpha']))
     expect(reads.library).toBe(1)
   })
@@ -727,7 +795,7 @@ describe('library contents', () => {
     const card = screen.getByRole('link', { name: /Alpha/ })
     act(() => card.focus())
     const update = addition({ id: 'a', title: 'Alpha revised' })
-    update.data.change.position.cursor = 'new-server-cursor'
+    update.data.change.edge.cursor = 'new-server-cursor'
     act(() => socket.publish('LibraryItemUpdated', update))
     const revised = await screen.findByRole('link', { name: /Alpha revised/ })
     expect(revised).toBe(card)

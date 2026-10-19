@@ -526,11 +526,11 @@ describe('useLibraryItems', () => {
           itemId: 'nadir',
           kind: 'MOVIE',
           item: movieNode('nadir', 'Nadir'),
-          position: {
-            __typename: 'LibraryItemPosition',
-            matchesFilter: true,
+          edge: {
+            __typename: 'MediaEdge',
             cursor: 'server-nadir',
             orderKey: 'Nadir',
+            node: movieNode('nadir', 'Nadir'),
           },
         },
       },

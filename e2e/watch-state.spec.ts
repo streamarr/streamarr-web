@@ -101,12 +101,7 @@ test('an Unwatched view drops a movie that another device finishes', async ({ pa
         itemId: EVERLIGHT.id,
         kind: 'MOVIE',
         item: { ...EVERLIGHT, watchStatus: 'WATCHED', lastWatchedAt: '2026-10-16T10:00:00Z' },
-        position: {
-          __typename: 'LibraryItemPosition',
-          matchesFilter: false,
-          cursor: null,
-          orderKey: null,
-        },
+        edge: null,
       },
     },
   })

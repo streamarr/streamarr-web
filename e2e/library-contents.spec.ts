@@ -85,7 +85,7 @@ test('library frames update cards and counts through detail navigation and recon
   expect(reads).toBe(initialReads)
 
   const update = change({ id: 'b', title: 'Bravo revised' })
-  update.data.change.position.cursor = 'revised-server-cursor'
+  update.data.change.edge.cursor = 'revised-server-cursor'
   socket.publish('LibraryItemUpdated', update)
   socket.publish('LibraryCountsChanged', {
     data: {
