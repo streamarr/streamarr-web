@@ -26,8 +26,7 @@ query LibraryPage(
       filter: $filter
     ) {
       edges {
-        cursor
-        orderKey
+        ...OrderedEdgeFields
         node {
           ...MediaSummaryFields
         }

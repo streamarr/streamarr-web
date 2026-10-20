@@ -153,8 +153,7 @@ fragment ContinueWatchingItemFields on ContinueWatchingMedia {
 }
 
 fragment ContinueWatchingEdgeFields on ContinueWatchingEdge {
-  cursor
-  orderKey
+  ...OrderedEdgeFields
   node {
     ...ContinueWatchingItemFields
   }

@@ -164,6 +164,7 @@ function serve(titles: Title[], { pageSize = 48, recentlyAdded = [] as Title[] }
             alphabetIndex: [],
             items: {
               edges: page.map((each) => ({
+                __typename: 'MediaEdge' as const,
                 cursor: each.id,
                 orderKey: orderKey(each),
                 node: card(each),
