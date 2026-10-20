@@ -78,6 +78,7 @@ function libraryData(
       ],
       items: {
         edges: (overrides.edges ?? [{ cursor: 'c1', node: movieNode() }]).map((edge) => ({
+          __typename: 'MediaEdge' as const,
           ...edge,
           orderKey: edge.node.title,
         })),
@@ -531,7 +532,12 @@ describe('LibraryScreen', () => {
               ...libraryData().library,
               items: {
                 edges: [
-                  { cursor: 'c1', orderKey: 'Beta', node: movieNode({ id: '1', title: 'Beta' }) },
+                  {
+                    __typename: 'MediaEdge' as const,
+                    cursor: 'c1',
+                    orderKey: 'Beta',
+                    node: movieNode({ id: '1', title: 'Beta' }),
+                  },
                 ],
                 pageInfo: {
                   hasNextPage: false,
@@ -629,6 +635,7 @@ describe('LibraryScreen', () => {
                 items: {
                   edges: [
                     {
+                      __typename: 'MediaEdge' as const,
                       cursor: 'c-northern',
                       orderKey: 'Northern Line',
                       node: movieNode({ id: 'n', title: 'Northern Line' }),

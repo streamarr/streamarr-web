@@ -130,6 +130,7 @@ describe('shared live-list conformance', () => {
               alphabetIndex: [],
               items: {
                 edges: page.map((item) => ({
+                  __typename: 'MediaEdge' as const,
                   cursor: `cursor-${item.id}`,
                   orderKey: item.orderKey,
                   node: { ...movie(item), watchStatus: recovered ? 'WATCHED' : 'UNWATCHED' },

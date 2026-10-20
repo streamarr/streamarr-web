@@ -19,7 +19,12 @@ export function movie({ id = 'a', title = 'Alpha' }: MovieOptions = {}) {
 
 export function edge(options: MovieOptions = {}) {
   const node = movie(options)
-  return { cursor: `cursor-${node.id}`, orderKey: node.title, node }
+  return {
+    __typename: 'MediaEdge' as const,
+    cursor: `cursor-${node.id}`,
+    orderKey: node.title,
+    node,
+  }
 }
 
 export function addition(options: MovieOptions = {}) {
