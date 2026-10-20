@@ -4,6 +4,7 @@ import {
   type ContinueWatchingEdgeFieldsFragment,
   type WatchStateChangedSubscription,
 } from '../graphql/generated/graphql'
+import { definedEdges, placeOrderedEdge } from './edges'
 import { evictWatchDependentConnections } from './watchedState'
 
 type ContinueWatchingChange = NonNullable<
@@ -11,6 +12,9 @@ type ContinueWatchingChange = NonNullable<
     NonNullable<WatchStateChangedSubscription['watchStateChanged']>['continueWatching']
   >[number]
 >
+type ShelfEdge = ContinueWatchingEdgeFieldsFragment & {
+  node: NonNullable<ContinueWatchingEdgeFieldsFragment['node']>
+}
 interface LiveLists {
   continueWatching: number
 }
@@ -65,17 +69,21 @@ function applyToContinueWatching(
   const variables = { continueWatchingFirst: CONTINUE_WATCHING_LIMIT }
   cache.updateQuery({ query: HomeDocument, variables }, (data) => {
     if (!data) return undefined
-    const entries = new Map<string, ContinueWatchingEdgeFieldsFragment>()
-    for (const edge of data.continueWatching.edges) {
-      if (edge?.node) entries.set(edge.node.id, edge)
+    let edges: ShelfEdge[] = []
+    for (const edge of definedEdges(data.continueWatching.edges)) {
+      edges = placeOrderedEdge(edges, { itemId: edge.node.id, edge })
     }
-    for (const change of changes) {
-      if (change.edge === null) entries.delete(change.itemId)
-      if (change.edge?.node) entries.set(change.itemId, change.edge)
+    for (const { itemId, edge } of changes) {
+      if (edge === null) edges = placeOrderedEdge(edges, { itemId, edge })
+      if (edge?.node)
+        edges = placeOrderedEdge(edges, { itemId, edge: { ...edge, node: edge.node } })
     }
-    const edges = [...entries.values()]
-      .sort((a, b) => (a.orderKey < b.orderKey ? -1 : a.orderKey > b.orderKey ? 1 : 0))
-      .slice(0, CONTINUE_WATCHING_LIMIT)
-    return { ...data, continueWatching: { ...data.continueWatching, edges } }
+    return {
+      ...data,
+      continueWatching: {
+        ...data.continueWatching,
+        edges: edges.slice(0, CONTINUE_WATCHING_LIMIT),
+      },
+    }
   })
 }
