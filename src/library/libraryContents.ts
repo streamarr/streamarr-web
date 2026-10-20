@@ -11,7 +11,7 @@ import {
   type LibraryPageQuery,
   type LibraryPageQueryVariables,
 } from '../graphql/generated/graphql'
-import { definedEdges } from '../media/edges'
+import { definedEdges, placeOrderedEdge } from '../media/edges'
 import { responsePathHasError } from '../graphql/responseErrors'
 import { retainLibraryItemsConnection } from '../media/watchedState'
 
@@ -259,26 +259,22 @@ function expandBounds(bounds: Bounds, items: Items) {
   }
 }
 
-function removeItem(items: Items, id: string): Items {
-  return withEdges(
-    items,
-    definedEdges(items.edges).filter((edge) => edge.node.id !== id),
-  )
+function removeItem(items: Items, itemId: string): Items {
+  return withEdges(items, placeOrderedEdge(definedEdges(items.edges), { itemId, edge: null }))
 }
 
 function placeItem(items: Items, change: LibraryItemChangeFieldsFragment, bounds: Bounds): Items {
-  const others = definedEdges(items.edges).filter((edge) => edge.node.id !== change.itemId)
-  const { edge } = change
-  if (edge === null) return withEdges(items, others)
+  const { itemId, edge } = change
+  if (edge === null) return removeItem(items, itemId)
   if (!edge?.node) return items
   if (edge.node.__typename !== 'Movie' && edge.node.__typename !== 'Series') return items
   const { orderKey, node } = edge
   const { hasPreviousPage, hasNextPage } = items.pageInfo
   const beforeWindow = hasPreviousPage && (bounds.first === null || orderKey < bounds.first)
   const afterWindow = hasNextPage && (bounds.last === null || orderKey > bounds.last)
-  if (beforeWindow || afterWindow) return withEdges(items, others)
-  const index = others.findIndex((edge) => edge.orderKey > orderKey)
-  return withEdges(items, others.toSpliced(index < 0 ? others.length : index, 0, { ...edge, node }))
+  if (beforeWindow || afterWindow) return removeItem(items, itemId)
+  const placed = { ...edge, node }
+  return withEdges(items, placeOrderedEdge(definedEdges(items.edges), { itemId, edge: placed }))
 }
 
 function withEdges(items: Items, edges: Items['edges']): Items {
