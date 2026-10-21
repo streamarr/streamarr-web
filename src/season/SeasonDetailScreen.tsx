@@ -33,7 +33,7 @@ export function SeasonDetailScreen({ seasonId }: Readonly<{ seasonId: string }>)
     : null
   usePublishAmbientTheme(ambient?.theme ?? null)
 
-  if (loading || error || !season) {
+  if (error || !season) {
     return (
       <MediaTitleFallback
         kind="season"

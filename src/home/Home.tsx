@@ -26,7 +26,7 @@ export function Home() {
   const { cache } = useApolloClient()
   useEffect(() => showContinueWatching(cache), [cache])
 
-  if (loading) {
+  if (loading && !data) {
     return (
       <Center h={200}>
         <Loader />
