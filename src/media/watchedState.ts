@@ -1,7 +1,7 @@
 import type { ApolloCache, NormalizedCacheObject } from '@apollo/client'
 import type { MediaFilter, MediaSort } from '../graphql/generated/graphql'
 
-type LibraryItemsConnection = Readonly<{
+export type LibraryItemsConnection = Readonly<{
   libraryId: string
   args: Readonly<{ first: number; sort: MediaSort; filter: MediaFilter }>
 }>
@@ -34,15 +34,27 @@ export function trackLibraryItemsConnection(
  */
 export function invalidateWatchedState(cache: ApolloCache) {
   cache.evict({ fieldName: 'continueWatching' })
+  evictWatchDependentConnections(cache, () => false)
+}
+
+/**
+ * Evicts each remembered watch-dependent `Library.items` connection that `keep` rejects, and
+ * forgets it, so the next read of that connection asks the server again.
+ */
+export function evictWatchDependentConnections(
+  cache: ApolloCache,
+  keep: (connection: LibraryItemsConnection) => boolean,
+) {
   const connections = watchDependentConnectionsByCache.get(cache)
-  for (const { libraryId, args } of connections?.values() ?? []) {
+  for (const [key, connection] of connections ?? []) {
+    if (keep(connection)) continue
     cache.evict({
-      id: cache.identify({ __typename: 'Library', id: libraryId }),
+      id: cache.identify({ __typename: 'Library', id: connection.libraryId }),
       fieldName: 'items',
-      args,
+      args: connection.args,
     })
+    connections?.delete(key)
   }
-  connections?.clear()
 }
 
 export function discardWatchedState(cache: ApolloCache) {
