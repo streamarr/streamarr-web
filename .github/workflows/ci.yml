@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           # SonarCloud attributes new code from the full history; a shallow clone hides it.
           fetch-depth: 0
@@ -53,7 +53,7 @@ jobs:
           echo "analyze=true" >> "$GITHUB_OUTPUT"
       - name: Analyze coverage and require the SonarCloud quality gate
         if: steps.sonar.outputs.analyze == 'true'
-        uses: SonarSource/sonarqube-scan-action@ba9859eae8dd6bd29e412f25ddbbef3d032000f4 # v8.2.2
+        uses: SonarSource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9 # v8.3.0
         env:
           SONAR_TOKEN: ${{ secrets.ORG_SONAR_TOKEN }}
       - name: Read the Playwright version
