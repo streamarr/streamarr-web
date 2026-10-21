@@ -1,5 +1,5 @@
 import { watchingConnection } from '../src/test/continueWatchingFixtures'
-import { LIBRARY, movie, addition as change } from '../src/test/libraryContentsFixtures'
+import { LIBRARY, movie, addition as change, mediaEdge } from '../src/test/libraryContentsFixtures'
 import { expect, test } from '@playwright/test'
 import type { LibraryPageQuery } from '../src/graphql/generated/graphql'
 import { meFixture, profileFixture } from '../src/test/meFixture'
@@ -36,7 +36,7 @@ test('library frames update cards and counts through detail navigation and recon
         { letter: 'D', count: 40 },
       ],
       items: {
-        edges: nodes.map((node) => ({ cursor: `cursor-${node.id}`, orderKey: node.title, node })),
+        edges: nodes.map((node) => mediaEdge({ cursor: `cursor-${node.id}`, node })),
         pageInfo: {
           hasNextPage: false,
           hasPreviousPage: false,
