@@ -8,7 +8,7 @@ The complete license texts ship with the client under `public/licenses/`, so eve
 
 The application's icons are Lucide glyphs, imported by name from the `lucide-react` package and rendered through `src/ui/Icon.tsx` as the approved subset in streamarr-ux's `ICONOGRAPHY.md`.
 
-Version: lucide-react 1.47.0, pinned by `package-lock.json`.
+Version: the `lucide-react` release pinned by `package-lock.json`.
 
 Copyright notices retained from the package:
 
