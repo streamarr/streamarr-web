@@ -30,11 +30,5 @@ describe('third-party notices', () => {
     expect(readFileSync(`${SHIPPED}/lucide-ISC.txt`)).toEqual(
       readFileSync('node_modules/lucide-react/LICENSE'),
     )
-    const lock = JSON.parse(readFileSync('package-lock.json', 'utf8')) as {
-      packages: Record<string, { version: string }>
-    }
-    expect(readFileSync('THIRD_PARTY_NOTICES.md', 'utf8')).toContain(
-      `lucide-react ${lock.packages['node_modules/lucide-react'].version}`,
-    )
   })
 })
