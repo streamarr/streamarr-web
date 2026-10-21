@@ -17,6 +17,11 @@
       "description": "Group minor updates into a single PR",
       "matchUpdateTypes": ["minor"],
       "groupName": "minor dependencies"
+    },
+    {
+      "description": "Keep code generators in their own PR: a new version can change the committed generated files, which then need `npm run codegen` committed on that PR",
+      "matchPackageNames": ["@graphql-codegen/**", "openapi-typescript"],
+      "groupName": "code generators"
     }
   ],
   "prConcurrentLimit": 10
