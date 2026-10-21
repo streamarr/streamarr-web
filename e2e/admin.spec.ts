@@ -114,6 +114,19 @@ async function fixture(page: Page, libraries = [movie, shows]) {
           : { startLibraryRefresh: payload },
       )
     }
+    if (operationName === 'StopLibraryScan' || operationName === 'StopLibraryRefresh') {
+      const { libraryId } = variables.input as { libraryId: string }
+      state.libraries = state.libraries.map((library) =>
+        library.id === libraryId ? { ...library, status: 'STOPPING' as const } : library,
+      )
+      const library = state.libraries.find((candidate) => candidate.id === libraryId)
+      const payload = { library, userErrors: [] }
+      return reply(
+        operationName === 'StopLibraryScan'
+          ? { stopLibraryScan: payload }
+          : { stopLibraryRefresh: payload },
+      )
+    }
     if (operationName === 'EncoderPresetSetting')
       return reply({ encoderPresetSetting: state.encoderPresetSetting })
     if (operationName === 'ChangeEncoderPreset') {
@@ -242,6 +255,42 @@ test('library status changes show live without reading the inventory again', asy
   await expect(status).toHaveText('HEALTHY')
   await expect(detail.getByRole('button', { name: 'Scan library' })).toBeEnabled()
   await expect(detail).toContainText('Oct 15, 2026')
+  expect(inventoryReads(state)).toBe(reads)
+})
+
+test('stopping a scan shows STOPPING at once, then the restored status and that the scan stopped', async ({
+  page,
+}) => {
+  const state = await fixture(page, [{ ...movie, status: 'SCANNING' }, shows])
+  await page.goto(SETTINGS)
+  const detail = page.getByRole('article', { name: 'Movies settings' })
+  const status = detail.locator('[data-library-status]')
+  await expect(status).toHaveText('SCANNING')
+  await expect.poll(() => state.socket.isLive('LibraryStatusChanged')).toBe(true)
+  const reads = inventoryReads(state)
+
+  await detail.getByRole('button', { name: 'Stop scan' }).click()
+
+  await expect(status).toHaveText('STOPPING')
+  await expect(detail.locator('output:has([data-library-status])')).toBeFocused()
+  await expect(detail.getByRole('button', { name: 'Stop scan' })).toHaveCount(0)
+  await expect(detail.getByRole('button', { name: 'Scan library' })).toBeDisabled()
+  expect(state.calls.find((call) => call.operationName === 'StopLibraryScan')?.variables).toEqual({
+    input: { libraryId: 'movies' },
+  })
+
+  state.socket.publish('LibraryStatusChanged', {
+    data: { libraryStatusChanged: { ...movie, status: 'STOPPING' } },
+  })
+  state.socket.publish('LibraryStatusChanged', { data: { libraryStatusChanged: movie } })
+
+  await expect(status).toHaveText('HEALTHY')
+  await expect(
+    detail.getByText(
+      'Scan stopped. Details such as cast photos can still appear for titles the scan already processed.',
+    ),
+  ).toBeVisible()
+  await expect(detail.getByRole('button', { name: 'Scan library' })).toBeEnabled()
   expect(inventoryReads(state)).toBe(reads)
 })
 

@@ -9,8 +9,20 @@ export const LIBRARY_STATUS_ICONS = {
   HEALTHY: 'check',
   SCANNING: 'scan',
   REFRESHING: 'refresh',
+  // Stop scan and Stop refresh share this glyph. A stop never resumes, so pause never means stop.
+  STOPPING: 'stop',
   UNHEALTHY: 'alert',
 } as const satisfies Record<string, IconName>
+
+/** The run a ServerAdmin can stop: the library's scan or its metadata refresh. */
+export type StoppableRun = 'scan' | 'refresh'
+
+/** The run the library's status says is in progress, which only that run's stop can end. */
+export function stoppableRun(library: Pick<ManagedLibrary, 'status'>): StoppableRun | null {
+  if (library.status === 'SCANNING') return 'scan'
+  if (library.status === 'REFRESHING') return 'refresh'
+  return null
+}
 
 /** Future states conservatively disable maintenance until the client understands them. */
 export function canMaintainLibrary(library: Pick<ManagedLibrary, 'status'>): boolean {

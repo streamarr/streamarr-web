@@ -2,6 +2,7 @@ import type {
   ApolloCache,
   ApolloClient,
   ErrorLike,
+  OperationVariables,
   Reference,
   TypedDocumentNode,
 } from '@apollo/client'
@@ -18,20 +19,26 @@ import {
   RemoveLibraryDocument,
   StartLibraryRefreshDocument,
   StartLibraryScanDocument,
+  StopLibraryRefreshDocument,
+  StopLibraryScanDocument,
   type AddLibraryInput,
   type ImageRefreshMode,
   type LibraryStatus,
   type ManagedLibraryFieldsFragment,
   type StartLibraryScanMutation,
+  type StopLibraryRefreshMutation,
+  type StopLibraryScanMutation,
 } from '../../graphql/generated/graphql'
 import { extractAuthContext, isForbidden } from '../../graphql/errorRouting'
 import { isReading } from '../../graphql/readAgain'
 import { userErrorMessage } from '../../graphql/userErrors'
 
-// Scan, refresh and removal share one refusal union.
-type LibraryOperationError = NonNullable<
-  StartLibraryScanMutation['startLibraryScan']
->['userErrors'][number]
+// Starts and removal share one refusal union; each stop adds its own refusal for a run that is
+// not in progress.
+type LibraryOperationError =
+  | NonNullable<StartLibraryScanMutation['startLibraryScan']>['userErrors'][number]
+  | NonNullable<StopLibraryScanMutation['stopLibraryScan']>['userErrors'][number]
+  | NonNullable<StopLibraryRefreshMutation['stopLibraryRefresh']>['userErrors'][number]
 
 type LibraryOperationPayload = {
   library?: ManagedLibraryFieldsFragment | null
@@ -176,7 +183,9 @@ export function useAdminLibraries() {
  * One in-flight library command per caller. A null result means the request failed, was refused,
  * was a duplicate, or outlived the caller; creation's userErrors ride the returned payload. Scan
  * and refresh success means the server started the operation, not that it finished: the returned
- * library shows the busy status unless a live change already reported that the run ended.
+ * library shows the busy status unless a live change already reported that the run ended. Stop
+ * success likewise means the server stored the stop: the returned library shows STOPPING until
+ * the run's admitted work finishes.
  */
 export function useLibraryCommands() {
   const client = useApolloClient()
@@ -211,6 +220,30 @@ export function useLibraryCommands() {
     }
   }
 
+  // Sends a command that answers with the library, and returns the library as the cache now holds
+  // it, or null after a refusal.
+  async function commandLibrary<TData, TVariables extends OperationVariables>({
+    libraryId,
+    mutation,
+    variables,
+    payloadOf,
+  }: {
+    libraryId: string
+    mutation: TypedDocumentNode<TData, TVariables>
+    variables: TVariables
+    payloadOf: (data: TData | null | undefined) => LibraryOperationPayload | null | undefined
+  }): Promise<ManagedLibraryFieldsFragment | null> {
+    const outcome = operationOutcome(client.cache, libraryId)
+    const { data } = await client.mutate({
+      mutation,
+      variables,
+      fetchPolicy: 'no-cache',
+      update: (cache, { data }) => outcome.write(cache, payloadOf(data)),
+    })
+    await outcome.readInventoryAgainAfterMissedChanges(client)
+    return currentLibrary(client.cache, accepted(payloadOf(data)))
+  }
+
   // The payload when the server did what was asked; a refusal shows its message instead.
   function accepted<P extends LibraryOperationPayload>(payload: P | null | undefined): P | null {
     if (!payload) throw new Error('Missing library operation result')
@@ -233,29 +266,41 @@ export function useLibraryCommands() {
         return data.addLibrary
       }, NOTHING_ADDED),
     scan: (libraryId: string) =>
-      execute(async () => {
-        const outcome = operationOutcome(client.cache, libraryId)
-        const { data } = await client.mutate({
+      execute(() =>
+        commandLibrary({
+          libraryId,
           mutation: StartLibraryScanDocument,
           variables: { input: { libraryId } },
-          fetchPolicy: 'no-cache',
-          update: (cache, { data }) => outcome.write(cache, data?.startLibraryScan),
-        })
-        await outcome.readInventoryAgainAfterMissedChanges(client)
-        return startedLibrary(client.cache, accepted(data?.startLibraryScan))
-      }),
+          payloadOf: (data) => data?.startLibraryScan,
+        }),
+      ),
     refresh: (libraryId: string, imageRefreshMode: ImageRefreshMode) =>
-      execute(async () => {
-        const outcome = operationOutcome(client.cache, libraryId)
-        const { data } = await client.mutate({
+      execute(() =>
+        commandLibrary({
+          libraryId,
           mutation: StartLibraryRefreshDocument,
           variables: { input: { libraryId, imageRefreshMode } },
-          fetchPolicy: 'no-cache',
-          update: (cache, { data }) => outcome.write(cache, data?.startLibraryRefresh),
-        })
-        await outcome.readInventoryAgainAfterMissedChanges(client)
-        return startedLibrary(client.cache, accepted(data?.startLibraryRefresh))
-      }),
+          payloadOf: (data) => data?.startLibraryRefresh,
+        }),
+      ),
+    stopScan: (libraryId: string) =>
+      execute(() =>
+        commandLibrary({
+          libraryId,
+          mutation: StopLibraryScanDocument,
+          variables: { input: { libraryId } },
+          payloadOf: (data) => data?.stopLibraryScan,
+        }),
+      ),
+    stopRefresh: (libraryId: string) =>
+      execute(() =>
+        commandLibrary({
+          libraryId,
+          mutation: StopLibraryRefreshDocument,
+          variables: { input: { libraryId } },
+          payloadOf: (data) => data?.stopLibraryRefresh,
+        }),
+      ),
     remove: (libraryId: string, onRemoved: () => void) =>
       execute(async () => {
         const outcome = operationOutcome(client.cache, libraryId)
@@ -277,17 +322,17 @@ export function useLibraryCommands() {
 }
 
 // The cache can hold newer state than the returned library: a live change, or a read after it.
-function startedLibrary(
+function currentLibrary(
   cache: ApolloCache,
   payload: LibraryOperationPayload | null,
 ): ManagedLibraryFieldsFragment | null {
   if (!payload) return null
-  if (!payload.library) throw new Error('Missing started library')
+  if (!payload.library) throw new Error('Missing library in the operation result')
   const id = cache.identify(payload.library)
   return cache.readFragment({ fragment: ManagedLibraryFieldsFragmentDoc, id }) ?? payload.library
 }
 
-// The returned library, or the status a busy refusal carries, writes into the cache unless a live
+// The returned library, or the status a refusal carries, writes into the cache unless a live
 // change for the library arrived during the request: that change can already say the run ended.
 // The write happens in the mutation's own cache update, so the library shows its new status by
 // the time the command returns.
@@ -300,7 +345,8 @@ function operationOutcome(cache: ApolloCache, libraryId: string) {
       if (payload.library)
         target.writeFragment({ fragment: ManagedLibraryFieldsFragmentDoc, data: payload.library })
       for (const error of payload.userErrors) {
-        if (error.__typename === 'LibraryBusyError') showStatus(target, libraryId, error.status)
+        const status = refusedStatus(error)
+        if (status) showStatus(target, libraryId, status)
       }
     },
     // A socket that subscribed during the request may have missed the operation's own change, and
@@ -367,7 +413,19 @@ function holdLibrary(cache: ApolloCache, library: ManagedLibraryFieldsFragment) 
   })
 }
 
-// A busy refusal names no library, so normalization cannot apply the status it carries.
+// The status a refusal reports for the library, if its member carries one.
+function refusedStatus(error: LibraryOperationError): LibraryStatus | null {
+  switch (error.__typename) {
+    case 'LibraryBusyError':
+    case 'LibraryScanNotInProgressError':
+    case 'LibraryRefreshNotInProgressError':
+      return error.status
+    default:
+      return null
+  }
+}
+
+// A refusal names no library, so normalization cannot apply the status it carries.
 function showStatus(cache: ApolloCache, libraryId: string, status: LibraryStatus) {
   cache.modify<ManagedLibraryFieldsFragment>({
     id: cache.identify({ __typename: 'Library', id: libraryId }),
