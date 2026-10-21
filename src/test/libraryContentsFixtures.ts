@@ -17,14 +17,20 @@ export function movie({ id = 'a', title = 'Alpha' }: MovieOptions = {}) {
   }
 }
 
+// Without its typename, the cache cannot match the OrderedEdge fragment and drops cursor and orderKey.
+export function mediaEdge<TNode extends { title: string }>({
+  cursor,
+  node,
+}: {
+  cursor: string
+  node: TNode
+}) {
+  return { __typename: 'MediaEdge' as const, cursor, orderKey: node.title, node }
+}
+
 export function edge(options: MovieOptions = {}) {
   const node = movie(options)
-  return {
-    __typename: 'MediaEdge' as const,
-    cursor: `cursor-${node.id}`,
-    orderKey: node.title,
-    node,
-  }
+  return mediaEdge({ cursor: `cursor-${node.id}`, node })
 }
 
 export function addition(options: MovieOptions = {}) {
@@ -37,12 +43,7 @@ export function addition(options: MovieOptions = {}) {
         itemId: item.id,
         kind: 'MOVIE',
         item,
-        edge: {
-          __typename: 'MediaEdge',
-          cursor: `cursor-${item.id}`,
-          orderKey: item.title,
-          node: item,
-        },
+        edge: mediaEdge({ cursor: `cursor-${item.id}`, node: item }),
       },
     },
   }
