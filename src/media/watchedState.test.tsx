@@ -1,3 +1,4 @@
+import { watchingConnection } from '../test/continueWatchingFixtures'
 import { readyPlaybackSession, destroyedPlaybackSession } from '../test/playbackSession'
 import { deferred } from '../test/deferred'
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
@@ -201,27 +202,29 @@ describe('watched state across routes', () => {
         return HttpResponse.json({
           data: {
             libraries: [],
-            continueWatching: watched
-              ? []
-              : [
-                  {
-                    __typename: 'Movie',
-                    id: 'm1',
-                    title: 'Everlight',
-                    tagline: null,
-                    summary: null,
-                    runtime: 90,
-                    createdOn: '2024-01-01T00:00:00Z',
-                    genres: [],
-                    images: [],
-                    files: [{ id: 'f1' }],
-                    watchProgress: {
-                      positionSeconds: 20,
-                      percentComplete: 2,
-                      durationSeconds: 5400,
+            continueWatching: watchingConnection(
+              watched
+                ? []
+                : [
+                    {
+                      __typename: 'Movie',
+                      id: 'm1',
+                      title: 'Everlight',
+                      tagline: null,
+                      summary: null,
+                      runtime: 90,
+                      createdOn: '2024-01-01T00:00:00Z',
+                      genres: [],
+                      images: [],
+                      files: [{ id: 'f1' }],
+                      watchProgress: {
+                        positionSeconds: 20,
+                        percentComplete: 2,
+                        durationSeconds: 5400,
+                      },
                     },
-                  },
-                ],
+                  ],
+            ),
           },
         })
       }),
@@ -446,7 +449,7 @@ describe('watched state across routes', () => {
         HttpResponse.json({
           data: {
             libraries: [],
-            continueWatching:
+            continueWatching: watchingConnection(
               position > 20
                 ? [
                     {
@@ -468,6 +471,7 @@ describe('watched state across routes', () => {
                     },
                   ]
                 : [],
+            ),
           },
         }),
       ),

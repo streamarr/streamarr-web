@@ -1,0 +1,4 @@
+fragment OrderedEdgeFields on OrderedEdge {
+  cursor
+  orderKey
+}

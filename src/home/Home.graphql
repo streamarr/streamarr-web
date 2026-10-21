@@ -1,6 +1,8 @@
 query Home($continueWatchingFirst: Int!) {
   continueWatching(first: $continueWatchingFirst) {
-    ...ContinueWatchingItemFields
+    edges {
+      ...ContinueWatchingEdgeFields
+    }
   }
   libraries {
     id
@@ -84,7 +86,6 @@ fragment ContinueWatchingItemFields on ContinueWatchingMedia {
         url
       }
     }
-    lastWatchedAt
     watchProgress {
       positionSeconds
       percentComplete
@@ -111,7 +112,6 @@ fragment ContinueWatchingItemFields on ContinueWatchingMedia {
         url
       }
     }
-    lastWatchedAt
     watchProgress {
       positionSeconds
       percentComplete
@@ -149,5 +149,12 @@ fragment ContinueWatchingItemFields on ContinueWatchingMedia {
         }
       }
     }
+  }
+}
+
+fragment ContinueWatchingEdgeFields on ContinueWatchingEdge {
+  ...OrderedEdgeFields
+  node {
+    ...ContinueWatchingItemFields
   }
 }

@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { LibraryPageQuery } from '../src/graphql/generated/graphql'
+import { mediaEdge } from '../src/test/libraryContentsFixtures'
 import { meFixture, profileFixture } from '../src/test/meFixture'
 import { routeGraphqlSocket } from './graphqlSocket'
 
@@ -41,11 +42,9 @@ test('an Unwatched view drops a movie that another device finishes', async ({ pa
       itemCount: 2,
       alphabetIndex: [],
       items: {
-        edges: (finished ? [NORTHERN_LINE] : [EVERLIGHT, NORTHERN_LINE]).map((node) => ({
-          cursor: node.id,
-          orderKey: node.title,
-          node,
-        })),
+        edges: (finished ? [NORTHERN_LINE] : [EVERLIGHT, NORTHERN_LINE]).map((node) =>
+          mediaEdge({ cursor: node.id, node }),
+        ),
         pageInfo: {
           hasNextPage: false,
           hasPreviousPage: false,
@@ -79,6 +78,7 @@ test('an Unwatched view drops a movie that another device finishes', async ({ pa
   socket.publish('WatchStateChanged', {
     data: {
       watchStateChanged: {
+        continueWatching: [],
         __typename: 'WatchStateChange',
         items: [
           {

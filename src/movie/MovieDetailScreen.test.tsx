@@ -1,3 +1,4 @@
+import { watchingConnection } from '../test/continueWatchingFixtures'
 import { act, screen, waitFor } from '@testing-library/react'
 import { graphql, HttpResponse, http } from 'msw'
 import { describe, expect, it } from 'vitest'
@@ -185,7 +186,7 @@ describe('MovieDetailScreen', () => {
     serve({ movie: null })
     server.use(
       graphql.query('Home', () =>
-        HttpResponse.json({ data: { continueWatching: [], libraries: [] } }),
+        HttpResponse.json({ data: { continueWatching: watchingConnection([]), libraries: [] } }),
       ),
     )
     const { router, user } = renderAppAt('/movie/m1')

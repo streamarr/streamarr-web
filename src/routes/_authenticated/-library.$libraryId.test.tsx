@@ -1,3 +1,4 @@
+import { watchingConnection } from '../../test/continueWatchingFixtures'
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { HttpResponse, graphql, type GraphQLQuery } from 'msw'
 import { describe, expect, it } from 'vitest'
@@ -95,7 +96,12 @@ function titlePage(cards: ReturnType<typeof titleCard>[]) {
       itemCount: RAIL_LETTERS.length,
       alphabetIndex: RAIL_LETTERS.map((letter) => ({ letter, count: 1 })),
       items: {
-        edges: cards.map((node) => ({ cursor: node.id, orderKey: node.title, node })),
+        edges: cards.map((node) => ({
+          __typename: 'MediaEdge' as const,
+          cursor: node.id,
+          orderKey: node.title,
+          node,
+        })),
         pageInfo: {
           hasNextPage: false,
           hasPreviousPage: false,
@@ -121,7 +127,14 @@ function libraryWithEverlight() {
     library: {
       ...data.library,
       items: {
-        edges: [{ cursor: 'c1', orderKey: 'Everlight', node: EVERLIGHT_CARD }],
+        edges: [
+          {
+            __typename: 'MediaEdge' as const,
+            cursor: 'c1',
+            orderKey: 'Everlight',
+            node: EVERLIGHT_CARD,
+          },
+        ],
         pageInfo: {
           hasNextPage: false,
           hasPreviousPage: false,
@@ -289,7 +302,7 @@ describe('/library/$libraryId', () => {
       graphql.query('Home', () =>
         HttpResponse.json({
           data: {
-            continueWatching: [],
+            continueWatching: watchingConnection([]),
             libraries: [
               {
                 ...library,

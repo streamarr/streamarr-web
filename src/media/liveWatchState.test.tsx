@@ -1,3 +1,4 @@
+import { watchingConnection } from '../test/continueWatchingFixtures'
 import { act, screen, waitFor, within } from '@testing-library/react'
 import { graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
@@ -147,7 +148,7 @@ function serve(me = WATCHER) {
       count('Home')
       return HttpResponse.json({
         data: {
-          continueWatching: [withSaved(CONTINUE_WATCHING_MOVIE)],
+          continueWatching: watchingConnection([withSaved(CONTINUE_WATCHING_MOVIE)]),
           libraries: [
             {
               ...RECENTLY_ADDED,
@@ -169,11 +170,18 @@ function serve(me = WATCHER) {
 type Item = Record<string, unknown> | null
 
 function change(items: Item[]) {
-  return { data: { watchStateChanged: { __typename: 'WatchStateChange', items } } }
+  return {
+    data: { watchStateChanged: { continueWatching: [], __typename: 'WatchStateChange', items } },
+  }
 }
 
 function movie(id: string, watchStatus: string, watchProgress: unknown = null): Item {
-  return { __typename: 'Movie', id, watchStatus, watchProgress }
+  return {
+    __typename: 'Movie',
+    id,
+    watchStatus,
+    watchProgress,
+  }
 }
 
 async function openLibrary(socket: ReturnType<typeof serveGraphqlSocket>) {

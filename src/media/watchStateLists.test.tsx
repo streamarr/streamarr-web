@@ -1,3 +1,4 @@
+import { watchingConnection, watchingChange } from '../test/continueWatchingFixtures'
 import { act, screen, waitFor, within } from '@testing-library/react'
 import { graphql, HttpResponse, type GraphQLQuery } from 'msw'
 import { describe, expect, it } from 'vitest'
@@ -20,6 +21,7 @@ interface Title {
   watchStatus: WatchStatus
   lastWatchedAt: string | null
   unmatched: boolean
+  shelfOrderKey?: string | null
 }
 
 function title(id: string, name: string, overrides: Partial<Title> = {}): Title {
@@ -76,6 +78,12 @@ function continueWatchingCard(movie: Title) {
   }
 }
 
+function shelfOrderKey(movie: Title): string | null {
+  if (movie.shelfOrderKey !== undefined) return movie.shelfOrderKey
+  if (movie.watchStatus !== 'IN_PROGRESS' || movie.lastWatchedAt === null) return null
+  return String(9999999999999 - Date.parse(movie.lastWatchedAt)).padStart(13, '0')
+}
+
 // A Home rail caches every field a Continue Watching card shows for its titles.
 function recentlyAddedRail(titles: Title[]) {
   return {
@@ -99,6 +107,7 @@ function recentlyAddedRail(titles: Title[]) {
 function changed(movie: Title) {
   return {
     ...card(movie),
+    ...continueWatchingCard(movie),
     unmatched: movie.unmatched,
     library: { __typename: 'Library', id: movie.libraryId },
   }
@@ -155,6 +164,7 @@ function serve(titles: Title[], { pageSize = 48, recentlyAdded = [] as Title[] }
             alphabetIndex: [],
             items: {
               edges: page.map((each) => ({
+                __typename: 'MediaEdge' as const,
                 cursor: each.id,
                 orderKey: orderKey(each),
                 node: card(each),
@@ -176,9 +186,19 @@ function serve(titles: Title[], { pageSize = 48, recentlyAdded = [] as Title[] }
         .filter((each) => each.watchStatus === 'IN_PROGRESS')
         .sort(byLastWatchedNewestFirst)
         .slice(0, variables.continueWatchingFirst)
-        .map(continueWatchingCard)
+
       const libraries = recentlyAdded.length === 0 ? [] : [recentlyAddedRail(recentlyAdded)]
-      return HttpResponse.json({ data: { continueWatching, libraries } })
+      return HttpResponse.json({
+        data: {
+          continueWatching: {
+            ...watchingConnection(continueWatching.map(continueWatchingCard)),
+            edges: continueWatching.map(
+              (item) => watchingChange(continueWatchingCard(item), shelfOrderKey(item)).edge,
+            ),
+          },
+          libraries,
+        },
+      })
     }),
   )
   const socket = serveGraphqlSocket()
@@ -212,7 +232,13 @@ function serve(titles: Title[], { pageSize = 48, recentlyAdded = [] as Title[] }
       }
       socket.publish('WatchStateChanged', {
         data: {
-          watchStateChanged: { __typename: 'WatchStateChange', items: changes.map(changed) },
+          watchStateChanged: {
+            __typename: 'WatchStateChange',
+            items: changes.map(changed),
+            continueWatching: changes.map((item) =>
+              watchingChange(continueWatchingCard(item), shelfOrderKey(item)),
+            ),
+          },
         },
       })
     },
@@ -474,6 +500,51 @@ describe('watch-state lists', () => {
   })
 
   describe('Continue Watching', () => {
+    it('shouldUseServerOrderKeysWhenProgressInstantsShareAMillisecond', async () => {
+      const older = {
+        ...EVERLIGHT,
+        id: 'z',
+        watchStatus: 'IN_PROGRESS' as const,
+        lastWatchedAt: '2026-10-16T09:00:00.123100Z',
+        shelfOrderKey: '20',
+      }
+      const moving = {
+        ...NORTHERN_LINE,
+        id: 'a',
+        watchStatus: 'IN_PROGRESS' as const,
+        lastWatchedAt: '2026-10-16T09:00:00.123050Z',
+        shelfOrderKey: '30',
+      }
+      const { reads, socket, save } = serve([older, moving])
+      await open('/', socket, /Everlight/)
+      const before = { ...reads }
+
+      save({
+        ...moving,
+        lastWatchedAt: '2026-10-16T09:00:00.123900Z',
+        shelfOrderKey: '10',
+      })
+
+      await waitFor(() => expect(continueWatchingTitles()).toEqual(['Northern Line', 'Everlight']))
+      expect(reads).toEqual(before)
+    })
+
+    it('shouldUseServerMembershipWhenAnInProgressTitleLeavesTheShelf', async () => {
+      const movie = {
+        ...EVERLIGHT,
+        watchStatus: 'IN_PROGRESS' as const,
+        lastWatchedAt: '2026-10-16T09:00:00Z',
+      }
+      const { reads, socket, save } = serve([movie])
+      await open('/', socket, /Everlight/)
+      const before = { ...reads }
+
+      save({ ...movie, shelfOrderKey: null })
+
+      await waitFor(() => expect(shelfLinks()).toHaveLength(0))
+      expect(reads).toEqual(before)
+    })
+
     it('shouldMoveATitleWithNewProgressToTheHeadWithoutReadingHomeAgain', async () => {
       const { reads, socket, save } = serve([
         { ...EVERLIGHT, watchStatus: 'IN_PROGRESS', lastWatchedAt: '2026-10-16T09:00:00Z' },
@@ -592,7 +663,7 @@ describe('watch-state lists', () => {
       expect(reads).toEqual(readsBeforeChange)
     })
 
-    it('shouldReadHomeAgainWhenATitleItHasNotLoadedStarts', async () => {
+    it('shouldInsertAnUncachedTitleWithoutReadingHomeAgain', async () => {
       const { reads, socket, save } = serve([
         { ...EVERLIGHT, watchStatus: 'IN_PROGRESS', lastWatchedAt: '2026-10-16T09:00:00Z' },
         NORTHERN_LINE,
@@ -603,7 +674,7 @@ describe('watch-state lists', () => {
       save({ ...NORTHERN_LINE, watchStatus: 'IN_PROGRESS', lastWatchedAt: '2026-10-16T10:00:00Z' })
 
       await waitFor(() => expect(continueWatchingTitles()).toEqual(['Northern Line', 'Everlight']))
-      expect(reads.Home).toBe(homeReads + 1)
+      expect(reads.Home).toBe(homeReads)
     })
   })
 })

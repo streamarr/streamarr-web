@@ -16,3 +16,6 @@ blob-report/
 
 # Shared AGENTS.md sections stay byte-identical to streamarr-server; Prettier would re-indent them.
 *.md
+
+# Vendored byte-for-byte with the server contract.
+src/test/contracts/

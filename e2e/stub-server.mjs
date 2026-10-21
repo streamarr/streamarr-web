@@ -169,7 +169,7 @@ function route(request, response, raw) {
     if (operationName === 'Home') {
       return json(response, 200, {
         data: {
-          continueWatching: [],
+          continueWatching: { edges: [] },
           libraries: libraries.map((library) => ({ ...library, items: { edges: [] } })),
         },
       })

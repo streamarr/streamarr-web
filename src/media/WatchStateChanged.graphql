@@ -1,15 +1,17 @@
-# Each item carries its own watch state and only the fields that place it in a list. The server
-# lists the season and the series of each changed episode as items of their own, and one change
-# can list every episode of a series, so episodes stay lean: a nested selection would repeat items
-# and could fill the socket's send buffer. Movies and series carry their library card, so a library
-# view can take one in without a query.
+# Continue Watching edges carry full cards for uncached additions. Keep items limited to
+# identity and watch state so a series-wide mark does not repeat every episode card.
 subscription WatchStateChanged {
   watchStateChanged {
+    continueWatching {
+      itemId
+      edge {
+        ...ContinueWatchingEdgeFields
+      }
+    }
     items {
       __typename
       ... on Movie {
         ...MovieWatchState
-        ...MediaSummaryFields
         lastWatchedAt
         unmatched
         library {
@@ -18,14 +20,12 @@ subscription WatchStateChanged {
       }
       ... on Episode {
         ...EpisodeWatchState
-        lastWatchedAt
       }
       ... on Season {
         ...SeasonWatchState
       }
       ... on Series {
         ...SeriesWatchState
-        ...MediaSummaryFields
         lastWatchedAt
         unmatched
         library {

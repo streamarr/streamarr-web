@@ -6,8 +6,7 @@ fragment LibraryItemChangeFields on LibraryItemChange {
     ...MediaSummaryFields
   }
   edge(sort: $sort, filter: $filter) {
-    cursor
-    orderKey
+    ...OrderedEdgeFields
     node {
       ...MediaSummaryFields
     }

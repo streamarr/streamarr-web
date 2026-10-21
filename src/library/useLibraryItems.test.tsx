@@ -53,7 +53,11 @@ function libraryResponse(overrides: {
         { letter: 'N', count: 1 },
       ],
       items: {
-        edges: overrides.edges.map((edge) => ({ ...edge, orderKey: edge.node.title })),
+        edges: overrides.edges.map((edge) => ({
+          __typename: 'MediaEdge' as const,
+          ...edge,
+          orderKey: edge.node.title,
+        })),
         pageInfo: {
           hasNextPage: overrides.hasNextPage ?? false,
           hasPreviousPage: overrides.hasPreviousPage ?? false,

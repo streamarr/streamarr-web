@@ -400,6 +400,10 @@
       "ProfileAlreadySharedError",
       "ProfileNotFoundError"
     ],
+    "OrderedEdge": [
+      "ContinueWatchingEdge",
+      "MediaEdge"
+    ],
     "PlaybackFormatAttempt": [
       "FailedPlaybackFormatAttempt",
       "PendingPlaybackFormatAttempt",
