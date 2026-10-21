@@ -26,14 +26,19 @@ afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
 
 // jsdom lays nothing out, so the virtualized library grid would see a 0px viewport and render no
-// rows: its scroll container is this tall (offsetHeight, which the virtualizer reads) and each of
-// its cells this high (the bounding rect the grid measures a row by), one title per row.
+// rows: its scroll container is this tall (clientHeight, which virtual-core reads from 3.18 on,
+// and offsetHeight before) and each of its cells this high (the bounding rect the grid measures
+// a row by), one title per row.
 export const JSDOM_GRID_HEIGHT = 800
 export const JSDOM_ROW_HEIGHT = 300
 function jsdomOffsetHeight(this: HTMLElement) {
   return this.hasAttribute('data-scroll-restoration-id') ? JSDOM_GRID_HEIGHT : 0
 }
 Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+  configurable: true,
+  get: jsdomOffsetHeight,
+})
+Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
   configurable: true,
   get: jsdomOffsetHeight,
 })
