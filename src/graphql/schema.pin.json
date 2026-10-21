@@ -1,6 +1,6 @@
 {
   "repository": "streamarr/streamarr-server",
-  "commit": "2a0119136a0383322cf6126fead5253e6d982053",
+  "commit": "ef5637bc04912ccda9f7385c4c6a3aced9bf8d56",
   "schemaDirectory": "src/main/resources/schema",
   "openapiDocument": "docs/openapi.json"
 }
