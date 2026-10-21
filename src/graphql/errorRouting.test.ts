@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { decideAuthRoute, extractAuthContext } from './errorRouting'
+import { decideAuthRoute, extractAuthContext, isForbidden } from './errorRouting'
 
 describe('decideAuthRoute', () => {
   it('shouldRouteToLoginOnAuthenticationRequired', () => {
@@ -59,5 +59,22 @@ describe('extractAuthContext', () => {
   it('shouldRouteFromAnExtractedNetworkError', () => {
     const error = { statusCode: 401, bodyText: '{"code":"INVALID_TOKEN"}' }
     expect(decideAuthRoute(extractAuthContext(error))).toBe('/login')
+  })
+})
+
+describe('isForbidden', () => {
+  it.each([
+    ['AGraphqlError', { errors: [{ extensions: { code: 'FORBIDDEN' } }] }],
+    ['AnHttpRefusal', { statusCode: 403, bodyText: JSON.stringify({ code: 'FORBIDDEN' }) }],
+  ])('shouldTreatForbiddenAsARefusalIn%s', (_kind, error) => {
+    expect(isForbidden(error)).toBe(true)
+  })
+
+  it.each([
+    ['AnotherCode', { errors: [{ extensions: { code: 'AUTHORIZATION_UNAVAILABLE' } }] }],
+    ['AServerError', { statusCode: 500, bodyText: 'Internal Server Error' }],
+    ['ANetworkError', new TypeError('Failed to fetch')],
+  ])('shouldNotTreat%sAsARefusal', (_kind, error) => {
+    expect(isForbidden(error)).toBe(false)
   })
 })

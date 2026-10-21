@@ -208,6 +208,27 @@ describe('encoding settings', () => {
     'shouldNavigateFromSavedPresetBeforeOpeningRefreshRuns($preset)',
     async ({ preset, expected, label }) => {
       const state = serve({ ...SAVED_AUTOMATIC, preset })
+      let release!: () => void
+      const response = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      server.use(
+        graphql.mutation<ChangeEncoderPresetMutation, ChangeEncoderPresetMutationVariables>(
+          'ChangeEncoderPreset',
+          async ({ variables }) => {
+            state.changes.push(variables.input.preset)
+            await response
+            return HttpResponse.json({
+              data: {
+                changeEncoderPreset: {
+                  encoderPresetSetting: { ...SAVED_AUTOMATIC, preset: expected },
+                  userErrors: [],
+                },
+              },
+            })
+          },
+        ),
+      )
       renderAppAt(ENCODING)
       const select = await presetSelect()
       select.focus()
@@ -221,7 +242,12 @@ describe('encoding settings', () => {
         vi.useRealTimers()
       }
       await waitFor(() => expect(state.changes).toEqual([expected]))
-      expect(select).toHaveValue(label)
+      try {
+        expect(select).toHaveValue(preset === 'AUTOMATIC' ? 'Automatic' : 'medium')
+      } finally {
+        release()
+      }
+      await waitFor(() => expect(select).toHaveValue(label))
     },
   )
 

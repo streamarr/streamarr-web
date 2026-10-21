@@ -98,5 +98,11 @@ export function createApolloClient(
       )
     : httpChain
 
-  return new ApolloClient({ link, cache })
+  return new ApolloClient({
+    link,
+    cache,
+    // A refetch loading notification clears its error while retaining old data. Keep a refused
+    // screen on its last result until the server answers; loading new variables still emits.
+    defaultOptions: { watchQuery: { notifyOnNetworkStatusChange: false } },
+  })
 }
