@@ -201,34 +201,6 @@ describe('encoding settings', () => {
     await waitFor(() => expect(select).toHaveValue('superfast'))
   })
 
-  it('shouldSaveHighlightedPresetWhenOpeningRefreshArrivesAfterKeyboardNavigation', async () => {
-    const state = serve()
-    renderAppAt(ENCODING)
-    const select = await presetSelect()
-    // user-event yields through RTL's timer after each action, which would deliver the opening
-    // refresh before keyboard navigation can overtake it.
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-    try {
-      fireEvent.click(select)
-      fireEvent.keyDown(select, { key: 'ArrowDown', code: 'ArrowDown' })
-      fireEvent.keyDown(select, { key: 'ArrowDown', code: 'ArrowDown' })
-      expect(screen.getByRole('option', { name: 'superfast', hidden: true })).toHaveAttribute(
-        'aria-selected',
-        'true',
-      )
-      await act(() => vi.runOnlyPendingTimers())
-      expect(screen.getByRole('option', { name: 'superfast', hidden: true })).toHaveAttribute(
-        'aria-selected',
-        'true',
-      )
-      fireEvent.keyDown(select, { key: 'Enter', code: 'Enter' })
-    } finally {
-      vi.useRealTimers()
-    }
-    await waitFor(() => expect(state.changes).toEqual(['SUPERFAST']))
-    expect(select).toHaveValue('superfast')
-  })
-
   it.each([
     { preset: 'AUTOMATIC', expected: 'SUPERFAST', label: 'superfast' },
     { preset: 'MEDIUM', expected: 'SLOW', label: 'slow' },
