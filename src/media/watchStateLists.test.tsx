@@ -115,6 +115,11 @@ function byLastWatchedNewestFirst(a: Title, b: Title) {
 // Plays a server that holds each title's watch state. A test saves a change, then publishes it,
 // so a read that lands after the change answers with the same state the change carried.
 function serve(titles: Title[], { pageSize = 48, recentlyAdded = [] as Title[] } = {}) {
+  let current: LibraryPageQueryVariables | undefined
+  const orderKey = (item: Title) =>
+    current?.sort?.by === 'LAST_WATCHED'
+      ? `${item.lastWatchedAt ? String(9999999999999 - Date.parse(item.lastWatchedAt)).padStart(13, '0') : 'Z'}:${item.id}`
+      : item.title
   const saved = new Map(titles.map((each) => [each.id, each]))
   const reads: Record<string, number> = {}
   const count = (operationName: string) => {
@@ -124,6 +129,7 @@ function serve(titles: Title[], { pageSize = 48, recentlyAdded = [] as Title[] }
     graphql.query('Me', () => HttpResponse.json({ data: { me: WATCHER } })),
     graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
     graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) => {
+      current = variables
       count('LibraryPage')
       const order = variables.sort?.by === 'LAST_WATCHED' ? byLastWatchedNewestFirst : byTitle
       const members = [...saved.values()]
@@ -145,9 +151,14 @@ function serve(titles: Title[], { pageSize = 48, recentlyAdded = [] as Title[] }
             name: 'Movies',
             status: 'HEALTHY',
             scanCompletedOn: '2026-08-28T11:46:00Z',
+            itemCount: saved.size,
             alphabetIndex: [],
             items: {
-              edges: page.map((each) => ({ cursor: each.id, node: card(each) })),
+              edges: page.map((each) => ({
+                cursor: each.id,
+                orderKey: orderKey(each),
+                node: card(each),
+              })),
               pageInfo: {
                 hasNextPage: start + pageSize < members.length,
                 hasPreviousPage: start > 0,
@@ -175,7 +186,30 @@ function serve(titles: Title[], { pageSize = 48, recentlyAdded = [] as Title[] }
     reads,
     socket,
     save(...changes: Title[]) {
-      for (const each of changes) saved.set(each.id, each)
+      for (const each of changes) {
+        saved.set(each.id, each)
+        socket.publish('LibraryItemUpdated', {
+          data: {
+            change: {
+              __typename: 'LibraryItemChange',
+              libraryId: each.libraryId,
+              itemId: each.id,
+              kind: 'MOVIE',
+              item: card(each),
+              edge:
+                !each.unmatched &&
+                (!current?.filter?.watchStatus || current.filter.watchStatus === each.watchStatus)
+                  ? {
+                      __typename: 'MediaEdge',
+                      cursor: each.id,
+                      orderKey: orderKey(each),
+                      node: card(each),
+                    }
+                  : null,
+            },
+          },
+        })
+      }
       socket.publish('WatchStateChanged', {
         data: {
           watchStateChanged: { __typename: 'WatchStateChange', items: changes.map(changed) },
@@ -189,6 +223,8 @@ async function open(path: string, socket: ReturnType<typeof serveGraphqlSocket>,
   const rendered = renderAppAt(path)
   await screen.findByRole('link', { name: first })
   await waitFor(() => expect(socket.isLive('WatchStateChanged')).toBe(true))
+  if (path.startsWith('/library/'))
+    await waitFor(() => expect(socket.isLive('LibraryItemUpdated')).toBe(true))
   return rendered
 }
 
@@ -312,10 +348,10 @@ describe('watch-state lists', () => {
     await open(`/library/${MOVIES}?by=LAST_WATCHED&direction=DESC`, socket, /Everlight/)
 
     save(northernLine)
-    // Everlight now belongs past the loaded page, so the view reads the next page to refill it.
+    // Moving past the loaded range removes the title without filling its place.
     save({ ...EVERLIGHT, watchStatus: 'WATCHED', lastWatchedAt: '2026-10-16T07:30:00Z' })
 
-    await waitFor(() => expect(shownTitles()).toEqual(['Northern Line', 'Everlight', 'Ocean']))
+    await waitFor(() => expect(shownTitles()).toEqual(['Northern Line']))
   })
 
   it('shouldLeaveAMovieThatBelongsPastTheLoadedPagesForPagination', async () => {
@@ -333,11 +369,11 @@ describe('watch-state lists', () => {
     await open(`/library/${MOVIES}?watchStatus=IN_PROGRESS`, socket, /Everlight/)
 
     save({ ...zenith, watchStatus: 'IN_PROGRESS', lastWatchedAt: '2026-10-16T10:00:00Z' })
-    // Dropping a title shrinks the loaded pages, so the view reads the next page to refill them.
+    // Dropping a title shrinks the loaded page without reading a replacement.
     save({ ...EVERLIGHT, watchStatus: 'WATCHED', lastWatchedAt: '2026-10-16T10:01:00Z' })
 
-    // Zenith arrives once, in title order, from the next page.
-    await waitFor(() => expect(shownTitles()).toEqual(['Northern Line', 'Ocean', 'Zenith']))
+    // Both titles beyond the loaded range wait for ordinary pagination.
+    await waitFor(() => expect(shownTitles()).toEqual(['Northern Line']))
   })
 
   it('shouldNeverInsertAnUnmatchedMovieIntoALibraryView', async () => {
@@ -389,7 +425,7 @@ describe('watch-state lists', () => {
     expect(shownTitles()).toEqual(['Everlight', 'Northern Line'])
   })
 
-  it('shouldReadAnUnwatchedViewAgainOnReturnWhenItChangedWhileHidden', async () => {
+  it('shouldKeepAnUnwatchedViewCurrentAcrossDetailAndBack', async () => {
     const { reads, socket, save } = serve([EVERLIGHT, NORTHERN_LINE])
     server.use(
       graphql.query('MovieDetail', () =>
@@ -433,7 +469,7 @@ describe('watch-state lists', () => {
       router.history.back()
     })
 
-    await waitFor(() => expect(reads.LibraryPage).toBe(libraryReads + 1))
+    await waitFor(() => expect(reads.LibraryPage).toBe(libraryReads))
     await waitFor(() => expect(shownTitles()).toEqual([]))
   })
 
@@ -467,7 +503,42 @@ describe('watch-state lists', () => {
       expect(reads).toEqual(readsBeforeChange)
     })
 
-    it('shouldReadHomeAgainWhenATitleLeavesAFullShelf', async () => {
+    it.each(['WATCHED'] as const)(
+      'shouldShrinkAFullShelfWithoutReadingHomeWhenATitleLeavesItsRangeAs%s',
+      async (watchStatus) => {
+        const full = Array.from({ length: 13 }, (_, index) =>
+          title(`w${index}`, index === 0 ? 'Everlight' : `Title ${index}`, {
+            watchStatus: 'IN_PROGRESS',
+            lastWatchedAt: `2026-10-16T09:${String(59 - index).padStart(2, '0')}:00Z`,
+          }),
+        )
+        const { reads, socket, save } = serve(full)
+        await open('/', socket, /Everlight/)
+        const homeReads = reads.Home
+
+        save({ ...full[0], watchStatus, lastWatchedAt: '2026-10-15T10:00:00Z' })
+
+        await waitFor(() => expect(shelfLinks()).toHaveLength(11))
+        expect(
+          shelfLinks().map((link) => within(link).getByText(/^Title \d+$/).textContent),
+        ).toEqual([
+          'Title 1',
+          'Title 2',
+          'Title 3',
+          'Title 4',
+          'Title 5',
+          'Title 6',
+          'Title 7',
+          'Title 8',
+          'Title 9',
+          'Title 10',
+          'Title 11',
+        ])
+        expect(reads.Home).toBe(homeReads)
+      },
+    )
+
+    it('shouldRetainAnEligibleTitleAtTheTailOfAFullShelfWithoutReadingHome', async () => {
       const full = Array.from({ length: 13 }, (_, index) =>
         title(`w${index}`, index === 0 ? 'Everlight' : `Title ${index}`, {
           watchStatus: 'IN_PROGRESS',
@@ -478,10 +549,27 @@ describe('watch-state lists', () => {
       await open('/', socket, /Everlight/)
       const homeReads = reads.Home
 
-      save({ ...full[0], watchStatus: 'WATCHED', lastWatchedAt: '2026-10-16T10:00:00Z' })
+      save({ ...full[0], lastWatchedAt: '2026-10-15T10:00:00Z' })
 
-      await waitFor(() => expect(reads.Home).toBe(homeReads + 1))
-      await waitFor(() => expect(shelfLinks()).toHaveLength(12))
+      await waitFor(() =>
+        expect(
+          shelfLinks().map((link) => within(link).getByText(/^(Title \d+|Everlight)$/).textContent),
+        ).toEqual([
+          'Title 1',
+          'Title 2',
+          'Title 3',
+          'Title 4',
+          'Title 5',
+          'Title 6',
+          'Title 7',
+          'Title 8',
+          'Title 9',
+          'Title 10',
+          'Title 11',
+          'Everlight',
+        ]),
+      )
+      expect(reads.Home).toBe(homeReads)
     })
 
     it('shouldKeepAFullShelfAtItsLimitWhenATitleStartsAtTheHead', async () => {

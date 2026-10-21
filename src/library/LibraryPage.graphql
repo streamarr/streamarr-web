@@ -12,6 +12,7 @@ query LibraryPage(
     name
     status
     scanCompletedOn
+    itemCount
     alphabetIndex {
       letter
       count
@@ -26,6 +27,7 @@ query LibraryPage(
     ) {
       edges {
         cursor
+        orderKey
         node {
           ...MediaSummaryFields
         }

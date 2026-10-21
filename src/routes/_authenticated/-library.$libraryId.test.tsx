@@ -32,6 +32,7 @@ function libraryData() {
       name: 'Movies',
       status: 'HEALTHY',
       scanCompletedOn: '2026-08-28T11:46:00Z',
+      itemCount: 1,
       alphabetIndex: [{ letter: 'A', count: 1 }],
       items: {
         edges: [],
@@ -91,9 +92,10 @@ function titlePage(cards: ReturnType<typeof titleCard>[]) {
   return {
     library: {
       ...data.library,
+      itemCount: RAIL_LETTERS.length,
       alphabetIndex: RAIL_LETTERS.map((letter) => ({ letter, count: 1 })),
       items: {
-        edges: cards.map((node) => ({ cursor: node.id, node })),
+        edges: cards.map((node) => ({ cursor: node.id, orderKey: node.title, node })),
         pageInfo: {
           hasNextPage: false,
           hasPreviousPage: false,
@@ -119,7 +121,7 @@ function libraryWithEverlight() {
     library: {
       ...data.library,
       items: {
-        edges: [{ cursor: 'c1', node: EVERLIGHT_CARD }],
+        edges: [{ cursor: 'c1', orderKey: 'Everlight', node: EVERLIGHT_CARD }],
         pageInfo: {
           hasNextPage: false,
           hasPreviousPage: false,

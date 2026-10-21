@@ -39,6 +39,7 @@ function libraryPage(variables: LibraryPageQueryVariables): LibraryPageQuery {
       ...metadata,
       status: 'HEALTHY',
       scanCompletedOn: null,
+      itemCount: movies.length,
       alphabetIndex: Array.from({ length: 26 }, (_, index) => ({
         letter: String.fromCharCode(
           65 + index,
@@ -46,7 +47,7 @@ function libraryPage(variables: LibraryPageQueryVariables): LibraryPageQuery {
         count: 12,
       })),
       items: {
-        edges: nodes.map((node) => ({ cursor: node.id, node })),
+        edges: nodes.map((node) => ({ cursor: node.id, orderKey: node.title, node })),
         pageInfo: {
           hasNextPage: end < movies.length,
           hasPreviousPage: start > 0,
@@ -707,8 +708,8 @@ test('Back after a letter jump restores the previous grid position', async ({ pa
   await expect.poll(() => grid.evaluate((el) => el.scrollTop), { timeout: 1500 }).toBe(600)
 })
 
-// Title order does not follow watch state, so its grid keeps its cached rows. Last watched order
-// does, so its grid reloads and restores the expanded window, even past a failed page.
+// The retained library consumer owns membership for every sort. Recovery restores its expanded
+// window after reading again, including when a continuation fails.
 for (const { seek, sort, failRecovery } of [
   { seek: false, sort: 'TITLE', failRecovery: false },
   { seek: true, sort: 'TITLE', failRecovery: false },
@@ -799,6 +800,10 @@ for (const { seek, sort, failRecovery } of [
     await title.dispatchEvent('click')
     await page.getByRole('button', { name: 'Mark watched', exact: true }).click()
     await expect(page.getByRole('button', { name: 'Mark unwatched', exact: true })).toBeVisible()
+    if (failRecovery) {
+      await page.evaluate(() => window.dispatchEvent(new Event('online')))
+      await expect.poll(() => libraryReloadsAfterMark).toBe(1)
+    }
     await page.goBack()
     if (failRecovery) {
       await expect(page.getByRole('alert')).toContainText('Page temporarily unavailable', {
@@ -811,7 +816,7 @@ for (const { seek, sort, failRecovery } of [
     }
     await expect(page.getByText(titleName, { exact: true })).toBeInViewport()
     await expect.poll(() => grid.evaluate((element) => element.scrollTop)).toBe(savedPosition)
-    expect(libraryReloadsAfterMark > 0).toBe(sort === 'LAST_WATCHED')
+    expect(libraryReloadsAfterMark > 0).toBe(failRecovery)
     if (sort === 'TITLE') {
       await expect(page.getByRole('link', { name: `Watched ${titleName} 2024` })).toBeVisible()
     }

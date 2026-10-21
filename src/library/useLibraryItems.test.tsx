@@ -1,7 +1,6 @@
 import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { graphql, HttpResponse, type GraphQLQuery } from 'msw'
-import { useApolloClient } from '@apollo/client/react'
 import { useEffect, useState } from 'react'
 import { describe, expect, it } from 'vitest'
 import type {
@@ -10,7 +9,7 @@ import type {
   MediaFilter,
   MediaSort,
 } from '../graphql/generated/graphql'
-import { subscribeToWatchStateChanges } from '../media/watchStateChanges'
+import { LibraryContentsProvider } from './LibraryContentsProvider'
 import { serveGraphqlSocket } from '../test/graphqlSocket'
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
@@ -48,12 +47,13 @@ function libraryResponse(overrides: {
       name: 'Movies',
       status: 'HEALTHY',
       scanCompletedOn: '2026-08-28T11:00:00Z',
+      itemCount: 2,
       alphabetIndex: [
         { letter: 'A', count: 1 },
         { letter: 'N', count: 1 },
       ],
       items: {
-        edges: overrides.edges,
+        edges: overrides.edges.map((edge) => ({ ...edge, orderKey: edge.node.title })),
         pageInfo: {
           hasNextPage: overrides.hasNextPage ?? false,
           hasPreviousPage: overrides.hasPreviousPage ?? false,
@@ -103,10 +103,8 @@ function Harness({ initialFilter = {} }: { initialFilter?: MediaFilter }) {
   )
 }
 
-// A view kept current by watch-state changes, as the authenticated layout keeps every view.
+// A retained library view, as the authenticated layout keeps it.
 function LiveHarness({ filter }: { filter: MediaFilter }) {
-  const client = useApolloClient()
-  useEffect(() => subscribeToWatchStateChanges(client), [client])
   const result = useLibraryItems({ libraryId: LIBRARY_ID, sort: TITLE_ASC, filter })
   return (
     <div>
@@ -126,7 +124,7 @@ describe('useLibraryItems', () => {
     // The first N item no longer resolves; the seek continues at the next available title.
     response.library.items.edges = [
       null,
-      { cursor: 'missing-n', node: null },
+      { cursor: 'missing-n', orderKey: 'N', node: null },
       ...response.library.items.edges!,
     ]
     server.use(graphql.query('LibraryPage', () => HttpResponse.json({ data: response })))
@@ -495,7 +493,7 @@ describe('useLibraryItems', () => {
     expect(screen.queryByText('Everlight')).not.toBeInTheDocument()
   })
 
-  it('shouldKeepTheLetterLandingOnAServerItemWhenAChangePlacesATitleBeforeIt', async () => {
+  it('shouldUseTheServerCursorWhenAChangeBecomesTheFirstItemOfTheLetter', async () => {
     server.use(
       graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) => {
         const earlier = Boolean(variables.before)
@@ -512,23 +510,28 @@ describe('useLibraryItems', () => {
       }),
     )
     const socket = serveGraphqlSocket()
-    renderWithProviders(<LiveHarness filter={{ watchStatus: 'IN_PROGRESS', startLetter: 'N' }} />)
+    renderWithProviders(
+      <LibraryContentsProvider profileId="profile" pathname={`/library/${LIBRARY_ID}`}>
+        <LiveHarness filter={{ watchStatus: 'IN_PROGRESS', startLetter: 'N' }} />
+      </LibraryContentsProvider>,
+    )
     await screen.findByText('Middle')
-    await waitFor(() => expect(socket.isLive('WatchStateChanged')).toBe(true))
+    await waitFor(() => expect(socket.isLive('LibraryItemUpdated')).toBe(true))
 
-    socket.publish('WatchStateChanged', {
+    socket.publish('LibraryItemUpdated', {
       data: {
-        watchStateChanged: {
-          __typename: 'WatchStateChange',
-          items: [
-            {
-              ...movieNode('nadir', 'Nadir'),
-              watchStatus: 'IN_PROGRESS',
-              lastWatchedAt: '2026-10-16T10:00:00Z',
-              unmatched: false,
-              library: { __typename: 'Library', id: LIBRARY_ID },
-            },
-          ],
+        change: {
+          __typename: 'LibraryItemChange',
+          libraryId: LIBRARY_ID,
+          itemId: 'nadir',
+          kind: 'MOVIE',
+          item: movieNode('nadir', 'Nadir'),
+          edge: {
+            __typename: 'MediaEdge',
+            cursor: 'server-nadir',
+            orderKey: 'Nadir',
+            node: movieNode('nadir', 'Nadir'),
+          },
         },
       },
     })
@@ -539,7 +542,7 @@ describe('useLibraryItems', () => {
       'Nadir',
       'Northern Line',
     ])
-    expect(screen.getByTestId('landing').textContent).toBe('n')
+    expect(screen.getByTestId('landing').textContent).toBe('server-nadir')
   })
 
   it('shouldShowATitleOnceWhenTheNextPageBringsBackOneAlreadyLoaded', async () => {

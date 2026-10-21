@@ -78,6 +78,7 @@ describe('TopBar', () => {
               name: 'Movies',
               status: 'HEALTHY',
               scanCompletedOn: null,
+              itemCount: 0,
               alphabetIndex: [],
               items: {
                 edges: [],
