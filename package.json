@@ -20,9 +20,7 @@
     "openapi:pull": "node scripts/pull-openapi.mjs",
     "openapi:codegen": "openapi-typescript src/api/openapi.json -o src/api/generated/openapi.d.ts",
     "codegen": "graphql-codegen --config codegen.ts && npm run openapi:codegen",
-    "codegen:check": "npm run schema:pull && npm run openapi:pull && npm run codegen && drift=\"$(git status --porcelain -- src/graphql/schema src/graphql/generated src/api/openapi.json src/api/generated)\" && if [ -n \"$drift\" ]; then echo \"Generated contract artifacts drifted:\"; echo \"$drift\"; exit 1; fi",
-    "dependencies:patch": "patch-package --error-on-fail --error-on-warn",
-    "postinstall": "npm run dependencies:patch"
+    "codegen:check": "npm run schema:pull && npm run openapi:pull && npm run codegen && drift=\"$(git status --porcelain -- src/graphql/schema src/graphql/generated src/api/openapi.json src/api/generated)\" && if [ -n \"$drift\" ]; then echo \"Generated contract artifacts drifted:\"; echo \"$drift\"; exit 1; fi"
   },
   "repository": {
     "type": "git",
@@ -45,7 +43,7 @@
   },
   "dependencies": {
     "@apollo/client": "^4.2.6",
-    "@mantine/core": "9.5.1",
+    "@mantine/core": "^9.4.1",
     "@mantine/hooks": "^9.4.1",
     "@tanstack/react-router": "^1.170.17",
     "@tanstack/react-store": "^0.9.3",
@@ -89,7 +87,6 @@
     "jsdom": "^29.1.1",
     "msw": "^2.15.0",
     "openapi-typescript": "^7.13.0",
-    "patch-package": "8.0.1",
     "postcss": "^8.5.16",
     "postcss-preset-mantine": "^1.18.0",
     "postcss-simple-vars": "^7.0.1",
