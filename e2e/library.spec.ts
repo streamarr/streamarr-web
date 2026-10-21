@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import type { LibraryPageQuery, LibraryPageQueryVariables } from '../src/graphql/generated/graphql'
+import { mediaEdge } from '../src/test/libraryContentsFixtures'
 import { STUB_URL } from './ports'
 
 // Use real layout and IntersectionObserver; intercept only the library API response.
@@ -47,7 +48,7 @@ function libraryPage(variables: LibraryPageQueryVariables): LibraryPageQuery {
         count: 12,
       })),
       items: {
-        edges: nodes.map((node) => ({ cursor: node.id, orderKey: node.title, node })),
+        edges: nodes.map((node) => mediaEdge({ cursor: node.id, node })),
         pageInfo: {
           hasNextPage: end < movies.length,
           hasPreviousPage: start > 0,
