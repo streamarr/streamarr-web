@@ -520,6 +520,7 @@ test('the Encoding select keeps focus after a keyboard choice saves', async ({ p
   await expect(preset).toHaveValue('Automatic')
   await preset.focus()
   await page.keyboard.press('ArrowDown')
+  await expect(page.getByRole('listbox')).toBeVisible()
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('Enter')
   await expect(preset).toHaveValue('superfast')
