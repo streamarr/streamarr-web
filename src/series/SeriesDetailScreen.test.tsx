@@ -315,12 +315,25 @@ describe('SeriesDetailScreen', () => {
   })
 
   it('shouldConfirmAndThenUpdateEverySeasonAndEpisodeFromTheMarkedSeries', async () => {
-    const requestedIds: string[] = []
     const markedIds: string[] = []
     const data = seriesData()
-    serve(data, requestedIds)
+    serve(data)
     const watchedState = { watchStatus: 'WATCHED', watchProgress: null }
+    const marked = {
+      series: {
+        ...data.series!,
+        ...watchedState,
+        seasons: data.series!.seasons.map((entry) => ({
+          ...entry!,
+          ...watchedState,
+          episodes: entry!.episodes.map((episode) => ({ ...episode!, ...watchedState })),
+        })),
+      },
+    } as SeriesDetailQuery
+    const after = heldAnswer(marked)
+    const series = answersInTurn(answerWith(data), after.answer)
     server.use(
+      graphql.query('SeriesDetail', series.resolver),
       graphql.mutation('MarkWatched', ({ variables }) => {
         markedIds.push((variables.input as { itemId: string }).itemId)
         return HttpResponse.json({
@@ -362,8 +375,10 @@ describe('SeriesDetailScreen', () => {
     expect(screen.getAllByLabelText('Watched')).toHaveLength(2)
     expect(screen.queryByLabelText('2 unwatched')).not.toBeInTheDocument()
     expect(markedIds).toEqual(['series-1'])
-    expect(requestedIds).toEqual(['series-1'])
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    await waitFor(() => expect(series.calls).toBe(2))
+    expect(screen.getByRole('progressbar', { name: '5 of 5 watched' })).toBeInTheDocument()
+    after.release()
   })
 
   it('shouldShowTheServerMessageWhenMarkingTheSeriesIsRefused', async () => {

@@ -150,6 +150,7 @@ function mockLibraryPage(
 
 async function markEverlightWatchedFromItsDetail(libraryPath: string) {
   let libraryRequests = 0
+  let watchStatus = 'UNWATCHED'
   server.use(
     graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
     graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
@@ -158,17 +159,20 @@ async function markEverlightWatchedFromItsDetail(libraryPath: string) {
       const data = libraryWithEverlight()
       return HttpResponse.json({ data: { library: { ...data.library, __typename: 'Library' } } })
     }),
-    graphql.query('MovieDetail', () => HttpResponse.json({ data: EVERLIGHT_DETAIL })),
-    graphql.mutation('MarkWatched', () =>
-      HttpResponse.json({
+    graphql.query('MovieDetail', () =>
+      HttpResponse.json({ data: { movie: { ...EVERLIGHT_DETAIL.movie!, watchStatus } } }),
+    ),
+    graphql.mutation('MarkWatched', () => {
+      watchStatus = 'WATCHED'
+      return HttpResponse.json({
         data: {
           markWatched: {
             item: { __typename: 'Movie', id: 'm1', watchStatus: 'WATCHED', watchProgress: null },
             userErrors: [],
           },
         },
-      }),
-    ),
+      })
+    }),
   )
   const { user, router } = renderAppAt(libraryPath)
   const card = await screen.findByRole('link', { name: /Everlight/ })
