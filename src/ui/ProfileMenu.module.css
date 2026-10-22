@@ -32,10 +32,12 @@
     z-index: 20;
   }
 
-  /* Above the menu so it covers the menu's top border, centred on that border's line. */
+  /* The anchor is exactly the chip's width, so half of it is the chip's centre. Drawn above the
+     menu so it covers the menu's top border, centred on that border's line. */
   & .profileMenuNotch {
     position: absolute;
-    right: calc(20px + var(--profile-menu-border));
+    left: 50%;
+    translate: -50% 0;
     top: calc(
       100% + var(--profile-menu-gap) + var(--profile-menu-border) / 2 -
         var(--profile-menu-notch-size) / 2
