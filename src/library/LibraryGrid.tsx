@@ -422,14 +422,17 @@ function measureRowGeometry(row: HTMLElement): RowGeometry | null {
   if (rowHeight === 0) {
     return null
   }
-  const style = getComputedStyle(row)
-  const tracks = style.gridTemplateColumns.split(' ').filter(Boolean).length
   return {
-    columns: Math.max(1, tracks),
+    columns: countColumns(row),
     rowHeight,
-    rowGap: Number.parseFloat(style.rowGap) || 0,
+    rowGap: Number.parseFloat(getComputedStyle(row).rowGap) || 0,
     measured: true,
   }
+}
+
+function countColumns(row: HTMLElement) {
+  const tracks = getComputedStyle(row).gridTemplateColumns.split(' ').filter(Boolean).length
+  return Math.max(1, tracks)
 }
 
 function sameGeometry(a: RowGeometry, b: RowGeometry) {
