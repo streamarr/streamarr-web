@@ -56,10 +56,10 @@ export function createLibraryContents({ client }: { client: ApolloClient }) {
   }
 
   function select(view: View) {
-    const key = JSON.stringify(view.variables)
+    const { libraryId, sort, filter } = view.variables
+    const key = JSON.stringify({ libraryId, sort, filter })
     if (active?.key === key || removed.has(view.variables.libraryId)) return
     release(true)
-    const libraryId = view.variables.libraryId
     const scope: NonNullable<typeof active> = {
       key,
       variables: view.variables,
@@ -139,7 +139,7 @@ function subscribeToLibraryContents({
   const bounds: Bounds = { first: null, last: null }
   const releaseConnection = retainLibraryItemsConnection(client.cache, {
     libraryId,
-    args: { first: variables.first ?? 48, sort: sort ?? {}, filter: filter ?? {} },
+    args: { sort: sort ?? {}, filter: filter ?? {} },
   })
 
   function stop() {
