@@ -1,3 +1,4 @@
+import { Center, Loader } from '@mantine/core'
 import { useMergedRef } from '@mantine/hooks'
 import { Link } from '@tanstack/react-router'
 import {
@@ -62,6 +63,7 @@ export function LibraryGrid({
   direction,
   reduceMotion,
   onSlideComplete,
+  onColumnsChange,
 }: Readonly<{
   edges: LibraryItems['edges']
   trackingLetter: boolean
@@ -80,6 +82,7 @@ export function LibraryGrid({
   direction: JumpDirection | undefined
   reduceMotion: boolean
   onSlideComplete: (definition: AnimationDefinition) => void
+  onColumnsChange: (columns: number) => void
 }>) {
   // State lets observers attach to the grid after it mounts; the ref is the handle the layout
   // effects scroll.
@@ -145,6 +148,7 @@ export function LibraryGrid({
       return
     }
     setGeometry(next)
+    onColumnsChange(next.columns)
     // The virtualizer re-reads the row estimate only after a measure().
     virtualizer.measure()
   })
@@ -376,6 +380,32 @@ export function LibraryGrid({
           )}
         </div>
       </motion.div>
+    </div>
+  )
+}
+
+/** Holds the grid's place while its first titles load, and counts the columns they will fill. */
+export function LibraryGridPlaceholder({
+  onColumnsChange,
+}: Readonly<{ onColumnsChange: (columns: number) => void }>) {
+  const probeRowRef = useRef<HTMLDivElement>(null)
+  useLayoutEffect(
+    function countColumnsBeforeTheFirstPage() {
+      if (probeRowRef.current) onColumnsChange(countColumns(probeRowRef.current))
+    },
+    [onColumnsChange],
+  )
+  return (
+    <div className={styles.gridFrame}>
+      <div className={styles.grid}>
+        <Center h={200}>
+          <Loader />
+        </Center>
+        {/* An empty auto-fill row has as many tracks as a full one. */}
+        <div className={styles.rows}>
+          <div ref={probeRowRef} className={styles.row} />
+        </div>
+      </div>
     </div>
   )
 }

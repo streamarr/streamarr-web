@@ -47,3 +47,8 @@ export function AlphabetRail({
     </nav>
   )
 }
+
+/** Takes the rail's width while the letters it will show are loading. */
+export function AlphabetRailPlaceholder() {
+  return <div className={styles.rail} aria-hidden />
+}
