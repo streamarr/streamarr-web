@@ -186,6 +186,40 @@ describe('useLibraryItems', () => {
     expect(screen.getByTestId('landing')).toHaveTextContent('Northern')
   })
 
+  it('shouldNotLoadTheTitlesBeforeALetterAgainWhenItsWindowAlreadyHasThem', async () => {
+    let backwardFetches = 0
+    server.use(
+      graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) => {
+        if (variables.before) backwardFetches += 1
+        const title = variables.before
+          ? 'Middle'
+          : variables.filter?.startLetter === 'N'
+            ? 'Northern'
+            : 'Alpha'
+        return HttpResponse.json({
+          data: libraryResponse({
+            edges: [{ cursor: title, node: movieNode(title, title) }],
+            hasPreviousPage: title !== 'Alpha',
+          }),
+        })
+      }),
+    )
+    const { user } = renderWithProviders(<Harness />)
+    await screen.findByText('Alpha', { selector: 'li' })
+    await user.click(screen.getByText('Jump to N'))
+    await screen.findByText('Middle', { selector: 'li' })
+    await user.click(screen.getByText('Jump to A'))
+    await screen.findByText('Alpha', { selector: 'li' })
+
+    await user.click(screen.getByText('Jump to N'))
+
+    await screen.findByText('Middle', { selector: 'li' })
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    })
+    expect(backwardFetches).toBe(1)
+  })
+
   it.each(['forward', 'backward'])(
     'ignores a %s page from the old filter after switching to Unwatched',
     async (direction) => {
