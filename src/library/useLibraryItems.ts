@@ -20,8 +20,8 @@ import { definedEdges } from '../media/edges'
 import { alphabetLetterFromTitle } from '../media/alphabetLetter'
 import { trackLibraryItemsConnection } from '../media/watchedState'
 import { useLibraryContents } from './LibraryContentsProvider'
+import { pageSizeAfter, pageSizeBefore } from './wholeRowPages'
 
-const PAGE_SIZE = 48
 type LibraryWindow = { before: number; after: number; anchor: string | null }
 const windowsByClient = new WeakMap<ApolloClient, Map<string, LibraryWindow>>()
 
@@ -52,10 +52,13 @@ export function useLibraryItems({
   libraryId,
   sort,
   filter,
+  columns,
 }: {
   libraryId: string
   sort: MediaSort
   filter: MediaFilter
+  /** The grid's column count; no titles are requested until it is known. */
+  columns: number | null
 }) {
   const client = useApolloClient()
   const windows = windowsFor(client)
@@ -67,12 +70,13 @@ export function useLibraryItems({
   const refusal = useSyncExternalStore(contents?.subscribe ?? neverChanges, () =>
     contents?.refusalFor(libraryId),
   )
+  const queryKey = JSON.stringify({ libraryId, sort, filter })
+  const first = useFirstPageSize(queryKey, columns)
   const { data, previousData, loading, error, refetch } = useQuery(LibraryPageDocument, {
-    variables: { libraryId, first: PAGE_SIZE, sort, filter },
-    skip: removed,
+    variables: { libraryId, first, sort, filter },
+    skip: removed || first === null,
   })
 
-  const queryKey = JSON.stringify({ libraryId, sort, filter })
   useEffect(
     function trackWatchDependentConnection() {
       if (!data) return
@@ -84,8 +88,9 @@ export function useLibraryItems({
     [client, data, libraryId, sort, filter],
   )
   useLayoutEffect(() => {
+    if (first === null) return
     contents?.select({
-      variables: { libraryId, first: PAGE_SIZE, sort, filter },
+      variables: { libraryId, first, sort, filter },
       onItemsChanged(previous, next) {
         const saved = windows.get(queryKey)
         if (!saved) return
@@ -107,7 +112,7 @@ export function useLibraryItems({
         })
       },
     })
-  }, [contents, windows, queryKey, libraryId, sort, filter])
+  }, [contents, windows, queryKey, libraryId, first, sort, filter])
   const [currentPageFailure, setPageFailure] = usePageFailure(queryKey)
   // A new query renders its predecessor's page until its own arrives and the screen accepts it,
   // so a letter jump never blanks the grid and the screen can animate the swap. The first result
@@ -207,7 +212,7 @@ export function useLibraryItems({
     })
     if (!page) return undefined
     client.cache.updateQuery(
-      { query: LibraryPageDocument, variables: { libraryId, first: PAGE_SIZE, sort, filter } },
+      { query: LibraryPageDocument, variables: { libraryId, first, sort, filter } },
       (previous) => (previous ? update(previous, page) : undefined),
     )
     return page
@@ -215,14 +220,14 @@ export function useLibraryItems({
 
   function loadMore() {
     const scope = committedScope()
-    if (!scope || !pageInfo?.hasNextPage || scope.fetchingNext) {
+    if (!scope || columns === null || !pageInfo?.hasNextPage || scope.fetchingNext) {
       return
     }
     scope.fetchingNext = true
     void readPage({
       variables: {
         libraryId,
-        first: PAGE_SIZE,
+        first: pageSizeAfter({ columns, end: loadedEdges.length }),
         after: pageInfo.endCursor,
         last: undefined,
         before: undefined,
@@ -249,7 +254,7 @@ export function useLibraryItems({
     const scope = committedScope()
     if (!scope) return
     if (scope.previousRequest) return scope.previousRequest
-    if (!pageInfo?.hasPreviousPage || !pageInfo.startCursor) {
+    if (columns === null || !pageInfo?.hasPreviousPage || !pageInfo.startCursor) {
       return
     }
     // A `before` cursor replaces the letter seek anchor (ADR 0023).
@@ -259,7 +264,7 @@ export function useLibraryItems({
         libraryId,
         first: undefined,
         after: undefined,
-        last: PAGE_SIZE,
+        last: pageSizeBefore({ columns, start: 0 }),
         before: pageInfo.startCursor,
         sort,
         filter: continuationFilter,
@@ -319,7 +324,7 @@ export function useLibraryItems({
 
   return {
     removed,
-    loading: !removed && refusal === undefined && loading && !rendered,
+    loading: !removed && refusal === undefined && (loading || first === null) && !rendered,
     pending: (loading && !data && !!previousData) || staged,
     staged,
     accept,
@@ -398,6 +403,18 @@ function withoutLoadedItems(page: LibraryItems['edges'], loaded: LibraryItems['e
 
 function neverChanges() {
   return () => {}
+}
+
+// The first page of a query is sized once, so a later change of column count reads the same
+// cached window rather than asking again.
+function useFirstPageSize(queryKey: string, columns: number | null) {
+  const [request, setRequest] = useState<{ query: string; first: number } | null>(null)
+  if (columns !== null && request?.query !== queryKey) {
+    const next = { query: queryKey, first: pageSizeAfter({ columns, end: 0 }) }
+    setRequest(next)
+    return next.first
+  }
+  return request?.query === queryKey ? request.first : null
 }
 
 function usePageFailure(queryKey: string) {

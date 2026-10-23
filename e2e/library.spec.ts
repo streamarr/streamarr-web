@@ -427,6 +427,44 @@ test('prefetching follows the visible grid height on a phone and after rotation'
   }
 })
 
+// Five and seven columns, which 48 titles would leave a partial row in, and a phone's two.
+for (const viewport of [
+  { width: 1280, height: 800 },
+  { width: 1700, height: 900 },
+  { width: 375, height: 667 },
+]) {
+  test(`every page of titles ends on a whole row at ${viewport.width}x${viewport.height}`, async ({
+    page,
+    request,
+  }) => {
+    await page.setViewportSize(viewport)
+    await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
+    await request.post(`${STUB_URL}/api/auth/refresh`)
+    const pageSizes: number[] = []
+    await page.route('**/graphql', async (route) => {
+      const operation = route.request().postDataJSON() as {
+        operationName: string
+        variables: LibraryPageQueryVariables
+      }
+      if (operation.operationName !== 'LibraryPage') return route.continue()
+      pageSizes.push(operation.variables.first ?? 0)
+      await route.fulfill({ json: { data: libraryPage(operation.variables) } })
+    })
+    await page.goto('/library/movies?by=TITLE&direction=ASC')
+    await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
+    const grid = libraryGrid(page)
+    const columns = await columnCount(page)
+    expect(columns).toBeGreaterThan(1)
+
+    await grid.evaluate((element) => {
+      element.scrollTop = element.scrollHeight
+    })
+
+    await expect.poll(() => pageSizes.length).toBeGreaterThan(1)
+    expect(pageSizes.filter((size) => size % columns !== 0)).toEqual([])
+  })
+}
+
 test('the alphabet highlight follows vertical scrolling on desktop and a phone', async ({
   page,
   request,
@@ -937,6 +975,13 @@ test('a narrower window re-lays the rows before the frame that resized them pain
   expect(cardBox!.y).toBeGreaterThan(gridBox!.y - 1)
   expect(cardBox!.y + cardBox!.height).toBeLessThan(gridBox!.y + gridBox!.height + 1)
 })
+
+function columnCount(page: Page) {
+  return libraryGrid(page)
+    .locator('[data-index]')
+    .first()
+    .evaluate((row) => getComputedStyle(row).gridTemplateColumns.split(' ').length)
+}
 
 // Rows are re-laid for a new width once the grid has measured it.
 function rowsFitTheWidth(page: Page) {
