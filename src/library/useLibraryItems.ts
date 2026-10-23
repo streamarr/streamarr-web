@@ -20,9 +20,14 @@ import { definedEdges } from '../media/edges'
 import { alphabetLetterFromTitle } from '../media/alphabetLetter'
 import { trackLibraryItemsConnection } from '../media/watchedState'
 import { useLibraryContents } from './LibraryContentsProvider'
-import { pageSizeAfter, pageSizeBefore } from './wholeRowPages'
+import { pageSizeAfter, pageSizeBefore, titlesBeforeLetter } from './wholeRowPages'
 
-type LibraryWindow = { before: number; after: number; anchor: string | null }
+type LibraryWindow = {
+  before: number
+  after: number
+  anchor: string | null
+  landingPosition: number
+}
 const windowsByClient = new WeakMap<ApolloClient, Map<string, LibraryWindow>>()
 
 function windowsFor(client: ApolloClient) {
@@ -106,6 +111,7 @@ export function useLibraryItems({
         const oldSize = split(previous, saved.anchor)
         const newSize = split(next, anchor)
         windows.set(queryKey, {
+          ...saved,
           anchor,
           before: Math.max(0, saved.before + newSize.before - oldSize.before),
           after: Math.max(0, saved.after + newSize.after - oldSize.after),
@@ -138,22 +144,52 @@ export function useLibraryItems({
     loadedEdges.findIndex((edge) => edge.cursor === landingCursor),
   )
   const after = loadedEdges.length - before
+  // The landing title's place in the whole library, counted once per window: rows break on it,
+  // and a title added elsewhere in the library must not move the rows already shown.
+  const landingPosition =
+    savedWindow?.landingPosition ??
+    (letter && data
+      ? titlesBeforeLetter({
+          index: data.library.alphabetIndex,
+          letter,
+          direction: sort.direction ?? 'ASC',
+        })
+      : 0)
+  const firstPosition = pageInfo?.hasPreviousPage ? Math.max(0, landingPosition - before) : 0
+  // A letter is shown once the titles before it have loaded, so its row arrives full.
+  const [landedKey, setLandedKey] = useState<string | null>(null)
+  const holdingLetter =
+    landedKey !== queryKey &&
+    !!letter &&
+    !!pageInfo?.hasPreviousPage &&
+    !!pageInfo.startCursor &&
+    before === 0 &&
+    currentPageFailure?.direction !== 'previous'
+  if (data && !holdingLetter && landedKey !== queryKey) {
+    setLandedKey(queryKey)
+  }
   const restoreBefore = before < (savedWindow?.before ?? 0) && !!pageInfo?.hasPreviousPage
   const restoreAfter = after < (savedWindow?.after ?? 0) && !!pageInfo?.hasNextPage
   const restoringWindow = restoreBefore || restoreAfter
   const [completeResult, setCompleteResult] = useState<{
     key: string
     data: LibraryPageQuery
+    firstPosition: number
   } | null>(null)
-  if (data && !staged && !restoringWindow && completeResult?.data !== data) {
-    setCompleteResult({ key: queryKey, data })
+  if (data && !staged && !holdingLetter && !restoringWindow && completeResult?.data !== data) {
+    setCompleteResult({ key: queryKey, data, firstPosition })
   }
-  // Keep the committed rows through both a staged jump and a late STOPPED refresh. Apollo's
-  // previousData can advance again when a seek's backfill arrives before the exit finishes.
+  // Keep the committed rows through a staged jump, a held letter, and a late STOPPED refresh.
+  // Apollo's previousData can advance again when a seek's backfill arrives before the exit ends.
   const rendered =
-    staged || (restoringWindow && completeResult?.key === queryKey)
+    staged || holdingLetter || (restoringWindow && completeResult?.key === queryKey)
       ? (completeResult?.data ?? previousData)
       : (data ?? previousData)
+  let renderedFirstPosition = 0
+  if (completeResult && rendered === completeResult.data) {
+    renderedFirstPosition = completeResult.firstPosition
+  }
+  if (rendered === data) renderedFirstPosition = firstPosition
   useLayoutEffect(() => {
     if (!data || staged) return
     const saved = windows.get(queryKey)
@@ -161,8 +197,9 @@ export function useLibraryItems({
       before: Math.max(before, saved?.before ?? 0),
       after: Math.max(after, saved?.after ?? 0),
       anchor: landingCursor,
+      landingPosition: saved?.landingPosition ?? landingPosition,
     })
-  }, [windows, queryKey, data, staged, before, after, landingCursor])
+  }, [windows, queryKey, data, staged, before, after, landingCursor, landingPosition])
   // Each committed query owns its in-flight pages; a result from an earlier view is discarded.
   const scopeRef = useRef<RequestScope | null>(null)
   useLayoutEffect(
@@ -227,7 +264,7 @@ export function useLibraryItems({
     void readPage({
       variables: {
         libraryId,
-        first: pageSizeAfter({ columns, end: loadedEdges.length }),
+        first: pageSizeAfter({ columns, end: firstPosition + loadedEdges.length }),
         after: pageInfo.endCursor,
         last: undefined,
         before: undefined,
@@ -264,7 +301,7 @@ export function useLibraryItems({
         libraryId,
         first: undefined,
         after: undefined,
-        last: pageSizeBefore({ columns, start: 0 }),
+        last: pageSizeBefore({ columns, start: firstPosition }),
         before: pageInfo.startCursor,
         sort,
         filter: continuationFilter,
@@ -320,12 +357,18 @@ export function useLibraryItems({
   // Where a query's own result belongs once it renders: its letter's first title, or the top.
   // Later pages merge into the same result without moving it.
   const landing =
-    data && !staged && !restoringWindow ? { key: queryKey, cursor: landingCursor } : null
+    data && !staged && !holdingLetter && !restoringWindow
+      ? { key: queryKey, cursor: landingCursor }
+      : null
 
   return {
     removed,
-    loading: !removed && refusal === undefined && (loading || first === null) && !rendered,
-    pending: (loading && !data && !!previousData) || staged,
+    loading:
+      !removed &&
+      refusal === undefined &&
+      (loading || first === null || holdingLetter) &&
+      !rendered,
+    pending: (loading && !data && !!previousData) || staged || (holdingLetter && !!rendered),
     staged,
     accept,
     error: refusal ?? error ?? currentPageFailure?.error,
@@ -333,6 +376,8 @@ export function useLibraryItems({
     edges: definedEdges(rendered?.library.items.edges ?? null),
     hasNextPage: rendered?.library.items.pageInfo.hasNextPage ?? false,
     hasPreviousPage: rendered?.library.items.pageInfo.hasPreviousPage ?? false,
+    /** The library position of the first title in `edges`; the grid's rows break on it. */
+    firstPosition: renderedFirstPosition,
     loadMore,
     loadPrevious,
     retry: () => {

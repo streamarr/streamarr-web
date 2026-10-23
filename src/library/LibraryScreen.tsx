@@ -63,6 +63,7 @@ export function LibraryScreen({
     edges,
     hasNextPage,
     hasPreviousPage,
+    firstPosition,
     loadMore,
     loadPrevious,
     retry,
@@ -221,6 +222,7 @@ export function LibraryScreen({
         ) : (
           <LibraryGrid
             edges={edges}
+            firstPosition={firstPosition}
             trackingLetter={trackingLetter}
             hasPreviousPage={hasPreviousPage}
             hasNextPage={hasNextPage}
