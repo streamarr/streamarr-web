@@ -125,6 +125,9 @@ export function ProfileMenu({
         {initials(chipName)}
       </button>
       {opened && (
+        <span className={styles.profileMenuNotch} data-testid="profile-menu-notch" aria-hidden />
+      )}
+      {opened && (
         <div id={panelId} className={styles.profileMenu}>
           {profiles.map((profile, index) => (
             <button

@@ -20,19 +20,44 @@
 }
 
 .profileMenuAnchor {
+  --profile-menu-gap: 8px;
+  --profile-menu-border: 1px;
+  --profile-menu-notch-size: 13px;
   position: relative;
 
   & .profileMenu {
     position: absolute;
     right: 0;
-    top: calc(100% + 8px);
+    top: calc(100% + var(--profile-menu-gap));
     z-index: 20;
   }
+
+  /* The anchor is exactly the chip's width, so half of it is the chip's centre. Drawn above the
+     menu so it covers the menu's top border, centred on that border's line. */
+  & .profileMenuNotch {
+    position: absolute;
+    left: 50%;
+    translate: -50% 0;
+    top: calc(
+      100% + var(--profile-menu-gap) + var(--profile-menu-border) / 2 -
+        var(--profile-menu-notch-size) / 2
+    );
+    z-index: 21;
+  }
+}
+
+.profileMenuNotch {
+  width: var(--profile-menu-notch-size);
+  height: var(--profile-menu-notch-size);
+  transform: rotate(45deg);
+  background: linear-gradient(var(--color-chrome), var(--color-chrome)), var(--color-ground);
+  border-left: var(--profile-menu-border) solid var(--color-alpha-16);
+  border-top: var(--profile-menu-border) solid var(--color-alpha-16);
 }
 
 .profileMenu {
   width: 250px;
-  border: 1px solid var(--color-alpha-16);
+  border: var(--profile-menu-border) solid var(--color-alpha-16);
   border-radius: var(--radius-xl);
   /* Solid on purpose: a blurred translucency stalls Chromium's compositor during captures. */
   background: linear-gradient(var(--color-chrome), var(--color-chrome)), var(--color-ground);
@@ -41,20 +66,6 @@
   flex-direction: column;
   gap: 2px;
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
-
-  /* The notch pointing at the chip. */
-  &::before {
-    content: '';
-    position: absolute;
-    right: 20px;
-    top: -7px;
-    width: 13px;
-    height: 13px;
-    transform: rotate(45deg);
-    background: linear-gradient(var(--color-chrome), var(--color-chrome)), var(--color-ground);
-    border-left: 1px solid var(--color-alpha-16);
-    border-top: 1px solid var(--color-alpha-16);
-  }
 }
 
 .profileMenuRow {
