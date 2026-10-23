@@ -1,3 +1,4 @@
+import { Center, Loader } from '@mantine/core'
 import { useMergedRef } from '@mantine/hooks'
 import { Link } from '@tanstack/react-router'
 import {
@@ -46,6 +47,7 @@ const OVERSCAN_ROWS = 2
 // the height of the whole list. The spacer's ends carry the paging sentinels.
 export function LibraryGrid({
   edges,
+  firstPosition,
   trackingLetter,
   hasPreviousPage,
   hasNextPage,
@@ -62,8 +64,10 @@ export function LibraryGrid({
   direction,
   reduceMotion,
   onSlideComplete,
+  onColumnsChange,
 }: Readonly<{
   edges: LibraryItems['edges']
+  firstPosition: LibraryItems['firstPosition']
   trackingLetter: boolean
   hasPreviousPage: boolean
   hasNextPage: boolean
@@ -80,6 +84,7 @@ export function LibraryGrid({
   direction: JumpDirection | undefined
   reduceMotion: boolean
   onSlideComplete: (definition: AnimationDefinition) => void
+  onColumnsChange: (columns: number) => void
 }>) {
   // State lets observers attach to the grid after it mounts; the ref is the handle the layout
   // effects scroll.
@@ -91,12 +96,13 @@ export function LibraryGrid({
   const probeRowRef = useRef<HTMLDivElement | null>(null)
 
   const [geometry, setGeometry] = useState(UNMEASURED_ROWS)
+  const layout = rowLayout(geometry.columns, firstPosition)
   // Focus is the viewer's place in the grid, as on tvOS: the focused card's row stays mounted
   // however far the viewer scrolls, so focus is never lost to the body.
   const [focusedItemId, setFocusedItemId] = useState<string | null>(null)
   const focusedIndex =
     focusedItemId === null ? -1 : edges.findIndex((edge) => edge.node.id === focusedItemId)
-  const focusedRow = focusedIndex < 0 ? null : Math.floor(focusedIndex / geometry.columns)
+  const focusedRow = focusedIndex < 0 ? null : layout.rowOf(focusedIndex)
   const cardFocus = useRef<CardFocus>({ cards: new Map(), requested: null })
   // Arrow keys move between cards, Home and End along the row (WAI-ARIA grid).
   function moveFocus(event: KeyboardEvent<HTMLDivElement>) {
@@ -108,6 +114,7 @@ export function LibraryGrid({
       index: focusedIndex,
       entry: tabStopIndex,
       columns: geometry.columns,
+      lead: layout.lead,
       count: edges.length,
     })
     if (target === null) {
@@ -122,7 +129,7 @@ export function LibraryGrid({
     cardFocus.current.requested = itemId
     setFocusedItemId(itemId)
   }
-  const rowCount = Math.ceil(edges.length / geometry.columns)
+  const rowCount = layout.rowOf(edges.length - 1) + 1
   const { virtualizer, rows, totalSize, topRow } = useVirtualRows({
     count: rowCount,
     getScrollElement: () => gridElement,
@@ -131,7 +138,7 @@ export function LibraryGrid({
     overscan: OVERSCAN_ROWS,
     rangeExtractor: (range) => rowsNearTheViewport(range, focusedRow),
     // Keyed by first title, so a page prepended in whole rows keeps the rows in view mounted.
-    getItemKey: (row) => edges[row * geometry.columns]?.node.id ?? row,
+    getItemKey: (row) => edges[layout.firstIndexOf(row)]?.node.id ?? row,
   })
 
   // Measured once rows exist, and again whenever the grid's size changes.
@@ -145,6 +152,7 @@ export function LibraryGrid({
       return
     }
     setGeometry(next)
+    onColumnsChange(next.columns)
     // The virtualizer re-reads the row estimate only after a measure().
     virtualizer.measure()
   })
@@ -213,9 +221,9 @@ export function LibraryGrid({
       if (shifted <= 0) {
         return
       }
-      grid.scrollTop += rowStart(virtualizer, Math.floor(shifted / geometry.columns))
+      grid.scrollTop += rowStart(virtualizer, layout.rowOf(shifted))
     },
-    [landingKey, firstItemId, edges, gridElement, geometry.columns, virtualizer],
+    [landingKey, firstItemId, edges, gridElement, layout, virtualizer],
   )
 
   // Before paint, once per result: later pages merge into the same result without moving it.
@@ -254,7 +262,7 @@ export function LibraryGrid({
         grid.scrollTop = 0
         return
       }
-      grid.scrollTop = rowStart(virtualizer, Math.floor(cursorIndex / geometry.columns))
+      grid.scrollTop = rowStart(virtualizer, layout.rowOf(cursorIndex))
       // A short page scrolls to the letter's row, through the frame the slide cannot move.
       frameRef.current?.scrollIntoView({ block: 'start' })
       const focus = repeated ? repeat.focus : focusLanding
@@ -266,6 +274,7 @@ export function LibraryGrid({
       focusLanding,
       gridElement,
       geometry,
+      layout,
       edges,
       virtualizer,
       locationKey,
@@ -301,7 +310,7 @@ export function LibraryGrid({
   // the rail shows the letter the viewer asked for, as tvOS does through the focused title.
   const topLetter = trackingLetter
     ? letterAtTheTop(
-        edges.slice(topRow * geometry.columns, (topRow + 1) * geometry.columns),
+        edges.slice(layout.firstIndexOf(topRow), layout.firstIndexOf(topRow + 1)),
         selectedLetter,
       )
     : null
@@ -320,7 +329,7 @@ export function LibraryGrid({
 
   const probeRowIndex = rows[0]?.index
   // One tab stop: the focused card, else the first card in view.
-  const tabStopIndex = focusedIndex < 0 ? topRow * geometry.columns : focusedIndex
+  const tabStopIndex = focusedIndex < 0 ? layout.firstIndexOf(topRow) : focusedIndex
   return (
     <div className={styles.gridFrame} ref={frameRef}>
       <motion.div
@@ -348,7 +357,7 @@ export function LibraryGrid({
             <div ref={loadPreviousRef} aria-hidden className={styles.sentinel} data-edge="start" />
           )}
           {rows.map((row) => {
-            const first = row.index * geometry.columns
+            const first = layout.firstIndexOf(row.index)
             return (
               <div
                 key={row.key}
@@ -359,10 +368,13 @@ export function LibraryGrid({
                 className={styles.row}
                 style={{ transform: `translateY(${row.start}px)` }}
               >
-                {edges.slice(first, first + geometry.columns).map((edge, column) => (
+                {edges.slice(first, layout.firstIndexOf(row.index + 1)).map((edge, column) => (
                   <LibraryCard
                     key={edge.node.id}
                     edge={edge}
+                    startColumn={
+                      first + column === 0 && layout.lead > 0 ? layout.lead + 1 : undefined
+                    }
                     tabStop={first + column === tabStopIndex}
                     focus={cardFocus}
                     onFocus={setFocusedItemId}
@@ -376,6 +388,32 @@ export function LibraryGrid({
           )}
         </div>
       </motion.div>
+    </div>
+  )
+}
+
+/** Holds the grid's place while its first titles load, and counts the columns they will fill. */
+export function LibraryGridPlaceholder({
+  onColumnsChange,
+}: Readonly<{ onColumnsChange: (columns: number) => void }>) {
+  const probeRowRef = useRef<HTMLDivElement>(null)
+  useLayoutEffect(
+    function countColumnsBeforeTheFirstPage() {
+      if (probeRowRef.current) onColumnsChange(countColumns(probeRowRef.current))
+    },
+    [onColumnsChange],
+  )
+  return (
+    <div className={styles.gridFrame}>
+      <div className={styles.grid}>
+        <Center h={200}>
+          <Loader />
+        </Center>
+        {/* An empty auto-fill row has as many tracks as a full one. */}
+        <div className={styles.rows}>
+          <div ref={probeRowRef} className={styles.row} />
+        </div>
+      </div>
     </div>
   )
 }
@@ -411,6 +449,17 @@ function letterAtTheTop(topRow: LibraryEdge[], selectedLetter: string | null) {
   return letters[0] ?? null
 }
 
+// Rows break where a title's library position is a multiple of the column count, so the first
+// loaded row starts `lead` cells in until the titles before it have loaded.
+function rowLayout(columns: number, firstPosition: number) {
+  const lead = firstPosition % columns
+  return {
+    lead,
+    rowOf: (index: number) => Math.floor((index + lead) / columns),
+    firstIndexOf: (row: number) => Math.max(0, row * columns - lead),
+  }
+}
+
 function rowStart(virtualizer: Virtualizer<HTMLDivElement, Element>, row: number) {
   return virtualizer.measurementsCache[row]?.start ?? 0
 }
@@ -422,14 +471,17 @@ function measureRowGeometry(row: HTMLElement): RowGeometry | null {
   if (rowHeight === 0) {
     return null
   }
-  const style = getComputedStyle(row)
-  const tracks = style.gridTemplateColumns.split(' ').filter(Boolean).length
   return {
-    columns: Math.max(1, tracks),
+    columns: countColumns(row),
     rowHeight,
-    rowGap: Number.parseFloat(style.rowGap) || 0,
+    rowGap: Number.parseFloat(getComputedStyle(row).rowGap) || 0,
     measured: true,
   }
+}
+
+function countColumns(row: HTMLElement) {
+  const tracks = getComputedStyle(row).gridTemplateColumns.split(' ').filter(Boolean).length
+  return Math.max(1, tracks)
 }
 
 function sameGeometry(a: RowGeometry, b: RowGeometry) {
@@ -443,21 +495,23 @@ function cardAfterKey({
   index,
   entry,
   columns,
+  lead,
   count,
 }: {
   key: string
   index: number
   entry: number
   columns: number
+  lead: number
   count: number
 }) {
-  const rowStart = index - (index % columns)
+  const rowStart = index - ((index + lead) % columns)
   const moves: Record<string, number> = {
     ArrowRight: index + 1,
     ArrowLeft: index - 1,
     ArrowDown: index + columns,
     ArrowUp: index - columns,
-    Home: rowStart,
+    Home: Math.max(0, rowStart),
     End: Math.min(rowStart + columns - 1, count - 1),
   }
   const target = moves[key]
@@ -475,11 +529,13 @@ type CardFocus = { cards: Map<string, HTMLAnchorElement>; requested: string | nu
 
 function LibraryCard({
   edge,
+  startColumn,
   tabStop,
   focus,
   onFocus,
 }: Readonly<{
   edge: LibraryEdge
+  startColumn: number | undefined
   tabStop: boolean
   focus: RefObject<CardFocus>
   onFocus: (itemId: string) => void
@@ -522,7 +578,7 @@ function LibraryCard({
     />
   )
   return (
-    <div role="gridcell">
+    <div role="gridcell" style={{ gridColumnStart: startColumn }}>
       {edge.node.__typename === 'Movie' ? (
         <Link to="/movie/$movieId" params={{ movieId: summary.id }} {...linkProps}>
           {card}

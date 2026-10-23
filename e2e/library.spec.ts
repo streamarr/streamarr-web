@@ -148,7 +148,7 @@ for (const viewport of [
   { width: 375, height: 667 },
   { width: 812, height: 375 },
 ]) {
-  test(`a letter jump keeps the grid on screen and lands its first title at the top at ${viewport.width}x${viewport.height}`, async ({
+  test(`a letter jump keeps the grid on screen and lands its first title's row at the top at ${viewport.width}x${viewport.height}`, async ({
     page,
     request,
   }) => {
@@ -233,9 +233,10 @@ for (const viewport of [
     await expect(page.getByText(oldTitle, { exact: true })).toBeAttached()
     expect(await gridStillMounted()).toBe(true)
     releaseSeek()
-    await expect(page.getByText('N Title 00', { exact: true })).toBeAttached()
+    // The letter waits for the titles before it, so its row arrives full.
+    await page.waitForTimeout(250) // NOSONAR: bounded settle proves the letter is held back
+    await expect(page.getByText('N Title 00', { exact: true })).not.toBeAttached()
     expect(await gridStillMounted()).toBe(true)
-    await expect.poll(() => cardTopOffset('N Title 00')).toBeLessThanOrEqual(1)
     releaseBackfill()
     await firstBackfill
     await expect(page.getByText('M Title 11', { exact: true })).toBeAttached()
@@ -421,6 +422,128 @@ test('prefetching follows the visible grid height on a phone and after rotation'
     ).toBeAttached()
   }
 })
+
+// Five and seven columns, which 48 titles would leave a partial row in, and a phone's two.
+for (const viewport of [
+  { width: 1280, height: 800 },
+  { width: 1700, height: 900 },
+  { width: 375, height: 667 },
+]) {
+  test(`every page of titles ends on a whole row at ${viewport.width}x${viewport.height}`, async ({
+    page,
+    request,
+  }) => {
+    await page.setViewportSize(viewport)
+    await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
+    await request.post(`${STUB_URL}/api/auth/refresh`)
+    const pageSizes: number[] = []
+    await page.route('**/graphql', async (route) => {
+      const operation = route.request().postDataJSON() as {
+        operationName: string
+        variables: LibraryPageQueryVariables
+      }
+      if (operation.operationName !== 'LibraryPage') return route.continue()
+      pageSizes.push(operation.variables.first ?? 0)
+      await route.fulfill({ json: { data: libraryPage(operation.variables) } })
+    })
+    await page.goto('/library/movies?by=TITLE&direction=ASC')
+    await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
+    const grid = page.locator('[class*="_grid_"]')
+    const columns = await columnCount(page)
+    expect(columns).toBeGreaterThan(1)
+
+    await grid.evaluate((element) => {
+      element.scrollTop = element.scrollHeight
+    })
+
+    await expect.poll(() => pageSizes.length).toBeGreaterThan(1)
+    expect(pageSizes.filter((size) => size % columns !== 0)).toEqual([])
+  })
+}
+
+// Six columns break the window loaded at five part-way through a row, until the page before it.
+for (const resizeTo of [null, { width: 1500, height: 800 }]) {
+  test(`titles keep their columns from a letter jump back to the start of the library${resizeTo ? ' after a resize' : ''}`, async ({
+    page,
+    request,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 })
+    await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
+    await request.post(`${STUB_URL}/api/auth/refresh`)
+    await page.route('**/graphql', async (route) => {
+      const operation = route.request().postDataJSON() as {
+        operationName: string
+        variables: LibraryPageQueryVariables
+      }
+      if (operation.operationName !== 'LibraryPage') return route.continue()
+      await route.fulfill({ json: { data: libraryPage(operation.variables) } })
+    })
+    await page.goto('/library/movies?by=TITLE&direction=ASC')
+    await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
+    const columns = await columnCount(page)
+    expect(columns).toBe(5)
+    // Records every title that moves sideways between two painted frames.
+    await page.evaluate(() => {
+      const moved = new Set<string>()
+      let previous = new Map<string, number>()
+      Object.assign(window, { movedSideways: moved })
+      const sample = () => {
+        const grid = document.querySelector('[data-scroll-restoration-id="library-grid"]')
+        const current = new Map<string, number>()
+        for (const card of grid?.querySelectorAll('[role="gridcell"]') ?? []) {
+          const title = card.querySelector('[class*="_posterTitle_"]')?.textContent ?? ''
+          current.set(title, Math.round(card.getBoundingClientRect().left))
+          const before = previous.get(title)
+          if (before !== undefined && before !== current.get(title)) moved.add(title)
+        }
+        previous = current
+        requestAnimationFrame(sample)
+      }
+      requestAnimationFrame(sample)
+    })
+    const left = (title: string) =>
+      page.getByText(title, { exact: true }).evaluate((element) => {
+        const box = element.closest('[role="gridcell"]')!.getBoundingClientRect()
+        return { left: Math.round(box.left), top: Math.round(box.top) }
+      })
+
+    await page.getByRole('button', { name: 'N', exact: true }).click()
+
+    // N's first title is the library's 157th, the second in its row.
+    await expect(page.getByText('N Title 00', { exact: true })).toBeInViewport()
+    const landing = await left('N Title 00')
+    const before = await left('M Title 11')
+    expect(before.top).toBe(landing.top)
+    expect(before.left).toBeLessThan(landing.left)
+    const grid = page.locator('[data-scroll-restoration-id="library-grid"]')
+    if (resizeTo) {
+      await page.setViewportSize(resizeTo)
+      await expect.poll(rowsFitTheWidth(page)).toBe(true)
+      // A resize moves every row; only what follows it must keep titles in their columns.
+      await page.evaluate(() =>
+        (window as unknown as { movedSideways: Set<string> }).movedSideways.clear(),
+      )
+    }
+    await expect
+      .poll(async () => {
+        await grid.evaluate((element) => {
+          element.scrollTop = 0
+        })
+        return grid.locator('[data-edge="start"]').count()
+      })
+      .toBe(0)
+    await grid.evaluate((element) => {
+      element.scrollTop = 0
+    })
+    await expect(page.getByText('A Title 00', { exact: true })).toBeInViewport()
+    const firstRow = grid.locator('[data-index="0"] [role="gridcell"]')
+    await expect(firstRow).toHaveCount(await columnCount(page))
+    const moved = await page.evaluate(() => [
+      ...(window as unknown as { movedSideways: Set<string> }).movedSideways,
+    ])
+    expect(moved).toEqual([])
+  })
+}
 
 test('the alphabet highlight follows vertical scrolling on desktop and a phone', async ({
   page,
@@ -934,6 +1057,13 @@ test('a narrower window re-lays the rows before the frame that resized them pain
   expect(cardBox!.y).toBeGreaterThan(gridBox!.y - 1)
   expect(cardBox!.y + cardBox!.height).toBeLessThan(gridBox!.y + gridBox!.height + 1)
 })
+
+function columnCount(page: Page) {
+  return page
+    .locator('[class*="_grid_"] [data-index]')
+    .first()
+    .evaluate((row) => getComputedStyle(row).gridTemplateColumns.split(' ').length)
+}
 
 // Rows are re-laid for a new width once the grid has measured it.
 function rowsFitTheWidth(page: Page) {

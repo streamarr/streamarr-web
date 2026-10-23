@@ -86,7 +86,7 @@ function Window({
   filter?: MediaFilter
   sort?: MediaSort
 }) {
-  const view = useLibraryItems({ libraryId: LIBRARY, sort, filter })
+  const view = useLibraryItems({ libraryId: LIBRARY, sort, filter, columns: 1 })
   const { staged, accept } = view
   useEffect(() => {
     if (staged) accept()

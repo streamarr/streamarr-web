@@ -39,6 +39,7 @@ function libraryResponse(overrides: {
   hasPreviousPage?: boolean
   startCursor?: string | null
   endCursor?: string | null
+  alphabetIndex?: LibraryPageQuery['library']['alphabetIndex']
 }): LibraryPageQuery & { library: { __typename: 'Library' } } {
   return {
     library: {
@@ -48,7 +49,7 @@ function libraryResponse(overrides: {
       status: 'HEALTHY',
       scanCompletedOn: '2026-08-28T11:00:00Z',
       itemCount: 2,
-      alphabetIndex: [
+      alphabetIndex: overrides.alphabetIndex ?? [
         { letter: 'A', count: 1 },
         { letter: 'N', count: 1 },
       ],
@@ -69,9 +70,23 @@ function libraryResponse(overrides: {
   }
 }
 
-function Harness({ initialFilter = {} }: { initialFilter?: MediaFilter }) {
+function movieEdges(count: number) {
+  return Array.from({ length: count }, (_, index) => ({
+    cursor: `c${index}`,
+    node: movieNode(String(index), `Title ${String(index).padStart(3, '0')}`),
+  }))
+}
+
+function Harness({
+  initialFilter = {},
+  initialColumns = 1,
+}: {
+  initialFilter?: MediaFilter
+  initialColumns?: number | null
+}) {
   const [filter, setFilter] = useState<MediaFilter>(initialFilter)
-  const result = useLibraryItems({ libraryId: LIBRARY_ID, sort: TITLE_ASC, filter })
+  const [columns, setColumns] = useState(initialColumns)
+  const result = useLibraryItems({ libraryId: LIBRARY_ID, sort: TITLE_ASC, filter, columns })
   // A screen without motion: every staged result is shown as soon as it arrives.
   const { staged, accept } = result
   useEffect(() => {
@@ -83,6 +98,7 @@ function Harness({ initialFilter = {} }: { initialFilter?: MediaFilter }) {
       <div data-testid="hasNextPage">{String(result.hasNextPage)}</div>
       <div data-testid="hasPreviousPage">{String(result.hasPreviousPage)}</div>
       <div data-testid="landing">{result.landing?.cursor ?? ''}</div>
+      <div data-testid="firstPosition">{result.firstPosition}</div>
       <ul>
         {result.edges.map((edge) => (
           <li key={edge.cursor}>{edge.node.title}</li>
@@ -103,13 +119,16 @@ function Harness({ initialFilter = {} }: { initialFilter?: MediaFilter }) {
       <button type="button" onClick={() => setFilter({ watchStatus: 'UNWATCHED' })}>
         Unwatched only
       </button>
+      <button type="button" onClick={() => setColumns(5)}>
+        Measure five columns
+      </button>
     </div>
   )
 }
 
 // A retained library view, as the authenticated layout keeps it.
 function LiveHarness({ filter }: { filter: MediaFilter }) {
-  const result = useLibraryItems({ libraryId: LIBRARY_ID, sort: TITLE_ASC, filter })
+  const result = useLibraryItems({ libraryId: LIBRARY_ID, sort: TITLE_ASC, filter, columns: 1 })
   return (
     <div>
       <div data-testid="landing">{result.landing?.cursor ?? ''}</div>
@@ -184,6 +203,40 @@ describe('useLibraryItems', () => {
     await user.click(screen.getByText('Jump to N'))
     await screen.findByText('Middle', { selector: 'li' })
     expect(screen.getByTestId('landing')).toHaveTextContent('Northern')
+  })
+
+  it('shouldNotLoadTheTitlesBeforeALetterAgainWhenItsWindowAlreadyHasThem', async () => {
+    let backwardFetches = 0
+    server.use(
+      graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) => {
+        if (variables.before) backwardFetches += 1
+        const title = variables.before
+          ? 'Middle'
+          : variables.filter?.startLetter === 'N'
+            ? 'Northern'
+            : 'Alpha'
+        return HttpResponse.json({
+          data: libraryResponse({
+            edges: [{ cursor: title, node: movieNode(title, title) }],
+            hasPreviousPage: title !== 'Alpha',
+          }),
+        })
+      }),
+    )
+    const { user } = renderWithProviders(<Harness />)
+    await screen.findByText('Alpha', { selector: 'li' })
+    await user.click(screen.getByText('Jump to N'))
+    await screen.findByText('Middle', { selector: 'li' })
+    await user.click(screen.getByText('Jump to A'))
+    await screen.findByText('Alpha', { selector: 'li' })
+
+    await user.click(screen.getByText('Jump to N'))
+
+    await screen.findByText('Middle', { selector: 'li' })
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    })
+    expect(backwardFetches).toBe(1)
   })
 
   it.each(['forward', 'backward'])(
@@ -457,6 +510,163 @@ describe('useLibraryItems', () => {
     await waitFor(() => expect(screen.getByText('Second Page')).toBeInTheDocument())
     expect(screen.getByTestId('hasPreviousPage')).toHaveTextContent('false')
     expect(backwardFetches).toBe(0)
+  })
+
+  it('shouldAskForTitlesOnceTheGridHasMeasuredItsColumnsWhenItOpens', async () => {
+    const requested: LibraryPageQueryVariables[] = []
+    server.use(
+      graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) => {
+        requested.push(variables)
+        return HttpResponse.json({ data: libraryResponse({ edges: movieEdges(50) }) })
+      }),
+    )
+    const { user } = renderWithProviders(<Harness initialColumns={null} />)
+    expect(screen.getByTestId('loading')).toHaveTextContent('true')
+    expect(requested).toEqual([])
+
+    await user.click(screen.getByText('Measure five columns'))
+
+    await screen.findByText('Title 049')
+    expect(requested.map((variables) => variables.first)).toEqual([50])
+  })
+
+  it('shouldFinishTheLastRowWhenLoadingMoreAfterAPartialRow', async () => {
+    const requested: LibraryPageQueryVariables[] = []
+    server.use(
+      graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) => {
+        requested.push(variables)
+        const edges = movieEdges(100).slice(variables.after ? 48 : 0, variables.after ? 100 : 48)
+        return HttpResponse.json({
+          data: libraryResponse({ edges, hasNextPage: !variables.after }),
+        })
+      }),
+    )
+    const { user } = renderWithProviders(<Harness initialColumns={5} />)
+    await waitFor(() => expect(screen.getByTestId('hasNextPage')).toHaveTextContent('true'))
+
+    await user.click(screen.getByText('Load more'))
+
+    await screen.findByText('Title 099')
+    expect(requested.map((variables) => variables.first)).toEqual([50, 52])
+  })
+
+  it('shouldLoadWholeRowsWhenLoadingTitlesBeforeTheLoadedOnes', async () => {
+    const requested: LibraryPageQueryVariables[] = []
+    server.use(
+      graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) => {
+        requested.push(variables)
+        const edges = variables.before ? movieEdges(100).slice(0, 50) : movieEdges(100).slice(50)
+        return HttpResponse.json({
+          data: libraryResponse({ edges, hasPreviousPage: !variables.before }),
+        })
+      }),
+    )
+    const { user } = renderWithProviders(<Harness initialColumns={5} />)
+    await waitFor(() => expect(screen.getByTestId('hasPreviousPage')).toHaveTextContent('true'))
+
+    await user.click(screen.getByText('Load previous'))
+
+    await screen.findByText('Title 000')
+    expect(requested.map((variables) => variables.last ?? null)).toEqual([null, 50])
+  })
+
+  it('shouldFillTheLettersRowWhenLoadingTheTitlesBeforeIt', async () => {
+    const requested: LibraryPageQueryVariables[] = []
+    server.use(
+      graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) => {
+        requested.push(variables)
+        const title = variables.before ? 'Middle' : 'Northern'
+        return HttpResponse.json({
+          data: libraryResponse({
+            edges: [{ cursor: title, node: movieNode(title, title) }],
+            hasPreviousPage: !variables.before,
+            alphabetIndex: [
+              { letter: 'A', count: 4 },
+              { letter: 'M', count: 3 },
+              { letter: 'N', count: 1 },
+            ],
+          }),
+        })
+      }),
+    )
+
+    renderWithProviders(<Harness initialFilter={{ startLetter: 'N' }} initialColumns={5} />)
+
+    await screen.findByText('Middle')
+    // Seven titles come before N, so its first title is the third in its row.
+    expect(requested.map((variables) => variables.last ?? null)).toEqual([null, 52])
+  })
+
+  it('shouldPlaceTheFirstLoadedTitleByItsPositionInTheLibrary', async () => {
+    server.use(
+      graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) => {
+        const edges = variables.before
+          ? [
+              { cursor: 'l1', node: movieNode('l1', 'Lagoon') },
+              { cursor: 'm1', node: movieNode('m1', 'Middle') },
+            ]
+          : [{ cursor: 'n1', node: movieNode('n1', 'Northern') }]
+        return HttpResponse.json({
+          data: libraryResponse({
+            edges,
+            hasPreviousPage: true,
+            alphabetIndex: [
+              { letter: 'A', count: 4 },
+              { letter: 'M', count: 3 },
+              { letter: 'N', count: 1 },
+            ],
+          }),
+        })
+      }),
+    )
+
+    renderWithProviders(<Harness initialFilter={{ startLetter: 'N' }} initialColumns={5} />)
+
+    await screen.findByText('Lagoon')
+    expect(screen.getByTestId('firstPosition')).toHaveTextContent('5')
+  })
+
+  it('shouldHoldALetterUntilTheTitlesBeforeItArriveWhenTheyAreStillLoading', async () => {
+    let release!: () => void
+    const behind = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    server.use(
+      graphql.query<GraphQLQuery, LibraryPageQueryVariables>(
+        'LibraryPage',
+        async ({ variables }) => {
+          if (variables.before) await behind
+          const title = variables.before
+            ? 'Middle'
+            : variables.filter?.startLetter
+              ? 'Northern'
+              : 'Alpha'
+          return HttpResponse.json({
+            data: libraryResponse({
+              edges: [{ cursor: title, node: movieNode(title, title) }],
+              hasPreviousPage: title === 'Northern',
+            }),
+          })
+        },
+      ),
+    )
+    const { user } = renderWithProviders(<Harness />)
+    await screen.findByText('Alpha', { selector: 'li' })
+
+    await user.click(screen.getByText('Jump to N'))
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    })
+    expect(screen.getAllByRole('listitem').map((item) => item.textContent)).toEqual(['Alpha'])
+    expect(screen.getByTestId('landing')).toHaveTextContent('')
+    release()
+    await screen.findByText('Northern', { selector: 'li' })
+    expect(screen.getAllByRole('listitem').map((item) => item.textContent)).toEqual([
+      'Middle',
+      'Northern',
+    ])
+    expect(screen.getByTestId('landing')).toHaveTextContent('Northern')
   })
 
   it('resets the accumulated edges when the filter changes', async () => {
