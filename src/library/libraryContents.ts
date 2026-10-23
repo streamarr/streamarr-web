@@ -190,18 +190,23 @@ function subscribeToLibraryContents({
     )
   }
 
-  // A scan sends changes faster than the whole list can be rewritten for each. Changes that
-  // arrive before the next task apply together, and only their edges change.
+  // A list write costs time, and an entry in Apollo's read caches, in proportion to the loaded
+  // titles. Changes queue, and a list is written again only after an interval that grows with
+  // its length, so a scan's writes cost about the same each second however large the list is.
   const pending: LiveChange[] = []
   let applyTimer: ReturnType<typeof setTimeout> | undefined
+  let appliedAt = -Infinity
+  let loadedTitles = 0
 
   function enqueue(change: LiveChange) {
     pending.push(change)
-    applyTimer ??= setTimeout(applyPending, 0)
+    const interval = Math.min(MAX_LIST_WRITE_INTERVAL_MS, loadedTitles * LIST_WRITE_MS_PER_TITLE)
+    applyTimer ??= setTimeout(applyPending, Math.max(0, appliedAt + interval - Date.now()))
   }
 
   function applyPending() {
     applyTimer = undefined
+    appliedAt = Date.now()
     const changes = pending.splice(0)
     if (stopped) return
     client.cache.batch({
@@ -236,7 +241,9 @@ function subscribeToLibraryContents({
       },
     })
     const next = cache.readQuery({ query: LibraryPageDocument, variables })
-    if (next) onItemsChanged(previous.library.items, next.library.items)
+    if (!next) return
+    loadedTitles = next.library.items.edges?.length ?? 0
+    onItemsChanged(previous.library.items, next.library.items)
   }
 
   function entityOf(itemId: string, kind: MediaType) {
@@ -294,6 +301,9 @@ function expandBounds(bounds: Bounds, items: Items) {
     if (bounds.last === null || edge.orderKey > bounds.last) bounds.last = edge.orderKey
   }
 }
+
+const LIST_WRITE_MS_PER_TITLE = 0.5
+const MAX_LIST_WRITE_INTERVAL_MS = 1000
 
 type LiveChange =
   | { at: 'changed'; entity: string; change: LibraryItemChangeFieldsFragment }
