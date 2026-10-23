@@ -296,7 +296,7 @@ export function useLibraryItems({
   }, [loading, queryKey, before, after, restoreBefore, restoreAfter])
 
   // A letter's page is followed once by the page before it, so the viewer can scroll up across
-  // the letter boundary without a gap.
+  // the letter boundary without a gap. A window kept from an earlier visit already has it.
   const backfilledQueryRef = useRef<string | null>(null)
   const loadPageBehindTheLetter = useEffectEvent(() => {
     void loadPrevious()
@@ -307,9 +307,9 @@ export function useLibraryItems({
         return
       }
       backfilledQueryRef.current = queryKey
-      loadPageBehindTheLetter()
+      if (before === 0) loadPageBehindTheLetter()
     },
-    [letter, data, queryKey],
+    [letter, data, queryKey, before],
   )
 
   // Where a query's own result belongs once it renders: its letter's first title, or the top.
