@@ -82,7 +82,15 @@ export function createApolloClient(
   // fields silently.
   const cache = new ResetCountingCache({
     possibleTypes: generatedIntrospection.possibleTypes,
-    typePolicies: { Library: { fields: { alphabetIndex: { merge: false } } } },
+    typePolicies: {
+      Library: {
+        fields: {
+          alphabetIndex: { merge: false },
+          // One loaded window per ordering and filter, however many titles each page asked for.
+          items: { keyArgs: ['sort', 'filter'] },
+        },
+      },
+    },
   })
 
   // Error link next: forward() on a CSRF rejection re-enters the CSRF link, which re-reads the

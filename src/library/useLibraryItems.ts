@@ -78,7 +78,7 @@ export function useLibraryItems({
       if (!data) return
       trackLibraryItemsConnection(client.cache, {
         libraryId,
-        args: { first: PAGE_SIZE, sort, filter },
+        args: { sort, filter },
       })
     },
     [client, data, libraryId, sort, filter],
