@@ -1,5 +1,13 @@
 import { CombinedGraphQLErrors } from '@apollo/client/errors'
-import type { ApolloClient, OperationVariables, TypedDocumentNode } from '@apollo/client'
+import type {
+  ApolloCache,
+  ApolloClient,
+  InMemoryCache,
+  OperationVariables,
+  Reference,
+  StoreObject,
+  TypedDocumentNode,
+} from '@apollo/client'
 import {
   LibraryCountsChangedDocument,
   LibraryItemAddedDocument,
@@ -8,10 +16,11 @@ import {
   LibraryPageDocument,
   MediaSummaryFieldsFragmentDoc,
   type LibraryItemChangeFieldsFragment,
+  type MediaType,
   type LibraryPageQuery,
   type LibraryPageQueryVariables,
 } from '../graphql/generated/graphql'
-import { definedEdges, placeOrderedEdge } from '../media/edges'
+import { definedEdges } from '../media/edges'
 import { responsePathHasError } from '../graphql/responseErrors'
 import { retainLibraryItemsConnection } from '../media/watchedState'
 
@@ -145,6 +154,7 @@ function subscribeToLibraryContents({
   function stop() {
     if (stopped) return
     stopped = true
+    clearTimeout(applyTimer)
     for (const subscription of subscriptions) subscription.unsubscribe()
     releaseConnection()
   }
@@ -180,32 +190,63 @@ function subscribeToLibraryContents({
     )
   }
 
-  function changeItems(update: (items: Items) => Items) {
-    client.cache.updateQuery({ query: LibraryPageDocument, variables }, (data) => {
-      if (!data) return undefined
-      const previous = data.library.items
-      expandBounds(bounds, previous)
-      const next = update(previous)
-      onItemsChanged(previous, next)
-      return { ...data, library: { ...data.library, items: next } }
+  // A scan sends changes faster than the whole list can be rewritten for each. Changes that
+  // arrive before the next task apply together, and only their edges change.
+  const pending: LiveChange[] = []
+  let applyTimer: ReturnType<typeof setTimeout> | undefined
+
+  function enqueue(change: LiveChange) {
+    pending.push(change)
+    applyTimer ??= setTimeout(applyPending, 0)
+  }
+
+  function applyPending() {
+    applyTimer = undefined
+    const changes = pending.splice(0)
+    if (stopped) return
+    client.cache.batch({
+      update(cache) {
+        for (const change of changes) normalizeItem(cache, change)
+        placeEdges(cache, changes)
+        for (const id of finallyRemoved(changes)) cache.evict({ id })
+      },
     })
+  }
+
+  function placeEdges(cache: ApolloCache, changes: readonly LiveChange[]) {
+    const previous = cache.readQuery({ query: LibraryPageDocument, variables })
+    if (!previous) return
+    expandBounds(bounds, previous.library.items)
+    // cache.modify cannot target one argument variant of a field (apollo-client#7129).
+    const itemsField = (cache as InMemoryCache).policies.getStoreFieldName({
+      typename: 'Library',
+      fieldName: 'items',
+      args: { first: variables.first, sort, filter },
+    })
+    cache.modify<{ items: StoredItems }>({
+      id: cache.identify({ __typename: 'Library', id: libraryId }),
+      fields: {
+        items(stored, { storeFieldName, isReference, toReference }) {
+          if (storeFieldName !== itemsField || isReference(stored)) return stored
+          return changes.reduce(
+            (items, change) => placeEdge(items, change, bounds, toReference),
+            stored,
+          )
+        },
+      },
+    })
+    const next = cache.readQuery({ query: LibraryPageDocument, variables })
+    if (next) onItemsChanged(previous.library.items, next.library.items)
+  }
+
+  function entityOf(itemId: string, kind: MediaType) {
+    return client.cache.identify({ __typename: kind === 'MOVIE' ? 'Movie' : 'Series', id: itemId })
   }
 
   function applyChange(change: LibraryItemChangeFieldsFragment | null | undefined) {
     if (change?.libraryId !== libraryId) return
-    client.cache.batch({
-      update(cache) {
-        const item = change.item
-        if (item?.__typename === 'Movie' || item?.__typename === 'Series') {
-          cache.writeFragment({
-            fragment: MediaSummaryFieldsFragmentDoc,
-            fragmentName: 'MediaSummaryFields',
-            data: item,
-          })
-        }
-        changeItems((items) => placeItem(items, change, bounds))
-      },
-    })
+    const entity = entityOf(change.itemId, change.kind)
+    if (entity) enqueue({ at: 'changed', entity, change })
   }
 
   subscriptions.push(
@@ -224,13 +265,8 @@ function subscribeToLibraryContents({
   listen(LibraryItemRemovedDocument, { libraryId }, ({ change }) => {
     if (change?.libraryId !== libraryId) return
     if (change.kind !== 'MOVIE' && change.kind !== 'SERIES') return
-    client.cache.batch({
-      update(cache) {
-        changeItems((items) => removeItem(items, change.itemId))
-        const typename = change.kind === 'MOVIE' ? 'Movie' : 'Series'
-        cache.evict({ id: cache.identify({ __typename: typename, id: change.itemId }) })
-      },
-    })
+    const entity = entityOf(change.itemId, change.kind)
+    if (entity) enqueue({ at: 'removed', entity })
   })
   listen(LibraryCountsChangedDocument, { libraryId }, (data) => {
     if (data.change?.id !== libraryId) return
@@ -259,26 +295,69 @@ function expandBounds(bounds: Bounds, items: Items) {
   }
 }
 
-function removeItem(items: Items, itemId: string): Items {
-  return withEdges(items, placeOrderedEdge(definedEdges(items.edges), { itemId, edge: null }))
+type LiveChange =
+  | { at: 'changed'; entity: string; change: LibraryItemChangeFieldsFragment }
+  | { at: 'removed'; entity: string }
+// Stored edges are embedded objects whose nodes are references to normalized items.
+type StoredEdge = {
+  __typename: 'MediaEdge'
+  cursor: string
+  orderKey: string
+  node: Reference | null
+}
+type StoredItems = Omit<Items, 'edges'> & { edges: (StoredEdge | null)[] }
+
+function normalizeItem(cache: ApolloCache, change: LiveChange) {
+  if (change.at !== 'changed') return
+  const item = change.change.item ?? change.change.edge?.node
+  if (item?.__typename !== 'Movie' && item?.__typename !== 'Series') return
+  cache.writeFragment({
+    fragment: MediaSummaryFieldsFragmentDoc,
+    fragmentName: 'MediaSummaryFields',
+    data: item,
+  })
 }
 
-function placeItem(items: Items, change: LibraryItemChangeFieldsFragment, bounds: Bounds): Items {
-  const { itemId, edge } = change
-  if (edge === null) return removeItem(items, itemId)
-  if (!edge?.node) return items
-  if (edge.node.__typename !== 'Movie' && edge.node.__typename !== 'Series') return items
-  const { orderKey, node } = edge
+// A null edge only leaves this view, so only a removal event evicts the item itself.
+function finallyRemoved(changes: readonly LiveChange[]) {
+  const removed = new Map<string, boolean>()
+  for (const change of changes) removed.set(change.entity, change.at === 'removed')
+  return [...removed].filter(([, isRemoved]) => isRemoved).map(([entity]) => entity)
+}
+
+function placeEdge(
+  items: StoredItems,
+  change: LiveChange,
+  bounds: Bounds,
+  toReference: (item: StoreObject) => Reference | undefined,
+): StoredItems {
+  if (change.at === 'removed') return withoutEntity(items, change.entity)
+  const { edge } = change.change
+  if (edge === null) return withoutEntity(items, change.entity)
+  const node = edge?.node
+  if (node?.__typename !== 'Movie' && node?.__typename !== 'Series') return items
+  const { orderKey, cursor } = edge
   const { hasPreviousPage, hasNextPage } = items.pageInfo
   const beforeWindow = hasPreviousPage && (bounds.first === null || orderKey < bounds.first)
   const afterWindow = hasNextPage && (bounds.last === null || orderKey > bounds.last)
-  if (beforeWindow || afterWindow) return removeItem(items, itemId)
-  const placed = { ...edge, node }
-  return withEdges(items, placeOrderedEdge(definedEdges(items.edges), { itemId, edge: placed }))
+  if (beforeWindow || afterWindow) return withoutEntity(items, change.entity)
+  const current = items.edges.find((stored) => stored?.node?.__ref === change.entity)
+  if (current?.cursor === cursor && current.orderKey === orderKey) return items
+  const reference = toReference(node)
+  if (!reference) return items
+  const others = withoutEntity(items, change.entity).edges
+  const index = others.findIndex((other) => other !== null && other.orderKey > orderKey)
+  const placed: StoredEdge = { __typename: 'MediaEdge', cursor, orderKey, node: reference }
+  return withEdges(items, others.toSpliced(index < 0 ? others.length : index, 0, placed))
 }
 
-function withEdges(items: Items, edges: Items['edges']): Items {
-  const resolved = definedEdges(edges)
+function withoutEntity(items: StoredItems, entity: string) {
+  const index = items.edges.findIndex((stored) => stored?.node?.__ref === entity)
+  return index < 0 ? items : withEdges(items, items.edges.toSpliced(index, 1))
+}
+
+function withEdges(items: StoredItems, edges: StoredItems['edges']): StoredItems {
+  const placed = edges.filter((edge) => edge?.node)
   return {
     ...items,
     edges,
@@ -287,10 +366,10 @@ function withEdges(items: Items, edges: Items['edges']): Items {
       // A partial window can become empty. Its last server cursors still anchor continuation.
       startCursor: items.pageInfo.hasPreviousPage
         ? items.pageInfo.startCursor
-        : (resolved[0]?.cursor ?? items.pageInfo.startCursor),
+        : (placed[0]?.cursor ?? items.pageInfo.startCursor),
       endCursor: items.pageInfo.hasNextPage
         ? items.pageInfo.endCursor
-        : (resolved.at(-1)?.cursor ?? items.pageInfo.endCursor),
+        : (placed.at(-1)?.cursor ?? items.pageInfo.endCursor),
     },
   }
 }
