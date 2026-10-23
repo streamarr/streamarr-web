@@ -48,7 +48,7 @@ export default defineConfig(
   },
   {
     // tsconfig.e2e.json owns these; the project service only discovers tsconfig.json.
-    files: ['e2e/**/*.ts', 'playwright.config.ts', 'codegen.ts'],
+    files: ['e2e/**/*.ts', 'playwright.config.ts', 'playwright.replay.config.ts', 'codegen.ts'],
     languageOptions: {
       parserOptions: { projectService: false, project: './tsconfig.e2e.json' },
     },
