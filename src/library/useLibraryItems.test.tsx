@@ -1,6 +1,7 @@
 import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { graphql, HttpResponse, type GraphQLQuery } from 'msw'
+import { useApolloClient } from '@apollo/client/react'
 import { useEffect, useState } from 'react'
 import { describe, expect, it } from 'vitest'
 import type {
@@ -9,6 +10,7 @@ import type {
   MediaFilter,
   MediaSort,
 } from '../graphql/generated/graphql'
+import { readActiveQueriesAgain } from '../graphql/readAgain'
 import { LibraryContentsProvider } from './LibraryContentsProvider'
 import { serveGraphqlSocket } from '../test/graphqlSocket'
 import { renderWithProviders } from '../test/render'
@@ -87,6 +89,8 @@ function Harness({
   const [filter, setFilter] = useState<MediaFilter>(initialFilter)
   const [columns, setColumns] = useState(initialColumns)
   const result = useLibraryItems({ libraryId: LIBRARY_ID, sort: TITLE_ASC, filter, columns })
+  const client = useApolloClient()
+  const [cachedTitles, setCachedTitles] = useState<number | null>(null)
   // A screen without motion: every staged result is shown as soon as it arrives.
   const { staged, accept } = result
   useEffect(() => {
@@ -99,6 +103,26 @@ function Harness({
       <div data-testid="hasPreviousPage">{String(result.hasPreviousPage)}</div>
       <div data-testid="landing">{result.landing?.cursor ?? ''}</div>
       <div data-testid="firstPosition">{result.firstPosition}</div>
+      <div data-testid="cachedTitles">{cachedTitles}</div>
+      <button type="button" onClick={() => void readActiveQueriesAgain(client)}>
+        Read again
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          setCachedTitles(
+            Object.keys(client.cache.extract() as Record<string, unknown>).filter((id) =>
+              id.startsWith('Movie:'),
+            ).length,
+          )
+        }
+      >
+        Count cached titles
+      </button>
+      <div data-testid="counts">
+        {result.library?.itemCount}{' '}
+        {result.library?.alphabetIndex.map((entry) => `${entry.letter}:${entry.count}`).join(',')}
+      </div>
       <ul>
         {result.edges.map((edge) => (
           <li key={edge.cursor}>{edge.node.title}</li>
@@ -122,6 +146,47 @@ function Harness({
       <button type="button" onClick={() => setColumns(5)}>
         Measure five columns
       </button>
+      <button type="button" onClick={() => result.unloadFarFrom({ first: 0, last: 0 })}>
+        View the first title
+      </button>
+      <button type="button" onClick={() => result.unloadFarFrom({ first: 250, last: 250 })}>
+        View the 251st title
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          const last = result.edges.length - 1
+          result.unloadFarFrom({ first: last, last })
+        }}
+      >
+        View the last title
+      </button>
+    </div>
+  )
+}
+
+// Reports each list of titles the hook returns, to compare their identities across pages.
+function EdgesHarness({ onEdges }: { onEdges: (edges: unknown[]) => void }) {
+  const result = useLibraryItems({ libraryId: LIBRARY_ID, sort: TITLE_ASC, filter: {}, columns: 1 })
+  useEffect(() => {
+    onEdges(result.edges)
+  }, [result.edges, onEdges])
+  return (
+    <div>
+      <ul>
+        {result.edges.map((edge) => (
+          <li key={edge.cursor}>{edge.node.title}</li>
+        ))}
+      </ul>
+      <button type="button" onClick={result.loadMore}>
+        Load more
+      </button>
+      <button type="button" onClick={result.loadPrevious}>
+        Load previous
+      </button>
+      <button type="button" onClick={() => result.unloadFarFrom({ first: 0, last: 0 })}>
+        View the first title
+      </button>
     </div>
   )
 }
@@ -139,6 +204,59 @@ function LiveHarness({ filter }: { filter: MediaFilter }) {
       </ul>
     </div>
   )
+}
+
+// A library of `count` titles served by cursor, as the server pages it in either direction.
+function serveLibraryOf(count: number) {
+  const titles = movieEdges(count)
+  const requested: LibraryPageQueryVariables[] = []
+  const served = { count: 0 }
+  const positionOf = (cursor: string) => Number(cursor.slice(1))
+  server.use(
+    graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) => {
+      requested.push(variables)
+      let start = 0
+      if (variables.after) start = positionOf(variables.after) + 1
+      if (variables.before)
+        start = Math.max(0, positionOf(variables.before) - (variables.last ?? 0))
+      const end = variables.before
+        ? positionOf(variables.before)
+        : Math.min(count, start + (variables.first ?? 0))
+      served.count += 1
+      return HttpResponse.json({
+        data: libraryResponse({
+          edges: titles.slice(start, end),
+          hasPreviousPage: start > 0,
+          hasNextPage: end < count,
+        }),
+      })
+    }),
+  )
+  return { requested, served }
+}
+
+function liveAddition(id: string, title: string) {
+  return {
+    data: {
+      change: {
+        __typename: 'LibraryItemChange',
+        libraryId: LIBRARY_ID,
+        itemId: id,
+        kind: 'MOVIE',
+        item: movieNode(id, title),
+        edge: { __typename: 'MediaEdge', cursor: id, orderKey: title, node: movieNode(id, title) },
+      },
+    },
+  }
+}
+
+async function loadTitlesThrough(user: ReturnType<typeof userEvent.setup>, title: string) {
+  await screen.findByText('Title 000')
+  while (!screen.queryByText(title)) {
+    const loaded = screen.getAllByRole('listitem').length
+    await user.click(screen.getByText('Load more'))
+    await waitFor(() => expect(screen.getAllByRole('listitem').length).toBeGreaterThan(loaded))
+  }
 }
 
 describe('useLibraryItems', () => {
@@ -789,5 +907,239 @@ describe('useLibraryItems', () => {
       'Northern Line',
       'Ocean',
     ])
+  })
+
+  it('shouldUnloadTheTitlesFarBeforeTheViewAndLoadThemAgainWhenScrollingBack', async () => {
+    const { requested } = serveLibraryOf(600)
+    const { user } = renderWithProviders(<Harness />)
+    await loadTitlesThrough(user, 'Title 527')
+
+    await user.click(screen.getByText('View the last title'))
+
+    await waitFor(() => expect(screen.queryByText('Title 286')).not.toBeInTheDocument())
+    expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('Title 287')
+    expect(screen.getByTestId('hasPreviousPage')).toHaveTextContent('true')
+    expect(screen.getByTestId('firstPosition')).toHaveTextContent('287')
+
+    await user.click(screen.getByText('Load previous'))
+
+    await screen.findByText('Title 239')
+    expect(requested.at(-1)).toMatchObject({ before: 'c287', last: 48 })
+    expect(screen.getByTestId('firstPosition')).toHaveTextContent('239')
+  })
+
+  it('shouldUnloadTheTitlesFarAfterTheViewAndLoadThemOnlyWhenScrolledTo', async () => {
+    const { requested, served } = serveLibraryOf(600)
+    const { user } = renderWithProviders(<Harness />)
+    await loadTitlesThrough(user, 'Title 527')
+
+    await user.click(screen.getByText('View the first title'))
+
+    await waitFor(() => expect(screen.queryByText('Title 241')).not.toBeInTheDocument())
+    expect(screen.getAllByRole('listitem').at(-1)).toHaveTextContent('Title 240')
+    expect(screen.getByTestId('hasNextPage')).toHaveTextContent('true')
+    const unloadedAt = requested.length
+
+    await user.click(screen.getByText('Load more'))
+
+    await screen.findByText('Title 288')
+    await waitFor(() => expect(served.count).toBe(requested.length))
+    expect(requested.slice(unloadedAt)).toEqual([
+      expect.objectContaining({ after: 'c240', first: 48 }),
+    ])
+    expect(screen.queryByText('Title 289')).not.toBeInTheDocument()
+  })
+
+  it('shouldUnloadWholeRowsSoTheTitlesInViewKeepTheirColumns', async () => {
+    serveLibraryOf(600)
+    const { user } = renderWithProviders(<Harness initialColumns={5} />)
+    await loadTitlesThrough(user, 'Title 549')
+
+    await user.click(screen.getByText('View the last title'))
+
+    await waitFor(() => expect(screen.getByTestId('firstPosition')).toHaveTextContent('305'))
+    expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('Title 305')
+  })
+
+  it('shouldKeepEveryTitleWhileNoneIsFarFromTheView', async () => {
+    serveLibraryOf(600)
+    const { user } = renderWithProviders(<Harness />)
+    await loadTitlesThrough(user, 'Title 479')
+
+    await user.click(screen.getByText('View the 251st title'))
+
+    expect(screen.getAllByRole('listitem')).toHaveLength(480)
+    expect(screen.getByTestId('hasPreviousPage')).toHaveTextContent('false')
+  })
+
+  it('shouldKeepLiveAdditionsOutOfUnloadedTitlesWhileCountingThem', async () => {
+    serveLibraryOf(600)
+    const socket = serveGraphqlSocket()
+    const { user } = renderWithProviders(
+      <LibraryContentsProvider profileId="profile" pathname={`/library/${LIBRARY_ID}`}>
+        <Harness />
+      </LibraryContentsProvider>,
+    )
+    await loadTitlesThrough(user, 'Title 527')
+    await user.click(screen.getByText('View the first title'))
+    await waitFor(() => expect(screen.queryByText('Title 241')).not.toBeInTheDocument())
+    await waitFor(() => expect(socket.isLive('LibraryItemAdded')).toBe(true))
+
+    socket.publish('LibraryItemAdded', liveAddition('late', 'Title 300 Sequel'))
+    socket.publish('LibraryItemAdded', liveAddition('near', 'Title 100 Sequel'))
+    socket.publish('LibraryCountsChanged', {
+      data: {
+        change: {
+          __typename: 'Library',
+          id: LIBRARY_ID,
+          itemCount: 602,
+          alphabetIndex: [{ letter: 'T', count: 602 }],
+        },
+      },
+    })
+
+    await screen.findByText('Title 100 Sequel')
+    expect(screen.queryByText('Title 300 Sequel')).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.getByTestId('counts')).toHaveTextContent('602 T:602'))
+  })
+
+  it('shouldReleaseTheTitlesItUnloadsFromTheCache', async () => {
+    serveLibraryOf(600)
+    const { user } = renderWithProviders(<Harness />)
+    await loadTitlesThrough(user, 'Title 527')
+
+    await user.click(screen.getByText('View the first title'))
+    await waitFor(() => expect(screen.queryByText('Title 241')).not.toBeInTheDocument())
+    await user.click(screen.getByText('Count cached titles'))
+
+    expect(screen.getByTestId('cachedTitles')).toHaveTextContent('241')
+  })
+
+  it('shouldReadAWindowAgainFromItsFirstTitleOnceTheTitlesBeforeItAreUnloaded', async () => {
+    const { requested, served } = serveLibraryOf(600)
+    const { user } = renderWithProviders(<Harness />)
+    await loadTitlesThrough(user, 'Title 527')
+    await user.click(screen.getByText('View the last title'))
+    await waitFor(() => expect(screen.getByTestId('firstPosition')).toHaveTextContent('287'))
+    const unloadedAt = requested.length
+
+    await user.click(screen.getByText('Read again'))
+
+    await waitFor(() => expect(served.count).toBe(requested.length))
+    expect(requested[unloadedAt]).toMatchObject({ after: 'c286' })
+    expect(
+      requested.slice(unloadedAt).filter((variables) => !variables.after && !variables.before),
+    ).toEqual([])
+    expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('Title 287')
+    expect(screen.getAllByRole('listitem').at(-1)).toHaveTextContent('Title 527')
+    expect(screen.getByTestId('firstPosition')).toHaveTextContent('287')
+  })
+
+  it('shouldRestoreTheTitlesLoadedBeforeTheFirstKeptOneWhenReadingAgain', async () => {
+    const { requested, served } = serveLibraryOf(600)
+    const { user } = renderWithProviders(<Harness />)
+    await loadTitlesThrough(user, 'Title 527')
+    await user.click(screen.getByText('View the last title'))
+    await waitFor(() => expect(screen.getByTestId('firstPosition')).toHaveTextContent('287'))
+    await user.click(screen.getByText('Load previous'))
+    await screen.findByText('Title 239')
+    const prependedAt = requested.length
+
+    await user.click(screen.getByText('Read again'))
+
+    await waitFor(() => expect(served.count).toBe(requested.length))
+    expect(requested[prependedAt]).toMatchObject({ after: 'c286' })
+    await waitFor(() => expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('Title 239'))
+    expect(screen.getAllByRole('listitem').at(-1)).toHaveTextContent('Title 527')
+    expect(screen.getByTestId('firstPosition')).toHaveTextContent('239')
+  })
+
+  it('shouldKeepTheFirstTitlesPlaceWhenTheFirstKeptTitleIsRemoved', async () => {
+    const { requested, served } = serveLibraryOf(600)
+    const socket = serveGraphqlSocket()
+    const { user } = renderWithProviders(
+      <LibraryContentsProvider profileId="profile" pathname={`/library/${LIBRARY_ID}`}>
+        <Harness />
+      </LibraryContentsProvider>,
+    )
+    await loadTitlesThrough(user, 'Title 527')
+    await user.click(screen.getByText('View the last title'))
+    await waitFor(() => expect(screen.getByTestId('firstPosition')).toHaveTextContent('287'))
+    await waitFor(() => expect(socket.isLive('LibraryItemRemoved')).toBe(true))
+
+    socket.publish('LibraryItemRemoved', {
+      data: {
+        change: {
+          __typename: 'LibraryItemRemoval',
+          libraryId: LIBRARY_ID,
+          itemId: '287',
+          kind: 'MOVIE',
+        },
+      },
+    })
+    await waitFor(() => expect(screen.queryByText('Title 287')).not.toBeInTheDocument())
+    const removedAt = requested.length
+    await user.click(screen.getByText('Read again'))
+
+    await waitFor(() => expect(served.count).toBe(requested.length))
+    expect(requested[removedAt]).toMatchObject({ after: 'c286' })
+    expect(screen.getByTestId('firstPosition')).toHaveTextContent('287')
+  })
+
+  it('shouldKeepTheLoadedTitlesUntouchedWhenAPageLoads', async () => {
+    serveLibraryOf(600)
+    const seen: unknown[][] = []
+    const { user } = renderWithProviders(<EdgesHarness onEdges={(edges) => seen.push(edges)} />)
+    await screen.findByText('Title 047')
+    const before = seen.at(-1)!
+
+    await user.click(screen.getByText('Load more'))
+
+    await screen.findByText('Title 095')
+    const after = seen.at(-1)!
+    expect(after).toHaveLength(96)
+    expect(after[0]).toBe(before[0])
+    expect(after[47]).toBe(before[47])
+  })
+
+  it('shouldReleaseALiveTitleOutsideTheWindowWhenUnloading', async () => {
+    serveLibraryOf(600)
+    const socket = serveGraphqlSocket()
+    const { user } = renderWithProviders(
+      <LibraryContentsProvider profileId="profile" pathname={`/library/${LIBRARY_ID}`}>
+        <Harness />
+      </LibraryContentsProvider>,
+    )
+    await loadTitlesThrough(user, 'Title 527')
+    await user.click(screen.getByText('View the first title'))
+    await waitFor(() => expect(screen.queryByText('Title 241')).not.toBeInTheDocument())
+    await waitFor(() => expect(socket.isLive('LibraryItemAdded')).toBe(true))
+    socket.publish('LibraryItemAdded', liveAddition('late', 'Title 300 Sequel'))
+    socket.publish('LibraryItemAdded', liveAddition('near', 'Title 100 Sequel'))
+    await screen.findByText('Title 100 Sequel')
+
+    await loadTitlesThrough(user, 'Title 527')
+    await user.click(screen.getByText('View the first title'))
+    await waitFor(() => expect(screen.queryByText('Title 241')).not.toBeInTheDocument())
+    await user.click(screen.getByText('Count cached titles'))
+
+    // The 241 titles kept, the nearby addition among them; the later one is gone.
+    expect(screen.getByTestId('cachedTitles')).toHaveTextContent('241')
+  })
+
+  it('shouldKeepTheKeptTitlesUntouchedWhenAPageLoadsSoonAfterAnUnload', async () => {
+    serveLibraryOf(600)
+    const seen: unknown[][] = []
+    const { user } = renderWithProviders(<EdgesHarness onEdges={(edges) => seen.push(edges)} />)
+    await loadTitlesThrough(user, 'Title 527')
+    const loaded = seen.at(-1)!
+    await user.click(screen.getByText('View the first title'))
+    await waitFor(() => expect(screen.queryByText('Title 241')).not.toBeInTheDocument())
+
+    await user.click(screen.getByText('Load more'))
+
+    await screen.findByText('Title 288')
+    expect(seen.at(-1)![0]).toBe(loaded[0])
+    expect(seen.at(-1)![240]).toBe(loaded[240])
   })
 })
