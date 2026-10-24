@@ -2,7 +2,6 @@ import { CombinedGraphQLErrors } from '@apollo/client/errors'
 import type {
   ApolloCache,
   ApolloClient,
-  InMemoryCache,
   OperationVariables,
   Reference,
   StoreObject,
@@ -23,6 +22,7 @@ import {
 import { definedEdges } from '../media/edges'
 import { responsePathHasError } from '../graphql/responseErrors'
 import { retainLibraryItemsConnection } from '../media/watchedState'
+import { modifyLoadedItems, type StoredEdge, type StoredItems } from './storedItems'
 
 type Items = LibraryPageQuery['library']['items']
 type View = {
@@ -231,24 +231,9 @@ function subscribeToLibraryContents({
     const previous = cache.readQuery({ query: LibraryPageDocument, variables })
     if (!previous) return
     expandBounds(bounds, previous.library.items)
-    // cache.modify cannot target one argument variant of a field (apollo-client#7129).
-    const itemsField = (cache as InMemoryCache).policies.getStoreFieldName({
-      typename: 'Library',
-      fieldName: 'items',
-      args: { first: variables.first, sort, filter },
-    })
-    cache.modify<{ items: StoredItems }>({
-      id: cache.identify({ __typename: 'Library', id: libraryId }),
-      fields: {
-        items(stored, { storeFieldName, isReference, toReference }) {
-          if (storeFieldName !== itemsField || isReference(stored)) return stored
-          return changes.reduce(
-            (items, change) => placeEdge(items, change, bounds, toReference),
-            stored,
-          )
-        },
-      },
-    })
+    modifyLoadedItems(cache, variables, (stored, toReference) =>
+      changes.reduce((items, change) => placeEdge(items, change, bounds, toReference), stored),
+    )
     const next = cache.readQuery({ query: LibraryPageDocument, variables })
     if (!next) return
     loadedTitles = next.library.items.edges?.length ?? 0
@@ -325,14 +310,6 @@ const MAX_LIST_WRITE_INTERVAL_MS = 1000
 type LiveChange =
   | { at: 'changed'; entity: string; change: LibraryItemChangeFieldsFragment }
   | { at: 'removed'; entity: string }
-// Stored edges are embedded objects whose nodes are references to normalized items.
-type StoredEdge = {
-  __typename: 'MediaEdge'
-  cursor: string
-  orderKey: string
-  node: Reference | null
-}
-type StoredItems = Omit<Items, 'edges'> & { edges: (StoredEdge | null)[] }
 
 function normalizeItem(cache: ApolloCache, change: LiveChange) {
   if (change.at !== 'changed') return
