@@ -1,4 +1,4 @@
-import type { ApolloClient } from '@apollo/client'
+import type { ApolloClient, InMemoryCache } from '@apollo/client'
 import { useApolloClient, useQuery } from '@apollo/client/react'
 import {
   useCallback,
@@ -20,13 +20,20 @@ import { definedEdges } from '../media/edges'
 import { alphabetLetterFromTitle } from '../media/alphabetLetter'
 import { trackLibraryItemsConnection } from '../media/watchedState'
 import { useLibraryContents } from './LibraryContentsProvider'
-import { pageSizeAfter, pageSizeBefore, titlesBeforeLetter } from './wholeRowPages'
+import {
+  pageSizeAfter,
+  pageSizeBefore,
+  titlesBeforeLetter,
+  titlesFarFromView,
+} from './wholeRowPages'
 
 type LibraryWindow = {
   before: number
   after: number
   anchor: string | null
   landingPosition: number
+  // The first title left loaded after unloading those before it, and its place in the library.
+  firstKept?: { cursor: string; position: number }
 }
 const windowsByClient = new WeakMap<ApolloClient, Map<string, LibraryWindow>>()
 
@@ -155,7 +162,14 @@ export function useLibraryItems({
           direction: sort.direction ?? 'ASC',
         })
       : 0)
-  const firstPosition = pageInfo?.hasPreviousPage ? Math.max(0, landingPosition - before) : 0
+  const firstPosition = pageInfo?.hasPreviousPage
+    ? positionOfFirstLoaded({
+        edges: loadedEdges,
+        firstKept: savedWindow?.firstKept,
+        landingPosition,
+        before,
+      })
+    : 0
   // A letter is shown once the titles before it have loaded, so its row arrives full.
   const [landedKey, setLandedKey] = useState<string | null>(null)
   const holdingLetter =
@@ -198,6 +212,7 @@ export function useLibraryItems({
       after: Math.max(after, saved?.after ?? 0),
       anchor: landingCursor,
       landingPosition: saved?.landingPosition ?? landingPosition,
+      firstKept: saved?.firstKept,
     })
   }, [windows, queryKey, data, staged, before, after, landingCursor, landingPosition])
   // Each committed query owns its in-flight pages; a result from an earlier view is discarded.
@@ -361,6 +376,48 @@ export function useLibraryItems({
       ? { key: queryKey, cursor: landingCursor }
       : null
 
+  // Titles far from the view leave the cache, so a long scroll holds about as many titles as a
+  // short one. The window reopens on that side, and its pages load again when scrolled back to.
+  function unloadFarFrom(view: { first: number; last: number }) {
+    if (columns === null || !data || landing === null) return
+    const far = titlesFarFromView({ columns, firstPosition, count: loadedEdges.length, ...view })
+    if (far.before === 0 && far.after === 0) return
+    const kept = loadedEdges.slice(far.before, loadedEdges.length - far.after)
+    const saved = windows.get(queryKey)
+    const anchor = findLetterLandingCursor(kept, letter, saved?.anchor)
+    const keptBefore = Math.max(
+      0,
+      kept.findIndex((edge) => edge.cursor === anchor),
+    )
+    windows.set(queryKey, {
+      anchor,
+      before: keptBefore,
+      after: kept.length - keptBefore,
+      landingPosition: saved?.landingPosition ?? landingPosition,
+      firstKept:
+        far.before > 0
+          ? { cursor: kept[0].cursor, position: firstPosition + far.before }
+          : saved?.firstKept,
+    })
+    client.cache.updateQuery(
+      { query: LibraryPageDocument, variables: { libraryId, first, sort, filter } },
+      (previous) =>
+        previous && {
+          library: {
+            ...previous.library,
+            items: keepItems(previous.library.items, {
+              from: far.before > 0 ? kept[0].cursor : null,
+              through: far.after > 0 ? (kept.at(-1)?.cursor ?? null) : null,
+            }),
+          },
+        },
+    )
+    // Apollo keeps every result it has read, and its record of their identities has no limit;
+    // only a reset lets the unloaded titles' results go.
+    const cache = client.cache as InMemoryCache
+    cache.gc({ resetResultCache: true })
+  }
+
   return {
     removed,
     loading:
@@ -380,6 +437,7 @@ export function useLibraryItems({
     firstPosition: renderedFirstPosition,
     loadMore,
     loadPrevious,
+    unloadFarFrom,
     retry: () => {
       if (refusal !== undefined) {
         void contents?.retry(libraryId, refetch).catch(() => undefined)
@@ -414,6 +472,43 @@ function findLetterLandingCursor(
   )
   const fallback = resolvedEdges.find((edge) => edge.cursor === previousAnchor) ?? resolvedEdges[0]
   return (landingEdge ?? fallback)?.cursor ?? null
+}
+
+function positionOfFirstLoaded({
+  edges,
+  firstKept,
+  landingPosition,
+  before,
+}: {
+  edges: ReadonlyArray<{ cursor: string }>
+  firstKept: LibraryWindow['firstKept']
+  landingPosition: number
+  before: number
+}) {
+  const keptIndex = firstKept ? edges.findIndex((edge) => edge.cursor === firstKept.cursor) : -1
+  if (firstKept && keptIndex >= 0) return Math.max(0, firstKept.position - keptIndex)
+  return Math.max(0, landingPosition - before)
+}
+
+// The loaded titles from one cursor through another; null keeps that end as it is.
+function keepItems(
+  loaded: LibraryItems,
+  { from, through }: { from: string | null; through: string | null },
+): LibraryItems {
+  const edges = loaded.edges ?? []
+  const start = from === null ? 0 : edges.findIndex((edge) => edge?.cursor === from)
+  const end =
+    through === null ? edges.length - 1 : edges.findIndex((edge) => edge?.cursor === through)
+  if (start < 0 || end < 0) return loaded
+  return {
+    ...loaded,
+    edges: edges.slice(start, end + 1),
+    pageInfo: {
+      ...loaded.pageInfo,
+      ...(from !== null && { hasPreviousPage: true, startCursor: from }),
+      ...(through !== null && { hasNextPage: true, endCursor: through }),
+    },
+  }
 }
 
 function appendItemsPage(loaded: LibraryItems, next: LibraryItems): LibraryItems {

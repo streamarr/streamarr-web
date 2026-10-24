@@ -66,6 +66,7 @@ export function LibraryScreen({
     firstPosition,
     loadMore,
     loadPrevious,
+    unloadFarFrom,
     retry,
     landing,
   } = useLibraryItems({ libraryId, sort, filter, columns })
@@ -228,6 +229,7 @@ export function LibraryScreen({
             hasNextPage={hasNextPage}
             loadMore={loadMore}
             loadPrevious={loadPrevious}
+            unloadFarFrom={unloadFarFrom}
             landing={landing}
             locationKey={locationKey}
             restoredScrollY={restoredScrollY}

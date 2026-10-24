@@ -1146,3 +1146,62 @@ async function scrollToMovie(page: Page, movieIndex: number) {
     grid.scrollTop = rowTop + Math.floor((index - firstId) / columns) * pitch
   }, movieIndex)
 }
+
+test('scrolling far unloads the titles left behind without moving the rows in view, and scrolling back loads them again', async ({
+  page,
+  request,
+}) => {
+  await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
+  await request.post(`${STUB_URL}/api/auth/refresh`)
+  const longLibrary = moviesPerLetter(24)
+  const backward: string[] = []
+  await page.route('**/graphql', async (route) => {
+    const operation = route.request().postDataJSON() as {
+      operationName: string
+      variables: LibraryPageQueryVariables
+    }
+    if (operation.operationName !== 'LibraryPage') return route.continue()
+    if (operation.variables.before) backward.push(operation.variables.before)
+    await route.fulfill({ json: { data: libraryPage(operation.variables, longLibrary) } })
+  })
+  await page.goto('/library/movies?by=TITLE&direction=ASC')
+  await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
+  const grid = page.locator('[class*="_grid_"]')
+  // The title in the top visible row, and how far below the grid's top edge it sits.
+  const topCard = () =>
+    grid.evaluate((element) => {
+      const gridTop = element.getBoundingClientRect().top
+      const titles = [...element.querySelectorAll<HTMLElement>('[class*="_posterTitle_"]')]
+      const card = titles.find((title) => title.getBoundingClientRect().bottom > gridTop)!
+      return { title: card.textContent, offset: card.getBoundingClientRect().top - gridTop }
+    })
+  const offsetOf = (title: string) =>
+    grid.evaluate((element, wanted) => {
+      const titles = [...element.querySelectorAll<HTMLElement>('[class*="_posterTitle_"]')]
+      const card = titles.find((candidate) => candidate.textContent === wanted)
+      return card ? card.getBoundingClientRect().top - element.getBoundingClientRect().top : null
+    }, title)
+
+  // A screen at a time to the last title; whatever unloads above, the rows in view stay put.
+  while (!(await page.getByText('Z Title 23', { exact: true }).isVisible())) {
+    await grid.evaluate((element) => {
+      element.scrollTop += element.clientHeight
+    })
+    const before = await topCard()
+    // A bounded settle: the unload and any page load run within it, and must not move the row.
+    await page.waitForTimeout(150)
+    expect(await offsetOf(before.title)).toBeCloseTo(before.offset, 0)
+  }
+  await expect(grid.locator('[data-edge="start"]')).toBeAttached()
+
+  await expect
+    .poll(() =>
+      grid.evaluate((element) => {
+        element.scrollTop = 0
+        return element.querySelector('[data-edge="start"]') === null
+      }),
+    )
+    .toBe(true)
+  await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
+  expect(backward.length).toBeGreaterThan(0)
+})
