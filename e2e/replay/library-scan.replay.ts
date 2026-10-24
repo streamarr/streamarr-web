@@ -1,6 +1,9 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
-import { expect, test, type Page } from '@playwright/test'
-import type { LibraryPageQuery } from '../../src/graphql/generated/graphql'
+import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import type {
+  LibraryPageQuery,
+  LibraryPageQueryVariables,
+} from '../../src/graphql/generated/graphql'
 import { watchingConnection } from '../../src/test/continueWatchingFixtures'
 import { LIBRARY, mediaEdge, movie } from '../../src/test/libraryContentsFixtures'
 import { meFixture, profileFixture } from '../../src/test/meFixture'
@@ -16,6 +19,9 @@ const CHECKPOINT = Number(process.env.REPLAY_CHECKPOINT ?? 250)
 const COUNTS_EVERY = 7
 // Set to a title count to record a CPU profile of the next 100 titles in Chromium.
 const PROFILE_FROM = Number(process.env.REPLAY_PROFILE ?? 0)
+// The library the scrolling replay pages through, and how often it reports.
+const LIBRARY_TITLES = Number(process.env.REPLAY_LIBRARY ?? 10_000)
+const SCROLL_CHECKPOINT = Number(process.env.REPLAY_SCROLL_CHECKPOINT ?? 1000)
 
 test.use({ serviceWorkers: 'block', viewport: { width: 1200, height: 900 } })
 test.setTimeout(30 * 60_000)
@@ -23,25 +29,7 @@ test.setTimeout(30 * 60_000)
 const me = meFixture({ scope: 'profile', profiles: [profileFixture({ selected: true })] })
 
 test('replay a Movies scan into an empty library', async ({ page, request, browserName }) => {
-  await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
-  await request.post(`${STUB_URL}/api/auth/refresh`)
-  const socket = await routeGraphqlSocket(page)
-  await page.route('**/graphql', async (route) => {
-    const { operationName } = route.request().postDataJSON() as { operationName: string }
-    const reply = (data: unknown) => route.fulfill({ json: { data } })
-    if (operationName === 'Me') return reply({ me })
-    if (operationName === 'Libraries') return reply({ libraries: [] })
-    if (operationName === 'Home')
-      return reply({ continueWatching: watchingConnection([]), libraries: [] })
-    if (operationName === 'LibraryPage') return reply(emptyLibrary())
-    return route.continue()
-  })
-  await page.addInitScript(observeTheMainThread)
-  // Overrides Apollo's cache limits, e.g. REPLAY_APOLLO_CACHE_SIZES='{"inMemoryCache.executeSubSelectedArray":100}'
-  if (process.env.REPLAY_APOLLO_CACHE_SIZES)
-    await page.addInitScript((sizes) => {
-      Object.assign(globalThis, { [Symbol.for('apollo.cacheSize')]: JSON.parse(sizes) as unknown })
-    }, process.env.REPLAY_APOLLO_CACHE_SIZES)
+  const socket = await openReplay({ page, request, libraryPage: emptyLibrary })
   await page.goto(`/library/${LIBRARY}?by=TITLE&direction=ASC`)
   await expect(page.getByText('No items match this filter.')).toBeVisible()
   await expect.poll(() => socket.isLive('LibraryCountsChanged')).toBe(true)
@@ -113,6 +101,91 @@ test('replay a Movies scan into an empty library', async ({ page, request, brows
   )
 })
 
+// Pages a library already scanned, a screen at a time from its first title to its last, as a
+// viewer flinging the grid would. Reports what the page holds and how busy it is along the way.
+test('replay scrolling a large library from its first title to its last', async ({
+  page,
+  request,
+  browserName,
+}) => {
+  const library = Array.from({ length: LIBRARY_TITLES }, (_, index) => ({
+    ...movie({ id: `movie-${index}`, title: `Movie ${String(index).padStart(6, '0')}` }),
+    images: [poster(index)],
+  }))
+  await openReplay({ page, request, libraryPage: (variables) => libraryPage(library, variables) })
+  await page.goto(`/library/${LIBRARY}?by=TITLE&direction=ASC`)
+  await expect(page.getByText(library[0].title, { exact: true })).toBeVisible()
+  const heap = await heapReader(page, browserName)
+  const grid = page.locator('[class*="_grid_"]')
+  const checkpoints: Checkpoint[] = []
+  const started = Date.now()
+  let next = SCROLL_CHECKPOINT
+  let position = 0
+  while (position < library.length - 1) {
+    const topTitle = await grid.evaluate((element) => {
+      element.scrollTop += element.clientHeight
+      const gridTop = element.getBoundingClientRect().top
+      const titles = [...element.querySelectorAll<HTMLElement>('[class*="_posterTitle_"]')]
+      return titles.findLast((title) => title.getBoundingClientRect().top >= gridTop)?.textContent
+    })
+    position = Math.max(position, Number(topTitle?.slice('Movie '.length) ?? 0))
+    if (position >= next) {
+      checkpoints.push(
+        await checkpoint(page, { loaded: position, sentAt: Date.now() - started, heap }),
+      )
+      next += SCROLL_CHECKPOINT
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  const report = {
+    browser: browserName,
+    titles: library.length,
+    scrollSeconds: Math.round((Date.now() - started) / 100) / 10,
+    checkpoints,
+    heapAtEndMB: await heap(),
+  }
+  console.log(JSON.stringify(report, null, 2))
+  mkdirSync('test-results/replay', { recursive: true })
+  writeFileSync(
+    `test-results/replay/library-scroll-${browserName}-${library.length}.json`,
+    JSON.stringify(report, null, 2),
+  )
+})
+
+async function openReplay({
+  page,
+  request,
+  libraryPage,
+}: {
+  page: Page
+  request: APIRequestContext
+  libraryPage: (variables: LibraryPageQueryVariables) => unknown
+}) {
+  await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
+  await request.post(`${STUB_URL}/api/auth/refresh`)
+  const socket = await routeGraphqlSocket(page)
+  await page.route('**/graphql', async (route) => {
+    const { operationName, variables } = route.request().postDataJSON() as {
+      operationName: string
+      variables: LibraryPageQueryVariables
+    }
+    const reply = (data: unknown) => route.fulfill({ json: { data } })
+    if (operationName === 'Me') return reply({ me })
+    if (operationName === 'Libraries') return reply({ libraries: [] })
+    if (operationName === 'Home')
+      return reply({ continueWatching: watchingConnection([]), libraries: [] })
+    if (operationName === 'LibraryPage') return reply(libraryPage(variables))
+    return route.continue()
+  })
+  await page.addInitScript(observeTheMainThread)
+  // Overrides Apollo's cache limits, e.g. REPLAY_APOLLO_CACHE_SIZES='{"inMemoryCache.executeSubSelectedArray":100}'
+  if (process.env.REPLAY_APOLLO_CACHE_SIZES)
+    await page.addInitScript((sizes) => {
+      Object.assign(globalThis, { [Symbol.for('apollo.cacheSize')]: JSON.parse(sizes) as unknown })
+    }, process.env.REPLAY_APOLLO_CACHE_SIZES)
+  return socket
+}
+
 type Checkpoint = {
   loaded: number
   sentAt: number
@@ -175,6 +248,36 @@ async function heapReader(page: Page, browserName: string) {
     await session.send('HeapProfiler.collectGarbage')
     const { usedSize } = await session.send('Runtime.getHeapUsage')
     return Math.round(usedSize / 1048576)
+  }
+}
+
+// Pages a library in title order by cursor, in either direction, as the server does.
+function libraryPage(
+  library: ReadonlyArray<{ id: string; title: string }>,
+  variables: LibraryPageQueryVariables,
+) {
+  let start = 0
+  if (variables.after) start = Number(variables.after) + 1
+  if (variables.before) start = Math.max(0, Number(variables.before) - (variables.last ?? 0))
+  const end = variables.before
+    ? Number(variables.before)
+    : Math.min(library.length, start + (variables.first ?? 0))
+  const nodes = library.slice(start, end)
+  return {
+    library: {
+      ...emptyLibrary().library,
+      itemCount: library.length,
+      alphabetIndex: [{ letter: 'M', count: library.length }],
+      items: {
+        edges: nodes.map((node, index) => mediaEdge({ cursor: String(start + index), node })),
+        pageInfo: {
+          hasNextPage: end < library.length,
+          hasPreviousPage: start > 0,
+          startCursor: nodes.length > 0 ? String(start) : null,
+          endCursor: nodes.length > 0 ? String(end - 1) : null,
+        },
+      },
+    },
   }
 }
 

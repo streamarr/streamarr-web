@@ -6,8 +6,14 @@ import { STUB_URL } from './ports'
 // Use real layout and IntersectionObserver; intercept only the library API response.
 test.use({ viewport: { width: 1440, height: 900 }, serviceWorkers: 'block' })
 
-const movies = Array.from({ length: 26 * 12 }, (_, index) => {
-  const title = `${String.fromCharCode(65 + Math.floor(index / 12))} Title ${String(index % 12).padStart(2, '0')}`
+const movies = moviesPerLetter(12)
+
+function moviesPerLetter(perLetter: number) {
+  return Array.from({ length: 26 * perLetter }, (_, index) => movie(index, perLetter))
+}
+
+function movie(index: number, perLetter: number) {
+  const title = `${String.fromCharCode(65 + Math.floor(index / perLetter))} Title ${String(index % perLetter).padStart(2, '0')}`
   return {
     __typename: 'Movie' as const,
     id: String(index),
@@ -20,37 +26,38 @@ const movies = Array.from({ length: 26 * 12 }, (_, index) => {
     watchProgress: null,
     images: [],
   }
-})
+}
 
-function libraryPage(variables: LibraryPageQueryVariables): LibraryPageQuery {
+function libraryPage(variables: LibraryPageQueryVariables, library = movies): LibraryPageQuery {
+  const perLetter = library.length / 26
   const start = variables.before
     ? Math.max(0, Number(variables.before) - (variables.last ?? 48))
     : variables.after
       ? Number(variables.after) + 1
       : variables.filter?.startLetter
-        ? (variables.filter.startLetter.charCodeAt(0) - 65) * 12
+        ? (variables.filter.startLetter.charCodeAt(0) - 65) * perLetter
         : 0
   const end = variables.before
     ? Number(variables.before)
-    : Math.min(movies.length, start + (variables.first ?? 48))
-  const nodes = movies.slice(start, end)
+    : Math.min(library.length, start + (variables.first ?? 48))
+  const nodes = library.slice(start, end)
   const metadata = { __typename: 'Library' as const, id: 'movies', name: 'Movies' }
   return {
     library: {
       ...metadata,
       status: 'HEALTHY',
       scanCompletedOn: null,
-      itemCount: movies.length,
+      itemCount: library.length,
       alphabetIndex: Array.from({ length: 26 }, (_, index) => ({
         letter: String.fromCharCode(
           65 + index,
         ) as LibraryPageQuery['library']['alphabetIndex'][number]['letter'],
-        count: 12,
+        count: perLetter,
       })),
       items: {
         edges: nodes.map((node) => mediaEdge({ cursor: node.id, node })),
         pageInfo: {
-          hasNextPage: end < movies.length,
+          hasNextPage: end < library.length,
           hasPreviousPage: start > 0,
           startCursor: nodes[0]?.id ?? null,
           endCursor: nodes.at(-1)?.id ?? null,
