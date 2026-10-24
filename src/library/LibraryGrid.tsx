@@ -53,6 +53,7 @@ export function LibraryGrid({
   hasNextPage,
   loadMore,
   loadPrevious,
+  unloadFarFrom,
   landing,
   locationKey,
   restoredScrollY,
@@ -73,6 +74,7 @@ export function LibraryGrid({
   hasNextPage: boolean
   loadMore: LibraryItems['loadMore']
   loadPrevious: LibraryItems['loadPrevious']
+  unloadFarFrom: LibraryItems['unloadFarFrom']
   locationKey: string | undefined
   restoredScrollY: number | undefined
   repeat: LandingRepeat
@@ -130,7 +132,7 @@ export function LibraryGrid({
     setFocusedItemId(itemId)
   }
   const rowCount = layout.rowOf(edges.length - 1) + 1
-  const { virtualizer, rows, totalSize, topRow } = useVirtualRows({
+  const { virtualizer, rows, totalSize, topRow, bottomRow } = useVirtualRows({
     count: rowCount,
     getScrollElement: () => gridElement,
     estimateSize: () => geometry.rowHeight,
@@ -205,25 +207,53 @@ export function LibraryGrid({
   const landingKey = landing?.key
   const landingCursor = landing?.cursor
 
-  // A page prepended above moves every row down by whole rows; the viewer's rows stay put. Only
-  // within one result: another query's rows may repeat a title without having grown above it.
+  // The titles in view keep the titles near them loaded, as does the focused card wherever it is.
+  const unloadTitlesFarFromView = useEffectEvent(() => {
+    if (!geometry.measured || edges.length === 0) {
+      return
+    }
+    const first = layout.firstIndexOf(topRow)
+    const last = Math.min(edges.length, layout.firstIndexOf(bottomRow + 1)) - 1
+    if (focusedIndex < 0) {
+      unloadFarFrom({ first, last })
+      return
+    }
+    unloadFarFrom({ first: Math.min(first, focusedIndex), last: Math.max(last, focusedIndex) })
+  })
+  useEffect(
+    function unloadFarTitlesAsTheViewMoves() {
+      unloadTitlesFarFromView()
+    },
+    [topRow, bottomRow, edges.length],
+  )
+
+  // Rows prepended or unloaded above move every row by whole rows; the viewer's rows stay put.
+  // Only within one result: another query's rows may repeat a title without having grown above it.
   const firstItemId = edges[0]?.node.id
-  const previousFirstRef = useRef({ key: landingKey, itemId: firstItemId })
+  const previousFirstRef = useRef({ key: landingKey, itemId: firstItemId, edges, firstPosition })
   useLayoutEffect(
-    function keepRowsInPlaceAcrossPrepend() {
+    function keepRowsInPlaceWhenRowsAboveChange() {
       const previous = previousFirstRef.current
-      previousFirstRef.current = { key: landingKey, itemId: firstItemId }
+      previousFirstRef.current = { key: landingKey, itemId: firstItemId, edges, firstPosition }
       const grid = gridNodeRef.current
       if (!grid || previous.key !== landingKey || previous.itemId === firstItemId) {
         return
       }
-      const shifted = edges.findIndex((edge) => edge.node.id === previous.itemId)
-      if (shifted <= 0) {
+      const prepended = edges.findIndex((edge) => edge.node.id === previous.itemId)
+      if (prepended > 0) {
+        grid.scrollTop += rowStart(virtualizer, layout.rowOf(prepended))
         return
       }
-      grid.scrollTop += rowStart(virtualizer, layout.rowOf(shifted))
+      const unloaded = previous.edges.findIndex((edge) => edge.node.id === firstItemId)
+      if (prepended < 0 && unloaded > 0) {
+        const rows = rowLayout(geometry.columns, previous.firstPosition).rowOf(unloaded)
+        // The browser has already clamped scrollTop to the shorter rows; the virtualizer still
+        // holds the offset the viewer scrolled to.
+        const offset = virtualizer.scrollOffset ?? grid.scrollTop
+        grid.scrollTop = offset - rows * (geometry.rowHeight + geometry.rowGap)
+      }
     },
-    [landingKey, firstItemId, edges, gridElement, layout, virtualizer],
+    [landingKey, firstItemId, edges, firstPosition, gridElement, geometry, layout, virtualizer],
   )
 
   // Before paint, once per result: later pages merge into the same result without moving it.
@@ -430,6 +460,7 @@ function useVirtualRows(options: Parameters<typeof useVirtualizer<HTMLDivElement
     rows: virtualizer.getVirtualItems(),
     totalSize: virtualizer.getTotalSize(),
     topRow: virtualizer.range?.startIndex ?? 0,
+    bottomRow: virtualizer.range?.endIndex ?? 0,
   }
 }
 
