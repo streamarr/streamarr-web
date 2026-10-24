@@ -184,6 +184,9 @@ function EdgesHarness({ onEdges }: { onEdges: (edges: unknown[]) => void }) {
       <button type="button" onClick={result.loadPrevious}>
         Load previous
       </button>
+      <button type="button" onClick={() => result.unloadFarFrom({ first: 0, last: 0 })}>
+        View the first title
+      </button>
     </div>
   )
 }
@@ -1122,5 +1125,21 @@ describe('useLibraryItems', () => {
 
     // The 241 titles kept, the nearby addition among them; the later one is gone.
     expect(screen.getByTestId('cachedTitles')).toHaveTextContent('241')
+  })
+
+  it('shouldKeepTheKeptTitlesUntouchedWhenAPageLoadsSoonAfterAnUnload', async () => {
+    serveLibraryOf(600)
+    const seen: unknown[][] = []
+    const { user } = renderWithProviders(<EdgesHarness onEdges={(edges) => seen.push(edges)} />)
+    await loadTitlesThrough(user, 'Title 527')
+    const loaded = seen.at(-1)!
+    await user.click(screen.getByText('View the first title'))
+    await waitFor(() => expect(screen.queryByText('Title 241')).not.toBeInTheDocument())
+
+    await user.click(screen.getByText('Load more'))
+
+    await screen.findByText('Title 288')
+    expect(seen.at(-1)![0]).toBe(loaded[0])
+    expect(seen.at(-1)![240]).toBe(loaded[240])
   })
 })
