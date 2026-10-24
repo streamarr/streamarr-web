@@ -42,6 +42,7 @@ export function createLibraryContents({ client }: { client: ApolloClient }) {
     key: string
     variables: View['variables']
     stop: () => void
+    follow: (variables: View['variables']) => void
     restart: () => void
     refusal: unknown
   } | null = null
@@ -67,17 +68,23 @@ export function createLibraryContents({ client }: { client: ApolloClient }) {
   function select(view: View) {
     const { libraryId, sort, filter } = view.variables
     const key = JSON.stringify({ libraryId, sort, filter })
-    if (active?.key === key || removed.has(view.variables.libraryId)) return
+    if (active?.key === key) {
+      active.variables = view.variables
+      active.follow(view.variables)
+      return
+    }
+    if (removed.has(view.variables.libraryId)) return
     release(true)
     const scope: NonNullable<typeof active> = {
       key,
       variables: view.variables,
       stop: () => {},
+      follow: () => {},
       restart: () => select(view),
       refusal: undefined,
     }
     active = scope
-    scope.stop = subscribeToLibraryContents({
+    const subscription = subscribeToLibraryContents({
       client,
       view,
       onRefused: (error) => {
@@ -93,6 +100,8 @@ export function createLibraryContents({ client }: { client: ApolloClient }) {
         for (const listener of listeners) listener()
       },
     })
+    scope.stop = subscription.stop
+    scope.follow = subscription.follow
     if (active !== scope || scope.refusal !== undefined) scope.stop()
   }
 
@@ -256,8 +265,11 @@ function subscribeToLibraryContents({
     if (entity) enqueue({ at: 'changed', entity, change })
   }
 
+  // Retained through detail routes, so a read of the active queries after missed changes reads
+  // this window again too. It follows the screen's variables, so both read from the same title.
+  const windowQuery = client.watchQuery({ query: LibraryPageDocument, variables })
   subscriptions.push(
-    client.watchQuery({ query: LibraryPageDocument, variables }).subscribe({
+    windowQuery.subscribe({
       next: (result) => {
         if (!stopped && result.dataState === 'complete')
           expandBounds(bounds, result.data.library.items)
@@ -284,7 +296,12 @@ function subscribeToLibraryContents({
       data,
     })
   })
-  return stop
+  return {
+    stop,
+    follow: (next: View['variables']) => {
+      if (!stopped) void windowQuery.setVariables(next)
+    },
+  }
 }
 
 function expandBounds(bounds: Bounds, items: Items) {
