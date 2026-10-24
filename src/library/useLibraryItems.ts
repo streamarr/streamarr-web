@@ -39,6 +39,10 @@ type LibraryWindow = {
   firstKept?: { cursor: string; position: number; after: string }
 }
 const windowsByClient = new WeakMap<ApolloClient, Map<string, LibraryWindow>>()
+// How long the view stays still before Apollo's reads are rebuilt after an unload, and how many
+// titles may be unloaded first while it keeps moving.
+const SETTLED_VIEW_MS = 1000
+const TITLES_UNLOADED_BEFORE_RESET = 2000
 
 function windowsFor(client: ApolloClient) {
   const existing = windowsByClient.get(client)
@@ -348,6 +352,7 @@ export function useLibraryItems({
   // Titles far from the view leave the cache, so a long scroll holds about as many titles as a
   // short one. The window reopens on that side, and its pages load again when scrolled back to.
   function unloadFarFrom(view: { first: number; last: number }) {
+    if (pendingReset.current !== undefined) resetReadsOnceSettled()
     if (columns === null || !data || landing === null) return
     const far = titlesFarFromView({ columns, firstPosition, count: loadedEdges.length, ...view })
     if (far.before === 0 && far.after === 0) return
@@ -379,10 +384,36 @@ export function useLibraryItems({
         through: far.after > 0 ? (kept.at(-1)?.cursor ?? null) : null,
       }),
     )
-    // Apollo keeps every result it has read, and its record of their identities has no limit;
-    // only a reset lets the unloaded titles' results go.
+    client.cache.gc()
+    unloadedSinceReset.current += far.before + far.after
+    if (unloadedSinceReset.current >= TITLES_UNLOADED_BEFORE_RESET) {
+      resetReads()
+      return
+    }
+    resetReadsOnceSettled()
+  }
+
+  // Apollo keys its reads by entity, in records with no limit that only a reset of its reads
+  // clears. The next read after a reset rereads the whole window, so the reset waits for the
+  // view to settle, or for many titles to have gone, and makes that read at once, leaving later
+  // pages to read only themselves.
+  const pendingReset = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const unloadedSinceReset = useRef(0)
+  function resetReadsOnceSettled() {
+    clearTimeout(pendingReset.current)
+    pendingReset.current = setTimeout(resetReads, SETTLED_VIEW_MS)
+  }
+  function resetReads() {
+    clearTimeout(pendingReset.current)
+    pendingReset.current = undefined
+    unloadedSinceReset.current = 0
     const cache = client.cache as InMemoryCache
     cache.gc({ resetResultCache: true })
+    const after = windows.get(queryKey)?.firstKept?.after
+    cache.readQuery({
+      query: LibraryPageDocument,
+      variables: { libraryId, first, sort, filter, after },
+    })
   }
 
   return {
