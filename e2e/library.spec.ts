@@ -1221,6 +1221,55 @@ test('scrolling far unloads the titles left behind without moving the rows in vi
   expect(backward.length).toBeGreaterThan(0)
 })
 
+test('reading the library again deep in a long scroll keeps the rows in view', async ({
+  page,
+  request,
+}) => {
+  await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
+  await request.post(`${STUB_URL}/api/auth/refresh`)
+  const longLibrary = moviesPerLetter(24)
+  const reads: LibraryPageQueryVariables[] = []
+  await page.route('**/graphql', async (route) => {
+    const operation = route.request().postDataJSON() as {
+      operationName: string
+      variables: LibraryPageQueryVariables
+    }
+    if (operation.operationName !== 'LibraryPage') return route.continue()
+    reads.push(operation.variables)
+    await route.fulfill({ json: { data: libraryPage(operation.variables, longLibrary) } })
+  })
+  await page.goto('/library/movies?by=TITLE&direction=ASC')
+  await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
+  const grid = libraryGrid(page)
+  while ((await grid.locator('[data-edge="start"]').count()) === 0) {
+    await grid.evaluate((element) => {
+      element.scrollTop += element.clientHeight
+    })
+    await page.waitForTimeout(50) // NOSONAR: paces the scroll as a viewer's would be
+  }
+  // Let the unload settle before reading the rows in view.
+  await page.waitForTimeout(200)
+  const inView = () =>
+    grid.evaluate((element) => {
+      const gridTop = element.getBoundingClientRect().top
+      const titles = [...element.querySelectorAll<HTMLElement>('[data-testid="poster-title"]')]
+      const card = titles.find((title) => title.getBoundingClientRect().bottom > gridTop)!
+      return { title: card.textContent, offset: Math.round(card.getBoundingClientRect().top) }
+    })
+  const before = await inView()
+  const readAt = reads.length
+
+  await page.evaluate(() => window.dispatchEvent(new Event('online')))
+
+  await expect.poll(() => reads.length).toBeGreaterThan(readAt)
+  // A bounded settle: the read and the pages restoring the window run within it.
+  await page.waitForTimeout(500)
+  expect(reads.slice(readAt).filter((variables) => !variables.after && !variables.before)).toEqual(
+    [],
+  )
+  expect(await inView()).toEqual(before)
+})
+
 // The grid's scroll container, found by the id its scroll position is restored under.
 function libraryGrid(page: Page) {
   return page.locator('[data-scroll-restoration-id="library-grid"]')

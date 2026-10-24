@@ -10,6 +10,7 @@ import type {
   MediaFilter,
   MediaSort,
 } from '../graphql/generated/graphql'
+import { readActiveQueriesAgain } from '../graphql/readAgain'
 import { LibraryContentsProvider } from './LibraryContentsProvider'
 import { serveGraphqlSocket } from '../test/graphqlSocket'
 import { renderWithProviders } from '../test/render'
@@ -103,6 +104,9 @@ function Harness({
       <div data-testid="landing">{result.landing?.cursor ?? ''}</div>
       <div data-testid="firstPosition">{result.firstPosition}</div>
       <div data-testid="cachedTitles">{cachedTitles}</div>
+      <button type="button" onClick={() => void readActiveQueriesAgain(client)}>
+        Read again
+      </button>
       <button
         type="button"
         onClick={() =>
@@ -983,5 +987,76 @@ describe('useLibraryItems', () => {
     await user.click(screen.getByText('Count cached titles'))
 
     expect(screen.getByTestId('cachedTitles')).toHaveTextContent('241')
+  })
+
+  it('shouldReadAWindowAgainFromItsFirstTitleOnceTheTitlesBeforeItAreUnloaded', async () => {
+    const { requested, served } = serveLibraryOf(600)
+    const { user } = renderWithProviders(<Harness />)
+    await loadTitlesThrough(user, 'Title 527')
+    await user.click(screen.getByText('View the last title'))
+    await waitFor(() => expect(screen.getByTestId('firstPosition')).toHaveTextContent('287'))
+    const unloadedAt = requested.length
+
+    await user.click(screen.getByText('Read again'))
+
+    await waitFor(() => expect(served.count).toBe(requested.length))
+    expect(requested[unloadedAt]).toMatchObject({ after: 'c286' })
+    expect(
+      requested.slice(unloadedAt).filter((variables) => !variables.after && !variables.before),
+    ).toEqual([])
+    expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('Title 287')
+    expect(screen.getAllByRole('listitem').at(-1)).toHaveTextContent('Title 527')
+    expect(screen.getByTestId('firstPosition')).toHaveTextContent('287')
+  })
+
+  it('shouldRestoreTheTitlesLoadedBeforeTheFirstKeptOneWhenReadingAgain', async () => {
+    const { requested, served } = serveLibraryOf(600)
+    const { user } = renderWithProviders(<Harness />)
+    await loadTitlesThrough(user, 'Title 527')
+    await user.click(screen.getByText('View the last title'))
+    await waitFor(() => expect(screen.getByTestId('firstPosition')).toHaveTextContent('287'))
+    await user.click(screen.getByText('Load previous'))
+    await screen.findByText('Title 239')
+    const prependedAt = requested.length
+
+    await user.click(screen.getByText('Read again'))
+
+    await waitFor(() => expect(served.count).toBe(requested.length))
+    expect(requested[prependedAt]).toMatchObject({ after: 'c286' })
+    await waitFor(() => expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('Title 239'))
+    expect(screen.getAllByRole('listitem').at(-1)).toHaveTextContent('Title 527')
+    expect(screen.getByTestId('firstPosition')).toHaveTextContent('239')
+  })
+
+  it('shouldKeepTheFirstTitlesPlaceWhenTheFirstKeptTitleIsRemoved', async () => {
+    const { requested, served } = serveLibraryOf(600)
+    const socket = serveGraphqlSocket()
+    const { user } = renderWithProviders(
+      <LibraryContentsProvider profileId="profile" pathname={`/library/${LIBRARY_ID}`}>
+        <Harness />
+      </LibraryContentsProvider>,
+    )
+    await loadTitlesThrough(user, 'Title 527')
+    await user.click(screen.getByText('View the last title'))
+    await waitFor(() => expect(screen.getByTestId('firstPosition')).toHaveTextContent('287'))
+    await waitFor(() => expect(socket.isLive('LibraryItemRemoved')).toBe(true))
+
+    socket.publish('LibraryItemRemoved', {
+      data: {
+        change: {
+          __typename: 'LibraryItemRemoval',
+          libraryId: LIBRARY_ID,
+          itemId: '287',
+          kind: 'MOVIE',
+        },
+      },
+    })
+    await waitFor(() => expect(screen.queryByText('Title 287')).not.toBeInTheDocument())
+    const removedAt = requested.length
+    await user.click(screen.getByText('Read again'))
+
+    await waitFor(() => expect(served.count).toBe(requested.length))
+    expect(requested[removedAt]).toMatchObject({ after: 'c286' })
+    expect(screen.getByTestId('firstPosition')).toHaveTextContent('287')
   })
 })

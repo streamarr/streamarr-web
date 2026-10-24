@@ -33,8 +33,9 @@ type LibraryWindow = {
   after: number
   anchor: string | null
   landingPosition: number
-  // The first title left loaded after unloading those before it, and its place in the library.
-  firstKept?: { cursor: string; position: number }
+  // The first title left loaded after unloading those before it, its place in the library, and
+  // the cursor of the title before it, after which a fresh read of the window begins.
+  firstKept?: { cursor: string; position: number; after: string }
 }
 const windowsByClient = new WeakMap<ApolloClient, Map<string, LibraryWindow>>()
 
@@ -87,8 +88,11 @@ export function useLibraryItems({
   )
   const queryKey = JSON.stringify({ libraryId, sort, filter })
   const first = useFirstPageSize(queryKey, columns)
+  // Once its first titles are unloaded, a window is read again from its first kept title. The
+  // cached window is keyed by sort and filter alone, so the cursor does not split it.
+  const readAfter = windows.get(queryKey)?.firstKept?.after
   const { data, previousData, loading, error, refetch } = useQuery(LibraryPageDocument, {
-    variables: { libraryId, first, sort, filter },
+    variables: { libraryId, first, sort, filter, after: readAfter },
     skip: removed || first === null,
   })
 
@@ -105,7 +109,7 @@ export function useLibraryItems({
   useLayoutEffect(() => {
     if (first === null) return
     contents?.select({
-      variables: { libraryId, first, sort, filter },
+      variables: { libraryId, first, sort, filter, after: readAfter },
       onItemsChanged(previous, next) {
         const saved = windows.get(queryKey)
         if (!saved) return
@@ -118,17 +122,19 @@ export function useLibraryItems({
           return { before, after: edges.length - before }
         }
         const anchor = findLetterLandingCursor(next.edges, filter.startLetter ?? null, saved.anchor)
-        const oldSize = split(previous, saved.anchor)
-        const newSize = split(next, anchor)
+        const firstKept = keptThroughChange(saved.firstKept, previous, next)
+        const oldSize = split(previous, saved.firstKept?.cursor ?? saved.anchor)
+        const newSize = split(next, firstKept?.cursor ?? anchor)
         windows.set(queryKey, {
           ...saved,
           anchor,
+          firstKept,
           before: Math.max(0, saved.before + newSize.before - oldSize.before),
           after: Math.max(0, saved.after + newSize.after - oldSize.after),
         })
       },
     })
-  }, [contents, windows, queryKey, libraryId, first, sort, filter])
+  }, [contents, windows, queryKey, libraryId, first, sort, filter, readAfter])
   const [currentPageFailure, setPageFailure] = usePageFailure(queryKey)
   // A new query renders its predecessor's page until its own arrives and the screen accepts it,
   // so a letter jump never blanks the grid and the screen can animate the swap. The first result
@@ -179,7 +185,7 @@ export function useLibraryItems({
       after: Math.max(after, saved?.after ?? 0),
       anchor: landingCursor,
       landingPosition: saved?.landingPosition ?? landingPosition,
-      firstKept: saved?.firstKept,
+      firstKept: keptAfterReading(saved?.firstKept, definedEdges(data.library.items.edges)),
     })
   }, [windows, queryKey, data, staged, before, after, landingCursor, landingPosition])
   // Each committed query owns its in-flight pages; a result from an earlier view is discarded.
@@ -352,19 +358,24 @@ export function useLibraryItems({
     const kept = loadedEdges.slice(far.before, loadedEdges.length - far.after)
     const saved = windows.get(queryKey)
     const anchor = findLetterLandingCursor(kept, letter, saved?.anchor)
+    const firstKept =
+      far.before > 0
+        ? {
+            cursor: kept[0].cursor,
+            position: firstPosition + far.before,
+            after: loadedEdges[far.before - 1].cursor,
+          }
+        : saved?.firstKept
     const keptBefore = Math.max(
       0,
-      kept.findIndex((edge) => edge.cursor === anchor),
+      kept.findIndex((edge) => edge.cursor === (firstKept?.cursor ?? anchor)),
     )
     windows.set(queryKey, {
       anchor,
       before: keptBefore,
       after: kept.length - keptBefore,
       landingPosition: saved?.landingPosition ?? landingPosition,
-      firstKept:
-        far.before > 0
-          ? { cursor: kept[0].cursor, position: firstPosition + far.before }
-          : saved?.firstKept,
+      firstKept,
     })
     client.cache.updateQuery(
       { query: LibraryPageDocument, variables: { libraryId, first, sort, filter } },
@@ -446,9 +457,10 @@ function placeLoadedTitles({
     letter,
     savedWindow?.anchor,
   )
+  const windowAnchor = savedWindow?.firstKept?.cursor ?? landingCursor
   const before = Math.max(
     0,
-    loadedEdges.findIndex((edge) => edge.cursor === landingCursor),
+    loadedEdges.findIndex((edge) => edge.cursor === windowAnchor),
   )
   const after = loadedEdges.length - before
   // The landing title's place in the whole library, counted once per window: rows break on it,
@@ -571,9 +583,46 @@ function positionOfFirstLoaded({
   landingPosition: number
   before: number
 }) {
-  const keptIndex = firstKept ? edges.findIndex((edge) => edge.cursor === firstKept.cursor) : -1
-  if (firstKept && keptIndex >= 0) return Math.max(0, firstKept.position - keptIndex)
-  return Math.max(0, landingPosition - before)
+  if (!firstKept) return Math.max(0, landingPosition - before)
+  // A window read again without its first kept title begins at the title that took its place.
+  const keptIndex = Math.max(
+    0,
+    edges.findIndex((edge) => edge.cursor === firstKept.cursor),
+  )
+  return Math.max(0, firstKept.position - keptIndex)
+}
+
+// A window read again after its first kept title left the library begins with the title that
+// followed it, which now holds its place.
+function keptAfterReading(
+  firstKept: LibraryWindow['firstKept'],
+  edges: ReadonlyArray<{ cursor: string }>,
+): LibraryWindow['firstKept'] {
+  if (!firstKept || edges.length === 0) return firstKept
+  if (edges.some((edge) => edge.cursor === firstKept.cursor)) return firstKept
+  return { ...firstKept, cursor: edges[0].cursor }
+}
+
+// A live removal of the first kept title passes its place to the next title still loaded.
+function keptThroughChange(
+  firstKept: LibraryWindow['firstKept'],
+  previous: LibraryItems,
+  next: LibraryItems,
+): LibraryWindow['firstKept'] {
+  if (!firstKept) return firstKept
+  const nextEdges = definedEdges(next.edges)
+  const nextCursors = new Set(nextEdges.map((edge) => edge.cursor))
+  if (nextCursors.has(firstKept.cursor)) return firstKept
+  const previousEdges = definedEdges(previous.edges)
+  const removedAt = previousEdges.findIndex((edge) => edge.cursor === firstKept.cursor)
+  const successor = previousEdges.slice(removedAt + 1).find((edge) => nextCursors.has(edge.cursor))
+  if (!successor) return firstKept
+  const index = nextEdges.findIndex((edge) => edge.cursor === successor.cursor)
+  return {
+    cursor: successor.cursor,
+    position: firstKept.position,
+    after: index > 0 ? nextEdges[index - 1].cursor : firstKept.after,
+  }
 }
 
 // The loaded titles from one cursor through another; null keeps that end as it is.
