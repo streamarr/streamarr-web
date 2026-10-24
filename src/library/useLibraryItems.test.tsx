@@ -165,6 +165,29 @@ function Harness({
   )
 }
 
+// Reports each list of titles the hook returns, to compare their identities across pages.
+function EdgesHarness({ onEdges }: { onEdges: (edges: unknown[]) => void }) {
+  const result = useLibraryItems({ libraryId: LIBRARY_ID, sort: TITLE_ASC, filter: {}, columns: 1 })
+  useEffect(() => {
+    onEdges(result.edges)
+  }, [result.edges, onEdges])
+  return (
+    <div>
+      <ul>
+        {result.edges.map((edge) => (
+          <li key={edge.cursor}>{edge.node.title}</li>
+        ))}
+      </ul>
+      <button type="button" onClick={result.loadMore}>
+        Load more
+      </button>
+      <button type="button" onClick={result.loadPrevious}>
+        Load previous
+      </button>
+    </div>
+  )
+}
+
 // A retained library view, as the authenticated layout keeps it.
 function LiveHarness({ filter }: { filter: MediaFilter }) {
   const result = useLibraryItems({ libraryId: LIBRARY_ID, sort: TITLE_ASC, filter, columns: 1 })
@@ -1058,5 +1081,46 @@ describe('useLibraryItems', () => {
     await waitFor(() => expect(served.count).toBe(requested.length))
     expect(requested[removedAt]).toMatchObject({ after: 'c286' })
     expect(screen.getByTestId('firstPosition')).toHaveTextContent('287')
+  })
+
+  it('shouldKeepTheLoadedTitlesUntouchedWhenAPageLoads', async () => {
+    serveLibraryOf(600)
+    const seen: unknown[][] = []
+    const { user } = renderWithProviders(<EdgesHarness onEdges={(edges) => seen.push(edges)} />)
+    await screen.findByText('Title 047')
+    const before = seen.at(-1)!
+
+    await user.click(screen.getByText('Load more'))
+
+    await screen.findByText('Title 095')
+    const after = seen.at(-1)!
+    expect(after).toHaveLength(96)
+    expect(after[0]).toBe(before[0])
+    expect(after[47]).toBe(before[47])
+  })
+
+  it('shouldReleaseALiveTitleOutsideTheWindowWhenUnloading', async () => {
+    serveLibraryOf(600)
+    const socket = serveGraphqlSocket()
+    const { user } = renderWithProviders(
+      <LibraryContentsProvider profileId="profile" pathname={`/library/${LIBRARY_ID}`}>
+        <Harness />
+      </LibraryContentsProvider>,
+    )
+    await loadTitlesThrough(user, 'Title 527')
+    await user.click(screen.getByText('View the first title'))
+    await waitFor(() => expect(screen.queryByText('Title 241')).not.toBeInTheDocument())
+    await waitFor(() => expect(socket.isLive('LibraryItemAdded')).toBe(true))
+    socket.publish('LibraryItemAdded', liveAddition('late', 'Title 300 Sequel'))
+    socket.publish('LibraryItemAdded', liveAddition('near', 'Title 100 Sequel'))
+    await screen.findByText('Title 100 Sequel')
+
+    await loadTitlesThrough(user, 'Title 527')
+    await user.click(screen.getByText('View the first title'))
+    await waitFor(() => expect(screen.queryByText('Title 241')).not.toBeInTheDocument())
+    await user.click(screen.getByText('Count cached titles'))
+
+    // The 241 titles kept, the nearby addition among them; the later one is gone.
+    expect(screen.getByTestId('cachedTitles')).toHaveTextContent('241')
   })
 })

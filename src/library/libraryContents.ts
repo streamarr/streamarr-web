@@ -13,7 +13,6 @@ import {
   LibraryItemRemovedDocument,
   LibraryItemUpdatedDocument,
   LibraryPageDocument,
-  MediaSummaryFieldsFragmentDoc,
   type LibraryItemChangeFieldsFragment,
   type MediaType,
   type LibraryPageQuery,
@@ -22,7 +21,7 @@ import {
 import { definedEdges } from '../media/edges'
 import { responsePathHasError } from '../graphql/responseErrors'
 import { retainLibraryItemsConnection } from '../media/watchedState'
-import { modifyLoadedItems, type StoredEdge, type StoredItems } from './storedItems'
+import { modifyLoadedItems, writeTitle, type StoredEdge, type StoredItems } from './storedItems'
 
 type Items = LibraryPageQuery['library']['items']
 type View = {
@@ -315,11 +314,7 @@ function normalizeItem(cache: ApolloCache, change: LiveChange) {
   if (change.at !== 'changed') return
   const item = change.change.item ?? change.change.edge?.node
   if (item?.__typename !== 'Movie' && item?.__typename !== 'Series') return
-  cache.writeFragment({
-    fragment: MediaSummaryFieldsFragmentDoc,
-    fragmentName: 'MediaSummaryFields',
-    data: item,
-  })
+  writeTitle(cache, item)
 }
 
 // A null edge only leaves this view, so only a removal event evicts the item itself.

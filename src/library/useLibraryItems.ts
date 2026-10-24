@@ -21,6 +21,7 @@ import { definedEdges } from '../media/edges'
 import { alphabetLetterFromTitle } from '../media/alphabetLetter'
 import { trackLibraryItemsConnection } from '../media/watchedState'
 import { useLibraryContents } from './LibraryContentsProvider'
+import { modifyLoadedItems, refreshLibrary, storeEdges, type StoredItems } from './storedItems'
 import {
   pageSizeAfter,
   pageSizeBefore,
@@ -228,7 +229,7 @@ export function useLibraryItems({
     update,
   }: {
     variables: LibraryPageQueryVariables
-    update: (previous: LibraryPageQuery, page: LibraryPageQuery) => LibraryPageQuery
+    update: (loaded: StoredItems, page: StoredItems) => StoredItems
   }) {
     const { data: page } = await client.query({
       query: LibraryPageDocument,
@@ -236,10 +237,15 @@ export function useLibraryItems({
       fetchPolicy: 'no-cache',
     })
     if (!page) return undefined
-    client.cache.updateQuery(
-      { query: LibraryPageDocument, variables: { libraryId, first, sort, filter } },
-      (previous) => (previous ? update(previous, page) : undefined),
-    )
+    // Only the page's own titles are written; the loaded ones keep their stored edges.
+    const { items, ...library } = page.library
+    client.cache.batch({
+      update(cache) {
+        refreshLibrary(cache, library)
+        const stored = { ...items, edges: storeEdges(cache, items.edges) }
+        modifyLoadedItems(cache, { libraryId, sort, filter }, (loaded) => update(loaded, stored))
+      },
+    })
     return page
   }
 
@@ -259,15 +265,10 @@ export function useLibraryItems({
         sort,
         filter,
       },
-      update: (previous, page) =>
-        !scope.active || previous.library.items.pageInfo.endCursor !== pageInfo.endCursor
-          ? previous
-          : {
-              library: {
-                ...page.library,
-                items: appendItemsPage(previous.library.items, page.library.items),
-              },
-            },
+      update: (loaded, page) =>
+        !scope.active || loaded.pageInfo.endCursor !== pageInfo.endCursor
+          ? loaded
+          : appendItemsPage(loaded, page),
     })
       .catch((error: unknown) => failPage(scope, 'next', error))
       .finally(() => {
@@ -294,15 +295,10 @@ export function useLibraryItems({
         sort,
         filter: continuationFilter,
       },
-      update: (previous, page) =>
-        !scope.active || previous.library.items.pageInfo.startCursor !== pageInfo.startCursor
-          ? previous
-          : {
-              library: {
-                ...page.library,
-                items: prependItemsPage(previous.library.items, page.library.items),
-              },
-            },
+      update: (loaded, page) =>
+        !scope.active || loaded.pageInfo.startCursor !== pageInfo.startCursor
+          ? loaded
+          : prependItemsPage(loaded, page),
     })
       .then((page) => page?.library.items.pageInfo.startCursor ?? null)
       .catch((error: unknown) => {
@@ -377,18 +373,11 @@ export function useLibraryItems({
       landingPosition: saved?.landingPosition ?? landingPosition,
       firstKept,
     })
-    client.cache.updateQuery(
-      { query: LibraryPageDocument, variables: { libraryId, first, sort, filter } },
-      (previous) =>
-        previous && {
-          library: {
-            ...previous.library,
-            items: keepItems(previous.library.items, {
-              from: far.before > 0 ? kept[0].cursor : null,
-              through: far.after > 0 ? (kept.at(-1)?.cursor ?? null) : null,
-            }),
-          },
-        },
+    modifyLoadedItems(client.cache, { libraryId, sort, filter }, (loaded) =>
+      keepItems(loaded, {
+        from: far.before > 0 ? kept[0].cursor : null,
+        through: far.after > 0 ? (kept.at(-1)?.cursor ?? null) : null,
+      }),
     )
     // Apollo keeps every result it has read, and its record of their identities has no limit;
     // only a reset lets the unloaded titles' results go.
@@ -627,10 +616,10 @@ function keptThroughChange(
 
 // The loaded titles from one cursor through another; null keeps that end as it is.
 function keepItems(
-  loaded: LibraryItems,
+  loaded: StoredItems,
   { from, through }: { from: string | null; through: string | null },
-): LibraryItems {
-  const edges = loaded.edges ?? []
+): StoredItems {
+  const edges = loaded.edges
   const start = from === null ? 0 : edges.findIndex((edge) => edge?.cursor === from)
   const end =
     through === null ? edges.length - 1 : edges.findIndex((edge) => edge?.cursor === through)
@@ -646,10 +635,10 @@ function keepItems(
   }
 }
 
-function appendItemsPage(loaded: LibraryItems, next: LibraryItems): LibraryItems {
+function appendItemsPage(loaded: StoredItems, next: StoredItems): StoredItems {
   return {
     ...loaded,
-    edges: [...(loaded.edges ?? []), ...withoutLoadedItems(next.edges, loaded.edges)],
+    edges: [...loaded.edges, ...withoutLoadedItems(next.edges, loaded.edges)],
     pageInfo: {
       ...loaded.pageInfo,
       hasNextPage: next.pageInfo.hasNextPage,
@@ -658,10 +647,10 @@ function appendItemsPage(loaded: LibraryItems, next: LibraryItems): LibraryItems
   }
 }
 
-function prependItemsPage(loaded: LibraryItems, previous: LibraryItems): LibraryItems {
+function prependItemsPage(loaded: StoredItems, previous: StoredItems): StoredItems {
   return {
     ...loaded,
-    edges: [...withoutLoadedItems(previous.edges, loaded.edges), ...(loaded.edges ?? [])],
+    edges: [...withoutLoadedItems(previous.edges, loaded.edges), ...loaded.edges],
     pageInfo: {
       ...loaded.pageInfo,
       hasPreviousPage: previous.pageInfo.hasPreviousPage,
@@ -671,9 +660,9 @@ function prependItemsPage(loaded: LibraryItems, previous: LibraryItems): Library
 }
 
 // A watch-state change can move an item, so a page can bring back an item already loaded.
-function withoutLoadedItems(page: LibraryItems['edges'], loaded: LibraryItems['edges']) {
-  const loadedIds = new Set(definedEdges(loaded).map((edge) => edge.node.id))
-  return (page ?? []).filter((edge) => !edge?.node || !loadedIds.has(edge.node.id))
+function withoutLoadedItems(page: StoredItems['edges'], loaded: StoredItems['edges']) {
+  const loadedIds = new Set(loaded.map((edge) => edge?.node?.__ref))
+  return page.filter((edge) => !edge?.node || !loadedIds.has(edge.node.__ref))
 }
 
 function neverChanges() {
