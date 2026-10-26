@@ -3,7 +3,6 @@ import type {
   ApolloClient,
   ErrorLike,
   OperationVariables,
-  Reference,
   TypedDocumentNode,
 } from '@apollo/client'
 import { useApolloClient, useQuery } from '@apollo/client/react'
@@ -30,8 +29,10 @@ import {
   type StopLibraryScanMutation,
 } from '../../graphql/generated/graphql'
 import { extractAuthContext, isForbidden } from '../../graphql/errorRouting'
+import { watchLiveChanges } from '../../graphql/liveChanges'
 import { isReading } from '../../graphql/readAgain'
 import { userErrorMessage } from '../../graphql/userErrors'
+import { addToLibraryLists, removeFromLibraryLists } from '../../media/libraryLists'
 
 // Starts and removal share one refusal union; each stop adds its own refusal for a run that is
 // not in progress.
@@ -101,7 +102,7 @@ function useLiveInventoryChanges(): {
     const holdFrom = (library: ManagedLibraryFieldsFragment | null) => {
       if (!library) return
       countLiveChange(client.cache, library.id)
-      if (!removedIds.current.has(library.id)) holdLibrary(client.cache, library)
+      if (!removedIds.current.has(library.id)) addToLibraryLists(client.cache, library)
     }
     const dropFrom = (removal: { libraryId: string } | null) => {
       if (!removal) return
@@ -128,34 +129,6 @@ function useLiveInventoryChanges(): {
     }
   }, [client])
   return { stop, removedIds }
-}
-
-// With errorPolicy 'all', a change whose field failed arrives with its errors, and the operation
-// keeps running: the change applies whatever data it carries, a null field carries none, and the
-// transport reports the change missed so the inventory reads again. A result without data ends the
-// operation.
-function watchLiveChanges<TData>(
-  client: ApolloClient,
-  query: TypedDocumentNode<TData, Record<string, never>>,
-  { apply, onStop }: { apply: (data: TData) => void; onStop: (error: ErrorLike) => void },
-): () => void {
-  let stopped = false
-  const subscription = client
-    .subscribe({ query, errorPolicy: 'all' })
-    .subscribe(({ data, error }) => {
-      if (stopped) return
-      if (data) {
-        apply(data)
-        return
-      }
-      if (error) onStop(error)
-    })
-  // A remount that subscribes before this task runs joins the same operation, as useSubscription's
-  // does, instead of ending it and starting another.
-  return () => {
-    stopped = true
-    setTimeout(() => subscription.unsubscribe())
-  }
 }
 
 /**
@@ -262,7 +235,7 @@ export function useLibraryCommands() {
         if (!data?.addLibrary) throw new Error('Missing creation result')
         const { library, userErrors } = data.addLibrary
         if (library && userErrors.length === 0)
-          refreshLibraryViews(client, (cache) => holdLibrary(cache, library))
+          refreshLibraryViews(client, (cache) => addToLibraryLists(cache, library))
         return data.addLibrary
       }, NOTHING_ADDED),
     scan: (libraryId: string) =>
@@ -400,19 +373,6 @@ function failureMessage(error: unknown, nothingStarted: string): string {
   return "Couldn't confirm the operation. Refresh the page to check the library state before trying again."
 }
 
-// The change already wrote the library itself; every cached library list gains it once.
-function holdLibrary(cache: ApolloCache, library: ManagedLibraryFieldsFragment) {
-  cache.modify<{ libraries: readonly Reference[] }>({
-    fields: {
-      libraries: (existing, { readField, toReference }) => {
-        if (existing.some((held) => readField('id', held) === library.id)) return existing
-        const added = toReference(library)
-        return added ? [...existing, added] : existing
-      },
-    },
-  })
-}
-
 // The status a refusal reports for the library, if its member carries one.
 function refusedStatus(error: LibraryOperationError): LibraryStatus | null {
   switch (error.__typename) {
@@ -435,11 +395,6 @@ function showStatus(cache: ApolloCache, libraryId: string, status: LibraryStatus
 
 // Every cached library list drops the library at once; the refetch then confirms the inventory.
 function dropLibrary(cache: ApolloCache, id: string) {
-  cache.modify<{ libraries: readonly Reference[] }>({
-    fields: {
-      libraries: (existing, { readField }) =>
-        existing.filter((library) => readField('id', library) !== id),
-    },
-  })
+  removeFromLibraryLists(cache, id)
   cache.evict({ id: cache.identify({ __typename: 'Library', id }) })
 }
