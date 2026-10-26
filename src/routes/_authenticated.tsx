@@ -1,7 +1,7 @@
 import { useApolloClient } from '@apollo/client/react'
 import { Center, Loader } from '@mantine/core'
 import { createFileRoute, Outlet, redirect, useRouter } from '@tanstack/react-router'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { getSetupStatus, ServerStatusUnavailableError } from '../auth/api'
 import { CSRF_REJECTION_CAUSE, isCsrfRejection } from '../auth/csrf'
 import { SessionUnconfirmedError, type SessionStore } from '../auth/session'
@@ -67,11 +67,13 @@ function Authenticated() {
   // Watch state belongs to a Profile, and Library changes require one, so the changes follow
   // whichever Profile is selected. A store reset refetches the selection, and the earlier value
   // holds until the next one arrives. Library status changes reach only a session that may
-  // administer the server.
+  // administer the server. Operations that replace earlier ones miss the changes committed between
+  // them, so the active queries read again once they subscribe.
   const me = useMe()
   const current = (me.data ?? me.previousData)?.me
   const profileId = current?.selectedProfile?.id
   const administers = canManageServer(current)
+  const replacing = useRef(false)
   useEffect(() => {
     if (!profileId) return undefined
     const stops = [
@@ -80,8 +82,12 @@ function Authenticated() {
         ? subscribeToAdministeredLibraryChanges(client)
         : subscribeToLibraryChanges(client),
     ]
-    return () => stops.forEach((stop) => stop())
-  }, [client, profileId, administers])
+    if (replacing.current) subscriptions.reportMissedChangesOnceSubscribed()
+    return () => {
+      replacing.current = true
+      stops.forEach((stop) => stop())
+    }
+  }, [client, profileId, administers, subscriptions])
   return <Outlet />
 }
 

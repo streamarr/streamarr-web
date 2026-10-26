@@ -40,6 +40,13 @@ export interface SubscriptionTransport {
    * without the data that failed. The listener reads again.
    */
   onMissedChanges(listener: () => void): () => void
+  /**
+   * Reports missed changes once the operations started so far have sent their subscribe frames on
+   * the open socket. An operation that replaces one that ended misses every change committed
+   * between the two, and an open socket reports nothing for a new operation on its own. A socket
+   * that is not open yet reports once it connects.
+   */
+  reportMissedChangesOnceSubscribed(): void
 }
 
 interface SubscriptionTransportDependencies {
@@ -290,6 +297,9 @@ export function createSubscriptionTransport({
     onMissedChanges(listener) {
       missedChangeListeners.add(listener)
       return () => missedChangeListeners.delete(listener)
+    },
+    reportMissedChangesOnceSubscribed() {
+      if (current?.acknowledged) notifyOnceSubscribed(current)
     },
   }
 }

@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { graphql, HttpResponse } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { LibraryFieldsFragment } from '../graphql/generated/graphql'
 import { watchingConnection } from '../test/continueWatchingFixtures'
 import { deferred } from '../test/deferred'
@@ -124,6 +124,28 @@ describe('subscribeToLibraryChanges', () => {
     await waitFor(() => expect(state.socket.isLive('LibraryAdded')).toBe(true))
     expect(libraryOperations(state)).toEqual(['LibraryAdded', 'LibraryRemoved'])
     expect(selectsAdministration(state, 'LibraryAdded')).toBe(false)
+  })
+
+  it('shouldListALibraryAddedWhileTheChangesMoveToServerAdministration', async () => {
+    const state = serve()
+    renderAppAt(`/library/${MOVIES.id}`)
+    await screen.findByRole('heading', { name: 'Movies' })
+    await waitFor(() => expect(state.socket.isLive('LibraryAdded')).toBe(true))
+    const librariesReadBefore = state.reads.Libraries
+    server.use(
+      graphql.query('Me', async () => {
+        // The grant reaches Me after the libraries read again, and the addition commits before
+        // the administered changes subscribe, so no operation delivers it.
+        await vi.waitFor(() => expect(state.reads.Libraries).toBeGreaterThan(librariesReadBefore))
+        state.libraries = [MOVIES, SHOWS]
+        return HttpResponse.json({ data: { me: VIEWING_ADMIN } })
+      }),
+    )
+
+    window.dispatchEvent(new Event('online'))
+
+    await waitFor(() => expect(state.socket.isLive('AdminLibraryAdded')).toBe(true))
+    expect(await within(topBar()).findByRole('link', { name: 'TV shows' })).toBeInTheDocument()
   })
 
   it('shouldShowAPushedNameInTheTopBarForAServerAdmin', async () => {
