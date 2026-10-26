@@ -26,8 +26,9 @@
   --profile-menu-radius: var(--radius-xl);
   --profile-menu-notch-size: 13px;
   --profile-menu-notch-clearance: 4px;
-  /* Half the rotated notch's diagonal: how far it reaches from its centre. */
-  --profile-menu-notch-reach: calc(var(--profile-menu-notch-size) / sqrt(2));
+  /* Half the rotated notch's diagonal: how far it reaches from its centre. 0.7071 is 1/√2, written
+     as a number because CSS sqrt() is newer than the build's browser targets. */
+  --profile-menu-notch-reach: calc(var(--profile-menu-notch-size) * 0.7071);
   /* Leaves the notch's tip clear of the open chip's ring. */
   --profile-menu-gap: calc(
     var(--profile-chip-ring) + var(--profile-menu-notch-clearance) +
