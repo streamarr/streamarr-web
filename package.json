@@ -20,7 +20,7 @@
     "openapi:pull": "node scripts/pull-openapi.mjs",
     "openapi:codegen": "openapi-typescript src/api/openapi.json -o src/api/generated/openapi.d.ts",
     "codegen": "graphql-codegen --config codegen.ts && npm run openapi:codegen",
-    "codegen:check": "npm run schema:pull && npm run openapi:pull && npm run codegen && drift=\"$(git status --porcelain -- src/graphql/schema src/graphql/generated src/api/openapi.json src/api/generated)\" && if [ -n \"$drift\" ]; then echo \"Generated contract artifacts drifted:\"; echo \"$drift\"; exit 1; fi"
+    "codegen:check": "npm run schema:pull && npm run openapi:pull && npm run codegen && drift=\"$(git status --porcelain -- src/graphql/schema src/graphql/generated src/api/openapi.json src/api/generated src/test/contracts)\" && if [ -n \"$drift\" ]; then echo \"Generated contract artifacts drifted:\"; echo \"$drift\"; exit 1; fi"
   },
   "repository": {
     "type": "git",

@@ -1,6 +1,6 @@
 import { Button } from '@mantine/core'
 import { Link, useNavigate } from '@tanstack/react-router'
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useSignOut } from '../auth/useSignOut'
 import { DetailBackButton } from '../media/DetailBack'
 import styles from './Failure.module.css'
@@ -71,13 +71,18 @@ function RetryButton({
   onRetry,
   variant = 'filled',
 }: Readonly<{ onRetry: () => unknown; variant?: 'filled' | 'default' }>) {
+  const [pending, setPending] = useState(false)
   // A retry that fails again reports through the request's own error state.
   function retry() {
-    void Promise.resolve(onRetry()).catch(() => undefined)
+    setPending(true)
+    void Promise.resolve()
+      .then(onRetry)
+      .catch(() => undefined)
+      .finally(() => setPending(false))
   }
 
   return (
-    <Button variant={variant} onClick={retry}>
+    <Button variant={variant} onClick={retry} loading={pending} aria-busy={pending}>
       Retry
     </Button>
   )

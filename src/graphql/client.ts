@@ -80,7 +80,10 @@ export function createApolloClient(
 
   // Generated possibleTypes keep fragment matching correct across unions; a mismatch drops
   // fields silently.
-  const cache = new ResetCountingCache({ possibleTypes: generatedIntrospection.possibleTypes })
+  const cache = new ResetCountingCache({
+    possibleTypes: generatedIntrospection.possibleTypes,
+    typePolicies: { Library: { fields: { alphabetIndex: { merge: false } } } },
+  })
 
   // Error link next: forward() on a CSRF rejection re-enters the CSRF link, which re-reads the
   // re-minted cookie before the HTTP link sends.
@@ -98,5 +101,11 @@ export function createApolloClient(
       )
     : httpChain
 
-  return new ApolloClient({ link, cache })
+  return new ApolloClient({
+    link,
+    cache,
+    // A refetch loading notification clears its error while retaining old data. Keep a refused
+    // screen on its last result until the server answers; loading new variables still emits.
+    defaultOptions: { watchQuery: { notifyOnNetworkStatusChange: false } },
+  })
 }

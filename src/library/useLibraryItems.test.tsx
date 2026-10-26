@@ -9,6 +9,8 @@ import type {
   MediaFilter,
   MediaSort,
 } from '../graphql/generated/graphql'
+import { LibraryContentsProvider } from './LibraryContentsProvider'
+import { serveGraphqlSocket } from '../test/graphqlSocket'
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
 import { useLibraryItems } from './useLibraryItems'
@@ -25,6 +27,7 @@ function movieNode(id: string, title: string) {
     releaseDate: '2024-01-01',
     runtime: 100,
     watchStatus: 'UNWATCHED' as const,
+    lastWatchedAt: null,
     watchProgress: null,
     images: [],
   }
@@ -44,12 +47,17 @@ function libraryResponse(overrides: {
       name: 'Movies',
       status: 'HEALTHY',
       scanCompletedOn: '2026-08-28T11:00:00Z',
+      itemCount: 2,
       alphabetIndex: [
         { letter: 'A', count: 1 },
         { letter: 'N', count: 1 },
       ],
       items: {
-        edges: overrides.edges,
+        edges: overrides.edges.map((edge) => ({
+          __typename: 'MediaEdge' as const,
+          ...edge,
+          orderKey: edge.node.title,
+        })),
         pageInfo: {
           hasNextPage: overrides.hasNextPage ?? false,
           hasPreviousPage: overrides.hasPreviousPage ?? false,
@@ -99,13 +107,28 @@ function Harness({ initialFilter = {} }: { initialFilter?: MediaFilter }) {
   )
 }
 
+// A retained library view, as the authenticated layout keeps it.
+function LiveHarness({ filter }: { filter: MediaFilter }) {
+  const result = useLibraryItems({ libraryId: LIBRARY_ID, sort: TITLE_ASC, filter })
+  return (
+    <div>
+      <div data-testid="landing">{result.landing?.cursor ?? ''}</div>
+      <ul>
+        {result.edges.map((edge) => (
+          <li key={edge.cursor}>{edge.node.title}</li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 describe('useLibraryItems', () => {
   it('lands on a rendered item when the seek page starts with missing media', async () => {
     const response = libraryResponse({ edges: [{ cursor: 'o', node: movieNode('o', 'Ocean') }] })
     // The first N item no longer resolves; the seek continues at the next available title.
     response.library.items.edges = [
       null,
-      { cursor: 'missing-n', node: null },
+      { cursor: 'missing-n', orderKey: 'N', node: null },
       ...response.library.items.edges!,
     ]
     server.use(graphql.query('LibraryPage', () => HttpResponse.json({ data: response })))
@@ -472,5 +495,89 @@ describe('useLibraryItems', () => {
 
     await waitFor(() => expect(screen.getByText('Unwatched Title')).toBeInTheDocument())
     expect(screen.queryByText('Everlight')).not.toBeInTheDocument()
+  })
+
+  it('shouldUseTheServerCursorWhenAChangeBecomesTheFirstItemOfTheLetter', async () => {
+    server.use(
+      graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) => {
+        const earlier = Boolean(variables.before)
+        return HttpResponse.json({
+          data: libraryResponse({
+            edges: [
+              earlier
+                ? { cursor: 'm', node: movieNode('m', 'Middle') }
+                : { cursor: 'n', node: movieNode('n', 'Northern Line') },
+            ],
+            hasPreviousPage: !earlier,
+          }),
+        })
+      }),
+    )
+    const socket = serveGraphqlSocket()
+    renderWithProviders(
+      <LibraryContentsProvider profileId="profile" pathname={`/library/${LIBRARY_ID}`}>
+        <LiveHarness filter={{ watchStatus: 'IN_PROGRESS', startLetter: 'N' }} />
+      </LibraryContentsProvider>,
+    )
+    await screen.findByText('Middle')
+    await waitFor(() => expect(socket.isLive('LibraryItemUpdated')).toBe(true))
+
+    socket.publish('LibraryItemUpdated', {
+      data: {
+        change: {
+          __typename: 'LibraryItemChange',
+          libraryId: LIBRARY_ID,
+          itemId: 'nadir',
+          kind: 'MOVIE',
+          item: movieNode('nadir', 'Nadir'),
+          edge: {
+            __typename: 'MediaEdge',
+            cursor: 'server-nadir',
+            orderKey: 'Nadir',
+            node: movieNode('nadir', 'Nadir'),
+          },
+        },
+      },
+    })
+
+    await screen.findByText('Nadir')
+    expect(screen.getAllByRole('listitem').map((item) => item.textContent)).toEqual([
+      'Middle',
+      'Nadir',
+      'Northern Line',
+    ])
+    expect(screen.getByTestId('landing').textContent).toBe('server-nadir')
+  })
+
+  it('shouldShowATitleOnceWhenTheNextPageBringsBackOneAlreadyLoaded', async () => {
+    server.use(
+      graphql.query<GraphQLQuery, LibraryPageQueryVariables>('LibraryPage', ({ variables }) => {
+        const edges = variables.after
+          ? [
+              { cursor: 'c2', node: movieNode('2', 'Northern Line') },
+              { cursor: 'c3', node: movieNode('3', 'Ocean') },
+            ]
+          : [
+              { cursor: 'c1', node: movieNode('1', 'Everlight') },
+              { cursor: 'c2', node: movieNode('2', 'Northern Line') },
+            ]
+        const response = libraryResponse({ edges, hasNextPage: !variables.after })
+        // A title that no longer resolves stays a gap in the page.
+        if (variables.after) response.library.items.edges!.push(null)
+        return HttpResponse.json({ data: response })
+      }),
+    )
+    const user = userEvent.setup()
+    renderWithProviders(<Harness />)
+    await waitFor(() => expect(screen.getByTestId('hasNextPage')).toHaveTextContent('true'))
+
+    await user.click(screen.getByText('Load more'))
+
+    await screen.findByText('Ocean')
+    expect(screen.getAllByRole('listitem').map((item) => item.textContent)).toEqual([
+      'Everlight',
+      'Northern Line',
+      'Ocean',
+    ])
   })
 })

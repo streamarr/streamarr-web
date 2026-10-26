@@ -1,3 +1,4 @@
+import { watchingConnection } from '../test/continueWatchingFixtures'
 import { readyPlaybackSession, destroyedPlaybackSession } from '../test/playbackSession'
 import { deferred } from '../test/deferred'
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
@@ -84,13 +85,15 @@ async function playMovieToItsEnd() {
 describe('watched state across routes', () => {
   it('shouldUpdateTheSeriesActionFromTheMarkedSeasonWithoutLoadingTheSeriesAgain', async () => {
     let seriesRequests = 0
+    // The server answers every read after the mark with the marked state.
+    let watchStatus = 'UNWATCHED'
     const episode = () => ({
       __typename: 'Episode',
       id: 'e1',
       title: 'First',
       episodeNumber: 1,
       runtime: 45,
-      watchStatus: 'UNWATCHED',
+      watchStatus,
       watchProgress: null,
       files: [{ __typename: 'MediaFile', id: 'f1' }],
       stillImages: [],
@@ -102,7 +105,7 @@ describe('watched state across routes', () => {
       seasonNumber: 1,
       overview: 'One season',
       airDate: '2024-01-01',
-      watchStatus: 'UNWATCHED',
+      watchStatus,
       watchProgress: null,
       episodes: [episode()],
       posterImages: [],
@@ -125,7 +128,7 @@ describe('watched state across routes', () => {
               genres: [],
               directors: [],
               cast: [],
-              watchStatus: 'UNWATCHED',
+              watchStatus,
               seasons: [season()],
               backdropImages: [],
               posterImages: [],
@@ -152,6 +155,7 @@ describe('watched state across routes', () => {
         }),
       ),
       graphql.mutation('MarkWatched', () => {
+        watchStatus = 'WATCHED'
         const watched = { watchStatus: 'WATCHED', watchProgress: null }
         return HttpResponse.json({
           data: {
@@ -198,27 +202,29 @@ describe('watched state across routes', () => {
         return HttpResponse.json({
           data: {
             libraries: [],
-            continueWatching: watched
-              ? []
-              : [
-                  {
-                    __typename: 'Movie',
-                    id: 'm1',
-                    title: 'Everlight',
-                    tagline: null,
-                    summary: null,
-                    runtime: 90,
-                    createdOn: '2024-01-01T00:00:00Z',
-                    genres: [],
-                    images: [],
-                    files: [{ id: 'f1' }],
-                    watchProgress: {
-                      positionSeconds: 20,
-                      percentComplete: 2,
-                      durationSeconds: 5400,
+            continueWatching: watchingConnection(
+              watched
+                ? []
+                : [
+                    {
+                      __typename: 'Movie',
+                      id: 'm1',
+                      title: 'Everlight',
+                      tagline: null,
+                      summary: null,
+                      runtime: 90,
+                      createdOn: '2024-01-01T00:00:00Z',
+                      genres: [],
+                      images: [],
+                      files: [{ id: 'f1' }],
+                      watchProgress: {
+                        positionSeconds: 20,
+                        percentComplete: 2,
+                        durationSeconds: 5400,
+                      },
                     },
-                  },
-                ],
+                  ],
+            ),
           },
         })
       }),
@@ -239,8 +245,10 @@ describe('watched state across routes', () => {
               cast: [],
               ratings: [],
               files: [{ __typename: 'MediaFile', id: 'f1' }],
-              watchStatus: 'IN_PROGRESS',
-              watchProgress: { positionSeconds: 20, percentComplete: 2, durationSeconds: 5400 },
+              watchStatus: watched ? 'WATCHED' : 'IN_PROGRESS',
+              watchProgress: watched
+                ? null
+                : { positionSeconds: 20, percentComplete: 2, durationSeconds: 5400 },
               backdropImages: [],
               posterImages: [],
             },
@@ -441,7 +449,7 @@ describe('watched state across routes', () => {
         HttpResponse.json({
           data: {
             libraries: [],
-            continueWatching:
+            continueWatching: watchingConnection(
               position > 20
                 ? [
                     {
@@ -463,6 +471,7 @@ describe('watched state across routes', () => {
                     },
                   ]
                 : [],
+            ),
           },
         }),
       ),

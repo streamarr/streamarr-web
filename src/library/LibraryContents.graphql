@@ -1,0 +1,45 @@
+fragment LibraryItemChangeFields on LibraryItemChange {
+  libraryId
+  itemId
+  kind
+  item {
+    ...MediaSummaryFields
+  }
+  edge(sort: $sort, filter: $filter) {
+    ...OrderedEdgeFields
+    node {
+      ...MediaSummaryFields
+    }
+  }
+}
+
+subscription LibraryItemAdded($libraryId: ID!, $sort: MediaSort, $filter: MediaFilter) {
+  change: libraryItemAdded(libraryId: $libraryId) {
+    ...LibraryItemChangeFields
+  }
+}
+
+subscription LibraryItemUpdated($libraryId: ID!, $sort: MediaSort, $filter: MediaFilter) {
+  change: libraryItemUpdated(libraryId: $libraryId) {
+    ...LibraryItemChangeFields
+  }
+}
+
+subscription LibraryItemRemoved($libraryId: ID!) {
+  change: libraryItemRemoved(libraryId: $libraryId) {
+    libraryId
+    itemId
+    kind
+  }
+}
+
+subscription LibraryCountsChanged($libraryId: ID!) {
+  change: libraryCountsChanged(libraryId: $libraryId) {
+    id
+    itemCount
+    alphabetIndex {
+      letter
+      count
+    }
+  }
+}

@@ -1,5 +1,6 @@
-import { useQuery } from '@apollo/client/react'
+import { useApolloClient, useQuery } from '@apollo/client/react'
 import { Center, Loader, Text } from '@mantine/core'
+import { useEffect } from 'react'
 import { HomeDocument, type HomeQuery } from '../graphql/generated/graphql'
 import { requestFailureMessage } from '../graphql/requestErrors'
 import { definedEdges } from '../media/edges'
@@ -16,11 +17,16 @@ import { useMe } from '../identity/useMe'
 import { canManageServer } from '../admin/access'
 import { EmptyLibraries } from '../admin/libraries/EmptyLibraries'
 import { FailurePanel, FailureRow } from '../ui/Failure'
+import { CONTINUE_WATCHING_LIMIT, showContinueWatching } from '../media/watchStateLists'
 
 export function Home() {
-  const { data, loading, error, refetch } = useQuery(HomeDocument)
+  const { data, loading, error, refetch } = useQuery(HomeDocument, {
+    variables: { continueWatchingFirst: CONTINUE_WATCHING_LIMIT },
+  })
+  const { cache } = useApolloClient()
+  useEffect(() => showContinueWatching(cache), [cache])
 
-  if (loading) {
+  if (loading && !data) {
     return (
       <Center h={200}>
         <Loader />
@@ -48,7 +54,9 @@ export function Home() {
   return (
     <div className={styles.home}>
       <BillboardHero content={billboard} />
-      <ContinueWatchingShelf items={data.continueWatching} />
+      <ContinueWatchingShelf
+        items={definedEdges(data.continueWatching.edges).map((edge) => edge.node)}
+      />
       {libraries.length > 0 && (
         <div className={styles.recentlyAdded}>
           {libraries.map((library) => (
@@ -94,9 +102,8 @@ function EmptyHome({ hasLibraries }: Readonly<{ hasLibraries: boolean }>) {
 // The billboard fallback reuses data Home already fetched (no second query): when nobody has
 // started anything, the newest of the Recently Added rails' head items stands in.
 function billboardContentFor(data: HomeQuery): BillboardContent | null {
-  if (data.continueWatching.length > 0) {
-    return billboardFromContinueWatching(data.continueWatching[0])
-  }
+  const first = definedEdges(data.continueWatching.edges)[0]
+  if (first) return billboardFromContinueWatching(first.node)
 
   const candidates = data.libraries
     .filter((library) => library.type === 'MOVIE' || library.type === 'SERIES')

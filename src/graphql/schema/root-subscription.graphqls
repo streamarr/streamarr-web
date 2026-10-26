@@ -5,14 +5,17 @@ and mutations run only over HTTP POST on /graphql.
 A subscription delivers changes from the moment it registers. It sends no snapshot and replays
 nothing missed. To build current state, subscribe first, then run the queries the field names,
 and apply each later change by id. For library administration, query
-`libraries { id name status scanStartedOn scanCompletedOn }`. A subscription never completes
-normally while the server runs.
+`libraries { id name status scanStartedOn scanCompletedOn }`. Library-content subscriptions complete
+when their library is removed, or if it is already absent when they register. Other subscriptions
+do not normally complete while the server runs.
 
 A field error does not end the operation. When a selected field of one change fails to resolve,
 the server still delivers the change with the failed value as null and with errors, and later
 changes still arrive. A later change may not repeat a value that failed. After a change that
-carries errors, the client applies the rest of the change and runs the field's queries again
-while the subscription stays open.
+carries errors, the client applies its usable portions according to the field's payload policy
+and runs the field's queries again while the subscription stays open. A field may define an
+atomic unit whose existing cached values are preserved when its selected fragment is incomplete;
+unaffected independent items still apply.
 
 Each field states who may subscribe. These errors end the operation:
 PROFILE_REQUIRED when the field needs a selected Profile and the access token has none,
@@ -62,7 +65,13 @@ type Subscription {
     receives carries the latest values.
 
     To build current state, subscribe first, then query `continueWatching` and the library views
-    the client shows. Select the same fields in the change as in those queries.
+    the client shows. Select the same fields in the change as in those queries. For Continue
+    Watching, select continueWatching { itemId edge { cursor orderKey node { ... } } } alongside
+    items. The edge uses the same membership and ordering as the query. Merge by ID, compare
+    opaque orderKey values and retain the client's shelf cap without backfill. An eligible
+    displayed item moved to the tail stays while it fits that cap. Remove only an explicitly
+    null edge with no error affecting that change's response path, including aliases and list
+    indices. A non-null edge with a null node is not a removal.
 
     A field that fails to resolve does not end the operation. The `errors` of the message name the
     path of each failed field. A failed nullable field arrives as null. A failed non-null field of
@@ -80,4 +89,23 @@ type WatchStateChange {
     resolve.
     """
     items: [WatchStateItem]!
+    """
+    Continue Watching membership for every touched movie or episode, independent of
+    the client's shelf cap, including departures with a null edge. A null list means membership
+    could not be evaluated: preserve the shelf and still apply usable entity updates through items.
+    """
+    continueWatching: [ContinueWatchingChange]
+}
+
+"A touched item's current membership in the selected Profile's Continue Watching list."
+type ContinueWatchingChange {
+    itemId: ID!
+    """
+    The same edge returned by the query, or null when the item no longer belongs.
+    Remove membership only for an explicitly resolved null edge with no error whose
+    response path starts at this change, including aliases and list indices. A
+    non-null edge with a null node is never a removal. Preserve affected cached
+    fields and membership until shared recovery; usable sibling changes may apply.
+    """
+    edge: ContinueWatchingEdge
 }

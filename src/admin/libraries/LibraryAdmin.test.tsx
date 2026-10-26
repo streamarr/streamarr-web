@@ -1,8 +1,10 @@
+import { watchingConnection } from '../../test/continueWatchingFixtures'
 import { act, screen, waitFor, within } from '@testing-library/react'
 import { delay, graphql, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { deferred } from '../../test/deferred'
 import { serveGraphqlSocket } from '../../test/graphqlSocket'
+import { comeBackOnline } from '../../test/graphqlResponses'
 import { meFixture } from '../../test/meFixture'
 import { renderAppAt } from '../../test/render'
 import { server } from '../../test/server'
@@ -45,7 +47,7 @@ function serve(libraries = [MOVIES, SHOWS], me = ADMIN) {
     graphql.query('Home', () =>
       HttpResponse.json({
         data: {
-          continueWatching: [],
+          continueWatching: watchingConnection([]),
           libraries: state.libraries.map((library) => ({ ...library, items: { edges: [] } })),
         },
       }),
@@ -112,6 +114,49 @@ const START_RESPONSES = [
   },
 ]
 
+// Each stop the panel offers, with the status the library shows while that kind runs.
+const STOPS = [
+  {
+    kind: 'Scan',
+    busy: 'SCANNING' as const,
+    action: 'Stop scan',
+    otherAction: 'Stop refresh',
+    operationName: 'StopLibraryScan',
+    field: 'stopLibraryScan',
+    stopped:
+      'Scan stopped. Details such as cast photos can still appear for titles the scan already processed.',
+  },
+  {
+    kind: 'Refresh',
+    busy: 'REFRESHING' as const,
+    action: 'Stop refresh',
+    otherAction: 'Stop scan',
+    operationName: 'StopLibraryRefresh',
+    field: 'stopLibraryRefresh',
+    stopped:
+      'Metadata refresh stopped. Details such as cast photos can still appear for titles the refresh already processed.',
+  },
+]
+
+function stopping(field: string) {
+  return { data: { [field]: { library: { ...MOVIES, status: 'STOPPING' }, userErrors: [] } } }
+}
+
+function moviesRow() {
+  return within(screen.getByRole('navigation', { name: 'Libraries to manage' })).getByRole(
+    'button',
+    { name: /Movies/ },
+  )
+}
+
+function panelStatus(detail: HTMLElement) {
+  return detail.querySelector('[data-library-status]')?.closest('output')
+}
+
+function statusGlyph(container: HTMLElement) {
+  return container.querySelector('[data-library-status] svg')?.getAttribute('class')
+}
+
 describe('library administration', () => {
   it.each([
     { ...ADMIN, serverAdmin: false },
@@ -158,6 +203,21 @@ describe('library administration', () => {
     expect(router.state.location.search).toEqual({ library: 'shows' })
     act(() => router.history.back())
     await screen.findByRole('article', { name: 'Movies settings' })
+  })
+
+  it('shouldEnterOnceTheBrowserComesBackOnlineAfterTheAccessCheckFailed', async () => {
+    serve()
+    const { user } = renderAppAt('/')
+    await user.click(await screen.findByRole('button', { name: /Profile menu/ }))
+    server.use(graphql.query('Me', () => HttpResponse.error()))
+    await user.click(screen.getByRole('button', { name: 'Server settings' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't confirm your access")
+    server.use(graphql.query('Me', () => HttpResponse.json({ data: { me: ADMIN } })))
+
+    comeBackOnline()
+
+    expect(await screen.findByRole('article', { name: 'Movies settings' })).toBeInTheDocument()
+    expect(screen.queryByText(/Couldn't confirm your access/)).not.toBeInTheDocument()
   })
 
   it('shouldDenyEntryWhenIdentityCannotBeConfirmed', async () => {
@@ -1430,7 +1490,7 @@ describe('library administration', () => {
     let visibility: DocumentVisibilityState = 'visible'
     vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility)
     renderAppAt(SETTINGS)
-    await screen.findByRole('article', { name: 'Movies settings' })
+    const detail = await screen.findByRole('article', { name: 'Movies settings' })
     const requests = state.inventoryRequests
     state.libraries = [{ ...MOVIES, status: 'SCANNING' }, SHOWS]
 
@@ -1442,9 +1502,7 @@ describe('library administration', () => {
       document.dispatchEvent(new Event('visibilitychange'))
     })
 
-    expect(await screen.findByRole('article', { name: 'Movies settings' })).toHaveTextContent(
-      'SCANNING',
-    )
+    await waitFor(() => expect(detail).toHaveTextContent('SCANNING'))
     expect(state.inventoryRequests).toBe(requests + 1)
   })
 
@@ -1453,5 +1511,470 @@ describe('library administration', () => {
     renderAppAt(`${SETTINGS}?library=gone`)
     await screen.findByRole('heading', { name: 'Library unavailable' })
     expect(screen.queryByRole('button', { name: 'Remove library' })).not.toBeInTheDocument()
+  })
+
+  describe('stopping a scan or refresh', () => {
+    it.each(STOPS)(
+      'shouldShowStoppingFromThePayloadWhenTheStopIsChosenDuringA$kind',
+      async ({ busy, action, operationName, field }) => {
+        const state = serve([{ ...MOVIES, status: busy }, SHOWS])
+        let submitted: unknown
+        server.use(
+          graphql.mutation(operationName, ({ variables }) => {
+            submitted = variables
+            return HttpResponse.json(stopping(field))
+          }),
+        )
+        const { user } = renderAppAt(SETTINGS)
+        const detail = await screen.findByRole('article', { name: 'Movies settings' })
+        await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+        const requests = state.inventoryRequests
+
+        await user.click(within(detail).getByRole('button', { name: action }))
+
+        await waitFor(() => expect(detail).toHaveTextContent('STOPPING'))
+        expect(moviesRow()).toHaveTextContent('STOPPING')
+        expect(submitted).toEqual({ input: { libraryId: 'movies' } })
+        expect(state.inventoryRequests).toBe(requests)
+      },
+    )
+
+    it.each(STOPS)(
+      'shouldSendOneStopWhenTheStopIsChosenAgainWhileTheFirstIsInFlightDuringA$kind',
+      async ({ busy, action, operationName, field }) => {
+        serve([{ ...MOVIES, status: busy }, SHOWS])
+        const requested = deferred()
+        const answer = deferred()
+        let stopRequests = 0
+        server.use(
+          graphql.mutation(operationName, async () => {
+            stopRequests++
+            requested.resolve()
+            await answer.promise
+            return HttpResponse.json(stopping(field))
+          }),
+        )
+        const { user } = renderAppAt(SETTINGS)
+        const detail = await screen.findByRole('article', { name: 'Movies settings' })
+        const stop = within(detail).getByRole('button', { name: action })
+        await user.click(stop)
+        await requested.promise
+
+        await user.click(stop)
+        answer.resolve()
+
+        await waitFor(() => expect(detail).toHaveTextContent('STOPPING'))
+        expect(stopRequests).toBe(1)
+      },
+    )
+
+    it.each(STOPS)(
+      'shouldKeepTheEarlierStatusWithoutReadingTheInventoryWhenTheStopEndsBeforeTheResponseToStoppingA$kind',
+      async ({ busy, action, operationName, field }) => {
+        const state = serve([{ ...MOVIES, status: busy }, SHOWS])
+        const requested = deferred()
+        const answer = deferred()
+        server.use(
+          graphql.mutation(operationName, async () => {
+            requested.resolve()
+            await answer.promise
+            return HttpResponse.json(stopping(field))
+          }),
+        )
+        const { user } = renderAppAt(SETTINGS)
+        const detail = await screen.findByRole('article', { name: 'Movies settings' })
+        await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+        const requests = state.inventoryRequests
+        await user.click(within(detail).getByRole('button', { name: action }))
+        await requested.promise
+        state.socket.publish('LibraryStatusChanged', {
+          data: { libraryStatusChanged: { ...MOVIES, status: 'STOPPING' } },
+        })
+        await waitFor(() => expect(detail).toHaveTextContent('STOPPING'))
+        state.socket.publish('LibraryStatusChanged', {
+          data: { libraryStatusChanged: { ...MOVIES, status: 'UNHEALTHY' } },
+        })
+        await waitFor(() => expect(detail).toHaveTextContent('UNHEALTHY'))
+        const scan = within(detail).getByRole('button', { name: 'Scan library' })
+        expect(scan).toBeDisabled()
+
+        answer.resolve()
+
+        await waitFor(() => expect(scan).toBeEnabled())
+        expect(detail.querySelector('[data-library-status]')).toHaveTextContent(/^UNHEALTHY$/)
+        expect(moviesRow()).toHaveTextContent('UNHEALTHY')
+        expect(state.inventoryRequests).toBe(requests)
+      },
+    )
+
+    it.each([
+      { status: 'HEALTHY' as const, offered: [] },
+      { status: 'UNHEALTHY' as const, offered: [] },
+      { status: 'SCANNING' as const, offered: ['Stop scan'] },
+      { status: 'REFRESHING' as const, offered: ['Stop refresh'] },
+      { status: 'STOPPING' as const, offered: [] },
+    ])(
+      'shouldOfferOnlyTheStopForTheRunningKindWhileTheLibraryShows$status',
+      async ({ status, offered }) => {
+        serve([{ ...MOVIES, status }, SHOWS])
+        renderAppAt(SETTINGS)
+        const detail = await screen.findByRole('article', { name: 'Movies settings' })
+
+        const stops = within(detail)
+          .queryAllByRole('button', { name: /^Stop / })
+          .map((button) => button.textContent)
+
+        expect(stops).toEqual(offered)
+      },
+    )
+
+    it.each(STOPS)(
+      'shouldDescribeWhatAStopKeepsBesideTheStopForA$kind',
+      async ({ busy, action }) => {
+        serve([{ ...MOVIES, status: busy }, SHOWS])
+        renderAppAt(SETTINGS)
+        const detail = await screen.findByRole('article', { name: 'Movies settings' })
+
+        const stop = within(detail).getByRole('button', { name: action })
+
+        expect(stop).toBeEnabled()
+        expect(stop).toHaveAccessibleDescription(/finish\. Nothing is rolled back/)
+      },
+    )
+
+    it('shouldDisableStopWhenTheLatestLibraryStateFailedToLoad', async () => {
+      serve([{ ...MOVIES, status: 'SCANNING' }, SHOWS])
+      const { router } = renderAppAt(SETTINGS)
+      await screen.findByRole('article', { name: 'Movies settings' })
+      await act(() => router.navigate({ to: '/' }))
+      server.use(
+        graphql.query('AdminLibraries', () =>
+          HttpResponse.json({ errors: [{ message: 'offline' }] }),
+        ),
+      )
+
+      await act(() => router.navigate({ to: SETTINGS }))
+
+      await screen.findByRole('alert')
+      expect(screen.getByRole('button', { name: 'Stop scan' })).toBeDisabled()
+    })
+
+    it('shouldDisableEveryLibraryActionWhileTheLibraryShowsStopping', async () => {
+      serve([{ ...MOVIES, status: 'STOPPING' }, SHOWS])
+      renderAppAt(SETTINGS)
+      const detail = await screen.findByRole('article', { name: 'Movies settings' })
+      expect(detail.querySelector('[data-library-status]')).toHaveTextContent('STOPPING')
+
+      for (const name of ['Scan library', 'Refresh metadata', 'Remove library'])
+        expect(within(detail).getByRole('button', { name })).toBeDisabled()
+      expect(within(detail).queryByRole('button', { name: /^Stop / })).not.toBeInTheDocument()
+      expect(within(detail).getByRole('link', { name: 'View library' })).toBeInTheDocument()
+    })
+
+    it('shouldShowStoppingVerbatimWithItsOwnIconInTheListAndThePanel', async () => {
+      const statuses = ['HEALTHY', 'SCANNING', 'REFRESHING', 'UNHEALTHY', 'FUTURE_STATE']
+      const others = statuses.map((status) => ({
+        ...MOVIES,
+        id: status,
+        name: `Library ${status}`,
+        status: status as ManagedLibrary['status'],
+      }))
+      serve([{ ...MOVIES, status: 'STOPPING' }, ...others])
+      renderAppAt(SETTINGS)
+      const detail = await screen.findByRole('article', { name: 'Movies settings' })
+      const inventory = screen.getByRole('navigation', { name: 'Libraries to manage' })
+
+      const otherGlyphs = statuses.map((status) =>
+        statusGlyph(
+          within(inventory).getByRole('button', { name: new RegExp(`^Library ${status}`) }),
+        ),
+      )
+
+      expect(detail.querySelector('[data-library-status]')).toHaveTextContent(/^STOPPING$/)
+      expect(moviesRow().querySelector('[data-library-status]')).toHaveTextContent(/^STOPPING$/)
+      expect(statusGlyph(detail)).toBeTruthy()
+      expect(statusGlyph(moviesRow())).toBe(statusGlyph(detail))
+      expect(otherGlyphs).not.toContain(statusGlyph(detail))
+    })
+
+    // ICONOGRAPHY.md approves one stop glyph, a square inside a circle, for STOPPING and Stop.
+    it.each(STOPS)(
+      'shouldShowTheStoppingGlyphAsADecorativeSquareInACircleBesideTheStopForA$kind',
+      async ({ busy, action }) => {
+        serve([
+          { ...MOVIES, status: busy },
+          { ...SHOWS, status: 'STOPPING' },
+        ])
+        renderAppAt(SETTINGS)
+        const detail = await screen.findByRole('article', { name: 'Movies settings' })
+        const inventory = screen.getByRole('navigation', { name: 'Libraries to manage' })
+
+        const stopGlyph = within(detail).getByRole('button', { name: action }).querySelector('svg')
+        const stoppingGlyph = within(inventory)
+          .getByRole('button', { name: /^TV shows/ })
+          .querySelector('[data-library-status] svg')
+
+        expect(stopGlyph).toHaveAttribute('aria-hidden', 'true')
+        expect(stopGlyph?.innerHTML).toBe(stoppingGlyph?.innerHTML)
+        expect(stopGlyph?.querySelectorAll('circle')).toHaveLength(1)
+        expect(stopGlyph?.querySelectorAll('rect')).toHaveLength(1)
+        expect(stopGlyph).toHaveAttribute('fill', 'none')
+      },
+    )
+
+    it.each([
+      {
+        refusal: 'LibraryScanNotInProgressError',
+        operationName: 'StopLibraryScan',
+        field: 'stopLibraryScan',
+        action: 'Stop scan',
+        busy: 'SCANNING' as const,
+        message:
+          'No library scan is in progress, so there is nothing to stop. A library refresh is in progress.',
+        carried: 'REFRESHING' as const,
+        offered: 'Stop refresh',
+      },
+      {
+        refusal: 'LibraryRefreshNotInProgressError',
+        operationName: 'StopLibraryRefresh',
+        field: 'stopLibraryRefresh',
+        action: 'Stop refresh',
+        busy: 'REFRESHING' as const,
+        message:
+          'No library refresh is in progress, so there is nothing to stop. A library scan is in progress.',
+        carried: 'SCANNING' as const,
+        offered: 'Stop scan',
+      },
+    ])(
+      'shouldShowTheServerMessageAndTheStatusCarriedBy$refusal',
+      async ({ refusal, operationName, field, action, busy, message, carried, offered }) => {
+        serve([{ ...MOVIES, status: busy }, SHOWS])
+        server.use(
+          graphql.mutation(operationName, () =>
+            HttpResponse.json({
+              data: {
+                [field]: {
+                  library: null,
+                  userErrors: [{ __typename: refusal, message, status: carried }],
+                },
+              },
+            }),
+          ),
+        )
+        const { user } = renderAppAt(SETTINGS)
+        const detail = await screen.findByRole('article', { name: 'Movies settings' })
+
+        await user.click(within(detail).getByRole('button', { name: action }))
+
+        expect(await within(detail).findByRole('alert')).toHaveTextContent(message)
+        await waitFor(() => expect(detail).toHaveTextContent(carried))
+        expect(within(detail).getByRole('button', { name: offered })).toBeEnabled()
+      },
+    )
+
+    it.each(STOPS)(
+      'shouldSayTheRunStoppedAndThatDetailsCanStillArriveOnceTheLibraryLeavesStoppingAfterA$kind',
+      async ({ busy, action, operationName, field, stopped }) => {
+        const state = serve([{ ...MOVIES, status: busy }, SHOWS])
+        server.use(graphql.mutation(operationName, () => HttpResponse.json(stopping(field))))
+        const { user } = renderAppAt(SETTINGS)
+        const detail = await screen.findByRole('article', { name: 'Movies settings' })
+        await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+        await user.click(within(detail).getByRole('button', { name: action }))
+        await waitFor(() => expect(detail).toHaveTextContent('STOPPING'))
+        expect(detail).not.toHaveTextContent(stopped)
+
+        state.socket.publish('LibraryStatusChanged', { data: { libraryStatusChanged: MOVIES } })
+
+        expect(await within(detail).findByText(stopped)).toBeInTheDocument()
+        expect(detail).toHaveTextContent('HEALTHY')
+      },
+    )
+
+    it('shouldSayTheScanStoppedWhenAnotherSessionStoppedIt', async () => {
+      const state = serve([{ ...MOVIES, status: 'SCANNING' }, SHOWS])
+      renderAppAt(SETTINGS)
+      const detail = await screen.findByRole('article', { name: 'Movies settings' })
+      await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+      state.socket.publish('LibraryStatusChanged', {
+        data: { libraryStatusChanged: { ...MOVIES, status: 'STOPPING' } },
+      })
+      await waitFor(() => expect(detail).toHaveTextContent('STOPPING'))
+
+      state.socket.publish('LibraryStatusChanged', { data: { libraryStatusChanged: MOVIES } })
+
+      expect(await within(detail).findByText(STOPS[0].stopped)).toBeInTheDocument()
+    })
+
+    it('shouldSayTheRunStoppedWithoutNamingItsKindWhenThePanelFirstShowedStopping', async () => {
+      const state = serve([{ ...MOVIES, status: 'STOPPING' }, SHOWS])
+      renderAppAt(SETTINGS)
+      const detail = await screen.findByRole('article', { name: 'Movies settings' })
+      await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+
+      state.socket.publish('LibraryStatusChanged', {
+        data: { libraryStatusChanged: { ...MOVIES, status: 'UNHEALTHY' } },
+      })
+
+      expect(
+        await within(detail).findByText(
+          'Scan or metadata refresh stopped. Details such as cast photos can still appear for titles already processed.',
+        ),
+      ).toBeInTheDocument()
+    })
+
+    it('shouldNotSayTheScanStoppedWhenTheReadAfterAReconnectFindsANewScanRunning', async () => {
+      const state = serve([{ ...MOVIES, status: 'SCANNING' }, SHOWS])
+      renderAppAt(SETTINGS)
+      const detail = await screen.findByRole('article', { name: 'Movies settings' })
+      await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+      state.socket.publish('LibraryStatusChanged', {
+        data: { libraryStatusChanged: { ...MOVIES, status: 'STOPPING' } },
+      })
+      await waitFor(() => expect(detail).toHaveTextContent('STOPPING'))
+      const requests = state.inventoryRequests
+      // The stop finished and another session started a new scan while the socket was closed.
+      state.libraries = [{ ...MOVIES, status: 'SCANNING' }, SHOWS]
+
+      state.socket.closeAll(1012, 'Service restart')
+
+      await waitFor(() => expect(state.inventoryRequests).toBe(requests + 1), { timeout: 3_000 })
+      await waitFor(() => expect(detail).toHaveTextContent('SCANNING'))
+      expect(within(detail).getByRole('button', { name: 'Stop scan' })).toBeEnabled()
+      expect(detail).not.toHaveTextContent(STOPS[0].stopped)
+    })
+
+    it('shouldDropTheStoppedNoteWhenTheLibraryStatusChangesAgain', async () => {
+      const state = serve([{ ...MOVIES, status: 'SCANNING' }, SHOWS])
+      renderAppAt(SETTINGS)
+      const detail = await screen.findByRole('article', { name: 'Movies settings' })
+      await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+      state.socket.publish('LibraryStatusChanged', {
+        data: { libraryStatusChanged: { ...MOVIES, status: 'STOPPING' } },
+      })
+      await waitFor(() => expect(detail).toHaveTextContent('STOPPING'))
+      state.socket.publish('LibraryStatusChanged', { data: { libraryStatusChanged: MOVIES } })
+      await within(detail).findByText(STOPS[0].stopped)
+
+      state.socket.publish('LibraryStatusChanged', {
+        data: { libraryStatusChanged: { ...MOVIES, status: 'REFRESHING' } },
+      })
+
+      await waitFor(() => expect(detail).toHaveTextContent('REFRESHING'))
+      expect(detail).not.toHaveTextContent(STOPS[0].stopped)
+    })
+
+    it('shouldNotSayARunStoppedWhenItFinishesWithoutAStop', async () => {
+      const state = serve([{ ...MOVIES, status: 'SCANNING' }, SHOWS])
+      renderAppAt(SETTINGS)
+      const detail = await screen.findByRole('article', { name: 'Movies settings' })
+      await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+
+      state.socket.publish('LibraryStatusChanged', { data: { libraryStatusChanged: MOVIES } })
+
+      await waitFor(() => expect(detail).toHaveTextContent('HEALTHY'))
+      expect(detail).not.toHaveTextContent('stopped')
+    })
+
+    it.each(STOPS)(
+      'shouldMoveFocusToThePanelStatusWhenTheChosenStopLeavesDuringA$kind',
+      async ({ busy, action, operationName, field }) => {
+        serve([{ ...MOVIES, status: busy }, SHOWS])
+        server.use(graphql.mutation(operationName, () => HttpResponse.json(stopping(field))))
+        const { user } = renderAppAt(SETTINGS)
+        const detail = await screen.findByRole('article', { name: 'Movies settings' })
+
+        await user.click(within(detail).getByRole('button', { name: action }))
+
+        await waitFor(() => expect(detail).toHaveTextContent('STOPPING'))
+        await waitFor(() => expect(panelStatus(detail)).toHaveFocus())
+      },
+    )
+
+    it('shouldMoveFocusToThePanelStatusWhenAnotherSessionsStopRemovesTheFocusedStop', async () => {
+      const state = serve([{ ...MOVIES, status: 'SCANNING' }, SHOWS])
+      renderAppAt(SETTINGS)
+      const detail = await screen.findByRole('article', { name: 'Movies settings' })
+      await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+      act(() => within(detail).getByRole('button', { name: 'Stop scan' }).focus())
+
+      state.socket.publish('LibraryStatusChanged', {
+        data: { libraryStatusChanged: { ...MOVIES, status: 'STOPPING' } },
+      })
+
+      await waitFor(() => expect(detail).toHaveTextContent('STOPPING'))
+      await waitFor(() => expect(panelStatus(detail)).toHaveFocus())
+    })
+
+    it('shouldLeaveFocusWhereItIsWhenTheStopLeavesWhileAnotherControlHasFocus', async () => {
+      const state = serve([{ ...MOVIES, status: 'SCANNING' }, SHOWS])
+      renderAppAt(SETTINGS)
+      const detail = await screen.findByRole('article', { name: 'Movies settings' })
+      await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+      const view = within(detail).getByRole('link', { name: 'View library' })
+      act(() => view.focus())
+
+      state.socket.publish('LibraryStatusChanged', {
+        data: { libraryStatusChanged: { ...MOVIES, status: 'STOPPING' } },
+      })
+
+      await waitFor(() => expect(detail).toHaveTextContent('STOPPING'))
+      expect(view).toHaveFocus()
+    })
+
+    it('shouldLeaveFocusAloneWhenThePanelOpensWithoutAStop', async () => {
+      serve([{ ...MOVIES, status: 'STOPPING' }, SHOWS])
+      renderAppAt(SETTINGS)
+
+      const detail = await screen.findByRole('article', { name: 'Movies settings' })
+
+      expect(panelStatus(detail)).not.toHaveFocus()
+    })
+
+    it('shouldShowStoppingAndThenTheRestoredStatusWhenAnotherSessionStopsTheScan', async () => {
+      const state = serve([{ ...MOVIES, status: 'SCANNING' }, SHOWS])
+      renderAppAt(SETTINGS)
+      const detail = await screen.findByRole('article', { name: 'Movies settings' })
+      await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+
+      state.socket.publish('LibraryStatusChanged', {
+        data: { libraryStatusChanged: { ...MOVIES, status: 'STOPPING' } },
+      })
+      await waitFor(() => expect(detail).toHaveTextContent('STOPPING'))
+      expect(within(detail).queryByRole('button', { name: 'Stop scan' })).not.toBeInTheDocument()
+      expect(within(detail).getByRole('button', { name: 'Scan library' })).toBeDisabled()
+      state.socket.publish('LibraryStatusChanged', {
+        data: { libraryStatusChanged: MOVIES },
+      })
+
+      await waitFor(() => expect(detail).toHaveTextContent('HEALTHY'))
+      expect(within(detail).getByRole('button', { name: 'Scan library' })).toBeEnabled()
+    })
+
+    it.each([
+      { restored: 'StillStopping', current: 'STOPPING' as const, next: 'HEALTHY' as const },
+      { restored: 'AlreadyRestored', current: 'UNHEALTHY' as const, next: 'SCANNING' as const },
+    ])(
+      'shouldReadTheCurrentStatusAfterAReconnectDuringStoppingAndFollowLaterChangesWhen$restored',
+      async ({ current, next }) => {
+        const state = serve([{ ...MOVIES, status: 'STOPPING' }, SHOWS])
+        renderAppAt(SETTINGS)
+        const detail = await screen.findByRole('article', { name: 'Movies settings' })
+        expect(detail).toHaveTextContent('STOPPING')
+        await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+        const requests = state.inventoryRequests
+        state.libraries = [{ ...MOVIES, status: current }, SHOWS]
+
+        state.socket.closeAll(1012, 'Service restart')
+
+        await waitFor(() => expect(state.inventoryRequests).toBe(requests + 1), { timeout: 3_000 })
+        await waitFor(() => expect(detail).toHaveTextContent(current))
+        await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+        state.socket.publish('LibraryStatusChanged', {
+          data: { libraryStatusChanged: { ...MOVIES, status: next } },
+        })
+        await waitFor(() => expect(detail).toHaveTextContent(next))
+      },
+    )
   })
 })

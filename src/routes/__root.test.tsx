@@ -1,3 +1,4 @@
+import { watchingConnection } from '../test/continueWatchingFixtures'
 import { screen } from '@testing-library/react'
 import { HttpResponse, graphql } from 'msw'
 import { describe, expect, it } from 'vitest'
@@ -163,7 +164,7 @@ describe('the root layout', () => {
       graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
       graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
       graphql.query('Home', () =>
-        HttpResponse.json({ data: { continueWatching: [], libraries: [] } }),
+        HttpResponse.json({ data: { continueWatching: watchingConnection([]), libraries: [] } }),
       ),
     )
     renderAppAt('/')

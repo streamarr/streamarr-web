@@ -1,4 +1,4 @@
-import { Center, Loader, Text, Title } from '@mantine/core'
+import { Button, Center, Group, Loader, Text, Title } from '@mantine/core'
 import { useElementScrollRestoration, useLocation } from '@tanstack/react-router'
 import { useStore } from '@tanstack/react-store'
 import { Store } from '@tanstack/store'
@@ -46,6 +46,7 @@ export function LibraryScreen({
   }
 
   const {
+    removed,
     loading,
     pending,
     staged,
@@ -159,7 +160,7 @@ export function LibraryScreen({
 
   // An unknown but well-formed id still fails as an uncoded non-null violation, so only an id the
   // server cannot parse is known to be missing.
-  if (!library && hasInvalidInputAt(error, 'library')) {
+  if (removed || (!library && hasInvalidInputAt(error, 'library'))) {
     return <FailurePanel wayOut="back">This library doesn't exist or was removed.</FailurePanel>
   }
 
@@ -171,7 +172,7 @@ export function LibraryScreen({
     )
   }
 
-  const total = library.alphabetIndex.reduce((sum, entry) => sum + entry.count, 0)
+  const total = library.itemCount
   const scanLabel = library.scanCompletedOn
     ? `last scan ${formatRelativeTime(library.scanCompletedOn)}`
     : 'scanning…'
@@ -198,7 +199,14 @@ export function LibraryScreen({
 
       <div className={styles.body}>
         {edges.length === 0 ? (
-          <Text className={styles.empty}>No items match this filter.</Text>
+          <EmptyLibraryRange
+            hasPreviousPage={hasPreviousPage}
+            hasNextPage={hasNextPage}
+            onPrevious={() => {
+              void loadPrevious()
+            }}
+            onNext={loadMore}
+          />
         ) : (
           <LibraryGrid
             edges={edges}
@@ -272,4 +280,38 @@ function directionOfJump(
   const position = (letter: string | null) =>
     letter === 'HASH' ? -1 : index.findIndex((entry) => entry.letter === letter)
   return position(to) < position(from) ? 'backward' : 'forward'
+}
+
+function EmptyLibraryRange({
+  hasPreviousPage,
+  hasNextPage,
+  onPrevious,
+  onNext,
+}: Readonly<{
+  hasPreviousPage: boolean
+  hasNextPage: boolean
+  onPrevious: () => void
+  onNext: () => void
+}>) {
+  return (
+    <div className={styles.empty}>
+      <Text>
+        {hasPreviousPage || hasNextPage
+          ? 'No titles remain in this loaded range.'
+          : 'No items match this filter.'}
+      </Text>
+      <Group justify="center">
+        {hasPreviousPage && (
+          <Button variant="subtle" onClick={onPrevious}>
+            Load previous titles
+          </Button>
+        )}
+        {hasNextPage && (
+          <Button variant="subtle" onClick={onNext}>
+            Load more titles
+          </Button>
+        )}
+      </Group>
+    </div>
+  )
 }

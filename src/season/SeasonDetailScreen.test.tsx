@@ -3,7 +3,17 @@ import { graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { SeasonDetailQuery } from '../graphql/generated/graphql'
 import { meFixture } from '../test/meFixture'
-import { failsOnceThen, invalidIdResponse } from '../test/graphqlResponses'
+import {
+  answersInTurn,
+  answersThenHolds,
+  answerWith,
+  comeBackOnline,
+  comeBackOnlineUntil,
+  failsOnceThen,
+  heldAnswer,
+  invalidIdResponse,
+  networkFailure,
+} from '../test/graphqlResponses'
 import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
 
@@ -162,6 +172,39 @@ describe('SeasonDetailScreen', () => {
     )
   })
 
+  it('shouldKeepTheSeasonOnScreenWhileItIsReadAgain', async () => {
+    serve(seasonData())
+    const season = answersThenHolds(seasonData(), seasonData({ overview: 'The team splits up.' }))
+    server.use(graphql.query('SeasonDetail', season.resolver))
+    renderAppAt('/season/season-2')
+    const title = await screen.findByRole('heading', { level: 1, name: 'Season 2' })
+
+    comeBackOnline()
+    await waitFor(() => expect(season.calls).toBe(2))
+    expect(title).toBeInTheDocument()
+    season.release()
+
+    expect(await screen.findByText('The team splits up.')).toBeInTheDocument()
+    expect(title).toBeInTheDocument()
+  })
+
+  it('shouldKeepTheSeasonWhenReadingItAgainFails', async () => {
+    serve(seasonData())
+    const fresh = heldAnswer(seasonData({ overview: 'The team splits up.' }))
+    const season = answersInTurn(answerWith(seasonData()), networkFailure, fresh.answer)
+    server.use(graphql.query('SeasonDetail', season.resolver))
+    renderAppAt('/season/season-2')
+    const title = await screen.findByRole('heading', { level: 1, name: 'Season 2' })
+
+    await comeBackOnlineUntil(season, 3)
+    expect(title).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    fresh.release()
+
+    expect(await screen.findByText('The team splits up.')).toBeInTheDocument()
+    expect(title).toBeInTheDocument()
+  })
+
   it('shouldRetryTheSeasonAfterItFailsToLoad', async () => {
     const season = failsOnceThen(seasonData())
     server.use(
@@ -283,11 +326,21 @@ describe('SeasonDetailScreen', () => {
   })
 
   it('shouldConfirmAndThenUpdateEveryEpisodeFromTheMarkedSeason', async () => {
-    const requestedIds: string[] = []
     const markedIds: string[] = []
-    serve(seasonData(), requestedIds)
+    const data = seasonData()
+    serve(data)
     const watchedState = { watchStatus: 'WATCHED', watchProgress: null }
+    const marked = {
+      season: {
+        ...data.season!,
+        ...watchedState,
+        episodes: data.season!.episodes.map((episode) => ({ ...episode!, ...watchedState })),
+      },
+    } as SeasonDetailQuery
+    const after = heldAnswer(marked)
+    const season = answersInTurn(answerWith(data), after.answer)
     server.use(
+      graphql.query('SeasonDetail', season.resolver),
       graphql.mutation('MarkWatched', ({ variables }) => {
         markedIds.push((variables.input as { itemId: string }).itemId)
         return HttpResponse.json({
@@ -324,6 +377,8 @@ describe('SeasonDetailScreen', () => {
     expect(await screen.findByRole('button', { name: 'Mark season unwatched' })).toBeEnabled()
     expect(screen.getByRole('progressbar', { name: '3 of 3 watched' })).toBeInTheDocument()
     expect(markedIds).toEqual(['season-2'])
-    expect(requestedIds).toEqual(['season-2'])
+    await waitFor(() => expect(season.calls).toBe(2))
+    expect(screen.getByRole('progressbar', { name: '3 of 3 watched' })).toBeInTheDocument()
+    after.release()
   })
 })

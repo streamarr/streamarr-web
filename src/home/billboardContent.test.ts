@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import type { HomeQuery } from '../graphql/generated/graphql'
 import { billboardFromContinueWatching, billboardFromRecentlyAdded } from './billboardContent'
 
-type ContinueWatchingItem = HomeQuery['continueWatching'][number]
+type ContinueWatchingItem = NonNullable<
+  NonNullable<HomeQuery['continueWatching']['edges'][number]>['node']
+>
 type RecentlyAddedNode = NonNullable<
   NonNullable<HomeQuery['libraries'][number]['items']['edges']>[number]
 >['node']
@@ -84,6 +86,7 @@ function recentMovie(
     releaseDate: '2024-01-01',
     runtime: 90,
     watchStatus: 'UNWATCHED',
+    lastWatchedAt: null,
     watchProgress: null,
     images: [],
     tagline: 'Change begins with a whisper.',

@@ -7,7 +7,10 @@ import { CSRF_REJECTION_CAUSE, isCsrfRejection } from '../auth/csrf'
 import { SessionUnconfirmedError, type SessionStore } from '../auth/session'
 import { extractAuthContext } from '../graphql/errorRouting'
 import { requestFailureMessage } from '../graphql/requestErrors'
+import { readActiveQueriesAgain } from '../graphql/readAgain'
 import { installRevalidation } from '../graphql/revalidation'
+import { useMe } from '../identity/useMe'
+import { subscribeToWatchStateChanges } from '../media/watchStateChanges'
 import { FailurePanel } from '../ui/Failure'
 
 // Only the server's answer counts (the httpOnly cookies are unreadable), and only on arrival:
@@ -45,8 +48,7 @@ function Authenticated() {
     () =>
       installRevalidation({
         // Every read settles first: a refetch that joined a still-pending read would share it.
-        refetchActive: () =>
-          Promise.allSettled(client.refetchQueries({ include: 'active' }).results),
+        refetchActive: () => readActiveQueriesAgain(client),
         isReading: () =>
           [...client.getObservableQueries('active')].some(
             (query) => query.getCurrentResult().loading,
@@ -56,6 +58,14 @@ function Authenticated() {
         document,
       }),
     [client, subscriptions],
+  )
+  // Watch state belongs to a Profile, so the changes follow whichever Profile is selected. A store
+  // reset refetches the selection, and the earlier value holds until the next one arrives.
+  const me = useMe()
+  const profileId = (me.data ?? me.previousData)?.me.selectedProfile?.id
+  useEffect(
+    () => (profileId ? subscribeToWatchStateChanges(client) : undefined),
+    [client, profileId],
   )
   return <Outlet />
 }

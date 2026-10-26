@@ -1,4 +1,12 @@
-import { createRootRouteWithContext, Outlet, useRouterState } from '@tanstack/react-router'
+import { useQuery } from '@apollo/client/react'
+import { MeDocument } from '../graphql/generated/graphql'
+import { LibraryContentsProvider } from '../library/LibraryContentsProvider'
+import {
+  createRootRouteWithContext,
+  Outlet,
+  useLocation,
+  useRouterState,
+} from '@tanstack/react-router'
 import type { SessionStore } from '../auth/session'
 import type { SubscriptionTransport } from '../graphql/subscriptionTransport'
 import type { FileRouteTypes } from '../routeTree.gen'
@@ -41,9 +49,20 @@ const SETTINGS_ROUTES = new Set<FileRouteTypes['id']>(['/_authenticated/settings
 const PLAYER_ROUTES = new Set<FileRouteTypes['id']>(['/_authenticated/play/$mediaFileId'])
 
 function RootLayout() {
+  const signedIn = useRouterState({
+    select: (state) =>
+      state.matches.some(
+        (match) => match.routeId === '/_authenticated' && match.status === 'success',
+      ),
+  })
+  const me = useQuery(MeDocument, { skip: !signedIn })
+  const profileId = (me.data ?? me.previousData)?.me.selectedProfile?.id
+  const pathname = useLocation({ select: (location) => location.pathname })
   return (
     <AmbientThemeProvider>
-      <RootFrame />
+      <LibraryContentsProvider profileId={profileId} pathname={pathname}>
+        <RootFrame />
+      </LibraryContentsProvider>
     </AmbientThemeProvider>
   )
 }

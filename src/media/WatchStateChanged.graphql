@@ -1,0 +1,37 @@
+# Continue Watching edges carry full cards for uncached additions. Keep items limited to
+# identity and watch state so a series-wide mark does not repeat every episode card.
+subscription WatchStateChanged {
+  watchStateChanged {
+    continueWatching {
+      itemId
+      edge {
+        ...ContinueWatchingEdgeFields
+      }
+    }
+    items {
+      __typename
+      ... on Movie {
+        ...MovieWatchState
+        lastWatchedAt
+        unmatched
+        library {
+          id
+        }
+      }
+      ... on Episode {
+        ...EpisodeWatchState
+      }
+      ... on Season {
+        ...SeasonWatchState
+      }
+      ... on Series {
+        ...SeriesWatchState
+        lastWatchedAt
+        unmatched
+        library {
+          id
+        }
+      }
+    }
+  }
+}

@@ -1,10 +1,22 @@
-import { screen, waitFor } from '@testing-library/react'
+import { watchingConnection } from '../test/continueWatchingFixtures'
+import { act, screen, waitFor } from '@testing-library/react'
 import { graphql, HttpResponse, http } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { MovieDetailQuery } from '../graphql/generated/graphql'
 import { deferred } from '../test/deferred'
+import { serveGraphqlSocket } from '../test/graphqlSocket'
 import { meFixture, profileFixture } from '../test/meFixture'
-import { failsOnceThen, invalidIdResponse } from '../test/graphqlResponses'
+import {
+  answersInTurn,
+  answersThenHolds,
+  answerWith,
+  comeBackOnline,
+  comeBackOnlineUntil,
+  failsOnceThen,
+  heldAnswer,
+  invalidIdResponse,
+  networkFailure,
+} from '../test/graphqlResponses'
 import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
 
@@ -81,6 +93,19 @@ function serve(data: MovieDetailQuery, requestedIds: string[] = []) {
   )
 }
 
+function markWatchedAnswers() {
+  return graphql.mutation('MarkWatched', () =>
+    HttpResponse.json({
+      data: {
+        markWatched: {
+          item: { __typename: 'Movie', id: 'm1', watchStatus: 'WATCHED', watchProgress: null },
+          userErrors: [],
+        },
+      },
+    }),
+  )
+}
+
 describe('MovieDetailScreen', () => {
   it('shouldPlayTheFirstAvailableFileWhenTheFileListStartsWithNull', async () => {
     serve(movieData({ files: [null, { id: 'file-1' }] }))
@@ -89,6 +114,53 @@ describe('MovieDetailScreen', () => {
       'href',
       '/play/file-1?movie=m1',
     )
+  })
+
+  it('shouldKeepTheMovieOnScreenWhileItIsReadAgain', async () => {
+    serve(movieData())
+    const movie = answersThenHolds(movieData(), movieData({ tagline: 'Every light goes out.' }))
+    server.use(graphql.query('MovieDetail', movie.resolver))
+    renderAppAt('/movie/m1')
+    const title = await screen.findByRole('heading', { level: 1, name: 'Everlight' })
+
+    comeBackOnline()
+    await waitFor(() => expect(movie.calls).toBe(2))
+    expect(title).toBeInTheDocument()
+    movie.release()
+
+    expect(await screen.findByText('Every light goes out.')).toBeInTheDocument()
+    expect(title).toBeInTheDocument()
+  })
+
+  it('shouldKeepNotFoundOnScreenWhileTheMovieIsReadAgain', async () => {
+    serve({ movie: null })
+    const movie = answersThenHolds({ movie: null }, { movie: null })
+    server.use(graphql.query('MovieDetail', movie.resolver))
+    renderAppAt('/movie/m1')
+    const notFound = await screen.findByRole('alert')
+
+    comeBackOnline()
+    await waitFor(() => expect(movie.calls).toBe(2))
+    expect(notFound).toBeInTheDocument()
+    expect(notFound).toHaveTextContent("This movie doesn't exist or was removed.")
+    movie.release()
+  })
+
+  it('shouldKeepTheMovieWhenReadingItAgainFails', async () => {
+    serve(movieData())
+    const fresh = heldAnswer(movieData({ tagline: 'Every light goes out.' }))
+    const movie = answersInTurn(answerWith(movieData()), networkFailure, fresh.answer)
+    server.use(graphql.query('MovieDetail', movie.resolver))
+    renderAppAt('/movie/m1')
+    const title = await screen.findByRole('heading', { level: 1, name: 'Everlight' })
+
+    await comeBackOnlineUntil(movie, 3)
+    expect(title).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    fresh.release()
+
+    expect(await screen.findByText('Every light goes out.')).toBeInTheDocument()
+    expect(title).toBeInTheDocument()
   })
 
   it('shouldRetryTheMovieAfterItFailsToLoad', async () => {
@@ -114,7 +186,7 @@ describe('MovieDetailScreen', () => {
     serve({ movie: null })
     server.use(
       graphql.query('Home', () =>
-        HttpResponse.json({ data: { continueWatching: [], libraries: [] } }),
+        HttpResponse.json({ data: { continueWatching: watchingConnection([]), libraries: [] } }),
       ),
     )
     const { router, user } = renderAppAt('/movie/m1')
@@ -254,13 +326,21 @@ describe('MovieDetailScreen', () => {
     expect(screen.getByTestId('ambient-scope').style.getPropertyValue('--ambient-accent')).toBe('')
   })
 
-  it('shouldFlipTheVerbFromTheMarkedItemWithoutLoadingTheMovieAgain', async () => {
+  it('shouldFlipTheVerbFromTheMarkedItemAndThenReadTheMovieAgain', async () => {
+    const markAnswer = deferred()
+    let watchStatus = 'IN_PROGRESS'
     const requestedIds: string[] = []
     const markedIds: string[] = []
-    serve(movieData({ watchStatus: 'IN_PROGRESS' }), requestedIds)
+    serve(movieData({ watchStatus }), requestedIds)
     server.use(
-      graphql.mutation('MarkWatched', ({ variables }) => {
+      graphql.query('MovieDetail', ({ variables }) => {
+        requestedIds.push(variables.id as string)
+        return HttpResponse.json({ data: movieData({ watchStatus }) })
+      }),
+      graphql.mutation('MarkWatched', async ({ variables }) => {
         markedIds.push((variables.input as { itemId: string }).itemId)
+        watchStatus = 'WATCHED'
+        await markAnswer.promise
         return HttpResponse.json({
           data: {
             markWatched: {
@@ -274,19 +354,87 @@ describe('MovieDetailScreen', () => {
     const { user } = renderAppAt('/movie/m1')
 
     await user.click(await screen.findByRole('button', { name: 'Mark watched' }))
+    markAnswer.resolve()
 
     expect(await screen.findByRole('button', { name: 'Mark unwatched' })).toBeEnabled()
-    expect(screen.getByRole('link', { name: 'Play' })).toBeInTheDocument()
     expect(markedIds).toEqual(['m1'])
-    expect(requestedIds).toEqual(['m1'])
+    await waitFor(() => expect(requestedIds).toEqual(['m1', 'm1']))
+    expect(screen.getByRole('button', { name: 'Mark unwatched' })).toBeEnabled()
+  })
+
+  it('shouldEndOnTheMarkedStateWhenAReadFromBeforeTheMarkAnswersAfterTheMark', async () => {
+    serve(movieData())
+    const earlier = heldAnswer(movieData())
+    const after = heldAnswer(movieData({ watchStatus: 'WATCHED' }))
+    const movie = answersInTurn(answerWith(movieData()), earlier.answer, after.answer)
+    server.use(graphql.query('MovieDetail', movie.resolver), markWatchedAnswers())
+    const { user } = renderAppAt('/movie/m1')
+    const mark = await screen.findByRole('button', { name: 'Mark watched' })
+    comeBackOnline()
+    await waitFor(() => expect(movie.calls).toBe(2))
+
+    await user.click(mark)
+    await screen.findByRole('button', { name: 'Mark unwatched' })
+    // The read after the mark is a request of its own, not a share of the earlier read.
+    await waitFor(() => expect(movie.calls).toBe(3))
+    earlier.release()
+    expect(await screen.findByRole('button', { name: 'Mark watched' })).toBeInTheDocument()
+    after.release()
+
+    expect(await screen.findByRole('button', { name: 'Mark unwatched' })).toBeEnabled()
+  })
+
+  it('shouldFinishTheMarkWhileTheReadAfterItIsStillAnswering', async () => {
+    serve(movieData())
+    const after = heldAnswer(movieData({ watchStatus: 'WATCHED' }))
+    const movie = answersInTurn(answerWith(movieData()), after.answer)
+    server.use(graphql.query('MovieDetail', movie.resolver), markWatchedAnswers())
+    const { user } = renderAppAt('/movie/m1')
+
+    await user.click(await screen.findByRole('button', { name: 'Mark watched' }))
+    await waitFor(() => expect(movie.calls).toBe(2))
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Mark unwatched' })).toBeEnabled(),
+    )
+    after.release()
+  })
+
+  it('shouldCancelTheReadAfterTheMarkWhenASignOutClearsTheCache', async () => {
+    serve(movieData())
+    const cancelled = deferred()
+    const release = deferred()
+    let reads = 0
+    server.use(
+      graphql.query('MovieDetail', async ({ request }) => {
+        reads += 1
+        if (reads === 1) return HttpResponse.json({ data: movieData() })
+        request.signal.addEventListener('abort', () => cancelled.resolve())
+        await release.promise
+        return HttpResponse.json({ data: movieData({ watchStatus: 'WATCHED' }) })
+      }),
+      markWatchedAnswers(),
+      http.post('/api/auth/refresh/revoke', () => new HttpResponse(null, { status: 204 })),
+    )
+    const { router, user } = renderAppAt('/movie/m1')
+    await user.click(await screen.findByRole('button', { name: 'Mark watched' }))
+    await waitFor(() => expect(reads).toBe(2))
+
+    await user.click(screen.getByRole('button', { name: /profile menu/i }))
+    await user.click(screen.getByRole('button', { name: /sign out/i }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
+
+    await cancelled.promise
+    release.resolve()
   })
 
   it('shouldKeepTheNextProfilesWatchStateWhenTheEarlierProfilesMarkAnswersAfterTheSwitch', async () => {
+    serveGraphqlSocket()
     const requestedIds: string[] = []
     const markSent = deferred()
     const markAnswer = deferred()
     serve(movieData({ watchStatus: 'UNWATCHED' }), requestedIds)
-    const household = meFixture({
+    let household = meFixture({
       scope: 'profile',
       profiles: [
         profileFixture({ id: 'p-alex', name: 'Alex', selected: true }),
@@ -295,13 +443,20 @@ describe('MovieDetailScreen', () => {
     })
     server.use(
       graphql.query('Me', () => HttpResponse.json({ data: { me: household } })),
-      http.post('/api/auth/select-profile', () =>
-        HttpResponse.json({
+      http.post('/api/auth/select-profile', () => {
+        household = meFixture({
+          scope: 'profile',
+          profiles: [
+            profileFixture({ id: 'p-alex', name: 'Alex' }),
+            profileFixture({ id: 'p-sam', name: 'Sam', personal: false, selected: true }),
+          ],
+        })
+        return HttpResponse.json({
           accessToken: 'access',
           accessTokenExpiresAt: new Date(Date.now() + 600_000).toISOString(),
           scope: 'profile',
-        }),
-      ),
+        })
+      }),
       graphql.mutation('MarkWatched', async () => {
         markSent.resolve()
         await markAnswer.promise
@@ -318,47 +473,68 @@ describe('MovieDetailScreen', () => {
     const { user } = renderAppAt('/movie/m1')
     await user.click(await screen.findByRole('button', { name: 'Mark watched' }))
     await markSent.promise
+    const readsBeforeSwitch = requestedIds.length
 
     await user.click(screen.getByRole('button', { name: /profile menu \(alex\)/i }))
     await user.click(screen.getByRole('button', { name: 'Sam' }))
-    await waitFor(() => expect(requestedIds).toEqual(['m1', 'm1']))
-    markAnswer.resolve()
+    await screen.findByRole('button', { name: /profile menu \(sam\)/i })
+    await waitFor(() => expect(requestedIds.length).toBeGreaterThan(readsBeforeSwitch))
+    await act(async () => {
+      markAnswer.resolve()
+    })
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      /^Couldn't update the watched state\.$/,
-    )
+    // The new identity also discards the previous Profile's pending action and error state.
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Mark watched' })).toBeEnabled()
     expect(screen.queryByRole('button', { name: 'Mark unwatched' })).not.toBeInTheDocument()
   })
 
-  it('shouldShowTheServerMessageWhenTheMarkIsRefused', async () => {
-    serve(movieData())
-    server.use(
-      graphql.mutation('MarkWatched', () =>
-        HttpResponse.json({
-          data: {
-            markWatched: {
-              item: null,
-              userErrors: [
-                {
-                  __typename: 'ItemNotFoundError',
-                  message: 'No movie, episode, season or series has the given ID.',
-                },
-              ],
+  it.each([
+    {
+      operation: 'MarkWatched',
+      field: 'markWatched',
+      watchStatus: 'UNWATCHED',
+      action: 'Mark watched',
+    },
+    {
+      operation: 'MarkUnwatched',
+      field: 'markUnwatched',
+      watchStatus: 'WATCHED',
+      action: 'Mark unwatched',
+    },
+  ])(
+    'shouldShowTheRefusalWithoutReadingAgainAfter$operation',
+    async ({ operation, field, watchStatus, action }) => {
+      const requestedIds: string[] = []
+      serve(movieData({ watchStatus }), requestedIds)
+      server.use(
+        graphql.mutation(operation, () =>
+          HttpResponse.json({
+            data: {
+              [field]: {
+                item: null,
+                userErrors: [
+                  {
+                    __typename: 'ItemNotFoundError',
+                    message: 'No movie, episode, season or series has the given ID.',
+                  },
+                ],
+              },
             },
-          },
-        }),
-      ),
-    )
-    const { user } = renderAppAt('/movie/m1')
+          }),
+        ),
+      )
+      const { user } = renderAppAt('/movie/m1')
 
-    await user.click(await screen.findByRole('button', { name: 'Mark watched' }))
+      await user.click(await screen.findByRole('button', { name: action }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'No movie, episode, season or series has the given ID.',
-    )
-    expect(screen.getByRole('button', { name: 'Mark watched' })).toBeEnabled()
-  })
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'No movie, episode, season or series has the given ID.',
+      )
+      expect(screen.getByRole('button', { name: action })).toBeEnabled()
+      expect(requestedIds).toEqual(['m1'])
+    },
+  )
 
   it('shouldShowAGenericFailureWhenTheMarkCannotReachTheServer', async () => {
     serve(movieData())

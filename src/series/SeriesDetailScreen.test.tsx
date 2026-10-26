@@ -4,7 +4,17 @@ import { describe, expect, it } from 'vitest'
 import type { SeriesDetailQuery } from '../graphql/generated/graphql'
 import { deferred } from '../test/deferred'
 import { meFixture } from '../test/meFixture'
-import { failsOnceThen, invalidIdResponse } from '../test/graphqlResponses'
+import {
+  answersInTurn,
+  answersThenHolds,
+  answerWith,
+  comeBackOnline,
+  comeBackOnlineUntil,
+  failsOnceThen,
+  heldAnswer,
+  invalidIdResponse,
+  serverFailure,
+} from '../test/graphqlResponses'
 import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
 
@@ -158,6 +168,39 @@ describe('SeriesDetailScreen', () => {
     )
   })
 
+  it('shouldKeepTheShowOnScreenWhileItIsReadAgain', async () => {
+    serve(seriesData())
+    const series = answersThenHolds(seriesData(), seriesData({ tagline: 'One more stop.' }))
+    server.use(graphql.query('SeriesDetail', series.resolver))
+    renderAppAt('/series/series-1')
+    const title = await screen.findByRole('heading', { level: 1, name: 'Northern Line' })
+
+    comeBackOnline()
+    await waitFor(() => expect(series.calls).toBe(2))
+    expect(title).toBeInTheDocument()
+    series.release()
+
+    expect(await screen.findByText('One more stop.')).toBeInTheDocument()
+    expect(title).toBeInTheDocument()
+  })
+
+  it('shouldKeepTheShowWhenReadingItAgainFails', async () => {
+    serve(seriesData())
+    const fresh = heldAnswer(seriesData({ tagline: 'One more stop.' }))
+    const series = answersInTurn(answerWith(seriesData()), serverFailure, fresh.answer)
+    server.use(graphql.query('SeriesDetail', series.resolver))
+    renderAppAt('/series/series-1')
+    const title = await screen.findByRole('heading', { level: 1, name: 'Northern Line' })
+
+    await comeBackOnlineUntil(series, 3)
+    expect(title).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    fresh.release()
+
+    expect(await screen.findByText('One more stop.')).toBeInTheDocument()
+    expect(title).toBeInTheDocument()
+  })
+
   it('shouldRetryTheShowAfterItFailsToLoad', async () => {
     const series = failsOnceThen(seriesData())
     server.use(
@@ -272,12 +315,25 @@ describe('SeriesDetailScreen', () => {
   })
 
   it('shouldConfirmAndThenUpdateEverySeasonAndEpisodeFromTheMarkedSeries', async () => {
-    const requestedIds: string[] = []
     const markedIds: string[] = []
     const data = seriesData()
-    serve(data, requestedIds)
+    serve(data)
     const watchedState = { watchStatus: 'WATCHED', watchProgress: null }
+    const marked = {
+      series: {
+        ...data.series!,
+        ...watchedState,
+        seasons: data.series!.seasons.map((entry) => ({
+          ...entry!,
+          ...watchedState,
+          episodes: entry!.episodes.map((episode) => ({ ...episode!, ...watchedState })),
+        })),
+      },
+    } as SeriesDetailQuery
+    const after = heldAnswer(marked)
+    const series = answersInTurn(answerWith(data), after.answer)
     server.use(
+      graphql.query('SeriesDetail', series.resolver),
       graphql.mutation('MarkWatched', ({ variables }) => {
         markedIds.push((variables.input as { itemId: string }).itemId)
         return HttpResponse.json({
@@ -319,8 +375,10 @@ describe('SeriesDetailScreen', () => {
     expect(screen.getAllByLabelText('Watched')).toHaveLength(2)
     expect(screen.queryByLabelText('2 unwatched')).not.toBeInTheDocument()
     expect(markedIds).toEqual(['series-1'])
-    expect(requestedIds).toEqual(['series-1'])
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    await waitFor(() => expect(series.calls).toBe(2))
+    expect(screen.getByRole('progressbar', { name: '5 of 5 watched' })).toBeInTheDocument()
+    after.release()
   })
 
   it('shouldShowTheServerMessageWhenMarkingTheSeriesIsRefused', async () => {

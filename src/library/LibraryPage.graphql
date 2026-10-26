@@ -12,6 +12,7 @@ query LibraryPage(
     name
     status
     scanCompletedOn
+    itemCount
     alphabetIndex {
       letter
       count
@@ -25,7 +26,7 @@ query LibraryPage(
       filter: $filter
     ) {
       edges {
-        cursor
+        ...OrderedEdgeFields
         node {
           ...MediaSummaryFields
         }

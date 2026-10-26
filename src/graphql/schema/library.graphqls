@@ -18,6 +18,13 @@ type Library {
           sort: MediaSort
           filter: MediaFilter): MediaConnection!
     alphabetIndex: [AlphabetIndex!]!
+    """
+    Top-level movies or series at the last alphabet recount, independent of filters and pagination.
+    Seasons, episodes and additional file versions are excluded. Zero for an empty library.
+    Changes during a library operation become visible when its finishing recount commits;
+    otherwise the total changes when an item-processing recount commits. This is not scan progress.
+    """
+    itemCount: Int!
 }
 
 "The receipt for a removed library: the id of the library that no longer exists."
@@ -28,6 +35,8 @@ type LibraryRemoval {
 enum LibraryStatus {
     SCANNING
     REFRESHING
+    "A ServerAdmin stopped the library's scan or refresh. Its admitted tasks finish, and then the library returns to the status it had before the scan or refresh started."
+    STOPPING
     HEALTHY
     UNHEALTHY
 }
@@ -89,7 +98,20 @@ type MediaConnection {
     pageInfo: PageInfo!
 }
 
-type MediaEdge {
+"""
+An edge in a server-ordered list. Query pages and change payloads build it the same way, so clients
+can place a changed item by its order key and continue paging from its cursor.
+"""
+interface OrderedEdge {
+    "Pass unchanged to before or after. Never decode or synthesize it."
+    cursor: String!
+    "Compare as ascending ASCII strings, only with keys from the same list, sort and filter."
+    orderKey: String!
+}
+
+type MediaEdge implements OrderedEdge {
+    "Server ordering key. Compare bytewise ascending within the same sort and filter, including DESC sorts."
+    orderKey: String!
     node: Media
     cursor: String!
 }
@@ -152,6 +174,30 @@ type StartLibraryRefreshPayload {
 }
 
 union StartLibraryRefreshError = LibraryNotFoundError | LibraryBusyError | InvalidIdError
+
+input StopLibraryScanInput {
+    libraryId: ID!
+}
+
+"The library after the stop of its scan was stored. The library's status reads STOPPING until the scan's admitted tasks finish."
+type StopLibraryScanPayload {
+    library: Library
+    userErrors: [StopLibraryScanError!]!
+}
+
+union StopLibraryScanError = LibraryNotFoundError | LibraryScanNotInProgressError | InvalidIdError
+
+input StopLibraryRefreshInput {
+    libraryId: ID!
+}
+
+"The library after the stop of its refresh was stored. The library's status reads STOPPING until the refresh's admitted tasks finish."
+type StopLibraryRefreshPayload {
+    library: Library
+    userErrors: [StopLibraryRefreshError!]!
+}
+
+union StopLibraryRefreshError = LibraryNotFoundError | LibraryRefreshNotInProgressError | InvalidIdError
 
 input RemoveLibraryInput {
     libraryId: ID!

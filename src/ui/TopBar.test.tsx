@@ -1,3 +1,4 @@
+import { watchingConnection } from '../test/continueWatchingFixtures'
 import { screen, waitFor, within } from '@testing-library/react'
 import { graphql, http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
@@ -36,7 +37,7 @@ function serveSignIn() {
     ),
     graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
     graphql.query('Home', () =>
-      HttpResponse.json({ data: { continueWatching: [], libraries: [] } }),
+      HttpResponse.json({ data: { continueWatching: watchingConnection([]), libraries: [] } }),
     ),
   )
 }
@@ -78,6 +79,7 @@ describe('TopBar', () => {
               name: 'Movies',
               status: 'HEALTHY',
               scanCompletedOn: null,
+              itemCount: 0,
               alphabetIndex: [],
               items: {
                 edges: [],
@@ -119,7 +121,7 @@ describe('TopBar', () => {
     server.use(
       graphql.query('Libraries', () => HttpResponse.json({ errors: [{ message: 'boom' }] })),
       graphql.query('Home', () =>
-        HttpResponse.json({ data: { continueWatching: [], libraries: [] } }),
+        HttpResponse.json({ data: { continueWatching: watchingConnection([]), libraries: [] } }),
       ),
     )
     renderAppAt('/')

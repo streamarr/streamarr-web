@@ -183,19 +183,28 @@ test('cast artwork stays portrait-shaped in the shared shelf on desktop and a ph
   }
 })
 
-// Registered after openMovie, so it sees only the requests that follow the first load.
-async function answerMarkWatched(page: Page, markWatched: Record<string, unknown>) {
-  const later = { movieRequests: 0 }
+// Registered after openMovie, so it sees only the requests that follow the first load. Once a
+// mark succeeds, the movie answers with the marked item's watch state, as the server would.
+async function answerMarkWatched(
+  page: Page,
+  markWatched: { item: object | null; userErrors: object[] },
+) {
+  const later = { movieRequests: 0, marked: false }
   await page.route('**/graphql', async (route) => {
     const { operationName } = route.request().postDataJSON() as { operationName?: string }
-    if (operationName === 'MovieDetail') later.movieRequests += 1
+    if (operationName === 'MovieDetail') {
+      later.movieRequests += 1
+      if (!later.marked) return route.fallback()
+      return route.fulfill({ json: { data: { movie: { ...movie.movie, ...markWatched.item } } } })
+    }
     if (operationName !== 'MarkWatched') return route.fallback()
+    later.marked = markWatched.item !== null
     return route.fulfill({ json: { data: { markWatched } } })
   })
   return later
 }
 
-test('marking the movie watched flips the verb from the returned movie without loading it again', async ({
+test('marking the movie watched flips the verb from the returned movie and then reads it again', async ({
   page,
   request,
 }) => {
@@ -208,7 +217,8 @@ test('marking the movie watched flips the verb from the returned movie without l
   await page.getByRole('button', { name: 'Mark watched', exact: true }).click()
 
   await expect(page.getByRole('button', { name: 'Mark unwatched', exact: true })).toBeVisible()
-  expect(later.movieRequests).toBe(0)
+  await expect.poll(() => later.movieRequests).toBe(1)
+  await expect(page.getByRole('button', { name: 'Mark unwatched', exact: true })).toBeVisible()
 })
 
 test('a refused mark shows the server message and keeps the verb', async ({ page, request }) => {

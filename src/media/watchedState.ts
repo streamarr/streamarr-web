@@ -1,7 +1,7 @@
 import type { ApolloCache, NormalizedCacheObject } from '@apollo/client'
 import type { MediaFilter, MediaSort } from '../graphql/generated/graphql'
 
-type LibraryItemsConnection = Readonly<{
+export type LibraryItemsConnection = Readonly<{
   libraryId: string
   args: Readonly<{ first: number; sort: MediaSort; filter: MediaFilter }>
 }>
@@ -10,6 +10,22 @@ const watchDependentConnectionsByCache = new WeakMap<
   ApolloCache,
   Map<string, LibraryItemsConnection>
 >()
+
+const retainedConnectionsByCache = new WeakMap<ApolloCache, Set<string>>()
+
+/** A content subscription owns membership until its library scope ends. */
+export function retainLibraryItemsConnection(
+  cache: ApolloCache,
+  connection: LibraryItemsConnection,
+) {
+  const retained = retainedConnectionsByCache.get(cache) ?? new Set<string>()
+  retainedConnectionsByCache.set(cache, retained)
+  const key = JSON.stringify(connection)
+  retained.add(key)
+  return () => {
+    retained.delete(key)
+  }
+}
 
 /**
  * Remembers a loaded `Library.items` connection when its membership or order follows watch
@@ -34,15 +50,24 @@ export function trackLibraryItemsConnection(
  */
 export function invalidateWatchedState(cache: ApolloCache) {
   cache.evict({ fieldName: 'continueWatching' })
+  evictWatchDependentConnections(cache)
+}
+
+/**
+ * Evicts each remembered watch-dependent `Library.items` connection without a live consumer, and
+ * forgets it, so the next read of that connection asks the server again.
+ */
+export function evictWatchDependentConnections(cache: ApolloCache) {
   const connections = watchDependentConnectionsByCache.get(cache)
-  for (const { libraryId, args } of connections?.values() ?? []) {
+  for (const [key, connection] of connections ?? []) {
+    if (retainedConnectionsByCache.get(cache)?.has(key)) continue
     cache.evict({
-      id: cache.identify({ __typename: 'Library', id: libraryId }),
+      id: cache.identify({ __typename: 'Library', id: connection.libraryId }),
       fieldName: 'items',
-      args,
+      args: connection.args,
     })
+    connections?.delete(key)
   }
-  connections?.clear()
 }
 
 export function discardWatchedState(cache: ApolloCache) {

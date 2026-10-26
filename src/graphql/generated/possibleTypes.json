@@ -349,6 +349,8 @@
       "LibraryPathNotFoundError",
       "LibraryPathNotReadableError",
       "LibraryPathRequiredError",
+      "LibraryRefreshNotInProgressError",
+      "LibraryScanNotInProgressError",
       "LinkProfileNotFoundError",
       "ManagementAlreadyRemovedError",
       "ManagerInvitationNotFoundError",
@@ -399,6 +401,10 @@
       "HouseholdNotFoundError",
       "ProfileAlreadySharedError",
       "ProfileNotFoundError"
+    ],
+    "OrderedEdge": [
+      "ContinueWatchingEdge",
+      "MediaEdge"
     ],
     "PlaybackFormatAttempt": [
       "FailedPlaybackFormatAttempt",
@@ -508,6 +514,16 @@
       "InvalidIdError",
       "LibraryBusyError",
       "LibraryNotFoundError"
+    ],
+    "StopLibraryRefreshError": [
+      "InvalidIdError",
+      "LibraryNotFoundError",
+      "LibraryRefreshNotInProgressError"
+    ],
+    "StopLibraryScanError": [
+      "InvalidIdError",
+      "LibraryNotFoundError",
+      "LibraryScanNotInProgressError"
     ],
     "TransferAccountError": [
       "AccountNotFoundError",

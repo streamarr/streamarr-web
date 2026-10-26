@@ -1,3 +1,4 @@
+import { watchingConnection } from '../../test/continueWatchingFixtures'
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { HttpResponse, graphql, type GraphQLQuery } from 'msw'
 import { describe, expect, it } from 'vitest'
@@ -8,6 +9,13 @@ import type {
   MovieDetailQuery,
 } from '../../graphql/generated/graphql'
 import styles from '../../library/LibraryScreen.module.css'
+import { deferred } from '../../test/deferred'
+import {
+  answersInTurn,
+  answerWith,
+  comeBackOnline,
+  serverFailure,
+} from '../../test/graphqlResponses'
 import { meFixture } from '../../test/meFixture'
 import { renderAppAt } from '../../test/render'
 import { server } from '../../test/server'
@@ -25,6 +33,7 @@ function libraryData() {
       name: 'Movies',
       status: 'HEALTHY',
       scanCompletedOn: '2026-08-28T11:46:00Z',
+      itemCount: 1,
       alphabetIndex: [{ letter: 'A', count: 1 }],
       items: {
         edges: [],
@@ -47,6 +56,7 @@ const EVERLIGHT_CARD = {
   releaseDate: '2024-01-01',
   runtime: 100,
   watchStatus: 'UNWATCHED',
+  lastWatchedAt: null,
   watchProgress: null,
   images: [],
 }
@@ -83,9 +93,15 @@ function titlePage(cards: ReturnType<typeof titleCard>[]) {
   return {
     library: {
       ...data.library,
+      itemCount: RAIL_LETTERS.length,
       alphabetIndex: RAIL_LETTERS.map((letter) => ({ letter, count: 1 })),
       items: {
-        edges: cards.map((node) => ({ cursor: node.id, node })),
+        edges: cards.map((node) => ({
+          __typename: 'MediaEdge' as const,
+          cursor: node.id,
+          orderKey: node.title,
+          node,
+        })),
         pageInfo: {
           hasNextPage: false,
           hasPreviousPage: false,
@@ -111,7 +127,14 @@ function libraryWithEverlight() {
     library: {
       ...data.library,
       items: {
-        edges: [{ cursor: 'c1', node: EVERLIGHT_CARD }],
+        edges: [
+          {
+            __typename: 'MediaEdge' as const,
+            cursor: 'c1',
+            orderKey: 'Everlight',
+            node: EVERLIGHT_CARD,
+          },
+        ],
         pageInfo: {
           hasNextPage: false,
           hasPreviousPage: false,
@@ -142,6 +165,7 @@ function mockLibraryPage(
 
 async function markEverlightWatchedFromItsDetail(libraryPath: string) {
   let libraryRequests = 0
+  let watchStatus = 'UNWATCHED'
   server.use(
     graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
     graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
@@ -150,17 +174,20 @@ async function markEverlightWatchedFromItsDetail(libraryPath: string) {
       const data = libraryWithEverlight()
       return HttpResponse.json({ data: { library: { ...data.library, __typename: 'Library' } } })
     }),
-    graphql.query('MovieDetail', () => HttpResponse.json({ data: EVERLIGHT_DETAIL })),
-    graphql.mutation('MarkWatched', () =>
-      HttpResponse.json({
+    graphql.query('MovieDetail', () =>
+      HttpResponse.json({ data: { movie: { ...EVERLIGHT_DETAIL.movie!, watchStatus } } }),
+    ),
+    graphql.mutation('MarkWatched', () => {
+      watchStatus = 'WATCHED'
+      return HttpResponse.json({
         data: {
           markWatched: {
             item: { __typename: 'Movie', id: 'm1', watchStatus: 'WATCHED', watchProgress: null },
             userErrors: [],
           },
         },
-      }),
-    ),
+      })
+    }),
   )
   const { user, router } = renderAppAt(libraryPath)
   const card = await screen.findByRole('link', { name: /Everlight/ })
@@ -275,7 +302,7 @@ describe('/library/$libraryId', () => {
       graphql.query('Home', () =>
         HttpResponse.json({
           data: {
-            continueWatching: [],
+            continueWatching: watchingConnection([]),
             libraries: [
               {
                 ...library,
@@ -414,6 +441,37 @@ describe('/library/$libraryId', () => {
 
     const landing = await screen.findByRole('link', { name: /Northern Line/ })
     expect(grid).toContainElement(landing)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('shouldKeepTheGridWithoutAFailureWhenReadingItAgainFails', async () => {
+    // The Libraries read of the same revalidation answers only after the failed one, so the
+    // library it adds to the top bar shows once the failure has reached the screen.
+    const failureSent = deferred()
+    const library = answersInTurn(answerWith(titlePage([titleCard('m-a', 'Alright')])), () => {
+      failureSent.resolve()
+      return serverFailure()
+    })
+    const libraries = answersInTurn(answerWith({ libraries: [] }), async () => {
+      await failureSent.promise
+      return HttpResponse.json({
+        data: {
+          libraries: [{ __typename: 'Library', id: 'shows', name: 'Shows', type: 'SERIES' }],
+        },
+      })
+    })
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
+      graphql.query('Libraries', libraries.resolver),
+      graphql.query('LibraryPage', library.resolver),
+    )
+    renderAppAt(`/library/${LIBRARY_ID}?by=TITLE&direction=ASC`)
+    const alright = await screen.findByRole('link', { name: /Alright/ })
+
+    comeBackOnline()
+
+    expect(await screen.findByRole('link', { name: 'Shows' })).toBeInTheDocument()
+    expect(alright).toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 

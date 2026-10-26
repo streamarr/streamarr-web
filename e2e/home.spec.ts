@@ -1,3 +1,4 @@
+import { watchingConnection } from '../src/test/continueWatchingFixtures'
 import { expect, test } from '@playwright/test'
 import type { HomeQuery } from '../src/graphql/generated/graphql'
 import { STUB_URL } from './ports'
@@ -25,16 +26,17 @@ function movie(index: number) {
     images: [],
     backdropImages: [],
     watchStatus: 'IN_PROGRESS' as const,
+    lastWatchedAt: null,
     watchProgress: { positionSeconds: 600, percentComplete: 25, durationSeconds: 2400 },
     files: [{ id: `home-file-${index}` }],
   }
 }
 
 const home: HomeQuery = {
-  continueWatching: [
+  continueWatching: watchingConnection([
     ...Array.from({ length: 5 }, (_, index) => movie(index)),
     { ...movie(5), files: [] },
-  ],
+  ]),
   libraries: ['Movies', 'Family movies', 'Documentaries'].map((name, libraryIndex) => ({
     __typename: 'Library',
     id: `home-library-${libraryIndex}`,
