@@ -30,7 +30,9 @@ export function PosterCard({
           <WatchedBadge status="in-progress" percentComplete={progressPercent} />
         )}
       </div>
-      <div className={styles.posterTitle}>{title}</div>
+      <div className={styles.posterTitle} data-testid="poster-title">
+        {title}
+      </div>
       <div className={styles.posterMeta}>{meta}</div>
     </div>
   )

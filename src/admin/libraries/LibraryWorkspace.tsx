@@ -195,7 +195,7 @@ function LibraryInventory({
 
   const current = selectedId ? libraries.find((library) => library.id === selectedId) : libraries[0]
   return (
-    <div className={styles.splitPanel}>
+    <div className={styles.splitPanel} data-testid="library-workspace">
       <nav className={styles.libraryList} aria-label="Libraries to manage">
         {libraries.map((library) => (
           <button

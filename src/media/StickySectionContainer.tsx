@@ -16,7 +16,9 @@ export function StickySectionContainer({
         <h2 className={styles.title}>{title}</h2>
         {action}
       </div>
-      <div className={styles.body}>{children}</div>
+      <div className={styles.body} data-testid="section-body">
+        {children}
+      </div>
     </section>
   )
 }

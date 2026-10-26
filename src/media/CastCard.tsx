@@ -14,7 +14,7 @@ export function CastCard({
 }>) {
   return (
     <div className={styles.card}>
-      <div className={styles.portrait}>
+      <div className={styles.portrait} data-testid="cast-portrait">
         <MediaImage image={image} blurHash={blurHash} alt={name} />
       </div>
       <div className={styles.name}>{name}</div>

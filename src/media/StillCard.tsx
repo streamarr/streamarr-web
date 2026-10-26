@@ -22,7 +22,7 @@ export function StillCard({
 }>) {
   return (
     <div className={layout === 'grid' ? `${styles.stillCard} ${styles.grid}` : styles.stillCard}>
-      <div className={styles.stillArt}>
+      <div className={styles.stillArt} data-testid="still-art">
         <MediaImage image={image} blurHash={blurHash} alt={title} />
         {badge && <WatchedBadge {...badge} />}
       </div>
