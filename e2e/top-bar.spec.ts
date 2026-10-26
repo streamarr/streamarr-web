@@ -59,7 +59,7 @@ test('the profile menu notch meets the menu where its top border runs straight',
   await chip.click()
 
   const notch = await box(page.getByTestId('profile-menu-notch'))
-  const menu = page.locator('#' + (await chip.getAttribute('aria-controls')))
+  const menu = page.getByTestId('profile-menu')
   const radius = parseFloat(
     await menu.evaluate((element) => getComputedStyle(element).borderTopRightRadius),
   )
