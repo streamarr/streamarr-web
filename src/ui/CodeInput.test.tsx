@@ -62,7 +62,7 @@ describe('CodeInput', () => {
     await user.type(screen.getByLabelText('PIN'), '12')
 
     // A dedicated blinking element: a printed bar would read as a character.
-    expect(screen.queryByTestId('code-input-caret')).not.toBeNull()
+    expect(screen.getByTestId('code-input-caret')).toBeInTheDocument()
   })
 
   it('shouldRestTheCaretWhenTheFloorIsReached', async () => {
