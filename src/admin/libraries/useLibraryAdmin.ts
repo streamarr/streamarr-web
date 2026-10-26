@@ -6,11 +6,11 @@ import type {
 } from '@apollo/client'
 import { useApolloClient, useQuery } from '@apollo/client/react'
 import { useRouteContext } from '@tanstack/react-router'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   AddLibraryDocument,
   AdminLibrariesDocument,
-  LibraryFieldsFragmentDoc,
+  AdminLibraryFieldsFragmentDoc,
   RemoveLibraryDocument,
   StartLibraryRefreshDocument,
   StartLibraryScanDocument,
@@ -19,7 +19,7 @@ import {
   type AddLibraryInput,
   type ImageRefreshMode,
   type LibraryStatus,
-  type LibraryFieldsFragment,
+  type AdminLibraryFieldsFragment,
   type StartLibraryScanMutation,
   type StopLibraryRefreshMutation,
   type StopLibraryScanMutation,
@@ -28,6 +28,7 @@ import { extractAuthContext, isForbidden } from '../../graphql/errorRouting'
 import { isReading } from '../../graphql/readAgain'
 import { userErrorMessage } from '../../graphql/userErrors'
 import { subscribeToAdministeredLibraryChanges } from '../../media/libraryChanges'
+import { isManagedLibrary, type ManagedLibrary } from './libraryModel'
 import { addToLibraryLists, removeFromLibraryLists } from '../../graphql/libraryLists'
 
 // Starts and removal share one refusal union; each stop adds its own refusal for a run that is
@@ -38,7 +39,7 @@ type LibraryOperationError =
   | NonNullable<StopLibraryRefreshMutation['stopLibraryRefresh']>['userErrors'][number]
 
 type LibraryOperationPayload = {
-  library?: LibraryFieldsFragment | null
+  library?: AdminLibraryFieldsFragment | null
   userErrors: readonly LibraryOperationError[]
 }
 
@@ -110,7 +111,11 @@ export function useAdminLibraries() {
   const query = useQuery(AdminLibrariesDocument, {
     fetchPolicy: 'cache-and-network',
   })
-  return { ...query, data: query.data ?? query.previousData, liveStop }
+  const read = query.data ?? query.previousData
+  // A change whose administration failed to resolve stores it as null; that library returns with
+  // the inventory read the failure triggers.
+  const data = useMemo(() => read && { libraries: read.libraries.filter(isManagedLibrary) }, [read])
+  return { ...query, data, liveStop }
 }
 
 /**
@@ -166,7 +171,7 @@ export function useLibraryCommands() {
     mutation: TypedDocumentNode<TData, TVariables>
     variables: TVariables
     payloadOf: (data: TData | null | undefined) => LibraryOperationPayload | null | undefined
-  }): Promise<LibraryFieldsFragment | null> {
+  }): Promise<ManagedLibrary | null> {
     const outcome = operationOutcome(client.cache, libraryId)
     const { data } = await client.mutate({
       mutation,
@@ -259,11 +264,18 @@ export function useLibraryCommands() {
 function currentLibrary(
   cache: ApolloCache,
   payload: LibraryOperationPayload | null,
-): LibraryFieldsFragment | null {
+): ManagedLibrary | null {
   if (!payload) return null
   if (!payload.library) throw new Error('Missing library in the operation result')
   const id = cache.identify(payload.library)
-  return cache.readFragment({ fragment: LibraryFieldsFragmentDoc, id }) ?? payload.library
+  const library =
+    cache.readFragment({
+      fragment: AdminLibraryFieldsFragmentDoc,
+      fragmentName: 'AdminLibraryFields',
+      id,
+    }) ?? payload.library
+  if (!isManagedLibrary(library)) throw new Error('Missing library administration in the result')
+  return library
 }
 
 // The returned library, or the status a refusal carries, writes into the cache unless a live
@@ -277,7 +289,11 @@ function operationOutcome(cache: ApolloCache, libraryId: string) {
     write(target: ApolloCache, payload: LibraryOperationPayload | null | undefined) {
       if (!payload || liveChangeCount(target, libraryId) !== liveChangesBefore) return
       if (payload.library)
-        target.writeFragment({ fragment: LibraryFieldsFragmentDoc, data: payload.library })
+        target.writeFragment({
+          fragment: AdminLibraryFieldsFragmentDoc,
+          fragmentName: 'AdminLibraryFields',
+          data: payload.library,
+        })
       for (const error of payload.userErrors) {
         const status = refusedStatus(error)
         if (status) showStatus(target, libraryId, status)
@@ -348,9 +364,9 @@ function refusedStatus(error: LibraryOperationError): LibraryStatus | null {
 
 // A refusal names no library, so normalization cannot apply the status it carries.
 function showStatus(cache: ApolloCache, libraryId: string, status: LibraryStatus) {
-  cache.modify<LibraryFieldsFragment>({
+  cache.modify<ManagedLibrary>({
     id: cache.identify({ __typename: 'Library', id: libraryId }),
-    fields: { status: () => status },
+    fields: { administration: (administration) => ({ ...administration, status }) },
   })
 }
 

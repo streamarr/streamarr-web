@@ -1,8 +1,23 @@
-import type { LibraryFieldsFragment } from '../../graphql/generated/graphql'
+import type { AdminLibraryFieldsFragment } from '../../graphql/generated/graphql'
 import type { IconName } from '../../ui/Icon'
 
-/** Library configuration and maintenance state selected by the pinned GraphQL operation. */
-export type ManagedLibrary = LibraryFieldsFragment
+/**
+ * Library configuration and maintenance state selected by the pinned GraphQL operation: what every
+ * Profile reads, plus the administration facts only a ServerAdmin reads.
+ */
+export type ManagedLibrary = AdminLibraryFieldsFragment & {
+  administration: NonNullable<AdminLibraryFieldsFragment['administration']>
+}
+
+type LibraryAdministration = ManagedLibrary['administration']
+
+/**
+ * Whether the server resolved the library's administration facts. The server answers null, with
+ * an error, only when it refused or failed to resolve them.
+ */
+export function isManagedLibrary(library: AdminLibraryFieldsFragment): library is ManagedLibrary {
+  return library.administration !== null
+}
 
 /** One semantic icon per server status. */
 export const LIBRARY_STATUS_ICONS = {
@@ -18,14 +33,14 @@ export const LIBRARY_STATUS_ICONS = {
 export type StoppableRun = 'scan' | 'refresh'
 
 /** The run the library's status says is in progress, which only that run's stop can end. */
-export function stoppableRun(library: Pick<ManagedLibrary, 'status'>): StoppableRun | null {
+export function stoppableRun(library: Pick<LibraryAdministration, 'status'>): StoppableRun | null {
   if (library.status === 'SCANNING') return 'scan'
   if (library.status === 'REFRESHING') return 'refresh'
   return null
 }
 
 /** Future states conservatively disable maintenance until the client understands them. */
-export function canMaintainLibrary(library: Pick<ManagedLibrary, 'status'>): boolean {
+export function canMaintainLibrary(library: Pick<LibraryAdministration, 'status'>): boolean {
   return library.status === 'HEALTHY' || library.status === 'UNHEALTHY'
 }
 
@@ -50,7 +65,7 @@ export function libraryTypeLabel(type: ManagedLibrary['type']): string {
 
 /** Last completed scan attempt, not a claim of success; absent and invalid values are explicit. */
 export function lastScanLabel(
-  library: Pick<ManagedLibrary, 'scanStartedOn' | 'scanCompletedOn'>,
+  library: Pick<LibraryAdministration, 'scanStartedOn' | 'scanCompletedOn'>,
 ): string {
   if (!library.scanCompletedOn)
     return library.scanStartedOn ? 'Not completed yet' : 'Not scanned yet'

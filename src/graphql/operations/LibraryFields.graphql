@@ -4,8 +4,14 @@ fragment LibraryFields on Library {
   name
   type
   backend
-  filepathUri
-  status
-  scanStartedOn
-  scanCompletedOn
+}
+
+fragment AdminLibraryFields on Library {
+  ...LibraryFields
+  administration {
+    filepathUri
+    status
+    scanStartedOn
+    scanCompletedOn
+  }
 }

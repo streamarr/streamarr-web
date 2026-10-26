@@ -22,10 +22,6 @@ const MOVIES: LibraryFieldsFragment = {
   name: 'Movies',
   type: 'MOVIE',
   backend: 'LOCAL',
-  filepathUri: 'file:///media/movies',
-  status: 'HEALTHY',
-  scanStartedOn: '2026-08-28T11:40:00Z',
-  scanCompletedOn: '2026-08-28T11:46:00Z',
 }
 
 const SHOWS: LibraryFieldsFragment = {
@@ -33,7 +29,6 @@ const SHOWS: LibraryFieldsFragment = {
   id: '22222222-2222-2222-2222-222222222222',
   name: 'TV shows',
   type: 'SERIES',
-  filepathUri: 'file:///media/tv',
 }
 
 const EVERLIGHT_EDGE = {
@@ -110,7 +105,11 @@ function topBar() {
 }
 
 function libraryOperations(state: Served) {
-  return state.socket.state.subscribes.filter((name) => name.startsWith('Library')).sort()
+  return state.socket.state.subscribes.filter((name) => name.includes('Library')).sort()
+}
+
+function selectsAdministration(state: Served, operationName: string) {
+  return /\badministration\b/.test(state.socket.state.documents.get(operationName) ?? '')
 }
 
 describe('subscribeToLibraryChanges', () => {
@@ -124,6 +123,7 @@ describe('subscribeToLibraryChanges', () => {
 
     await waitFor(() => expect(state.socket.isLive('LibraryAdded')).toBe(true))
     expect(libraryOperations(state)).toEqual(['LibraryAdded', 'LibraryRemoved'])
+    expect(selectsAdministration(state, 'LibraryAdded')).toBe(false)
   })
 
   it('shouldShowAPushedNameInTheTopBarForAServerAdmin', async () => {
@@ -131,13 +131,26 @@ describe('subscribeToLibraryChanges', () => {
     await openHome(state)
     await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
     expect(libraryOperations(state)).toEqual([
-      'LibraryAdded',
+      'AdminLibraryAdded',
       'LibraryRemoved',
       'LibraryStatusChanged',
     ])
+    expect(selectsAdministration(state, 'AdminLibraryAdded')).toBe(true)
+    expect(selectsAdministration(state, 'LibraryStatusChanged')).toBe(true)
 
     state.socket.publish('LibraryStatusChanged', {
-      data: { libraryStatusChanged: { ...MOVIES, name: 'Films' } },
+      data: {
+        libraryStatusChanged: {
+          ...MOVIES,
+          name: 'Films',
+          administration: {
+            filepathUri: 'file:///media/movies',
+            status: 'SCANNING',
+            scanStartedOn: '2026-08-28T11:40:00Z',
+            scanCompletedOn: null,
+          },
+        },
+      },
     })
 
     expect(await within(topBar()).findByRole('link', { name: 'Films' })).toBeInTheDocument()

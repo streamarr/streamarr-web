@@ -1,5 +1,6 @@
 import type { ApolloClient, ErrorLike, TypedDocumentNode } from '@apollo/client'
 import {
+  AdminLibraryAddedDocument,
   LibraryAddedDocument,
   LibraryRemovedDocument,
   LibraryStatusChangedDocument,
@@ -20,8 +21,9 @@ export interface LibraryChangeListener {
 /**
  * Applies every Library's additions and removals to the cache until the returned function runs:
  * an added Library joins each cached Library list once, and a removed one leaves them, for every
- * view of the same cache. Every selected Profile may receive these changes. A refusal or a normal
- * end stops the changes; the views keep what they last read.
+ * view of the same cache. Every selected Profile may receive these changes, and an added Library
+ * carries only what every Profile reads, never its administration. A refusal or a normal end stops
+ * the changes; the views keep what they last read.
  */
 export function subscribeToLibraryChanges(
   client: ApolloClient,
@@ -41,8 +43,10 @@ export function subscribeToLibraryChanges(
 /**
  * Applies every Library's status changes, additions and removals to the cache until the returned
  * function runs. Only a session that may administer the server (`canManageServer`) may receive
- * status changes. Normalization carries a Library's status, scan times and name to every view of
- * it; additions and removals reach each cached Library list as `subscribeToLibraryChanges` says.
+ * status changes or read a Library's administration. Each change carries the Library's
+ * administration, so an added Library holds every field the administration inventory reads, and
+ * normalization carries a Library's status, scan times and name to every view of it. Additions and
+ * removals reach each cached Library list as `subscribeToLibraryChanges` says.
  */
 export function subscribeToAdministeredLibraryChanges(
   client: ApolloClient,
@@ -54,7 +58,7 @@ export function subscribeToAdministeredLibraryChanges(
       apply: (data) => changes.applyLibrary(data.libraryStatusChanged),
       onStop: listener.onStop,
     }),
-    subscribeToLibraryChange(client, LibraryAddedDocument, {
+    subscribeToLibraryChange(client, AdminLibraryAddedDocument, {
       apply: (data) => changes.applyLibrary(data.libraryAdded),
       onStop: listener.onStop,
     }),

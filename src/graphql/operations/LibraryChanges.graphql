@@ -1,12 +1,18 @@
 subscription LibraryStatusChanged {
   libraryStatusChanged {
-    ...LibraryFields
+    ...AdminLibraryFields
   }
 }
 
 subscription LibraryAdded {
   libraryAdded {
     ...LibraryFields
+  }
+}
+
+subscription AdminLibraryAdded {
+  libraryAdded {
+    ...AdminLibraryFields
   }
 }
 
