@@ -24,8 +24,16 @@ export function Wordmark() {
 }
 
 // A plain h1 on purpose: Mantine's Title zeroes the margin the ceremonies' rhythm relies on.
-export function AuthTitle({ className, ...props }: Readonly<ComponentPropsWithoutRef<'h1'>>) {
-  return <h1 {...props} className={joinClasses(styles.authTitle, className)} />
+export function AuthTitle({
+  className,
+  children,
+  ...props
+}: Readonly<ComponentPropsWithoutRef<'h1'>>) {
+  return (
+    <h1 {...props} className={joinClasses(styles.authTitle, className)}>
+      {children}
+    </h1>
+  )
 }
 
 export function AuthLede({ className, ...props }: TextProps & { children?: ReactNode }) {
