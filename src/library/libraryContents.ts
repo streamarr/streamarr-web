@@ -39,10 +39,10 @@ type Bounds = {
 export function createLibraryContents({ client }: { client: ApolloClient }) {
   let active: {
     key: string
-    variables: View['variables']
+    // The latest view selected under this key, which a retry subscribes to again.
+    view: View
     stop: () => void
     follow: (variables: View['variables']) => void
-    restart: () => void
     refusal: unknown
   } | null = null
   const removed = new Set<string>()
@@ -53,7 +53,7 @@ export function createLibraryContents({ client }: { client: ApolloClient }) {
     active = null
     previous?.stop()
     if (evict && previous) {
-      const { libraryId, ...args } = previous.variables
+      const { libraryId, ...args } = previous.view.variables
       client.cache.evict({
         id: client.cache.identify({ __typename: 'Library', id: libraryId }),
         fieldName: 'items',
@@ -68,7 +68,7 @@ export function createLibraryContents({ client }: { client: ApolloClient }) {
     const { libraryId, sort, filter } = view.variables
     const key = JSON.stringify({ libraryId, sort, filter })
     if (active?.key === key) {
-      active.variables = view.variables
+      active.view = view
       active.follow(view.variables)
       return
     }
@@ -76,10 +76,9 @@ export function createLibraryContents({ client }: { client: ApolloClient }) {
     release(true)
     const scope: NonNullable<typeof active> = {
       key,
-      variables: view.variables,
+      view,
       stop: () => {},
       follow: () => {},
-      restart: () => select(view),
       refusal: undefined,
     }
     active = scope
@@ -109,7 +108,7 @@ export function createLibraryContents({ client }: { client: ApolloClient }) {
     leaveUnlessWithin(pathname: string) {
       if (!active) return
       if (
-        pathname === `/library/${active.variables.libraryId}` ||
+        pathname === `/library/${active.view.variables.libraryId}` ||
         /^\/(movie|series|season)\//.test(pathname)
       )
         return
@@ -117,15 +116,14 @@ export function createLibraryContents({ client }: { client: ApolloClient }) {
     },
     isRemoved: (libraryId: string) => removed.has(libraryId),
     refusalFor: (libraryId: string) =>
-      active?.variables.libraryId === libraryId ? active.refusal : undefined,
+      active?.view.variables.libraryId === libraryId ? active.refusal : undefined,
     async retry(libraryId: string, read: () => Promise<unknown>) {
       const scope = active
-      if (scope?.variables.libraryId !== libraryId || scope.refusal === undefined) return
+      if (scope?.view.variables.libraryId !== libraryId || scope.refusal === undefined) return
       await read()
       if (active !== scope) return
-      const restart = scope.restart
       release()
-      restart()
+      select(scope.view)
       for (const listener of listeners) listener()
     },
     subscribe(this: void, listener: () => void) {

@@ -106,6 +106,10 @@ function Harness({
       <div data-testid="firstPosition">{result.firstPosition}</div>
       <div data-testid="cachedTitles">{cachedTitles}</div>
       <div data-testid="previousPagesSettled">{previousPagesSettled}</div>
+      <div data-testid="error">{result.error instanceof Error ? result.error.message : ''}</div>
+      <button type="button" onClick={result.retry}>
+        Retry
+      </button>
       <button type="button" onClick={() => void readActiveQueriesAgain(client)}>
         Read again
       </button>
@@ -1139,6 +1143,40 @@ describe('useLibraryItems', () => {
     await waitFor(() => expect(served.count).toBe(requested.length))
     expect(requested[removedAt]).toMatchObject({ after: 'c286' })
     expect(screen.getByTestId('firstPosition')).toHaveTextContent('287')
+  })
+
+  it('shouldRetryTheLiveContentsFromTheFirstKeptTitleWhenTheTitlesBeforeItAreUnloaded', async () => {
+    const { requested, served } = serveLibraryOf(600)
+    const socket = serveGraphqlSocket()
+    const { user } = renderWithProviders(
+      <LibraryContentsProvider profileId="profile" pathname={`/library/${LIBRARY_ID}`}>
+        <Harness />
+      </LibraryContentsProvider>,
+    )
+    await loadTitlesThrough(user, 'Title 527')
+    await user.click(screen.getByText('View the last title'))
+    await waitFor(() => expect(screen.getByTestId('firstPosition')).toHaveTextContent('287'))
+    await waitFor(() => expect(socket.isLive('LibraryItemUpdated')).toBe(true))
+    act(() => {
+      socket.publish('LibraryItemUpdated', {
+        errors: [{ message: 'Refused.', extensions: { code: 'FORBIDDEN' } }],
+      })
+      socket.complete('LibraryItemUpdated')
+    })
+    await waitFor(() => expect(screen.getByTestId('error')).toHaveTextContent('Refused.'))
+    await waitFor(() => expect(served.count).toBe(requested.length))
+    await user.click(screen.getByText('Retry'))
+    await waitFor(() => expect(socket.isLive('LibraryItemAdded')).toBe(true))
+    await waitFor(() => expect(served.count).toBe(requested.length))
+    const retriedAt = requested.length
+
+    await user.click(screen.getByText('Read again'))
+
+    await waitFor(() => expect(served.count).toBeGreaterThan(retriedAt))
+    await waitFor(() => expect(served.count).toBe(requested.length))
+    expect(
+      requested.slice(retriedAt).filter((variables) => !variables.after && !variables.before),
+    ).toEqual([])
   })
 
   it('shouldKeepTheLoadedTitlesUntouchedWhenAPageLoads', async () => {
