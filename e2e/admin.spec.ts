@@ -4,7 +4,7 @@ import type {
   AddLibraryInput,
   ChangeEncoderPresetInput,
   EncoderPresetSettingFieldsFragment,
-  ManagedLibraryFieldsFragment,
+  LibraryFieldsFragment,
   RemoveLibraryInput,
 } from '../src/graphql/generated/graphql'
 import { meFixture, profileFixture } from '../src/test/meFixture'
@@ -14,7 +14,7 @@ import { routeGraphqlSocket } from './graphqlSocket'
 test.use({ serviceWorkers: 'block' })
 
 const SETTINGS = '/settings/server/libraries'
-const movie: ManagedLibraryFieldsFragment = {
+const movie: LibraryFieldsFragment = {
   __typename: 'Library',
   id: 'movies',
   name: 'Movies',
@@ -25,7 +25,7 @@ const movie: ManagedLibraryFieldsFragment = {
   scanStartedOn: '2026-09-21T13:00:00Z',
   scanCompletedOn: '2026-09-21T13:01:00Z',
 }
-const shows: ManagedLibraryFieldsFragment = {
+const shows: LibraryFieldsFragment = {
   ...movie,
   id: 'shows',
   name: 'TV shows',

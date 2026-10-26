@@ -3,7 +3,7 @@ import {
   LibraryAddedDocument,
   LibraryRemovedDocument,
   LibraryStatusChangedDocument,
-  type ManagedLibraryFieldsFragment,
+  type LibraryFieldsFragment,
 } from '../graphql/generated/graphql'
 import { watchLiveChanges } from '../graphql/liveChanges'
 import { addToLibraryLists, removeFromLibraryLists } from './libraryLists'
@@ -18,7 +18,7 @@ export function subscribeToLibraryChanges(client: ApolloClient): () => void {
   // The server orders no changes across fields: a change committed before a removal can arrive
   // after it. A Library id never returns once removed.
   const removedIds = new Set<string>()
-  const keep = (library: ManagedLibraryFieldsFragment | null) => {
+  const keep = (library: LibraryFieldsFragment | null) => {
     if (library && !removedIds.has(library.id)) addToLibraryLists(client.cache, library)
   }
   const stops = [

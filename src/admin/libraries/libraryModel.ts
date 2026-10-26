@@ -1,8 +1,8 @@
-import type { ManagedLibraryFieldsFragment } from '../../graphql/generated/graphql'
+import type { LibraryFieldsFragment } from '../../graphql/generated/graphql'
 import type { IconName } from '../../ui/Icon'
 
 /** Library configuration and maintenance state selected by the pinned GraphQL operation. */
-export type ManagedLibrary = ManagedLibraryFieldsFragment
+export type ManagedLibrary = LibraryFieldsFragment
 
 /** One semantic icon per server status. */
 export const LIBRARY_STATUS_ICONS = {

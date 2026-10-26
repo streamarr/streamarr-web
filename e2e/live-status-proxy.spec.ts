@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import type { ManagedLibraryFieldsFragment } from '../src/graphql/generated/graphql'
+import type { LibraryFieldsFragment } from '../src/graphql/generated/graphql'
 import { meFixture, profileFixture } from '../src/test/meFixture'
 import { APP_PORT, STUB_URL } from './ports'
 
@@ -7,7 +7,7 @@ import { APP_PORT, STUB_URL } from './ports'
 // page.routeWebSocket can never prove.
 test.use({ serviceWorkers: 'block' })
 
-const movie: ManagedLibraryFieldsFragment = {
+const movie: LibraryFieldsFragment = {
   __typename: 'Library',
   id: 'movies',
   name: 'Movies',

@@ -1,12 +1,12 @@
 subscription LibraryStatusChanged {
   libraryStatusChanged {
-    ...ManagedLibraryFields
+    ...LibraryFields
   }
 }
 
 subscription LibraryAdded {
   libraryAdded {
-    ...ManagedLibraryFields
+    ...LibraryFields
   }
 }
 

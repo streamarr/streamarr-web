@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
-import type { ManagedLibraryFieldsFragment } from '../graphql/generated/graphql'
+import type { LibraryFieldsFragment } from '../graphql/generated/graphql'
 import { watchingConnection } from '../test/continueWatchingFixtures'
 import { serveGraphqlSocket } from '../test/graphqlSocket'
 import { meFixture, profileFixture } from '../test/meFixture'
@@ -10,7 +10,7 @@ import { server } from '../test/server'
 
 const VIEWER = meFixture({ scope: 'profile', profiles: [profileFixture({ selected: true })] })
 
-const MOVIES: ManagedLibraryFieldsFragment = {
+const MOVIES: LibraryFieldsFragment = {
   __typename: 'Library',
   id: '11111111-1111-1111-1111-111111111111',
   name: 'Movies',
@@ -22,7 +22,7 @@ const MOVIES: ManagedLibraryFieldsFragment = {
   scanCompletedOn: '2026-08-28T11:46:00Z',
 }
 
-const SHOWS: ManagedLibraryFieldsFragment = {
+const SHOWS: LibraryFieldsFragment = {
   ...MOVIES,
   id: '22222222-2222-2222-2222-222222222222',
   name: 'TV shows',
@@ -87,7 +87,7 @@ function topBar() {
   return screen.getByRole('navigation', { name: 'Primary' })
 }
 
-function statusChanged(library: ManagedLibraryFieldsFragment) {
+function statusChanged(library: LibraryFieldsFragment) {
   return { data: { libraryStatusChanged: library } }
 }
 

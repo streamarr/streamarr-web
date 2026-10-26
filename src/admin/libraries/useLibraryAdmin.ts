@@ -14,7 +14,7 @@ import {
   LibraryAddedDocument,
   LibraryRemovedDocument,
   LibraryStatusChangedDocument,
-  ManagedLibraryFieldsFragmentDoc,
+  LibraryFieldsFragmentDoc,
   RemoveLibraryDocument,
   StartLibraryRefreshDocument,
   StartLibraryScanDocument,
@@ -23,7 +23,7 @@ import {
   type AddLibraryInput,
   type ImageRefreshMode,
   type LibraryStatus,
-  type ManagedLibraryFieldsFragment,
+  type LibraryFieldsFragment,
   type StartLibraryScanMutation,
   type StopLibraryRefreshMutation,
   type StopLibraryScanMutation,
@@ -42,7 +42,7 @@ type LibraryOperationError =
   | NonNullable<StopLibraryRefreshMutation['stopLibraryRefresh']>['userErrors'][number]
 
 type LibraryOperationPayload = {
-  library?: ManagedLibraryFieldsFragment | null
+  library?: LibraryFieldsFragment | null
   userErrors: readonly LibraryOperationError[]
 }
 
@@ -99,7 +99,7 @@ function useLiveInventoryChanges(): {
   const removedIds = useRef(new Set<string>())
   useEffect(() => {
     const onStop = (error: ErrorLike) => setStop(isForbidden(error) ? 'forbidden' : 'failed')
-    const holdFrom = (library: ManagedLibraryFieldsFragment | null) => {
+    const holdFrom = (library: LibraryFieldsFragment | null) => {
       if (!library) return
       countLiveChange(client.cache, library.id)
       if (!removedIds.current.has(library.id)) addToLibraryLists(client.cache, library)
@@ -205,7 +205,7 @@ export function useLibraryCommands() {
     mutation: TypedDocumentNode<TData, TVariables>
     variables: TVariables
     payloadOf: (data: TData | null | undefined) => LibraryOperationPayload | null | undefined
-  }): Promise<ManagedLibraryFieldsFragment | null> {
+  }): Promise<LibraryFieldsFragment | null> {
     const outcome = operationOutcome(client.cache, libraryId)
     const { data } = await client.mutate({
       mutation,
@@ -298,11 +298,11 @@ export function useLibraryCommands() {
 function currentLibrary(
   cache: ApolloCache,
   payload: LibraryOperationPayload | null,
-): ManagedLibraryFieldsFragment | null {
+): LibraryFieldsFragment | null {
   if (!payload) return null
   if (!payload.library) throw new Error('Missing library in the operation result')
   const id = cache.identify(payload.library)
-  return cache.readFragment({ fragment: ManagedLibraryFieldsFragmentDoc, id }) ?? payload.library
+  return cache.readFragment({ fragment: LibraryFieldsFragmentDoc, id }) ?? payload.library
 }
 
 // The returned library, or the status a refusal carries, writes into the cache unless a live
@@ -316,7 +316,7 @@ function operationOutcome(cache: ApolloCache, libraryId: string) {
     write(target: ApolloCache, payload: LibraryOperationPayload | null | undefined) {
       if (!payload || liveChangeCount(target, libraryId) !== liveChangesBefore) return
       if (payload.library)
-        target.writeFragment({ fragment: ManagedLibraryFieldsFragmentDoc, data: payload.library })
+        target.writeFragment({ fragment: LibraryFieldsFragmentDoc, data: payload.library })
       for (const error of payload.userErrors) {
         const status = refusedStatus(error)
         if (status) showStatus(target, libraryId, status)
@@ -387,7 +387,7 @@ function refusedStatus(error: LibraryOperationError): LibraryStatus | null {
 
 // A refusal names no library, so normalization cannot apply the status it carries.
 function showStatus(cache: ApolloCache, libraryId: string, status: LibraryStatus) {
-  cache.modify<ManagedLibraryFieldsFragment>({
+  cache.modify<LibraryFieldsFragment>({
     id: cache.identify({ __typename: 'Library', id: libraryId }),
     fields: { status: () => status },
   })
