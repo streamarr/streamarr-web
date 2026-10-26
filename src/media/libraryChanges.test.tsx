@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import { graphql, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import type { LibraryFieldsFragment } from '../graphql/generated/graphql'
-import { watchingConnection } from '../test/continueWatchingFixtures'
+import { watchingConnection, watchingMovie } from '../test/continueWatchingFixtures'
 import { deferred } from '../test/deferred'
 import { serveGraphqlSocket } from '../test/graphqlSocket'
 import { meFixture, profileFixture } from '../test/meFixture'
@@ -63,6 +63,7 @@ const NO_ITEMS = {
 function serve(libraries = [MOVIES], me = VIEWER) {
   const state = {
     libraries,
+    watching: [] as ReturnType<typeof watchingMovie>[],
     reads: { Libraries: 0, LibraryPage: 0 },
     socket: serveGraphqlSocket(),
   }
@@ -82,7 +83,7 @@ function serve(libraries = [MOVIES], me = VIEWER) {
     graphql.query('Home', () =>
       HttpResponse.json({
         data: {
-          continueWatching: watchingConnection([]),
+          continueWatching: watchingConnection(state.watching),
           libraries: state.libraries.map((library) => ({ ...library, items: { edges: [] } })),
         },
       }),
@@ -223,6 +224,24 @@ describe('subscribeToLibraryChanges', () => {
     expect(within(topBar()).getByRole('link', { name: 'TV shows' })).toBeInTheDocument()
     secondRead.resolve()
     expect(await screen.findByRole('heading', { name: 'Everlight' })).toBeInTheDocument()
+  })
+
+  it('shouldDropAContinueWatchingTitleWhenAPushedRemovalTakesItsLibrary', async () => {
+    const state = serve([MOVIES, SHOWS])
+    state.watching = [
+      { ...watchingMovie({ id: 'Everlight', orderKey: null }), library: { ...MOVIES } },
+    ]
+    await openHome(state)
+    expect(await screen.findByRole('link', { name: 'Resume' })).toBeInTheDocument()
+
+    state.libraries = [SHOWS]
+    state.watching = []
+    state.socket.publish('LibraryRemoved', { data: { libraryRemoved: { libraryId: MOVIES.id } } })
+
+    await waitFor(() =>
+      expect(screen.queryByRole('link', { name: 'Resume' })).not.toBeInTheDocument(),
+    )
+    expect(screen.queryByRole('link', { name: /Everlight/ })).not.toBeInTheDocument()
   })
 
   it('shouldDropAPushedRemovalFromTheTopBar', async () => {

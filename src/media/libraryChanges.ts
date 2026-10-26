@@ -6,22 +6,21 @@ import {
   LibraryStatusChangedDocument,
   type LibraryFieldsFragment,
 } from '../graphql/generated/graphql'
-import { addToLibraryLists, removeFromLibraryLists } from '../graphql/libraryLists'
+import { addToLibraryLists, removeFromLibraryViews } from '../graphql/libraryLists'
 
 /** What a view adds to applying Library changes: its own reaction to each one. */
 export interface LibraryChangeListener {
   /** Runs before the cache applies a change that concerns the Library. */
   onChange?: (libraryId: string) => void
-  /** Runs after every cached Library list dropped the removed Library. */
-  onRemoved?: (libraryId: string) => void
   /** Runs when the server refuses or ends one of the changes. */
   onStop?: (error: ErrorLike) => void
 }
 
 /**
  * Applies every Library's additions and removals to the cache until the returned function runs:
- * an added Library joins each cached Library list once, and a removed one leaves them, for every
- * view of the same cache. Every selected Profile may receive these changes, and an added Library
+ * an added Library joins each cached Library list once, and a removed one leaves every cached view,
+ * together with the Continue Watching and media details its titles may have fed, which read again
+ * (`removeFromLibraryViews`). Every selected Profile may receive these changes, and an added Library
  * carries only what every Profile reads, never its administration. A refusal or a normal end stops
  * the changes; the views keep what they last read.
  */
@@ -69,10 +68,7 @@ export function subscribeToAdministeredLibraryChanges(
 
 type LibraryChangeAppliers = ReturnType<typeof libraryChangeAppliers>
 
-function libraryChangeAppliers(
-  client: ApolloClient,
-  { onChange, onRemoved }: LibraryChangeListener,
-) {
+function libraryChangeAppliers(client: ApolloClient, { onChange }: LibraryChangeListener) {
   const { cache } = client
   return {
     applyLibrary(library: LibraryFieldsFragment | null) {
@@ -83,8 +79,7 @@ function libraryChangeAppliers(
     applyRemoval(removal: { libraryId: string } | null) {
       if (!removal) return
       onChange?.(removal.libraryId)
-      removeFromLibraryLists(cache, removal.libraryId)
-      onRemoved?.(removal.libraryId)
+      removeFromLibraryViews(cache, removal.libraryId)
     },
   }
 }
