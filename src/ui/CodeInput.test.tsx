@@ -107,4 +107,29 @@ describe('CodeInput', () => {
 
     expect(cells()).toBe(8)
   })
+
+  it('shouldDrawASeparatorBetweenEachGroupOfBoxes', () => {
+    render(<CodeInput label="Code" value="" onChange={() => {}} length={8} groupSize={4} />)
+
+    const boxes = [...document.querySelectorAll(`[data-part=cell], .${styles.codeInputSeparator}`)]
+    expect(boxes.map((box) => box.getAttribute('data-part') ?? 'separator')).toEqual([
+      ...Array<string>(4).fill('cell'),
+      'separator',
+      ...Array<string>(4).fill('cell'),
+    ])
+  })
+
+  it('shouldShowEachTypedCharacterUnlessTheCodeIsSecret', () => {
+    const { rerender } = render(
+      <CodeInput label="Code" value="AB" onChange={() => {}} length={4} alphanumeric />,
+    )
+    const shown = () =>
+      [...document.querySelectorAll('[data-part=cell]')].map((cell) => cell.textContent)
+
+    expect(shown()).toEqual(['A', 'B', '\u00a0', '\u00a0'])
+
+    rerender(<CodeInput label="Code" value="AB" onChange={() => {}} length={4} secret />)
+
+    expect(shown()).toEqual(['•', '•', '\u00a0', '\u00a0'])
+  })
 })
