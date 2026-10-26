@@ -21,7 +21,10 @@ export function ProgressDivider({ watched, total }: Readonly<{ watched: number; 
       >
         <div className={styles.fill} style={{ width: `${percent}%` }} data-testid="progress-fill" />
         {watched > 0 && (
-          <span className={styles.marker} style={{ left: `${percent}%` }}>
+          <span
+            className={styles.marker}
+            style={{ left: `${percent}%`, transform: `translateX(-${percent}%)` }}
+          >
             {label}
           </span>
         )}

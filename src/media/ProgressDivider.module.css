@@ -19,7 +19,6 @@
 .marker {
   position: absolute;
   top: -11px;
-  transform: translateX(-50%);
   padding: 4px 12px;
   border-radius: var(--radius-sm);
   background: var(--ambient-accent, var(--semantic-success));

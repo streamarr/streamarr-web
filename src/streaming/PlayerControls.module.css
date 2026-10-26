@@ -8,12 +8,13 @@
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
 }
 
-/* The seek track runs along the bar's top edge; its hit area reaches above and below it. */
+/* The seek track runs along the bar's straight top edge, between its rounded corners; its hit area
+   reaches above and below it. */
 .bar .seek {
   position: absolute;
   top: -8px;
-  left: 0;
-  right: 0;
+  left: var(--radius-2xl);
+  right: var(--radius-2xl);
   height: 20px;
 }
 

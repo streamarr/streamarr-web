@@ -42,6 +42,8 @@
   gap: var(--spacing-16);
   overflow-x: auto;
   scroll-behavior: smooth;
+  /* The header's arrows scroll the shelf; a swipe or trackpad still scrolls it directly. */
+  scrollbar-width: none;
 
   @media (prefers-reduced-motion: reduce) {
     scroll-behavior: auto;

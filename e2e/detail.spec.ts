@@ -1,33 +1,9 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
-import type { MovieDetailQuery } from '../src/graphql/generated/graphql'
+import { expect, test, type Page } from '@playwright/test'
+import type { SeasonDetailQuery } from '../src/graphql/generated/graphql'
+import { movie, openMovie } from './movieDetail'
 import { STUB_URL } from './ports'
 
 test.use({ viewport: { width: 1440, height: 900 }, serviceWorkers: 'block' })
-
-const movie: MovieDetailQuery & { movie: { __typename: 'Movie' } } = {
-  movie: {
-    __typename: 'Movie',
-    id: 'm1',
-    title: 'Everlight',
-    tagline: null,
-    summary: null,
-    runtime: 142,
-    releaseDate: '2024-05-10',
-    contentRating: null,
-    genres: [],
-    directors: [],
-    cast: [
-      { id: 'p1', name: 'Lead Actor', images: [] },
-      { id: 'p2', name: 'Supporting Actor', images: [] },
-    ],
-    ratings: [],
-    files: [{ id: 'file-1' }],
-    watchStatus: 'UNWATCHED',
-    watchProgress: null,
-    backdropImages: [],
-    posterImages: [],
-  },
-}
 
 // Fragment spreads on Image only match in the cache when the object carries its __typename.
 const AMBER_BACKDROP = {
@@ -51,22 +27,6 @@ const AMBER_BACKDROP = {
     },
   },
   variants: [],
-}
-
-async function openMovie(
-  page: Page,
-  request: APIRequestContext,
-  overrides: Record<string, unknown> = {},
-): Promise<void> {
-  await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
-  await request.post(`${STUB_URL}/api/auth/refresh`)
-  await page.route('**/graphql', async (route) => {
-    const { operationName } = route.request().postDataJSON() as { operationName?: string }
-    if (operationName !== 'MovieDetail') return route.continue()
-    return route.fulfill({ json: { data: { movie: { ...movie.movie, ...overrides } } } })
-  })
-  await page.goto('/movie/m1')
-  await expect(page.getByRole('heading', { level: 1, name: 'Everlight' })).toBeVisible()
 }
 
 test('the detail page is ambient edge to edge with the signed-in chrome on it', async ({
@@ -239,4 +199,72 @@ test('a refused mark shows the server message and keeps the verb', async ({ page
     'No movie, episode, season or series has the given ID.',
   )
   await expect(page.getByRole('button', { name: 'Mark watched', exact: true })).toBeEnabled()
+})
+
+const watchedEpisodes = Array.from({ length: 22 }, (_, index) => ({
+  id: `e${index + 1}`,
+  title: `Episode ${index + 1}`,
+  episodeNumber: index + 1,
+  runtime: 42,
+  watchStatus: 'WATCHED' as const,
+  watchProgress: null,
+  files: [{ id: `file-e${index + 1}` }],
+  stillImages: [],
+}))
+
+const watchedSeason: SeasonDetailQuery = {
+  season: {
+    id: 's1',
+    title: 'Season 1',
+    seasonNumber: 1,
+    overview: null,
+    airDate: null,
+    watchStatus: 'WATCHED',
+    series: {
+      id: 'series-1',
+      title: 'Longwatch',
+      contentRating: null,
+      directors: [],
+      seasons: [
+        {
+          id: 's1',
+          seasonNumber: 1,
+          title: 'Season 1',
+          watchStatus: 'WATCHED',
+          episodes: watchedEpisodes.map(({ id }) => ({ id, watchStatus: 'WATCHED' as const })),
+        },
+      ],
+      backdropImages: [],
+    },
+    episodes: watchedEpisodes,
+    backdropImages: [],
+    posterImages: [],
+  },
+}
+
+test('the watched count stays on the progress bar when the whole season is watched', async ({
+  page,
+  request,
+}) => {
+  await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
+  await request.post(`${STUB_URL}/api/auth/refresh`)
+  await page.route('**/graphql', async (route) => {
+    const { operationName } = route.request().postDataJSON() as { operationName?: string }
+    if (operationName !== 'SeasonDetail') return route.continue()
+    return route.fulfill({ json: { data: watchedSeason } })
+  })
+  await page.goto('/season/s1')
+
+  const bar = page.getByRole('progressbar', { name: '22 of 22 watched' })
+  const count = bar.getByText('22 of 22 watched', { exact: true })
+  for (const viewport of [
+    { width: 1440, height: 900 },
+    { width: 375, height: 667 },
+  ]) {
+    await page.setViewportSize(viewport)
+    const track = (await bar.boundingBox())!
+    const pill = (await count.boundingBox())!
+    expect(pill.x).toBeGreaterThanOrEqual(track.x)
+    expect(pill.x + pill.width).toBeLessThanOrEqual(track.x + track.width)
+  }
 })
