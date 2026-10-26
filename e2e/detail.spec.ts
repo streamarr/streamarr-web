@@ -1,33 +1,8 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
-import type { MovieDetailQuery } from '../src/graphql/generated/graphql'
+import { expect, test, type Page } from '@playwright/test'
+import { movie, openMovie } from './movieDetail'
 import { STUB_URL } from './ports'
 
 test.use({ viewport: { width: 1440, height: 900 }, serviceWorkers: 'block' })
-
-const movie: MovieDetailQuery & { movie: { __typename: 'Movie' } } = {
-  movie: {
-    __typename: 'Movie',
-    id: 'm1',
-    title: 'Everlight',
-    tagline: null,
-    summary: null,
-    runtime: 142,
-    releaseDate: '2024-05-10',
-    contentRating: null,
-    genres: [],
-    directors: [],
-    cast: [
-      { id: 'p1', name: 'Lead Actor', images: [] },
-      { id: 'p2', name: 'Supporting Actor', images: [] },
-    ],
-    ratings: [],
-    files: [{ id: 'file-1' }],
-    watchStatus: 'UNWATCHED',
-    watchProgress: null,
-    backdropImages: [],
-    posterImages: [],
-  },
-}
 
 // Fragment spreads on Image only match in the cache when the object carries its __typename.
 const AMBER_BACKDROP = {
@@ -51,22 +26,6 @@ const AMBER_BACKDROP = {
     },
   },
   variants: [],
-}
-
-async function openMovie(
-  page: Page,
-  request: APIRequestContext,
-  overrides: Record<string, unknown> = {},
-): Promise<void> {
-  await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
-  await request.post(`${STUB_URL}/api/auth/refresh`)
-  await page.route('**/graphql', async (route) => {
-    const { operationName } = route.request().postDataJSON() as { operationName?: string }
-    if (operationName !== 'MovieDetail') return route.continue()
-    return route.fulfill({ json: { data: { movie: { ...movie.movie, ...overrides } } } })
-  })
-  await page.goto('/movie/m1')
-  await expect(page.getByRole('heading', { level: 1, name: 'Everlight' })).toBeVisible()
 }
 
 test('the detail page is ambient edge to edge with the signed-in chrome on it', async ({
