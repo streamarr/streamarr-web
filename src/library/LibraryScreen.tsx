@@ -257,7 +257,7 @@ function libraryStatusLabel({
     case 'STOPPING':
       return 'stopping…'
     case 'UNHEALTHY':
-      return 'last update failed'
+      return 'last operation failed'
     default:
       return scanCompletedOn ? `last scan ${formatRelativeTime(scanCompletedOn)}` : null
   }

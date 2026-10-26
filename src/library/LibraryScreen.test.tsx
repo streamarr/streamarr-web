@@ -265,7 +265,7 @@ describe('LibraryScreen', () => {
     ['SCANNING', 'scanning…'],
     ['REFRESHING', 'refreshing…'],
     ['STOPPING', 'stopping…'],
-    ['UNHEALTHY', 'last update failed'],
+    ['UNHEALTHY', 'last operation failed'],
   ] satisfies [LibraryPageQuery['library']['status'], string][])(
     'shouldLabelAScannedLibraryWhoseStatusIs%sFromItsStatus',
     async (status, label) => {
