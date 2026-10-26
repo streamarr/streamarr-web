@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import type { SeasonDetailQuery } from '../src/graphql/generated/graphql'
 import { movie, openMovie } from './movieDetail'
 import { STUB_URL } from './ports'
 
@@ -198,4 +199,72 @@ test('a refused mark shows the server message and keeps the verb', async ({ page
     'No movie, episode, season or series has the given ID.',
   )
   await expect(page.getByRole('button', { name: 'Mark watched', exact: true })).toBeEnabled()
+})
+
+const watchedEpisodes = Array.from({ length: 22 }, (_, index) => ({
+  id: `e${index + 1}`,
+  title: `Episode ${index + 1}`,
+  episodeNumber: index + 1,
+  runtime: 42,
+  watchStatus: 'WATCHED' as const,
+  watchProgress: null,
+  files: [{ id: `file-e${index + 1}` }],
+  stillImages: [],
+}))
+
+const watchedSeason: SeasonDetailQuery = {
+  season: {
+    id: 's1',
+    title: 'Season 1',
+    seasonNumber: 1,
+    overview: null,
+    airDate: null,
+    watchStatus: 'WATCHED',
+    series: {
+      id: 'series-1',
+      title: 'Longwatch',
+      contentRating: null,
+      directors: [],
+      seasons: [
+        {
+          id: 's1',
+          seasonNumber: 1,
+          title: 'Season 1',
+          watchStatus: 'WATCHED',
+          episodes: watchedEpisodes.map(({ id }) => ({ id, watchStatus: 'WATCHED' as const })),
+        },
+      ],
+      backdropImages: [],
+    },
+    episodes: watchedEpisodes,
+    backdropImages: [],
+    posterImages: [],
+  },
+}
+
+test('the watched count stays on the progress bar when the whole season is watched', async ({
+  page,
+  request,
+}) => {
+  await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
+  await request.post(`${STUB_URL}/api/auth/refresh`)
+  await page.route('**/graphql', async (route) => {
+    const { operationName } = route.request().postDataJSON() as { operationName?: string }
+    if (operationName !== 'SeasonDetail') return route.continue()
+    return route.fulfill({ json: { data: watchedSeason } })
+  })
+  await page.goto('/season/s1')
+
+  const bar = page.getByRole('progressbar', { name: '22 of 22 watched' })
+  const count = bar.getByText('22 of 22 watched', { exact: true })
+  for (const viewport of [
+    { width: 1440, height: 900 },
+    { width: 375, height: 667 },
+  ]) {
+    await page.setViewportSize(viewport)
+    const track = (await bar.boundingBox())!
+    const pill = (await count.boundingBox())!
+    expect(pill.x).toBeGreaterThanOrEqual(track.x)
+    expect(pill.x + pill.width).toBeLessThanOrEqual(track.x + track.width)
+  }
 })
