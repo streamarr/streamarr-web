@@ -19,14 +19,18 @@ import { cssVariablesResolver, theme } from './theme'
 const renewal = 'serviceWorker' in navigator ? createBrowserRenewalBridge() : inactiveRenewalBridge
 const { router, apolloClient, session, subscriptions } = createAppRouter(undefined, renewal)
 
-if ('serviceWorker' in navigator) {
+async function registerSessionServiceWorker() {
   const { scriptUrl, options } = decideRegistration(import.meta.env.DEV)
-  navigator.serviceWorker
-    .register(scriptUrl, options)
-    .then(() => postCsrfTokenToServiceWorker())
-    .catch(() => {
-      // Best-effort: the app works without the worker.
-    })
+  try {
+    await navigator.serviceWorker.register(scriptUrl, options)
+    postCsrfTokenToServiceWorker()
+  } catch {
+    // Best-effort: the app works without the worker.
+  }
+}
+
+if ('serviceWorker' in navigator) {
+  void registerSessionServiceWorker()
 }
 
 createRoot(document.getElementById('root')!).render(
