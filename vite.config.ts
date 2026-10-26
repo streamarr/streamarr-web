@@ -14,7 +14,7 @@ export default defineConfig({
       autoCodeSplitting: true,
       // Colocated route tests are not routes; without this the generator rescans on each one,
       // rewriting routeTree.gen.ts and reload-looping the page.
-      routeFileIgnorePattern: '\\.test\\.(ts|tsx)$',
+      routeFileIgnorePattern: String.raw`\.test\.(ts|tsx)$`,
     }),
     react(),
     // The React Compiler memoizes components and values that follow the Rules of React, which the
