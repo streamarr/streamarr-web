@@ -86,7 +86,7 @@ export function CreateLibrary({ onCreated }: Readonly<{ onCreated: (id: string) 
       <div className={styles.pageHeading}>
         <h1>Add library</h1>
       </div>
-      <div className={styles.formPanel}>
+      <div className={styles.formPanel} data-testid="add-library-panel">
         <form className={styles.form} onSubmit={submit} noValidate aria-busy={commands.pending}>
           {(commands.error || errors.form) && (
             <Alert role="alert" color="red">

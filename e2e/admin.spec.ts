@@ -513,7 +513,7 @@ test('Library workspace and creation share a width and fit phone and desktop lay
     await page.setViewportSize({ width, height: 900 })
     await page.goto(SETTINGS)
     await expect(page.getByRole('article')).toBeVisible()
-    const workspace = await page.locator('[class*="_splitPanel_"]').boundingBox()
+    const workspace = await page.getByTestId('library-workspace').boundingBox()
     await page.getByRole('button', { name: 'Refresh metadata', exact: true }).click()
     await expect(page.getByRole('region', { name: 'Refresh metadata for Movies' })).toBeVisible()
     expect(
@@ -525,7 +525,7 @@ test('Library workspace and creation share a width and fit phone and desktop lay
     })
     await page.getByRole('link', { name: 'Add library', exact: true }).click()
     await expect(page.getByRole('textbox', { name: 'Server folder' })).toBeVisible()
-    const form = await page.locator('[class*="_formPanel_"]').boundingBox()
+    const form = await page.getByTestId('add-library-panel').boundingBox()
     expect(form!.width).toBeCloseTo(workspace!.width, 0)
     expect(
       await page.locator('main').evaluate((node) => node.scrollWidth <= node.clientWidth),

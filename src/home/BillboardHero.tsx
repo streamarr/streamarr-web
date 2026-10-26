@@ -7,7 +7,7 @@ import styles from './BillboardHero.module.css'
 // the schema, no Detail route, no watchlist mutation) — a single primary CTA only.
 export function BillboardHero({ content }: Readonly<{ content: BillboardContent }>) {
   return (
-    <div className={styles.hero}>
+    <div className={styles.hero} data-testid="billboard-hero">
       <MediaImage
         image={content.backdrop}
         blurHash={content.blurHash}

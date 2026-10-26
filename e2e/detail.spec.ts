@@ -79,7 +79,7 @@ test('the detail page is ambient edge to edge with the signed-in chrome on it', 
   const hero = await page.getByTestId('backdrop-hero').boundingBox()
   expect(nav!.y).toBeLessThan(hero!.y)
   expect(hero).toEqual(expect.objectContaining({ x: 0, width: 1440 }))
-  await expect(page.locator('[class*="homeShell"]')).toHaveCount(0)
+  await expect(page.getByTestId('home-shell')).toHaveCount(0)
 })
 
 test('the signed-in chrome takes the artwork text color on a bright theme', async ({
@@ -171,7 +171,7 @@ test('cast artwork stays portrait-shaped in the shared shelf on desktop and a ph
   const portrait = shelf
     .getByText('Lead Actor', { exact: true })
     .locator('..')
-    .locator('[class*="_portrait_"]')
+    .getByTestId('cast-portrait')
   for (const viewport of [
     { width: 1440, height: 900 },
     { width: 375, height: 667 },

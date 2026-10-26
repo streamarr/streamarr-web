@@ -110,7 +110,7 @@ for (const viewport of [
     })
     await page.goto('/library/movies?by=TITLE&direction=ASC')
     await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
-    const grid = page.locator('[class*="_grid_"]')
+    const grid = libraryGrid(page)
     // Scroll three rows down, to the row's measured top, so a whole row sits in view.
     const target = await grid.evaluate((element) => {
       const gridTop = element.getBoundingClientRect().top
@@ -175,7 +175,7 @@ for (const viewport of [
     })
     await page.goto('/library/movies?by=TITLE&direction=ASC')
     await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
-    const grid = page.locator('[class*="_grid_"]')
+    const grid = libraryGrid(page)
     const gridNode = await grid.elementHandle()
     // Start away from the top, so the landing offset cannot be mistaken for a fresh grid.
     await grid.evaluate((element) => {
@@ -186,7 +186,7 @@ for (const viewport of [
       page.getByText(title, { exact: true }).evaluate((element) => {
         const card = element.closest('a')!
         // A virtual row can be between removal and re-render for an instant; poll again then.
-        const gridElement = card.closest('[class*="_grid_"]')
+        const gridElement = card.closest('[data-scroll-restoration-id="library-grid"]')
         if (!gridElement) return Number.POSITIVE_INFINITY
         return Math.abs(card.getBoundingClientRect().top - gridElement.getBoundingClientRect().top)
       })
@@ -200,7 +200,7 @@ for (const viewport of [
         } | null
         return body?.operationName === 'LibraryPage' && body.variables?.before != null
       })
-    const oldTitle = (await grid.locator('[class*="_posterTitle_"]').first().textContent())!
+    const oldTitle = (await grid.getByTestId('poster-title').first().textContent())!
     // Counts animation frames painted without a grid from here on, and watches the page for
     // overflow and the rail for movement: a jump must never change the layout around the grid.
     await page.evaluate(() => {
@@ -215,7 +215,8 @@ for (const viewport of [
       }
       Object.assign(window, { gridFrames: frames })
       const sample = () => {
-        if (!document.querySelector('[class*="_grid_"]')) frames.missing += 1
+        if (!document.querySelector('[data-scroll-restoration-id="library-grid"]'))
+          frames.missing += 1
         frames.pageOverflow = Math.max(frames.pageOverflow, main.scrollHeight - main.clientHeight)
         frames.railLefts.add(Math.round(rail.getBoundingClientRect().left))
         if (frames.sampling) requestAnimationFrame(sample)
@@ -306,14 +307,16 @@ test('a letter jump keeps rows visible until the response arrives, then slides t
     const frames: { ty: number; opacity: number; first: string | null }[] = []
     Object.assign(window, { frames })
     const sample = () => {
-      const grid = document.querySelector<HTMLElement>('[class*="_grid_"]')
+      const grid = document.querySelector<HTMLElement>(
+        '[data-scroll-restoration-id="library-grid"]',
+      )
       if (grid) {
         const { transform, opacity } = getComputedStyle(grid)
         const ty = transform === 'none' ? 0 : Number(transform.split(',').at(-1)?.slice(0, -1))
         frames.push({
           ty,
           opacity: Number(opacity),
-          first: grid.querySelector('[class*="_posterTitle_"]')?.textContent ?? null,
+          first: grid.querySelector('[data-testid="poster-title"]')?.textContent ?? null,
         })
       }
       requestAnimationFrame(sample)
@@ -356,7 +359,9 @@ test('a letter jump keeps rows visible until the response arrives, then slides t
     const moved: number[] = []
     Object.assign(window, { moved })
     const sample = () => {
-      const grid = document.querySelector<HTMLElement>('[class*="_grid_"]')
+      const grid = document.querySelector<HTMLElement>(
+        '[data-scroll-restoration-id="library-grid"]',
+      )
       const transform = grid ? getComputedStyle(grid).transform : 'none'
       const ty = transform === 'none' ? 0 : Number(transform.split(',').at(-1)?.slice(0, -1))
       if (Math.abs(ty) > 1) moved.push(ty)
@@ -389,7 +394,7 @@ test('prefetching follows the visible grid height on a phone and after rotation'
   await page.setViewportSize({ width: 375, height: 667 })
   await page.goto('/library/movies?by=TITLE&direction=ASC')
   await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
-  const grid = page.locator('[class*="_grid_"]')
+  const grid = libraryGrid(page)
 
   for (const viewport of [
     { width: 375, height: 667 },
@@ -438,7 +443,7 @@ test('the alphabet highlight follows vertical scrolling on desktop and a phone',
   })
   await page.goto('/library/movies?by=TITLE&direction=ASC')
   await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
-  const grid = page.locator('[class*="_grid_"]')
+  const grid = libraryGrid(page)
 
   for (const { viewport, letter } of [
     { viewport: { width: 1440, height: 900 }, letter: 'B' },
@@ -484,7 +489,7 @@ test('the requested letter stays visible in the mobile alphabet rail', async ({
     'true',
   )
   await expect(page.getByRole('button', { name: 'N', exact: true })).toBeInViewport({ ratio: 0.99 })
-  const renderedTitles = await page.locator('[class*="_posterTitle_"]').allTextContents()
+  const renderedTitles = await page.getByTestId('poster-title').allTextContents()
   expect(renderedTitles).toHaveLength(new Set(renderedTitles).size)
 })
 
@@ -504,7 +509,7 @@ test('the Library viewport adapts when navigation text makes the header taller',
   })
   await page.goto('/library/movies?by=TITLE&direction=ASC')
   await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
-  const grid = page.locator('[class*="_grid_"]')
+  const grid = libraryGrid(page)
   const initialHeight = await grid.evaluate((element) => element.clientHeight)
 
   // The pills set their own size, so the taller text is applied to them, not inherited from the nav.
@@ -546,7 +551,7 @@ test('a short Library screen preserves a readable grid and lets the page scroll 
   const firstTitle = page.getByText('A Title 00', { exact: true })
   await expect(firstTitle).toBeAttached()
   const posterHeight = await firstTitle.locator('..').evaluate((element) => element.clientHeight)
-  const grid = page.locator('[class*="_grid_"]')
+  const grid = libraryGrid(page)
   expect(await grid.evaluate((element) => element.clientHeight)).toBeGreaterThanOrEqual(
     posterHeight,
   )
@@ -629,9 +634,7 @@ for (const { orientation, viewport, minPosterShare } of [
     await expect(page.getByRole('button', { name: 'In progress', exact: true })).toBeInViewport({
       ratio: 1,
     })
-    const gridWidth = await page
-      .locator('[class*="_grid_"]')
-      .evaluate((element) => element.clientWidth)
+    const gridWidth = await libraryGrid(page).evaluate((element) => element.clientWidth)
     const posterWidth = await page
       .getByText('A Title 00', { exact: true })
       .evaluate((element) => element.parentElement!.clientWidth)
@@ -696,7 +699,7 @@ test('Back after a letter jump restores the previous grid position', async ({ pa
   })
   await page.goto('/library/movies?by=TITLE&direction=ASC')
   await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
-  const grid = page.locator('[data-scroll-restoration-id="library-grid"]')
+  const grid = libraryGrid(page)
   await grid.evaluate((el) => {
     el.scrollTop = 600
   })
@@ -777,7 +780,7 @@ for (const { seek, sort, failRecovery } of [
     })
     await page.goto(`/library/movies?by=${sort}&direction=${sort === 'TITLE' ? 'ASC' : 'DESC'}`)
     await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
-    const grid = page.locator('[data-scroll-restoration-id="library-grid"]')
+    const grid = libraryGrid(page)
     if (seek) {
       await page.getByRole('button', { name: 'N', exact: true }).click()
       await expect.poll(() => firstLoaded).toBe(108)
@@ -840,7 +843,7 @@ test('the grid keeps only the rows near the viewport in the DOM across ten lette
   })
   await page.goto('/library/movies?by=TITLE&direction=ASC')
   await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
-  const grid = page.locator('[class*="_grid_"]')
+  const grid = libraryGrid(page)
   // The rows that fit the grid, a partial row at each edge, and two rows of overscan each way.
   const { columns, bound } = await grid.evaluate((element) => {
     const tops = [...element.querySelectorAll('a')].map((card) => card.getBoundingClientRect().top)
@@ -890,7 +893,7 @@ test('a narrower window re-lays the rows before the frame that resized them pain
   // Resize observers run after layout and before paint, in the order they were created: one
   // created now runs after the grid's own, and sees the rows as the frame will paint them.
   await page.evaluate(() => {
-    const grid = document.querySelector('[class*="_grid_"]')!
+    const grid = document.querySelector('[data-scroll-restoration-id="library-grid"]')!
     const seen = { deliveries: 0, overfullRows: 0, overlappingRows: 0 }
     Object.assign(window, { rowsAtResize: seen })
     new ResizeObserver(() => {
@@ -929,7 +932,7 @@ test('a narrower window re-lays the rows before the frame that resized them pain
   // Re-focusing scrolls the card into view only if needed, by the rows' final positions. Scroll
   // offsets are whole pixels, so a card aligned flush with the grid's edge may overhang it by
   // under a pixel.
-  const gridBox = await page.locator('[class*="_grid_"]').boundingBox()
+  const gridBox = await libraryGrid(page).boundingBox()
   const cardBox = await page.getByRole('link', { name: 'A Title 02' }).boundingBox()
   expect(cardBox!.y).toBeGreaterThan(gridBox!.y - 1)
   expect(cardBox!.y + cardBox!.height).toBeLessThan(gridBox!.y + gridBox!.height + 1)
@@ -938,7 +941,7 @@ test('a narrower window re-lays the rows before the frame that resized them pain
 // Rows are re-laid for a new width once the grid has measured it.
 function rowsFitTheWidth(page: Page) {
   return () =>
-    page.locator('[class*="_grid_"]').evaluate((element) => {
+    libraryGrid(page).evaluate((element) => {
       const row = element.querySelector('[data-index]')!
       return row.children.length === getComputedStyle(row).gridTemplateColumns.split(' ').length
     })
@@ -970,11 +973,11 @@ test('every row is the same height, however long the titles in it run', async ({
   await page.setViewportSize({ width: 375, height: 667 })
   await page.goto('/library/movies?by=TITLE&direction=ASC')
   await expect(page.getByText(longTitle('A Title 00'), { exact: true })).toBeVisible()
-  const grid = page.locator('[class*="_grid_"]')
+  const grid = libraryGrid(page)
   const rows = await grid.evaluate((element) =>
     [...element.querySelectorAll<HTMLElement>('[data-index]')].map((row) => {
       const box = row.getBoundingClientRect()
-      const titles = [...row.querySelectorAll<HTMLElement>('[class*="_posterTitle_"]')]
+      const titles = [...row.querySelectorAll<HTMLElement>('[data-testid="poster-title"]')]
       return {
         top: Math.round(box.top),
         height: Math.round(box.height),
@@ -997,7 +1000,7 @@ test('every row is the same height, however long the titles in it run', async ({
 
 // Scroll from the rendered row's known movie to a loaded movie that may not be mounted yet.
 async function scrollToMovie(page: Page, movieIndex: number) {
-  await page.locator('[data-scroll-restoration-id="library-grid"]').evaluate((grid, index) => {
+  await libraryGrid(page).evaluate((grid, index) => {
     const rows = [...grid.querySelectorAll<HTMLElement>('[data-index]')]
     const first = rows[0]
     const firstLink = first.querySelector('a')!
@@ -1008,4 +1011,9 @@ async function scrollToMovie(page: Page, movieIndex: number) {
       first.getBoundingClientRect().top - grid.getBoundingClientRect().top + grid.scrollTop
     grid.scrollTop = rowTop + Math.floor((index - firstId) / columns) * pitch
   }, movieIndex)
+}
+
+// The grid's scroll container, found by the id its scroll position is restored under.
+function libraryGrid(page: Page) {
+  return page.locator('[data-scroll-restoration-id="library-grid"]')
 }
