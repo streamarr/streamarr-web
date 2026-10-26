@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { deferred } from '../../test/deferred'
 import { serveGraphqlSocket } from '../../test/graphqlSocket'
 import { comeBackOnline } from '../../test/graphqlResponses'
-import { meFixture } from '../../test/meFixture'
+import { meFixture, profileFixture } from '../../test/meFixture'
 import { renderAppAt } from '../../test/render'
 import { server } from '../../test/server'
 import type {
@@ -15,6 +15,12 @@ import type {
 import type { ManagedLibrary } from './libraryModel'
 
 const ADMIN = meFixture({ scope: 'profile', serverAdmin: true })
+// A ServerAdmin who browses with a selected Profile, so the ordinary views' live changes run too.
+const VIEWING_ADMIN = meFixture({
+  scope: 'profile',
+  serverAdmin: true,
+  profiles: [profileFixture({ selected: true })],
+})
 const MOVIES: ManagedLibrary = {
   __typename: 'Library',
   id: 'movies',
@@ -1117,6 +1123,37 @@ describe('library administration', () => {
 
     await waitFor(() => expect(detail).toHaveTextContent('SCANNING'))
     expect(within(inventory).queryByRole('button', { name: /TV shows/ })).not.toBeInTheDocument()
+  })
+
+  it('shouldKeepARemovedLibraryOutWhenItsEarlierChangesArriveAfterEnteringAdministration', async () => {
+    const state = serve([MOVIES, SHOWS], VIEWING_ADMIN)
+    const { router } = renderAppAt('/')
+    const primary = await screen.findByRole('navigation', { name: 'Primary' })
+    await within(primary).findByRole('link', { name: 'TV shows' })
+    await waitFor(() => expect(state.socket.isLive('LibraryRemoved')).toBe(true))
+    state.libraries = [MOVIES]
+    state.socket.publish('LibraryRemoved', {
+      data: { libraryRemoved: { __typename: 'LibraryRemoval', libraryId: 'shows' } },
+    })
+    await waitFor(() =>
+      expect(within(primary).queryByRole('link', { name: 'TV shows' })).not.toBeInTheDocument(),
+    )
+
+    await act(() => router.navigate({ to: SETTINGS }))
+    const detail = await screen.findByRole('article', { name: 'Movies settings' })
+    // Fields share no order, so a change committed before the removal can arrive after it.
+    state.socket.publish('LibraryStatusChanged', {
+      data: { libraryStatusChanged: { ...SHOWS, status: 'SCANNING' } },
+    })
+    state.socket.publish('LibraryAdded', { data: { libraryAdded: SHOWS } })
+    state.socket.publish('LibraryStatusChanged', {
+      data: { libraryStatusChanged: { ...MOVIES, status: 'REFRESHING' } },
+    })
+
+    await waitFor(() => expect(detail).toHaveTextContent('REFRESHING'))
+    const inventory = screen.getByRole('navigation', { name: 'Libraries to manage' })
+    expect(within(inventory).queryByRole('button', { name: /TV shows/ })).not.toBeInTheDocument()
+    expect(within(primary).queryByRole('link', { name: 'TV shows' })).not.toBeInTheDocument()
   })
 
   it('shouldKeepARemovedLibraryOutWhenAnEarlierReadArrivesLate', async () => {

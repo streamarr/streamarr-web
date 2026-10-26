@@ -1,19 +1,15 @@
 import type {
   ApolloCache,
   ApolloClient,
-  ErrorLike,
   OperationVariables,
   TypedDocumentNode,
 } from '@apollo/client'
 import { useApolloClient, useQuery } from '@apollo/client/react'
 import { useRouteContext } from '@tanstack/react-router'
-import { useEffect, useRef, useState, type RefObject } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   AddLibraryDocument,
   AdminLibrariesDocument,
-  LibraryAddedDocument,
-  LibraryRemovedDocument,
-  LibraryStatusChangedDocument,
   LibraryFieldsFragmentDoc,
   RemoveLibraryDocument,
   StartLibraryRefreshDocument,
@@ -29,10 +25,14 @@ import {
   type StopLibraryScanMutation,
 } from '../../graphql/generated/graphql'
 import { extractAuthContext, isForbidden } from '../../graphql/errorRouting'
-import { stopTogether, watchLiveChanges } from '../../graphql/liveChanges'
 import { isReading } from '../../graphql/readAgain'
 import { userErrorMessage } from '../../graphql/userErrors'
-import { addToLibraryLists, removeFromLibraryLists } from '../../graphql/libraryLists'
+import { subscribeToLibraryChanges } from '../../media/libraryChanges'
+import {
+  addUnlessRemoved,
+  isRemovedLibrary,
+  removeFromLibraryLists,
+} from '../../graphql/libraryLists'
 
 // Starts and removal share one refusal union; each stop adds its own refusal for a run that is
 // not in progress.
@@ -81,12 +81,9 @@ function countLiveChange(cache: ApolloCache, target: LiveChangeTarget) {
 /** Why live inventory changes stopped: the server refused them, or they ended another way. */
 export type LiveInventoryStop = 'forbidden' | 'failed'
 
-// Applies every library change as it commits: status and scan times update in place, an added
-// library joins the inventory once, and a removed one leaves it for good.
-function useLiveInventoryChanges(): {
-  stop: LiveInventoryStop | null
-  removedIds: RefObject<ReadonlySet<string>>
-} {
+// Applies every library change as it commits, through the changes every view shares, and counts
+// each one for the commands in flight.
+function useLiveInventoryChanges(): LiveInventoryStop | null {
   const [stop, setStop] = useState<LiveInventoryStop | null>(null)
   const client = useApolloClient()
   const { subscriptions } = useRouteContext({ from: '__root__' })
@@ -94,38 +91,16 @@ function useLiveInventoryChanges(): {
     () => subscriptions.onMissedChanges(() => countLiveChange(client.cache, EVERY_LIBRARY)),
     [client, subscriptions],
   )
-  // The server orders no frames across fields: a change committed before a removal can arrive
-  // after it. A library id never returns once removed.
-  const removedIds = useRef(new Set<string>())
-  useEffect(() => {
-    const onStop = (error: ErrorLike) => setStop(isForbidden(error) ? 'forbidden' : 'failed')
-    const holdFrom = (library: LibraryFieldsFragment | null) => {
-      if (!library) return
-      countLiveChange(client.cache, library.id)
-      if (!removedIds.current.has(library.id)) addToLibraryLists(client.cache, library)
-    }
-    const dropFrom = (removal: { libraryId: string } | null) => {
-      if (!removal) return
-      removedIds.current.add(removal.libraryId)
-      countLiveChange(client.cache, removal.libraryId)
-      dropLibrary(client.cache, removal.libraryId)
-    }
-    return stopTogether([
-      watchLiveChanges(client, LibraryStatusChangedDocument, {
-        apply: (data) => holdFrom(data.libraryStatusChanged),
-        onStop,
+  useEffect(
+    () =>
+      subscribeToLibraryChanges(client, {
+        onChange: (libraryId) => countLiveChange(client.cache, libraryId),
+        onRemoved: (libraryId) => evictLibrary(client.cache, libraryId),
+        onStop: (error) => setStop(isForbidden(error) ? 'forbidden' : 'failed'),
       }),
-      watchLiveChanges(client, LibraryAddedDocument, {
-        apply: (data) => holdFrom(data.libraryAdded),
-        onStop,
-      }),
-      watchLiveChanges(client, LibraryRemovedDocument, {
-        apply: (data) => dropFrom(data.libraryRemoved),
-        onStop,
-      }),
-    ])
-  }, [client])
-  return { stop, removedIds }
+    [client],
+  )
+  return stop
 }
 
 /**
@@ -135,7 +110,7 @@ function useLiveInventoryChanges(): {
  * nothing a late subscriber missed, so the inventory reads again once the changes subscribe.
  */
 export function useAdminLibraries() {
-  const { stop: liveStop, removedIds } = useLiveInventoryChanges()
+  const liveStop = useLiveInventoryChanges()
   const query = useQuery(AdminLibrariesDocument, {
     fetchPolicy: 'cache-and-network',
   })
@@ -143,9 +118,9 @@ export function useAdminLibraries() {
   // A read that took its snapshot before a removal can land after it.
   useEffect(() => {
     for (const library of data?.libraries ?? []) {
-      if (removedIds.current.has(library.id)) dropLibrary(client.cache, library.id)
+      if (isRemovedLibrary(client.cache, library.id)) dropLibrary(client.cache, library.id)
     }
-  }, [client, data, removedIds])
+  }, [client, data])
   return { ...query, data: data ?? query.previousData, liveStop }
 }
 
@@ -232,7 +207,7 @@ export function useLibraryCommands() {
         if (!data?.addLibrary) throw new Error('Missing creation result')
         const { library, userErrors } = data.addLibrary
         if (library && userErrors.length === 0)
-          refreshLibraryViews(client, (cache) => addToLibraryLists(cache, library))
+          refreshLibraryViews(client, (cache) => addUnlessRemoved(cache, library))
         return data.addLibrary
       }, NOTHING_ADDED),
     scan: (libraryId: string) =>
@@ -393,5 +368,9 @@ function showStatus(cache: ApolloCache, libraryId: string, status: LibraryStatus
 // Every cached library list drops the library at once; the refetch then confirms the inventory.
 function dropLibrary(cache: ApolloCache, id: string) {
   removeFromLibraryLists(cache, id)
+  evictLibrary(cache, id)
+}
+
+function evictLibrary(cache: ApolloCache, id: string) {
   cache.evict({ id: cache.identify({ __typename: 'Library', id }) })
 }
