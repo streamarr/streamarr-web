@@ -1203,8 +1203,7 @@ test('scrolling far unloads the titles left behind without moving the rows in vi
       element.scrollTop += element.clientHeight
     })
     const before = await topCard()
-    // A bounded settle: the unload and any page load run within it, and must not move the row.
-    await page.waitForTimeout(150)
+    await page.waitForTimeout(150) // NOSONAR: bounded settle proves the unload and page loads in it do not move the row
     expect(await offsetOf(before.title)).toBeCloseTo(before.offset, 0)
   }
   await expect(grid.locator('[data-edge="start"]')).toBeAttached()
@@ -1229,6 +1228,7 @@ test('reading the library again deep in a long scroll keeps the rows in view', a
   await request.post(`${STUB_URL}/api/auth/refresh`)
   const longLibrary = moviesPerLetter(24)
   const reads: LibraryPageQueryVariables[] = []
+  let answering = 0
   await page.route('**/graphql', async (route) => {
     const operation = route.request().postDataJSON() as {
       operationName: string
@@ -1236,7 +1236,9 @@ test('reading the library again deep in a long scroll keeps the rows in view', a
     }
     if (operation.operationName !== 'LibraryPage') return route.continue()
     reads.push(operation.variables)
+    answering += 1
     await route.fulfill({ json: { data: libraryPage(operation.variables, longLibrary) } })
+    answering -= 1
   })
   await page.goto('/library/movies?by=TITLE&direction=ASC')
   await expect(page.getByText('A Title 00', { exact: true })).toBeVisible()
@@ -1247,8 +1249,6 @@ test('reading the library again deep in a long scroll keeps the rows in view', a
     })
     await page.waitForTimeout(50) // NOSONAR: paces the scroll as a viewer's would be
   }
-  // Let the unload settle before reading the rows in view.
-  await page.waitForTimeout(200)
   const inView = () =>
     grid.evaluate((element) => {
       const gridTop = element.getBoundingClientRect().top
@@ -1256,18 +1256,26 @@ test('reading the library again deep in a long scroll keeps the rows in view', a
       const card = titles.find((title) => title.getBoundingClientRect().bottom > gridTop)!
       return { title: card.textContent, offset: Math.round(card.getBoundingClientRect().top) }
     })
+  // The unload has settled once no page is being answered and the rows in view stop moving.
+  let lastSeen = ''
+  await expect
+    .poll(async () => {
+      const seen = JSON.stringify({ answering, view: await inView() })
+      const settled = answering === 0 && seen === lastSeen
+      lastSeen = seen
+      return settled
+    })
+    .toBe(true)
   const before = await inView()
   const readAt = reads.length
 
   await page.evaluate(() => window.dispatchEvent(new Event('online')))
 
   await expect.poll(() => reads.length).toBeGreaterThan(readAt)
-  // A bounded settle: the read and the pages restoring the window run within it.
-  await page.waitForTimeout(500)
+  await expect.poll(async () => answering === 0 && (await inView())).toEqual(before)
   expect(reads.slice(readAt).filter((variables) => !variables.after && !variables.before)).toEqual(
     [],
   )
-  expect(await inView()).toEqual(before)
 })
 
 // The grid's scroll container, found by the id its scroll position is restored under.
