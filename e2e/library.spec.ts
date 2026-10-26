@@ -516,14 +516,26 @@ for (const resizeTo of [null, { width: 1500, height: 800 }]) {
 
     // N's first title is the library's 157th, the second in its row.
     await expect(page.getByText('N Title 00', { exact: true })).toBeInViewport()
+    const grid = page.locator('[data-scroll-restoration-id="library-grid"]')
+    // The grid slides in after a jump; two cards read in different frames of the slide sit apart.
+    await expect.poll(() => grid.evaluate((element) => getComputedStyle(element).opacity)).toBe('1')
     const landing = await left('N Title 00')
     const before = await left('M Title 11')
     expect(before.top).toBe(landing.top)
     expect(before.left).toBeLessThan(landing.left)
-    const grid = page.locator('[data-scroll-restoration-id="library-grid"]')
     if (resizeTo) {
       await page.setViewportSize(resizeTo)
       await expect.poll(rowsFitTheWidth(page)).toBe(true)
+      // The rows take the new column count a frame before they break on library positions again.
+      const landingColumn = 156 % (await columnCount(page))
+      await expect
+        .poll(() =>
+          page.getByText('N Title 00', { exact: true }).evaluate((element) => {
+            const card = element.closest('[role="gridcell"]')!
+            return [...card.parentElement!.children].indexOf(card)
+          }),
+        )
+        .toBe(landingColumn)
       // A resize moves every row; only what follows it must keep titles in their columns.
       await page.evaluate(() =>
         (window as unknown as { movedSideways: Set<string> }).movedSideways.clear(),
