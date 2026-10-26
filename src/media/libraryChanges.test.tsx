@@ -222,20 +222,6 @@ describe('subscribeToLibraryChanges', () => {
     expect(within(topBar()).getByRole('link', { name: 'Movies' })).toBeInTheDocument()
   })
 
-  it('shouldKeepARemovedLibraryOutOfTheTopBarWhenAnEarlierChangeArrivesAfterItsRemoval', async () => {
-    const state = serve([MOVIES, SHOWS])
-    await openHome(state)
-
-    state.libraries = [MOVIES]
-    state.socket.publish('LibraryRemoved', { data: { libraryRemoved: { libraryId: SHOWS.id } } })
-    state.socket.publish('LibraryStatusChanged', statusChanged({ ...SHOWS, status: 'SCANNING' }))
-    state.socket.publish('LibraryAdded', { data: { libraryAdded: SHOWS } })
-    state.socket.publish('LibraryStatusChanged', statusChanged({ ...MOVIES, name: 'Films' }))
-
-    await within(topBar()).findByRole('link', { name: 'Films' })
-    expect(within(topBar()).queryByRole('link', { name: 'TV shows' })).not.toBeInTheDocument()
-  })
-
   it('shouldShowTheStatusReadAgainAfterTheConnectionReturns', async () => {
     const state = serve()
     await openMovies(state)

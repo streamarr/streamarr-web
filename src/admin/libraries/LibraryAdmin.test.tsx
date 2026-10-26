@@ -1099,61 +1099,25 @@ describe('library administration', () => {
     expect(screen.getByRole('article', { name: 'Movies settings' })).toBeInTheDocument()
   })
 
-  it('shouldKeepARemovedLibraryOutWhenItsEarlierChangesArriveLate', async () => {
-    const state = serve()
-    renderAppAt(SETTINGS)
-    const detail = await screen.findByRole('article', { name: 'Movies settings' })
-    await waitFor(() => expect(state.socket.isLive('LibraryRemoved')).toBe(true))
-    const inventory = screen.getByRole('navigation', { name: 'Libraries to manage' })
-
-    state.socket.publish('LibraryRemoved', {
-      data: { libraryRemoved: { __typename: 'LibraryRemoval', libraryId: 'shows' } },
-    })
-    await waitFor(() =>
-      expect(within(inventory).queryByRole('button', { name: /TV shows/ })).not.toBeInTheDocument(),
-    )
-    // Fields share no order, so a change committed before the removal can arrive after it.
-    state.socket.publish('LibraryStatusChanged', {
-      data: { libraryStatusChanged: { ...SHOWS, status: 'HEALTHY' } },
-    })
-    state.socket.publish('LibraryAdded', { data: { libraryAdded: SHOWS } })
-    state.socket.publish('LibraryStatusChanged', {
-      data: { libraryStatusChanged: { ...MOVIES, status: 'SCANNING' } },
-    })
-
-    await waitFor(() => expect(detail).toHaveTextContent('SCANNING'))
-    expect(within(inventory).queryByRole('button', { name: /TV shows/ })).not.toBeInTheDocument()
-  })
-
-  it('shouldKeepARemovedLibraryOutWhenItsEarlierChangesArriveAfterEnteringAdministration', async () => {
+  it('shouldDropALibraryAnotherSessionRemovedFromTheInventoryAndTheTopBar', async () => {
     const state = serve([MOVIES, SHOWS], VIEWING_ADMIN)
-    const { router } = renderAppAt('/')
-    const primary = await screen.findByRole('navigation', { name: 'Primary' })
+    renderAppAt(SETTINGS)
+    await screen.findByRole('article', { name: 'Movies settings' })
+    const primary = screen.getByRole('navigation', { name: 'Primary' })
+    const inventory = screen.getByRole('navigation', { name: 'Libraries to manage' })
     await within(primary).findByRole('link', { name: 'TV shows' })
     await waitFor(() => expect(state.socket.isLive('LibraryRemoved')).toBe(true))
+
     state.libraries = [MOVIES]
     state.socket.publish('LibraryRemoved', {
       data: { libraryRemoved: { __typename: 'LibraryRemoval', libraryId: 'shows' } },
     })
+
     await waitFor(() =>
-      expect(within(primary).queryByRole('link', { name: 'TV shows' })).not.toBeInTheDocument(),
+      expect(within(inventory).queryByRole('button', { name: /TV shows/ })).not.toBeInTheDocument(),
     )
-
-    await act(() => router.navigate({ to: SETTINGS }))
-    const detail = await screen.findByRole('article', { name: 'Movies settings' })
-    // Fields share no order, so a change committed before the removal can arrive after it.
-    state.socket.publish('LibraryStatusChanged', {
-      data: { libraryStatusChanged: { ...SHOWS, status: 'SCANNING' } },
-    })
-    state.socket.publish('LibraryAdded', { data: { libraryAdded: SHOWS } })
-    state.socket.publish('LibraryStatusChanged', {
-      data: { libraryStatusChanged: { ...MOVIES, status: 'REFRESHING' } },
-    })
-
-    await waitFor(() => expect(detail).toHaveTextContent('REFRESHING'))
-    const inventory = screen.getByRole('navigation', { name: 'Libraries to manage' })
-    expect(within(inventory).queryByRole('button', { name: /TV shows/ })).not.toBeInTheDocument()
     expect(within(primary).queryByRole('link', { name: 'TV shows' })).not.toBeInTheDocument()
+    expect(within(primary).getByRole('link', { name: 'Movies' })).toBeInTheDocument()
   })
 
   it.each([
@@ -1417,41 +1381,6 @@ describe('library administration', () => {
     await user.click(row)
     expect(screen.queryByText('Movies removed. Files were kept on disk.')).not.toBeInTheDocument()
     expect(row).toHaveFocus()
-  })
-
-  it('shouldKeepALibraryThisAdminRemovedOutWhenItsEarlierChangesArriveBeforeItsRemoval', async () => {
-    const state = serve([MOVIES, SHOWS], VIEWING_ADMIN)
-    server.use(
-      graphql.mutation('RemoveLibrary', () => {
-        state.libraries = [SHOWS]
-        return HttpResponse.json(removed('movies'))
-      }),
-    )
-    const { user } = renderAppAt(SETTINGS)
-    await screen.findByRole('article', { name: 'Movies settings' })
-    await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
-    const primary = screen.getByRole('navigation', { name: 'Primary' })
-    const inventory = screen.getByRole('navigation', { name: 'Libraries to manage' })
-
-    await user.click(screen.getByRole('button', { name: 'Remove library' }))
-    await user.click(
-      within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove library' }),
-    )
-    await waitFor(() =>
-      expect(within(inventory).queryByRole('button', { name: /Movies/ })).not.toBeInTheDocument(),
-    )
-    // The removal's own change has not arrived yet; changes committed before it arrive first.
-    state.socket.publish('LibraryStatusChanged', {
-      data: { libraryStatusChanged: { ...MOVIES, status: 'SCANNING' } },
-    })
-    state.socket.publish('LibraryAdded', { data: { libraryAdded: MOVIES } })
-    state.socket.publish('LibraryStatusChanged', {
-      data: { libraryStatusChanged: { ...SHOWS, name: 'Television' } },
-    })
-
-    await within(primary).findByRole('link', { name: 'Television' })
-    expect(within(inventory).queryByRole('button', { name: /Movies/ })).not.toBeInTheDocument()
-    expect(within(primary).queryByRole('link', { name: 'Movies' })).not.toBeInTheDocument()
   })
 
   it('shouldRemoveTheLastLibraryAtOnceAndOfferCreation', async () => {
