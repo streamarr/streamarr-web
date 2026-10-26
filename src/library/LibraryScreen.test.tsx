@@ -59,6 +59,7 @@ function libraryData(
   overrides: {
     edges?: { cursor: string; node: ReturnType<typeof movieNode> | ReturnType<typeof seriesNode> }[]
     hasNextPage?: boolean
+    status?: LibraryPageQuery['library']['status']
     scanCompletedOn?: string | null
     alphabetIndex?: LibraryPageQuery['library']['alphabetIndex']
   } = {},
@@ -68,8 +69,11 @@ function libraryData(
       __typename: 'Library',
       id: LIBRARY_ID,
       name: 'Movies',
-      status: 'HEALTHY',
-      scanCompletedOn: overrides.scanCompletedOn ?? '2026-08-28T11:46:00Z',
+      status: overrides.status ?? 'HEALTHY',
+      scanCompletedOn:
+        overrides.scanCompletedOn === undefined
+          ? '2026-08-28T11:46:00Z'
+          : overrides.scanCompletedOn,
       itemCount: overrides.alphabetIndex?.reduce((sum, entry) => sum + entry.count, 0) ?? 3,
       alphabetIndex: overrides.alphabetIndex ?? [
         { letter: 'A', count: 1 },
@@ -255,6 +259,48 @@ describe('LibraryScreen', () => {
     expect(screen.getByText(/last scan/)).toBeInTheDocument()
     expect(screen.queryByText(/items ·/)).not.toBeInTheDocument()
     expect(screen.queryByText(/^Showing/)).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['SCANNING', 'scanning…'],
+    ['REFRESHING', 'refreshing…'],
+    ['STOPPING', 'stopping…'],
+    ['UNHEALTHY', 'last update failed'],
+  ] satisfies [LibraryPageQuery['library']['status'], string][])(
+    'shouldLabelAScannedLibraryWhoseStatusIs%sFromItsStatus',
+    async (status, label) => {
+      server.use(
+        graphql.query('LibraryPage', () => HttpResponse.json({ data: libraryData({ status }) })),
+      )
+      renderWithProviders(<Harness />)
+
+      expect(await screen.findByText(label)).toBeInTheDocument()
+      expect(screen.queryByText(/last scan \d/)).not.toBeInTheDocument()
+    },
+  )
+
+  it('shouldSayWhenAHealthyLibraryWasLastScanned', async () => {
+    const scanCompletedOn = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
+    server.use(
+      graphql.query('LibraryPage', () =>
+        HttpResponse.json({ data: libraryData({ status: 'HEALTHY', scanCompletedOn }) }),
+      ),
+    )
+    renderWithProviders(<Harness />)
+
+    expect(await screen.findByText('last scan 3 days ago')).toBeInTheDocument()
+  })
+
+  it('shouldShowNoScanLabelForAHealthyLibraryThatWasNeverScanned', async () => {
+    server.use(
+      graphql.query('LibraryPage', () =>
+        HttpResponse.json({ data: libraryData({ status: 'HEALTHY', scanCompletedOn: null }) }),
+      ),
+    )
+    renderWithProviders(<Harness />)
+
+    expect(await screen.findByRole('heading', { name: 'Movies' })).toBeInTheDocument()
+    expect(screen.queryByText(/scan/)).not.toBeInTheDocument()
   })
 
   it.each([

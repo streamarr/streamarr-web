@@ -5,6 +5,7 @@ import { Store } from '@tanstack/store'
 import { useReducedMotion } from 'motion/react'
 import { useEffect, useState } from 'react'
 import type {
+  LibraryPageQuery,
   MediaFilter,
   MediaSort,
   OrderMediaBy,
@@ -173,9 +174,7 @@ export function LibraryScreen({
   }
 
   const total = library.itemCount
-  const scanLabel = library.scanCompletedOn
-    ? `last scan ${formatRelativeTime(library.scanCompletedOn)}`
-    : 'scanning…'
+  const statusLabel = libraryStatusLabel(library)
 
   return (
     <div className={styles.libraryScreen}>
@@ -183,7 +182,7 @@ export function LibraryScreen({
         <Title order={1} className={styles.libraryName}>
           {library.name ?? 'Library'}
         </Title>
-        <Text className={styles.scanStatus}>{scanLabel}</Text>
+        {statusLabel && <Text className={styles.scanStatus}>{statusLabel}</Text>}
         <div className={styles.sortSlot}>
           <SortMenu sort={sort} onChange={selectSort} />
         </div>
@@ -243,6 +242,25 @@ export function LibraryScreen({
       </div>
     </div>
   )
+}
+
+// A status the client does not know yet says nothing more than when the library last scanned.
+function libraryStatusLabel({
+  status,
+  scanCompletedOn,
+}: Pick<LibraryPageQuery['library'], 'status' | 'scanCompletedOn'>): string | null {
+  switch (status) {
+    case 'SCANNING':
+      return 'scanning…'
+    case 'REFRESHING':
+      return 'refreshing…'
+    case 'STOPPING':
+      return 'stopping…'
+    case 'UNHEALTHY':
+      return 'last update failed'
+    default:
+      return scanCompletedOn ? `last scan ${formatRelativeTime(scanCompletedOn)}` : null
+  }
 }
 
 // While a jump is pending the rail shows the letter asked for; otherwise it follows the grid.
