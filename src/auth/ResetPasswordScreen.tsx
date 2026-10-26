@@ -10,7 +10,7 @@ import { AuthApiError, redeemPasswordReset } from './api'
 const UNUSABLE_PASSWORD_MESSAGE = 'That password cannot be used. Choose a different one.'
 const FALLBACK_MESSAGE = 'Something went wrong. Please try again.'
 
-export function ResetPasswordScreen({ initialCode }: { initialCode?: string }) {
+export function ResetPasswordScreen({ initialCode }: Readonly<{ initialCode?: string }>) {
   const [code, setCode] = useState(initialCode ?? '')
   const [newPassword, setNewPassword] = useState('')
   const [confirm, setConfirm] = useState('')

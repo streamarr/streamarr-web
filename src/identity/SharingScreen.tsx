@@ -73,12 +73,12 @@ function Sharing({
   householdName,
   profileId,
   profileName,
-}: {
+}: Readonly<{
   householdId: string
   householdName: string
   profileId: string
   profileName: string
-}) {
+}>) {
   const overview = useQuery(SharingOverviewDocument, {
     variables: { householdId, profileId },
   })
@@ -133,11 +133,11 @@ function OffersIntoHousehold({
   householdName,
   offers,
   onDecided,
-}: {
+}: Readonly<{
   householdName: string
   offers: PendingOffer[]
   onDecided: () => void
-}) {
+}>) {
   const [accept] = useMutation(AcceptProfileShareDocument)
   const [reject] = useMutation(RejectProfileShareDocument)
   const [failure, setFailure] = useState<string | null>(null)
@@ -216,11 +216,11 @@ function OfferForm({
   profileId,
   profileName,
   onOffered,
-}: {
+}: Readonly<{
   profileId: string
   profileName: string
   onOffered: () => void
-}) {
+}>) {
   const [householdId, setHouseholdId] = useState('')
   const [failure, setFailure] = useState<string | null>(null)
   const validTarget = UUID_SHAPE.test(householdId)
@@ -286,12 +286,12 @@ function OwnShares({
   profileName,
   shares,
   onChanged,
-}: {
+}: Readonly<{
   householdId: string
   profileName: string
   shares: ProfileShareRow[]
   onChanged: () => void
-}) {
+}>) {
   const [cancel] = useMutation(CancelProfileShareDocument)
   const [end] = useMutation(EndProfileShareDocument)
   const [failure, setFailure] = useState<string | null>(null)

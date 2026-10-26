@@ -2,7 +2,10 @@ import { rem, Text, type TextProps } from '@mantine/core'
 import type { ComponentPropsWithoutRef, ReactNode } from 'react'
 import styles from './AuthShell.module.css'
 
-export function AuthShell({ width = 400, children }: { width?: number; children: ReactNode }) {
+export function AuthShell({
+  width = 400,
+  children,
+}: Readonly<{ width?: number; children: ReactNode }>) {
   return (
     <div className={styles.authShell}>
       <div className={styles.authShellBloom} />
@@ -21,7 +24,7 @@ export function Wordmark() {
 }
 
 // A plain h1 on purpose: Mantine's Title zeroes the margin the ceremonies' rhythm relies on.
-export function AuthTitle({ className, ...props }: ComponentPropsWithoutRef<'h1'>) {
+export function AuthTitle({ className, ...props }: Readonly<ComponentPropsWithoutRef<'h1'>>) {
   return <h1 {...props} className={joinClasses(styles.authTitle, className)} />
 }
 

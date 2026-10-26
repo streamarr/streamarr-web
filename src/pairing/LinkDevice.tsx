@@ -27,10 +27,10 @@ const SIGNED_IN_STATUSES = new Set(['APPROVED', 'CONSUMED'])
 export function LinkDevice({
   initialCode = '',
   onUnauthenticated,
-}: {
+}: Readonly<{
   initialCode?: string
   onUnauthenticated?: (code: string) => void
-}) {
+}>) {
   const [code, setCode] = useState(normalizeCode(initialCode))
   const [pairing, setPairing] = useState<PairingRequest | null>(null)
   const [outcome, setOutcome] = useState<string | null>(null)
@@ -193,7 +193,7 @@ export function LinkDevice({
   )
 }
 
-function OutcomeNotice({ status }: { status: string }) {
+function OutcomeNotice({ status }: Readonly<{ status: string }>) {
   return (
     <Alert color={SIGNED_IN_STATUSES.has(status) ? 'green' : 'red'}>
       {OUTCOME_MESSAGES[status] ?? UNKNOWN_OUTCOME_MESSAGE}
@@ -221,12 +221,12 @@ function ConfirmDevice({
   busy,
   onDecide,
   onCancel,
-}: {
+}: Readonly<{
   pairing: PairingRequest
   busy: boolean
   onDecide: (decision: PairingDecision, householdId?: string) => void
   onCancel: () => void
-}) {
+}>) {
   const [householdId, setHouseholdId] = useState(preselectedHousehold(pairing.households))
 
   return (

@@ -16,7 +16,7 @@ export function CodeInput({
   settled = false,
   autoFocus = false,
   testId,
-}: {
+}: Readonly<{
   label: string
   value: string
   onChange: (next: string) => void
@@ -33,7 +33,7 @@ export function CodeInput({
   settled?: boolean
   autoFocus?: boolean
   testId?: string
-}) {
+}>) {
   const id = useId()
   const [focused, setFocused] = useState(false)
   const max = length ?? 8

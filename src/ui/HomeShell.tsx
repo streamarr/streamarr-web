@@ -6,12 +6,12 @@ export function HomeShell({
   chrome,
   children,
   ambient = true,
-}: {
+}: Readonly<{
   chrome?: ReactNode
   children: ReactNode
   /** Neutral settings pages omit the browsing wash. */
   ambient?: boolean
-}) {
+}>) {
   return (
     <div className={styles.homeShell} data-testid="home-shell">
       {ambient && <div className={styles.homeAmbient} aria-hidden />}
