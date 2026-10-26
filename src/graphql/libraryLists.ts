@@ -27,7 +27,7 @@ export function removeFromLibraryLists(cache: ApolloCache, libraryId: string) {
 }
 
 // Root fields that hold titles, or the details of titles, which any Library may have fed.
-const TITLE_FIELDS = ['continueWatching', 'movie', 'series', 'season']
+const TITLE_FIELDS = ['continueWatching', 'movie', 'series', 'season', 'episode']
 
 /**
  * Forgets the cached views a Library's titles may feed: Continue Watching and media details. The
