@@ -28,11 +28,7 @@ import { extractAuthContext, isForbidden } from '../../graphql/errorRouting'
 import { isReading } from '../../graphql/readAgain'
 import { userErrorMessage } from '../../graphql/userErrors'
 import { subscribeToLibraryChanges } from '../../media/libraryChanges'
-import {
-  addUnlessRemoved,
-  isRemovedLibrary,
-  removeFromLibraryLists,
-} from '../../graphql/libraryLists'
+import { addUnlessRemoved, removeFromLibraryLists } from '../../graphql/libraryLists'
 
 // Starts and removal share one refusal union; each stop adds its own refusal for a run that is
 // not in progress.
@@ -114,14 +110,7 @@ export function useAdminLibraries() {
   const query = useQuery(AdminLibrariesDocument, {
     fetchPolicy: 'cache-and-network',
   })
-  const { client, data } = query
-  // A read that took its snapshot before a removal can land after it.
-  useEffect(() => {
-    for (const library of data?.libraries ?? []) {
-      if (isRemovedLibrary(client.cache, library.id)) dropLibrary(client.cache, library.id)
-    }
-  }, [client, data])
-  return { ...query, data: data ?? query.previousData, liveStop }
+  return { ...query, data: query.data ?? query.previousData, liveStop }
 }
 
 /**
