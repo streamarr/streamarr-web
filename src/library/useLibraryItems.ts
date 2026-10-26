@@ -229,9 +229,11 @@ export function useLibraryItems({
   // Apollo suppresses cache notifications during fetchMore. Read beside the watched query so
   // subscription payloads still render while a continuation is in flight.
   async function readPage({
+    scope,
     variables,
     update,
   }: {
+    scope: RequestScope
     variables: LibraryPageQueryVariables
     update: (loaded: StoredItems, page: StoredItems) => StoredItems
   }) {
@@ -240,7 +242,8 @@ export function useLibraryItems({
       variables,
       fetchPolicy: 'no-cache',
     })
-    if (!page) return undefined
+    // A page answered after its view was left would overwrite the current view's titles.
+    if (!page || !scope.active) return undefined
     // Only the page's own titles are written; the loaded ones keep their stored edges.
     const { items, ...library } = page.library
     client.cache.batch({
@@ -260,6 +263,7 @@ export function useLibraryItems({
     }
     scope.fetchingNext = true
     void readPage({
+      scope,
       variables: {
         libraryId,
         first: pageSizeAfter({ columns, end: firstPosition + loadedEdges.length }),
@@ -270,9 +274,7 @@ export function useLibraryItems({
         filter,
       },
       update: (loaded, page) =>
-        !scope.active || loaded.pageInfo.endCursor !== pageInfo.endCursor
-          ? loaded
-          : appendItemsPage(loaded, page),
+        loaded.pageInfo.endCursor !== pageInfo.endCursor ? loaded : appendItemsPage(loaded, page),
     })
       .catch((error: unknown) => failPage(scope, 'next', error))
       .finally(() => {
@@ -290,6 +292,7 @@ export function useLibraryItems({
     // A `before` cursor replaces the letter seek anchor (ADR 0023).
     const { startLetter: _startLetter, ...continuationFilter } = filter
     scope.previousRequest = readPage({
+      scope,
       variables: {
         libraryId,
         first: undefined,
@@ -300,7 +303,7 @@ export function useLibraryItems({
         filter: continuationFilter,
       },
       update: (loaded, page) =>
-        !scope.active || loaded.pageInfo.startCursor !== pageInfo.startCursor
+        loaded.pageInfo.startCursor !== pageInfo.startCursor
           ? loaded
           : prependItemsPage(loaded, page),
     })

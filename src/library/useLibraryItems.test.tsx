@@ -91,6 +91,7 @@ function Harness({
   const result = useLibraryItems({ libraryId: LIBRARY_ID, sort: TITLE_ASC, filter, columns })
   const client = useApolloClient()
   const [cachedTitles, setCachedTitles] = useState<number | null>(null)
+  const [previousPagesSettled, setPreviousPagesSettled] = useState(0)
   // A screen without motion: every staged result is shown as soon as it arrives.
   const { staged, accept } = result
   useEffect(() => {
@@ -104,6 +105,7 @@ function Harness({
       <div data-testid="landing">{result.landing?.cursor ?? ''}</div>
       <div data-testid="firstPosition">{result.firstPosition}</div>
       <div data-testid="cachedTitles">{cachedTitles}</div>
+      <div data-testid="previousPagesSettled">{previousPagesSettled}</div>
       <button type="button" onClick={() => void readActiveQueriesAgain(client)}>
         Read again
       </button>
@@ -131,7 +133,12 @@ function Harness({
       <button type="button" onClick={result.loadMore}>
         Load more
       </button>
-      <button type="button" onClick={result.loadPrevious}>
+      <button
+        type="button"
+        onClick={() =>
+          void result.loadPrevious()?.then(() => setPreviousPagesSettled((settled) => settled + 1))
+        }
+      >
         Load previous
       </button>
       <button type="button" onClick={() => setFilter({ startLetter: 'N' })}>
@@ -407,6 +414,52 @@ describe('useLibraryItems', () => {
       ])
     },
   )
+
+  it('shouldKeepTheCurrentTitlesAndCountsWhenAPageFromTheOldFilterArrivesLate', async () => {
+    let release!: () => void
+    const pending = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let requested = false
+    server.use(
+      graphql.query<GraphQLQuery, LibraryPageQueryVariables>(
+        'LibraryPage',
+        async ({ variables }) => {
+          if (variables.before) {
+            requested = true
+            await pending
+            const stale = libraryResponse({
+              edges: [{ cursor: 'old', node: movieNode('shared', 'Stale title') }],
+            })
+            stale.library.itemCount = 99
+            return HttpResponse.json({ data: stale })
+          }
+          return HttpResponse.json({
+            data: libraryResponse({
+              edges: variables.filter?.watchStatus
+                ? [{ cursor: 'unwatched', node: movieNode('shared', 'Current title') }]
+                : [{ cursor: 'first', node: movieNode('first', 'First page') }],
+              hasPreviousPage: !variables.filter?.watchStatus,
+            }),
+          })
+        },
+      ),
+    )
+    const { user } = renderWithProviders(<Harness />)
+    await screen.findByText('First page')
+    await user.click(screen.getByText('Load previous'))
+    await waitFor(() => expect(requested).toBe(true))
+    await user.click(screen.getByText('Unwatched only'))
+    await screen.findByText('Current title')
+
+    release()
+
+    await waitFor(() => expect(screen.getByTestId('previousPagesSettled')).toHaveTextContent('1'))
+    expect(screen.getAllByRole('listitem').map((item) => item.textContent)).toEqual([
+      'Current title',
+    ])
+    expect(screen.getByTestId('counts')).toHaveTextContent(/^2 /)
+  })
 
   it('loads the initial page', async () => {
     server.use(
