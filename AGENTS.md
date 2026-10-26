@@ -236,6 +236,7 @@ race. Re-check the generation — or the `isCurrent()` callback a caller was han
 - A `vi.fn()` callback prop or injected collaborator is an output, so asserting its calls asserts the result. Don't spy on internals to assert how a result was produced
 - NEVER export a function solely for testing, or test implementation details that would break on refactoring
 - Tests never reach a real server: unit tests use MSW and browser tests use the stub
+- Tests find elements by role, label, text or `data-testid`, never by CSS Modules class names; a layout box with none of those gets a `data-testid`. ESLint rejects `[class*=…]`-style selectors in tests
 - Browser specs cannot run concurrently — the stub's mode is process-global (`workers: 1`)
 
 ### Conventions

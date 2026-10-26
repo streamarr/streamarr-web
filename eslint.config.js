@@ -64,6 +64,24 @@ export default defineConfig(
     rules: { '@typescript-eslint/unbound-method': 'off' },
   },
   {
+    // CSS Modules generate class names from file and class names, so a selector on them breaks
+    // when either is renamed. Strings are matched, so selectors inside page.evaluate count too.
+    files: ['e2e/**/*.ts', 'src/**/*.test.{ts,tsx}'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'Literal[value=/\\[class[*^$~|]?=/]',
+          message: 'Find elements by role, label, text or data-testid, not by class names.',
+        },
+        {
+          selector: 'TemplateElement[value.raw=/\\[class[*^$~|]?=/]',
+          message: 'Find elements by role, label, text or data-testid, not by class names.',
+        },
+      ],
+    },
+  },
+  {
     files: ['scripts/**/*.mjs', 'e2e/**/*.mjs', '*.config.{js,cjs,ts}', 'codegen.ts'],
     languageOptions: { globals: globals.node },
   },
