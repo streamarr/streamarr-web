@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
-import type { LibraryFieldsFragment } from '../graphql/generated/graphql'
+import type { LibraryFieldsFragment, LibraryStatus } from '../graphql/generated/graphql'
 import { watchingConnection } from '../test/continueWatchingFixtures'
 import { deferred } from '../test/deferred'
 import { comeBackOnline } from '../test/graphqlResponses'
@@ -30,6 +30,28 @@ const SHOWS: LibraryFieldsFragment = {
   name: 'TV shows',
   type: 'SERIES',
   filepathUri: 'file:///media/tv',
+}
+
+const EVERLIGHT_EDGE = {
+  cursor: 'm1',
+  node: {
+    __typename: 'Movie',
+    id: 'm1',
+    title: 'Everlight',
+    titleSort: 'Everlight',
+    releaseDate: '2024-01-01',
+    runtime: 100,
+    watchStatus: 'UNWATCHED',
+    lastWatchedAt: null,
+    watchProgress: null,
+    images: [],
+    tagline: null,
+    summary: null,
+    createdOn: '2026-08-27T12:00:00Z',
+    genres: [],
+    files: [{ __typename: 'MediaFile', id: 'f1' }],
+    backdropImages: [],
+  },
 }
 
 const NO_ITEMS = {
@@ -115,6 +137,23 @@ describe('subscribeToLibraryChanges', () => {
     expect(state.reads).toEqual(readsBeforeChanges)
   })
 
+  it.each([
+    ['REFRESHING', 'refreshing…'],
+    ['STOPPING', 'stopping…'],
+    ['UNHEALTHY', 'last operation failed'],
+  ] satisfies [LibraryStatus, string][])(
+    'shouldLabelTheLibraryFromAPushed%sStatus',
+    async (status, label) => {
+      const state = serve()
+      await openMovies(state)
+
+      state.socket.publish('LibraryStatusChanged', statusChanged({ ...MOVIES, status }))
+
+      expect(await screen.findByText(label)).toBeInTheDocument()
+      expect(screen.queryByText(/^last scan/)).not.toBeInTheDocument()
+    },
+  )
+
   it('shouldShowAPushedNameInTheTopBarAndTheLibraryHeader', async () => {
     const state = serve()
     await openMovies(state)
@@ -137,6 +176,39 @@ describe('subscribeToLibraryChanges', () => {
     expect(await within(topBar()).findByRole('link', { name: 'TV shows' })).toBeInTheDocument()
     expect(within(topBar()).getAllByRole('link', { name: 'TV shows' })).toHaveLength(1)
     expect(state.reads.Libraries).toBe(readsBeforeAddition)
+  })
+
+  it('shouldKeepHomeOnScreenWhileItReadsAgainForAPushedLibrary', async () => {
+    const state = serve()
+    let homeReads = 0
+    const secondRead = deferred()
+    server.use(
+      graphql.query('Home', async () => {
+        homeReads++
+        if (homeReads > 1) await secondRead.promise
+        return HttpResponse.json({
+          data: {
+            continueWatching: watchingConnection([]),
+            libraries: state.libraries.map((library) => ({
+              ...library,
+              items: { edges: library.id === MOVIES.id ? [EVERLIGHT_EDGE] : [] },
+            })),
+          },
+        })
+      }),
+    )
+    await openHome(state)
+    const everlight = await screen.findByRole('heading', { name: 'Everlight' })
+
+    state.libraries = [MOVIES, SHOWS]
+    state.socket.publish('LibraryAdded', { data: { libraryAdded: SHOWS } })
+
+    // Home's rails need the added Library's titles, which the change does not carry.
+    await waitFor(() => expect(homeReads).toBe(2))
+    expect(everlight).toBeInTheDocument()
+    expect(within(topBar()).getByRole('link', { name: 'TV shows' })).toBeInTheDocument()
+    secondRead.resolve()
+    expect(await screen.findByRole('heading', { name: 'Everlight' })).toBeInTheDocument()
   })
 
   it('shouldDropAPushedRemovalFromTheTopBar', async () => {
