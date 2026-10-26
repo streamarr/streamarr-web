@@ -1,19 +1,27 @@
 import { CombinedGraphQLErrors } from '@apollo/client/errors'
-import type { ApolloClient, OperationVariables, TypedDocumentNode } from '@apollo/client'
+import type {
+  ApolloCache,
+  ApolloClient,
+  OperationVariables,
+  Reference,
+  StoreObject,
+  TypedDocumentNode,
+} from '@apollo/client'
 import {
   LibraryCountsChangedDocument,
   LibraryItemAddedDocument,
   LibraryItemRemovedDocument,
   LibraryItemUpdatedDocument,
   LibraryPageDocument,
-  MediaSummaryFieldsFragmentDoc,
   type LibraryItemChangeFieldsFragment,
+  type MediaType,
   type LibraryPageQuery,
   type LibraryPageQueryVariables,
 } from '../graphql/generated/graphql'
-import { definedEdges, placeOrderedEdge } from '../media/edges'
+import { definedEdges } from '../media/edges'
 import { responsePathHasError } from '../graphql/responseErrors'
 import { retainLibraryItemsConnection } from '../media/watchedState'
+import { modifyLoadedItems, writeTitle, type StoredEdge, type StoredItems } from './storedItems'
 
 type Items = LibraryPageQuery['library']['items']
 type View = {
@@ -31,9 +39,10 @@ type Bounds = {
 export function createLibraryContents({ client }: { client: ApolloClient }) {
   let active: {
     key: string
-    variables: View['variables']
+    // The latest view selected under this key, which a retry subscribes to again.
+    view: View
     stop: () => void
-    restart: () => void
+    follow: (variables: View['variables']) => void
     refusal: unknown
   } | null = null
   const removed = new Set<string>()
@@ -44,7 +53,7 @@ export function createLibraryContents({ client }: { client: ApolloClient }) {
     active = null
     previous?.stop()
     if (evict && previous) {
-      const { libraryId, ...args } = previous.variables
+      const { libraryId, ...args } = previous.view.variables
       client.cache.evict({
         id: client.cache.identify({ __typename: 'Library', id: libraryId }),
         fieldName: 'items',
@@ -56,19 +65,24 @@ export function createLibraryContents({ client }: { client: ApolloClient }) {
   }
 
   function select(view: View) {
-    const key = JSON.stringify(view.variables)
-    if (active?.key === key || removed.has(view.variables.libraryId)) return
+    const { libraryId, sort, filter } = view.variables
+    const key = JSON.stringify({ libraryId, sort, filter })
+    if (active?.key === key) {
+      active.view = view
+      active.follow(view.variables)
+      return
+    }
+    if (removed.has(view.variables.libraryId)) return
     release(true)
-    const libraryId = view.variables.libraryId
     const scope: NonNullable<typeof active> = {
       key,
-      variables: view.variables,
+      view,
       stop: () => {},
-      restart: () => select(view),
+      follow: () => {},
       refusal: undefined,
     }
     active = scope
-    scope.stop = subscribeToLibraryContents({
+    const subscription = subscribeToLibraryContents({
       client,
       view,
       onRefused: (error) => {
@@ -84,6 +98,8 @@ export function createLibraryContents({ client }: { client: ApolloClient }) {
         for (const listener of listeners) listener()
       },
     })
+    scope.stop = subscription.stop
+    scope.follow = subscription.follow
     if (active !== scope || scope.refusal !== undefined) scope.stop()
   }
 
@@ -92,7 +108,7 @@ export function createLibraryContents({ client }: { client: ApolloClient }) {
     leaveUnlessWithin(pathname: string) {
       if (!active) return
       if (
-        pathname === `/library/${active.variables.libraryId}` ||
+        pathname === `/library/${active.view.variables.libraryId}` ||
         /^\/(movie|series|season)\//.test(pathname)
       )
         return
@@ -100,15 +116,14 @@ export function createLibraryContents({ client }: { client: ApolloClient }) {
     },
     isRemoved: (libraryId: string) => removed.has(libraryId),
     refusalFor: (libraryId: string) =>
-      active?.variables.libraryId === libraryId ? active.refusal : undefined,
+      active?.view.variables.libraryId === libraryId ? active.refusal : undefined,
     async retry(libraryId: string, read: () => Promise<unknown>) {
       const scope = active
-      if (scope?.variables.libraryId !== libraryId || scope.refusal === undefined) return
+      if (scope?.view.variables.libraryId !== libraryId || scope.refusal === undefined) return
       await read()
       if (active !== scope) return
-      const restart = scope.restart
       release()
-      restart()
+      select(scope.view)
       for (const listener of listeners) listener()
     },
     subscribe(this: void, listener: () => void) {
@@ -139,12 +154,13 @@ function subscribeToLibraryContents({
   const bounds: Bounds = { first: null, last: null }
   const releaseConnection = retainLibraryItemsConnection(client.cache, {
     libraryId,
-    args: { first: variables.first ?? 48, sort: sort ?? {}, filter: filter ?? {} },
+    args: { sort: sort ?? {}, filter: filter ?? {} },
   })
 
   function stop() {
     if (stopped) return
     stopped = true
+    clearTimeout(applyTimer)
     for (const subscription of subscriptions) subscription.unsubscribe()
     releaseConnection()
   }
@@ -180,36 +196,62 @@ function subscribeToLibraryContents({
     )
   }
 
-  function changeItems(update: (items: Items) => Items) {
-    client.cache.updateQuery({ query: LibraryPageDocument, variables }, (data) => {
-      if (!data) return undefined
-      const previous = data.library.items
-      expandBounds(bounds, previous)
-      const next = update(previous)
-      onItemsChanged(previous, next)
-      return { ...data, library: { ...data.library, items: next } }
-    })
+  // A list write costs time, and an entry in Apollo's read caches, in proportion to the loaded
+  // titles. Changes queue, and a list is written again only after an interval that grows with
+  // its length, so a scan's writes cost about the same each second however large the list is.
+  const pending: LiveChange[] = []
+  let applyTimer: ReturnType<typeof setTimeout> | undefined
+  let appliedAt = -Infinity
+  let loadedTitles = 0
+
+  function enqueue(change: LiveChange) {
+    pending.push(change)
+    const interval = Math.min(MAX_LIST_WRITE_INTERVAL_MS, loadedTitles * LIST_WRITE_MS_PER_TITLE)
+    applyTimer ??= setTimeout(applyPending, Math.max(0, appliedAt + interval - Date.now()))
   }
 
-  function applyChange(change: LibraryItemChangeFieldsFragment | null | undefined) {
-    if (change?.libraryId !== libraryId) return
+  function applyPending() {
+    applyTimer = undefined
+    appliedAt = Date.now()
+    const changes = pending.splice(0)
+    if (stopped) return
     client.cache.batch({
       update(cache) {
-        const item = change.item
-        if (item?.__typename === 'Movie' || item?.__typename === 'Series') {
-          cache.writeFragment({
-            fragment: MediaSummaryFieldsFragmentDoc,
-            fragmentName: 'MediaSummaryFields',
-            data: item,
-          })
-        }
-        changeItems((items) => placeItem(items, change, bounds))
+        for (const change of changes) normalizeItem(cache, change)
+        placeEdges(cache, changes)
+        for (const id of finallyRemoved(changes)) cache.evict({ id })
       },
     })
   }
 
+  function placeEdges(cache: ApolloCache, changes: readonly LiveChange[]) {
+    const previous = cache.readQuery({ query: LibraryPageDocument, variables })
+    if (!previous) return
+    expandBounds(bounds, previous.library.items)
+    modifyLoadedItems(cache, variables, (stored, toReference) =>
+      changes.reduce((items, change) => placeEdge(items, change, bounds, toReference), stored),
+    )
+    const next = cache.readQuery({ query: LibraryPageDocument, variables })
+    if (!next) return
+    loadedTitles = next.library.items.edges?.length ?? 0
+    onItemsChanged(previous.library.items, next.library.items)
+  }
+
+  function entityOf(itemId: string, kind: MediaType) {
+    return client.cache.identify({ __typename: kind === 'MOVIE' ? 'Movie' : 'Series', id: itemId })
+  }
+
+  function applyChange(change: LibraryItemChangeFieldsFragment | null | undefined) {
+    if (change?.libraryId !== libraryId) return
+    const entity = entityOf(change.itemId, change.kind)
+    if (entity) enqueue({ at: 'changed', entity, change })
+  }
+
+  // Retained through detail routes, so a read of the active queries after missed changes reads
+  // this window again too. It follows the screen's variables, so both read from the same title.
+  const windowQuery = client.watchQuery({ query: LibraryPageDocument, variables })
   subscriptions.push(
-    client.watchQuery({ query: LibraryPageDocument, variables }).subscribe({
+    windowQuery.subscribe({
       next: (result) => {
         if (!stopped && result.dataState === 'complete')
           expandBounds(bounds, result.data.library.items)
@@ -224,13 +266,8 @@ function subscribeToLibraryContents({
   listen(LibraryItemRemovedDocument, { libraryId }, ({ change }) => {
     if (change?.libraryId !== libraryId) return
     if (change.kind !== 'MOVIE' && change.kind !== 'SERIES') return
-    client.cache.batch({
-      update(cache) {
-        changeItems((items) => removeItem(items, change.itemId))
-        const typename = change.kind === 'MOVIE' ? 'Movie' : 'Series'
-        cache.evict({ id: cache.identify({ __typename: typename, id: change.itemId }) })
-      },
-    })
+    const entity = entityOf(change.itemId, change.kind)
+    if (entity) enqueue({ at: 'removed', entity })
   })
   listen(LibraryCountsChangedDocument, { libraryId }, (data) => {
     if (data.change?.id !== libraryId) return
@@ -241,7 +278,12 @@ function subscribeToLibraryContents({
       data,
     })
   })
-  return stop
+  return {
+    stop,
+    follow: (next: View['variables']) => {
+      if (!stopped) void windowQuery.setVariables(next)
+    },
+  }
 }
 
 function expandBounds(bounds: Bounds, items: Items) {
@@ -259,26 +301,60 @@ function expandBounds(bounds: Bounds, items: Items) {
   }
 }
 
-function removeItem(items: Items, itemId: string): Items {
-  return withEdges(items, placeOrderedEdge(definedEdges(items.edges), { itemId, edge: null }))
+const LIST_WRITE_MS_PER_TITLE = 0.5
+const MAX_LIST_WRITE_INTERVAL_MS = 1000
+
+type LiveChange =
+  | { at: 'changed'; entity: string; change: LibraryItemChangeFieldsFragment }
+  | { at: 'removed'; entity: string }
+
+function normalizeItem(cache: ApolloCache, change: LiveChange) {
+  if (change.at !== 'changed') return
+  const item = change.change.item ?? change.change.edge?.node
+  if (item?.__typename !== 'Movie' && item?.__typename !== 'Series') return
+  writeTitle(cache, item)
 }
 
-function placeItem(items: Items, change: LibraryItemChangeFieldsFragment, bounds: Bounds): Items {
-  const { itemId, edge } = change
-  if (edge === null) return removeItem(items, itemId)
-  if (!edge?.node) return items
-  if (edge.node.__typename !== 'Movie' && edge.node.__typename !== 'Series') return items
-  const { orderKey, node } = edge
+// A null edge only leaves this view, so only a removal event evicts the item itself.
+function finallyRemoved(changes: readonly LiveChange[]) {
+  const removed = new Map<string, boolean>()
+  for (const change of changes) removed.set(change.entity, change.at === 'removed')
+  return [...removed].filter(([, isRemoved]) => isRemoved).map(([entity]) => entity)
+}
+
+function placeEdge(
+  items: StoredItems,
+  change: LiveChange,
+  bounds: Bounds,
+  toReference: (item: StoreObject) => Reference | undefined,
+): StoredItems {
+  if (change.at === 'removed') return withoutEntity(items, change.entity)
+  const { edge } = change.change
+  if (edge === null) return withoutEntity(items, change.entity)
+  const node = edge?.node
+  if (node?.__typename !== 'Movie' && node?.__typename !== 'Series') return items
+  const { orderKey, cursor } = edge
   const { hasPreviousPage, hasNextPage } = items.pageInfo
   const beforeWindow = hasPreviousPage && (bounds.first === null || orderKey < bounds.first)
   const afterWindow = hasNextPage && (bounds.last === null || orderKey > bounds.last)
-  if (beforeWindow || afterWindow) return removeItem(items, itemId)
-  const placed = { ...edge, node }
-  return withEdges(items, placeOrderedEdge(definedEdges(items.edges), { itemId, edge: placed }))
+  if (beforeWindow || afterWindow) return withoutEntity(items, change.entity)
+  const current = items.edges.find((stored) => stored?.node?.__ref === change.entity)
+  if (current?.cursor === cursor && current.orderKey === orderKey) return items
+  const reference = toReference(node)
+  if (!reference) return items
+  const others = withoutEntity(items, change.entity).edges
+  const index = others.findIndex((other) => other !== null && other.orderKey > orderKey)
+  const placed: StoredEdge = { __typename: 'MediaEdge', cursor, orderKey, node: reference }
+  return withEdges(items, others.toSpliced(index < 0 ? others.length : index, 0, placed))
 }
 
-function withEdges(items: Items, edges: Items['edges']): Items {
-  const resolved = definedEdges(edges)
+function withoutEntity(items: StoredItems, entity: string) {
+  const index = items.edges.findIndex((stored) => stored?.node?.__ref === entity)
+  return index < 0 ? items : withEdges(items, items.edges.toSpliced(index, 1))
+}
+
+function withEdges(items: StoredItems, edges: StoredItems['edges']): StoredItems {
+  const placed = edges.filter((edge) => edge?.node)
   return {
     ...items,
     edges,
@@ -287,10 +363,10 @@ function withEdges(items: Items, edges: Items['edges']): Items {
       // A partial window can become empty. Its last server cursors still anchor continuation.
       startCursor: items.pageInfo.hasPreviousPage
         ? items.pageInfo.startCursor
-        : (resolved[0]?.cursor ?? items.pageInfo.startCursor),
+        : (placed[0]?.cursor ?? items.pageInfo.startCursor),
       endCursor: items.pageInfo.hasNextPage
         ? items.pageInfo.endCursor
-        : (resolved.at(-1)?.cursor ?? items.pageInfo.endCursor),
+        : (placed.at(-1)?.cursor ?? items.pageInfo.endCursor),
     },
   }
 }
