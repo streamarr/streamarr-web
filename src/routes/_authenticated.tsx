@@ -67,13 +67,14 @@ function Authenticated() {
   // Watch state belongs to a Profile, and Library changes require one, so the changes follow
   // whichever Profile is selected. A store reset refetches the selection, and the earlier value
   // holds until the next one arrives. Library status changes reach only a session that may
-  // administer the server. Operations that replace earlier ones miss the changes committed between
-  // them, so the active queries read again once they subscribe.
+  // administer the server. A remount subscribes again to the same documents and joins their live
+  // operations, but a change of capability replaces them with other documents, which miss the
+  // changes committed in between, so the active queries read again once those subscribe.
   const me = useMe()
   const current = (me.data ?? me.previousData)?.me
   const profileId = current?.selectedProfile?.id
   const administers = canManageServer(current)
-  const replacing = useRef(false)
+  const subscribedAsAdministrator = useRef<boolean | null>(null)
   useEffect(() => {
     if (!profileId) return undefined
     const stops = [
@@ -82,11 +83,11 @@ function Authenticated() {
         ? subscribeToAdministeredLibraryChanges(client)
         : subscribeToLibraryChanges(client),
     ]
-    if (replacing.current) subscriptions.reportMissedChangesOnceSubscribed()
-    return () => {
-      replacing.current = true
-      stops.forEach((stop) => stop())
-    }
+    const previous = subscribedAsAdministrator.current
+    subscribedAsAdministrator.current = administers
+    if (previous !== null && previous !== administers)
+      subscriptions.reportMissedChangesOnceSubscribed()
+    return () => stops.forEach((stop) => stop())
   }, [client, profileId, administers, subscriptions])
   return <Outlet />
 }
