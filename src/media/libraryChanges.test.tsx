@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
-import type { LibraryFieldsFragment, LibraryStatus } from '../graphql/generated/graphql'
+import type { LibraryFieldsFragment } from '../graphql/generated/graphql'
 import { watchingConnection } from '../test/continueWatchingFixtures'
 import { deferred } from '../test/deferred'
 import { serveGraphqlSocket } from '../test/graphqlSocket'
@@ -115,44 +115,6 @@ function statusChanged(library: LibraryFieldsFragment) {
 }
 
 describe('subscribeToLibraryChanges', () => {
-  it('shouldShowEachStatusTheServerPushesWhileTheLibraryIsOpen', async () => {
-    const state = serve()
-    await openMovies(state)
-    expect(screen.getByText(/^last scan \d+ weeks ago$/)).toBeInTheDocument()
-    const readsBeforeChanges = { ...state.reads }
-
-    const scanStartedOn = new Date().toISOString()
-    state.socket.publish(
-      'LibraryStatusChanged',
-      statusChanged({ ...MOVIES, status: 'SCANNING', scanStartedOn }),
-    )
-    expect(await screen.findByText('scanning…')).toBeInTheDocument()
-
-    state.socket.publish(
-      'LibraryStatusChanged',
-      statusChanged({ ...MOVIES, scanStartedOn, scanCompletedOn: new Date().toISOString() }),
-    )
-    expect(await screen.findByText('last scan just now')).toBeInTheDocument()
-    expect(state.reads).toEqual(readsBeforeChanges)
-  })
-
-  it.each([
-    ['REFRESHING', 'refreshing…'],
-    ['STOPPING', 'stopping…'],
-    ['UNHEALTHY', 'last operation failed'],
-  ] satisfies [LibraryStatus, string][])(
-    'shouldLabelTheLibraryFromAPushed%sStatus',
-    async (status, label) => {
-      const state = serve()
-      await openMovies(state)
-
-      state.socket.publish('LibraryStatusChanged', statusChanged({ ...MOVIES, status }))
-
-      expect(await screen.findByText(label)).toBeInTheDocument()
-      expect(screen.queryByText(/^last scan/)).not.toBeInTheDocument()
-    },
-  )
-
   it('shouldShowAPushedNameInTheTopBarAndTheLibraryHeader', async () => {
     const state = serve()
     await openMovies(state)
@@ -220,15 +182,5 @@ describe('subscribeToLibraryChanges', () => {
 
     await waitFor(() => expect(tvShows).not.toBeInTheDocument())
     expect(within(topBar()).getByRole('link', { name: 'Movies' })).toBeInTheDocument()
-  })
-
-  it('shouldShowTheStatusReadAgainAfterTheConnectionReturns', async () => {
-    const state = serve()
-    await openMovies(state)
-
-    state.libraries = [{ ...MOVIES, status: 'REFRESHING' }]
-    state.socket.closeAll(1001, 'Going away')
-
-    expect(await screen.findByText('refreshing…', {}, { timeout: 3_000 })).toBeInTheDocument()
   })
 })

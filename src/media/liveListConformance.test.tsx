@@ -125,8 +125,6 @@ describe('shared live-list conformance', () => {
               __typename: 'Library',
               id: LIBRARY,
               name: 'Movies',
-              status: 'HEALTHY',
-              scanCompletedOn: null,
               itemCount: saved.length,
               alphabetIndex: [],
               items: {

@@ -158,8 +158,6 @@ function serve(titles: Title[], { pageSize = 48, recentlyAdded = [] as Title[] }
             __typename: 'Library',
             id: variables.libraryId,
             name: 'Movies',
-            status: 'HEALTHY',
-            scanCompletedOn: '2026-08-28T11:46:00Z',
             itemCount: saved.size,
             alphabetIndex: [],
             items: {

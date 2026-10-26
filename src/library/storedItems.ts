@@ -79,8 +79,6 @@ export function refreshLibrary(
     id: cache.identify({ __typename: 'Library', id: library.id }),
     fields: {
       name: () => library.name,
-      status: () => library.status,
-      scanCompletedOn: () => library.scanCompletedOn,
       itemCount: () => library.itemCount,
       alphabetIndex: () => library.alphabetIndex,
     },

@@ -31,8 +31,6 @@ function libraryData() {
     library: {
       id: LIBRARY_ID,
       name: 'Movies',
-      status: 'HEALTHY',
-      scanCompletedOn: '2026-08-28T11:46:00Z',
       itemCount: 1,
       alphabetIndex: [{ letter: 'A', count: 1 }],
       items: {

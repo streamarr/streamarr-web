@@ -77,8 +77,6 @@ describe('TopBar', () => {
             library: {
               id: LIBRARIES[0].id,
               name: 'Movies',
-              status: 'HEALTHY',
-              scanCompletedOn: null,
               itemCount: 0,
               alphabetIndex: [],
               items: {

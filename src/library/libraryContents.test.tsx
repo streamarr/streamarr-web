@@ -42,8 +42,6 @@ function serve({
             __typename: 'Library',
             id: LIBRARY,
             name: 'Movies',
-            status: 'HEALTHY',
-            scanCompletedOn: '2026-10-18T11:00:00Z',
             itemCount: 80,
             alphabetIndex: [
               { letter: 'A', count: 40 },
@@ -284,8 +282,6 @@ describe('library contents', () => {
                 __typename: 'Library',
                 id: LIBRARY,
                 name: 'Movies',
-                status: 'HEALTHY',
-                scanCompletedOn: null,
                 itemCount: 80,
                 alphabetIndex: [],
                 items: {
@@ -364,8 +360,6 @@ describe('library contents', () => {
               __typename: 'Library',
               id: LIBRARY,
               name: 'Movies',
-              status: 'HEALTHY',
-              scanCompletedOn: null,
               itemCount: dataset.length,
               alphabetIndex: [],
               items: {
@@ -426,8 +420,6 @@ describe('library contents', () => {
               __typename: 'Library',
               id: LIBRARY,
               name: 'Movies',
-              status: 'HEALTHY',
-              scanCompletedOn: null,
               itemCount: dataset.length,
               alphabetIndex: [],
               items: {

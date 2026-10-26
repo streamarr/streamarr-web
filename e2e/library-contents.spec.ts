@@ -28,8 +28,6 @@ test('library frames update cards and counts through detail navigation and recon
       ...{ __typename: 'Library' as const },
       id: LIBRARY,
       name: 'Movies',
-      status: 'HEALTHY',
-      scanCompletedOn: null,
       itemCount: 80,
       alphabetIndex: [
         { letter: 'A', count: 40 },

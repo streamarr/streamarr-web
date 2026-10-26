@@ -48,8 +48,6 @@ function libraryResponse(overrides: {
       __typename: 'Library',
       id: LIBRARY_ID,
       name: 'Movies',
-      status: 'HEALTHY',
-      scanCompletedOn: '2026-08-28T11:00:00Z',
       itemCount: 2,
       alphabetIndex: overrides.alphabetIndex ?? [
         { letter: 'A', count: 1 },

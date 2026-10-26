@@ -37,8 +37,6 @@ test('an Unwatched view drops a movie that another device finishes', async ({ pa
       ...{ __typename: 'Library' as const },
       id: LIBRARY_ID,
       name: 'Movies',
-      status: 'HEALTHY',
-      scanCompletedOn: '2026-08-28T11:46:00Z',
       itemCount: 2,
       alphabetIndex: [],
       items: {
