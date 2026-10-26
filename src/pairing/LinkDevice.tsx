@@ -51,8 +51,8 @@ export function LinkDevice({
     setBusy(true)
     try {
       showRequest(await lookupPairingRequest(fullCode))
-    } catch (caught) {
-      refuseLookup(caught, fullCode)
+    } catch (lookupError) {
+      refuseLookup(lookupError, fullCode)
     } finally {
       setBusy(false)
     }
@@ -80,8 +80,8 @@ export function LinkDevice({
     setBusy(true)
     try {
       await sendDecision(decision, householdId)
-    } catch (caught) {
-      await handleDecisionFailure(caught)
+    } catch (decisionError) {
+      await handleDecisionFailure(decisionError)
     } finally {
       setBusy(false)
     }
@@ -107,8 +107,8 @@ export function LinkDevice({
   async function showAuthoritativeOutcome() {
     try {
       showRequest(await lookupPairingRequest(pairing!.userCode))
-    } catch (lookupFailed) {
-      setError(messageFor(lookupFailed))
+    } catch (lookupError) {
+      setError(messageFor(lookupError))
     }
   }
 

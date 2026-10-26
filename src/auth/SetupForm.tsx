@@ -37,8 +37,8 @@ export function SetupForm({
     setSubmitting(true)
     try {
       onAuthenticated(await setup(fields))
-    } catch (caught) {
-      setError(refusalMessage(caught))
+    } catch (setupError) {
+      setError(refusalMessage(setupError))
     } finally {
       setSubmitting(false)
     }

@@ -22,8 +22,8 @@ export function LoginForm({
     setSubmitting(true)
     try {
       onAuthenticated(await login({ email, password, deviceName: navigator.userAgent }))
-    } catch (caught) {
-      setError(refusalMessage(caught))
+    } catch (loginError) {
+      setError(refusalMessage(loginError))
     } finally {
       setSubmitting(false)
     }
