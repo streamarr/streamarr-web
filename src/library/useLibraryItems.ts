@@ -15,6 +15,7 @@ import {
   type LibraryPageQueryVariables,
   type MediaFilter,
   type MediaSort,
+  type SortDirection,
 } from '../graphql/generated/graphql'
 import { definedEdges } from '../media/edges'
 import { alphabetLetterFromTitle } from '../media/alphabetLetter'
@@ -65,6 +66,8 @@ export function useLibraryItems({
   /** The grid's column count; no titles are requested until it is known. */
   columns: number | null
 }) {
+  // Render reads the saved windows, which effects change in place, so a memoized read goes stale.
+  'use no memo'
   const client = useApolloClient()
   const windows = windowsFor(client)
   const contents = useLibraryContents()
@@ -131,65 +134,36 @@ export function useLibraryItems({
   const accept = useCallback(() => setShownKey(queryKey), [queryKey])
 
   const letter = filter.startLetter ?? null
-  const pageInfo = data?.library.items.pageInfo
-  const loadedEdges = definedEdges(data?.library.items.edges ?? null)
   const savedWindow = windows.get(queryKey)
-  const landingCursor = findLetterLandingCursor(
-    data?.library.items.edges,
+  const {
+    pageInfo,
+    loadedEdges,
+    landingCursor,
+    before,
+    after,
+    landingPosition,
+    firstPosition,
+    restoreBefore,
+    restoreAfter,
+  } = placeLoadedTitles({ data, letter, savedWindow, direction: sort.direction ?? 'ASC' })
+  const holdingLetter = useLetterHold({
+    queryKey,
+    data,
     letter,
-    savedWindow?.anchor,
-  )
-  const before = Math.max(
-    0,
-    loadedEdges.findIndex((edge) => edge.cursor === landingCursor),
-  )
-  const after = loadedEdges.length - before
-  // The landing title's place in the whole library, counted once per window: rows break on it,
-  // and a title added elsewhere in the library must not move the rows already shown.
-  const landingPosition =
-    savedWindow?.landingPosition ??
-    (letter && data
-      ? titlesBeforeLetter({
-          index: data.library.alphabetIndex,
-          letter,
-          direction: sort.direction ?? 'ASC',
-        })
-      : 0)
-  const firstPosition = pageInfo?.hasPreviousPage ? Math.max(0, landingPosition - before) : 0
-  // A letter is shown once the titles before it have loaded, so its row arrives full.
-  const [landedKey, setLandedKey] = useState<string | null>(null)
-  const holdingLetter =
-    landedKey !== queryKey &&
-    !!letter &&
-    !!pageInfo?.hasPreviousPage &&
-    !!pageInfo.startCursor &&
-    before === 0 &&
-    currentPageFailure?.direction !== 'previous'
-  if (data && !holdingLetter && landedKey !== queryKey) {
-    setLandedKey(queryKey)
-  }
-  const restoreBefore = before < (savedWindow?.before ?? 0) && !!pageInfo?.hasPreviousPage
-  const restoreAfter = after < (savedWindow?.after ?? 0) && !!pageInfo?.hasNextPage
+    pageInfo,
+    before,
+    pageFailure: currentPageFailure,
+  })
   const restoringWindow = restoreBefore || restoreAfter
-  const [completeResult, setCompleteResult] = useState<{
-    key: string
-    data: LibraryPageQuery
-    firstPosition: number
-  } | null>(null)
-  if (data && !staged && !holdingLetter && !restoringWindow && completeResult?.data !== data) {
-    setCompleteResult({ key: queryKey, data, firstPosition })
-  }
-  // Keep the committed rows through a staged jump, a held letter, and a late STOPPED refresh.
-  // Apollo's previousData can advance again when a seek's backfill arrives before the exit ends.
-  const rendered =
-    staged || holdingLetter || (restoringWindow && completeResult?.key === queryKey)
-      ? (completeResult?.data ?? previousData)
-      : (data ?? previousData)
-  let renderedFirstPosition = 0
-  if (completeResult && rendered === completeResult.data) {
-    renderedFirstPosition = completeResult.firstPosition
-  }
-  if (rendered === data) renderedFirstPosition = firstPosition
+  const { rendered, renderedFirstPosition } = useRenderedResult({
+    queryKey,
+    data,
+    previousData,
+    firstPosition,
+    staged,
+    holdingLetter,
+    restoringWindow,
+  })
   useLayoutEffect(() => {
     if (!data || staged) return
     const saved = windows.get(queryKey)
@@ -400,6 +374,118 @@ export function useLibraryItems({
     },
     landing,
   }
+}
+
+// Where the loaded titles sit in the whole library, and which side of the saved window is missing.
+function placeLoadedTitles({
+  data,
+  letter,
+  savedWindow,
+  direction,
+}: {
+  data: LibraryPageQuery | undefined
+  letter: string | null
+  savedWindow: LibraryWindow | undefined
+  direction: SortDirection
+}) {
+  const pageInfo = data?.library.items.pageInfo
+  const loadedEdges = definedEdges(data?.library.items.edges ?? null)
+  const landingCursor = findLetterLandingCursor(
+    data?.library.items.edges,
+    letter,
+    savedWindow?.anchor,
+  )
+  const before = Math.max(
+    0,
+    loadedEdges.findIndex((edge) => edge.cursor === landingCursor),
+  )
+  const after = loadedEdges.length - before
+  // The landing title's place in the whole library, counted once per window: rows break on it,
+  // and a title added elsewhere in the library must not move the rows already shown.
+  const landingPosition =
+    savedWindow?.landingPosition ??
+    (letter && data
+      ? titlesBeforeLetter({ index: data.library.alphabetIndex, letter, direction })
+      : 0)
+  return {
+    pageInfo,
+    loadedEdges,
+    landingCursor,
+    before,
+    after,
+    landingPosition,
+    firstPosition: pageInfo?.hasPreviousPage ? Math.max(0, landingPosition - before) : 0,
+    restoreBefore: before < (savedWindow?.before ?? 0) && !!pageInfo?.hasPreviousPage,
+    restoreAfter: after < (savedWindow?.after ?? 0) && !!pageInfo?.hasNextPage,
+  }
+}
+
+// A letter is shown once the titles before it have loaded, so its row arrives full.
+function useLetterHold({
+  queryKey,
+  data,
+  letter,
+  pageInfo,
+  before,
+  pageFailure,
+}: {
+  queryKey: string
+  data: LibraryPageQuery | undefined
+  letter: string | null
+  pageInfo: LibraryItems['pageInfo'] | undefined
+  before: number
+  pageFailure: PageFailure | null
+}) {
+  const [landedKey, setLandedKey] = useState<string | null>(null)
+  const holding =
+    landedKey !== queryKey &&
+    !!letter &&
+    !!pageInfo?.hasPreviousPage &&
+    !!pageInfo.startCursor &&
+    before === 0 &&
+    pageFailure?.direction !== 'previous'
+  if (data && !holding && landedKey !== queryKey) {
+    setLandedKey(queryKey)
+  }
+  return holding
+}
+
+// Keep the committed rows through a staged jump, a held letter, and a late STOPPED refresh.
+// Apollo's previousData can advance again when a seek's backfill arrives before the exit ends.
+function useRenderedResult({
+  queryKey,
+  data,
+  previousData,
+  firstPosition,
+  staged,
+  holdingLetter,
+  restoringWindow,
+}: {
+  queryKey: string
+  data: LibraryPageQuery | undefined
+  previousData: LibraryPageQuery | undefined
+  firstPosition: number
+  staged: boolean
+  holdingLetter: boolean
+  restoringWindow: boolean
+}) {
+  const [completeResult, setCompleteResult] = useState<{
+    key: string
+    data: LibraryPageQuery
+    firstPosition: number
+  } | null>(null)
+  if (data && !staged && !holdingLetter && !restoringWindow && completeResult?.data !== data) {
+    setCompleteResult({ key: queryKey, data, firstPosition })
+  }
+  const rendered =
+    staged || holdingLetter || (restoringWindow && completeResult?.key === queryKey)
+      ? (completeResult?.data ?? previousData)
+      : (data ?? previousData)
+  if (rendered === data) return { rendered, renderedFirstPosition: firstPosition }
+  if (completeResult && rendered === completeResult.data) {
+    return { rendered, renderedFirstPosition: completeResult.firstPosition }
+  }
+  return { rendered, renderedFirstPosition: 0 }
 }
 
 function findLetterLandingCursor(
