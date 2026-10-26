@@ -12,9 +12,13 @@ export class AuthApiError extends Error {
     /** The server's displayable sentence for this refusal, when the body carried one. */
     readonly serverMessage: string | null = null,
   ) {
-    super(`Auth request failed (${status}${code ? `: ${code}` : ''})`)
+    super(`Auth request failed (${describeRefusal(status, code)})`)
     this.name = 'AuthApiError'
   }
+}
+
+function describeRefusal(status: number, code: string | null) {
+  return code ? `${status}: ${code}` : String(status)
 }
 
 export async function postJson<T>(url: string, body: unknown): Promise<T> {
