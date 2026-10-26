@@ -8,7 +8,6 @@ import { SessionUnconfirmedError, type SessionStore } from '../auth/session'
 import { extractAuthContext } from '../graphql/errorRouting'
 import { requestFailureMessage } from '../graphql/requestErrors'
 import { readActiveQueriesAgain } from '../graphql/readAgain'
-import { stopTogether } from '../graphql/liveChanges'
 import { installRevalidation } from '../graphql/revalidation'
 import { useMe } from '../identity/useMe'
 import { subscribeToLibraryChanges } from '../media/libraryChanges'
@@ -68,7 +67,8 @@ function Authenticated() {
   const profileId = (me.data ?? me.previousData)?.me.selectedProfile?.id
   useEffect(() => {
     if (!profileId) return undefined
-    return stopTogether([subscribeToWatchStateChanges(client), subscribeToLibraryChanges(client)])
+    const stops = [subscribeToWatchStateChanges(client), subscribeToLibraryChanges(client)]
+    return () => stops.forEach((stop) => stop())
   }, [client, profileId])
   return <Outlet />
 }

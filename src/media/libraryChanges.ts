@@ -1,4 +1,4 @@
-import type { ApolloClient, ErrorLike } from '@apollo/client'
+import type { ApolloClient, ErrorLike, TypedDocumentNode } from '@apollo/client'
 import {
   LibraryAddedDocument,
   LibraryRemovedDocument,
@@ -6,7 +6,6 @@ import {
   type LibraryFieldsFragment,
 } from '../graphql/generated/graphql'
 import { addToLibraryLists, removeFromLibraryLists } from '../graphql/libraryLists'
-import { stopTogether, watchLiveChanges } from '../graphql/liveChanges'
 
 /** What a view adds to applying Library changes: its own reaction to each one. */
 export interface LibraryChangeListener {
@@ -41,18 +40,50 @@ export function subscribeToLibraryChanges(
     removeFromLibraryLists(cache, removal.libraryId)
     onRemoved?.(removal.libraryId)
   }
-  return stopTogether([
-    watchLiveChanges(client, LibraryStatusChangedDocument, {
+  const stops = [
+    subscribeToLibraryChange(client, LibraryStatusChangedDocument, {
       apply: (data) => applyLibrary(data.libraryStatusChanged),
       onStop,
     }),
-    watchLiveChanges(client, LibraryAddedDocument, {
+    subscribeToLibraryChange(client, LibraryAddedDocument, {
       apply: (data) => applyLibrary(data.libraryAdded),
       onStop,
     }),
-    watchLiveChanges(client, LibraryRemovedDocument, {
+    subscribeToLibraryChange(client, LibraryRemovedDocument, {
       apply: (data) => applyRemoval(data.libraryRemoved),
       onStop,
     }),
-  ])
+  ]
+  return () => stops.forEach((stop) => stop())
+}
+
+/**
+ * Runs one Library change subscription through the shared transport and applies each change it
+ * delivers until the returned function runs. With errorPolicy 'all', a change whose field failed
+ * arrives with its errors, and the operation keeps running: the change applies whatever data it
+ * carries, a null field carries none, and the transport reports the change missed so the active
+ * queries read again. A result without data ends the operation and reaches `onStop`, if given.
+ */
+function subscribeToLibraryChange<TData>(
+  client: ApolloClient,
+  query: TypedDocumentNode<TData, Record<string, never>>,
+  { apply, onStop }: { apply: (data: TData) => void; onStop?: (error: ErrorLike) => void },
+): () => void {
+  let stopped = false
+  const subscription = client
+    .subscribe({ query, errorPolicy: 'all' })
+    .subscribe(({ data, error }) => {
+      if (stopped) return
+      if (data) {
+        apply(data)
+        return
+      }
+      if (error) onStop?.(error)
+    })
+  // A remount that subscribes before this task runs joins the same operation, as useSubscription's
+  // does, instead of ending it and starting another.
+  return () => {
+    stopped = true
+    setTimeout(() => subscription.unsubscribe())
+  }
 }
