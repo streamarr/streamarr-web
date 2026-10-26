@@ -13,7 +13,7 @@ export function ContentShelf({
 
   function scroll(direction: -1 | 1) {
     const track = trackRef.current
-    track?.scrollBy({ left: direction * track.clientWidth, behavior: 'smooth' })
+    track?.scrollBy({ left: direction * track.clientWidth })
   }
 
   return (

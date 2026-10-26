@@ -42,4 +42,8 @@
   gap: var(--spacing-16);
   overflow-x: auto;
   scroll-behavior: smooth;
+
+  @media (prefers-reduced-motion: reduce) {
+    scroll-behavior: auto;
+  }
 }

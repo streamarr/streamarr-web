@@ -211,3 +211,26 @@ test('recent-content panels keep enough height for a poster on short screens', a
   })
   expect(visibleHeight).toBeGreaterThanOrEqual(posterHeight)
 })
+
+test('the shelf arrows scroll smoothly, and jump at once for a viewer who prefers reduced motion', async ({
+  page,
+}) => {
+  const shelf = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: 'Continue watching' }) })
+  const scrollRight = shelf.getByRole('button', { name: 'Scroll right', exact: true })
+  const offsetRightAfterClick = () =>
+    scrollRight.evaluate((button: HTMLButtonElement) => {
+      const track = button
+        .closest('section')!
+        .querySelector<HTMLElement>('[data-testid="shelf-track"]')!
+      track.scrollTo({ left: 0, behavior: 'instant' })
+      button.click()
+      return track.scrollLeft
+    })
+
+  expect(await offsetRightAfterClick()).toBe(0)
+
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  expect(await offsetRightAfterClick()).toBeGreaterThan(0)
+})
