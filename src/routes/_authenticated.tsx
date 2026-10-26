@@ -10,6 +10,7 @@ import { requestFailureMessage } from '../graphql/requestErrors'
 import { readActiveQueriesAgain } from '../graphql/readAgain'
 import { installRevalidation } from '../graphql/revalidation'
 import { useMe } from '../identity/useMe'
+import { subscribeToLibraryChanges } from '../media/libraryChanges'
 import { subscribeToWatchStateChanges } from '../media/watchStateChanges'
 import { FailurePanel } from '../ui/Failure'
 
@@ -59,14 +60,18 @@ function Authenticated() {
       }),
     [client, subscriptions],
   )
-  // Watch state belongs to a Profile, so the changes follow whichever Profile is selected. A store
-  // reset refetches the selection, and the earlier value holds until the next one arrives.
+  // Watch state belongs to a Profile, and Library changes require one, so the changes follow
+  // whichever Profile is selected. A store reset refetches the selection, and the earlier value
+  // holds until the next one arrives.
   const me = useMe()
   const profileId = (me.data ?? me.previousData)?.me.selectedProfile?.id
-  useEffect(
-    () => (profileId ? subscribeToWatchStateChanges(client) : undefined),
-    [client, profileId],
-  )
+  useEffect(() => {
+    if (!profileId) return undefined
+    const stops = [subscribeToWatchStateChanges(client), subscribeToLibraryChanges(client)]
+    return () => {
+      for (const stop of stops) stop()
+    }
+  }, [client, profileId])
   return <Outlet />
 }
 
