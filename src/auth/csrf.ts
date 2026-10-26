@@ -19,7 +19,7 @@ function readCookie(name: string): string | null {
     .split('; ')
     .find((cookie) => cookie.startsWith(prefix))
     ?.slice(prefix.length)
-  return value ? value : null
+  return value || null
 }
 
 export const CSRF_HEADER = 'X-XSRF-TOKEN'
