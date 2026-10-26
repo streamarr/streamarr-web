@@ -3,7 +3,6 @@ import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, it } from 'vitest'
 import { CodeInput } from './CodeInput'
-import styles from './CodeInput.module.css'
 
 function Harness({ minLength, length }: { minLength?: number; length?: number }) {
   const [value, setValue] = useState('')
@@ -23,7 +22,7 @@ function Harness({ minLength, length }: { minLength?: number; length?: number })
 }
 
 function cells() {
-  return document.querySelectorAll(`.${styles.codeInputCell}`).length
+  return screen.queryAllByTestId('code-input-cell').length
 }
 
 describe('CodeInput', () => {
@@ -63,7 +62,7 @@ describe('CodeInput', () => {
     await user.type(screen.getByLabelText('PIN'), '12')
 
     // A dedicated blinking element: a printed bar would read as a character.
-    expect(document.querySelector(`.${styles.codeInputCaret}`)).not.toBeNull()
+    expect(screen.queryByTestId('code-input-caret')).not.toBeNull()
   })
 
   it('shouldRestTheCaretWhenTheFloorIsReached', async () => {
@@ -73,7 +72,7 @@ describe('CodeInput', () => {
     await user.type(screen.getByLabelText('PIN'), '1234')
 
     // Complete-at-the-floor shows four filled boxes and no caret asking for a fifth.
-    expect(document.querySelector(`.${styles.codeInputCaret}`)).toBeNull()
+    expect(screen.queryByTestId('code-input-caret')).toBeNull()
   })
 
   it('shouldAppendADigitTypedAfterTheCaretWasMovedBack', async () => {
@@ -111,11 +110,15 @@ describe('CodeInput', () => {
   it('shouldDrawASeparatorBetweenEachGroupOfBoxes', () => {
     render(<CodeInput label="Code" value="" onChange={() => {}} length={8} groupSize={4} />)
 
-    const boxes = [...document.querySelectorAll(`[data-part=cell], .${styles.codeInputSeparator}`)]
-    expect(boxes.map((box) => box.getAttribute('data-part') ?? 'separator')).toEqual([
-      ...Array<string>(4).fill('cell'),
-      'separator',
-      ...Array<string>(4).fill('cell'),
+    const boxes = [
+      ...document.querySelectorAll(
+        '[data-testid=code-input-cell], [data-testid=code-input-separator]',
+      ),
+    ]
+    expect(boxes.map((box) => box.getAttribute('data-testid'))).toEqual([
+      ...Array<string>(4).fill('code-input-cell'),
+      'code-input-separator',
+      ...Array<string>(4).fill('code-input-cell'),
     ])
   })
 
@@ -123,8 +126,7 @@ describe('CodeInput', () => {
     const { rerender } = render(
       <CodeInput label="Code" value="AB" onChange={() => {}} length={4} alphanumeric />,
     )
-    const shown = () =>
-      [...document.querySelectorAll('[data-part=cell]')].map((cell) => cell.textContent)
+    const shown = () => screen.getAllByTestId('code-input-cell').map((cell) => cell.textContent)
 
     expect(shown()).toEqual(['A', 'B', '\u00a0', '\u00a0'])
 

@@ -83,11 +83,13 @@ export function CodeInput({
         className={
           active ? `${styles.codeInputCell} ${styles.codeInputCellActive}` : styles.codeInputCell
         }
-        data-part="cell"
+        data-testid="code-input-cell"
         aria-hidden
       >
         {glyphAt(position)}
-        {active && !filled ? <span className={styles.codeInputCaret} /> : null}
+        {active && !filled ? (
+          <span className={styles.codeInputCaret} data-testid="code-input-caret" />
+        ) : null}
       </div>
     )
   }
@@ -100,7 +102,12 @@ export function CodeInput({
   const boxes = positions.flatMap((position) =>
     startsGroup(position)
       ? [
-          <div key={`separator-${position}`} className={styles.codeInputSeparator} aria-hidden />,
+          <div
+            key={`separator-${position}`}
+            className={styles.codeInputSeparator}
+            data-testid="code-input-separator"
+            aria-hidden
+          />,
           cellAt(position),
         ]
       : [cellAt(position)],
