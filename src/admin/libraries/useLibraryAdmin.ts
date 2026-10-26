@@ -6,7 +6,7 @@ import type {
 } from '@apollo/client'
 import { useApolloClient, useQuery } from '@apollo/client/react'
 import { useRouteContext } from '@tanstack/react-router'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   AddLibraryDocument,
   AdminLibrariesDocument,
@@ -28,7 +28,7 @@ import { extractAuthContext, isForbidden } from '../../graphql/errorRouting'
 import { isReading } from '../../graphql/readAgain'
 import { userErrorMessage } from '../../graphql/userErrors'
 import { subscribeToAdministeredLibraryChanges } from '../../media/libraryChanges'
-import { isManagedLibrary, type ManagedLibrary } from './libraryModel'
+import type { ManagedLibrary } from './libraryModel'
 import { addToLibraryLists, removeFromLibraryLists } from '../../graphql/libraryLists'
 
 // Starts and removal share one refusal union; each stop adds its own refusal for a run that is
@@ -105,17 +105,27 @@ function useLiveInventoryChanges(): LiveInventoryStop | null {
  * on focus. A failed refetch keeps the last inventory, so callers disable maintenance while
  * `error` is set. `liveStop` says why live changes stopped, if they did. The server replays
  * nothing a late subscriber missed, so the inventory reads again once the changes subscribe.
+ * A library whose administration a change failed to resolve stays listed without it until the
+ * inventory reads again, and a failure of that read is `error`.
  */
 export function useAdminLibraries() {
   const liveStop = useLiveInventoryChanges()
   const query = useQuery(AdminLibrariesDocument, {
     fetchPolicy: 'cache-and-network',
   })
-  const read = query.data ?? query.previousData
-  // A change whose administration failed to resolve stores it as null; that library returns with
-  // the inventory read the failure triggers.
-  const data = useMemo(() => read && { libraries: read.libraries.filter(isManagedLibrary) }, [read])
+  const data = query.data ?? query.previousData
+  const unavailable = data?.libraries.some((library) => !library.administration) ?? false
+  const { refetch } = query
+  // The missed-change read that recovers the administration keeps a failure from the screen, so
+  // the inventory reads through its own query, which joins that read and reports its failure.
+  useEffect(() => {
+    if (unavailable) refetch().catch(leaveTheFailureToTheQuery)
+  }, [unavailable, refetch])
   return { ...query, data, liveStop }
+}
+
+function leaveTheFailureToTheQuery() {
+  // The inventory query holds the failure and shows it with a retry.
 }
 
 /**
@@ -268,14 +278,13 @@ function currentLibrary(
   if (!payload) return null
   if (!payload.library) throw new Error('Missing library in the operation result')
   const id = cache.identify(payload.library)
-  const library =
+  return (
     cache.readFragment({
       fragment: AdminLibraryFieldsFragmentDoc,
       fragmentName: 'AdminLibraryFields',
       id,
     }) ?? payload.library
-  if (!isManagedLibrary(library)) throw new Error('Missing library administration in the result')
-  return library
+  )
 }
 
 // The returned library, or the status a refusal carries, writes into the cache unless a live

@@ -6,7 +6,7 @@ import type {
   EncoderPresetSettingFieldsFragment,
   RemoveLibraryInput,
 } from '../src/graphql/generated/graphql'
-import type { ManagedLibrary } from '../src/admin/libraries/libraryModel'
+import type { LibraryAdministration, ManagedLibrary } from '../src/admin/libraries/libraryModel'
 import { meFixture, profileFixture } from '../src/test/meFixture'
 import { RING, ringOnActiveElement } from './focusRing'
 import { routeGraphqlSocket } from './graphqlSocket'
@@ -14,7 +14,10 @@ import { routeGraphqlSocket } from './graphqlSocket'
 test.use({ serviceWorkers: 'block' })
 
 const SETTINGS = '/settings/server/libraries'
-const movie: ManagedLibrary = {
+// A library whose administration the server resolved, as every fixture here starts.
+type AdministeredLibrary = ManagedLibrary & { administration: LibraryAdministration }
+
+const movie: AdministeredLibrary = {
   __typename: 'Library',
   id: 'movies',
   name: 'Movies',
@@ -34,9 +37,9 @@ const shows = managed(
 
 // The library with some of its administration facts changed.
 function managed(
-  library: ManagedLibrary,
-  administration: Partial<ManagedLibrary['administration']>,
-): ManagedLibrary {
+  library: AdministeredLibrary,
+  administration: Partial<LibraryAdministration>,
+): AdministeredLibrary {
   return { ...library, administration: { ...library.administration, ...administration } }
 }
 

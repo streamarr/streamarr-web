@@ -16,8 +16,10 @@ import {
   libraryIcon,
   libraryName,
   libraryTypeLabel,
+  shownStatus,
   stoppableRun,
   type ManagedLibrary,
+  type ShownLibraryStatus,
   type StoppableRun,
 } from './libraryModel'
 import {
@@ -64,18 +66,16 @@ const STOPPED_NOTES = {
     'Scan or metadata refresh stopped. Details such as cast photos can still appear for titles already processed.',
 } as const satisfies Record<StoppedRun, string>
 
-type LibraryStatusValue = ManagedLibrary['administration']['status']
-
-type Acknowledgement = { text: string; status: LibraryStatusValue }
+type Acknowledgement = { text: string; status: ShownLibraryStatus }
 
 // A library that leaves STOPPING for its restored status says its run stopped. A busy status
 // right after STOPPING belongs to a later run, which a missed change or a read can reveal first.
 // Otherwise an acknowledgement lasts while the library keeps the status its operation started.
 function acknowledgementAfter(
   current: Acknowledgement | null,
-  change: { from: LibraryStatusValue; to: LibraryStatusValue; stopped: StoppedRun },
+  change: { from: ShownLibraryStatus; to: ShownLibraryStatus; stopped: StoppedRun },
 ): Acknowledgement | null {
-  const restored = canMaintainLibrary({ status: change.to })
+  const restored = canMaintainLibrary(change.to)
   if (change.from === 'STOPPING' && restored)
     return { text: STOPPED_NOTES[change.stopped], status: change.to }
   return current?.status === change.to ? current : null
@@ -85,7 +85,8 @@ function isFocusLost(): boolean {
   return document.activeElement === null || document.activeElement === document.body
 }
 
-function maintenanceGuidance(status: LibraryStatusValue): string {
+function maintenanceGuidance(status: ShownLibraryStatus): string {
+  if (status === null) return "This library's status is unavailable. Retry to load it."
   if (status === 'SCANNING' || status === 'REFRESHING')
     return 'Maintenance is in progress. You can still view this library.'
   if (status === 'STOPPING')
@@ -210,7 +211,7 @@ function LibraryInventory({
             <Icon name={libraryIcon(library.type)} />
             <div>
               <strong>{libraryName(library)}</strong>
-              <LibraryStatus status={library.administration.status} />
+              <LibraryStatus status={shownStatus(library)} />
             </div>
             <Icon name="chevron-right" size={16} />
           </button>
@@ -250,35 +251,32 @@ function LibraryDetails({
   // A later run that reaches the same status belongs to someone else, so a change of status to
   // any other value ends the acknowledgement for good.
   const { administration } = library
-  const [shownStatus, setShownStatus] = useState(administration.status)
+  const status = shownStatus(library)
+  const [previousStatus, setPreviousStatus] = useState(status)
   const [stopped, setStopped] = useState<StoppedRun>('unseen')
-  if (shownStatus !== administration.status) {
-    setShownStatus(administration.status)
-    if (administration.status === 'STOPPING')
-      setStopped(stoppableRun({ status: shownStatus }) ?? 'unseen')
+  if (previousStatus !== status) {
+    setPreviousStatus(status)
+    if (status === 'STOPPING') setStopped(stoppableRun(previousStatus) ?? 'unseen')
     setAcknowledgement(
-      acknowledgementAfter(acknowledgement, {
-        from: shownStatus,
-        to: administration.status,
-        stopped,
-      }),
+      acknowledgementAfter(acknowledgement, { from: previousStatus, to: status, stopped }),
     )
   }
-  const notice = acknowledgement?.status === administration.status ? acknowledgement.text : ''
+  const notice = acknowledgement?.status === status ? acknowledgement.text : ''
   const refreshTrigger = useRef<HTMLButtonElement>(null)
   const actionNotice = useRef<HTMLOutputElement>(null)
   const restoreRefreshFocus = useRef(false)
   const reduceMotion = useReducedMotion()
-  const maintainable = canMaintainLibrary(administration)
+  const maintainable = canMaintainLibrary(status)
   const disabled = stale || !maintainable || commands.pending
   const name = libraryName(library)
   const refreshId = `refresh-${library.id}`
-  const running = stoppableRun(administration)
+  const running = stoppableRun(status)
   const stopDescriptionId = `stop-${library.id}`
   const statusOutput = useRef<HTMLOutputElement>(null)
   const stopWasOffered = useRef(running !== null)
   let removalError = commands.error
-  if (!removalError && stale) removalError = 'Refresh the library state before removing it.'
+  if (!removalError && (stale || status === null))
+    removalError = 'Refresh the library state before removing it.'
   if (!removalError && !maintainable)
     removalError = 'This library cannot be removed while maintenance is in progress.'
 
@@ -301,8 +299,8 @@ function LibraryDetails({
 
   // A run that already ended needs no acknowledgement: the status and last scan show its outcome.
   function acknowledge(started: ManagedLibrary, text: string) {
-    if (!canMaintainLibrary(started.administration))
-      setAcknowledgement({ text, status: started.administration.status })
+    const startedStatus = shownStatus(started)
+    if (!canMaintainLibrary(startedStatus)) setAcknowledgement({ text, status: startedStatus })
   }
 
   function closeRefresh() {
@@ -319,13 +317,13 @@ function LibraryDetails({
         </div>
         <h2>{name}</h2>
         <output ref={statusOutput} tabIndex={-1} className={styles.detailStatus}>
-          <LibraryStatus status={administration.status} />
+          <LibraryStatus status={status} />
         </output>
       </div>
       <dl className={styles.metadata}>
         <div className={styles.metadataFolder}>
           <dt>Server folder</dt>
-          <dd>{administration.filepathUri}</dd>
+          <dd>{administration?.filepathUri ?? 'Unavailable'}</dd>
         </div>
         <div>
           <dt>Last scan</dt>
@@ -461,7 +459,7 @@ function LibraryDetails({
           >
             Remove library
           </DestructiveButton>
-          {!maintainable && <p>{maintenanceGuidance(administration.status)}</p>}
+          {!maintainable && <p>{maintenanceGuidance(status)}</p>}
           {running && <p id={stopDescriptionId}>{STOP_ACTIONS[running].description}</p>}
         </div>
         {notice && (

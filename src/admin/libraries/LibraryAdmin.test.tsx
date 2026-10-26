@@ -12,7 +12,7 @@ import type {
   AddLibraryMutation,
   AddLibraryMutationVariables,
 } from '../../graphql/generated/graphql'
-import type { ManagedLibrary } from './libraryModel'
+import type { LibraryAdministration, ManagedLibrary } from './libraryModel'
 
 const ADMIN = meFixture({ scope: 'profile', serverAdmin: true })
 // A ServerAdmin who browses with a selected Profile, so the ordinary views' live changes run too.
@@ -21,7 +21,10 @@ const VIEWING_ADMIN = meFixture({
   serverAdmin: true,
   profiles: [profileFixture({ selected: true })],
 })
-const MOVIES: ManagedLibrary = {
+// A library whose administration the server resolved, as every fixture here starts.
+type AdministeredLibrary = ManagedLibrary & { administration: LibraryAdministration }
+
+const MOVIES: AdministeredLibrary = {
   __typename: 'Library',
   id: 'movies',
   name: 'Movies',
@@ -44,9 +47,9 @@ const SETTINGS = '/settings/server/libraries'
 
 // The library with some of its administration facts changed.
 function managed(
-  library: ManagedLibrary,
-  administration: Partial<ManagedLibrary['administration']>,
-): ManagedLibrary {
+  library: AdministeredLibrary,
+  administration: Partial<LibraryAdministration>,
+): AdministeredLibrary {
   return { ...library, administration: { ...library.administration, ...administration } }
 }
 
@@ -460,9 +463,7 @@ describe('library administration', () => {
   })
 
   it('shouldRenderUnknownStatusesWithMaintenanceDisabled', async () => {
-    serve([
-      managed(MOVIES, { status: 'FUTURE_STATE' as ManagedLibrary['administration']['status'] }),
-    ])
+    serve([managed(MOVIES, { status: 'FUTURE_STATE' as LibraryAdministration['status'] })])
     renderAppAt(SETTINGS)
     const detail = await screen.findByRole('article', { name: 'Movies settings' })
     expect(detail).toHaveTextContent('Status unavailable')
@@ -1188,6 +1189,45 @@ describe('library administration', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
+  it('shouldKeepALibraryWhoseAdministrationIsUnavailableAndOfferARetryWhenItsReadFails', async () => {
+    const state = serve([MOVIES])
+    const { user } = renderAppAt(SETTINGS)
+    const detail = await screen.findByRole('article', { name: 'Movies settings' })
+    await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+    server.use(
+      graphql.query('AdminLibraries', () => {
+        state.inventoryRequests++
+        return HttpResponse.json({ errors: [{ message: 'offline' }] })
+      }),
+    )
+
+    state.socket.publish('LibraryStatusChanged', {
+      data: { libraryStatusChanged: { ...MOVIES, administration: null } },
+      errors: [
+        {
+          message: 'Status unavailable',
+          path: ['libraryStatusChanged', 'administration', 'status'],
+        },
+      ],
+    })
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "Couldn't load the latest library state.",
+    )
+    expect(detail).toHaveTextContent('Status unavailable')
+    expect(within(detail).getByRole('button', { name: 'Scan library' })).toBeDisabled()
+    expect(moviesRow()).toHaveTextContent('Status unavailable')
+    expect(
+      screen.queryByRole('heading', { name: 'Add your first library' }),
+    ).not.toBeInTheDocument()
+    server.use(
+      graphql.query('AdminLibraries', () => HttpResponse.json({ data: { libraries: [MOVIES] } })),
+    )
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+    await waitFor(() => expect(detail).toHaveTextContent('HEALTHY'))
+    expect(within(detail).getByRole('button', { name: 'Scan library' })).toBeEnabled()
+  })
+
   it('shouldListAnAddedLibraryWhoseChangeCarriesAFailedFieldBeforeTheInventoryReadsAgain', async () => {
     const state = serve()
     renderAppAt(SETTINGS)
@@ -1684,7 +1724,7 @@ describe('library administration', () => {
       const others = statuses.map((status) =>
         managed(
           { ...MOVIES, id: status, name: `Library ${status}` },
-          { status: status as ManagedLibrary['administration']['status'] },
+          { status: status as LibraryAdministration['status'] },
         ),
       )
       serve([managed(MOVIES, { status: 'STOPPING' }), ...others])
