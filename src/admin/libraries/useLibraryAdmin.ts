@@ -28,7 +28,7 @@ import { extractAuthContext, isForbidden } from '../../graphql/errorRouting'
 import { isReading } from '../../graphql/readAgain'
 import { userErrorMessage } from '../../graphql/userErrors'
 import { subscribeToLibraryChanges } from '../../media/libraryChanges'
-import { addUnlessRemoved, removeFromLibraryLists } from '../../graphql/libraryLists'
+import { addUnlessRemoved, removeLibraryForGood } from '../../graphql/libraryLists'
 
 // Starts and removal share one refusal union; each stop adds its own refusal for a run that is
 // not in progress.
@@ -354,9 +354,10 @@ function showStatus(cache: ApolloCache, libraryId: string, status: LibraryStatus
   })
 }
 
-// Every cached library list drops the library at once; the refetch then confirms the inventory.
+// Every cached library list drops the library at once and for good; the refetch then confirms the
+// inventory.
 function dropLibrary(cache: ApolloCache, id: string) {
-  removeFromLibraryLists(cache, id)
+  removeLibraryForGood(cache, id)
   evictLibrary(cache, id)
 }
 

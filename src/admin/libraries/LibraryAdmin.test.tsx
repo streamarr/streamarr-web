@@ -1456,6 +1456,41 @@ describe('library administration', () => {
     expect(row).toHaveFocus()
   })
 
+  it('shouldKeepALibraryThisAdminRemovedOutWhenItsEarlierChangesArriveBeforeItsRemoval', async () => {
+    const state = serve([MOVIES, SHOWS], VIEWING_ADMIN)
+    server.use(
+      graphql.mutation('RemoveLibrary', () => {
+        state.libraries = [SHOWS]
+        return HttpResponse.json(removed('movies'))
+      }),
+    )
+    const { user } = renderAppAt(SETTINGS)
+    await screen.findByRole('article', { name: 'Movies settings' })
+    await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+    const primary = screen.getByRole('navigation', { name: 'Primary' })
+    const inventory = screen.getByRole('navigation', { name: 'Libraries to manage' })
+
+    await user.click(screen.getByRole('button', { name: 'Remove library' }))
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove library' }),
+    )
+    await waitFor(() =>
+      expect(within(inventory).queryByRole('button', { name: /Movies/ })).not.toBeInTheDocument(),
+    )
+    // The removal's own change has not arrived yet; changes committed before it arrive first.
+    state.socket.publish('LibraryStatusChanged', {
+      data: { libraryStatusChanged: { ...MOVIES, status: 'SCANNING' } },
+    })
+    state.socket.publish('LibraryAdded', { data: { libraryAdded: MOVIES } })
+    state.socket.publish('LibraryStatusChanged', {
+      data: { libraryStatusChanged: { ...SHOWS, name: 'Television' } },
+    })
+
+    await within(primary).findByRole('link', { name: 'Television' })
+    expect(within(inventory).queryByRole('button', { name: /Movies/ })).not.toBeInTheDocument()
+    expect(within(primary).queryByRole('link', { name: 'Movies' })).not.toBeInTheDocument()
+  })
+
   it('shouldRemoveTheLastLibraryAtOnceAndOfferCreation', async () => {
     const state = serve([MOVIES])
     let submitted: unknown

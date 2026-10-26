@@ -44,8 +44,7 @@ export function removeLibraryForGood(cache: ApolloCache, libraryId: string) {
   removeFromLibraryLists(cache, libraryId)
 }
 
-/** Every cached Library list drops the Library. */
-export function removeFromLibraryLists(cache: ApolloCache, libraryId: string) {
+function removeFromLibraryLists(cache: ApolloCache, libraryId: string) {
   cache.modify<{ libraries: readonly Reference[] }>({
     fields: {
       libraries: (existing, { readField }) =>
