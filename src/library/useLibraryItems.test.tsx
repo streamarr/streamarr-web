@@ -250,12 +250,14 @@ function liveAddition(id: string, title: string) {
   }
 }
 
+// Counts list elements rather than querying by role: a role query walks the accessibility tree of
+// every loaded title, and over hundreds of titles that alone outlasts the test timeout in CI.
 async function loadTitlesThrough(user: ReturnType<typeof userEvent.setup>, title: string) {
   await screen.findByText('Title 000')
   while (!screen.queryByText(title)) {
-    const loaded = screen.getAllByRole('listitem').length
+    const loaded = document.querySelectorAll('li').length
     await user.click(screen.getByText('Load more'))
-    await waitFor(() => expect(screen.getAllByRole('listitem').length).toBeGreaterThan(loaded))
+    await waitFor(() => expect(document.querySelectorAll('li').length).toBeGreaterThan(loaded))
   }
 }
 
