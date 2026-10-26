@@ -693,6 +693,42 @@ test('Mute holds its place when the stream declares its length', async ({ page, 
   expect(knownLength?.x).toBeCloseTo(unknownLength?.x ?? Number.NaN, 0)
 })
 
+// Mantine paints the track on its ::before, which reaches past the track element on both sides.
+async function seekTrackWithinCorners(page: Page) {
+  return sliderTrack(page, 'Seek').evaluate((container) => {
+    const track = container.firstElementChild
+    const bar = container.parentElement?.parentElement
+    if (!track || !bar) {
+      throw new Error('the seek track sits outside the control bar')
+    }
+    const box = track.getBoundingClientRect()
+    const painted = getComputedStyle(track, '::before')
+    const outline = bar.getBoundingClientRect()
+    const corner = Number.parseFloat(getComputedStyle(bar).borderTopLeftRadius)
+    return {
+      left: box.left + Number.parseFloat(painted.left) - (outline.left + corner),
+      right: outline.right - corner - (box.right - Number.parseFloat(painted.right)),
+    }
+  })
+}
+
+for (const viewport of [
+  { width: 1512, height: 850 },
+  { width: 375, height: 667 },
+]) {
+  test(`the seek track ends inside the control bar's rounded corners ${viewport.width} wide`, async ({
+    page,
+    request,
+  }) => {
+    await page.setViewportSize(viewport)
+    await openPlayer(page, request)
+
+    const inset = await seekTrackWithinCorners(page)
+    expect(inset.left).toBeGreaterThanOrEqual(0)
+    expect(inset.right).toBeGreaterThanOrEqual(0)
+  })
+}
+
 const LAYOUTS = [
   { device: 'a phone', viewport: { width: 375, height: 667 }, volumeShown: false, oneRow: false },
   {

@@ -72,30 +72,16 @@ describe('/login resume', () => {
     expect(await screen.findByLabelText(/pairing code/i)).toHaveValue('BCDFGHJK')
   })
 
-  it('shouldRefuseAnExternalResumeTarget', async () => {
-    serverAcceptsCredentials('profile')
-    const { router, user } = renderAppAt('/login?redirect=https://evil.example/phish')
+  it.each([
+    ['TheResumeTargetIsExternal', 'profile', '/login?redirect=https://evil.example/phish', '/'],
+    ['TheResumeTargetIsProtocolRelative', 'profile', '/login?redirect=//evil.example/phish', '/'],
+    ['ThereIsNothingToResume', 'account', '/login', '/select-profile'],
+  ] as const)('shouldLandWhereTheSessionScopeLeadsWhen%s', async (_case, scope, path, landing) => {
+    serverAcceptsCredentials(scope)
+    const { router, user } = renderAppAt(path)
 
     await signIn(user)
 
-    await waitFor(() => expect(router.state.location.pathname).toBe('/'))
-  })
-
-  it('shouldRefuseAProtocolRelativeResumeTarget', async () => {
-    serverAcceptsCredentials('profile')
-    const { router, user } = renderAppAt('/login?redirect=//evil.example/phish')
-
-    await signIn(user)
-
-    await waitFor(() => expect(router.state.location.pathname).toBe('/'))
-  })
-
-  it('shouldFallBackByScopeWhenNothingToResume', async () => {
-    serverAcceptsCredentials('account')
-    const { router, user } = renderAppAt('/login')
-
-    await signIn(user)
-
-    await waitFor(() => expect(router.state.location.pathname).toBe('/select-profile'))
+    await waitFor(() => expect(router.state.location.pathname).toBe(landing))
   })
 })

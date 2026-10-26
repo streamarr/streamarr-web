@@ -39,12 +39,12 @@ export function AuthProvider({
   renewal,
   subscriptions,
   children,
-}: {
+}: Readonly<{
   sessionStore: SessionStore
   renewal: Pick<RenewalBridge, 'adoptExpiry' | 'stop'>
   subscriptions: Pick<SubscriptionTransport, 'stop' | 'replaceSocket'>
   children: ReactNode
-}) {
+}>) {
   const [session, setSession] = useState<Session | null>(null)
 
   const apollo = useApolloClient()

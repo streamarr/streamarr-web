@@ -37,8 +37,8 @@ export interface RenewalBridge {
 
 export const inactiveRenewalBridge: RenewalBridge = {
   adoptExpiry() {},
-  async refreshNow() {
-    return { kind: 'unavailable' }
+  refreshNow() {
+    return Promise.resolve({ kind: 'unavailable' })
   },
   stop() {},
 }

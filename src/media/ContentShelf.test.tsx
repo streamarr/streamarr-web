@@ -27,10 +27,10 @@ describe('ContentShelf', () => {
     Object.defineProperty(track, 'scrollBy', { value: scrollBy, configurable: true })
 
     await user.click(screen.getByLabelText('Scroll right'))
-    expect(scrollBy).toHaveBeenLastCalledWith({ left: 320, behavior: 'smooth' })
+    expect(scrollBy).toHaveBeenLastCalledWith({ left: 320 })
 
     width.mockReturnValue(720)
     await user.click(screen.getByLabelText('Scroll left'))
-    expect(scrollBy).toHaveBeenLastCalledWith({ left: -720, behavior: 'smooth' })
+    expect(scrollBy).toHaveBeenLastCalledWith({ left: -720 })
   })
 })

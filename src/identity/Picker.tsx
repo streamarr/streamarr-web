@@ -22,13 +22,13 @@ export function Picker({
   onPinDismissed,
   onProfileSelected,
   onUnauthenticated,
-}: {
+}: Readonly<{
   pinProfileId?: string
   onPinRequested: (profileId: string) => void
   onPinDismissed: () => void
   onProfileSelected: (tokens: AuthTokens) => void
   onUnauthenticated: () => void
-}) {
+}>) {
   const { data, loading, error, refetch } = useMe()
   const { selectHousehold, selectProfile } = useAuth()
   const [busy, setBusy] = useState<string | null>(null)

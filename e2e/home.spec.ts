@@ -1,5 +1,5 @@
 import { watchingConnection } from '../src/test/continueWatchingFixtures'
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import type { HomeQuery } from '../src/graphql/generated/graphql'
 import { STUB_URL } from './ports'
 
@@ -63,6 +63,70 @@ test.beforeEach(async ({ page, request }) => {
   })
   await page.goto('/')
   await expect(page.getByRole('heading', { name: FEATURED_TITLE })).toBeVisible()
+})
+
+const WHITE_BACKDROP = {
+  aspectRatio: 1.78,
+  blurHash: null,
+  variants: [{ id: 'white', size: 'LARGE', width: 1920, height: 1080, url: '/white-backdrop.svg' }],
+}
+
+// The red channel of each screenshot pixel in the box, row by row; the hero's pixels are grey.
+async function redChannel(
+  page: Page,
+  clip: { x: number; y: number; width: number; height: number },
+): Promise<number[][]> {
+  const png = await page.screenshot({ clip })
+  return page.evaluate(async (base64) => {
+    const image = new Image()
+    image.src = `data:image/png;base64,${base64}`
+    await image.decode()
+    const canvas = document.createElement('canvas')
+    canvas.width = image.width
+    canvas.height = image.height
+    const context = canvas.getContext('2d')
+    if (!context) {
+      throw new Error('no 2D canvas to read the screenshot')
+    }
+    context.drawImage(image, 0, 0)
+    const { data } = context.getImageData(0, 0, image.width, image.height)
+    return Array.from({ length: image.height }, (_, row) =>
+      Array.from({ length: image.width }, (_, column) => data[(row * image.width + column) * 4]),
+    )
+  }, png.toString('base64'))
+}
+
+test('the hero scrim darkens a bright backdrop out to the edge of its rounded corners', async ({
+  page,
+}) => {
+  await page.route('**/white-backdrop.svg', (route) =>
+    route.fulfill({
+      contentType: 'image/svg+xml',
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080"><rect width="100%" height="100%" fill="#fff"/></svg>',
+    }),
+  )
+  await page.route('**/graphql', async (route) => {
+    const { operationName } = route.request().postDataJSON() as { operationName?: string }
+    if (operationName !== 'Home') return route.fallback()
+    const featured = { ...movie(0), images: [WHITE_BACKDROP] }
+    return route.fulfill({
+      json: { data: { ...home, continueWatching: watchingConnection([featured]) } },
+    })
+  })
+  await page.reload()
+
+  const hero = (await page.getByTestId('billboard-hero').boundingBox())!
+  const size = 24
+  // No scrim reaches the top-right corner, so the backdrop shows there once it has faded in.
+  const topRight = { x: hero.x + hero.width - size, y: hero.y + size, width: 1, height: 1 }
+  await expect.poll(async () => (await redChannel(page, topRight))[0][0]).toBeGreaterThan(250)
+
+  const corner = await redChannel(page, { x: hero.x, y: hero.y, width: size, height: size })
+  const outside = corner[0][0]
+  // The box's right-hand column lies inside the hero, past the curve, where the scrim is lightest.
+  const inside = Math.max(...corner.map((row) => row[row.length - 1]))
+  // An edge pixel blends the page behind the hero with the hero, so it can't outshine both.
+  expect(Math.max(...corner.flat())).toBeLessThanOrEqual(Math.max(outside, inside) + 2)
 })
 
 test('the billboard tagline sits upright under the title', async ({ page }) => {
@@ -210,4 +274,27 @@ test('recent-content panels keep enough height for a poster on short screens', a
     return element.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom)
   })
   expect(visibleHeight).toBeGreaterThanOrEqual(posterHeight)
+})
+
+test('the shelf arrows scroll smoothly, and jump at once for a viewer who prefers reduced motion', async ({
+  page,
+}) => {
+  const shelf = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: 'Continue watching' }) })
+  const scrollRight = shelf.getByRole('button', { name: 'Scroll right', exact: true })
+  const offsetRightAfterClick = () =>
+    scrollRight.evaluate((button: HTMLButtonElement) => {
+      const track = button
+        .closest('section')!
+        .querySelector<HTMLElement>('[data-testid="shelf-track"]')!
+      track.scrollTo({ left: 0, behavior: 'instant' })
+      button.click()
+      return track.scrollLeft
+    })
+
+  expect(await offsetRightAfterClick()).toBe(0)
+
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  expect(await offsetRightAfterClick()).toBeGreaterThan(0)
 })

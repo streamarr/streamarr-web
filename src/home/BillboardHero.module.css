@@ -4,6 +4,9 @@
   min-height: min(66dvh, 42rem);
   border-radius: var(--radius-xl);
   overflow: hidden;
+  /* A mask that hides nothing makes the browser flatten the backdrop and scrim before clipping
+     the corners. Clipped one at a time, their anti-aliased edges let the backdrop show through. */
+  mask-image: linear-gradient(#000, #000);
 }
 
 .backdrop {

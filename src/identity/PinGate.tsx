@@ -15,12 +15,12 @@ export function PinGate({
   paletteIndex,
   onSubmit,
   onSwitchProfile,
-}: {
+}: Readonly<{
   profileName: string
   paletteIndex: number
   onSubmit: (pin: string) => Promise<void>
   onSwitchProfile: () => void
-}) {
+}>) {
   const [pin, setPin] = useState('')
   const [failure, setFailure] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)

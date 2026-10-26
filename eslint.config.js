@@ -71,11 +71,11 @@ export default defineConfig(
       'no-restricted-syntax': [
         'error',
         {
-          selector: 'Literal[value=/\\[class[*^$~|]?=/]',
+          selector: String.raw`Literal[value=/\[class[*^$~|]?=/]`,
           message: 'Find elements by role, label, text or data-testid, not by class names.',
         },
         {
-          selector: 'TemplateElement[value.raw=/\\[class[*^$~|]?=/]',
+          selector: String.raw`TemplateElement[value.raw=/\[class[*^$~|]?=/]`,
           message: 'Find elements by role, label, text or data-testid, not by class names.',
         },
       ],

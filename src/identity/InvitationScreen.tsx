@@ -34,10 +34,10 @@ type Phase =
 export function InvitationScreen({
   initialCode,
   onAccepted,
-}: {
+}: Readonly<{
   initialCode?: string
   onAccepted: (tokens: AuthTokens) => void
-}) {
+}>) {
   const [code, setCode] = useState(initialCode ?? '')
   const [phase, setPhase] = useState<Phase>({ at: 'code' })
   const [failure, setFailure] = useState<string | null>(null)
@@ -122,12 +122,12 @@ function InvitationReview({
   preview,
   onAccepted,
   onDeclined,
-}: {
+}: Readonly<{
   code: string
   preview: InvitationPreview
   onAccepted: (tokens: AuthTokens) => void
   onDeclined: () => void
-}) {
+}>) {
   const { acceptInvitation } = useAuth()
   const [displayName, setDisplayName] = useState('')
   const [password, setPassword] = useState('')
@@ -233,7 +233,7 @@ function InvitationReview({
   )
 }
 
-function ConnectReview({ preview }: { preview: InvitationPreview }) {
+function ConnectReview({ preview }: Readonly<{ preview: InvitationPreview }>) {
   return (
     <Card withBorder>
       <Stack gap="xs">
@@ -266,11 +266,11 @@ function ConsequenceList({
   title,
   items,
   empty,
-}: {
+}: Readonly<{
   title: string
   items: string[]
   empty: string
-}) {
+}>) {
   if (items.length === 0) {
     return (
       <Text size="sm" c="dimmed">
