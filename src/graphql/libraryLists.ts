@@ -1,7 +1,7 @@
-import type { ApolloCache, FieldPolicy, Reference } from '@apollo/client'
+import type { ApolloCache, Reference } from '@apollo/client'
 
-// The server orders no changes across fields, and a read can take its snapshot before a removal
-// it lands after. A Library id never returns once removed, so each cache keeps every removal.
+// The server orders no changes across fields: a change committed before a removal can arrive
+// after it. A Library id never returns once removed, so each cache keeps every removal.
 const removalsByCache = new WeakMap<ApolloCache, Set<string>>()
 
 function removalsIn(cache: ApolloCache): Set<string> {
@@ -51,13 +51,4 @@ function removeFromLibraryLists(cache: ApolloCache, libraryId: string) {
         existing.filter((library) => readField('id', library) !== libraryId),
     },
   })
-}
-
-/** The `Query.libraries` policy: a read that answers after a removal leaves the Library out. */
-export const libraryListPolicy: FieldPolicy<readonly Reference[]> = {
-  merge: (_existing, incoming, { readField, cache }) =>
-    incoming.filter((library) => {
-      const id = readField<string>('id', library)
-      return id === undefined || !isRemovedLibrary(cache, id)
-    }),
 }

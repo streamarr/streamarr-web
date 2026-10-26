@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vitest'
 import type { LibraryFieldsFragment, LibraryStatus } from '../graphql/generated/graphql'
 import { watchingConnection } from '../test/continueWatchingFixtures'
 import { deferred } from '../test/deferred'
-import { comeBackOnline } from '../test/graphqlResponses'
 import { serveGraphqlSocket } from '../test/graphqlSocket'
 import { meFixture, profileFixture } from '../test/meFixture'
 import { renderAppAt } from '../test/render'
@@ -232,34 +231,6 @@ describe('subscribeToLibraryChanges', () => {
     state.socket.publish('LibraryStatusChanged', statusChanged({ ...SHOWS, status: 'SCANNING' }))
     state.socket.publish('LibraryAdded', { data: { libraryAdded: SHOWS } })
     state.socket.publish('LibraryStatusChanged', statusChanged({ ...MOVIES, name: 'Films' }))
-
-    await within(topBar()).findByRole('link', { name: 'Films' })
-    expect(within(topBar()).queryByRole('link', { name: 'TV shows' })).not.toBeInTheDocument()
-  })
-
-  it('shouldKeepARemovedLibraryOutOfTheTopBarWhenAnEarlierReadArrivesLate', async () => {
-    const state = serve([MOVIES, SHOWS])
-    await openHome(state)
-    const readTaken = deferred()
-    const removalApplied = deferred()
-    server.use(
-      graphql.query('Libraries', async () => {
-        // This read takes its snapshot before TV shows is removed, and answers after.
-        const libraries = [{ ...MOVIES, name: 'Films' }, SHOWS]
-        readTaken.resolve()
-        await removalApplied.promise
-        return HttpResponse.json({ data: { libraries } })
-      }),
-    )
-    state.libraries = [MOVIES]
-
-    comeBackOnline()
-    await readTaken.promise
-    state.socket.publish('LibraryRemoved', { data: { libraryRemoved: { libraryId: SHOWS.id } } })
-    await waitFor(() =>
-      expect(within(topBar()).queryByRole('link', { name: 'TV shows' })).not.toBeInTheDocument(),
-    )
-    removalApplied.resolve()
 
     await within(topBar()).findByRole('link', { name: 'Films' })
     expect(within(topBar()).queryByRole('link', { name: 'TV shows' })).not.toBeInTheDocument()
