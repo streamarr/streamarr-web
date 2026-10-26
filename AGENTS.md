@@ -8,6 +8,7 @@
 - `npm run test:watch` — unit tests in watch mode
 - `npm run test:coverage` — unit tests with coverage; the session-renewal core is gated at 95% per file, and the run writes `coverage/lcov.info` for SonarCloud
 - `npm run test:e2e` — browser suite (Playwright drives vite dev against the API stub in `e2e/`). Run `npx playwright install chromium` once, and again after a Playwright upgrade
+- `npx playwright test -c playwright.replay.config.ts` — replays a library scan's live updates, and a scroll through a large library, in Chromium and WebKit, and reports main-thread time and memory; on demand, never in CI. `REPLAY_BUILD=1` measures the production bundle; `REPLAY_TITLES` and `REPLAY_RATE` size the scan, `REPLAY_LIBRARY` the scrolled library
 - `npm run format` — Prettier; format before committing. `npm run format:check` is the CI gate
 - `npm run lint` — ESLint: type-checked typescript-eslint and React Hooks rules (`eslint.config.js`)
 - `npm run typecheck` — TypeScript, no emit, for both the app and the `tsconfig.e2e.json` project
@@ -236,6 +237,7 @@ race. Re-check the generation — or the `isCurrent()` callback a caller was han
 - A `vi.fn()` callback prop or injected collaborator is an output, so asserting its calls asserts the result. Don't spy on internals to assert how a result was produced
 - NEVER export a function solely for testing, or test implementation details that would break on refactoring
 - Tests never reach a real server: unit tests use MSW and browser tests use the stub
+- Tests find elements by role, label, text or `data-testid`, never by CSS Modules class names; a layout box with none of those gets a `data-testid`. ESLint rejects `[class*=…]`-style selectors in tests
 - Browser specs cannot run concurrently — the stub's mode is process-global (`workers: 1`)
 
 ### Conventions

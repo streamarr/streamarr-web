@@ -1,4 +1,4 @@
-import type { ApolloClient } from '@apollo/client'
+import type { ApolloClient, InMemoryCache } from '@apollo/client'
 import { useApolloClient, useQuery } from '@apollo/client/react'
 import {
   useCallback,
@@ -15,15 +15,34 @@ import {
   type LibraryPageQueryVariables,
   type MediaFilter,
   type MediaSort,
+  type SortDirection,
 } from '../graphql/generated/graphql'
 import { definedEdges } from '../media/edges'
 import { alphabetLetterFromTitle } from '../media/alphabetLetter'
 import { trackLibraryItemsConnection } from '../media/watchedState'
 import { useLibraryContents } from './LibraryContentsProvider'
+import { modifyLoadedItems, refreshLibrary, storeEdges, type StoredItems } from './storedItems'
+import {
+  pageSizeAfter,
+  pageSizeBefore,
+  titlesBeforeLetter,
+  titlesFarFromView,
+} from './wholeRowPages'
 
-const PAGE_SIZE = 48
-type LibraryWindow = { before: number; after: number; anchor: string | null }
+type LibraryWindow = {
+  before: number
+  after: number
+  anchor: string | null
+  landingPosition: number
+  // The first title left loaded after unloading those before it, its place in the library, and
+  // the cursor of the title before it, after which a fresh read of the window begins.
+  firstKept?: { cursor: string; position: number; after: string }
+}
 const windowsByClient = new WeakMap<ApolloClient, Map<string, LibraryWindow>>()
+// How long the view stays still before Apollo's reads are rebuilt after an unload, and how many
+// titles may be unloaded first while it keeps moving.
+const SETTLED_VIEW_MS = 1000
+const TITLES_UNLOADED_BEFORE_RESET = 2000
 
 function windowsFor(client: ApolloClient) {
   const existing = windowsByClient.get(client)
@@ -52,11 +71,16 @@ export function useLibraryItems({
   libraryId,
   sort,
   filter,
+  columns,
 }: {
   libraryId: string
   sort: MediaSort
   filter: MediaFilter
+  /** The grid's column count; no titles are requested until it is known. */
+  columns: number | null
 }) {
+  // Render reads the saved windows, which effects change in place, so a memoized read goes stale.
+  'use no memo'
   const client = useApolloClient()
   const windows = windowsFor(client)
   const contents = useLibraryContents()
@@ -67,25 +91,30 @@ export function useLibraryItems({
   const refusal = useSyncExternalStore(contents?.subscribe ?? neverChanges, () =>
     contents?.refusalFor(libraryId),
   )
+  const queryKey = JSON.stringify({ libraryId, sort, filter })
+  const first = useFirstPageSize(queryKey, columns)
+  // Once its first titles are unloaded, a window is read again from its first kept title. The
+  // cached window is keyed by sort and filter alone, so the cursor does not split it.
+  const readAfter = windows.get(queryKey)?.firstKept?.after
   const { data, previousData, loading, error, refetch } = useQuery(LibraryPageDocument, {
-    variables: { libraryId, first: PAGE_SIZE, sort, filter },
-    skip: removed,
+    variables: { libraryId, first, sort, filter, after: readAfter },
+    skip: removed || first === null,
   })
 
-  const queryKey = JSON.stringify({ libraryId, sort, filter })
   useEffect(
     function trackWatchDependentConnection() {
       if (!data) return
       trackLibraryItemsConnection(client.cache, {
         libraryId,
-        args: { first: PAGE_SIZE, sort, filter },
+        args: { sort, filter },
       })
     },
     [client, data, libraryId, sort, filter],
   )
   useLayoutEffect(() => {
+    if (first === null) return
     contents?.select({
-      variables: { libraryId, first: PAGE_SIZE, sort, filter },
+      variables: { libraryId, first, sort, filter, after: readAfter },
       onItemsChanged(previous, next) {
         const saved = windows.get(queryKey)
         if (!saved) return
@@ -98,16 +127,19 @@ export function useLibraryItems({
           return { before, after: edges.length - before }
         }
         const anchor = findLetterLandingCursor(next.edges, filter.startLetter ?? null, saved.anchor)
-        const oldSize = split(previous, saved.anchor)
-        const newSize = split(next, anchor)
+        const firstKept = keptThroughChange(saved.firstKept, previous, next)
+        const oldSize = split(previous, saved.firstKept?.cursor ?? saved.anchor)
+        const newSize = split(next, firstKept?.cursor ?? anchor)
         windows.set(queryKey, {
+          ...saved,
           anchor,
+          firstKept,
           before: Math.max(0, saved.before + newSize.before - oldSize.before),
           after: Math.max(0, saved.after + newSize.after - oldSize.after),
         })
       },
     })
-  }, [contents, windows, queryKey, libraryId, sort, filter])
+  }, [contents, windows, queryKey, libraryId, first, sort, filter, readAfter])
   const [currentPageFailure, setPageFailure] = usePageFailure(queryKey)
   // A new query renders its predecessor's page until its own arrives and the screen accepts it,
   // so a letter jump never blanks the grid and the screen can animate the swap. The first result
@@ -120,35 +152,36 @@ export function useLibraryItems({
   const accept = useCallback(() => setShownKey(queryKey), [queryKey])
 
   const letter = filter.startLetter ?? null
-  const pageInfo = data?.library.items.pageInfo
-  const loadedEdges = definedEdges(data?.library.items.edges ?? null)
   const savedWindow = windows.get(queryKey)
-  const landingCursor = findLetterLandingCursor(
-    data?.library.items.edges,
+  const {
+    pageInfo,
+    loadedEdges,
+    landingCursor,
+    before,
+    after,
+    landingPosition,
+    firstPosition,
+    restoreBefore,
+    restoreAfter,
+  } = placeLoadedTitles({ data, letter, savedWindow, direction: sort.direction ?? 'ASC' })
+  const holdingLetter = useLetterHold({
+    queryKey,
+    data,
     letter,
-    savedWindow?.anchor,
-  )
-  const before = Math.max(
-    0,
-    loadedEdges.findIndex((edge) => edge.cursor === landingCursor),
-  )
-  const after = loadedEdges.length - before
-  const restoreBefore = before < (savedWindow?.before ?? 0) && !!pageInfo?.hasPreviousPage
-  const restoreAfter = after < (savedWindow?.after ?? 0) && !!pageInfo?.hasNextPage
+    pageInfo,
+    before,
+    pageFailure: currentPageFailure,
+  })
   const restoringWindow = restoreBefore || restoreAfter
-  const [completeResult, setCompleteResult] = useState<{
-    key: string
-    data: LibraryPageQuery
-  } | null>(null)
-  if (data && !staged && !restoringWindow && completeResult?.data !== data) {
-    setCompleteResult({ key: queryKey, data })
-  }
-  // Keep the committed rows through both a staged jump and a late STOPPED refresh. Apollo's
-  // previousData can advance again when a seek's backfill arrives before the exit finishes.
-  const rendered =
-    staged || (restoringWindow && completeResult?.key === queryKey)
-      ? (completeResult?.data ?? previousData)
-      : (data ?? previousData)
+  const { rendered, renderedFirstPosition } = useRenderedResult({
+    queryKey,
+    data,
+    previousData,
+    firstPosition,
+    staged,
+    holdingLetter,
+    restoringWindow,
+  })
   useLayoutEffect(() => {
     if (!data || staged) return
     const saved = windows.get(queryKey)
@@ -156,8 +189,10 @@ export function useLibraryItems({
       before: Math.max(before, saved?.before ?? 0),
       after: Math.max(after, saved?.after ?? 0),
       anchor: landingCursor,
+      landingPosition: saved?.landingPosition ?? landingPosition,
+      firstKept: keptAfterReading(saved?.firstKept, definedEdges(data.library.items.edges)),
     })
-  }, [windows, queryKey, data, staged, before, after, landingCursor])
+  }, [windows, queryKey, data, staged, before, after, landingCursor, landingPosition])
   // Each committed query owns its in-flight pages; a result from an earlier view is discarded.
   const scopeRef = useRef<RequestScope | null>(null)
   useLayoutEffect(
@@ -194,50 +229,52 @@ export function useLibraryItems({
   // Apollo suppresses cache notifications during fetchMore. Read beside the watched query so
   // subscription payloads still render while a continuation is in flight.
   async function readPage({
+    scope,
     variables,
     update,
   }: {
+    scope: RequestScope
     variables: LibraryPageQueryVariables
-    update: (previous: LibraryPageQuery, page: LibraryPageQuery) => LibraryPageQuery
+    update: (loaded: StoredItems, page: StoredItems) => StoredItems
   }) {
     const { data: page } = await client.query({
       query: LibraryPageDocument,
       variables,
       fetchPolicy: 'no-cache',
     })
-    if (!page) return undefined
-    client.cache.updateQuery(
-      { query: LibraryPageDocument, variables: { libraryId, first: PAGE_SIZE, sort, filter } },
-      (previous) => (previous ? update(previous, page) : undefined),
-    )
+    // A page answered after its view was left would overwrite the current view's titles.
+    if (!page || !scope.active) return undefined
+    // Only the page's own titles are written; the loaded ones keep their stored edges.
+    const { items, ...library } = page.library
+    client.cache.batch({
+      update(cache) {
+        refreshLibrary(cache, library)
+        const stored = { ...items, edges: storeEdges(cache, items.edges) }
+        modifyLoadedItems(cache, { libraryId, sort, filter }, (loaded) => update(loaded, stored))
+      },
+    })
     return page
   }
 
   function loadMore() {
     const scope = committedScope()
-    if (!scope || !pageInfo?.hasNextPage || scope.fetchingNext) {
+    if (!scope || columns === null || !pageInfo?.hasNextPage || scope.fetchingNext) {
       return
     }
     scope.fetchingNext = true
     void readPage({
+      scope,
       variables: {
         libraryId,
-        first: PAGE_SIZE,
+        first: pageSizeAfter({ columns, end: firstPosition + loadedEdges.length }),
         after: pageInfo.endCursor,
         last: undefined,
         before: undefined,
         sort,
         filter,
       },
-      update: (previous, page) =>
-        !scope.active || previous.library.items.pageInfo.endCursor !== pageInfo.endCursor
-          ? previous
-          : {
-              library: {
-                ...page.library,
-                items: appendItemsPage(previous.library.items, page.library.items),
-              },
-            },
+      update: (loaded, page) =>
+        loaded.pageInfo.endCursor !== pageInfo.endCursor ? loaded : appendItemsPage(loaded, page),
     })
       .catch((error: unknown) => failPage(scope, 'next', error))
       .finally(() => {
@@ -249,30 +286,26 @@ export function useLibraryItems({
     const scope = committedScope()
     if (!scope) return
     if (scope.previousRequest) return scope.previousRequest
-    if (!pageInfo?.hasPreviousPage || !pageInfo.startCursor) {
+    if (columns === null || !pageInfo?.hasPreviousPage || !pageInfo.startCursor) {
       return
     }
     // A `before` cursor replaces the letter seek anchor (ADR 0023).
     const { startLetter: _startLetter, ...continuationFilter } = filter
     scope.previousRequest = readPage({
+      scope,
       variables: {
         libraryId,
         first: undefined,
         after: undefined,
-        last: PAGE_SIZE,
+        last: pageSizeBefore({ columns, start: firstPosition }),
         before: pageInfo.startCursor,
         sort,
         filter: continuationFilter,
       },
-      update: (previous, page) =>
-        !scope.active || previous.library.items.pageInfo.startCursor !== pageInfo.startCursor
-          ? previous
-          : {
-              library: {
-                ...page.library,
-                items: prependItemsPage(previous.library.items, page.library.items),
-              },
-            },
+      update: (loaded, page) =>
+        loaded.pageInfo.startCursor !== pageInfo.startCursor
+          ? loaded
+          : prependItemsPage(loaded, page),
     })
       .then((page) => page?.library.items.pageInfo.startCursor ?? null)
       .catch((error: unknown) => {
@@ -296,7 +329,7 @@ export function useLibraryItems({
   }, [loading, queryKey, before, after, restoreBefore, restoreAfter])
 
   // A letter's page is followed once by the page before it, so the viewer can scroll up across
-  // the letter boundary without a gap.
+  // the letter boundary without a gap. A window kept from an earlier visit already has it.
   const backfilledQueryRef = useRef<string | null>(null)
   const loadPageBehindTheLetter = useEffectEvent(() => {
     void loadPrevious()
@@ -307,20 +340,93 @@ export function useLibraryItems({
         return
       }
       backfilledQueryRef.current = queryKey
-      loadPageBehindTheLetter()
+      if (before === 0) loadPageBehindTheLetter()
     },
-    [letter, data, queryKey],
+    [letter, data, queryKey, before],
   )
 
   // Where a query's own result belongs once it renders: its letter's first title, or the top.
   // Later pages merge into the same result without moving it.
   const landing =
-    data && !staged && !restoringWindow ? { key: queryKey, cursor: landingCursor } : null
+    data && !staged && !holdingLetter && !restoringWindow
+      ? { key: queryKey, cursor: landingCursor }
+      : null
+
+  // Titles far from the view leave the cache, so a long scroll holds about as many titles as a
+  // short one. The window reopens on that side, and its pages load again when scrolled back to.
+  function unloadFarFrom(view: { first: number; last: number }) {
+    if (pendingReset.current !== undefined) resetReadsOnceSettled()
+    if (columns === null || !data || landing === null) return
+    const far = titlesFarFromView({ columns, firstPosition, count: loadedEdges.length, ...view })
+    if (far.before === 0 && far.after === 0) return
+    const kept = loadedEdges.slice(far.before, loadedEdges.length - far.after)
+    const saved = windows.get(queryKey)
+    const anchor = findLetterLandingCursor(kept, letter, saved?.anchor)
+    const firstKept =
+      far.before > 0
+        ? {
+            cursor: kept[0].cursor,
+            position: firstPosition + far.before,
+            after: loadedEdges[far.before - 1].cursor,
+          }
+        : saved?.firstKept
+    const keptBefore = Math.max(
+      0,
+      kept.findIndex((edge) => edge.cursor === (firstKept?.cursor ?? anchor)),
+    )
+    windows.set(queryKey, {
+      anchor,
+      before: keptBefore,
+      after: kept.length - keptBefore,
+      landingPosition: saved?.landingPosition ?? landingPosition,
+      firstKept,
+    })
+    modifyLoadedItems(client.cache, { libraryId, sort, filter }, (loaded) =>
+      keepItems(loaded, {
+        from: far.before > 0 ? kept[0].cursor : null,
+        through: far.after > 0 ? (kept.at(-1)?.cursor ?? null) : null,
+      }),
+    )
+    client.cache.gc()
+    unloadedSinceReset.current += far.before + far.after
+    if (unloadedSinceReset.current >= TITLES_UNLOADED_BEFORE_RESET) {
+      resetReads()
+      return
+    }
+    resetReadsOnceSettled()
+  }
+
+  // Apollo keys its reads by entity, in records with no limit that only a reset of its reads
+  // clears. The next read after a reset rereads the whole window, so the reset waits for the
+  // view to settle, or for many titles to have gone, and makes that read at once, leaving later
+  // pages to read only themselves.
+  const pendingReset = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const unloadedSinceReset = useRef(0)
+  function resetReadsOnceSettled() {
+    clearTimeout(pendingReset.current)
+    pendingReset.current = setTimeout(resetReads, SETTLED_VIEW_MS)
+  }
+  function resetReads() {
+    clearTimeout(pendingReset.current)
+    pendingReset.current = undefined
+    unloadedSinceReset.current = 0
+    const cache = client.cache as InMemoryCache
+    cache.gc({ resetResultCache: true })
+    const after = windows.get(queryKey)?.firstKept?.after
+    cache.readQuery({
+      query: LibraryPageDocument,
+      variables: { libraryId, first, sort, filter, after },
+    })
+  }
 
   return {
     removed,
-    loading: !removed && refusal === undefined && loading && !rendered,
-    pending: (loading && !data && !!previousData) || staged,
+    loading:
+      !removed &&
+      refusal === undefined &&
+      (loading || first === null || holdingLetter) &&
+      !rendered,
+    pending: (loading && !data && !!previousData) || staged || (holdingLetter && !!rendered),
     staged,
     accept,
     error: refusal ?? error ?? currentPageFailure?.error,
@@ -328,8 +434,11 @@ export function useLibraryItems({
     edges: definedEdges(rendered?.library.items.edges ?? null),
     hasNextPage: rendered?.library.items.pageInfo.hasNextPage ?? false,
     hasPreviousPage: rendered?.library.items.pageInfo.hasPreviousPage ?? false,
+    /** The library position of the first title in `edges`; the grid's rows break on it. */
+    firstPosition: renderedFirstPosition,
     loadMore,
     loadPrevious,
+    unloadFarFrom,
     retry: () => {
       if (refusal !== undefined) {
         void contents?.retry(libraryId, refetch).catch(() => undefined)
@@ -352,6 +461,126 @@ export function useLibraryItems({
   }
 }
 
+// Where the loaded titles sit in the whole library, and which side of the saved window is missing.
+function placeLoadedTitles({
+  data,
+  letter,
+  savedWindow,
+  direction,
+}: {
+  data: LibraryPageQuery | undefined
+  letter: string | null
+  savedWindow: LibraryWindow | undefined
+  direction: SortDirection
+}) {
+  const pageInfo = data?.library.items.pageInfo
+  const loadedEdges = definedEdges(data?.library.items.edges ?? null)
+  const landingCursor = findLetterLandingCursor(
+    data?.library.items.edges,
+    letter,
+    savedWindow?.anchor,
+  )
+  const windowAnchor = savedWindow?.firstKept?.cursor ?? landingCursor
+  const before = Math.max(
+    0,
+    loadedEdges.findIndex((edge) => edge.cursor === windowAnchor),
+  )
+  const after = loadedEdges.length - before
+  // The landing title's place in the whole library, counted once per window: rows break on it,
+  // and a title added elsewhere in the library must not move the rows already shown.
+  const landingPosition =
+    savedWindow?.landingPosition ??
+    (letter && data
+      ? titlesBeforeLetter({ index: data.library.alphabetIndex, letter, direction })
+      : 0)
+  return {
+    pageInfo,
+    loadedEdges,
+    landingCursor,
+    before,
+    after,
+    landingPosition,
+    firstPosition: pageInfo?.hasPreviousPage
+      ? positionOfFirstLoaded({
+          edges: loadedEdges,
+          firstKept: savedWindow?.firstKept,
+          landingPosition,
+          before,
+        })
+      : 0,
+    restoreBefore: before < (savedWindow?.before ?? 0) && !!pageInfo?.hasPreviousPage,
+    restoreAfter: after < (savedWindow?.after ?? 0) && !!pageInfo?.hasNextPage,
+  }
+}
+
+// A letter is shown once the titles before it have loaded, so its row arrives full.
+function useLetterHold({
+  queryKey,
+  data,
+  letter,
+  pageInfo,
+  before,
+  pageFailure,
+}: {
+  queryKey: string
+  data: LibraryPageQuery | undefined
+  letter: string | null
+  pageInfo: LibraryItems['pageInfo'] | undefined
+  before: number
+  pageFailure: PageFailure | null
+}) {
+  const [landedKey, setLandedKey] = useState<string | null>(null)
+  const holding =
+    landedKey !== queryKey &&
+    !!letter &&
+    !!pageInfo?.hasPreviousPage &&
+    !!pageInfo.startCursor &&
+    before === 0 &&
+    pageFailure?.direction !== 'previous'
+  if (data && !holding && landedKey !== queryKey) {
+    setLandedKey(queryKey)
+  }
+  return holding
+}
+
+// Keep the committed rows through a staged jump, a held letter, and a late STOPPED refresh.
+// Apollo's previousData can advance again when a seek's backfill arrives before the exit ends.
+function useRenderedResult({
+  queryKey,
+  data,
+  previousData,
+  firstPosition,
+  staged,
+  holdingLetter,
+  restoringWindow,
+}: {
+  queryKey: string
+  data: LibraryPageQuery | undefined
+  previousData: LibraryPageQuery | undefined
+  firstPosition: number
+  staged: boolean
+  holdingLetter: boolean
+  restoringWindow: boolean
+}) {
+  const [completeResult, setCompleteResult] = useState<{
+    key: string
+    data: LibraryPageQuery
+    firstPosition: number
+  } | null>(null)
+  if (data && !staged && !holdingLetter && !restoringWindow && completeResult?.data !== data) {
+    setCompleteResult({ key: queryKey, data, firstPosition })
+  }
+  const rendered =
+    staged || holdingLetter || (restoringWindow && completeResult?.key === queryKey)
+      ? (completeResult?.data ?? previousData)
+      : (data ?? previousData)
+  if (rendered === data) return { rendered, renderedFirstPosition: firstPosition }
+  if (completeResult && rendered === completeResult.data) {
+    return { rendered, renderedFirstPosition: completeResult.firstPosition }
+  }
+  return { rendered, renderedFirstPosition: 0 }
+}
+
 function findLetterLandingCursor(
   edges: LibraryItems['edges'] | undefined,
   letter: string | null,
@@ -366,10 +595,84 @@ function findLetterLandingCursor(
   return (landingEdge ?? fallback)?.cursor ?? null
 }
 
-function appendItemsPage(loaded: LibraryItems, next: LibraryItems): LibraryItems {
+function positionOfFirstLoaded({
+  edges,
+  firstKept,
+  landingPosition,
+  before,
+}: {
+  edges: ReadonlyArray<{ cursor: string }>
+  firstKept: LibraryWindow['firstKept']
+  landingPosition: number
+  before: number
+}) {
+  if (!firstKept) return Math.max(0, landingPosition - before)
+  // A window read again without its first kept title begins at the title that took its place.
+  const keptIndex = Math.max(
+    0,
+    edges.findIndex((edge) => edge.cursor === firstKept.cursor),
+  )
+  return Math.max(0, firstKept.position - keptIndex)
+}
+
+// A window read again after its first kept title left the library begins with the title that
+// followed it, which now holds its place.
+function keptAfterReading(
+  firstKept: LibraryWindow['firstKept'],
+  edges: ReadonlyArray<{ cursor: string }>,
+): LibraryWindow['firstKept'] {
+  if (!firstKept || edges.length === 0) return firstKept
+  if (edges.some((edge) => edge.cursor === firstKept.cursor)) return firstKept
+  return { ...firstKept, cursor: edges[0].cursor }
+}
+
+// A live removal of the first kept title passes its place to the next title still loaded.
+function keptThroughChange(
+  firstKept: LibraryWindow['firstKept'],
+  previous: LibraryItems,
+  next: LibraryItems,
+): LibraryWindow['firstKept'] {
+  if (!firstKept) return firstKept
+  const nextEdges = definedEdges(next.edges)
+  const nextCursors = new Set(nextEdges.map((edge) => edge.cursor))
+  if (nextCursors.has(firstKept.cursor)) return firstKept
+  const previousEdges = definedEdges(previous.edges)
+  const removedAt = previousEdges.findIndex((edge) => edge.cursor === firstKept.cursor)
+  const successor = previousEdges.slice(removedAt + 1).find((edge) => nextCursors.has(edge.cursor))
+  if (!successor) return firstKept
+  const index = nextEdges.findIndex((edge) => edge.cursor === successor.cursor)
+  return {
+    cursor: successor.cursor,
+    position: firstKept.position,
+    after: index > 0 ? nextEdges[index - 1].cursor : firstKept.after,
+  }
+}
+
+// The loaded titles from one cursor through another; null keeps that end as it is.
+function keepItems(
+  loaded: StoredItems,
+  { from, through }: { from: string | null; through: string | null },
+): StoredItems {
+  const edges = loaded.edges
+  const start = from === null ? 0 : edges.findIndex((edge) => edge?.cursor === from)
+  const end =
+    through === null ? edges.length - 1 : edges.findIndex((edge) => edge?.cursor === through)
+  if (start < 0 || end < 0) return loaded
   return {
     ...loaded,
-    edges: [...(loaded.edges ?? []), ...withoutLoadedItems(next.edges, loaded.edges)],
+    edges: edges.slice(start, end + 1),
+    pageInfo: {
+      ...loaded.pageInfo,
+      ...(from !== null && { hasPreviousPage: true, startCursor: from }),
+      ...(through !== null && { hasNextPage: true, endCursor: through }),
+    },
+  }
+}
+
+function appendItemsPage(loaded: StoredItems, next: StoredItems): StoredItems {
+  return {
+    ...loaded,
+    edges: [...loaded.edges, ...withoutLoadedItems(next.edges, loaded.edges)],
     pageInfo: {
       ...loaded.pageInfo,
       hasNextPage: next.pageInfo.hasNextPage,
@@ -378,10 +681,10 @@ function appendItemsPage(loaded: LibraryItems, next: LibraryItems): LibraryItems
   }
 }
 
-function prependItemsPage(loaded: LibraryItems, previous: LibraryItems): LibraryItems {
+function prependItemsPage(loaded: StoredItems, previous: StoredItems): StoredItems {
   return {
     ...loaded,
-    edges: [...withoutLoadedItems(previous.edges, loaded.edges), ...(loaded.edges ?? [])],
+    edges: [...withoutLoadedItems(previous.edges, loaded.edges), ...loaded.edges],
     pageInfo: {
       ...loaded.pageInfo,
       hasPreviousPage: previous.pageInfo.hasPreviousPage,
@@ -391,13 +694,25 @@ function prependItemsPage(loaded: LibraryItems, previous: LibraryItems): Library
 }
 
 // A watch-state change can move an item, so a page can bring back an item already loaded.
-function withoutLoadedItems(page: LibraryItems['edges'], loaded: LibraryItems['edges']) {
-  const loadedIds = new Set(definedEdges(loaded).map((edge) => edge.node.id))
-  return (page ?? []).filter((edge) => !edge?.node || !loadedIds.has(edge.node.id))
+function withoutLoadedItems(page: StoredItems['edges'], loaded: StoredItems['edges']) {
+  const loadedIds = new Set(loaded.map((edge) => edge?.node?.__ref))
+  return page.filter((edge) => !edge?.node || !loadedIds.has(edge.node.__ref))
 }
 
 function neverChanges() {
   return () => {}
+}
+
+// The first page of a query is sized once, so a later change of column count reads the same
+// cached window rather than asking again.
+function useFirstPageSize(queryKey: string, columns: number | null) {
+  const [request, setRequest] = useState<{ query: string; first: number } | null>(null)
+  if (columns !== null && request?.query !== queryKey) {
+    const next = { query: queryKey, first: pageSizeAfter({ columns, end: 0 }) }
+    setRequest(next)
+    return next.first
+  }
+  return request?.query === queryKey ? request.first : null
 }
 
 function usePageFailure(queryKey: string) {

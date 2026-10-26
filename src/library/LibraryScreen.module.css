@@ -52,6 +52,8 @@
   min-height: 0;
   position: relative;
   overflow-y: auto;
+  /* A scrollbar that appears with the first titles must not narrow the columns counted before. */
+  scrollbar-gutter: stable;
   /* LibraryGrid preserves scroll position when prepending; native anchoring would add it twice. */
   overflow-anchor: none;
   padding-right: var(--spacing-8);

@@ -27,6 +27,7 @@ function LibraryWindow({ startLetter }: { startLetter: 'A' | null }) {
     libraryId: LIBRARY,
     sort: { by: 'TITLE', direction: 'ASC' },
     filter: startLetter ? { startLetter } : {},
+    columns: 1,
   })
   return (
     <>

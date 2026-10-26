@@ -13,7 +13,7 @@ export function HomeShell({
   ambient?: boolean
 }) {
   return (
-    <div className={styles.homeShell}>
+    <div className={styles.homeShell} data-testid="home-shell">
       {ambient && <div className={styles.homeAmbient} aria-hidden />}
       {chrome}
       <main className={styles.homeContent}>{children}</main>

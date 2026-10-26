@@ -39,7 +39,7 @@ export function ContentShelf({
           </button>
         </div>
       </div>
-      <div className={styles.track} ref={trackRef}>
+      <div className={styles.track} ref={trackRef} data-testid="shelf-track">
         {children}
       </div>
     </section>

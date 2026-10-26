@@ -477,7 +477,7 @@ describe('LibraryScreen', () => {
     const queriesAfterLoad = queryCount
 
     // The second row tops the grid once the first has scrolled away.
-    const grid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
+    const grid = libraryGrid()
     grid.scrollTop = JSDOM_ROW_HEIGHT
     fireEvent.scroll(grid)
 
@@ -496,6 +496,14 @@ describe('LibraryScreen', () => {
       graphql.query<GraphQLQuery, LibraryPageQueryVariables>(
         'LibraryPage',
         async ({ variables }) => {
+          // The titles before the letter arrive with it; the next page up is the one abandoned.
+          if (variables.before === 'n') {
+            const data = libraryData({
+              edges: [{ cursor: 'm', node: movieNode({ id: 'm', title: 'Middle' }) }],
+            })
+            data.library.items.pageInfo.hasPreviousPage = true
+            return HttpResponse.json({ data })
+          }
           if (variables.before) {
             backwardRequested = true
             await pending
@@ -527,7 +535,7 @@ describe('LibraryScreen', () => {
       <Harness initialSearch={{ by: 'TITLE', direction: 'ASC', letter: 'N' }} />,
     )
     await screen.findByText('Northern')
-    const oldGrid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
+    const oldGrid = libraryGrid()
     const sentinel = oldGrid.querySelector('[data-edge="start"]')!
     const observer = intersectionObserverInstances.find((instance) =>
       instance.observe.mock.calls.some((call) => call[0] === sentinel),
@@ -555,7 +563,7 @@ describe('LibraryScreen', () => {
       vi.useRealTimers()
     }
 
-    const filteredGrid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
+    const filteredGrid = libraryGrid()
     expect(screen.queryByText('Old backfill')).not.toBeInTheDocument()
     expect(filteredGrid.scrollTop).toBe(0)
   })
@@ -600,7 +608,7 @@ describe('LibraryScreen', () => {
     renderWithProviders(<Harness />)
     await waitFor(() => expect(screen.getByText('Beta')).toBeInTheDocument())
 
-    const grid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
+    const grid = libraryGrid()
     const sentinel = grid.querySelector('[data-edge="start"]') as HTMLDivElement
     grid.scrollTop = 50
 
@@ -710,7 +718,7 @@ describe('LibraryScreen', () => {
     await waitFor(() => expect(screen.getByText('Alright')).toBeInTheDocument())
     expect(screen.getByText('Northern Line')).toBeInTheDocument()
     // The prepended Alright row sits above Northern Line, which stays at the top of the grid.
-    const grid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
+    const grid = libraryGrid()
     await waitFor(() => expect(grid.scrollTop).toBe(JSDOM_ROW_HEIGHT))
   })
 
@@ -726,7 +734,7 @@ describe('LibraryScreen', () => {
     expect(first).toHaveFocus()
 
     // Nine rows down, rows 0 to 6 are outside the viewport and its overscan.
-    const grid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
+    const grid = libraryGrid()
     grid.scrollTop = 9 * JSDOM_ROW_HEIGHT
     fireEvent.scroll(grid)
 
@@ -831,7 +839,7 @@ describe('LibraryScreen', () => {
     expect(firstRow).toHaveAttribute('aria-rowindex', '1')
     expect(within(firstRow).getAllByRole('gridcell')).toHaveLength(2)
 
-    const scroller = document.querySelector('[class*="_grid_"]') as HTMLDivElement
+    const scroller = libraryGrid()
     scroller.scrollTop = 9 * JSDOM_ROW_HEIGHT
     fireEvent.scroll(scroller)
 
@@ -884,7 +892,7 @@ describe('LibraryScreen', () => {
 
     // The grid narrows to one column; every observer of it hears after layout, before paint.
     columns.set(1)
-    const grid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
+    const grid = libraryGrid()
     const observers = resizeObserverInstances.filter((instance) =>
       instance.observe.mock.calls.some((call) => call[0] === grid),
     )
@@ -917,7 +925,7 @@ describe('LibraryScreen', () => {
     expect(card).toHaveFocus()
 
     columns.set(1)
-    const grid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
+    const grid = libraryGrid()
     const resized = {
       target: grid,
       borderBoxSize: [{ inlineSize: 400, blockSize: JSDOM_GRID_HEIGHT }],
@@ -960,7 +968,7 @@ describe('LibraryScreen', () => {
     expect(next).toHaveFocus()
 
     columns.set(1)
-    const grid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
+    const grid = libraryGrid()
     const resized = {
       target: grid,
       borderBoxSize: [{ inlineSize: 400, blockSize: JSDOM_GRID_HEIGHT }],
@@ -1025,7 +1033,7 @@ describe('LibraryScreen', () => {
     const { user } = renderWithProviders(<Harness />)
     const first = await screen.findByRole('link', { name: /Title 00/ })
     act(() => first.focus())
-    const grid = document.querySelector('[class*="_grid_"]') as HTMLDivElement
+    const grid = libraryGrid()
     grid.scrollTop = 9 * JSDOM_ROW_HEIGHT
     fireEvent.scroll(grid)
     await screen.findByRole('link', { name: /Title 09/ })
@@ -1065,3 +1073,8 @@ describe('LibraryScreen', () => {
     expect(claimed).toEqual(['Home', 'ArrowDown', 'End', 'End'])
   })
 })
+
+// The grid's scroll container, found by the id its scroll position is restored under.
+function libraryGrid() {
+  return document.querySelector('[data-scroll-restoration-id="library-grid"]') as HTMLDivElement
+}

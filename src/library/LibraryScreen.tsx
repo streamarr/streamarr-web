@@ -1,4 +1,4 @@
-import { Button, Center, Group, Loader, Text, Title } from '@mantine/core'
+import { Button, Group, Text, Title } from '@mantine/core'
 import { useElementScrollRestoration, useLocation } from '@tanstack/react-router'
 import { useStore } from '@tanstack/react-store'
 import { Store } from '@tanstack/store'
@@ -12,11 +12,17 @@ import type {
   SortDirection,
 } from '../graphql/generated/graphql'
 import { hasInvalidInputAt, requestFailureMessage } from '../graphql/requestErrors'
-import { AlphabetRail, type SelectionInput } from '../media/AlphabetRail'
+import { AlphabetRail, AlphabetRailPlaceholder, type SelectionInput } from '../media/AlphabetRail'
 import { formatRelativeTime } from '../media/formatting'
 import { FailurePanel, FailureRow } from '../ui/Failure'
 import { FilterBar, type WatchStatusFilter } from './FilterBar'
-import { LibraryGrid, type JumpDirection, type LandingRepeat, type SlidePhase } from './LibraryGrid'
+import {
+  LibraryGrid,
+  LibraryGridPlaceholder,
+  type JumpDirection,
+  type LandingRepeat,
+  type SlidePhase,
+} from './LibraryGrid'
 import styles from './LibraryScreen.module.css'
 import { SortMenu } from './SortMenu'
 import { useLibraryItems } from './useLibraryItems'
@@ -45,6 +51,7 @@ export function LibraryScreen({
     watchStatus: search.watchStatus,
     startLetter: canSeekByLetter ? (search.letter as MediaFilter['startLetter']) : undefined,
   }
+  const [columns, setColumns] = useState<number | null>(null)
 
   const {
     removed,
@@ -57,11 +64,13 @@ export function LibraryScreen({
     edges,
     hasNextPage,
     hasPreviousPage,
+    firstPosition,
     loadMore,
     loadPrevious,
+    unloadFarFrom,
     retry,
     landing,
-  } = useLibraryItems({ libraryId, sort, filter })
+  } = useLibraryItems({ libraryId, sort, filter, columns })
 
   const locationKey = useLocation({ select: (location) => location.state.__TSR_key })
   const scrollEntry = useElementScrollRestoration({ id: 'library-grid' })
@@ -152,10 +161,14 @@ export function LibraryScreen({
   }
 
   if (loading) {
+    // Laid out as the loaded screen's body, so the columns counted here are the ones it fills.
     return (
-      <Center h={200}>
-        <Loader />
-      </Center>
+      <div className={styles.libraryScreen}>
+        <div className={styles.body}>
+          <LibraryGridPlaceholder onColumnsChange={setColumns} />
+          {canSeekByLetter && <AlphabetRailPlaceholder />}
+        </div>
+      </div>
     )
   }
 
@@ -209,11 +222,13 @@ export function LibraryScreen({
         ) : (
           <LibraryGrid
             edges={edges}
+            firstPosition={firstPosition}
             trackingLetter={trackingLetter}
             hasPreviousPage={hasPreviousPage}
             hasNextPage={hasNextPage}
             loadMore={loadMore}
             loadPrevious={loadPrevious}
+            unloadFarFrom={unloadFarFrom}
             landing={landing}
             locationKey={locationKey}
             restoredScrollY={restoredScrollY}
@@ -228,6 +243,7 @@ export function LibraryScreen({
               if (completed === 'exit') setGridHasLeft(true)
               if (completed === 'enter') beginJump(null)
             }}
+            onColumnsChange={setColumns}
           />
         )}
         {canSeekByLetter && (

@@ -66,7 +66,7 @@ test.beforeEach(async ({ page, request }) => {
 })
 
 test('the billboard tagline sits upright under the title', async ({ page }) => {
-  const hero = page.locator('[class*="_hero_"]')
+  const hero = page.getByTestId('billboard-hero')
   const tagline = hero.getByText('An unexpected adventure.', { exact: true })
   await expect(tagline).toHaveCSS('font-style', 'normal')
   const title = await hero.getByRole('heading', { level: 1, name: FEATURED_TITLE }).boundingBox()
@@ -81,7 +81,7 @@ test('continue-watching cards fit the shelf and grow with the available width', 
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Continue watching' }) })
   const card = shelf.getByText(FEATURED_TITLE, { exact: true }).locator('..')
-  const track = shelf.locator('[class*="_track_"]')
+  const track = shelf.getByTestId('shelf-track')
   const phoneWidth = await card.evaluate((element) => element.clientWidth)
   const shelfWidth = await track.evaluate((element) => element.clientWidth)
   expect(phoneWidth).toBeLessThanOrEqual(shelfWidth)
@@ -96,7 +96,7 @@ test('continue-watching cards fit the shelf and grow with the available width', 
   expect(await unavailableCard.evaluate((element) => element.clientWidth)).toBe(
     await card.evaluate((element) => element.clientWidth),
   )
-  const art = await card.locator('[class*="_stillArt_"]').boundingBox()
+  const art = await card.getByTestId('still-art').boundingBox()
   expect(art!.width / art!.height).toBeCloseTo(16 / 9, 2)
 })
 
@@ -107,7 +107,7 @@ test('shelf cards keep a readable minimum on narrow screens without overflowing 
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Continue watching' }) })
   const card = shelf.getByText(FEATURED_TITLE, { exact: true }).locator('..')
-  const track = shelf.locator('[class*="_track_"]')
+  const track = shelf.getByTestId('shelf-track')
   for (const width of [320, 280]) {
     await page.setViewportSize({ width, height: 568 })
     const rootFontSize = await page.evaluate(() =>
@@ -131,7 +131,7 @@ test('shelf arrows have comfortable minimum target sizes', async ({ page }) => {
 test('the hero grows for its content and adapts to the viewport without clipping text', async ({
   page,
 }, testInfo) => {
-  const hero = page.locator('[class*="_hero_"]')
+  const hero = page.getByTestId('billboard-hero')
   for (const viewport of [
     { width: 375, height: 667 },
     { width: 812, height: 375 },
@@ -170,7 +170,7 @@ test('recent libraries keep readable posters and size their scroll panels to the
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: /^Recently added in / }) })
   const firstSection = sections.first()
-  const body = firstSection.locator('[class*="_body_"]')
+  const body = firstSection.getByTestId('section-body')
   const phoneBodyHeight = await body.evaluate((element) => element.clientHeight)
   expect(phoneBodyHeight).toBeLessThan(667 * 0.8)
   const firstPoster = firstSection.getByText('Movie 10', { exact: true }).locator('..')
@@ -200,7 +200,7 @@ test('recent-content panels keep enough height for a poster on short screens', a
   const section = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Recently added in Movies', exact: true }) })
-  const body = section.locator('[class*="_body_"]')
+  const body = section.getByTestId('section-body')
   const posterHeight = await section
     .getByText('Movie 10', { exact: true })
     .locator('..')

@@ -48,7 +48,7 @@ export default defineConfig(
   },
   {
     // tsconfig.e2e.json owns these; the project service only discovers tsconfig.json.
-    files: ['e2e/**/*.ts', 'playwright.config.ts', 'codegen.ts'],
+    files: ['e2e/**/*.ts', 'playwright.config.ts', 'playwright.replay.config.ts', 'codegen.ts'],
     languageOptions: {
       parserOptions: { projectService: false, project: './tsconfig.e2e.json' },
     },
@@ -62,6 +62,24 @@ export default defineConfig(
     files: ['**/*.test.{ts,tsx}'],
     // Asserting on a spy reads the method without calling it: expect(scope.skipWaiting).
     rules: { '@typescript-eslint/unbound-method': 'off' },
+  },
+  {
+    // CSS Modules generate class names from file and class names, so a selector on them breaks
+    // when either is renamed. Strings are matched, so selectors inside page.evaluate count too.
+    files: ['e2e/**/*.ts', 'src/**/*.test.{ts,tsx}'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'Literal[value=/\\[class[*^$~|]?=/]',
+          message: 'Find elements by role, label, text or data-testid, not by class names.',
+        },
+        {
+          selector: 'TemplateElement[value.raw=/\\[class[*^$~|]?=/]',
+          message: 'Find elements by role, label, text or data-testid, not by class names.',
+        },
+      ],
+    },
   },
   {
     files: ['scripts/**/*.mjs', 'e2e/**/*.mjs', '*.config.{js,cjs,ts}', 'codegen.ts'],
