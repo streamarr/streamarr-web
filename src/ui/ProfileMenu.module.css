@@ -16,18 +16,31 @@
 
 .profileChipOpen {
   background: var(--ambient-selected, var(--selection-active));
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--indicator-active-track) 50%, transparent);
+  box-shadow: 0 0 0 var(--profile-chip-ring)
+    color-mix(in srgb, var(--indicator-active-track) 50%, transparent);
 }
 
 .profileMenuAnchor {
-  --profile-menu-gap: 8px;
+  --profile-chip-ring: 2px;
   --profile-menu-border: 1px;
+  --profile-menu-radius: var(--radius-xl);
   --profile-menu-notch-size: 13px;
+  --profile-menu-notch-clearance: 4px;
+  /* Half the rotated notch's diagonal: how far it reaches from its centre. 0.7071 is 1/√2, written
+     as a number because CSS sqrt() is newer than the build's browser targets. */
+  --profile-menu-notch-reach: calc(var(--profile-menu-notch-size) * 0.7071);
+  /* Leaves the notch's tip clear of the open chip's ring. */
+  --profile-menu-gap: calc(
+    var(--profile-chip-ring) + var(--profile-menu-notch-clearance) +
+      var(--profile-menu-notch-reach) - var(--profile-menu-border) / 2
+  );
   position: relative;
 
+  /* Overhangs the chip so the notch lands where the menu's top border runs straight, clear of the
+     corner's curve. */
   & .profileMenu {
     position: absolute;
-    right: 0;
+    right: calc(50% - var(--profile-menu-radius) - var(--profile-menu-notch-reach));
     top: calc(100% + var(--profile-menu-gap));
     z-index: 20;
   }
@@ -58,7 +71,7 @@
 .profileMenu {
   width: 250px;
   border: var(--profile-menu-border) solid var(--color-alpha-16);
-  border-radius: var(--radius-xl);
+  border-radius: var(--profile-menu-radius);
   /* Solid on purpose: a blurred translucency stalls Chromium's compositor during captures. */
   background: linear-gradient(var(--color-chrome), var(--color-chrome)), var(--color-ground);
   padding: 10px;
