@@ -5,8 +5,8 @@ import {
   LibraryStatusChangedDocument,
   type LibraryFieldsFragment,
 } from '../graphql/generated/graphql'
-import { watchLiveChanges } from '../graphql/liveChanges'
-import { addToLibraryLists, removeFromLibraryLists } from './libraryLists'
+import { stopTogether, watchLiveChanges } from '../graphql/liveChanges'
+import { addToLibraryLists, removeFromLibraryLists } from '../graphql/libraryLists'
 
 /**
  * Applies every Library's status changes, additions and removals to the cache until the returned
@@ -18,14 +18,16 @@ export function subscribeToLibraryChanges(client: ApolloClient): () => void {
   // The server orders no changes across fields: a change committed before a removal can arrive
   // after it. A Library id never returns once removed.
   const removedIds = new Set<string>()
-  const keep = (library: LibraryFieldsFragment | null) => {
+  const addUnlessRemoved = (library: LibraryFieldsFragment | null) => {
     if (library && !removedIds.has(library.id)) addToLibraryLists(client.cache, library)
   }
-  const stops = [
+  return stopTogether([
     watchLiveChanges(client, LibraryStatusChangedDocument, {
-      apply: (data) => keep(data.libraryStatusChanged),
+      apply: (data) => addUnlessRemoved(data.libraryStatusChanged),
     }),
-    watchLiveChanges(client, LibraryAddedDocument, { apply: (data) => keep(data.libraryAdded) }),
+    watchLiveChanges(client, LibraryAddedDocument, {
+      apply: (data) => addUnlessRemoved(data.libraryAdded),
+    }),
     watchLiveChanges(client, LibraryRemovedDocument, {
       apply: ({ libraryRemoved }) => {
         if (!libraryRemoved) return
@@ -33,8 +35,5 @@ export function subscribeToLibraryChanges(client: ApolloClient): () => void {
         removeFromLibraryLists(client.cache, libraryRemoved.libraryId)
       },
     }),
-  ]
-  return () => {
-    for (const stop of stops) stop()
-  }
+  ])
 }

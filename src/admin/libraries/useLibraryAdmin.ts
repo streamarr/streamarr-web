@@ -29,10 +29,10 @@ import {
   type StopLibraryScanMutation,
 } from '../../graphql/generated/graphql'
 import { extractAuthContext, isForbidden } from '../../graphql/errorRouting'
-import { watchLiveChanges } from '../../graphql/liveChanges'
+import { stopTogether, watchLiveChanges } from '../../graphql/liveChanges'
 import { isReading } from '../../graphql/readAgain'
 import { userErrorMessage } from '../../graphql/userErrors'
-import { addToLibraryLists, removeFromLibraryLists } from '../../media/libraryLists'
+import { addToLibraryLists, removeFromLibraryLists } from '../../graphql/libraryLists'
 
 // Starts and removal share one refusal union; each stop adds its own refusal for a run that is
 // not in progress.
@@ -110,7 +110,7 @@ function useLiveInventoryChanges(): {
       countLiveChange(client.cache, removal.libraryId)
       dropLibrary(client.cache, removal.libraryId)
     }
-    const unwatch = [
+    return stopTogether([
       watchLiveChanges(client, LibraryStatusChangedDocument, {
         apply: (data) => holdFrom(data.libraryStatusChanged),
         onStop,
@@ -123,10 +123,7 @@ function useLiveInventoryChanges(): {
         apply: (data) => dropFrom(data.libraryRemoved),
         onStop,
       }),
-    ]
-    return () => {
-      for (const stopWatching of unwatch) stopWatching()
-    }
+    ])
   }, [client])
   return { stop, removedIds }
 }

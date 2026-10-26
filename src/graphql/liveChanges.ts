@@ -30,3 +30,10 @@ export function watchLiveChanges<TData>(
     setTimeout(() => subscription.unsubscribe())
   }
 }
+
+/** Combines the stop functions of several live changes into one. */
+export function stopTogether(stops: readonly (() => void)[]): () => void {
+  return () => {
+    for (const stop of stops) stop()
+  }
+}

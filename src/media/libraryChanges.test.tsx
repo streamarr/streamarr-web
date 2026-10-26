@@ -91,7 +91,7 @@ function statusChanged(library: LibraryFieldsFragment) {
   return { data: { libraryStatusChanged: library } }
 }
 
-describe('live Libraries', () => {
+describe('subscribeToLibraryChanges', () => {
   it('shouldShowEachStatusTheServerPushesWhileTheLibraryIsOpen', async () => {
     const state = serve()
     await openMovies(state)
