@@ -24,14 +24,14 @@ export function ProfileMenu({
   onSignedOut,
   onUnauthenticated,
   onServerSettings,
-}: {
+}: Readonly<{
   me: Me
   onPinRequired: (profileId: string) => void
   onSignedOut: () => void
   onUnauthenticated: () => void
   /** Opens the integrated settings route; only exposed for eligible account sessions. */
   onServerSettings?: () => void
-}) {
+}>) {
   const { selectProfile } = useAuth()
   const signOut = useSignOut(onSignedOut)
   const [opened, setOpened] = useState(false)

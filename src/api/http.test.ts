@@ -115,3 +115,15 @@ describe('http requests', () => {
     })
   })
 })
+
+describe('AuthApiError', () => {
+  it('shouldDescribeTheStatusAndCodeWhenTheServerSentACode', () => {
+    expect(new AuthApiError(409, 'ALREADY_DECIDED').message).toBe(
+      'Auth request failed (409: ALREADY_DECIDED)',
+    )
+  })
+
+  it('shouldDescribeTheStatusAloneWhenTheServerSentNoCode', () => {
+    expect(new AuthApiError(502, null).message).toBe('Auth request failed (502)')
+  })
+})

@@ -1,6 +1,6 @@
 import { Button, Group, Text, Title } from '@mantine/core'
 import { useElementScrollRestoration, useLocation } from '@tanstack/react-router'
-import { useStore } from '@tanstack/react-store'
+import { useSelector } from '@tanstack/react-store'
 import { Store } from '@tanstack/store'
 import { useReducedMotion } from 'motion/react'
 import { useEffect, useState } from 'react'
@@ -275,7 +275,7 @@ function LibraryRail({
   pending: boolean
   onSelect: (letter: string | null, input: SelectionInput) => void
 }>) {
-  const visibleLetter = useStore(visibleLetterStore, (current) => current)
+  const visibleLetter = useSelector(visibleLetterStore)
   return (
     <AlphabetRail
       index={index}

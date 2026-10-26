@@ -35,13 +35,14 @@ if (new Set(files.map((path) => basename(path))).size !== files.length) {
   )
 }
 
+const schemas = await Promise.all(files.map((path) => fetchBytes(rawUrl(pin, path))))
+
 // Start from an empty directory so files the server removed disappear here too.
 await rm(target, { recursive: true, force: true })
 await mkdir(target, { recursive: true })
-
-for (const path of files) {
-  await writeFile(join(target, basename(path)), await fetchBytes(rawUrl(pin, path)))
-}
+await Promise.all(
+  files.map((path, index) => writeFile(join(target, basename(path)), schemas[index])),
+)
 
 await writeFile(
   join(target, 'PROVENANCE'),

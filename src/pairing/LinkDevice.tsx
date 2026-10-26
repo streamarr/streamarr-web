@@ -27,10 +27,10 @@ const SIGNED_IN_STATUSES = new Set(['APPROVED', 'CONSUMED'])
 export function LinkDevice({
   initialCode = '',
   onUnauthenticated,
-}: {
+}: Readonly<{
   initialCode?: string
   onUnauthenticated?: (code: string) => void
-}) {
+}>) {
   const [code, setCode] = useState(normalizeCode(initialCode))
   const [pairing, setPairing] = useState<PairingRequest | null>(null)
   const [outcome, setOutcome] = useState<string | null>(null)
@@ -51,8 +51,8 @@ export function LinkDevice({
     setBusy(true)
     try {
       showRequest(await lookupPairingRequest(fullCode))
-    } catch (caught) {
-      refuseLookup(caught, fullCode)
+    } catch (lookupError) {
+      refuseLookup(lookupError, fullCode)
     } finally {
       setBusy(false)
     }
@@ -80,8 +80,8 @@ export function LinkDevice({
     setBusy(true)
     try {
       await sendDecision(decision, householdId)
-    } catch (caught) {
-      await handleDecisionFailure(caught)
+    } catch (decisionError) {
+      await handleDecisionFailure(decisionError)
     } finally {
       setBusy(false)
     }
@@ -107,8 +107,8 @@ export function LinkDevice({
   async function showAuthoritativeOutcome() {
     try {
       showRequest(await lookupPairingRequest(pairing!.userCode))
-    } catch (lookupFailed) {
-      setError(messageFor(lookupFailed))
+    } catch (lookupError) {
+      setError(messageFor(lookupError))
     }
   }
 
@@ -193,7 +193,7 @@ export function LinkDevice({
   )
 }
 
-function OutcomeNotice({ status }: { status: string }) {
+function OutcomeNotice({ status }: Readonly<{ status: string }>) {
   return (
     <Alert color={SIGNED_IN_STATUSES.has(status) ? 'green' : 'red'}>
       {OUTCOME_MESSAGES[status] ?? UNKNOWN_OUTCOME_MESSAGE}
@@ -221,12 +221,12 @@ function ConfirmDevice({
   busy,
   onDecide,
   onCancel,
-}: {
+}: Readonly<{
   pairing: PairingRequest
   busy: boolean
   onDecide: (decision: PairingDecision, householdId?: string) => void
   onCancel: () => void
-}) {
+}>) {
   const [householdId, setHouseholdId] = useState(preselectedHousehold(pairing.households))
 
   return (

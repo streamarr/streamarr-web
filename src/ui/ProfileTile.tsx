@@ -9,7 +9,7 @@ export function ProfileTile({
   paletteIndex = 0,
   busy = false,
   onSelect,
-}: {
+}: Readonly<{
   name: string
   kid?: boolean
   /** Selecting detours through the PIN gate. */
@@ -19,7 +19,7 @@ export function ProfileTile({
   paletteIndex?: number
   busy?: boolean
   onSelect: () => void
-}) {
+}>) {
   return (
     <button
       type="button"
@@ -48,7 +48,10 @@ function tileLabel(name: string, locked: boolean, pinProtected: boolean) {
   return name
 }
 
-export function PinGateAvatar({ name, paletteIndex = 0 }: { name: string; paletteIndex?: number }) {
+export function PinGateAvatar({
+  name,
+  paletteIndex = 0,
+}: Readonly<{ name: string; paletteIndex?: number }>) {
   return (
     <span className={styles.pinGateAvatar} style={{ background: tileColor(paletteIndex) }}>
       {initials(name)}

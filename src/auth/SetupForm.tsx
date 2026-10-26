@@ -8,7 +8,9 @@ const ALREADY_SET_UP_MESSAGE = 'This server has already been set up.'
 const SIGN_IN_INSTEAD = 'Sign in instead.'
 const FALLBACK_MESSAGE = 'Setup failed. Please try again.'
 
-export function SetupForm({ onAuthenticated }: { onAuthenticated: (tokens: AuthTokens) => void }) {
+export function SetupForm({
+  onAuthenticated,
+}: Readonly<{ onAuthenticated: (tokens: AuthTokens) => void }>) {
   const { setup } = useAuth()
   const [fields, setFields] = useState({
     email: '',
@@ -35,8 +37,8 @@ export function SetupForm({ onAuthenticated }: { onAuthenticated: (tokens: AuthT
     setSubmitting(true)
     try {
       onAuthenticated(await setup(fields))
-    } catch (caught) {
-      setError(refusalMessage(caught))
+    } catch (setupError) {
+      setError(refusalMessage(setupError))
     } finally {
       setSubmitting(false)
     }

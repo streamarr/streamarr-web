@@ -64,7 +64,7 @@ test('sign-in fits a phone', async ({ page }) => {
 
 test('the pairing code fits a phone', async ({ page }) => {
   await navigateUnderServiceWorkerControl(page, '/link')
-  const cells = page.locator('[data-part="cell"]')
+  const cells = page.getByTestId('code-input-cell')
   await expect(cells).toHaveCount(8, { timeout: 15_000 })
 
   await expectNoSidewaysScroll(page)

@@ -16,7 +16,7 @@ export function CodeInput({
   settled = false,
   autoFocus = false,
   testId,
-}: {
+}: Readonly<{
   label: string
   value: string
   onChange: (next: string) => void
@@ -33,7 +33,7 @@ export function CodeInput({
   settled?: boolean
   autoFocus?: boolean
   testId?: string
-}) {
+}>) {
   const id = useId()
   const [focused, setFocused] = useState(false)
   const max = length ?? 8
@@ -65,31 +65,53 @@ export function CodeInput({
     }
   }
 
-  const cells = Array.from({ length: shown }, (_, index) => {
-    const filled = index < value.length
+  function glyphAt(position: number) {
+    if (position >= value.length) {
+      return ' '
+    }
+    return secret ? '•' : value[position]
+  }
+
+  function cellAt(position: number) {
+    const filled = position < value.length
     // The cursor marks where the next digit lands, and only while a visible box awaits one.
     const active =
-      focused && !settled && value.length < max && index === value.length && index < shown
+      focused && !settled && value.length < max && position === value.length && position < shown
     return (
       <div
-        key={index}
-        className={`${styles.codeInputCell}${active ? ` ${styles.codeInputCellActive}` : ''}`}
-        data-part="cell"
+        key={position}
+        className={
+          active ? `${styles.codeInputCell} ${styles.codeInputCellActive}` : styles.codeInputCell
+        }
+        data-testid="code-input-cell"
         aria-hidden
       >
-        {filled ? (secret ? '•' : value[index]) : ' '}
-        {active && !filled ? <span className={styles.codeInputCaret} /> : null}
+        {glyphAt(position)}
+        {active && !filled ? (
+          <span className={styles.codeInputCaret} data-testid="code-input-caret" />
+        ) : null}
       </div>
     )
-  })
+  }
 
-  const withSeparators = groupSize
-    ? cells.flatMap((cell, index) =>
-        index > 0 && index % groupSize === 0
-          ? [<div key={`sep-${index}`} className={styles.codeInputSeparator} aria-hidden />, cell]
-          : [cell],
-      )
-    : cells
+  function startsGroup(position: number) {
+    return groupSize !== undefined && position > 0 && position % groupSize === 0
+  }
+
+  const positions = Array.from({ length: shown }, (_, position) => position)
+  const boxes = positions.flatMap((position) =>
+    startsGroup(position)
+      ? [
+          <div
+            key={`separator-${position}`}
+            className={styles.codeInputSeparator}
+            data-testid="code-input-separator"
+            aria-hidden
+          />,
+          cellAt(position),
+        ]
+      : [cellAt(position)],
+  )
 
   return (
     <div
@@ -101,7 +123,7 @@ export function CodeInput({
         .filter(Boolean)
         .join(' ')}
     >
-      {withSeparators}
+      {boxes}
       <input
         id={id}
         className={styles.codeInputField}
