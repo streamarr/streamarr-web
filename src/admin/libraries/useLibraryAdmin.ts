@@ -27,7 +27,7 @@ import {
 import { extractAuthContext, isForbidden } from '../../graphql/errorRouting'
 import { isReading } from '../../graphql/readAgain'
 import { userErrorMessage } from '../../graphql/userErrors'
-import { subscribeToLibraryChanges } from '../../media/libraryChanges'
+import { subscribeToAdministeredLibraryChanges } from '../../media/libraryChanges'
 import { addToLibraryLists, removeFromLibraryLists } from '../../graphql/libraryLists'
 
 // Starts and removal share one refusal union; each stop adds its own refusal for a run that is
@@ -89,7 +89,7 @@ function useLiveInventoryChanges(): LiveInventoryStop | null {
   )
   useEffect(
     () =>
-      subscribeToLibraryChanges(client, {
+      subscribeToAdministeredLibraryChanges(client, {
         onChange: (libraryId) => countLiveChange(client.cache, libraryId),
         onRemoved: (libraryId) => evictLibrary(client.cache, libraryId),
         onStop: (error) => setStop(isForbidden(error) ? 'forbidden' : 'failed'),

@@ -18,43 +18,82 @@ export interface LibraryChangeListener {
 }
 
 /**
- * Applies every Library's status changes, additions and removals to the cache until the returned
- * function runs. Normalization carries a Library's status, scan times and name to every view of
- * it; an added Library joins each cached Library list once, and a removed one leaves them, for
- * every view of the same cache. A refusal or a normal end stops the changes; the views keep what
- * they last read.
+ * Applies every Library's additions and removals to the cache until the returned function runs:
+ * an added Library joins each cached Library list once, and a removed one leaves them, for every
+ * view of the same cache. Every selected Profile may receive these changes. A refusal or a normal
+ * end stops the changes; the views keep what they last read.
  */
 export function subscribeToLibraryChanges(
   client: ApolloClient,
-  { onChange, onRemoved, onStop }: LibraryChangeListener = {},
+  listener: LibraryChangeListener = {},
 ): () => void {
-  const { cache } = client
-  const applyLibrary = (library: LibraryFieldsFragment | null) => {
-    if (!library) return
-    onChange?.(library.id)
-    addToLibraryLists(cache, library)
-  }
-  const applyRemoval = (removal: { libraryId: string } | null) => {
-    if (!removal) return
-    onChange?.(removal.libraryId)
-    removeFromLibraryLists(cache, removal.libraryId)
-    onRemoved?.(removal.libraryId)
-  }
+  const changes = libraryChangeAppliers(client, listener)
   const stops = [
-    subscribeToLibraryChange(client, LibraryStatusChangedDocument, {
-      apply: (data) => applyLibrary(data.libraryStatusChanged),
-      onStop,
-    }),
     subscribeToLibraryChange(client, LibraryAddedDocument, {
-      apply: (data) => applyLibrary(data.libraryAdded),
-      onStop,
+      apply: (data) => changes.applyLibrary(data.libraryAdded),
+      onStop: listener.onStop,
     }),
-    subscribeToLibraryChange(client, LibraryRemovedDocument, {
-      apply: (data) => applyRemoval(data.libraryRemoved),
-      onStop,
-    }),
+    subscribeToLibraryRemovals(client, changes, listener),
   ]
   return () => stops.forEach((stop) => stop())
+}
+
+/**
+ * Applies every Library's status changes, additions and removals to the cache until the returned
+ * function runs. Only a session that may administer the server (`canManageServer`) may receive
+ * status changes. Normalization carries a Library's status, scan times and name to every view of
+ * it; additions and removals reach each cached Library list as `subscribeToLibraryChanges` says.
+ */
+export function subscribeToAdministeredLibraryChanges(
+  client: ApolloClient,
+  listener: LibraryChangeListener = {},
+): () => void {
+  const changes = libraryChangeAppliers(client, listener)
+  const stops = [
+    subscribeToLibraryChange(client, LibraryStatusChangedDocument, {
+      apply: (data) => changes.applyLibrary(data.libraryStatusChanged),
+      onStop: listener.onStop,
+    }),
+    subscribeToLibraryChange(client, LibraryAddedDocument, {
+      apply: (data) => changes.applyLibrary(data.libraryAdded),
+      onStop: listener.onStop,
+    }),
+    subscribeToLibraryRemovals(client, changes, listener),
+  ]
+  return () => stops.forEach((stop) => stop())
+}
+
+type LibraryChangeAppliers = ReturnType<typeof libraryChangeAppliers>
+
+function libraryChangeAppliers(
+  client: ApolloClient,
+  { onChange, onRemoved }: LibraryChangeListener,
+) {
+  const { cache } = client
+  return {
+    applyLibrary(library: LibraryFieldsFragment | null) {
+      if (!library) return
+      onChange?.(library.id)
+      addToLibraryLists(cache, library)
+    },
+    applyRemoval(removal: { libraryId: string } | null) {
+      if (!removal) return
+      onChange?.(removal.libraryId)
+      removeFromLibraryLists(cache, removal.libraryId)
+      onRemoved?.(removal.libraryId)
+    },
+  }
+}
+
+function subscribeToLibraryRemovals(
+  client: ApolloClient,
+  changes: LibraryChangeAppliers,
+  { onStop }: LibraryChangeListener,
+): () => void {
+  return subscribeToLibraryChange(client, LibraryRemovedDocument, {
+    apply: (data) => changes.applyRemoval(data.libraryRemoved),
+    onStop,
+  })
 }
 
 /**

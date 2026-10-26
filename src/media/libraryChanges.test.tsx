@@ -10,6 +10,11 @@ import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
 
 const VIEWER = meFixture({ scope: 'profile', profiles: [profileFixture({ selected: true })] })
+const VIEWING_ADMIN = meFixture({
+  scope: 'profile',
+  serverAdmin: true,
+  profiles: [profileFixture({ selected: true })],
+})
 
 const MOVIES: LibraryFieldsFragment = {
   __typename: 'Library',
@@ -60,14 +65,14 @@ const NO_ITEMS = {
 
 // Answers every read with the Libraries the server holds now, which a test changes before it
 // publishes a change, and counts the reads by operation.
-function serve(libraries = [MOVIES]) {
+function serve(libraries = [MOVIES], me = VIEWER) {
   const state = {
     libraries,
     reads: { Libraries: 0, LibraryPage: 0 },
     socket: serveGraphqlSocket(),
   }
   server.use(
-    graphql.query('Me', () => HttpResponse.json({ data: { me: VIEWER } })),
+    graphql.query('Me', () => HttpResponse.json({ data: { me } })),
     graphql.query('Libraries', () => {
       state.reads.Libraries++
       return HttpResponse.json({ data: { libraries: state.libraries } })
@@ -93,12 +98,6 @@ function serve(libraries = [MOVIES]) {
 
 type Served = ReturnType<typeof serve>
 
-async function openMovies(state: Served) {
-  renderAppAt(`/library/${MOVIES.id}`)
-  await screen.findByRole('heading', { name: 'Movies' })
-  await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
-}
-
 async function openHome(state: Served) {
   renderAppAt('/')
   const nav = await screen.findByRole('navigation', { name: 'Primary' })
@@ -110,19 +109,38 @@ function topBar() {
   return screen.getByRole('navigation', { name: 'Primary' })
 }
 
-function statusChanged(library: LibraryFieldsFragment) {
-  return { data: { libraryStatusChanged: library } }
+function libraryOperations(state: Served) {
+  return state.socket.state.subscribes.filter((name) => name.startsWith('Library')).sort()
 }
 
 describe('subscribeToLibraryChanges', () => {
-  it('shouldShowAPushedNameInTheTopBarAndTheLibraryHeader', async () => {
-    const state = serve()
-    await openMovies(state)
+  it.each([
+    ['AProfileWithoutServerAdministration', VIEWER],
+    ['AServerAdminsDeviceBoundSession', { ...VIEWING_ADMIN, deviceBound: true }],
+  ])('shouldWatchOnlyAdditionsAndRemovalsFor%s', async (_viewer, me) => {
+    const state = serve([MOVIES], me)
 
-    state.socket.publish('LibraryStatusChanged', statusChanged({ ...MOVIES, name: 'Films' }))
+    await openHome(state)
 
-    expect(await screen.findByRole('heading', { name: 'Films' })).toBeInTheDocument()
-    expect(within(topBar()).getByRole('link', { name: 'Films' })).toBeInTheDocument()
+    await waitFor(() => expect(state.socket.isLive('LibraryAdded')).toBe(true))
+    expect(libraryOperations(state)).toEqual(['LibraryAdded', 'LibraryRemoved'])
+  })
+
+  it('shouldShowAPushedNameInTheTopBarForAServerAdmin', async () => {
+    const state = serve([MOVIES], VIEWING_ADMIN)
+    await openHome(state)
+    await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+    expect(libraryOperations(state)).toEqual([
+      'LibraryAdded',
+      'LibraryRemoved',
+      'LibraryStatusChanged',
+    ])
+
+    state.socket.publish('LibraryStatusChanged', {
+      data: { libraryStatusChanged: { ...MOVIES, name: 'Films' } },
+    })
+
+    expect(await within(topBar()).findByRole('link', { name: 'Films' })).toBeInTheDocument()
   })
 
   it('shouldAddAPushedLibraryToTheTopBarOnceWhenItArrivesTwice', async () => {

@@ -9,8 +9,12 @@ import { extractAuthContext } from '../graphql/errorRouting'
 import { requestFailureMessage } from '../graphql/requestErrors'
 import { readActiveQueriesAgain } from '../graphql/readAgain'
 import { installRevalidation } from '../graphql/revalidation'
+import { canManageServer } from '../admin/access'
 import { useMe } from '../identity/useMe'
-import { subscribeToLibraryChanges } from '../media/libraryChanges'
+import {
+  subscribeToAdministeredLibraryChanges,
+  subscribeToLibraryChanges,
+} from '../media/libraryChanges'
 import { subscribeToWatchStateChanges } from '../media/watchStateChanges'
 import { FailurePanel } from '../ui/Failure'
 
@@ -62,14 +66,22 @@ function Authenticated() {
   )
   // Watch state belongs to a Profile, and Library changes require one, so the changes follow
   // whichever Profile is selected. A store reset refetches the selection, and the earlier value
-  // holds until the next one arrives.
+  // holds until the next one arrives. Library status changes reach only a session that may
+  // administer the server.
   const me = useMe()
-  const profileId = (me.data ?? me.previousData)?.me.selectedProfile?.id
+  const current = (me.data ?? me.previousData)?.me
+  const profileId = current?.selectedProfile?.id
+  const administers = canManageServer(current)
   useEffect(() => {
     if (!profileId) return undefined
-    const stops = [subscribeToWatchStateChanges(client), subscribeToLibraryChanges(client)]
+    const stops = [
+      subscribeToWatchStateChanges(client),
+      administers
+        ? subscribeToAdministeredLibraryChanges(client)
+        : subscribeToLibraryChanges(client),
+    ]
     return () => stops.forEach((stop) => stop())
-  }, [client, profileId])
+  }, [client, profileId, administers])
   return <Outlet />
 }
 
