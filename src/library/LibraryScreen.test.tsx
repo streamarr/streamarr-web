@@ -450,6 +450,14 @@ describe('LibraryScreen', () => {
       graphql.query<GraphQLQuery, LibraryPageQueryVariables>(
         'LibraryPage',
         async ({ variables }) => {
+          // The titles before the letter arrive with it; the next page up is the one abandoned.
+          if (variables.before === 'n') {
+            const data = libraryData({
+              edges: [{ cursor: 'm', node: movieNode({ id: 'm', title: 'Middle' }) }],
+            })
+            data.library.items.pageInfo.hasPreviousPage = true
+            return HttpResponse.json({ data })
+          }
           if (variables.before) {
             backwardRequested = true
             await pending

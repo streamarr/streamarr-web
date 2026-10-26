@@ -8,6 +8,7 @@
 - `npm run test:watch` — unit tests in watch mode
 - `npm run test:coverage` — unit tests with coverage; the session-renewal core is gated at 95% per file, and the run writes `coverage/lcov.info` for SonarCloud
 - `npm run test:e2e` — browser suite (Playwright drives vite dev against the API stub in `e2e/`). Run `npx playwright install chromium` once, and again after a Playwright upgrade
+- `npx playwright test -c playwright.replay.config.ts` — replays a library scan's live updates, and a scroll through a large library, in Chromium and WebKit, and reports main-thread time and memory; on demand, never in CI. `REPLAY_BUILD=1` measures the production bundle; `REPLAY_TITLES` and `REPLAY_RATE` size the scan, `REPLAY_LIBRARY` the scrolled library
 - `npm run format` — Prettier; format before committing. `npm run format:check` is the CI gate
 - `npm run lint` — ESLint: type-checked typescript-eslint and React Hooks rules (`eslint.config.js`)
 - `npm run typecheck` — TypeScript, no emit, for both the app and the `tsconfig.e2e.json` project

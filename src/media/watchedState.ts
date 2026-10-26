@@ -3,7 +3,7 @@ import type { MediaFilter, MediaSort } from '../graphql/generated/graphql'
 
 export type LibraryItemsConnection = Readonly<{
   libraryId: string
-  args: Readonly<{ first: number; sort: MediaSort; filter: MediaFilter }>
+  args: Readonly<{ sort: MediaSort; filter: MediaFilter }>
 }>
 
 const watchDependentConnectionsByCache = new WeakMap<

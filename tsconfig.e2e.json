@@ -4,5 +4,5 @@
     "types": ["node"],
     "lib": ["ES2023", "DOM"]
   },
-  "include": ["e2e", "playwright.config.ts", "codegen.ts"]
+  "include": ["e2e", "playwright.config.ts", "playwright.replay.config.ts", "codegen.ts"]
 }
