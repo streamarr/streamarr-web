@@ -5,8 +5,8 @@
   width: 22px;
   height: 22px;
   border-radius: var(--radius-xl);
-  background: var(--semantic-success);
-  color: var(--semantic-success-ink);
+  background: var(--ambient-accent, var(--semantic-success));
+  color: var(--ambient-on-accent, var(--semantic-success-ink));
   display: flex;
   align-items: center;
   justify-content: center;

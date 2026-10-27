@@ -31,7 +31,7 @@
   justify-content: space-between;
   padding: 9px 12px;
   border-radius: var(--radius-md);
-  border: 1px solid transparent;
+  border: none;
   background: color-mix(in srgb, var(--ambient-text-primary, var(--color-white)) 6%, transparent);
   font: inherit;
   font-size: 14px;
@@ -41,9 +41,13 @@
 }
 
 .selected {
-  background: var(--ambient-selected, var(--selection-active));
-  border-color: var(--ambient-accent, var(--selection-active));
+  background: var(--ambient-accent, var(--selection-active));
+  color: var(--ambient-on-accent, var(--text-primary));
   font-weight: var(--font-weight-semibold);
+}
+
+.selected .count {
+  color: inherit;
 }
 
 .count {
@@ -61,6 +65,12 @@
   border-radius: 50%;
   background: var(--ambient-accent, var(--semantic-success));
   color: var(--ambient-on-accent, var(--semantic-success-ink));
+}
+
+/* On the accent fill of the selected row, the check inverts so it stays visible. */
+.selected .check {
+  background: var(--ambient-on-accent, var(--semantic-success));
+  color: var(--ambient-accent, var(--semantic-success-ink));
 }
 
 .more {
