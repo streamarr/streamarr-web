@@ -1,7 +1,9 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
+import type { UserEvent } from '@testing-library/user-event'
 import { graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
-import type { SeasonDetailQuery } from '../graphql/generated/graphql'
+import type { SeasonDetailQuery, SeriesDetailQuery } from '../graphql/generated/graphql'
+import { watchingConnection } from '../test/continueWatchingFixtures'
 import { meFixture } from '../test/meFixture'
 import {
   answersInTurn,
@@ -381,4 +383,103 @@ describe('SeasonDetailScreen', () => {
     expect(screen.getByRole('progressbar', { name: '3 of 3 watched' })).toBeInTheDocument()
     after.release()
   })
+
+  it('shouldLeaveTheShowWithBackAfterReturningToItFromASeason', async () => {
+    const { user, router } = await openSeasonFromShow()
+
+    await returnToShowThenGoBack(user)
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+  })
+
+  it('shouldLeaveTheShowWithBackAfterSwitchingSeasonsAndReturningToTheShow', async () => {
+    const { user, router } = await openSeasonFromShow()
+    await user.click(screen.getByRole('button', { name: /Season 3/ }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/season/season-3'))
+
+    await returnToShowThenGoBack(user)
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+  })
+
+  it('shouldLeaveAModifiedClickOnTheShowLinkToTheBrowser', async () => {
+    const { user, router } = await openSeasonFromShow()
+
+    await user.keyboard('{Meta>}')
+    await user.click(screen.getByRole('link', { name: 'Northern Line' }))
+    await user.keyboard('{/Meta}')
+
+    expect(router.state.location.pathname).toBe('/season/season-2')
+  })
+
+  it('shouldLeaveTheShowWithBackAfterOpeningItFromALinkedSeason', async () => {
+    serveShowAndSeason()
+    const { user, router } = renderAppAt('/season/season-2')
+    await screen.findByRole('heading', { level: 1, name: 'Season 2' })
+
+    await returnToShowThenGoBack(user)
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+  })
 })
+
+const showSeason = {
+  __typename: 'Season',
+  id: 'season-2',
+  seasonNumber: 2,
+  title: 'Season 2',
+  airDate: null,
+  watchStatus: 'IN_PROGRESS',
+  watchProgress: null,
+  posterImages: [],
+  episodes: [],
+}
+
+function showData(): SeriesDetailQuery {
+  return {
+    series: {
+      __typename: 'Series',
+      id: 'series-1',
+      title: 'Northern Line',
+      tagline: null,
+      summary: null,
+      firstAirDate: null,
+      watchStatus: 'IN_PROGRESS',
+      contentRating: null,
+      genres: [],
+      directors: [],
+      cast: [],
+      seasons: [showSeason],
+      backdropImages: [],
+      posterImages: [],
+    },
+  } as SeriesDetailQuery
+}
+
+function serveShowAndSeason() {
+  serve(seasonData())
+  server.use(
+    graphql.query('Home', () =>
+      HttpResponse.json({ data: { continueWatching: watchingConnection([]), libraries: [] } }),
+    ),
+    graphql.query('SeriesDetail', () => HttpResponse.json({ data: showData() })),
+  )
+}
+
+async function openSeasonFromShow() {
+  serveShowAndSeason()
+  const rendered = renderAppAt('/')
+  await act(() =>
+    rendered.router.navigate({ to: '/series/$seriesId', params: { seriesId: 'series-1' } }),
+  )
+  await screen.findByRole('heading', { level: 1, name: 'Northern Line' })
+  await rendered.user.click(screen.getByRole('link', { name: /^Season 2/ }))
+  await screen.findByRole('heading', { level: 1, name: 'Season 2' })
+  return rendered
+}
+
+async function returnToShowThenGoBack(user: UserEvent) {
+  await user.click(screen.getByRole('link', { name: 'Northern Line' }))
+  await screen.findByRole('heading', { level: 1, name: 'Northern Line' })
+  await user.click(screen.getByRole('button', { name: 'Back' }))
+}

@@ -5,7 +5,7 @@ import { usePublishAmbientTheme } from '../media/ambientThemeContext'
 import { resolveAmbientColors } from '../media/ambientSource'
 import { CastCard } from '../media/CastCard'
 import { ContentShelf } from '../media/ContentShelf'
-import { DetailBackButton } from '../media/DetailBack'
+import { DetailBackButton, useSeriesEntryState } from '../media/DetailBack'
 import { detailAction, DetailHeader } from '../media/DetailHeader'
 import { MediaTitleFallback } from '../media/MediaTitleFallback'
 import { formatEpisodeLabel, formatLongDate, formatYear } from '../media/formatting'
@@ -27,6 +27,7 @@ export function SeriesDetailScreen({ seriesId }: Readonly<{ seriesId: string }>)
     variables: { id: seriesId },
   })
   const bulkWatched = useBulkWatchedAction({ kind: 'series', id: seriesId, detail: data?.series })
+  const seasonLinkState = useSeriesEntryState(seriesId)
   const series = data?.series
   const ambient = series ? resolveAmbientColors(series.backdropImages, series.posterImages) : null
   usePublishAmbientTheme(ambient?.theme ?? null)
@@ -103,6 +104,7 @@ export function SeriesDetailScreen({ seriesId }: Readonly<{ seriesId: string }>)
                 key={season.id}
                 to="/season/$seasonId"
                 params={{ seasonId: season.id }}
+                state={seasonLinkState}
                 className={styles.cardLink}
               >
                 <PosterCard
