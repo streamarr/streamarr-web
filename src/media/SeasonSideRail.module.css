@@ -41,8 +41,8 @@
 }
 
 .selected {
-  background: var(--ambient-accent, var(--selection-active));
-  color: var(--ambient-on-accent, var(--text-primary));
+  background: var(--ambient-accent);
+  color: var(--ambient-on-accent);
   font-weight: var(--font-weight-semibold);
 }
 
@@ -63,14 +63,14 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: var(--ambient-accent, var(--semantic-success));
-  color: var(--ambient-on-accent, var(--semantic-success-ink));
+  background: var(--ambient-accent);
+  color: var(--ambient-on-accent);
 }
 
 /* On the accent fill of the selected row, the check inverts so it stays visible. */
 .selected .check {
-  background: var(--ambient-on-accent, var(--semantic-success));
-  color: var(--ambient-accent, var(--semantic-success-ink));
+  background: var(--ambient-on-accent);
+  color: var(--ambient-accent);
 }
 
 .more {

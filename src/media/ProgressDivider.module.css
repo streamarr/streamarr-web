@@ -13,7 +13,7 @@
 .fill {
   height: 100%;
   border-radius: 2px;
-  background: var(--ambient-accent, var(--semantic-success));
+  background: var(--ambient-accent);
 }
 
 .marker {
@@ -21,8 +21,8 @@
   top: -11px;
   padding: 4px 12px;
   border-radius: var(--radius-sm);
-  background: var(--ambient-accent, var(--semantic-success));
-  color: var(--ambient-on-accent, var(--semantic-success-ink));
+  background: var(--ambient-accent);
+  color: var(--ambient-on-accent);
   font-size: 12px;
   font-weight: var(--font-weight-semibold);
   white-space: nowrap;

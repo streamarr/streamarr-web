@@ -121,15 +121,8 @@
 .primary {
   padding: 11px 20px;
   font-weight: var(--font-weight-semibold);
-  background: var(
-    --ambient-accent,
-    linear-gradient(
-      calc(var(--gradient-brand-angle) * 1deg),
-      var(--color-brand-blue),
-      var(--color-brand-purple)
-    )
-  );
-  color: var(--ambient-on-accent, var(--color-white));
+  background: var(--ambient-accent);
+  color: var(--ambient-on-accent);
 }
 
 .secondary {
