@@ -1,4 +1,8 @@
 .scope {
+  /* A title's theme overrides these inline; until it arrives, or when it has none, the page's
+     accent is the neutral selection color. */
+  --ambient-accent: var(--selection-active);
+  --ambient-on-accent: var(--color-white);
   min-height: 100dvh;
   background: var(--ambient-base, transparent);
   color: var(--ambient-text-primary, inherit);
