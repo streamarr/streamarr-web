@@ -387,6 +387,30 @@ describe('subscription transport', () => {
     expect(framesAtEachReport).toEqual([1, 1])
   })
 
+  it('shouldReportOnceAnOperationThatReplacesAnotherHasSentItsSubscribeFrame', async () => {
+    const { subscribe, subscribeToAdditions, transport, framesAtEachReport } = setup()
+    const socket = await connectAndSubscribe(subscribe)
+
+    subscribeToAdditions()
+    transport.reportMissedChangesOnceSubscribed()
+    await settle()
+
+    expect(socket.subscriptionIds()).toHaveLength(2)
+    expect(framesAtEachReport).toEqual([1, 2])
+  })
+
+  it('shouldLeaveTheReportToTheConnectionWhenTheSocketIsNotOpenYet', async () => {
+    const { subscribe, transport, framesAtEachReport } = setup()
+
+    subscribe()
+    transport.reportMissedChangesOnceSubscribed()
+    await settle()
+    latestSocket().accept()
+    await settle()
+
+    expect(framesAtEachReport).toEqual([1])
+  })
+
   it('shouldReportNothingForASocketStoppedBeforeItsSubscribeFramesWent', async () => {
     const { subscribe, transport, framesAtEachReport } = setup()
     subscribe()

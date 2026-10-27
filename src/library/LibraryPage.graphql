@@ -10,8 +10,6 @@ query LibraryPage(
   library(id: $libraryId) {
     id
     name
-    status
-    scanCompletedOn
     itemCount
     alphabetIndex {
       letter

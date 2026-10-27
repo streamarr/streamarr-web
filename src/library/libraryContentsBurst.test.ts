@@ -16,8 +16,6 @@ function libraryPage(titles: { id: string; title: string }[]): LibraryPageQuery 
       ...{ __typename: 'Library' as const },
       id: LIBRARY,
       name: 'Movies',
-      status: 'HEALTHY',
-      scanCompletedOn: null,
       itemCount: titles.length,
       alphabetIndex: [],
       items: {

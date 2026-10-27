@@ -18,12 +18,12 @@ const graphqlSocket = ws.link(GRAPHQL_SOCKET_URL)
 /**
  * Plays the server's half of graphql-transport-ws for one test: it acknowledges every
  * connection and keeps each subscribe by id, so a test can publish a change to every live
- * operation of a name.
+ * operation of a name. `documents` holds the query text each operation name subscribed with.
  */
 export function serveGraphqlSocket() {
   const operations = new Map<string, Operation>()
   const clients = new Set<SocketClient>()
-  const state = { connections: 0, subscribes: [] as string[] }
+  const state = { connections: 0, subscribes: [] as string[], documents: new Map<string, string>() }
 
   const send = (client: SocketClient, frame: object) => client.send(JSON.stringify(frame))
   const live = (operationName: string) =>
@@ -45,7 +45,7 @@ export function serveGraphqlSocket() {
         const frame = JSON.parse(data) as {
           type: string
           id?: string
-          payload?: { operationName?: string }
+          payload?: { operationName?: string; query?: string }
         }
         if (frame.type === 'connection_init') send(client, { type: 'connection_ack' })
         if (frame.type === 'ping') send(client, { type: 'pong' })
@@ -54,6 +54,7 @@ export function serveGraphqlSocket() {
           const operationName = frame.payload?.operationName ?? ''
           operations.set(frame.id!, { client, operationName })
           state.subscribes.push(operationName)
+          state.documents.set(operationName, frame.payload?.query ?? '')
         }
       })
     }),

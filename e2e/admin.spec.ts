@@ -4,9 +4,9 @@ import type {
   AddLibraryInput,
   ChangeEncoderPresetInput,
   EncoderPresetSettingFieldsFragment,
-  ManagedLibraryFieldsFragment,
   RemoveLibraryInput,
 } from '../src/graphql/generated/graphql'
+import type { LibraryAdministration, ManagedLibrary } from '../src/admin/libraries/libraryModel'
 import { meFixture, profileFixture } from '../src/test/meFixture'
 import { RING, ringOnActiveElement } from './focusRing'
 import { routeGraphqlSocket } from './graphqlSocket'
@@ -14,23 +14,33 @@ import { routeGraphqlSocket } from './graphqlSocket'
 test.use({ serviceWorkers: 'block' })
 
 const SETTINGS = '/settings/server/libraries'
-const movie: ManagedLibraryFieldsFragment = {
+// A library whose administration the server resolved, as every fixture here starts.
+type AdministeredLibrary = ManagedLibrary & { administration: LibraryAdministration }
+
+const movie: AdministeredLibrary = {
   __typename: 'Library',
   id: 'movies',
   name: 'Movies',
   type: 'MOVIE',
   backend: 'LOCAL',
-  filepathUri: 'file:///media/movies/',
-  status: 'HEALTHY',
-  scanStartedOn: '2026-09-21T13:00:00Z',
-  scanCompletedOn: '2026-09-21T13:01:00Z',
+  administration: {
+    filepathUri: 'file:///media/movies/',
+    status: 'HEALTHY',
+    scanStartedOn: '2026-09-21T13:00:00Z',
+    scanCompletedOn: '2026-09-21T13:01:00Z',
+  },
 }
-const shows: ManagedLibraryFieldsFragment = {
-  ...movie,
-  id: 'shows',
-  name: 'TV shows',
-  type: 'SERIES',
-  filepathUri: 'file:///media/tv/',
+const shows = managed(
+  { ...movie, id: 'shows', name: 'TV shows', type: 'SERIES' },
+  { filepathUri: 'file:///media/tv/' },
+)
+
+// The library with some of its administration facts changed.
+function managed(
+  library: AdministeredLibrary,
+  administration: Partial<LibraryAdministration>,
+): AdministeredLibrary {
+  return { ...library, administration: { ...library.administration, ...administration } }
 }
 
 async function fixture(page: Page, libraries = [movie, shows]) {
@@ -88,15 +98,10 @@ async function fixture(page: Page, libraries = [movie, shows]) {
             ],
           },
         })
-      const library = {
-        ...movie,
-        id: 'new-library',
-        name: input.name,
-        type: input.type,
-        filepathUri: input.filepath,
-        status: 'SCANNING' as const,
-        scanCompletedOn: null,
-      }
+      const library = managed(
+        { ...movie, id: 'new-library', name: input.name, type: input.type },
+        { filepathUri: input.filepath, status: 'SCANNING', scanCompletedOn: null },
+      )
       state.libraries.push(library)
       return reply({ addLibrary: { library, userErrors: [] } })
     }
@@ -104,7 +109,7 @@ async function fixture(page: Page, libraries = [movie, shows]) {
       const { libraryId } = variables.input as { libraryId: string }
       const status = operationName === 'StartLibraryScan' ? 'SCANNING' : 'REFRESHING'
       state.libraries = state.libraries.map((library) =>
-        library.id === libraryId ? { ...library, status } : library,
+        library.id === libraryId ? managed(library, { status }) : library,
       )
       const library = state.libraries.find((candidate) => candidate.id === libraryId)
       const payload = { library, userErrors: [] }
@@ -117,7 +122,7 @@ async function fixture(page: Page, libraries = [movie, shows]) {
     if (operationName === 'StopLibraryScan' || operationName === 'StopLibraryRefresh') {
       const { libraryId } = variables.input as { libraryId: string }
       state.libraries = state.libraries.map((library) =>
-        library.id === libraryId ? { ...library, status: 'STOPPING' as const } : library,
+        library.id === libraryId ? managed(library, { status: 'STOPPING' }) : library,
       )
       const library = state.libraries.find((candidate) => candidate.id === libraryId)
       const payload = { library, userErrors: [] }
@@ -169,7 +174,7 @@ test('first-run creation validates the server path and stays in settings', async
   await expect(
     page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Family TV' }),
   ).toBeVisible()
-  state.libraries = state.libraries.map((library) => ({ ...library, status: 'HEALTHY' }))
+  state.libraries = state.libraries.map((library) => managed(library, { status: 'HEALTHY' }))
   await page.reload()
   await expect(detail).toContainText('HEALTHY')
   await expect(detail.getByRole('button', { name: 'Scan library' })).toBeEnabled()
@@ -210,7 +215,7 @@ test('settings never read the inventory again on a timer or on focus', async ({ 
     state.calls.filter((call) => ['Me', 'AdminLibraries', 'Libraries'].includes(call.operationName))
       .length
   const initialReads = reads()
-  state.libraries = [{ ...movie, status: 'UNHEALTHY' }]
+  state.libraries = [managed(movie, { status: 'UNHEALTHY' })]
   await page.clock.fastForward(65_000)
   await page.evaluate(() => {
     window.dispatchEvent(new Event('focus'))
@@ -238,18 +243,17 @@ test('library status changes show live without reading the inventory again', asy
   const reads = inventoryReads(state)
 
   state.socket.publish('LibraryStatusChanged', {
-    data: { libraryStatusChanged: { ...movie, status: 'SCANNING' } },
+    data: { libraryStatusChanged: managed(movie, { status: 'SCANNING' }) },
   })
   await expect(status).toHaveText('SCANNING')
   await expect(detail.getByRole('button', { name: 'Scan library' })).toBeDisabled()
 
   state.socket.publish('LibraryStatusChanged', {
     data: {
-      libraryStatusChanged: {
-        ...movie,
+      libraryStatusChanged: managed(movie, {
         scanStartedOn: '2026-10-15T13:00:00Z',
         scanCompletedOn: '2026-10-15T13:05:00Z',
-      },
+      }),
     },
   })
   await expect(status).toHaveText('HEALTHY')
@@ -261,7 +265,7 @@ test('library status changes show live without reading the inventory again', asy
 test('stopping a scan shows STOPPING at once, then the restored status and that the scan stopped', async ({
   page,
 }) => {
-  const state = await fixture(page, [{ ...movie, status: 'SCANNING' }, shows])
+  const state = await fixture(page, [managed(movie, { status: 'SCANNING' }), shows])
   await page.goto(SETTINGS)
   const detail = page.getByRole('article', { name: 'Movies settings' })
   const status = detail.locator('[data-library-status]')
@@ -280,7 +284,7 @@ test('stopping a scan shows STOPPING at once, then the restored status and that 
   })
 
   state.socket.publish('LibraryStatusChanged', {
-    data: { libraryStatusChanged: { ...movie, status: 'STOPPING' } },
+    data: { libraryStatusChanged: managed(movie, { status: 'STOPPING' }) },
   })
   state.socket.publish('LibraryStatusChanged', { data: { libraryStatusChanged: movie } })
 
@@ -301,11 +305,14 @@ test("another session's added and removed libraries join and leave the inventory
   await page.goto(SETTINGS)
   const inventory = page.getByRole('navigation', { name: 'Libraries to manage' })
   await expect(inventory.getByRole('button')).toHaveCount(2)
-  await expect.poll(() => state.socket.isLive('LibraryAdded')).toBe(true)
-  const family = { ...movie, id: 'family', name: 'Family', status: 'SCANNING' as const }
+  await expect.poll(() => state.socket.isLive('AdminLibraryAdded')).toBe(true)
+  const family = managed(
+    { ...movie, id: 'family', name: 'Family' },
+    { status: 'SCANNING' as const },
+  )
 
-  state.socket.publish('LibraryAdded', { data: { libraryAdded: family } })
-  state.socket.publish('LibraryAdded', { data: { libraryAdded: family } })
+  state.socket.publish('AdminLibraryAdded', { data: { libraryAdded: family } })
+  state.socket.publish('AdminLibraryAdded', { data: { libraryAdded: family } })
   await expect(inventory.getByRole('button', { name: /Family/ })).toHaveCount(1)
   await expect(inventory.getByRole('button')).toHaveCount(3)
   await expect(
@@ -332,7 +339,7 @@ test('a server restart reconnects, subscribes again, and reads the inventory onc
   await expect(status).toHaveText('HEALTHY')
   await expect.poll(() => state.socket.isLive('LibraryStatusChanged')).toBe(true)
   const reads = inventoryReads(state)
-  state.libraries = [{ ...movie, status: 'REFRESHING' }, shows]
+  state.libraries = [managed(movie, { status: 'REFRESHING' }), shows]
 
   await state.socket.closeAll(1001, 'Going away')
 
@@ -350,7 +357,7 @@ test('returning to the page reads the inventory again once', async ({ page }) =>
     .locator('[data-library-status]')
   await expect(status).toHaveText('HEALTHY')
   const reads = inventoryReads(state)
-  state.libraries = [{ ...movie, status: 'UNHEALTHY' }, shows]
+  state.libraries = [managed(movie, { status: 'UNHEALTHY' }), shows]
 
   await page.evaluate(() => {
     let visibility: DocumentVisibilityState = 'hidden'

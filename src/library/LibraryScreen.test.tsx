@@ -59,7 +59,6 @@ function libraryData(
   overrides: {
     edges?: { cursor: string; node: ReturnType<typeof movieNode> | ReturnType<typeof seriesNode> }[]
     hasNextPage?: boolean
-    scanCompletedOn?: string | null
     alphabetIndex?: LibraryPageQuery['library']['alphabetIndex']
   } = {},
 ): LibraryPageQuery & { library: { __typename: 'Library' } } {
@@ -68,8 +67,6 @@ function libraryData(
       __typename: 'Library',
       id: LIBRARY_ID,
       name: 'Movies',
-      status: 'HEALTHY',
-      scanCompletedOn: overrides.scanCompletedOn ?? '2026-08-28T11:46:00Z',
       itemCount: overrides.alphabetIndex?.reduce((sum, entry) => sum + entry.count, 0) ?? 3,
       alphabetIndex: overrides.alphabetIndex ?? [
         { letter: 'A', count: 1 },
@@ -252,9 +249,16 @@ describe('LibraryScreen', () => {
     const totals = screen.getAllByText(/1,799/)
     expect(totals).toHaveLength(1)
     expect(allChip).toContainElement(totals[0])
-    expect(screen.getByText(/last scan/)).toBeInTheDocument()
     expect(screen.queryByText(/items ·/)).not.toBeInTheDocument()
     expect(screen.queryByText(/^Showing/)).not.toBeInTheDocument()
+  })
+
+  it('shouldShowNoScanStatusInTheLibraryHeader', async () => {
+    server.use(graphql.query('LibraryPage', () => HttpResponse.json({ data: libraryData() })))
+    renderWithProviders(<Harness />)
+
+    expect(await screen.findByRole('heading', { name: 'Movies' })).toBeInTheDocument()
+    expect(screen.queryByText(/scan/)).not.toBeInTheDocument()
   })
 
   it.each([

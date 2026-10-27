@@ -1,25 +1,13 @@
-fragment ManagedLibraryFields on Library {
-  __typename
-  id
-  name
-  type
-  backend
-  filepathUri
-  status
-  scanStartedOn
-  scanCompletedOn
-}
-
 query AdminLibraries {
   libraries {
-    ...ManagedLibraryFields
+    ...AdminLibraryFields
   }
 }
 
 mutation AddLibrary($input: AddLibraryInput!) {
   addLibrary(input: $input) {
     library {
-      ...ManagedLibraryFields
+      ...AdminLibraryFields
     }
     userErrors {
       __typename
@@ -36,7 +24,7 @@ mutation AddLibrary($input: AddLibraryInput!) {
 mutation StartLibraryScan($input: StartLibraryScanInput!) {
   startLibraryScan(input: $input) {
     library {
-      ...ManagedLibraryFields
+      ...AdminLibraryFields
     }
     userErrors {
       __typename
@@ -53,7 +41,7 @@ mutation StartLibraryScan($input: StartLibraryScanInput!) {
 mutation StartLibraryRefresh($input: StartLibraryRefreshInput!) {
   startLibraryRefresh(input: $input) {
     library {
-      ...ManagedLibraryFields
+      ...AdminLibraryFields
     }
     userErrors {
       __typename
@@ -70,7 +58,7 @@ mutation StartLibraryRefresh($input: StartLibraryRefreshInput!) {
 mutation StopLibraryScan($input: StopLibraryScanInput!) {
   stopLibraryScan(input: $input) {
     library {
-      ...ManagedLibraryFields
+      ...AdminLibraryFields
     }
     userErrors {
       __typename
@@ -87,7 +75,7 @@ mutation StopLibraryScan($input: StopLibraryScanInput!) {
 mutation StopLibraryRefresh($input: StopLibraryRefreshInput!) {
   stopLibraryRefresh(input: $input) {
     library {
-      ...ManagedLibraryFields
+      ...AdminLibraryFields
     }
     userErrors {
       __typename

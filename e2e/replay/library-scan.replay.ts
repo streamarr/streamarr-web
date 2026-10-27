@@ -287,8 +287,6 @@ function emptyLibrary(): LibraryPageQuery {
       ...{ __typename: 'Library' as const },
       id: LIBRARY,
       name: 'Movies',
-      status: 'HEALTHY',
-      scanCompletedOn: null,
       itemCount: 0,
       alphabetIndex: [],
       items: {

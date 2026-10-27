@@ -1,0 +1,17 @@
+fragment LibraryFields on Library {
+  __typename
+  id
+  name
+  type
+  backend
+}
+
+fragment AdminLibraryFields on Library {
+  ...LibraryFields
+  administration {
+    filepathUri
+    status
+    scanStartedOn
+    scanCompletedOn
+  }
+}

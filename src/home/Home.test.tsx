@@ -175,8 +175,6 @@ describe('Home', () => {
               __typename: 'Library',
               id: LIBRARY,
               name: 'Movies',
-              status: 'HEALTHY',
-              scanCompletedOn: null,
               itemCount: 1,
               alphabetIndex: [{ letter: 'A', count: 1 }],
               items: {

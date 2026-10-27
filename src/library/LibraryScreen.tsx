@@ -12,7 +12,6 @@ import type {
 } from '../graphql/generated/graphql'
 import { hasInvalidInputAt, requestFailureMessage } from '../graphql/requestErrors'
 import { AlphabetRail, AlphabetRailPlaceholder, type SelectionInput } from '../media/AlphabetRail'
-import { formatRelativeTime } from '../media/formatting'
 import { FailurePanel, FailureRow } from '../ui/Failure'
 import { FilterBar, type WatchStatusFilter } from './FilterBar'
 import {
@@ -186,9 +185,6 @@ export function LibraryScreen({
   }
 
   const total = library.itemCount
-  const scanLabel = library.scanCompletedOn
-    ? `last scan ${formatRelativeTime(library.scanCompletedOn)}`
-    : 'scanning…'
 
   return (
     <div className={styles.libraryScreen}>
@@ -196,7 +192,6 @@ export function LibraryScreen({
         <Title order={1} className={styles.libraryName}>
           {library.name ?? 'Library'}
         </Title>
-        <Text className={styles.scanStatus}>{scanLabel}</Text>
         <div className={styles.sortSlot}>
           <SortMenu sort={sort} onChange={selectSort} />
         </div>

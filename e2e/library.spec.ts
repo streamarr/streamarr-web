@@ -45,8 +45,6 @@ function libraryPage(variables: LibraryPageQueryVariables, library = movies): Li
   return {
     library: {
       ...metadata,
-      status: 'HEALTHY',
-      scanCompletedOn: null,
       itemCount: library.length,
       alphabetIndex: Array.from({ length: 26 }, (_, index) => ({
         letter: String.fromCharCode(

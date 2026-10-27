@@ -117,8 +117,6 @@ function serve(me = WATCHER) {
             __typename: 'Library',
             id: LIBRARY_ID,
             name: 'Movies',
-            status: 'HEALTHY',
-            scanCompletedOn: '2026-08-28T11:46:00Z',
             itemCount: 2,
             alphabetIndex: [
               { letter: 'E', count: 1 },

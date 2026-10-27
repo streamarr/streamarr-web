@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import type { ManagedLibraryFieldsFragment } from '../src/graphql/generated/graphql'
+import type { ManagedLibrary } from '../src/admin/libraries/libraryModel'
 import { meFixture, profileFixture } from '../src/test/meFixture'
 import { APP_PORT, STUB_URL } from './ports'
 
@@ -7,16 +7,18 @@ import { APP_PORT, STUB_URL } from './ports'
 // page.routeWebSocket can never prove.
 test.use({ serviceWorkers: 'block' })
 
-const movie: ManagedLibraryFieldsFragment = {
+const movie: ManagedLibrary = {
   __typename: 'Library',
   id: 'movies',
   name: 'Movies',
   type: 'MOVIE',
   backend: 'LOCAL',
-  filepathUri: 'file:///media/movies/',
-  status: 'HEALTHY',
-  scanStartedOn: '2026-09-21T13:00:00Z',
-  scanCompletedOn: '2026-09-21T13:01:00Z',
+  administration: {
+    filepathUri: 'file:///media/movies/',
+    status: 'HEALTHY',
+    scanStartedOn: '2026-09-21T13:00:00Z',
+    scanCompletedOn: '2026-09-21T13:01:00Z',
+  },
 }
 
 interface SocketReport {
@@ -63,7 +65,14 @@ test('the dev proxy carries the GraphQL socket and its cookie to the server', as
   await request.post(`${STUB_URL}/__test/socket/publish`, {
     data: {
       operationName: 'LibraryStatusChanged',
-      payload: { data: { libraryStatusChanged: { ...movie, status: 'SCANNING' } } },
+      payload: {
+        data: {
+          libraryStatusChanged: {
+            ...movie,
+            administration: { ...movie.administration, status: 'SCANNING' },
+          },
+        },
+      },
     },
   })
   await expect(status).toHaveText('SCANNING')

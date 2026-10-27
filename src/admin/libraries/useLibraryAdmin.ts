@@ -1,21 +1,16 @@
 import type {
   ApolloCache,
   ApolloClient,
-  ErrorLike,
   OperationVariables,
-  Reference,
   TypedDocumentNode,
 } from '@apollo/client'
 import { useApolloClient, useQuery } from '@apollo/client/react'
 import { useRouteContext } from '@tanstack/react-router'
-import { useEffect, useRef, useState, type RefObject } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   AddLibraryDocument,
   AdminLibrariesDocument,
-  LibraryAddedDocument,
-  LibraryRemovedDocument,
-  LibraryStatusChangedDocument,
-  ManagedLibraryFieldsFragmentDoc,
+  AdminLibraryFieldsFragmentDoc,
   RemoveLibraryDocument,
   StartLibraryRefreshDocument,
   StartLibraryScanDocument,
@@ -24,7 +19,7 @@ import {
   type AddLibraryInput,
   type ImageRefreshMode,
   type LibraryStatus,
-  type ManagedLibraryFieldsFragment,
+  type AdminLibraryFieldsFragment,
   type StartLibraryScanMutation,
   type StopLibraryRefreshMutation,
   type StopLibraryScanMutation,
@@ -32,6 +27,13 @@ import {
 import { extractAuthContext, isForbidden } from '../../graphql/errorRouting'
 import { isReading } from '../../graphql/readAgain'
 import { userErrorMessage } from '../../graphql/userErrors'
+import { subscribeToAdministeredLibraryChanges } from '../../media/libraryChanges'
+import type { ManagedLibrary } from './libraryModel'
+import {
+  addToLibraryLists,
+  forgetTitleViews,
+  removeFromLibraryViews,
+} from '../../graphql/libraryLists'
 
 // Starts and removal share one refusal union; each stop adds its own refusal for a run that is
 // not in progress.
@@ -41,7 +43,7 @@ type LibraryOperationError =
   | NonNullable<StopLibraryRefreshMutation['stopLibraryRefresh']>['userErrors'][number]
 
 type LibraryOperationPayload = {
-  library?: ManagedLibraryFieldsFragment | null
+  library?: AdminLibraryFieldsFragment | null
   userErrors: readonly LibraryOperationError[]
 }
 
@@ -80,12 +82,9 @@ function countLiveChange(cache: ApolloCache, target: LiveChangeTarget) {
 /** Why live inventory changes stopped: the server refused them, or they ended another way. */
 export type LiveInventoryStop = 'forbidden' | 'failed'
 
-// Applies every library change as it commits: status and scan times update in place, an added
-// library joins the inventory once, and a removed one leaves it for good.
-function useLiveInventoryChanges(): {
-  stop: LiveInventoryStop | null
-  removedIds: RefObject<ReadonlySet<string>>
-} {
+// Applies every library change as it commits, through the changes every view shares, and counts
+// each one for the commands in flight.
+function useLiveInventoryChanges(): LiveInventoryStop | null {
   const [stop, setStop] = useState<LiveInventoryStop | null>(null)
   const client = useApolloClient()
   const { subscriptions } = useRouteContext({ from: '__root__' })
@@ -93,69 +92,15 @@ function useLiveInventoryChanges(): {
     () => subscriptions.onMissedChanges(() => countLiveChange(client.cache, EVERY_LIBRARY)),
     [client, subscriptions],
   )
-  // The server orders no frames across fields: a change committed before a removal can arrive
-  // after it. A library id never returns once removed.
-  const removedIds = useRef(new Set<string>())
-  useEffect(() => {
-    const onStop = (error: ErrorLike) => setStop(isForbidden(error) ? 'forbidden' : 'failed')
-    const holdFrom = (library: ManagedLibraryFieldsFragment | null) => {
-      if (!library) return
-      countLiveChange(client.cache, library.id)
-      if (!removedIds.current.has(library.id)) holdLibrary(client.cache, library)
-    }
-    const dropFrom = (removal: { libraryId: string } | null) => {
-      if (!removal) return
-      removedIds.current.add(removal.libraryId)
-      countLiveChange(client.cache, removal.libraryId)
-      dropLibrary(client.cache, removal.libraryId)
-    }
-    const unwatch = [
-      watchLiveChanges(client, LibraryStatusChangedDocument, {
-        apply: (data) => holdFrom(data.libraryStatusChanged),
-        onStop,
+  useEffect(
+    () =>
+      subscribeToAdministeredLibraryChanges(client, {
+        onChange: (libraryId) => countLiveChange(client.cache, libraryId),
+        onStop: (error) => setStop(isForbidden(error) ? 'forbidden' : 'failed'),
       }),
-      watchLiveChanges(client, LibraryAddedDocument, {
-        apply: (data) => holdFrom(data.libraryAdded),
-        onStop,
-      }),
-      watchLiveChanges(client, LibraryRemovedDocument, {
-        apply: (data) => dropFrom(data.libraryRemoved),
-        onStop,
-      }),
-    ]
-    return () => {
-      for (const stopWatching of unwatch) stopWatching()
-    }
-  }, [client])
-  return { stop, removedIds }
-}
-
-// With errorPolicy 'all', a change whose field failed arrives with its errors, and the operation
-// keeps running: the change applies whatever data it carries, a null field carries none, and the
-// transport reports the change missed so the inventory reads again. A result without data ends the
-// operation.
-function watchLiveChanges<TData>(
-  client: ApolloClient,
-  query: TypedDocumentNode<TData, Record<string, never>>,
-  { apply, onStop }: { apply: (data: TData) => void; onStop: (error: ErrorLike) => void },
-): () => void {
-  let stopped = false
-  const subscription = client
-    .subscribe({ query, errorPolicy: 'all' })
-    .subscribe(({ data, error }) => {
-      if (stopped) return
-      if (data) {
-        apply(data)
-        return
-      }
-      if (error) onStop(error)
-    })
-  // A remount that subscribes before this task runs joins the same operation, as useSubscription's
-  // does, instead of ending it and starting another.
-  return () => {
-    stopped = true
-    setTimeout(() => subscription.unsubscribe())
-  }
+    [client],
+  )
+  return stop
 }
 
 /**
@@ -163,20 +108,27 @@ function watchLiveChanges<TData>(
  * on focus. A failed refetch keeps the last inventory, so callers disable maintenance while
  * `error` is set. `liveStop` says why live changes stopped, if they did. The server replays
  * nothing a late subscriber missed, so the inventory reads again once the changes subscribe.
+ * A library whose administration a change failed to resolve stays listed without it until the
+ * inventory reads again, and a failure of that read is `error`.
  */
 export function useAdminLibraries() {
-  const { stop: liveStop, removedIds } = useLiveInventoryChanges()
+  const liveStop = useLiveInventoryChanges()
   const query = useQuery(AdminLibrariesDocument, {
     fetchPolicy: 'cache-and-network',
   })
-  const { client, data } = query
-  // A read that took its snapshot before a removal can land after it.
+  const data = query.data ?? query.previousData
+  const unavailable = data?.libraries.some((library) => !library.administration) ?? false
+  const { refetch } = query
+  // The missed-change read that recovers the administration keeps a failure from the screen, so
+  // the inventory reads through its own query, which joins that read and reports its failure.
   useEffect(() => {
-    for (const library of data?.libraries ?? []) {
-      if (removedIds.current.has(library.id)) dropLibrary(client.cache, library.id)
-    }
-  }, [client, data, removedIds])
-  return { ...query, data: data ?? query.previousData, liveStop }
+    if (unavailable) refetch().catch(leaveTheFailureToTheQuery)
+  }, [unavailable, refetch])
+  return { ...query, data, liveStop }
+}
+
+function leaveTheFailureToTheQuery() {
+  // The inventory query holds the failure and shows it with a retry.
 }
 
 /**
@@ -232,7 +184,7 @@ export function useLibraryCommands() {
     mutation: TypedDocumentNode<TData, TVariables>
     variables: TVariables
     payloadOf: (data: TData | null | undefined) => LibraryOperationPayload | null | undefined
-  }): Promise<ManagedLibraryFieldsFragment | null> {
+  }): Promise<ManagedLibrary | null> {
     const outcome = operationOutcome(client.cache, libraryId)
     const { data } = await client.mutate({
       mutation,
@@ -262,7 +214,12 @@ export function useLibraryCommands() {
         if (!data?.addLibrary) throw new Error('Missing creation result')
         const { library, userErrors } = data.addLibrary
         if (library && userErrors.length === 0)
-          refreshLibraryViews(client, (cache) => holdLibrary(cache, library))
+          refreshLibraryViews(client, (cache) => {
+            addToLibraryLists(cache, library)
+            // Following an old library link must not resurrect media detail cached before.
+            cache.evict({ id: 'ROOT_QUERY', fieldName: 'library' })
+            forgetTitleViews(cache)
+          })
         return data.addLibrary
       }, NOTHING_ADDED),
     scan: (libraryId: string) =>
@@ -315,7 +272,7 @@ export function useLibraryCommands() {
         if (!payload.removedLibraryId) throw new Error('Removal was not confirmed')
         if (active.current) onRemoved()
         const { removedLibraryId } = payload
-        refreshLibraryViews(client, (cache) => dropLibrary(cache, removedLibraryId))
+        refreshLibraryViews(client, (cache) => removeFromLibraryViews(cache, removedLibraryId))
         return payload.removedLibraryId
       }),
   }
@@ -325,11 +282,17 @@ export function useLibraryCommands() {
 function currentLibrary(
   cache: ApolloCache,
   payload: LibraryOperationPayload | null,
-): ManagedLibraryFieldsFragment | null {
+): ManagedLibrary | null {
   if (!payload) return null
   if (!payload.library) throw new Error('Missing library in the operation result')
   const id = cache.identify(payload.library)
-  return cache.readFragment({ fragment: ManagedLibraryFieldsFragmentDoc, id }) ?? payload.library
+  return (
+    cache.readFragment({
+      fragment: AdminLibraryFieldsFragmentDoc,
+      fragmentName: 'AdminLibraryFields',
+      id,
+    }) ?? payload.library
+  )
 }
 
 // The returned library, or the status a refusal carries, writes into the cache unless a live
@@ -343,7 +306,11 @@ function operationOutcome(cache: ApolloCache, libraryId: string) {
     write(target: ApolloCache, payload: LibraryOperationPayload | null | undefined) {
       if (!payload || liveChangeCount(target, libraryId) !== liveChangesBefore) return
       if (payload.library)
-        target.writeFragment({ fragment: ManagedLibraryFieldsFragmentDoc, data: payload.library })
+        target.writeFragment({
+          fragment: AdminLibraryFieldsFragmentDoc,
+          fragmentName: 'AdminLibraryFields',
+          data: payload.library,
+        })
       for (const error of payload.userErrors) {
         const status = refusedStatus(error)
         if (status) showStatus(target, libraryId, status)
@@ -369,21 +336,9 @@ async function readInventory(client: ApolloClient) {
   await Promise.allSettled(client.refetchQueries({ include: [AdminLibrariesDocument] }).results)
 }
 
-// The inventory changes at once from the payload; the refetch then confirms it.
-function refreshLibraryViews(client: ApolloClient, changeInventory: (cache: ApolloCache) => void) {
-  // Evict inactive query fields too: returning Home or following an old library link must not
-  // resurrect media detail cached before a creation/removal operation.
-  void client
-    .refetchQueries({
-      updateCache(cache) {
-        changeInventory(cache)
-        for (const fieldName of ['library', 'continueWatching', 'movie', 'series', 'season']) {
-          cache.evict({ id: 'ROOT_QUERY', fieldName })
-        }
-        cache.gc()
-      },
-    })
-    .catch(() => {})
+// The views change at once from the payload; the active queries they touched then read again.
+function refreshLibraryViews(client: ApolloClient, changeViews: (cache: ApolloCache) => void) {
+  void client.refetchQueries({ updateCache: changeViews }).catch(() => {})
 }
 
 /** The message for a refusal that says the admin lost the right to manage libraries. */
@@ -400,19 +355,6 @@ function failureMessage(error: unknown, nothingStarted: string): string {
   return "Couldn't confirm the operation. Refresh the page to check the library state before trying again."
 }
 
-// The change already wrote the library itself; every cached library list gains it once.
-function holdLibrary(cache: ApolloCache, library: ManagedLibraryFieldsFragment) {
-  cache.modify<{ libraries: readonly Reference[] }>({
-    fields: {
-      libraries: (existing, { readField, toReference }) => {
-        if (existing.some((held) => readField('id', held) === library.id)) return existing
-        const added = toReference(library)
-        return added ? [...existing, added] : existing
-      },
-    },
-  })
-}
-
 // The status a refusal reports for the library, if its member carries one.
 function refusedStatus(error: LibraryOperationError): LibraryStatus | null {
   switch (error.__typename) {
@@ -427,19 +369,8 @@ function refusedStatus(error: LibraryOperationError): LibraryStatus | null {
 
 // A refusal names no library, so normalization cannot apply the status it carries.
 function showStatus(cache: ApolloCache, libraryId: string, status: LibraryStatus) {
-  cache.modify<ManagedLibraryFieldsFragment>({
+  cache.modify<ManagedLibrary>({
     id: cache.identify({ __typename: 'Library', id: libraryId }),
-    fields: { status: () => status },
+    fields: { administration: (administration) => ({ ...administration, status }) },
   })
-}
-
-// Every cached library list drops the library at once; the refetch then confirms the inventory.
-function dropLibrary(cache: ApolloCache, id: string) {
-  cache.modify<{ libraries: readonly Reference[] }>({
-    fields: {
-      libraries: (existing, { readField }) =>
-        existing.filter((library) => readField('id', library) !== id),
-    },
-  })
-  cache.evict({ id: cache.identify({ __typename: 'Library', id }) })
 }

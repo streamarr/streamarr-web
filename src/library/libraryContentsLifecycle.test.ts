@@ -53,8 +53,6 @@ describe('Library contents lifecycle', () => {
         __typename: 'Library',
         id: LIBRARY,
         name: 'Movies',
-        status: 'HEALTHY' as const,
-        scanCompletedOn: null,
         itemCount: 0,
         alphabetIndex: [],
         items: {
