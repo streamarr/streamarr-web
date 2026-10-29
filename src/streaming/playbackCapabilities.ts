@@ -45,38 +45,37 @@ interface PictureTier {
   levels: FamilyLevels
 }
 
-// Top down. Each level is the lowest that holds the tier's picture size and frame rate.
-const PICTURE_TIERS: readonly PictureTier[] = [
-  {
-    width: 3840,
-    height: 2160,
-    frameRate: 60,
-    bitrate: 40_000_000,
-    levels: { H264: 52, HEVC: 51, AV1: 51 },
-  },
-  {
-    width: 3840,
-    height: 2160,
-    frameRate: 30,
-    bitrate: 40_000_000,
-    levels: { H264: 51, HEVC: 50, AV1: 50 },
-  },
-  {
-    width: 1920,
-    height: 1080,
-    frameRate: 60,
-    bitrate: 10_000_000,
-    levels: { H264: 42, HEVC: 41, AV1: 41 },
-  },
-  {
-    width: 1920,
-    height: 1080,
-    frameRate: 30,
-    bitrate: 10_000_000,
-    levels: { H264: 40, HEVC: 40, AV1: 40 },
-  },
-]
-const LOWEST_TIER = PICTURE_TIERS[PICTURE_TIERS.length - 1]
+// Each level is the lowest that holds the tier's picture size and frame rate.
+const UHD_AT_60: PictureTier = {
+  width: 3840,
+  height: 2160,
+  frameRate: 60,
+  bitrate: 40_000_000,
+  levels: { H264: 52, HEVC: 51, AV1: 51 },
+}
+const UHD_AT_30: PictureTier = {
+  width: 3840,
+  height: 2160,
+  frameRate: 30,
+  bitrate: 40_000_000,
+  levels: { H264: 51, HEVC: 50, AV1: 50 },
+}
+const FULL_HD_AT_60: PictureTier = {
+  width: 1920,
+  height: 1080,
+  frameRate: 60,
+  bitrate: 10_000_000,
+  levels: { H264: 42, HEVC: 41, AV1: 41 },
+}
+const FULL_HD_AT_30: PictureTier = {
+  width: 1920,
+  height: 1080,
+  frameRate: 30,
+  bitrate: 10_000_000,
+  levels: { H264: 40, HEVC: 40, AV1: 40 },
+}
+// Top down.
+const PICTURE_TIERS: readonly PictureTier[] = [UHD_AT_60, UHD_AT_30, FULL_HD_AT_60, FULL_HD_AT_30]
 
 interface BitDepthProbe {
   bitDepth: number
@@ -282,7 +281,7 @@ function tiersWithoutSmoothAnswer({
     return [eightBitTier(H264, decoded[decoded.length - 1].tier)]
   }
   if (family === AV1 && decoded.length === 0 && isAv1Corroborated(platform)) {
-    return [eightBitTier(AV1, LOWEST_TIER)]
+    return [eightBitTier(AV1, FULL_HD_AT_30)]
   }
   return []
 }
@@ -331,7 +330,7 @@ function isCoveredBy(candidate: DecodedTier, wider: DecodedTier): boolean {
 // WebKit's decodingInfo under-reports AV1 (streamarr-server#395), so a false answer drops AV1 only
 // when the path that plays the stream also refuses its codec string.
 function isAv1Corroborated(platform: PlaybackPlatform): boolean {
-  const type = `video/mp4; codecs="${AV1.eightBit.codec(LOWEST_TIER.levels.AV1)}"`
+  const type = `video/mp4; codecs="${AV1.eightBit.codec(FULL_HD_AT_30.levels.AV1)}"`
   if (platform.hlsJsSupported) {
     return platform.mediaSourceTypeSupported(type)
   }
@@ -454,7 +453,7 @@ function minimalDeclaration(hls: boolean): ClientCapabilityDeclarationInput {
     video: [
       videoEntry({
         family: H264,
-        decodedTier: eightBitTier(H264, LOWEST_TIER),
+        decodedTier: eightBitTier(H264, FULL_HD_AT_30),
         hls,
       }),
     ],
