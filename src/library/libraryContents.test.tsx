@@ -137,7 +137,7 @@ function loadedTitles() {
 function removal(id: string) {
   return {
     data: {
-      change: { __typename: 'LibraryItemRemoval', libraryId: LIBRARY, itemId: id, kind: 'MOVIE' },
+      change: { __typename: 'RemovedLibraryItem', libraryId: LIBRARY, itemId: id, kind: 'MOVIE' },
     },
   }
 }

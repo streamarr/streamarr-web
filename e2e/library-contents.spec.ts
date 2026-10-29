@@ -110,7 +110,7 @@ test('library frames update cards and counts through detail navigation and recon
   socket.publish('LibraryItemRemoved', {
     data: {
       change: {
-        __typename: 'LibraryItemRemoval',
+        __typename: 'RemovedLibraryItem',
         libraryId: LIBRARY,
         itemId: 'd',
         kind: 'MOVIE',

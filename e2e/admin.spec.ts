@@ -320,7 +320,7 @@ test("another session's added and removed libraries join and leave the inventory
   ).toBeVisible()
 
   state.socket.publish('LibraryRemoved', {
-    data: { libraryRemoved: { __typename: 'LibraryRemoval', libraryId: 'shows' } },
+    data: { libraryRemoved: { __typename: 'RemovedLibrary', libraryId: 'shows' } },
   })
   await expect(inventory.getByRole('button', { name: /TV shows/ })).toHaveCount(0)
   await expect(

@@ -1102,7 +1102,7 @@ describe('library administration', () => {
     await waitFor(() => expect(state.socket.isLive('LibraryRemoved')).toBe(true))
 
     state.socket.publish('LibraryRemoved', {
-      data: { libraryRemoved: { __typename: 'LibraryRemoval', libraryId: 'shows' } },
+      data: { libraryRemoved: { __typename: 'RemovedLibrary', libraryId: 'shows' } },
     })
 
     const inventory = screen.getByRole('navigation', { name: 'Libraries to manage' })
@@ -1123,7 +1123,7 @@ describe('library administration', () => {
 
     state.libraries = [MOVIES]
     state.socket.publish('LibraryRemoved', {
-      data: { libraryRemoved: { __typename: 'LibraryRemoval', libraryId: 'shows' } },
+      data: { libraryRemoved: { __typename: 'RemovedLibrary', libraryId: 'shows' } },
     })
 
     await waitFor(() =>

@@ -701,6 +701,7 @@ export type CreatePlaybackSessionMutation = { createPlaybackSession: { playbackS
             | { __typename: 'NoEligibleVideoFormatError', message: string }
             | { __typename: 'PlaybackFormatAttemptsExhaustedError', message: string }
             | { __typename: 'PlaybackFormatRejectedError', message: string }
+            | { __typename: 'PlaybackInvalidSpecificationError', message: string }
             | { __typename: 'PlaybackOutputMismatchError', message: string }
             | { __typename: 'PlaybackStartupFailedError', message: string }
             | { __typename: 'TranscodeCapacityUnavailableError', message: string }
@@ -741,6 +742,7 @@ export type PlaybackSessionQuery = { playbackSession: { id: string, formatAttemp
           | { __typename: 'NoEligibleVideoFormatError', message: string }
           | { __typename: 'PlaybackFormatAttemptsExhaustedError', message: string }
           | { __typename: 'PlaybackFormatRejectedError', message: string }
+          | { __typename: 'PlaybackInvalidSpecificationError', message: string }
           | { __typename: 'PlaybackOutputMismatchError', message: string }
           | { __typename: 'PlaybackStartupFailedError', message: string }
           | { __typename: 'TranscodeCapacityUnavailableError', message: string }
@@ -759,6 +761,7 @@ export type PlaybackSessionFieldsFragment = { id: string, formatAttemptCount: nu
         | { __typename: 'NoEligibleVideoFormatError', message: string }
         | { __typename: 'PlaybackFormatAttemptsExhaustedError', message: string }
         | { __typename: 'PlaybackFormatRejectedError', message: string }
+        | { __typename: 'PlaybackInvalidSpecificationError', message: string }
         | { __typename: 'PlaybackOutputMismatchError', message: string }
         | { __typename: 'PlaybackStartupFailedError', message: string }
         | { __typename: 'TranscodeCapacityUnavailableError', message: string }
@@ -790,6 +793,7 @@ export type ReportPlaybackFormatFailureMutation = { reportPlaybackFormatFailure:
             | { __typename: 'NoEligibleVideoFormatError', message: string }
             | { __typename: 'PlaybackFormatAttemptsExhaustedError', message: string }
             | { __typename: 'PlaybackFormatRejectedError', message: string }
+            | { __typename: 'PlaybackInvalidSpecificationError', message: string }
             | { __typename: 'PlaybackOutputMismatchError', message: string }
             | { __typename: 'PlaybackStartupFailedError', message: string }
             | { __typename: 'TranscodeCapacityUnavailableError', message: string }

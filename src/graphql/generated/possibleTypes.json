@@ -368,6 +368,7 @@
       "OfferInvalidatedError",
       "PlaybackFormatAttemptsExhaustedError",
       "PlaybackFormatRejectedError",
+      "PlaybackInvalidSpecificationError",
       "PlaybackOutputMismatchError",
       "PlaybackSessionClosedError",
       "PlaybackStartupFailedError",
@@ -423,6 +424,7 @@
       "NoEligibleVideoFormatError",
       "PlaybackFormatAttemptsExhaustedError",
       "PlaybackFormatRejectedError",
+      "PlaybackInvalidSpecificationError",
       "PlaybackOutputMismatchError",
       "PlaybackStartupFailedError",
       "TranscodeCapacityUnavailableError"

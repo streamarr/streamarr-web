@@ -1127,7 +1127,7 @@ describe('useLibraryItems', () => {
     socket.publish('LibraryItemRemoved', {
       data: {
         change: {
-          __typename: 'LibraryItemRemoval',
+          __typename: 'RemovedLibraryItem',
           libraryId: LIBRARY_ID,
           itemId: '287',
           kind: 'MOVIE',

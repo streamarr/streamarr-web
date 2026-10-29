@@ -561,7 +561,7 @@ describe('Player', () => {
                   streamSessionId: SESSION.id,
                   error: {
                     __typename: 'PlaybackOutputMismatchError',
-                    message: 'The source video cannot be copied for playback.',
+                    message: 'The server cannot produce the planned video format from this source.',
                   },
                 },
               },
@@ -575,7 +575,7 @@ describe('Player', () => {
     renderWithProviders(<Player mediaFileId="abcd" />)
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'The source video cannot be copied for playback.',
+      'The server cannot produce the planned video format from this source.',
     )
     expect(hls.loadSource).not.toHaveBeenCalled()
   })
