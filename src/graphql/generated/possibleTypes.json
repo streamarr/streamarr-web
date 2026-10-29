@@ -121,6 +121,11 @@
       "HouseholdNameRequiredError"
     ],
     "CreatePlaybackSessionError": [
+      "CapabilityListTooLongError",
+      "CapabilityMaximumInvalidError",
+      "CapabilityProfileMismatchError",
+      "CapabilityValuesRequiredError",
+      "HlsAacCapabilityRequiredError",
       "InvalidIdError",
       "InvalidMediaFileError",
       "MediaFileFrameRateUnknownError",
@@ -129,7 +134,8 @@
       "MediaFileProbeNotReadyError",
       "NoEligibleVideoFormatError",
       "PlaybackSessionClosedError",
-      "TranscodeCapacityUnavailableError"
+      "TranscodeCapacityUnavailableError",
+      "VideoCodecTierInvalidError"
     ],
     "CreateProfileError": [
       "AccountNotFoundError",
@@ -218,6 +224,10 @@
     "InputMutationError": [
       "AccountNotFoundError",
       "AlreadyManagerError",
+      "CapabilityListTooLongError",
+      "CapabilityMaximumInvalidError",
+      "CapabilityProfileMismatchError",
+      "CapabilityValuesRequiredError",
       "ConfirmationRequiredError",
       "DestinationNotFoundError",
       "DisplayNameRequiredError",
@@ -229,6 +239,7 @@
       "EsnBlockNotFoundError",
       "EsnInvalidError",
       "EsnRequiredError",
+      "HlsAacCapabilityRequiredError",
       "HouseholdNameRequiredError",
       "HouseholdNotFoundError",
       "InvalidIdError",
@@ -267,7 +278,8 @@
       "ShareNotActiveError",
       "ShareNotFoundError",
       "ShareNotPendingError",
-      "UnknownEncoderPresetError"
+      "UnknownEncoderPresetError",
+      "VideoCodecTierInvalidError"
     ],
     "InviteProfileManagerError": [
       "AccountNotFoundError",
@@ -321,6 +333,10 @@
       "AccountNotFoundError",
       "AccountsRemainError",
       "AlreadyManagerError",
+      "CapabilityListTooLongError",
+      "CapabilityMaximumInvalidError",
+      "CapabilityProfileMismatchError",
+      "CapabilityValuesRequiredError",
       "ConfirmationRequiredError",
       "DestinationNotFoundError",
       "DisplayNameRequiredError",
@@ -332,6 +348,7 @@
       "EsnBlockNotFoundError",
       "EsnInvalidError",
       "EsnRequiredError",
+      "HlsAacCapabilityRequiredError",
       "HouseholdNameRequiredError",
       "HouseholdNotFoundError",
       "InvalidIdError",
@@ -399,7 +416,8 @@
       "ShareNotFoundError",
       "ShareNotPendingError",
       "TranscodeCapacityUnavailableError",
-      "UnknownEncoderPresetError"
+      "UnknownEncoderPresetError",
+      "VideoCodecTierInvalidError"
     ],
     "OfferProfileShareError": [
       "HouseholdNotFoundError",
