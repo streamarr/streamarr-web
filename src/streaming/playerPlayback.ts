@@ -10,7 +10,7 @@ import {
   ReportStreamSessionTimelineDocument,
   type ReportStreamSessionTimelineMutationVariables,
 } from '../graphql/generated/graphql'
-import { userErrorMessage } from '../graphql/userErrors'
+import { userErrorMessage, userErrorMessageOr } from '../graphql/userErrors'
 import { discardWatchedState } from '../media/watchedState'
 import { hlsTrackSource, nativeTrackSource, type TrackSource } from './trackSources'
 
@@ -21,6 +21,7 @@ const PLAYBACK_START_TIMEOUT_MS = 30_000
 const PLAYBACK_STATUS_INTERVAL_MS = 500
 
 const PLAYBACK_FAILURE_MESSAGE = "Playback couldn't start. Try again."
+const FAILED_ATTEMPT_FALLBACK_MESSAGE = "This video can't be played right now. Try again later."
 
 type PlaybackState = ReportStreamSessionTimelineMutationVariables['state']
 type PlaybackSessionPayload = CreatePlaybackSessionMutation['createPlaybackSession']
@@ -233,7 +234,7 @@ export function startPlayerPlayback({
   function adoptPlayback(playback: PlaybackSessionFieldsFragment | null | undefined) {
     const attempt = playback?.currentFormatAttempt
     if (attempt?.__typename === 'FailedPlaybackFormatAttempt') {
-      showFailure(userErrorMessage(attempt.error))
+      showFailure(userErrorMessageOr(attempt.error, FAILED_ATTEMPT_FALLBACK_MESSAGE))
       return
     }
     if (attempt?.__typename !== 'ReadyPlaybackFormatAttempt') {

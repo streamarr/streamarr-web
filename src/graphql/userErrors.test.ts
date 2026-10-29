@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { FORM_ERRORS, groupByInputPath, userErrorMessage } from './userErrors'
+import { FORM_ERRORS, groupByInputPath, userErrorMessage, userErrorMessageOr } from './userErrors'
 
 describe('userErrorMessage', () => {
   it('prefers the member message and falls back for unknown members', () => {
@@ -11,6 +11,14 @@ describe('userErrorMessage', () => {
     )
     expect(userErrorMessage({ message: '   ' })).toBe('Something went wrong. Please try again.')
     expect(userErrorMessage(undefined)).toBe('Something went wrong. Please try again.')
+  })
+
+  it('uses the caller fallback only when the member has no message', () => {
+    const fallback = "This video can't be played right now. Try again later."
+
+    expect(userErrorMessageOr({ message: 'Enter a name.' }, fallback)).toBe('Enter a name.')
+    expect(userErrorMessageOr({ __typename: 'BrandNewError' }, fallback)).toBe(fallback)
+    expect(userErrorMessageOr({ message: '   ' }, fallback)).toBe(fallback)
   })
 })
 
