@@ -18,10 +18,32 @@ import {
 import { type FakeAudioTrack, type FakeTextTrack, giveElementTracks } from '../test/mediaTracks'
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
+import type { ClientCapabilityDeclarationInput } from '../graphql/generated/graphql'
 import { Player } from './Player'
 
 vi.mock('hls.js', async () => (await import('../test/fakeHls')).hlsModule)
 
+const MINIMAL_DECLARATION = {
+  video: [
+    {
+      codecFamily: 'H264',
+      codecProfiles: [
+        { profile: 'H264_HIGH', maxLevel: 40 },
+        { profile: 'H264_MAIN', maxLevel: 40 },
+        { profile: 'H264_CONSTRAINED_BASELINE', maxLevel: 40 },
+      ],
+      maxBitDepth: 8,
+      maxWidth: 1920,
+      maxHeight: 1080,
+      maxFrameRate: 30,
+      compatibleBases: ['SDR'],
+      dolbyVisionProfiles: [],
+      hdr10Plus: false,
+      hls: true,
+    },
+  ],
+  audio: [{ codec: 'AAC', maxChannels: 2, hls: true }],
+}
 const STREAM_URL = '/api/stream/abcd/multivariant.m3u8?t=playback-token'
 const SESSION = { id: 'sess-1', streamUrl: STREAM_URL, transcodeMode: 'REMUX' } as const
 const CAPACITY_REFUSAL = 'Every transcode slot is busy. Try again in a moment.'
@@ -531,7 +553,7 @@ describe('Player', () => {
     const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
 
     await attachedVideo()
-    expect(created).toEqual([{ input: { mediaFileId: 'abcd' } }])
+    expect(created).toEqual([{ input: { mediaFileId: 'abcd', capabilities: MINIMAL_DECLARATION } }])
     unmount()
     await waitFor(() => expect(destroyed).toEqual([{ input: { playbackSessionId: 'playback-1' } }]))
   })
@@ -551,6 +573,43 @@ describe('Player', () => {
     expect(network.loads.map(({ config }) => config.loadPolicy.maxTimeToFirstByteMs)).toEqual([
       20_000,
     ])
+  })
+
+  it('shouldDeclareWhatTheBrowserDecodesWhenPlaybackStarts', async () => {
+    serveSession()
+    const created: { input: { capabilities: ClientCapabilityDeclarationInput } }[] = []
+    server.use(
+      graphql.mutation('CreatePlaybackSession', ({ variables }) => {
+        created.push(variables as unknown as (typeof created)[number])
+        return HttpResponse.json({
+          data: {
+            createPlaybackSession: {
+              playbackSession: readyPlaybackSession({ streamSession: SESSION }),
+              userErrors: [],
+            },
+          },
+        })
+      }),
+    )
+    const decodingInfo = vi.fn((configuration: MediaDecodingConfiguration) =>
+      Promise.resolve({ supported: !configuration.video?.contentType.includes('av01') }),
+    )
+    Object.defineProperty(navigator, 'mediaCapabilities', {
+      value: { decodingInfo },
+      configurable: true,
+    })
+
+    try {
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      await attachedVideo()
+    } finally {
+      Reflect.deleteProperty(navigator, 'mediaCapabilities')
+    }
+
+    expect(decodingInfo).toHaveBeenCalledWith(expect.objectContaining({ type: 'media-source' }))
+    expect(
+      created.map(({ input }) => input.capabilities.video.map((entry) => entry.codecFamily)),
+    ).toEqual([['H264', 'HEVC']])
   })
 
   it('shouldAttachTheReadyChildWhenInitialPlaybackIsPending', async () => {
@@ -1909,7 +1968,7 @@ describe('Player', () => {
 
     await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(STREAM_URL))
     expect(hls.attachMedia).toHaveBeenCalledOnce()
-    expect(variables).toEqual({ input: { mediaFileId: 'abcd' } })
+    expect(variables).toEqual({ input: { mediaFileId: 'abcd', capabilities: MINIMAL_DECLARATION } })
   })
 
   it('shouldDestroyASessionThatFinishesCreatingAfterThePlayerLeaves', async () => {

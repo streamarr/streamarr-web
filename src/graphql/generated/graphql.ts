@@ -46,6 +46,26 @@ export type AlphabetLetter =
   | 'Z'
   | '%future added value';
 
+/** One audio codec that the player decodes, with the most channels it accepts for that codec. */
+export type AudioCapabilityEntryInput = {
+  /** The audio codec. */
+  codec: AudioCodec;
+  /** Whether this entry applies to HLS delivery. */
+  hls: boolean;
+  /** The most channels that the player accepts for this codec. */
+  maxChannels: number;
+};
+
+/** An audio codec that a client can declare. */
+export type AudioCodec =
+  | 'AAC'
+  | 'AC3'
+  | 'ALAC'
+  | 'EAC3'
+  | 'FLAC'
+  | 'OPUS'
+  | '%future added value';
+
 export type CancelProfileShareInput = {
   shareId: string | number;
 };
@@ -55,13 +75,57 @@ export type ChangeEncoderPresetInput = {
   preset: string;
 };
 
+/**
+ * The client capability declaration that a client builds from its current player and display each
+ * time it starts a playback session (ADR 0049). The server chooses each output from these capability
+ * entries. An output fits only when one capability entry accepts every property of the output; the
+ * server never combines the properties of two capability entries. Every list of the declaration holds
+ * at most 32 values, and every maximum must be above zero.
+ */
+export type ClientCapabilityDeclarationInput = {
+  /** The audio capability entries. The declaration needs at least one, including an AAC entry that applies to HLS. */
+  audio: Array<AudioCapabilityEntryInput>;
+  /** The video capability entries. The declaration needs at least one. */
+  video: Array<VideoCapabilityEntryInput>;
+};
+
 export type CreatePlaybackSessionInput = {
+  /** What the client's current player and display accept. */
+  capabilities: ClientCapabilityDeclarationInput;
   mediaFileId: string | number;
   options?: StreamingOptionsInput | null | undefined;
 };
 
+/** A standard picture format that a player displays without a stream's advanced HDR information. */
+export type DeclaredCompatibleBase =
+  /** Hybrid log-gamma, ARIB STD-B67. */
+  | 'HLG'
+  /** SMPTE ST 2084, which covers HDR10 and PQ10. */
+  | 'PQ'
+  /** Standard dynamic range. */
+  | 'SDR'
+  | '%future added value';
+
 export type DestroyPlaybackSessionInput = {
   playbackSessionId: string | number;
+};
+
+/** A single-layer Dolby Vision profile. No value names profile 7, which needs dual-layer playback. */
+export type DolbyVisionProfile =
+  | 'PROFILE_5'
+  | 'PROFILE_8_1'
+  | 'PROFILE_8_4'
+  | 'PROFILE_10_0'
+  | 'PROFILE_10_1'
+  | 'PROFILE_10_4'
+  | '%future added value';
+
+/** A Dolby Vision profile whose RPUs the player applies, with the highest Dolby Vision level it accepts for that profile. */
+export type DolbyVisionProfileCapabilityInput = {
+  /** The highest Dolby Vision level, which is separate from the codec level. */
+  maxLevel: number;
+  /** The Dolby Vision profile. Profiles 5 and 8.x belong to HEVC entries, and profiles 10.x to AV1 entries. */
+  profile: DolbyVisionProfile;
 };
 
 /** A preset on the scale that every software encoder uses, from fastest to slowest. */
@@ -244,16 +308,14 @@ export type StopLibraryScanInput = {
   libraryId: string | number;
 };
 
+/** The viewer's playback choices. What the client can play belongs in the client capability declaration. */
 export type StreamingOptionsInput = {
   audioLanguage?: string | null | undefined;
-  maxAudioChannels?: number | null | undefined;
   maxBitrate?: number | null | undefined;
   maxHeight?: number | null | undefined;
   maxWidth?: number | null | undefined;
   quality?: VideoQuality | null | undefined;
   subtitleLanguage?: string | null | undefined;
-  supportedAudioCodecs?: Array<string> | null | undefined;
-  supportedCodecs?: Array<string> | null | undefined;
 };
 
 export type TranscodeMode =
@@ -261,6 +323,76 @@ export type TranscodeMode =
   | 'FULL_TRANSCODE'
   | 'REMUX'
   | 'VIDEO_TRANSCODE'
+  | '%future added value';
+
+/**
+ * One group of video values and maximums that the player accepts together for one codec family. The
+ * player accepts every combination that takes one value from each list and stays within every
+ * maximum. A client whose limits depend on each other sends one entry for each combination of limits.
+ */
+export type VideoCapabilityEntryInput = {
+  /** The codec family that every codec profile of this entry belongs to. */
+  codecFamily: VideoCodecFamily;
+  /** The codec profiles that the player decodes, each with its own maximum level and tier. The entry needs at least one. */
+  codecProfiles: Array<VideoCodecProfileCapabilityInput>;
+  /** The compatible bases that the player displays. The entry needs at least one unless it lists Dolby Vision profile 5 or 10.0, whose streams have no compatible base. */
+  compatibleBases: Array<DeclaredCompatibleBase>;
+  /** The Dolby Vision profiles whose RPUs the player applies. A player that plays only a stream's base layer lists none. */
+  dolbyVisionProfiles: Array<DolbyVisionProfileCapabilityInput>;
+  /** Whether the player applies HDR10+ information. */
+  hdr10Plus: boolean;
+  /** Whether this entry applies to HLS delivery. */
+  hls: boolean;
+  /** The highest bit depth that the player decodes. */
+  maxBitDepth: number;
+  /** The highest frame rate, in frames per second, that the player decodes. */
+  maxFrameRate: number;
+  /** The tallest picture, in pixels, that the player decodes. */
+  maxHeight: number;
+  /** The widest picture, in pixels, that the player decodes. */
+  maxWidth: number;
+};
+
+/** A video codec family that a client can declare. */
+export type VideoCodecFamily =
+  | 'AV1'
+  | 'H264'
+  | 'HEVC'
+  | '%future added value';
+
+/** A video codec profile. Each value belongs to the codec family that its prefix names. */
+export type VideoCodecProfile =
+  | 'AV1_HIGH'
+  | 'AV1_MAIN'
+  | 'AV1_PROFESSIONAL'
+  | 'H264_BASELINE'
+  | 'H264_CONSTRAINED_BASELINE'
+  | 'H264_EXTENDED'
+  | 'H264_HIGH'
+  | 'H264_HIGH_10'
+  | 'H264_HIGH_422'
+  | 'H264_HIGH_444_PREDICTIVE'
+  | 'H264_MAIN'
+  | 'HEVC_FORMAT_RANGE_EXTENSIONS'
+  | 'HEVC_MAIN'
+  | 'HEVC_MAIN_10'
+  | 'HEVC_MAIN_STILL_PICTURE'
+  | '%future added value';
+
+/** A codec profile that the player decodes, with the highest level and tier it accepts for that profile. */
+export type VideoCodecProfileCapabilityInput = {
+  /** The highest codec level, written as the major level × 10 plus the minor level for every codec family: level 5.1 is 51. */
+  maxLevel: number;
+  /** The highest codec tier. Required for HEVC and AV1 profiles, and absent for H.264 profiles, which have no tier. */
+  maxTier?: VideoCodecTier | null | undefined;
+  /** The codec profile, which must belong to the entry's codec family. */
+  profile: VideoCodecProfile;
+};
+
+/** The tier of an HEVC or AV1 stream. The High tier is above the Main tier. */
+export type VideoCodecTier =
+  | 'HIGH'
+  | 'MAIN'
   | '%future added value';
 
 export type VideoQuality =
@@ -709,6 +841,11 @@ export type CreatePlaybackSessionMutation = { createPlaybackSession: { playbackS
         | { __typename: 'PendingPlaybackFormatAttempt', streamSessionId: string }
         | { __typename: 'ReadyPlaybackFormatAttempt', streamSession: { id: string, streamUrl: string, transcodeMode: TranscodeMode } }
        } | null, userErrors: Array<
+      | { __typename: 'CapabilityListTooLongError', message: string }
+      | { __typename: 'CapabilityMaximumInvalidError', message: string }
+      | { __typename: 'CapabilityProfileMismatchError', message: string }
+      | { __typename: 'CapabilityValuesRequiredError', message: string }
+      | { __typename: 'HlsAacCapabilityRequiredError', message: string }
       | { __typename: 'InvalidIdError', message: string }
       | { __typename: 'InvalidMediaFileError', message: string }
       | { __typename: 'MediaFileFrameRateUnknownError', message: string }
@@ -718,6 +855,7 @@ export type CreatePlaybackSessionMutation = { createPlaybackSession: { playbackS
       | { __typename: 'NoEligibleVideoFormatError', message: string }
       | { __typename: 'PlaybackSessionClosedError', message: string }
       | { __typename: 'TranscodeCapacityUnavailableError', message: string }
+      | { __typename: 'VideoCodecTierInvalidError', message: string }
     > } | null };
 
 export type DestroyPlaybackSessionMutationVariables = Exact<{

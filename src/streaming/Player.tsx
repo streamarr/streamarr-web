@@ -5,6 +5,7 @@ import { CreatePlaybackSessionDocument } from '../graphql/generated/graphql'
 import { DetailBackButton } from '../media/DetailBack'
 import focusStyles from '../styles/focus.module.css'
 import { BufferingRing } from './BufferingRing'
+import { browserPlaybackPlatform, declarePlaybackCapabilities } from './playbackCapabilities'
 import styles from './Player.module.css'
 import {
   PlayerControls,
@@ -60,7 +61,10 @@ export function Player({
     return startPlayerPlayback({
       video,
       client,
-      createPlaybackSession: () => createPlaybackSession({ variables: { input: { mediaFileId } } }),
+      createPlaybackSession: async () => {
+        const capabilities = await declarePlaybackCapabilities(browserPlaybackPlatform(video))
+        return createPlaybackSession({ variables: { input: { mediaFileId, capabilities } } })
+      },
       startPositionSeconds,
       onSourcePhase: setSourcePhase,
     })
