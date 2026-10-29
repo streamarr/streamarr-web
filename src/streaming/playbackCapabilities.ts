@@ -45,7 +45,8 @@ interface PictureTier {
   levels: FamilyLevels
 }
 
-// Each level is the lowest that holds the tier's picture size and frame rate.
+// Each level is the lowest that holds the tier's picture size and frame rate, and each bitrate stays
+// within every family's Main-tier maximum at its level: WebKit refuses an AV1 configuration above it.
 const UHD_AT_60: PictureTier = {
   width: 3840,
   height: 2160,
@@ -57,7 +58,7 @@ const UHD_AT_30: PictureTier = {
   width: 3840,
   height: 2160,
   frameRate: 30,
-  bitrate: 40_000_000,
+  bitrate: 20_000_000,
   levels: { H264: 51, HEVC: 50, AV1: 50 },
 }
 const FULL_HD_AT_60: PictureTier = {
