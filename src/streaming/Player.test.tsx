@@ -46,6 +46,7 @@ const MINIMAL_DECLARATION = {
 }
 const STREAM_URL = '/api/stream/abcd/multivariant.m3u8?t=playback-token'
 const SESSION = { id: 'sess-1', streamUrl: STREAM_URL, transcodeMode: 'REMUX' } as const
+const DECLARATION_REFUSAL = 'capabilities.video[0].maxWidth must be above zero.'
 const CAPACITY_REFUSAL = 'Every transcode slot is busy. Try again in a moment.'
 const INVALID_PLAN =
   "This video can't be played right now. Ask your server admin to check the server logs."
@@ -2048,6 +2049,35 @@ describe('Player', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent(CAPACITY_REFUSAL)
     expect(hls.loadSource).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    'CapabilityValuesRequiredError',
+    'HlsAacCapabilityRequiredError',
+    'CapabilityListTooLongError',
+    'CapabilityMaximumInvalidError',
+    'CapabilityProfileMismatchError',
+    'VideoCodecTierInvalidError',
+  ])('shouldShowThePlaybackFailureWhenTheServerRefusesTheDeclarationWith%s', async (typename) => {
+    server.use(
+      graphql.mutation('CreatePlaybackSession', () =>
+        HttpResponse.json({
+          data: {
+            createPlaybackSession: {
+              playbackSession: null,
+              userErrors: [{ __typename: typename, message: DECLARATION_REFUSAL }],
+            },
+          },
+        }),
+      ),
+    )
+
+    renderWithProviders(<Player mediaFileId="abcd" />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "Playback couldn't start. Try again.",
+    )
+    expect(screen.getByRole('alert')).not.toHaveTextContent(DECLARATION_REFUSAL)
   })
 
   it('shouldReportAFatalStreamErrorAndTearDownHls', async () => {
