@@ -592,9 +592,10 @@ describe('Player', () => {
         })
       }),
     )
-    const decodingInfo = vi.fn((configuration: MediaDecodingConfiguration) =>
-      Promise.resolve({ supported: !configuration.video?.contentType.includes('av01') }),
-    )
+    const decodingInfo = vi.fn((configuration: MediaDecodingConfiguration) => {
+      const supported = !configuration.video?.contentType.includes('av01')
+      return Promise.resolve({ supported, smooth: supported, powerEfficient: supported })
+    })
     Object.defineProperty(navigator, 'mediaCapabilities', {
       value: { decodingInfo },
       configurable: true,

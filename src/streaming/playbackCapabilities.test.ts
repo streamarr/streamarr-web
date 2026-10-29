@@ -46,10 +46,15 @@ function codecOf(configuration: MediaDecodingConfiguration): string {
   return /codecs="([^"]+)"/.exec(contentType)?.[1] ?? ''
 }
 
-function decodingInfoAnswering(decodes: Decodes) {
-  return vi.fn((configuration: MediaDecodingConfiguration) =>
-    Promise.resolve({ supported: decodes(configuration) }),
-  )
+function decodingInfoAnswering(decodes: Decodes, isSmooth: Decodes = () => true) {
+  return vi.fn((configuration: MediaDecodingConfiguration) => {
+    const supported = decodes(configuration)
+    return Promise.resolve({ supported, smooth: supported && isSmooth(configuration) })
+  })
+}
+
+function isFullHdAtThirtyFrames(configuration: MediaDecodingConfiguration): boolean {
+  return configuration.video?.width === 1920 && configuration.video.framerate === 30
 }
 
 function platformFixture(overrides: Partial<PlaybackPlatform> = {}): PlaybackPlatform {
@@ -160,6 +165,106 @@ describe('declarePlaybackCapabilities', () => {
       sdrVideoEntry({ codecProfiles: h264Profiles(51), maxWidth: 3840, maxHeight: 2160 }),
       sdrVideoEntry({ codecProfiles: h264Profiles(42), maxFrameRate: 60 }),
     ])
+  })
+
+  it('shouldBoundEachFamilyToItsSmoothTiersWhenHigherTiersDecodeOnlyWithDroppedFrames', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: decodingInfoAnswering(
+          () => true,
+          (configuration) =>
+            configuration.audio !== undefined || isFullHdAtThirtyFrames(configuration),
+        ),
+      }),
+    )
+
+    expect(declaration.video).toEqual([
+      sdrVideoEntry({ codecProfiles: h264Profiles(40) }),
+      sdrVideoEntry({
+        codecFamily: 'HEVC',
+        codecProfiles: [
+          { profile: 'HEVC_MAIN', maxLevel: 40, maxTier: 'MAIN' },
+          { profile: 'HEVC_MAIN_10', maxLevel: 40, maxTier: 'MAIN' },
+        ],
+        maxBitDepth: 10,
+      }),
+      sdrVideoEntry({
+        codecFamily: 'AV1',
+        codecProfiles: [{ profile: 'AV1_MAIN', maxLevel: 40, maxTier: 'MAIN' }],
+        maxBitDepth: 10,
+      }),
+    ])
+  })
+
+  it('shouldDeclareEightBitWhenTenBitDecodesOnlyWithDroppedFrames', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: decodingInfoAnswering(
+          () => true,
+          (configuration) =>
+            !codecOf(configuration).startsWith('hvc1.2') && !codecOf(configuration).endsWith('.10'),
+        ),
+      }),
+    )
+
+    expect(
+      declaration.video.map(({ codecFamily, codecProfiles, maxBitDepth }) => ({
+        codecFamily,
+        profiles: codecProfiles.map(({ profile }) => profile),
+        maxBitDepth,
+      })),
+    ).toEqual([
+      {
+        codecFamily: 'H264',
+        profiles: ['H264_HIGH', 'H264_MAIN', 'H264_CONSTRAINED_BASELINE'],
+        maxBitDepth: 8,
+      },
+      { codecFamily: 'HEVC', profiles: ['HEVC_MAIN'], maxBitDepth: 8 },
+      { codecFamily: 'AV1', profiles: ['AV1_MAIN'], maxBitDepth: 8 },
+    ])
+  })
+
+  it('shouldKeepTheLowestH264TierWhenNoH264TierDecodesSmoothly', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: decodingInfoAnswering(
+          () => true,
+          (configuration) => !codecOf(configuration).startsWith('avc1'),
+        ),
+      }),
+    )
+
+    expect(familyEntries(declaration, 'H264')).toEqual([
+      sdrVideoEntry({ codecProfiles: h264Profiles(40) }),
+    ])
+  })
+
+  it('shouldDropHevcWhenItDecodesOnlyWithDroppedFrames', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: decodingInfoAnswering(
+          () => true,
+          (configuration) => !codecOf(configuration).startsWith('hvc1'),
+        ),
+      }),
+    )
+
+    expect(familyEntries(declaration, 'HEVC')).toEqual([])
+  })
+
+  it('shouldDropAv1WhenItDecodesOnlyWithDroppedFramesEvenWhenMediaSourceAcceptsIt', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: decodingInfoAnswering(
+          () => true,
+          (configuration) => !codecOf(configuration).startsWith('av01'),
+        ),
+        mediaSourceTypeSupported: (type) => type === AV1_PROBE,
+        userAgent: SAFARI,
+      }),
+    )
+
+    expect(familyEntries(declaration, 'AV1')).toEqual([])
   })
 
   it('shouldEncodeEachLevelAsMajorTimesTenPlusMinorWhenTheBrowserAnswersForThatLevel', async () => {
@@ -344,7 +449,7 @@ describe('declarePlaybackCapabilities', () => {
         decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) =>
           codecOf(configuration) === 'opus'
             ? Promise.reject(new TypeError('Unsupported configuration'))
-            : Promise.resolve({ supported: true }),
+            : Promise.resolve({ supported: true, smooth: true }),
         ),
       }),
     )
@@ -355,7 +460,9 @@ describe('declarePlaybackCapabilities', () => {
   it('shouldDeclareTheMinimalDeclarationWhenDecodingInfoNeverAnswers', async () => {
     vi.useFakeTimers()
     const declaration = declarePlaybackCapabilities(
-      platformFixture({ decodingInfo: vi.fn(() => new Promise<{ supported: boolean }>(() => {})) }),
+      platformFixture({
+        decodingInfo: vi.fn(() => new Promise<{ supported: boolean; smooth: boolean }>(() => {})),
+      }),
     )
 
     await vi.advanceTimersByTimeAsync(3_000)

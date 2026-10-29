@@ -10,10 +10,16 @@ import type {
   VideoCodecTier,
 } from '../graphql/generated/graphql'
 
+/** Whether the browser decodes a configuration, and whether it keeps up with its frame rate. */
+export interface DecodingAnswer {
+  supported: boolean
+  smooth: boolean
+}
+
 /** The browser facts a capability declaration is built from. */
 export interface PlaybackPlatform {
   /** `MediaCapabilities.decodingInfo`, absent where the browser lacks the API. */
-  decodingInfo?: (configuration: MediaDecodingConfiguration) => Promise<{ supported: boolean }>
+  decodingInfo?: (configuration: MediaDecodingConfiguration) => Promise<DecodingAnswer>
   /** Whether hls.js plays here, on Media Source Extensions or ManagedMediaSource. */
   hlsJsSupported: boolean
   /** Whether the media element plays HLS itself. */
@@ -141,7 +147,13 @@ interface DecodedTier {
   profiles: VideoCodecProfile[]
 }
 
-type Ask = (configuration: Omit<MediaDecodingConfiguration, 'type'>) => Promise<boolean>
+interface TierAnswers {
+  tier: PictureTier
+  eightBit: DecodingAnswer
+  tenBit: DecodingAnswer | null
+}
+
+type Ask = (configuration: Omit<MediaDecodingConfiguration, 'type'>) => Promise<DecodingAnswer>
 
 /**
  * What this browser plays over HLS, built fresh for each playback session from the platform's
@@ -160,8 +172,7 @@ export async function declarePlaybackCapabilities(
   if (platform.hlsJsSupported) {
     type = 'media-source'
   }
-  const ask: Ask = async (configuration) =>
-    (await decodingInfo({ type, ...configuration })).supported
+  const ask: Ask = (configuration) => decodingInfo({ type, ...configuration })
   let timer: ReturnType<typeof setTimeout> | undefined
   const deadline = new Promise<ClientCapabilityDeclarationInput>((resolve) => {
     timer = setTimeout(() => resolve(minimal), DECODING_INFO_TIMEOUT_MS)
@@ -205,10 +216,10 @@ async function probeFamily({
   ask: Ask
   hls: boolean
 }): Promise<VideoCapabilityEntryInput[]> {
-  const decoded = await Promise.all(PICTURE_TIERS.map((tier) => probeTier({ family, tier, ask })))
-  let tiers = widestTiers(decoded.filter((tier) => tier !== null))
-  if (tiers.length === 0 && family === AV1 && isAv1Corroborated(platform)) {
-    tiers = [{ tier: LOWEST_TIER, bitDepth: 8, profiles: [...AV1.eightBit.profiles] }]
+  const answers = await Promise.all(PICTURE_TIERS.map((tier) => probeTier({ family, tier, ask })))
+  let tiers = widestTiers(answers.flatMap((answer) => smoothTier({ family, answer })))
+  if (tiers.length === 0) {
+    tiers = tiersWithoutSmoothAnswer({ platform, family, answers })
   }
   return tiers.map((decodedTier) => videoEntry({ family, decodedTier, hls }))
 }
@@ -221,21 +232,63 @@ async function probeTier({
   family: VideoFamily
   tier: PictureTier
   ask: Ask
-}): Promise<DecodedTier | null> {
+}): Promise<TierAnswers> {
   const level = tier.levels[family.family]
   const [eightBit, tenBit] = await Promise.all([
     ask(videoConfiguration(tier, family.eightBit.codec(level))),
-    family.tenBit ? ask(videoConfiguration(tier, family.tenBit.codec(level))) : false,
+    family.tenBit ? ask(videoConfiguration(tier, family.tenBit.codec(level))) : null,
   ])
-  if (!eightBit) {
-    return null
+  return { tier, eightBit, tenBit }
+}
+
+// A tier that decodes only with dropped frames stutters without a playback error, so no format
+// attempt recovers from it: only smooth answers raise a limit.
+function smoothTier({
+  family,
+  answer,
+}: {
+  family: VideoFamily
+  answer: TierAnswers
+}): DecodedTier[] {
+  if (!isSmooth(answer.eightBit)) {
+    return []
   }
-  const decoded: DecodedTier = { tier, bitDepth: 8, profiles: [...family.eightBit.profiles] }
-  if (tenBit && family.tenBit) {
+  const decoded = eightBitTier(family, answer.tier)
+  if (family.tenBit && answer.tenBit && isSmooth(answer.tenBit)) {
     decoded.bitDepth = family.tenBit.bitDepth
     decoded.profiles.push(...family.tenBit.profiles)
   }
-  return decoded
+  return [decoded]
+}
+
+function isSmooth(answer: DecodingAnswer): boolean {
+  return answer.supported && answer.smooth
+}
+
+// H.264 is the server's encode, so it keeps its lowest decoded tier even without a smooth answer.
+// AV1 keeps its lowest tier only when the browser refused every tier and the playing path
+// corroborates it; a supported but unsmooth answer is not under-reporting.
+function tiersWithoutSmoothAnswer({
+  platform,
+  family,
+  answers,
+}: {
+  platform: PlaybackPlatform
+  family: VideoFamily
+  answers: readonly TierAnswers[]
+}): DecodedTier[] {
+  const decoded = answers.filter((answer) => answer.eightBit.supported)
+  if (family === H264 && decoded.length > 0) {
+    return [eightBitTier(H264, decoded[decoded.length - 1].tier)]
+  }
+  if (family === AV1 && decoded.length === 0 && isAv1Corroborated(platform)) {
+    return [eightBitTier(AV1, LOWEST_TIER)]
+  }
+  return []
+}
+
+function eightBitTier(family: VideoFamily, tier: PictureTier): DecodedTier {
+  return { tier, bitDepth: family.eightBit.bitDepth, profiles: [...family.eightBit.profiles] }
 }
 
 function videoConfiguration(
@@ -336,7 +389,7 @@ async function probeAudio({
   ask: Ask
 }): Promise<{ codec: AudioCodec; maxChannels: number | null }> {
   for (const channels of CHANNEL_LADDER) {
-    const decodes = await ask({
+    const { supported } = await ask({
       audio: {
         contentType: `audio/mp4; codecs="${mimeCodec}"`,
         channels: String(channels),
@@ -344,7 +397,7 @@ async function probeAudio({
         samplerate: 48_000,
       },
     })
-    if (decodes) {
+    if (supported) {
       return { codec, maxChannels: channels }
     }
   }
@@ -401,7 +454,7 @@ function minimalDeclaration(hls: boolean): ClientCapabilityDeclarationInput {
     video: [
       videoEntry({
         family: H264,
-        decodedTier: { tier: LOWEST_TIER, bitDepth: 8, profiles: [...H264.eightBit.profiles] },
+        decodedTier: eightBitTier(H264, LOWEST_TIER),
         hls,
       }),
     ],
