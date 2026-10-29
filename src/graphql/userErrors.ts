@@ -11,8 +11,16 @@ const GENERIC_MESSAGE = 'Something went wrong. Please try again.'
 
 /** The member's own message, or the generic fallback for an unknown or messageless member. */
 export function userErrorMessage(error: UserErrorLike | null | undefined): string {
+  return userErrorMessageOr(error, GENERIC_MESSAGE)
+}
+
+/** The member's own message, or the caller's fallback for an unknown or messageless member. */
+export function userErrorMessageOr(
+  error: UserErrorLike | null | undefined,
+  fallback: string,
+): string {
   const message = error?.message?.trim()
-  return message || GENERIC_MESSAGE
+  return message || fallback
 }
 
 export const FORM_ERRORS = ''

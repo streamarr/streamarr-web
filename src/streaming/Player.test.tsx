@@ -30,7 +30,7 @@ const FAILED_ATTEMPT_ERRORS = [
   },
   {
     error: { __typename: 'PlaybackFutureFailureError' },
-    shown: 'Something went wrong. Please try again.',
+    shown: "This video can't be played right now. Try again later.",
   },
 ]
 
