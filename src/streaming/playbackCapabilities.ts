@@ -75,8 +75,21 @@ const FULL_HD_AT_30: PictureTier = {
   bitrate: 10_000_000,
   levels: { H264: 40, HEVC: 40, AV1: 40 },
 }
+const HD_AT_30: PictureTier = {
+  width: 1280,
+  height: 720,
+  frameRate: 30,
+  bitrate: 5_000_000,
+  levels: { H264: 31, HEVC: 31, AV1: 31 },
+}
 // Top down.
-const PICTURE_TIERS: readonly PictureTier[] = [UHD_AT_60, UHD_AT_30, FULL_HD_AT_60, FULL_HD_AT_30]
+const PICTURE_TIERS: readonly PictureTier[] = [
+  UHD_AT_60,
+  UHD_AT_30,
+  FULL_HD_AT_60,
+  FULL_HD_AT_30,
+  HD_AT_30,
+]
 
 interface BitDepthProbe {
   bitDepth: number

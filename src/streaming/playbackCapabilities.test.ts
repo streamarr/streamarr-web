@@ -305,6 +305,22 @@ describe('declarePlaybackCapabilities', () => {
     ])
   })
 
+  it('shouldDeclare720pWhenH264DecodesSmoothlyOnlyAt720p', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: decodingInfoAnswering(
+          () => true,
+          (configuration) =>
+            !codecOf(configuration).startsWith('avc1') || configuration.video?.height === 720,
+        ),
+      }),
+    )
+
+    expect(familyEntries(declaration, 'H264')).toEqual([
+      sdrVideoEntry({ codecProfiles: h264Profiles(31), maxWidth: 1280, maxHeight: 720 }),
+    ])
+  })
+
   it('shouldKeepTheLowestH264TierWhenNoH264TierDecodesSmoothly', async () => {
     const declaration = await declarePlaybackCapabilities(
       platformFixture({
@@ -316,7 +332,7 @@ describe('declarePlaybackCapabilities', () => {
     )
 
     expect(familyEntries(declaration, 'H264')).toEqual([
-      sdrVideoEntry({ codecProfiles: h264Profiles(40) }),
+      sdrVideoEntry({ codecProfiles: h264Profiles(31), maxWidth: 1280, maxHeight: 720 }),
     ])
   })
 
