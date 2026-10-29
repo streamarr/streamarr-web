@@ -311,9 +311,9 @@ describe('declarePlaybackCapabilities', () => {
   })
 
   it.each([
-    { browser: 'Safari', userAgent: SAFARI },
-    { browser: 'Chrome on the iPhone', userAgent: IPHONE_CHROME },
-  ])('shouldDeclareStereoOpusWhen$browser.browserConfirmsSurroundOpus', async ({ userAgent }) => {
+    ['Safari', SAFARI],
+    ['ChromeOnTheIphone', IPHONE_CHROME],
+  ])('shouldDeclareStereoOpusWhen%sConfirmsSurroundOpus', async (_, userAgent) => {
     const declaration = await declarePlaybackCapabilities(platformFixture({ userAgent }))
 
     expect(audioEntry(declaration, 'OPUS')?.maxChannels).toBe(2)
