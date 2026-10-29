@@ -17,7 +17,8 @@ vi.mock('hls.js', async () => (await import('../test/fakeHls')).hlsModule)
 const STREAM_URL = '/api/stream/abcd/multivariant.m3u8?t=playback-token'
 const SESSION = { id: 'sess-1', streamUrl: STREAM_URL, transcodeMode: 'REMUX' } as const
 const CAPACITY_REFUSAL = 'Every transcode slot is busy. Try again in a moment.'
-const INVALID_PLAN = "The transcode worker rejected the server's plan for this video."
+const INVALID_PLAN =
+  "This video can't be played right now. Ask your server admin to check the server logs."
 const FAILED_ATTEMPT_ERRORS = [
   {
     error: { __typename: 'PlaybackInvalidSpecificationError', message: INVALID_PLAN },
@@ -587,7 +588,8 @@ describe('Player', () => {
                   streamSessionId: SESSION.id,
                   error: {
                     __typename: 'PlaybackOutputMismatchError',
-                    message: 'The server cannot produce the planned video format from this source.',
+                    message:
+                      "This video file can't be played. Ask your server admin to check the file.",
                   },
                 },
               },
@@ -601,7 +603,7 @@ describe('Player', () => {
     renderWithProviders(<Player mediaFileId="abcd" />)
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'The server cannot produce the planned video format from this source.',
+      "This video file can't be played. Ask your server admin to check the file.",
     )
     expect(hls.loadSource).not.toHaveBeenCalled()
   })
