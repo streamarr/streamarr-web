@@ -17,6 +17,32 @@ vi.mock('hls.js', async () => (await import('../test/fakeHls')).hlsModule)
 const STREAM_URL = '/api/stream/abcd/multivariant.m3u8?t=playback-token'
 const SESSION = { id: 'sess-1', streamUrl: STREAM_URL, transcodeMode: 'REMUX' } as const
 const CAPACITY_REFUSAL = 'Every transcode slot is busy. Try again in a moment.'
+const INVALID_PLAN = "The transcode worker rejected the server's plan for this video."
+const FAILED_ATTEMPT_ERRORS = [
+  {
+    error: { __typename: 'PlaybackInvalidSpecificationError', message: INVALID_PLAN },
+    shown: INVALID_PLAN,
+  },
+  {
+    error: { __typename: 'PlaybackFutureFailureError', message: 'A failure added later.' },
+    shown: 'A failure added later.',
+  },
+  {
+    error: { __typename: 'PlaybackFutureFailureError' },
+    shown: 'Something went wrong. Please try again.',
+  },
+]
+
+function failedPlaybackSession(error: { __typename: string; message?: string }) {
+  return {
+    ...readyPlaybackSession({ streamSession: SESSION }),
+    currentFormatAttempt: {
+      __typename: 'FailedPlaybackFormatAttempt',
+      streamSessionId: SESSION.id,
+      error,
+    },
+  }
+}
 
 interface TimelineReport {
   sessionId: string
@@ -579,6 +605,105 @@ describe('Player', () => {
     )
     expect(hls.loadSource).not.toHaveBeenCalled()
   })
+
+  it.each(FAILED_ATTEMPT_ERRORS)(
+    'shouldShowAMessageWithoutAttachingWhenTheFirstAttemptFails($error.__typename, $shown)',
+    async ({ error, shown }) => {
+      server.use(
+        graphql.mutation('CreatePlaybackSession', () =>
+          HttpResponse.json({
+            data: {
+              createPlaybackSession: {
+                playbackSession: failedPlaybackSession(error),
+                userErrors: [],
+              },
+            },
+          }),
+        ),
+      )
+
+      renderWithProviders(<Player mediaFileId="abcd" />)
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(shown)
+      expect(hls.loadSource).not.toHaveBeenCalled()
+    },
+  )
+
+  it.each(FAILED_ATTEMPT_ERRORS)(
+    'shouldEndPlaybackWithAMessageWhenTheReplacementAttemptFails($error.__typename, $shown)',
+    async ({ error, shown }) => {
+      serveSession()
+      server.use(
+        graphql.mutation('ReportPlaybackFormatFailure', () =>
+          HttpResponse.json({
+            data: {
+              reportPlaybackFormatFailure: {
+                playbackSession: {
+                  ...readyPlaybackSession({ streamSession: SESSION }),
+                  formatAttemptCount: 2,
+                  currentFormatAttempt: {
+                    __typename: 'PendingPlaybackFormatAttempt',
+                    streamSessionId: 'sess-2',
+                  },
+                },
+                userErrors: [],
+              },
+            },
+          }),
+        ),
+        graphql.query('PlaybackSession', () =>
+          HttpResponse.json({ data: { playbackSession: failedPlaybackSession(error) } }),
+        ),
+      )
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      await attachedVideo()
+      const onError = hls.on.mock.calls.find(([event]) => event === 'hlsError')?.[1]
+      assert(onError)
+
+      act(() =>
+        onError('hlsError', {
+          fatal: true,
+          type: 'mediaError',
+          details: 'manifestIncompatibleCodecsError',
+        }),
+      )
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(shown)
+      expect(hls.destroy).toHaveBeenCalledOnce()
+      expect(hls.loadSource).toHaveBeenCalledOnce()
+    },
+  )
+
+  it.each(FAILED_ATTEMPT_ERRORS)(
+    'shouldEndPlaybackWithAMessageWhenRecoveryFromANonFatalStreamErrorFindsTheAttemptFailed($error.__typename, $shown)',
+    async ({ error, shown }) => {
+      serveSession()
+      const failures: unknown[] = []
+      server.use(
+        graphql.query('PlaybackSession', () =>
+          HttpResponse.json({ data: { playbackSession: failedPlaybackSession(error) } }),
+        ),
+        graphql.mutation('ReportPlaybackFormatFailure', ({ variables }) => {
+          failures.push(variables)
+          return HttpResponse.json({ errors: [{ message: 'Unexpected format report' }] })
+        }),
+      )
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await attachedVideo()
+      loadMetadata(video)
+      const onError = hls.on.mock.calls.find(([event]) => event === 'hlsError')?.[1]
+      assert(onError)
+
+      act(() =>
+        onError('hlsError', { fatal: false, type: 'networkError', response: { code: 503 } }),
+      )
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(shown)
+      expect(hls.destroy).toHaveBeenCalledOnce()
+      expect(hls.loadSource).toHaveBeenCalledOnce()
+      expect(failures).toEqual([])
+    },
+  )
 
   it.each([true, false])(
     'shouldPreserveSecondsAndPlaybackIntentWhenAFormatIsRejected(%s)',
