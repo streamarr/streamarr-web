@@ -4,6 +4,7 @@ import type {
   ClientCapabilityDeclarationInput,
   VideoCapabilityEntryInput,
 } from '../graphql/generated/graphql'
+import { MINIMAL_DECLARATION } from '../test/playbackCapabilities'
 import { declarePlaybackCapabilities, type PlaybackPlatform } from './playbackCapabilities'
 
 const CHROME =
@@ -16,28 +17,6 @@ const FIREFOX =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:144.0) Gecko/20100101 Firefox/144.0'
 
 const AV1_PROBE = 'video/mp4; codecs="av01.0.08M.08"'
-
-const MINIMAL_DECLARATION: ClientCapabilityDeclarationInput = {
-  video: [
-    {
-      codecFamily: 'H264',
-      codecProfiles: [
-        { profile: 'H264_HIGH', maxLevel: 40 },
-        { profile: 'H264_MAIN', maxLevel: 40 },
-        { profile: 'H264_CONSTRAINED_BASELINE', maxLevel: 40 },
-      ],
-      maxBitDepth: 8,
-      maxWidth: 1920,
-      maxHeight: 1080,
-      maxFrameRate: 30,
-      compatibleBases: ['SDR'],
-      dolbyVisionProfiles: [],
-      hdr10Plus: false,
-      hls: true,
-    },
-  ],
-  audio: [{ codec: 'AAC', maxChannels: 2, hls: true }],
-}
 
 type Decodes = (configuration: MediaDecodingConfiguration) => boolean
 
