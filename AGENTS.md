@@ -172,6 +172,7 @@ race. Re-check the generation — or the `isCurrent()` callback a caller was han
 - The service worker intercepts same-origin `/graphql` and `/api/**` only — never its own `/api/auth/refresh*` calls (recursion) or `/api/stream/**` (`decideIntercept`)
 - Worker logic lives in modules that take a scope and dependencies (`installSessionServiceWorker`, `createRenewalSharedWorkerHost`); `src/sw/sw.ts` and `src/auth/renewal-worker.ts` are thin entry shells excluded from coverage. Both build to stable origin-root names (`/sw.js`, `/renewal-worker.js`), and the service worker's scope is `/` in development and production (`decideRegistration`)
 - Show the server's words: a refusal displays `serverMessage` or the `MutationError` `message` (`userErrorMessage`). The client falls back to a generic sentence only when the server sent none
+  - Exception: a refused capability declaration (`DECLARATION_REFUSAL_TYPENAMES`) shows the generic playback failure. Only a client defect causes one, and its wording addresses developers
 - Styling is Mantine plus CSS Modules. Values reference the generated design tokens as CSS custom properties — never copy a token value into `src/theme.ts` or a stylesheet. The theme is dark-first
 - Fonts are self-hosted from `public/fonts`. No font or asset CDN: clients must work on an offline LAN, and a CDN would leak every visitor to a third party
 - Nothing enforces import direction — these rules are upheld by review and tests
