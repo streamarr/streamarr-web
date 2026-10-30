@@ -101,14 +101,19 @@ const HD_AT_30: PictureTier = {
   bitrate: 5_000_000,
   levels: { H264: 31, HEVC: 31, AV1: 31 },
 }
-// Top down.
+// Sorted widest first: a tier that holds another has the higher pixel rate, so widestTiers meets it
+// before the tiers it holds, and the last tier is the lowest.
 const PICTURE_TIERS: readonly PictureTier[] = [
   UHD_AT_60,
   UHD_AT_30,
   FULL_HD_AT_60,
   FULL_HD_AT_30,
   HD_AT_30,
-]
+].sort((wider, narrower) => pixelRate(narrower) - pixelRate(wider))
+
+function pixelRate(tier: PictureTier): number {
+  return tier.width * tier.height * tier.frameRate
+}
 
 interface BitDepthProbe {
   bitDepth: number
@@ -117,7 +122,7 @@ interface BitDepthProbe {
 }
 
 interface VideoFamily {
-  family: keyof FamilyLevels & VideoCodecFamily
+  codecFamily: keyof FamilyLevels & VideoCodecFamily
   maxTier?: VideoCodecTier
   eightBit: BitDepthProbe
   tenBit?: BitDepthProbe
@@ -125,7 +130,7 @@ interface VideoFamily {
 
 // A High decoder also decodes Main and Constrained Baseline streams; Baseline's extra tools are not.
 const H264: VideoFamily = {
-  family: 'H264',
+  codecFamily: 'H264',
   eightBit: {
     bitDepth: 8,
     profiles: ['H264_HIGH', 'H264_MAIN', 'H264_CONSTRAINED_BASELINE'],
@@ -134,7 +139,7 @@ const H264: VideoFamily = {
 }
 
 const HEVC: VideoFamily = {
-  family: 'HEVC',
+  codecFamily: 'HEVC',
   maxTier: 'MAIN',
   eightBit: { bitDepth: 8, profiles: ['HEVC_MAIN'], codec: (level) => `hvc1.1.6.L${level * 3}.B0` },
   tenBit: {
@@ -145,18 +150,18 @@ const HEVC: VideoFamily = {
 }
 
 const AV1: VideoFamily = {
-  family: 'AV1',
+  codecFamily: 'AV1',
   maxTier: 'MAIN',
-  eightBit: { bitDepth: 8, profiles: ['AV1_MAIN'], codec: (level) => av1Codec(level, '08') },
-  tenBit: { bitDepth: 10, profiles: [], codec: (level) => av1Codec(level, '10') },
+  eightBit: { bitDepth: 8, profiles: ['AV1_MAIN'], codec: (level) => av1Codec(level, 8) },
+  tenBit: { bitDepth: 10, profiles: [], codec: (level) => av1Codec(level, 10) },
 }
 
 const VIDEO_FAMILIES = [H264, HEVC, AV1]
 
 // AV1 numbers its levels by seq_level_idx: level 2.0 is 0, and each major level has four minors.
-function av1Codec(level: number, bitDepth: string): string {
+function av1Codec(level: number, bitDepth: number): string {
   const index = (Math.floor(level / 10) - 2) * 4 + (level % 10)
-  return `av01.0.${index.toString().padStart(2, '0')}M.${bitDepth}`
+  return `av01.0.${index.toString().padStart(2, '0')}M.${bitDepth.toString().padStart(2, '0')}`
 }
 
 const AUDIO_CODECS: readonly { codec: AudioCodec; mimeCodec: string }[] = [
@@ -188,7 +193,15 @@ interface TierAnswers {
   tenBit: ProbeAnswer
 }
 
-type Ask = (configuration: Omit<MediaDecodingConfiguration, 'type'>) => Promise<ProbeAnswer>
+// maxChannels is null when the browser confirmed no channel count for the codec.
+interface AudioAnswer {
+  codec: AudioCodec
+  maxChannels: number | null
+}
+
+type AskDecodingInfo = (
+  configuration: Omit<MediaDecodingConfiguration, 'type'>,
+) => Promise<ProbeAnswer>
 
 /**
  * What this browser plays over HLS, built fresh for each playback session from the platform's
@@ -211,14 +224,16 @@ export async function declarePlaybackCapabilities(
   const deadline = new Promise<null>((resolve) => {
     timer = setTimeout(() => resolve(null), DECODING_INFO_TIMEOUT_MS)
   })
-  const ask: Ask = (configuration) => {
+  const askDecodingInfo: AskDecodingInfo = (configuration) => {
+    // Called inside the executor so a decodingInfo that throws synchronously becomes a rejection,
+    // which settles this probe alone instead of failing every probe in the declaration.
     const answer = new Promise<DecodingAnswer>((resolve) =>
       resolve(decodingInfo({ type, ...configuration })),
     )
     return Promise.race([answer.catch(() => null), deadline])
   }
   try {
-    return await probeDeclaration({ platform, ask, hls })
+    return await probeDeclaration({ platform, askDecodingInfo, hls })
   } finally {
     clearTimeout(timer)
   }
@@ -226,16 +241,20 @@ export async function declarePlaybackCapabilities(
 
 async function probeDeclaration({
   platform,
-  ask,
+  askDecodingInfo,
   hls,
 }: {
   platform: PlaybackPlatform
-  ask: Ask
+  askDecodingInfo: AskDecodingInfo
   hls: boolean
 }): Promise<ClientCapabilityDeclarationInput> {
   const [video, audio] = await Promise.all([
-    Promise.all(VIDEO_FAMILIES.map((family) => probeFamily({ platform, family, ask, hls }))),
-    Promise.all(AUDIO_CODECS.map(({ codec, mimeCodec }) => probeAudio({ codec, mimeCodec, ask }))),
+    Promise.all(
+      VIDEO_FAMILIES.map((family) => probeFamily({ platform, family, askDecodingInfo, hls })),
+    ),
+    Promise.all(
+      AUDIO_CODECS.map(({ codec, mimeCodec }) => probeAudio({ codec, mimeCodec, askDecodingInfo })),
+    ),
   ])
   return {
     video: video.flat(),
@@ -246,15 +265,17 @@ async function probeDeclaration({
 async function probeFamily({
   platform,
   family,
-  ask,
+  askDecodingInfo,
   hls,
 }: {
   platform: PlaybackPlatform
   family: VideoFamily
-  ask: Ask
+  askDecodingInfo: AskDecodingInfo
   hls: boolean
 }): Promise<VideoCapabilityEntryInput[]> {
-  const answers = await Promise.all(PICTURE_TIERS.map((tier) => probeTier({ family, tier, ask })))
+  const answers = await Promise.all(
+    PICTURE_TIERS.map((tier) => probeTier({ family, tier, askDecodingInfo })),
+  )
   let tiers = widestTiers(answers.flatMap((answer) => smoothTier({ family, answer })))
   if (tiers.length === 0) {
     tiers = tiersWithoutSmoothAnswer({ platform, family, answers })
@@ -265,17 +286,19 @@ async function probeFamily({
 async function probeTier({
   family,
   tier,
-  ask,
+  askDecodingInfo,
 }: {
   family: VideoFamily
   tier: PictureTier
-  ask: Ask
+  askDecodingInfo: AskDecodingInfo
 }): Promise<TierAnswers> {
-  const level = tier.levels[family.family]
-  const [eightBit, tenBit] = await Promise.all([
-    ask(videoConfiguration(tier, family.eightBit.codec(level))),
-    family.tenBit ? ask(videoConfiguration(tier, family.tenBit.codec(level))) : null,
-  ])
+  const level = tier.levels[family.codecFamily]
+  const eightBitAnswer = askDecodingInfo(videoConfiguration(tier, family.eightBit.codec(level)))
+  let tenBitAnswer: Promise<ProbeAnswer> = Promise.resolve(null)
+  if (family.tenBit) {
+    tenBitAnswer = askDecodingInfo(videoConfiguration(tier, family.tenBit.codec(level)))
+  }
+  const [eightBit, tenBit] = await Promise.all([eightBitAnswer, tenBitAnswer])
   return { tier, eightBit, tenBit }
 }
 
@@ -410,9 +433,9 @@ function videoEntry({
   hls: boolean
 }): VideoCapabilityEntryInput {
   const { tier, bitDepth, profiles } = decodedTier
-  const maxLevel = tier.levels[family.family]
+  const maxLevel = tier.levels[family.codecFamily]
   return {
-    codecFamily: family.family,
+    codecFamily: family.codecFamily,
     codecProfiles: profiles.map((profile) => codecProfile({ profile, maxLevel, family })),
     maxBitDepth: bitDepth,
     maxWidth: tier.width,
@@ -444,14 +467,14 @@ function codecProfile({
 async function probeAudio({
   codec,
   mimeCodec,
-  ask,
+  askDecodingInfo,
 }: {
   codec: AudioCodec
   mimeCodec: string
-  ask: Ask
-}): Promise<{ codec: AudioCodec; maxChannels: number | null }> {
+  askDecodingInfo: AskDecodingInfo
+}): Promise<AudioAnswer> {
   for (const channels of CHANNEL_LADDER) {
-    const answer = await ask({
+    const answer = await askDecodingInfo({
       audio: {
         contentType: `audio/mp4; codecs="${mimeCodec}"`,
         channels: String(channels),
@@ -471,7 +494,7 @@ function audioEntries({
   userAgent,
   hls,
 }: {
-  answers: readonly { codec: AudioCodec; maxChannels: number | null }[]
+  answers: readonly AudioAnswer[]
   userAgent: string
   hls: boolean
 }): AudioCapabilityEntryInput[] {
