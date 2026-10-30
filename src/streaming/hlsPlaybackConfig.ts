@@ -14,6 +14,10 @@ import type {
 // segment duration (16 s by default); the rest covers the request reaching the server before it
 // starts counting.
 const STARTING_VARIANT_WAIT_MS = 20_000
+// hls.js otherwise keeps a variant that failed out of its choices for the rest of the session. The
+// expiry covers a variant whose failure made hls.js switch variants; a timed-out request that
+// hls.js retries leaves only a fragment error, which no expiry lifts.
+const FAILED_VARIANT_PENALTY_MS = 60_000
 
 type ForwardBuffers = Pick<Hls, 'mainForwardBufferInfo' | 'audioForwardBufferInfo'>
 
@@ -22,7 +26,10 @@ type ForwardBuffers = Pick<Hls, 'mainForwardBufferInfo' | 'audioForwardBufferInf
  * to; it is read only while that instance loads segments.
  */
 export function hlsPlaybackConfig(player: () => ForwardBuffers): Partial<HlsConfig> {
-  return { fLoader: segmentLoaderWithinForwardBuffer(player) }
+  return {
+    fLoader: segmentLoaderWithinForwardBuffer(player),
+    errorPenaltyExpireMs: FAILED_VARIANT_PENALTY_MS,
+  }
 }
 
 function segmentLoaderWithinForwardBuffer(player: () => ForwardBuffers): FragmentLoaderConstructor {

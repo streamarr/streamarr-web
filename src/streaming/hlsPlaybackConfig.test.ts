@@ -134,4 +134,13 @@ describe('hlsPlaybackConfig', () => {
     expect(networkLoader.stats.aborted).toBe(true)
     expect(networkLoader.destroyed).toBe(true)
   })
+
+  it('shouldLetHlsChooseAFailedVariantAgainWhenAMinuteHasPassed', () => {
+    const config = hlsPlaybackConfig(() => ({
+      mainForwardBufferInfo: null,
+      audioForwardBufferInfo: null,
+    }))
+
+    expect(config.errorPenaltyExpireMs).toBe(60_000)
+  })
 })
