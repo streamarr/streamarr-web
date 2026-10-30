@@ -13,6 +13,7 @@ import {
   smoothUpToFullHd,
 } from '../test/playbackCapabilities'
 import {
+  browserPlaybackPlatform,
   declarePlaybackCapabilities,
   type DecodingAnswer,
   type PlaybackPlatform,
@@ -970,5 +971,29 @@ describe('declarePlaybackCapabilities', () => {
     await vi.advanceTimersByTimeAsync(3_000)
 
     await expect(declaration).resolves.toEqual(MINIMAL_DECLARATION)
+  })
+})
+
+describe('browserPlaybackPlatform', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('shouldAskTheMediaSourceHlsJsAttachesThroughWhenTheBrowserAlsoOffersManagedMediaSource', () => {
+    vi.stubGlobal('MediaSource', { isTypeSupported: () => true })
+    vi.stubGlobal('ManagedMediaSource', { isTypeSupported: () => false })
+
+    const platform = browserPlaybackPlatform(document.createElement('video'))
+
+    expect(platform.mediaSourceTypeSupported(AV1_PROBE)).toBe(true)
+  })
+
+  it('shouldAskManagedMediaSourceWhenTheBrowserOffersNoMediaSource', () => {
+    vi.stubGlobal('MediaSource', undefined)
+    vi.stubGlobal('ManagedMediaSource', { isTypeSupported: () => true })
+
+    const platform = browserPlaybackPlatform(document.createElement('video'))
+
+    expect(platform.mediaSourceTypeSupported(AV1_PROBE)).toBe(true)
   })
 })
