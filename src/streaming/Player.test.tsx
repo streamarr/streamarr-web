@@ -596,6 +596,40 @@ describe('Player', () => {
     ).toEqual([['H264', 'HEVC']])
   })
 
+  it('shouldShowThePlaybackFailureWithoutCreatingASessionWhenTheBrowserDecodesNoVideo', async () => {
+    const created: unknown[] = []
+    server.use(
+      graphql.mutation('CreatePlaybackSession', ({ variables }) => {
+        created.push(variables)
+        return HttpResponse.json({
+          data: {
+            createPlaybackSession: {
+              playbackSession: readyPlaybackSession({ streamSession: SESSION }),
+              userErrors: [],
+            },
+          },
+        })
+      }),
+    )
+    const decodingInfo = (configuration: MediaDecodingConfiguration) => {
+      const supported = configuration.video === undefined
+      return Promise.resolve({ supported, smooth: supported })
+    }
+
+    renderWithProviders(
+      <Player
+        playbackPlatform={() => playbackPlatformFixture({ decodingInfo })}
+        mediaFileId="abcd"
+      />,
+    )
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "Playback couldn't start. Try again.",
+    )
+    expect(created).toEqual([])
+    expect(hls.loadSource).not.toHaveBeenCalled()
+  })
+
   it('shouldAttachTheReadyChildWhenInitialPlaybackIsPending', async () => {
     serveSession()
     const queries: unknown[] = []

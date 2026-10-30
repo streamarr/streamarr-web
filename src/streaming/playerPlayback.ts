@@ -218,6 +218,11 @@ export function startPlayerPlayback({
       if (cancelled) {
         return
       }
+      // The server requires a video entry, so a browser that decodes no video cannot play here.
+      if (capabilities.video.length === 0) {
+        showFailure(PLAYBACK_FAILURE_MESSAGE)
+        return
+      }
       // The UI deadline must not discard a late session ID that still needs destruction.
       const result = await createPlaybackSession(capabilities)
       const payload = result.data?.createPlaybackSession
