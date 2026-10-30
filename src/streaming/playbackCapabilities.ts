@@ -161,7 +161,7 @@ const AV1: VideoFamily = {
   tenBit: { bitDepth: 10, profiles: [], codec: (level) => av1Codec(level, 10) },
 }
 
-// H.264 is probed beside these: the tiers it keeps up with cap power-efficient HEVC on WebKit.
+// H.264 is probed beside these: on WebKit, its tiers answered smooth cap power-efficient HEVC.
 const VIDEO_FAMILIES_BESIDES_H264 = [HEVC, AV1]
 
 // AV1 numbers its levels by seq_level_idx: level 2.0 is 0, and each major level has four minors.
@@ -369,10 +369,11 @@ type KeepsUp = (answer: ProbeAnswer, tier: PictureTier) => boolean
 // power-efficient HEVC answer therefore keeps up, but power efficiency says which decoder runs, not
 // how fast: a phone that decodes 1080p in hardware may still drop frames at 2160p60. So a
 // power-efficient HEVC answer keeps up only up to the highest H.264 tier WebKit answers smooth.
-// That cap assumes WebKit answers smooth for some H.264 tier, which nobody has measured; if it
-// answers none smooth, power-efficient HEVC is dropped and the server encodes instead. A smooth
-// H.264 answer may come from a software decoder, so the cap is a proxy for the hardware decoder's
-// limit, not a measurement of it. Elsewhere only a smooth answer keeps up.
+// That cap measures no decode throughput: WebKit's Cocoa decodingInfo answers H.264 smooth once
+// the codec string passes its support checks and VideoToolbox is available, whatever the picture
+// size or frame rate. The cap therefore holds power-efficient HEVC to the highest H.264
+// configuration WebKit accepts. If WebKit answers no H.264 tier smooth, power-efficient HEVC is
+// dropped and the server encodes instead. Elsewhere only a smooth answer keeps up.
 function keepsUpOn({
   platform,
   family,
