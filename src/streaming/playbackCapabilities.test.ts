@@ -160,6 +160,24 @@ const UNSMOOTH_SOFTWARE_ANSWER: DecodingAnswer = {
   powerEfficient: false,
 }
 
+function smoothMainTenAndPowerEfficientMain(
+  configuration: MediaDecodingConfiguration,
+): DecodingAnswer {
+  if (codecOf(configuration).startsWith('hvc1.2')) {
+    return answer(true)
+  }
+  return IPHONE_SAFARI_HEVC_ANSWER
+}
+
+const UHD_AT_60_HEVC_MAIN_TEN_ENTRY = sdrVideoEntry({
+  codecFamily: 'HEVC',
+  codecProfiles: [{ profile: 'HEVC_MAIN_10', maxLevel: 51, maxTier: 'MAIN' }],
+  maxBitDepth: 10,
+  maxWidth: 3840,
+  maxHeight: 2160,
+  maxFrameRate: 60,
+})
+
 function decodesOnlyAt720p(configuration: MediaDecodingConfiguration): boolean {
   return configuration.video === undefined || configuration.video.height === 720
 }
@@ -501,6 +519,45 @@ describe('declarePlaybackCapabilities', () => {
     )
 
     expect(familyEntries(declaration, 'HEVC')).toEqual([])
+  })
+
+  it('shouldDeclareMainTenAboveTheH264CapWhenWebKitAnswersMainTenSmoothAndMainOnlyPowerEfficient', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: decodingInfoAnsweringHevc(
+          smoothMainTenAndPowerEfficientMain,
+          smoothUpToFullHd,
+        ),
+        userAgent: IPHONE_SAFARI_USER_AGENT,
+      }),
+    )
+
+    expect(familyEntries(declaration, 'HEVC')).toEqual([
+      UHD_AT_60_HEVC_MAIN_TEN_ENTRY,
+      sdrVideoEntry({
+        codecFamily: 'HEVC',
+        codecProfiles: [
+          { profile: 'HEVC_MAIN', maxLevel: 41, maxTier: 'MAIN' },
+          { profile: 'HEVC_MAIN_10', maxLevel: 41, maxTier: 'MAIN' },
+        ],
+        maxBitDepth: 10,
+        maxFrameRate: 60,
+      }),
+    ])
+  })
+
+  it('shouldDeclareSmoothMainTenAloneWhenWebKitAnswersNoH264TierSmooth', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: decodingInfoAnsweringHevc(
+          smoothMainTenAndPowerEfficientMain,
+          () => UNSMOOTH_SOFTWARE_ANSWER,
+        ),
+        userAgent: IPHONE_SAFARI_USER_AGENT,
+      }),
+    )
+
+    expect(familyEntries(declaration, 'HEVC')).toEqual([UHD_AT_60_HEVC_MAIN_TEN_ENTRY])
   })
 
   it('shouldDeclareHevcAboveTheHighestTierH264KeepsUpWithWhenWebKitAnswersHevcSmooth', async () => {
