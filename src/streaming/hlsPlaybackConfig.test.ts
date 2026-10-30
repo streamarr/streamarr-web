@@ -1,4 +1,12 @@
-import { type BufferInfo, type LoaderStats, XhrLoader } from 'hls.js'
+import Hls, {
+  type BufferInfo,
+  Events,
+  Fragment,
+  type HlsConfig,
+  type LoaderStats,
+  PlaylistLevelType,
+  XhrLoader,
+} from 'hls.js'
 import { HttpResponse, http } from 'msw'
 import { afterEach, assert, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import {
@@ -19,12 +27,16 @@ interface ForwardBuffers {
   audioForwardBufferInfo: BufferInfo | null
 }
 
+// hls.js's time-to-first-byte estimate before it has sampled a segment.
+const DEFAULT_TIME_TO_FIRST_BYTE_ESTIMATE_MS = 100
+
+function playerWith(buffers: ForwardBuffers) {
+  return () => ({ ...buffers, ttfbEstimate: DEFAULT_TIME_TO_FIRST_BYTE_ESTIMATE_MS })
+}
+
 function loadSegment(buffers: ForwardBuffers) {
   const network = fakeNetworkLoader()
-  const config = hlsConfigWith(
-    hlsPlaybackConfig(() => buffers),
-    network,
-  )
+  const config = hlsConfigWith(hlsPlaybackConfig(playerWith(buffers)), network)
   const SegmentLoader = config.fLoader
   assert(SegmentLoader)
   const loader = new SegmentLoader(config)
@@ -74,10 +86,7 @@ function playingVideo(bufferedSeconds: number) {
 
 // Loads a media segment as hls.js's fragment loader does, over hls.js's own network loader.
 function loadSegmentOverNetwork(buffers: ForwardBuffers) {
-  const config = hlsConfigWith(
-    hlsPlaybackConfig(() => buffers),
-    { Loader: XhrLoader },
-  )
+  const config = hlsConfigWith(hlsPlaybackConfig(playerWith(buffers)), { Loader: XhrLoader })
   const SegmentLoader = config.fLoader
   assert(SegmentLoader)
   const loader = new SegmentLoader(config)
@@ -96,6 +105,60 @@ function loadSegmentOverNetwork(buffers: ForwardBuffers) {
     onAbort: (stats) => settle('aborted', stats),
   })
   return { loader, outcomes }
+}
+
+// Loads a 3 MB media segment as hls.js's fragment loader does, and hands its load timing to hls.js's
+// bandwidth estimator as hls.js does once the segment has loaded and once it is buffered.
+async function estimatesAfterSegment({
+  config,
+  firstByteAfterMs,
+}: {
+  config: (player: () => Hls) => Partial<HlsConfig>
+  firstByteAfterMs: number
+}) {
+  const segment = heldSegmentResponse()
+  const hls: Hls = new Hls(config(() => hls))
+  const frag = new Fragment(PlaylistLevelType.MAIN, SEGMENT_URL)
+  frag.sn = 1
+  frag.level = 0
+  frag.duration = 6
+  // hls.js ends the sample of a segment of 100 kb/s or more where its parsing ends.
+  frag.bitrate = 4_000_000
+  const SegmentLoader = hls.config.fLoader ?? hls.config.loader
+  const loader = new SegmentLoader(hls.config)
+  frag.stats = loader.stats
+  const loaded = new Promise<LoaderStats>((resolve, reject) => {
+    loader.load({ ...segmentContext(), url: SEGMENT_URL }, segmentLoadConfiguration(), {
+      onSuccess: (_response, stats) => resolve(stats),
+      onError: () => reject(new Error('The segment failed')),
+      onTimeout: () => reject(new Error('The segment timed out')),
+    })
+  })
+  await vi.advanceTimersByTimeAsync(firstByteAfterMs)
+  segment.respond(3_000_000)
+  const stats = await loaded
+  hls.trigger(Events.FRAG_LOADED, {
+    frag,
+    part: null,
+    payload: new ArrayBuffer(0),
+    networkDetails: null,
+  })
+  // The test server sends the whole body at once, so the transfer and parsing take 300 ms together.
+  stats.parsing.start = stats.loading.end
+  stats.parsing.end = stats.loading.end + 300
+  hls.trigger(Events.FRAG_BUFFERED, { frag, part: null, stats, id: PlaylistLevelType.MAIN })
+  const estimates = { bandwidthBps: hls.bandwidthEstimate, timeToFirstByteMs: hls.ttfbEstimate }
+  hls.destroy()
+  return estimates
+}
+
+// What the player gives hls.js, with 30 s buffered: hls.js has no media to buffer in a test.
+function playbackConfigWith30SecondsBuffered(player: () => Hls): Partial<HlsConfig> {
+  return hlsPlaybackConfig(() => ({
+    mainForwardBufferInfo: forwardBuffer(30),
+    audioForwardBufferInfo: null,
+    ttfbEstimate: player().ttfbEstimate,
+  }))
 }
 
 describe('hlsPlaybackConfig', () => {
@@ -162,10 +225,7 @@ describe('hlsPlaybackConfig', () => {
   it('shouldReadTheForwardBufferWhenEachSegmentStartsLoading', () => {
     const buffers: ForwardBuffers = { mainForwardBufferInfo: null, audioForwardBufferInfo: null }
     const network = fakeNetworkLoader()
-    const config = hlsConfigWith(
-      hlsPlaybackConfig(() => buffers),
-      network,
-    )
+    const config = hlsConfigWith(hlsPlaybackConfig(playerWith(buffers)), network)
     const SegmentLoader = config.fLoader
     assert(SegmentLoader)
     const loader = new SegmentLoader(config)
@@ -206,10 +266,9 @@ describe('hlsPlaybackConfig', () => {
   })
 
   it('shouldLetHlsChooseAFailedVariantAgainWhenAMinuteHasPassed', () => {
-    const config = hlsPlaybackConfig(() => ({
-      mainForwardBufferInfo: null,
-      audioForwardBufferInfo: null,
-    }))
+    const config = hlsPlaybackConfig(
+      playerWith({ mainForwardBufferInfo: null, audioForwardBufferInfo: null }),
+    )
 
     expect(config.errorPenaltyExpireMs).toBe(60_000)
   })
@@ -275,5 +334,31 @@ describe('hlsPlaybackConfig', () => {
     await vi.advanceTimersByTimeAsync(20_000)
 
     expect(outcomes).toEqual([{ outcome: 'aborted', afterMs: 5_000, requestAborted: true }])
+  })
+
+  it('shouldLeaveAStartingVariantsWaitOutOfTheBandwidthEstimateWhenItsSegmentArrives', async () => {
+    const afterStartingVariantWait = await estimatesAfterSegment({
+      config: playbackConfigWith30SecondsBuffered,
+      firstByteAfterMs: 15_000,
+    })
+    const afterPromptFirstByte = await estimatesAfterSegment({
+      config: playbackConfigWith30SecondsBuffered,
+      firstByteAfterMs: 100,
+    })
+
+    expect(afterStartingVariantWait).toEqual(afterPromptFirstByte)
+  })
+
+  it('shouldEstimateBandwidthAsHlsDoesWhenTheFirstByteArrivesWithinTheDefaultWait', async () => {
+    const withPlaybackConfig = await estimatesAfterSegment({
+      config: playbackConfigWith30SecondsBuffered,
+      firstByteAfterMs: 5_000,
+    })
+    const withHlsDefaults = await estimatesAfterSegment({
+      config: () => ({}),
+      firstByteAfterMs: 5_000,
+    })
+
+    expect(withPlaybackConfig).toEqual(withHlsDefaults)
   })
 })

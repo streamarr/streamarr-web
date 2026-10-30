@@ -6,6 +6,7 @@ import type {
   Loader,
   LoaderCallbacks,
   LoaderConfiguration,
+  LoaderStats,
 } from 'hls.js'
 
 // The server answers a request for a starting variant's first segment once that whole segment is
@@ -22,19 +23,20 @@ const FAILED_VARIANT_PENALTY_MS = 60_000
 const FORWARD_BUFFER_CHECK_MS = 100
 
 type ForwardBuffers = Pick<Hls, 'mainForwardBufferInfo' | 'audioForwardBufferInfo'>
+type LoadingPlayer = ForwardBuffers & Pick<Hls, 'ttfbEstimate'>
 
 /**
  * The hls.js settings the player plays with. `player` returns the hls.js instance they are given
  * to; it is read only while that instance loads segments.
  */
-export function hlsPlaybackConfig(player: () => ForwardBuffers): Partial<HlsConfig> {
+export function hlsPlaybackConfig(player: () => LoadingPlayer): Partial<HlsConfig> {
   return {
     fLoader: segmentLoaderWithinForwardBuffer(player),
     errorPenaltyExpireMs: FAILED_VARIANT_PENALTY_MS,
   }
 }
 
-function segmentLoaderWithinForwardBuffer(player: () => ForwardBuffers): FragmentLoaderConstructor {
+function segmentLoaderWithinForwardBuffer(player: () => LoadingPlayer): FragmentLoaderConstructor {
   return class SegmentLoader implements Loader<FragmentLoaderContext> {
     private readonly network: Loader<FragmentLoaderContext>
     private forwardBufferCheck: ReturnType<typeof setInterval> | undefined
@@ -64,7 +66,7 @@ function segmentLoaderWithinForwardBuffer(player: () => ForwardBuffers): Fragmen
       this.network.load(
         context,
         { ...config, loadPolicy: { ...loadPolicy, maxTimeToFirstByteMs } },
-        this.reportingTo(callbacks),
+        this.reportingTo(callbacks, defaultWaitMs),
       )
       if (maxTimeToFirstByteMs > defaultWaitMs) {
         this.forwardBufferCheck = setInterval(
@@ -105,12 +107,14 @@ function segmentLoaderWithinForwardBuffer(player: () => ForwardBuffers): Fragmen
     // when a first byte is late, so hls.js recovers from both the same way.
     private reportingTo(
       callbacks: LoaderCallbacks<FragmentLoaderContext>,
+      defaultWaitMs: number,
     ): LoaderCallbacks<FragmentLoaderContext> {
       return {
         ...callbacks,
-        onSuccess: (...args) => {
+        onSuccess: (response, stats, context, networkDetails) => {
           this.stopForwardBufferCheck()
-          callbacks.onSuccess(...args)
+          reportStartingVariantWaitAsEstimate(stats, defaultWaitMs, player().ttfbEstimate)
+          callbacks.onSuccess(response, stats, context, networkDetails)
         },
         onError: (...args) => {
           this.stopForwardBufferCheck()
@@ -143,6 +147,22 @@ function firstByteWaitMs(defaultWaitMs: number, untilBufferRunsOutMs: number): n
     defaultWaitMs,
     Math.min(STARTING_VARIANT_WAIT_MS, untilBufferRunsOutMs - defaultWaitMs),
   )
+}
+
+// hls.js samples a segment's bandwidth over its whole load less at most its time-to-first-byte
+// estimate, so a first byte later than the default wait, which only a starting variant's wait lets
+// arrive, would count the producer's startup as transfer time. Reporting that wait as the estimate
+// leaves the sample to the transfer alone, and a sample of the estimate's own value leaves it as is.
+function reportStartingVariantWaitAsEstimate(
+  stats: LoaderStats,
+  defaultWaitMs: number,
+  timeToFirstByteEstimateMs: number,
+) {
+  const { loading } = stats
+  if (loading.first - loading.start <= defaultWaitMs) {
+    return
+  }
+  loading.start = loading.first - timeToFirstByteEstimateMs
 }
 
 function forwardBufferMs({
