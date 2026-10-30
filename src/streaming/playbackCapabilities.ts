@@ -313,7 +313,7 @@ function familyEntries({
   h264Answers: readonly TierAnswers[]
   hls: boolean
 }): VideoCapabilityEntryInput[] {
-  const keepsUp = keepsUpOn({ platform, family, h264Answers })
+  const keepsUp = keepsUpOn({ platform, family, answers, h264Answers })
   let tiers = widestTiers(answers.flatMap((answer) => tierThatKeepsUp({ family, answer, keepsUp })))
   if (tiers.length === 0) {
     tiers = tiersWithoutAnswerThatKeepsUp({ platform, family, answers })
@@ -353,10 +353,10 @@ function tierThatKeepsUp({
   keepsUp: KeepsUp
 }): DecodedTier[] {
   const keptUp: BitDepthProbe[] = []
-  if (keepsUp(answer.eightBit, answer.tier)) {
+  if (keepsUp(answer, 'eightBit')) {
     keptUp.push(family.eightBit)
   }
-  if (family.tenBit && keepsUp(answer.tenBit, answer.tier)) {
+  if (family.tenBit && keepsUp(answer, 'tenBit')) {
     keptUp.push(family.tenBit)
   }
   const profiles = keptUp.flatMap((probe) => probe.profiles)
@@ -367,7 +367,9 @@ function tierThatKeepsUp({
   return [{ tier: answer.tier, bitDepth, profiles }]
 }
 
-type KeepsUp = (answer: ProbeAnswer, tier: PictureTier) => boolean
+type BitDepthKey = 'eightBit' | 'tenBit'
+
+type KeepsUp = (answer: TierAnswers, bitDepth: BitDepthKey) => boolean
 
 // Safari on iOS 27.2, on a phone that decodes HEVC in hardware, answers HEVC Main and Main 10
 // supported and power-efficient but never smooth, at every tier from 720p30 to 2160p60. On WebKit a
@@ -378,23 +380,36 @@ type KeepsUp = (answer: ProbeAnswer, tier: PictureTier) => boolean
 // the codec string passes its support checks and VideoToolbox is available, whatever the picture
 // size or frame rate. The cap therefore holds power-efficient HEVC to the highest H.264
 // configuration WebKit accepts. If WebKit answers no H.264 tier smooth, power-efficient HEVC is
-// dropped and the server encodes instead. Elsewhere only a smooth answer keeps up.
+// dropped and the server encodes instead. WebKit answers HEVC smooth up to the decoder's maximum
+// playback level, so once a profile answers smooth at any tier, its smooth answers are its ceiling
+// and power efficiency no longer stands in for them. Elsewhere only a smooth answer keeps up.
 function keepsUpOn({
   platform,
   family,
+  answers,
   h264Answers,
 }: {
   platform: PlaybackPlatform
   family: VideoFamily
+  answers: readonly TierAnswers[]
   h264Answers: readonly TierAnswers[]
 }): KeepsUp {
   if (family !== HEVC || !isWebKit(platform.userAgent)) {
-    return isSmooth
+    return (answer, bitDepth) => isSmooth(answer[bitDepth])
   }
   const budget = h264Answers.filter((answer) => isSmooth(answer.eightBit))
-  return (answer, tier) =>
-    isSmooth(answer) ||
-    (isPowerEfficient(answer) && budget.some((h264) => holdsPicture(h264.tier, tier)))
+  return (answer, bitDepth) => {
+    if (isSmooth(answer[bitDepth])) {
+      return true
+    }
+    if (answers.some((other) => isSmooth(other[bitDepth]))) {
+      return false
+    }
+    return (
+      isPowerEfficient(answer[bitDepth]) &&
+      budget.some((h264) => holdsPicture(h264.tier, answer.tier))
+    )
+  }
 }
 
 function isSmooth(answer: ProbeAnswer): boolean {

@@ -485,6 +485,29 @@ describe('declarePlaybackCapabilities', () => {
     ])
   })
 
+  it('shouldHoldHevcToItsSmoothTiersWhenWebKitAnswersHevcSmoothBelowFourKAndOnlyPowerEfficientAtFourK', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: decodingInfoAnsweringHevc((configuration) =>
+          isUhd(configuration) ? IPHONE_SAFARI_HEVC_ANSWER : answer(true),
+        ),
+        userAgent: IPHONE_SAFARI_USER_AGENT,
+      }),
+    )
+
+    expect(familyEntries(declaration, 'HEVC')).toEqual([
+      sdrVideoEntry({
+        codecFamily: 'HEVC',
+        codecProfiles: [
+          { profile: 'HEVC_MAIN', maxLevel: 41, maxTier: 'MAIN' },
+          { profile: 'HEVC_MAIN_10', maxLevel: 41, maxTier: 'MAIN' },
+        ],
+        maxBitDepth: 10,
+        maxFrameRate: 60,
+      }),
+    ])
+  })
+
   it('shouldCapPowerEfficientHevcAtEightBitWhenMainTenIsPowerEfficientOnlyAboveTheH264Cap', async () => {
     const declaration = await declarePlaybackCapabilities(
       platformFixture({
