@@ -946,6 +946,29 @@ describe('declarePlaybackCapabilities', () => {
     ])
   })
 
+  it('shouldDeclareNoMoreThanFullHdH264WhenOnlyAnUnsmoothFourKTierIsAnswered', async () => {
+    vi.useFakeTimers()
+    const declaration = declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) => {
+          if (!codecOf(configuration).startsWith('avc1')) {
+            return Promise.resolve(answer(false))
+          }
+          if (configuration.video?.width === 3840 && configuration.video.framerate === 60) {
+            return Promise.resolve(UNSMOOTH_SOFTWARE_ANSWER)
+          }
+          return NEVER_ANSWERED
+        }),
+      }),
+    )
+
+    await vi.advanceTimersByTimeAsync(3_000)
+
+    expect(familyEntries(await declaration, 'H264')).toEqual([
+      sdrVideoEntry({ codecProfiles: h264Profiles(40) }),
+    ])
+  })
+
   it('shouldDeclareFullHdH264AndKeepEveryOtherAnswerWhenEveryH264ProbeFails', async () => {
     const declaration = await declarePlaybackCapabilities(
       platformFixture({
