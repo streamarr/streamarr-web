@@ -279,7 +279,10 @@ async function probeVideo({
       answers: await probeFamily({ family, askDecodingInfo }),
     })),
   )
-  return probed.flatMap(({ family, answers }) => familyEntries({ platform, family, answers, hls }))
+  const h264Answers = probed.find(({ family }) => family === H264)?.answers ?? []
+  return probed.flatMap(({ family, answers }) =>
+    familyEntries({ platform, family, answers, h264Answers, hls }),
+  )
 }
 
 function probeFamily({
@@ -296,14 +299,16 @@ function familyEntries({
   platform,
   family,
   answers,
+  h264Answers,
   hls,
 }: {
   platform: PlaybackPlatform
   family: VideoFamily
   answers: readonly TierAnswers[]
+  h264Answers: readonly TierAnswers[]
   hls: boolean
 }): VideoCapabilityEntryInput[] {
-  const keepsUp = keepsUpOn({ platform, family })
+  const keepsUp = keepsUpOn({ platform, family, h264Answers })
   let tiers = widestTiers(answers.flatMap((answer) => tierThatKeepsUp({ family, answer, keepsUp })))
   if (tiers.length === 0) {
     tiers = tiersWithoutAnswerThatKeepsUp({ platform, family, answers })
@@ -339,33 +344,44 @@ function tierThatKeepsUp({
 }: {
   family: VideoFamily
   answer: TierAnswers
-  keepsUp: (answer: ProbeAnswer) => boolean
+  keepsUp: KeepsUp
 }): DecodedTier[] {
-  if (!keepsUp(answer.eightBit)) {
+  if (!keepsUp(answer.eightBit, answer.tier)) {
     return []
   }
   const decoded = eightBitTier(family, answer.tier)
-  if (family.tenBit && keepsUp(answer.tenBit)) {
+  if (family.tenBit && keepsUp(answer.tenBit, answer.tier)) {
     decoded.bitDepth = family.tenBit.bitDepth
     decoded.profiles.push(...family.tenBit.profiles)
   }
   return [decoded]
 }
 
+type KeepsUp = (answer: ProbeAnswer, tier: PictureTier) => boolean
+
 // Safari on iOS 27.2, on a phone that decodes HEVC in hardware, answers HEVC Main and Main 10
 // supported and power-efficient but never smooth, at every tier from 720p30 to 2160p60. On WebKit a
-// power-efficient HEVC answer therefore keeps up; elsewhere only a smooth answer does.
+// power-efficient HEVC answer therefore keeps up, but power efficiency says which decoder runs, not
+// how fast: a phone that decodes 1080p in hardware may still drop frames at 2160p60. WebKit does
+// answer smooth for H.264, so the tiers H.264 keeps up with stand in for the hardware decoder's
+// budget, and a power-efficient HEVC answer keeps up only within them. Elsewhere only a smooth
+// answer keeps up.
 function keepsUpOn({
   platform,
   family,
+  h264Answers,
 }: {
   platform: PlaybackPlatform
   family: VideoFamily
-}): (answer: ProbeAnswer) => boolean {
-  if (family === HEVC && isWebKit(platform.userAgent)) {
-    return (answer) => isSmooth(answer) || isPowerEfficient(answer)
+  h264Answers: readonly TierAnswers[]
+}): KeepsUp {
+  if (family !== HEVC || !isWebKit(platform.userAgent)) {
+    return isSmooth
   }
-  return isSmooth
+  const budget = h264Answers.filter((answer) => isSmooth(answer.eightBit))
+  return (answer, tier) =>
+    isSmooth(answer) ||
+    (isPowerEfficient(answer) && budget.some((h264) => holdsPicture(h264.tier, tier)))
 }
 
 function isSmooth(answer: ProbeAnswer): boolean {
