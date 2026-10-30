@@ -253,33 +253,56 @@ async function probeDeclaration({
   hls: boolean
 }): Promise<ClientCapabilityDeclarationInput> {
   const [video, audio] = await Promise.all([
-    Promise.all(
-      VIDEO_FAMILIES.map((family) => probeFamily({ platform, family, askDecodingInfo, hls })),
-    ),
+    probeVideo({ platform, askDecodingInfo, hls }),
     Promise.all(
       AUDIO_CODECS.map(({ codec, mimeCodec }) => probeAudio({ codec, mimeCodec, askDecodingInfo })),
     ),
   ])
   return {
-    video: video.flat(),
+    video,
     audio: audioEntries({ answers: audio, userAgent: platform.userAgent, hls }),
   }
 }
 
-async function probeFamily({
+async function probeVideo({
   platform,
-  family,
   askDecodingInfo,
   hls,
 }: {
   platform: PlaybackPlatform
-  family: VideoFamily
   askDecodingInfo: AskDecodingInfo
   hls: boolean
 }): Promise<VideoCapabilityEntryInput[]> {
-  const answers = await Promise.all(
-    PICTURE_TIERS.map((tier) => probeTier({ family, tier, askDecodingInfo })),
+  const probed = await Promise.all(
+    VIDEO_FAMILIES.map(async (family) => ({
+      family,
+      answers: await probeFamily({ family, askDecodingInfo }),
+    })),
   )
+  return probed.flatMap(({ family, answers }) => familyEntries({ platform, family, answers, hls }))
+}
+
+function probeFamily({
+  family,
+  askDecodingInfo,
+}: {
+  family: VideoFamily
+  askDecodingInfo: AskDecodingInfo
+}): Promise<TierAnswers[]> {
+  return Promise.all(PICTURE_TIERS.map((tier) => probeTier({ family, tier, askDecodingInfo })))
+}
+
+function familyEntries({
+  platform,
+  family,
+  answers,
+  hls,
+}: {
+  platform: PlaybackPlatform
+  family: VideoFamily
+  answers: readonly TierAnswers[]
+  hls: boolean
+}): VideoCapabilityEntryInput[] {
   const keepsUp = keepsUpOn({ platform, family })
   let tiers = widestTiers(answers.flatMap((answer) => tierThatKeepsUp({ family, answer, keepsUp })))
   if (tiers.length === 0) {
@@ -427,11 +450,15 @@ function widestTiers(decoded: readonly DecodedTier[]): DecodedTier[] {
 
 function isCoveredBy(candidate: DecodedTier, wider: DecodedTier): boolean {
   return (
-    wider.tier.width >= candidate.tier.width &&
-    wider.tier.height >= candidate.tier.height &&
-    wider.tier.frameRate >= candidate.tier.frameRate &&
+    holdsPicture(wider.tier, candidate.tier) &&
     wider.bitDepth >= candidate.bitDepth &&
     candidate.profiles.every((profile) => wider.profiles.includes(profile))
+  )
+}
+
+function holdsPicture(wider: PictureTier, tier: PictureTier): boolean {
+  return (
+    wider.width >= tier.width && wider.height >= tier.height && wider.frameRate >= tier.frameRate
   )
 }
 
