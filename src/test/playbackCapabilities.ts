@@ -1,7 +1,7 @@
 import type { ClientCapabilityDeclarationInput } from '../graphql/generated/graphql'
 import type { PlaybackPlatform } from '../streaming/playbackCapabilities'
 
-const CHROME =
+export const CHROME_USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36'
 
 /** What a browser declares when it cannot answer decodingInfo: full HD H.264 and stereo AAC. */
@@ -36,7 +36,7 @@ export function playbackPlatformFixture(
     nativeHlsSupported: false,
     mediaSourceTypeSupported: () => false,
     canPlayType: () => '',
-    userAgent: CHROME,
+    userAgent: CHROME_USER_AGENT,
     ...overrides,
   }
 }

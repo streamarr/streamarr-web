@@ -332,8 +332,9 @@ function isRefusal(answer: ProbeAnswer): boolean {
 
 // H.264 is the server's encode, so without a smooth answer it keeps its lowest tier the browser
 // answered supported, and the full HD tier only when no H.264 probe was answered at all. AV1 keeps
-// its lowest tier only when every answer was a refusal and the playing path corroborates it; a
-// supported but unsmooth answer is not under-reporting, and an unanswered probe is not an answer.
+// its lowest tier only on WebKit, when every answer was a refusal and the playing path corroborates
+// it; a supported but unsmooth answer is not under-reporting, and an unanswered probe is not an
+// answer.
 function tiersWithoutSmoothAnswer({
   platform,
   family,
@@ -349,7 +350,7 @@ function tiersWithoutSmoothAnswer({
   }
   const isEveryAnswerARefusal =
     answered.length > 0 && answered.every((answer) => isRefusal(answer.eightBit))
-  if (family === AV1 && isEveryAnswerARefusal && isAv1Corroborated(platform)) {
+  if (family === AV1 && isEveryAnswerARefusal && isAv1UnderReported(platform)) {
     return [eightBitTier(AV1, FULL_HD_AT_30)]
   }
   return []
@@ -407,9 +408,12 @@ function isCoveredBy(candidate: DecodedTier, wider: DecodedTier): boolean {
   )
 }
 
-// WebKit's decodingInfo under-reports AV1 (streamarr-server#395), so a false answer drops AV1 only
-// when the path that plays the stream also refuses its codec string.
-function isAv1Corroborated(platform: PlaybackPlatform): boolean {
+// WebKit's decodingInfo under-reports AV1 (streamarr-server#395), so there a false answer drops AV1
+// only when the path that plays the stream also refuses its codec string. Elsewhere it stands.
+function isAv1UnderReported(platform: PlaybackPlatform): boolean {
+  if (!isWebKit(platform.userAgent)) {
+    return false
+  }
   const type = `video/mp4; codecs="${AV1.eightBit.codec(FULL_HD_AT_30.levels.AV1)}"`
   if (platform.hlsJsSupported) {
     return platform.mediaSourceTypeSupported(type)
