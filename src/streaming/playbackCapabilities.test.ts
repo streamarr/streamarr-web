@@ -9,7 +9,11 @@ import {
   MINIMAL_DECLARATION,
   playbackPlatformFixture,
 } from '../test/playbackCapabilities'
-import { declarePlaybackCapabilities, type PlaybackPlatform } from './playbackCapabilities'
+import {
+  declarePlaybackCapabilities,
+  type DecodingAnswer,
+  type PlaybackPlatform,
+} from './playbackCapabilities'
 
 const SAFARI =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15'
@@ -30,7 +34,8 @@ function codecOf(configuration: MediaDecodingConfiguration): string {
 function decodingInfoAnswering(decodes: Decodes, isSmooth: Decodes = () => true) {
   return vi.fn((configuration: MediaDecodingConfiguration) => {
     const supported = decodes(configuration)
-    return Promise.resolve({ supported, smooth: supported && isSmooth(configuration) })
+    const smooth = supported && isSmooth(configuration)
+    return Promise.resolve({ supported, smooth, powerEfficient: smooth })
   })
 }
 
@@ -125,11 +130,11 @@ function decodesAudioUpTo(channels: number): Decodes {
     configuration.audio === undefined || Number(configuration.audio.channels) <= channels
 }
 
-function answer(supported: boolean) {
-  return { supported, smooth: supported }
+function answer(supported: boolean): DecodingAnswer {
+  return { supported, smooth: supported, powerEfficient: supported }
 }
 
-const NEVER_ANSWERED = new Promise<{ supported: boolean; smooth: boolean }>(() => {})
+const NEVER_ANSWERED = new Promise<DecodingAnswer>(() => {})
 
 function decodesOnlyAt720p(configuration: MediaDecodingConfiguration): boolean {
   return configuration.video === undefined || configuration.video.height === 720
@@ -637,7 +642,7 @@ describe('declarePlaybackCapabilities', () => {
             return NEVER_ANSWERED
           }
           if (isFullHdAtThirtyFrames(configuration)) {
-            return Promise.resolve({ supported: true, smooth: false })
+            return Promise.resolve({ supported: true, smooth: false, powerEfficient: false })
           }
           return Promise.resolve(answer(false))
         }),
