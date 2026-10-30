@@ -161,7 +161,8 @@ const AV1: VideoFamily = {
   tenBit: { bitDepth: 10, profiles: [], codec: (level) => av1Codec(level, 10) },
 }
 
-const VIDEO_FAMILIES = [H264, HEVC, AV1]
+// H.264 is probed beside these: the tiers it keeps up with cap power-efficient HEVC on WebKit.
+const VIDEO_FAMILIES_BESIDES_H264 = [HEVC, AV1]
 
 // AV1 numbers its levels by seq_level_idx: level 2.0 is 0, and each major level has four minors.
 function av1Codec(level: number, bitDepth: number): string {
@@ -274,13 +275,16 @@ async function probeVideo({
   askDecodingInfo: AskDecodingInfo
   hls: boolean
 }): Promise<VideoCapabilityEntryInput[]> {
-  const probed = await Promise.all(
-    VIDEO_FAMILIES.map(async (family) => ({
-      family,
-      answers: await probeFamily({ family, askDecodingInfo }),
-    })),
-  )
-  const h264Answers = probed.find(({ family }) => family === H264)?.answers ?? []
+  const [h264Answers, otherFamilies] = await Promise.all([
+    probeFamily({ family: H264, askDecodingInfo }),
+    Promise.all(
+      VIDEO_FAMILIES_BESIDES_H264.map(async (family) => ({
+        family,
+        answers: await probeFamily({ family, askDecodingInfo }),
+      })),
+    ),
+  ])
+  const probed = [{ family: H264, answers: h264Answers }, ...otherFamilies]
   return probed.flatMap(({ family, answers }) =>
     familyEntries({ platform, family, answers, h264Answers, hls }),
   )
