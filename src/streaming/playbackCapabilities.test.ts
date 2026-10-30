@@ -138,15 +138,24 @@ function answer(supported: boolean): DecodingAnswer {
 
 const NEVER_ANSWERED = new Promise<DecodingAnswer>(() => {})
 
-function decodingInfoAnsweringHevc(
-  hevcAnswer: (configuration: MediaDecodingConfiguration) => DecodingAnswer,
-) {
+type Answers = (configuration: MediaDecodingConfiguration) => DecodingAnswer
+
+function decodingInfoAnsweringHevc(hevcAnswer: Answers, otherAnswer: Answers = () => answer(true)) {
   return vi.fn((configuration: MediaDecodingConfiguration) => {
     if (codecOf(configuration).startsWith('hvc1')) {
       return Promise.resolve(hevcAnswer(configuration))
     }
-    return Promise.resolve(answer(true))
+    return Promise.resolve(otherAnswer(configuration))
   })
+}
+
+function smoothUpToFullHd(configuration: MediaDecodingConfiguration): DecodingAnswer {
+  const smooth = (configuration.video?.height ?? 0) <= 1080
+  return { supported: true, smooth, powerEfficient: smooth }
+}
+
+function isUhd(configuration: MediaDecodingConfiguration): boolean {
+  return configuration.video?.height === 2160
 }
 
 const UNSMOOTH_SOFTWARE_ANSWER: DecodingAnswer = {
@@ -433,6 +442,87 @@ describe('declarePlaybackCapabilities', () => {
       sdrVideoEntry({
         codecFamily: 'HEVC',
         codecProfiles: [{ profile: 'HEVC_MAIN', maxLevel: 51, maxTier: 'MAIN' }],
+        maxWidth: 3840,
+        maxHeight: 2160,
+        maxFrameRate: 60,
+      }),
+    ])
+  })
+
+  it('shouldCapPowerEfficientHevcAtTheHighestTierH264KeepsUpWithWhenWebKitNeverAnswersHevcSmooth', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: decodingInfoAnsweringHevc(() => IPHONE_SAFARI_HEVC_ANSWER, smoothUpToFullHd),
+        userAgent: IPHONE_SAFARI_USER_AGENT,
+      }),
+    )
+
+    expect(familyEntries(declaration, 'HEVC')).toEqual([
+      sdrVideoEntry({
+        codecFamily: 'HEVC',
+        codecProfiles: [
+          { profile: 'HEVC_MAIN', maxLevel: 41, maxTier: 'MAIN' },
+          { profile: 'HEVC_MAIN_10', maxLevel: 41, maxTier: 'MAIN' },
+        ],
+        maxBitDepth: 10,
+        maxFrameRate: 60,
+      }),
+    ])
+  })
+
+  it('shouldCapPowerEfficientHevcAtEightBitWhenMainTenIsPowerEfficientOnlyAboveTheH264Cap', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: decodingInfoAnsweringHevc(
+          (configuration) =>
+            codecOf(configuration).startsWith('hvc1.2') && !isUhd(configuration)
+              ? UNSMOOTH_SOFTWARE_ANSWER
+              : IPHONE_SAFARI_HEVC_ANSWER,
+          smoothUpToFullHd,
+        ),
+        userAgent: IPHONE_SAFARI_USER_AGENT,
+      }),
+    )
+
+    expect(familyEntries(declaration, 'HEVC')).toEqual([
+      sdrVideoEntry({
+        codecFamily: 'HEVC',
+        codecProfiles: [{ profile: 'HEVC_MAIN', maxLevel: 41, maxTier: 'MAIN' }],
+        maxFrameRate: 60,
+      }),
+    ])
+  })
+
+  it('shouldDropPowerEfficientHevcWhenWebKitAnswersNoH264TierSmooth', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: decodingInfoAnsweringHevc(
+          () => IPHONE_SAFARI_HEVC_ANSWER,
+          () => UNSMOOTH_SOFTWARE_ANSWER,
+        ),
+        userAgent: IPHONE_SAFARI_USER_AGENT,
+      }),
+    )
+
+    expect(familyEntries(declaration, 'HEVC')).toEqual([])
+  })
+
+  it('shouldDeclareSmoothHevcAboveTheHighestTierH264KeepsUpWith', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: decodingInfoAnsweringHevc(() => answer(true), smoothUpToFullHd),
+        userAgent: IPHONE_SAFARI_USER_AGENT,
+      }),
+    )
+
+    expect(familyEntries(declaration, 'HEVC')).toEqual([
+      sdrVideoEntry({
+        codecFamily: 'HEVC',
+        codecProfiles: [
+          { profile: 'HEVC_MAIN', maxLevel: 51, maxTier: 'MAIN' },
+          { profile: 'HEVC_MAIN_10', maxLevel: 51, maxTier: 'MAIN' },
+        ],
+        maxBitDepth: 10,
         maxWidth: 3840,
         maxHeight: 2160,
         maxFrameRate: 60,

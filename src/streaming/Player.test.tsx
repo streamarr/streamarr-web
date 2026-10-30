@@ -639,6 +639,53 @@ describe('Player', () => {
     ).toEqual([['H264', 'HEVC', 'AV1']])
   })
 
+  it('shouldCapPowerEfficientHevcAtTheHighestTierH264KeepsUpWithWhenIphoneSafariPlays', async () => {
+    serveSession()
+    const created: { input: { capabilities: ClientCapabilityDeclarationInput } }[] = []
+    server.use(
+      graphql.mutation('CreatePlaybackSession', ({ variables }) => {
+        created.push(variables as unknown as (typeof created)[number])
+        return HttpResponse.json({
+          data: {
+            createPlaybackSession: {
+              playbackSession: readyPlaybackSession({ streamSession: SESSION }),
+              userErrors: [],
+            },
+          },
+        })
+      }),
+    )
+    const decodingInfo = (configuration: MediaDecodingConfiguration) => {
+      if (configuration.video?.contentType.includes('hvc1')) {
+        return Promise.resolve(IPHONE_SAFARI_HEVC_ANSWER)
+      }
+      const smooth = (configuration.video?.height ?? 0) <= 1080
+      return Promise.resolve({ supported: true, smooth, powerEfficient: smooth })
+    }
+
+    renderWithProviders(
+      <Player
+        playbackPlatform={() =>
+          playbackPlatformFixture({ decodingInfo, userAgent: IPHONE_SAFARI_USER_AGENT })
+        }
+        mediaFileId="abcd"
+      />,
+    )
+    await attachedVideo()
+
+    expect(
+      created.flatMap(({ input }) =>
+        input.capabilities.video
+          .filter((entry) => entry.codecFamily === 'HEVC')
+          .map(({ maxHeight, maxFrameRate, maxBitDepth }) => ({
+            maxHeight,
+            maxFrameRate,
+            maxBitDepth,
+          })),
+      ),
+    ).toEqual([{ maxHeight: 1080, maxFrameRate: 60, maxBitDepth: 10 }])
+  })
+
   it('shouldShowThePlaybackFailureWithoutCreatingASessionWhenTheBrowserDecodesNoVideo', async () => {
     const created: unknown[] = []
     server.use(
