@@ -458,7 +458,12 @@ function h264TierWithoutAnswerThatKeepsUp(answered: readonly TierAnswers[]): Dec
   if (supported.length === 0) {
     return []
   }
-  return [eightBitTier(H264, supported[supported.length - 1].tier)]
+  // Unanswered lower tiers never raise the fallback above the full HD tier declared without answers.
+  let tier = supported[supported.length - 1].tier
+  if (!holdsPicture(FULL_HD_AT_30, tier)) {
+    tier = FULL_HD_AT_30
+  }
+  return [eightBitTier(H264, tier)]
 }
 
 function eightBitTier(family: VideoFamily, tier: PictureTier): DecodedTier {
