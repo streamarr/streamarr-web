@@ -2005,6 +2005,38 @@ describe('Player', () => {
     await waitFor(() => expect(activeSessions.size).toBe(0))
   })
 
+  it('shouldStartTheNextMediaFileWithoutWaitingForTheLeftMediaFilesUnansweredProbes', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const probing = deferred()
+    const leftPlatform = playbackPlatformFixture({
+      decodingInfo: () => {
+        probing.resolve()
+        return new Promise(() => {})
+      },
+    })
+    const platforms = [leftPlatform]
+    const creationAttempts: string[] = []
+    serveSingleWorkerSlot({
+      onCreateAttempt: (mediaFileId) => creationAttempts.push(mediaFileId),
+    })
+
+    renderWithProviders(
+      <Harness playbackPlatform={() => platforms.shift() ?? withoutDecodingInfo()} />,
+    )
+    await probing.promise
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    // Short of the probe deadline: the left media file's probes are still unanswered.
+    await act(async () => vi.advanceTimersByTimeAsync(2_999))
+    vi.useRealTimers()
+
+    await waitFor(() =>
+      expect(hls.loadSource).toHaveBeenCalledExactlyOnceWith(
+        '/api/stream/b/multivariant.m3u8?t=playback-token',
+      ),
+    )
+    expect(creationAttempts).toEqual(['b'])
+  })
+
   it('shouldReleaseThePlayingSessionAfterItsFinalReportBeforeStartingTheNextMediaFile', async () => {
     const reportStarted = deferred()
     const reportResponse = deferred()

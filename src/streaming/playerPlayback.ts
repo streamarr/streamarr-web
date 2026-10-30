@@ -214,8 +214,9 @@ export function startPlayerPlayback({
       if (cancelled) {
         return
       }
-      const capabilities = await declareCapabilities()
-      if (cancelled) {
+      // Leaving abandons the probes, so the next player's start never waits out their deadline.
+      const capabilities = await unlessAborted(declareCapabilities(), statusCancellation.signal)
+      if (cancelled || !capabilities) {
         return
       }
       // The server requires a video entry, so a browser that decodes no video cannot play here.
@@ -493,6 +494,15 @@ export function startPlayerPlayback({
     detachSource()
     requestCleanup()
   }
+}
+
+// Resolves undefined once the signal aborts; a signal aborted before the call waits for the work.
+function unlessAborted<T>(work: Promise<T>, signal: AbortSignal): Promise<T | undefined> {
+  return new Promise((resolve, reject) => {
+    const abandon = () => resolve(undefined)
+    signal.addEventListener('abort', abandon, { once: true })
+    void work.then(resolve, reject).finally(() => signal.removeEventListener('abort', abandon))
+  })
 }
 
 function waitForPlaybackStatus(signal: AbortSignal): Promise<void> {
