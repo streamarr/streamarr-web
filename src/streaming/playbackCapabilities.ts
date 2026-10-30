@@ -330,10 +330,10 @@ function isRefusal(answer: ProbeAnswer): boolean {
   return answer !== null && !answer.supported
 }
 
-// H.264 is the server's encode, so without a smooth answer it keeps its lowest tier the browser did
-// not refuse, and the full HD tier when no H.264 probe was answered at all. AV1 keeps its lowest
-// tier only when every answer was a refusal and the playing path corroborates it; a supported but
-// unsmooth answer is not under-reporting, and an unanswered probe is not an answer.
+// H.264 is the server's encode, so without a smooth answer it keeps its lowest tier the browser
+// answered supported, and the full HD tier only when no H.264 probe was answered at all. AV1 keeps
+// its lowest tier only when every answer was a refusal and the playing path corroborates it; a
+// supported but unsmooth answer is not under-reporting, and an unanswered probe is not an answer.
 function tiersWithoutSmoothAnswer({
   platform,
   family,
@@ -344,9 +344,8 @@ function tiersWithoutSmoothAnswer({
   answers: readonly TierAnswers[]
 }): DecodedTier[] {
   const answered = answers.filter((answer) => answer.eightBit !== null)
-  const unrefused = answers.filter((answer) => !isRefusal(answer.eightBit))
   if (family === H264) {
-    return h264TierWithoutSmoothAnswer({ answered, unrefused })
+    return h264TierWithoutSmoothAnswer(answered)
   }
   const isEveryAnswerARefusal =
     answered.length > 0 && answered.every((answer) => isRefusal(answer.eightBit))
@@ -356,20 +355,15 @@ function tiersWithoutSmoothAnswer({
   return []
 }
 
-function h264TierWithoutSmoothAnswer({
-  answered,
-  unrefused,
-}: {
-  answered: readonly TierAnswers[]
-  unrefused: readonly TierAnswers[]
-}): DecodedTier[] {
+function h264TierWithoutSmoothAnswer(answered: readonly TierAnswers[]): DecodedTier[] {
   if (answered.length === 0) {
     return [eightBitTier(H264, FULL_HD_AT_30)]
   }
-  if (unrefused.length === 0) {
+  const supported = answered.filter((answer) => answer.eightBit?.supported)
+  if (supported.length === 0) {
     return []
   }
-  return [eightBitTier(H264, unrefused[unrefused.length - 1].tier)]
+  return [eightBitTier(H264, supported[supported.length - 1].tier)]
 }
 
 function eightBitTier(family: VideoFamily, tier: PictureTier): DecodedTier {

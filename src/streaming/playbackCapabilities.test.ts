@@ -582,7 +582,7 @@ describe('declarePlaybackCapabilities', () => {
     await expect(declaration).resolves.toEqual(DECLARATION_OF_THE_720P_ONLY_BROWSER_WITHOUT_OPUS)
   })
 
-  it('shouldDeclareTheLowestUnrefusedH264TierWhenTheBrowserRefusesEveryAnsweredH264Tier', async () => {
+  it('shouldDeclareNoH264WhenTheBrowserRefusesEveryAnsweredH264Tier', async () => {
     vi.useFakeTimers()
     const declaration = declarePlaybackCapabilities(
       platformFixture({
@@ -600,8 +600,32 @@ describe('declarePlaybackCapabilities', () => {
 
     await vi.advanceTimersByTimeAsync(3_000)
 
+    expect(familyEntries(await declaration, 'H264')).toEqual([])
+  })
+
+  it('shouldDeclareTheLowestSupportedH264TierWhenNoH264TierIsSmoothAndALowerTierGoesUnanswered', async () => {
+    vi.useFakeTimers()
+    const declaration = declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) => {
+          if (!codecOf(configuration).startsWith('avc1')) {
+            return Promise.resolve(answer(true))
+          }
+          if (configuration.video?.height === 720) {
+            return NEVER_ANSWERED
+          }
+          if (isFullHdAtThirtyFrames(configuration)) {
+            return Promise.resolve({ supported: true, smooth: false })
+          }
+          return Promise.resolve(answer(false))
+        }),
+      }),
+    )
+
+    await vi.advanceTimersByTimeAsync(3_000)
+
     expect(familyEntries(await declaration, 'H264')).toEqual([
-      sdrVideoEntry({ codecProfiles: h264Profiles(31), maxWidth: 1280, maxHeight: 720 }),
+      sdrVideoEntry({ codecProfiles: h264Profiles(40) }),
     ])
   })
 
