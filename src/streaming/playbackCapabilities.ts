@@ -68,8 +68,9 @@ interface PictureTier {
   levels: FamilyLevels
 }
 
-// Each level is the lowest that holds the tier's picture size and frame rate, and each bitrate stays
-// within every family's Main-tier maximum at its level: WebKit refuses an AV1 configuration above it.
+// Each level is the lowest that holds the tier's picture size and frame rate, and each bitrate
+// stays within every family's Main-tier maximum at its level: WebKit refuses an AV1 configuration
+// above it.
 const UHD_AT_60: PictureTier = {
   width: 3840,
   height: 2160,
@@ -132,7 +133,7 @@ interface VideoFamily {
   tenBit?: BitDepthProbe
 }
 
-// A High decoder also decodes Main and Constrained Baseline streams; Baseline's extra tools are not.
+// A High decoder also decodes Main and Constrained Baseline streams, not Baseline's extra tools.
 const H264: VideoFamily = {
   codecFamily: 'H264',
   eightBit: {
@@ -362,10 +363,12 @@ type KeepsUp = (answer: ProbeAnswer, tier: PictureTier) => boolean
 // Safari on iOS 27.2, on a phone that decodes HEVC in hardware, answers HEVC Main and Main 10
 // supported and power-efficient but never smooth, at every tier from 720p30 to 2160p60. On WebKit a
 // power-efficient HEVC answer therefore keeps up, but power efficiency says which decoder runs, not
-// how fast: a phone that decodes 1080p in hardware may still drop frames at 2160p60. WebKit does
-// answer smooth for H.264, so the tiers H.264 keeps up with stand in for the hardware decoder's
-// budget, and a power-efficient HEVC answer keeps up only within them. Elsewhere only a smooth
-// answer keeps up.
+// how fast: a phone that decodes 1080p in hardware may still drop frames at 2160p60. So a
+// power-efficient HEVC answer keeps up only up to the highest H.264 tier WebKit answers smooth.
+// That cap assumes WebKit answers smooth for some H.264 tier, which nobody has measured; if it
+// answers none smooth, power-efficient HEVC is dropped and the server encodes instead. A smooth
+// H.264 answer may come from a software decoder, so the cap is a proxy for the hardware decoder's
+// limit, not a measurement of it. Elsewhere only a smooth answer keeps up.
 function keepsUpOn({
   platform,
   family,
@@ -396,11 +399,11 @@ function isRefusal(answer: ProbeAnswer): boolean {
   return answer !== null && !answer.supported
 }
 
-// H.264 is the server's encode, so without an answer that keeps up it keeps its lowest tier the browser
-// answered supported, and the full HD tier only when no H.264 probe was answered at all. AV1 keeps
-// its lowest tier only on WebKit, when every answer was a refusal and the playing path corroborates
-// it; a supported but unsmooth answer is not under-reporting, and an unanswered probe is not an
-// answer.
+// H.264 is the server's encode, so without an answer that keeps up it keeps its lowest tier the
+// browser answered supported, and the full HD tier only when no H.264 probe was answered at all.
+// AV1 keeps its lowest tier only on WebKit, when every answer was a refusal and the playing path
+// corroborates it; a supported but unsmooth answer is not under-reporting, and an unanswered probe
+// is not an answer.
 function tiersWithoutAnswerThatKeepsUp({
   platform,
   family,
