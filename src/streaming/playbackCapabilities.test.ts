@@ -10,6 +10,7 @@ import {
   IPHONE_SAFARI_USER_AGENT,
   MINIMAL_DECLARATION,
   playbackPlatformFixture,
+  smoothUpToFullHd,
 } from '../test/playbackCapabilities'
 import {
   declarePlaybackCapabilities,
@@ -147,11 +148,6 @@ function decodingInfoAnsweringHevc(hevcAnswer: Answers, otherAnswer: Answers = (
     }
     return Promise.resolve(otherAnswer(configuration))
   })
-}
-
-function smoothUpToFullHd(configuration: MediaDecodingConfiguration): DecodingAnswer {
-  const smooth = (configuration.video?.height ?? 0) <= 1080
-  return { supported: true, smooth, powerEfficient: smooth }
 }
 
 function isUhd(configuration: MediaDecodingConfiguration): boolean {

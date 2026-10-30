@@ -14,6 +14,12 @@ export const IPHONE_SAFARI_HEVC_ANSWER: DecodingAnswer = {
   powerEfficient: true,
 }
 
+/** Answers every configuration supported, but smooth and power-efficient only up to 1080p. */
+export function smoothUpToFullHd(configuration: MediaDecodingConfiguration): DecodingAnswer {
+  const smooth = (configuration.video?.height ?? 0) <= 1080
+  return { supported: true, smooth, powerEfficient: smooth }
+}
+
 /** What a browser declares when it cannot answer decodingInfo: full HD H.264 and stereo AAC. */
 export const MINIMAL_DECLARATION: ClientCapabilityDeclarationInput = {
   video: [
