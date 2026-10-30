@@ -1,6 +1,7 @@
 import type { ApolloClient, ObservableQuery } from '@apollo/client'
 import Hls, { type ErrorData } from 'hls.js'
 import {
+  type ClientCapabilityDeclarationInput,
   type CreatePlaybackSessionMutation,
   DestroyPlaybackSessionDocument,
   PlaybackSessionDocument,
@@ -41,13 +42,17 @@ const pendingCleanups = new WeakMap<ApolloClient, () => Promise<void>>()
 export function startPlayerPlayback({
   video,
   client,
+  declareCapabilities,
   createPlaybackSession,
   startPositionSeconds,
   onSourcePhase,
 }: {
   video: HTMLVideoElement
   client: ApolloClient
-  createPlaybackSession: () => Promise<{ data?: CreatePlaybackSessionMutation | null }>
+  declareCapabilities: () => Promise<ClientCapabilityDeclarationInput>
+  createPlaybackSession: (
+    capabilities: ClientCapabilityDeclarationInput,
+  ) => Promise<{ data?: CreatePlaybackSessionMutation | null }>
   startPositionSeconds?: number
   onSourcePhase: (phase: SourcePhase) => void
 }): () => void {
@@ -208,8 +213,12 @@ export function startPlayerPlayback({
       if (cancelled) {
         return
       }
+      const capabilities = await declareCapabilities()
+      if (cancelled) {
+        return
+      }
       // The UI deadline must not discard a late session ID that still needs destruction.
-      const result = await createPlaybackSession()
+      const result = await createPlaybackSession(capabilities)
       const payload = result.data?.createPlaybackSession
       const initialPlayback = payload?.playbackSession
       playbackSessionId = initialPlayback?.id ?? null

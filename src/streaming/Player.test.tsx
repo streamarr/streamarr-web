@@ -1847,6 +1847,42 @@ describe('Player', () => {
     await waitFor(() => expect(activeSessions.size).toBe(0))
   })
 
+  it('shouldNeverCreateASessionForAMediaFileLeftWhileTheBrowserWasStillAnswering', async () => {
+    const probing = deferred()
+    const answers = deferred()
+    const decodingInfo = () => {
+      probing.resolve()
+      return answers.promise.then(() => ({ supported: true, smooth: true, powerEfficient: true }))
+    }
+    Object.defineProperty(navigator, 'mediaCapabilities', {
+      value: { decodingInfo },
+      configurable: true,
+    })
+    const creationAttempts: string[] = []
+    const activeSessions = serveSingleWorkerSlot({
+      onCreateAttempt: (mediaFileId) => creationAttempts.push(mediaFileId),
+    })
+
+    try {
+      const { user, unmount } = renderWithProviders(<Harness />)
+      await probing.promise
+      await user.click(screen.getByRole('button', { name: 'Next' }))
+      answers.resolve()
+
+      await waitFor(() =>
+        expect(hls.loadSource).toHaveBeenCalledExactlyOnceWith(
+          '/api/stream/b/multivariant.m3u8?t=playback-token',
+        ),
+      )
+      expect(creationAttempts).toEqual(['b'])
+
+      unmount()
+      await waitFor(() => expect(activeSessions.size).toBe(0))
+    } finally {
+      Reflect.deleteProperty(navigator, 'mediaCapabilities')
+    }
+  })
+
   it('shouldReleaseThePlayingSessionAfterItsFinalReportBeforeStartingTheNextMediaFile', async () => {
     const reportStarted = deferred()
     const reportResponse = deferred()
