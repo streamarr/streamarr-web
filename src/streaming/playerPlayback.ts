@@ -12,6 +12,7 @@ import {
 } from '../graphql/generated/graphql'
 import { userErrorMessage, userErrorMessageOr } from '../graphql/userErrors'
 import { discardWatchedState } from '../media/watchedState'
+import { hlsPlaybackConfig } from './hlsPlaybackConfig'
 import { hlsTrackSource, nativeTrackSource, type TrackSource } from './trackSources'
 
 // Progress is only worth a round trip once the playhead has moved this far since the last report.
@@ -608,7 +609,7 @@ function attach(video: HTMLVideoElement, url: string, options: StreamSourceOptio
   if (!Hls.isSupported()) {
     return attachNative(video, url, options)
   }
-  const hls = new Hls()
+  const hls: Hls = new Hls(hlsPlaybackConfig(() => hls))
   hls.on(Hls.Events.ERROR, (_event, data) => {
     if (data.type === Hls.ErrorTypes.NETWORK_ERROR && data.response?.code === 503) {
       options.onStatusRequired(data.fatal)
