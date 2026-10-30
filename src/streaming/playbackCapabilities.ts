@@ -632,13 +632,20 @@ function minimalDeclaration(hls: boolean): ClientCapabilityDeclarationInput {
   }
 }
 
-type MediaSourceType = { isTypeSupported: (type: string) => boolean } | undefined
+interface MediaSourceType {
+  isTypeSupported: (type: string) => boolean
+}
 
 /** Binds the platform facts to this browser and the element that plays the stream. */
 export function browserPlaybackPlatform(video: HTMLVideoElement): PlaybackPlatform {
-  // hls.js prefers ManagedMediaSource, which TypeScript's DOM library does not declare yet.
-  const scope: { ManagedMediaSource?: MediaSourceType; MediaSource?: MediaSourceType } = globalThis
-  const mediaSource = scope.ManagedMediaSource ?? scope.MediaSource
+  // The order hls.js attaches through by default (preferManagedMediaSource: false). TypeScript's
+  // DOM library declares neither ManagedMediaSource nor WebKitMediaSource.
+  const scope: {
+    MediaSource?: MediaSourceType
+    ManagedMediaSource?: MediaSourceType
+    WebKitMediaSource?: MediaSourceType
+  } = globalThis
+  const mediaSource = scope.MediaSource ?? scope.ManagedMediaSource ?? scope.WebKitMediaSource
   const platform: PlaybackPlatform = {
     hlsJsSupported: Hls.isSupported(),
     nativeHlsSupported: video.canPlayType('application/vnd.apple.mpegurl') !== '',
