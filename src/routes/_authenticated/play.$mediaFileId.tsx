@@ -1,4 +1,5 @@
 import { createFileRoute, type SearchSchemaInput } from '@tanstack/react-router'
+import { browserPlaybackPlatform } from '../../streaming/playbackCapabilities'
 import { Player } from '../../streaming/Player'
 import {
   type MediaTitleSearch,
@@ -21,7 +22,14 @@ function Play() {
   const { mediaFileId } = Route.useParams()
   const { position, movie, episode } = Route.useSearch()
   const title = usePlayerTitle(parseMediaTitle({ movie, episode }))
-  return <Player mediaFileId={mediaFileId} startPositionSeconds={position} title={title} />
+  return (
+    <Player
+      mediaFileId={mediaFileId}
+      startPositionSeconds={position}
+      title={title}
+      playbackPlatform={browserPlaybackPlatform}
+    />
+  )
 }
 
 function parsePosition(value: unknown): number | undefined {

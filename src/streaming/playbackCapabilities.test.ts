@@ -4,11 +4,9 @@ import type {
   ClientCapabilityDeclarationInput,
   VideoCapabilityEntryInput,
 } from '../graphql/generated/graphql'
-import { MINIMAL_DECLARATION } from '../test/playbackCapabilities'
+import { MINIMAL_DECLARATION, playbackPlatformFixture } from '../test/playbackCapabilities'
 import { declarePlaybackCapabilities, type PlaybackPlatform } from './playbackCapabilities'
 
-const CHROME =
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36'
 const SAFARI =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15'
 const IPHONE_CHROME =
@@ -76,15 +74,7 @@ function isWithinMainTierBitrate(
 }
 
 function platformFixture(overrides: Partial<PlaybackPlatform> = {}): PlaybackPlatform {
-  return {
-    decodingInfo: decodingInfoAnswering(() => true),
-    hlsJsSupported: true,
-    nativeHlsSupported: false,
-    mediaSourceTypeSupported: () => false,
-    canPlayType: () => '',
-    userAgent: CHROME,
-    ...overrides,
-  }
+  return playbackPlatformFixture({ decodingInfo: decodingInfoAnswering(() => true), ...overrides })
 }
 
 function sdrVideoEntry(entry: Partial<VideoCapabilityEntryInput>): VideoCapabilityEntryInput {
