@@ -507,7 +507,7 @@ describe('declarePlaybackCapabilities', () => {
     expect(familyEntries(declaration, 'HEVC')).toEqual([])
   })
 
-  it('shouldDeclareSmoothHevcAboveTheHighestTierH264KeepsUpWith', async () => {
+  it('shouldDeclareHevcAboveTheHighestTierH264KeepsUpWithWhenWebKitAnswersHevcSmooth', async () => {
     const declaration = await declarePlaybackCapabilities(
       platformFixture({
         decodingInfo: decodingInfoAnsweringHevc(() => answer(true), smoothUpToFullHd),
