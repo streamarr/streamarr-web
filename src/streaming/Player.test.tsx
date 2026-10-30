@@ -7,6 +7,14 @@ import { HttpResponse, graphql } from 'msw'
 import { useEffect, useState } from 'react'
 import { afterEach, assert, beforeEach, describe, expect, it, vi } from 'vitest'
 import { type FakeHlsTrack, hls, resetFakeHls } from '../test/fakeHls'
+import {
+  fakeNetworkLoader,
+  forwardBuffer,
+  hlsConfigWith,
+  segmentCallbacks,
+  segmentContext,
+  segmentLoadConfiguration,
+} from '../test/fakeNetworkLoader'
 import { type FakeAudioTrack, type FakeTextTrack, giveElementTracks } from '../test/mediaTracks'
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
@@ -526,6 +534,23 @@ describe('Player', () => {
     expect(created).toEqual([{ input: { mediaFileId: 'abcd' } }])
     unmount()
     await waitFor(() => expect(destroyed).toEqual([{ input: { playbackSessionId: 'playback-1' } }]))
+  })
+
+  it('shouldWaitForAStartingVariantWithinItsOwnForwardBufferWhenHlsLoadsASegment', async () => {
+    serveSession()
+    renderWithProviders(<Player mediaFileId="abcd" />)
+    await attachedVideo()
+    hls.mainForwardBufferInfo = forwardBuffer(30)
+    const network = fakeNetworkLoader()
+    const config = hlsConfigWith(hls.config ?? {}, network)
+    const SegmentLoader = config.fLoader
+    assert(SegmentLoader)
+
+    new SegmentLoader(config).load(segmentContext(), segmentLoadConfiguration(), segmentCallbacks())
+
+    expect(network.loads.map(({ config }) => config.loadPolicy.maxTimeToFirstByteMs)).toEqual([
+      20_000,
+    ])
   })
 
   it('shouldAttachTheReadyChildWhenInitialPlaybackIsPending', async () => {
