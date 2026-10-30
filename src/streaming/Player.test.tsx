@@ -580,7 +580,7 @@ describe('Player', () => {
     )
     const decodingInfo = (configuration: MediaDecodingConfiguration) => {
       const supported = !configuration.video?.contentType.includes('av01')
-      return Promise.resolve({ supported, smooth: supported })
+      return Promise.resolve({ supported, smooth: supported, powerEfficient: supported })
     }
 
     renderWithProviders(
@@ -613,7 +613,7 @@ describe('Player', () => {
     )
     const decodingInfo = (configuration: MediaDecodingConfiguration) => {
       const supported = configuration.video === undefined
-      return Promise.resolve({ supported, smooth: supported })
+      return Promise.resolve({ supported, smooth: supported, powerEfficient: supported })
     }
 
     renderWithProviders(
@@ -1890,7 +1890,7 @@ describe('Player', () => {
     const answers = deferred()
     const decodingInfo = () => {
       probing.resolve()
-      return answers.promise.then(() => ({ supported: true, smooth: true }))
+      return answers.promise.then(() => ({ supported: true, smooth: true, powerEfficient: true }))
     }
     const creationAttempts: string[] = []
     const activeSessions = serveSingleWorkerSlot({

@@ -29,10 +29,14 @@ export const DECLARATION_REFUSAL_TYPENAMES: ReadonlySet<string> =
     'VideoCodecTierInvalidError',
   ])
 
-/** Whether the browser decodes a configuration, and whether it keeps up with its frame rate. */
+/**
+ * Whether the browser decodes a configuration, whether it keeps up with its frame rate, and whether
+ * it decodes without draining the battery.
+ */
 export interface DecodingAnswer {
   supported: boolean
   smooth: boolean
+  powerEfficient: boolean
 }
 
 /** The browser facts a capability declaration is built from. */
