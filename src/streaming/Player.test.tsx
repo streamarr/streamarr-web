@@ -16,6 +16,7 @@ import {
   segmentLoadConfiguration,
 } from '../test/fakeNetworkLoader'
 import { type FakeAudioTrack, type FakeTextTrack, giveElementTracks } from '../test/mediaTracks'
+import { MINIMAL_DECLARATION } from '../test/playbackCapabilities'
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
 import type { ClientCapabilityDeclarationInput } from '../graphql/generated/graphql'
@@ -24,27 +25,6 @@ import { Player } from './Player'
 
 vi.mock('hls.js', async () => (await import('../test/fakeHls')).hlsModule)
 
-const MINIMAL_DECLARATION = {
-  video: [
-    {
-      codecFamily: 'H264',
-      codecProfiles: [
-        { profile: 'H264_HIGH', maxLevel: 40 },
-        { profile: 'H264_MAIN', maxLevel: 40 },
-        { profile: 'H264_CONSTRAINED_BASELINE', maxLevel: 40 },
-      ],
-      maxBitDepth: 8,
-      maxWidth: 1920,
-      maxHeight: 1080,
-      maxFrameRate: 30,
-      compatibleBases: ['SDR'],
-      dolbyVisionProfiles: [],
-      hdr10Plus: false,
-      hls: true,
-    },
-  ],
-  audio: [{ codec: 'AAC', maxChannels: 2, hls: true }],
-}
 const STREAM_URL = '/api/stream/abcd/multivariant.m3u8?t=playback-token'
 const SESSION = { id: 'sess-1', streamUrl: STREAM_URL, transcodeMode: 'REMUX' } as const
 const DECLARATION_REFUSAL = 'capabilities.video[0].maxWidth must be above zero.'
