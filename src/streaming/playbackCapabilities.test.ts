@@ -4,7 +4,11 @@ import type {
   ClientCapabilityDeclarationInput,
   VideoCapabilityEntryInput,
 } from '../graphql/generated/graphql'
-import { MINIMAL_DECLARATION, playbackPlatformFixture } from '../test/playbackCapabilities'
+import {
+  CHROME_USER_AGENT,
+  MINIMAL_DECLARATION,
+  playbackPlatformFixture,
+} from '../test/playbackCapabilities'
 import { declarePlaybackCapabilities, type PlaybackPlatform } from './playbackCapabilities'
 
 const SAFARI =
@@ -433,6 +437,23 @@ describe('declarePlaybackCapabilities', () => {
     expect(familyEntries(declaration, 'AV1')).toHaveLength(1)
   })
 
+  it.each([
+    ['Chrome', CHROME_USER_AGENT],
+    ['Firefox', FIREFOX],
+  ])('shouldDropAv1When%sRefusesItEvenWhenMediaSourceAcceptsIt', async (_, userAgent) => {
+    const declaration = await declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: decodingInfoAnswering(
+          (configuration) => !codecOf(configuration).startsWith('av01'),
+        ),
+        mediaSourceTypeSupported: (type) => type === AV1_PROBE,
+        userAgent,
+      }),
+    )
+
+    expect(familyEntries(declaration, 'AV1')).toEqual([])
+  })
+
   it('shouldDropAv1WhenNothingCorroboratesAFalseDecodingAnswer', async () => {
     const declaration = await declarePlaybackCapabilities(
       platformFixture({
@@ -440,6 +461,7 @@ describe('declarePlaybackCapabilities', () => {
           (configuration) => !codecOf(configuration).startsWith('av01'),
         ),
         canPlayType: (type) => (type === AV1_PROBE ? 'probably' : ''),
+        userAgent: SAFARI,
       }),
     )
 
