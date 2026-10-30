@@ -3,12 +3,31 @@ import type {
   AudioCapabilityEntryInput,
   AudioCodec,
   ClientCapabilityDeclarationInput,
+  CreatePlaybackSessionMutation,
   VideoCapabilityEntryInput,
   VideoCodecFamily,
   VideoCodecProfile,
   VideoCodecProfileCapabilityInput,
   VideoCodecTier,
 } from '../graphql/generated/graphql'
+
+type CreatePlaybackSessionErrorTypename = NonNullable<
+  CreatePlaybackSessionMutation['createPlaybackSession']
+>['userErrors'][number]['__typename']
+
+/**
+ * The refusals only a defective declaration causes. Their wording names input the viewer never saw,
+ * so the player shows its own failure message for them.
+ */
+export const DECLARATION_REFUSAL_TYPENAMES: ReadonlySet<string> =
+  new Set<CreatePlaybackSessionErrorTypename>([
+    'CapabilityValuesRequiredError',
+    'HlsAacCapabilityRequiredError',
+    'CapabilityListTooLongError',
+    'CapabilityMaximumInvalidError',
+    'CapabilityProfileMismatchError',
+    'VideoCodecTierInvalidError',
+  ])
 
 /** Whether the browser decodes a configuration, and whether it keeps up with its frame rate. */
 export interface DecodingAnswer {

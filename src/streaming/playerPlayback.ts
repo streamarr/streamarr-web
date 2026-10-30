@@ -11,9 +11,10 @@ import {
   ReportStreamSessionTimelineDocument,
   type ReportStreamSessionTimelineMutationVariables,
 } from '../graphql/generated/graphql'
-import { type UserErrorLike, userErrorMessage, userErrorMessageOr } from '../graphql/userErrors'
+import { userErrorMessage, userErrorMessageOr } from '../graphql/userErrors'
 import { discardWatchedState } from '../media/watchedState'
 import { hlsPlaybackConfig } from './hlsPlaybackConfig'
+import { DECLARATION_REFUSAL_TYPENAMES } from './playbackCapabilities'
 import { hlsTrackSource, nativeTrackSource, type TrackSource } from './trackSources'
 
 // Progress is only worth a round trip once the playhead has moved this far since the last report.
@@ -588,22 +589,10 @@ function createStartupDeadline(onExpired: () => void): StartupDeadline {
 
 function refusalMessage(payload: PlaybackSessionPayload | undefined): string {
   const refusal = payload?.userErrors[0]
-  return refusal ? refusalMessageFor(refusal) : PLAYBACK_FAILURE_MESSAGE
-}
-
-function refusalMessageFor(refusal: UserErrorLike): string {
-  switch (refusal.__typename) {
-    // A refused declaration is this client's defect; its wording names input the viewer never saw.
-    case 'CapabilityValuesRequiredError':
-    case 'HlsAacCapabilityRequiredError':
-    case 'CapabilityListTooLongError':
-    case 'CapabilityMaximumInvalidError':
-    case 'CapabilityProfileMismatchError':
-    case 'VideoCodecTierInvalidError':
-      return PLAYBACK_FAILURE_MESSAGE
-    default:
-      return userErrorMessage(refusal)
+  if (!refusal || DECLARATION_REFUSAL_TYPENAMES.has(refusal.__typename)) {
+    return PLAYBACK_FAILURE_MESSAGE
   }
+  return userErrorMessage(refusal)
 }
 
 function ignoreRefusedStart() {
