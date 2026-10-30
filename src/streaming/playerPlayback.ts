@@ -1,6 +1,7 @@
 import type { ApolloClient, ObservableQuery } from '@apollo/client'
 import Hls, { type ErrorData } from 'hls.js'
 import {
+  type ClientCapabilityDeclarationInput,
   type CreatePlaybackSessionMutation,
   DestroyPlaybackSessionDocument,
   PlaybackSessionDocument,
@@ -39,7 +40,10 @@ interface PlaybackStatusCheck {
 interface PlayerPlaybackOptions {
   video: HTMLVideoElement
   client: ApolloClient
-  createPlaybackSession: () => Promise<{ data?: CreatePlaybackSessionMutation | null }>
+  declareCapabilities: () => Promise<ClientCapabilityDeclarationInput>
+  createPlaybackSession: (
+    capabilities: ClientCapabilityDeclarationInput,
+  ) => Promise<{ data?: CreatePlaybackSessionMutation | null }>
   startPositionSeconds?: number
   onSourcePhase: (phase: SourcePhase) => void
 }
@@ -94,6 +98,7 @@ export function startPlayerPlayback(options: PlayerPlaybackOptions): () => void 
 function startSessionPlayback({
   video,
   client,
+  declareCapabilities,
   createPlaybackSession,
   startPositionSeconds,
   onSourcePhase,
@@ -259,8 +264,12 @@ function startSessionPlayback({
       if (cancelled) {
         return
       }
+      const capabilities = await declareCapabilities()
+      if (cancelled) {
+        return
+      }
       // The UI deadline must not discard a late session ID that still needs destruction.
-      const result = await createPlaybackSession()
+      const result = await createPlaybackSession(capabilities)
       const payload = result.data?.createPlaybackSession
       const initialPlayback = payload?.playbackSession
       playbackSessionId = initialPlayback?.id ?? null

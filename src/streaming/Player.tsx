@@ -61,10 +61,9 @@ export function Player({
     return startPlayerPlayback({
       video,
       client,
-      createPlaybackSession: async () => {
-        const capabilities = await declarePlaybackCapabilities(browserPlaybackPlatform(video))
-        return createPlaybackSession({ variables: { input: { mediaFileId, capabilities } } })
-      },
+      declareCapabilities: () => declarePlaybackCapabilities(browserPlaybackPlatform(video)),
+      createPlaybackSession: (capabilities) =>
+        createPlaybackSession({ variables: { input: { mediaFileId, capabilities } } }),
       startPositionSeconds,
       onSourcePhase: setSourcePhase,
     })
