@@ -280,7 +280,8 @@ async function probeFamily({
   const answers = await Promise.all(
     PICTURE_TIERS.map((tier) => probeTier({ family, tier, askDecodingInfo })),
   )
-  let tiers = widestTiers(answers.flatMap((answer) => smoothTier({ family, answer })))
+  const keepsUp = keepsUpOn({ platform, family })
+  let tiers = widestTiers(answers.flatMap((answer) => smoothTier({ family, answer, keepsUp })))
   if (tiers.length === 0) {
     tiers = tiersWithoutSmoothAnswer({ platform, family, answers })
   }
@@ -307,27 +308,49 @@ async function probeTier({
 }
 
 // A tier that decodes only with dropped frames stutters without a playback error, so no format
-// attempt recovers from it: only smooth answers raise a limit.
+// attempt recovers from it: only answers that keep up raise a limit.
 function smoothTier({
   family,
   answer,
+  keepsUp,
 }: {
   family: VideoFamily
   answer: TierAnswers
+  keepsUp: (answer: ProbeAnswer) => boolean
 }): DecodedTier[] {
-  if (!isSmooth(answer.eightBit)) {
+  if (!keepsUp(answer.eightBit)) {
     return []
   }
   const decoded = eightBitTier(family, answer.tier)
-  if (family.tenBit && isSmooth(answer.tenBit)) {
+  if (family.tenBit && keepsUp(answer.tenBit)) {
     decoded.bitDepth = family.tenBit.bitDepth
     decoded.profiles.push(...family.tenBit.profiles)
   }
   return [decoded]
 }
 
+// iPhone Safari answers HEVC Main and Main 10 supported and power-efficient, the hardware decoder,
+// yet never smooth, at every tier from 720p30 to 2160p60 (streamarr-web#130). On WebKit a
+// power-efficient HEVC answer therefore keeps up; elsewhere only a smooth answer does.
+function keepsUpOn({
+  platform,
+  family,
+}: {
+  platform: PlaybackPlatform
+  family: VideoFamily
+}): (answer: ProbeAnswer) => boolean {
+  if (family === HEVC && isWebKit(platform.userAgent)) {
+    return (answer) => isSmooth(answer) || isPowerEfficient(answer)
+  }
+  return isSmooth
+}
+
 function isSmooth(answer: ProbeAnswer): boolean {
   return answer !== null && answer.supported && answer.smooth
+}
+
+function isPowerEfficient(answer: ProbeAnswer): boolean {
+  return answer !== null && answer.supported && answer.powerEfficient
 }
 
 function isRefusal(answer: ProbeAnswer): boolean {

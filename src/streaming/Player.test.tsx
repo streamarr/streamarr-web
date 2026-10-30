@@ -16,7 +16,12 @@ import {
   segmentLoadConfiguration,
 } from '../test/fakeNetworkLoader'
 import { type FakeAudioTrack, type FakeTextTrack, giveElementTracks } from '../test/mediaTracks'
-import { MINIMAL_DECLARATION, playbackPlatformFixture } from '../test/playbackCapabilities'
+import {
+  IPHONE_SAFARI_HEVC_ANSWER,
+  IPHONE_SAFARI_USER_AGENT,
+  MINIMAL_DECLARATION,
+  playbackPlatformFixture,
+} from '../test/playbackCapabilities'
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
 import type { ClientCapabilityDeclarationInput } from '../graphql/generated/graphql'
@@ -594,6 +599,44 @@ describe('Player', () => {
     expect(
       created.map(({ input }) => input.capabilities.video.map((entry) => entry.codecFamily)),
     ).toEqual([['H264', 'HEVC']])
+  })
+
+  it('shouldDeclareHevcWhenIphoneSafariDecodesItPowerEfficientlyWithoutASmoothAnswer', async () => {
+    serveSession()
+    const created: { input: { capabilities: ClientCapabilityDeclarationInput } }[] = []
+    server.use(
+      graphql.mutation('CreatePlaybackSession', ({ variables }) => {
+        created.push(variables as unknown as (typeof created)[number])
+        return HttpResponse.json({
+          data: {
+            createPlaybackSession: {
+              playbackSession: readyPlaybackSession({ streamSession: SESSION }),
+              userErrors: [],
+            },
+          },
+        })
+      }),
+    )
+    const decodingInfo = (configuration: MediaDecodingConfiguration) => {
+      if (configuration.video?.contentType.includes('hvc1')) {
+        return Promise.resolve(IPHONE_SAFARI_HEVC_ANSWER)
+      }
+      return Promise.resolve({ supported: true, smooth: true, powerEfficient: true })
+    }
+
+    renderWithProviders(
+      <Player
+        playbackPlatform={() =>
+          playbackPlatformFixture({ decodingInfo, userAgent: IPHONE_SAFARI_USER_AGENT })
+        }
+        mediaFileId="abcd"
+      />,
+    )
+    await attachedVideo()
+
+    expect(
+      created.map(({ input }) => input.capabilities.video.map((entry) => entry.codecFamily)),
+    ).toEqual([['H264', 'HEVC', 'AV1']])
   })
 
   it('shouldShowThePlaybackFailureWithoutCreatingASessionWhenTheBrowserDecodesNoVideo', async () => {
