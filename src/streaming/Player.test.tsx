@@ -21,6 +21,7 @@ import {
   IPHONE_SAFARI_USER_AGENT,
   MINIMAL_DECLARATION,
   playbackPlatformFixture,
+  smoothUpToFullHd,
 } from '../test/playbackCapabilities'
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
@@ -659,8 +660,7 @@ describe('Player', () => {
       if (configuration.video?.contentType.includes('hvc1')) {
         return Promise.resolve(IPHONE_SAFARI_HEVC_ANSWER)
       }
-      const smooth = (configuration.video?.height ?? 0) <= 1080
-      return Promise.resolve({ supported: true, smooth, powerEfficient: smooth })
+      return Promise.resolve(smoothUpToFullHd(configuration))
     }
 
     renderWithProviders(
