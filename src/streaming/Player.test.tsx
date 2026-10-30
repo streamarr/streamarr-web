@@ -26,7 +26,7 @@ import {
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
 import type { ClientCapabilityDeclarationInput } from '../graphql/generated/graphql'
-import { DECLARATION_REFUSAL_TYPENAMES, type PlaybackPlatform } from './playbackCapabilities'
+import type { PlaybackPlatform } from './playbackCapabilities'
 import { Player } from './Player'
 
 vi.mock('hls.js', async () => (await import('../test/fakeHls')).hlsModule)
@@ -2218,30 +2218,34 @@ describe('Player', () => {
     expect(hls.loadSource).not.toHaveBeenCalled()
   })
 
-  it.each([...DECLARATION_REFUSAL_TYPENAMES])(
-    'shouldShowThePlaybackFailureWhenTheServerRefusesTheDeclarationWith%s',
-    async (typename) => {
-      server.use(
-        graphql.mutation('CreatePlaybackSession', () =>
-          HttpResponse.json({
-            data: {
-              createPlaybackSession: {
-                playbackSession: null,
-                userErrors: [{ __typename: typename, message: DECLARATION_REFUSAL }],
-              },
+  it.each([
+    'CapabilityValuesRequiredError',
+    'HlsAacCapabilityRequiredError',
+    'CapabilityListTooLongError',
+    'CapabilityMaximumInvalidError',
+    'CapabilityProfileMismatchError',
+    'VideoCodecTierInvalidError',
+  ])('shouldShowThePlaybackFailureWhenTheServerRefusesTheDeclarationWith%s', async (typename) => {
+    server.use(
+      graphql.mutation('CreatePlaybackSession', () =>
+        HttpResponse.json({
+          data: {
+            createPlaybackSession: {
+              playbackSession: null,
+              userErrors: [{ __typename: typename, message: DECLARATION_REFUSAL }],
             },
-          }),
-        ),
-      )
+          },
+        }),
+      ),
+    )
 
-      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+    renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
 
-      expect(await screen.findByRole('alert')).toHaveTextContent(
-        "Playback couldn't start. Try again.",
-      )
-      expect(screen.getByRole('alert')).not.toHaveTextContent(DECLARATION_REFUSAL)
-    },
-  )
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "Playback couldn't start. Try again.",
+    )
+    expect(screen.getByRole('alert')).not.toHaveTextContent(DECLARATION_REFUSAL)
+  })
 
   it('shouldReportAFatalStreamErrorAndTearDownHls', async () => {
     server.use(
