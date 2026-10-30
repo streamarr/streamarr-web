@@ -31,8 +31,8 @@ export interface PlaybackPlatform {
   userAgent: string
 }
 
-// The declaration only gates the start of playback, so a browser that never answers gets the
-// minimal declaration rather than a player that never starts.
+// The declaration gates the start of playback, so every probe shares one deadline and a probe left
+// unanswered at it counts as unconfirmed rather than holding back a player that never starts.
 const DECODING_INFO_TIMEOUT_MS = 3_000
 
 type FamilyLevels = Record<'H264' | 'HEVC' | 'AV1', number>
@@ -160,40 +160,46 @@ interface DecodedTier {
   profiles: VideoCodecProfile[]
 }
 
+// Null when the browser rejected the probe or left it unanswered at the deadline.
+type ProbeAnswer = DecodingAnswer | null
+
 interface TierAnswers {
   tier: PictureTier
-  eightBit: DecodingAnswer
-  tenBit: DecodingAnswer | null
+  eightBit: ProbeAnswer
+  tenBit: ProbeAnswer
 }
 
-type Ask = (configuration: Omit<MediaDecodingConfiguration, 'type'>) => Promise<DecodingAnswer>
+type Ask = (configuration: Omit<MediaDecodingConfiguration, 'type'>) => Promise<ProbeAnswer>
 
 /**
  * What this browser plays over HLS, built fresh for each playback session from the platform's
- * answers. Never rejects: a browser that cannot answer gets the minimal declaration.
+ * answers. Never rejects: each probe the browser rejects or leaves unanswered counts as
+ * unconfirmed, and a browser without decodingInfo gets the minimal declaration.
  */
 export async function declarePlaybackCapabilities(
   platform: PlaybackPlatform,
 ): Promise<ClientCapabilityDeclarationInput> {
   const hls = platform.hlsJsSupported || platform.nativeHlsSupported
-  const minimal = minimalDeclaration(hls)
   const { decodingInfo } = platform
   if (!decodingInfo) {
-    return minimal
+    return minimalDeclaration(hls)
   }
   let type: MediaDecodingType = 'file'
   if (platform.hlsJsSupported) {
     type = 'media-source'
   }
-  const ask: Ask = (configuration) => decodingInfo({ type, ...configuration })
   let timer: ReturnType<typeof setTimeout> | undefined
-  const deadline = new Promise<ClientCapabilityDeclarationInput>((resolve) => {
-    timer = setTimeout(() => resolve(minimal), DECODING_INFO_TIMEOUT_MS)
+  const deadline = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), DECODING_INFO_TIMEOUT_MS)
   })
+  const ask: Ask = (configuration) => {
+    const answer = new Promise<DecodingAnswer>((resolve) =>
+      resolve(decodingInfo({ type, ...configuration })),
+    )
+    return Promise.race([answer.catch(() => null), deadline])
+  }
   try {
-    return await Promise.race([probeDeclaration({ platform, ask, hls }), deadline])
-  } catch {
-    return minimal
+    return await probeDeclaration({ platform, ask, hls })
   } finally {
     clearTimeout(timer)
   }
@@ -267,20 +273,25 @@ function smoothTier({
     return []
   }
   const decoded = eightBitTier(family, answer.tier)
-  if (family.tenBit && answer.tenBit && isSmooth(answer.tenBit)) {
+  if (family.tenBit && isSmooth(answer.tenBit)) {
     decoded.bitDepth = family.tenBit.bitDepth
     decoded.profiles.push(...family.tenBit.profiles)
   }
   return [decoded]
 }
 
-function isSmooth(answer: DecodingAnswer): boolean {
-  return answer.supported && answer.smooth
+function isSmooth(answer: ProbeAnswer): boolean {
+  return answer !== null && answer.supported && answer.smooth
 }
 
-// H.264 is the server's encode, so it keeps its lowest decoded tier even without a smooth answer.
-// AV1 keeps its lowest tier only when the browser refused every tier and the playing path
-// corroborates it; a supported but unsmooth answer is not under-reporting.
+function isRefusal(answer: ProbeAnswer): boolean {
+  return answer !== null && !answer.supported
+}
+
+// H.264 is the server's encode, so without a smooth answer it keeps its lowest tier the browser did
+// not refuse, and the full HD tier when no H.264 probe was answered at all. AV1 keeps its lowest
+// tier only when every answer was a refusal and the playing path corroborates it; a supported but
+// unsmooth answer is not under-reporting, and an unanswered probe is not an answer.
 function tiersWithoutSmoothAnswer({
   platform,
   family,
@@ -290,14 +301,33 @@ function tiersWithoutSmoothAnswer({
   family: VideoFamily
   answers: readonly TierAnswers[]
 }): DecodedTier[] {
-  const decoded = answers.filter((answer) => answer.eightBit.supported)
-  if (family === H264 && decoded.length > 0) {
-    return [eightBitTier(H264, decoded[decoded.length - 1].tier)]
+  const answered = answers.filter((answer) => answer.eightBit !== null)
+  const unrefused = answers.filter((answer) => !isRefusal(answer.eightBit))
+  if (family === H264) {
+    return h264TierWithoutSmoothAnswer({ answered, unrefused })
   }
-  if (family === AV1 && decoded.length === 0 && isAv1Corroborated(platform)) {
+  const isEveryAnswerARefusal =
+    answered.length > 0 && answered.every((answer) => isRefusal(answer.eightBit))
+  if (family === AV1 && isEveryAnswerARefusal && isAv1Corroborated(platform)) {
     return [eightBitTier(AV1, FULL_HD_AT_30)]
   }
   return []
+}
+
+function h264TierWithoutSmoothAnswer({
+  answered,
+  unrefused,
+}: {
+  answered: readonly TierAnswers[]
+  unrefused: readonly TierAnswers[]
+}): DecodedTier[] {
+  if (answered.length === 0) {
+    return [eightBitTier(H264, FULL_HD_AT_30)]
+  }
+  if (unrefused.length === 0) {
+    return []
+  }
+  return [eightBitTier(H264, unrefused[unrefused.length - 1].tier)]
 }
 
 function eightBitTier(family: VideoFamily, tier: PictureTier): DecodedTier {
@@ -402,7 +432,7 @@ async function probeAudio({
   ask: Ask
 }): Promise<{ codec: AudioCodec; maxChannels: number | null }> {
   for (const channels of CHANNEL_LADDER) {
-    const { supported } = await ask({
+    const answer = await ask({
       audio: {
         contentType: `audio/mp4; codecs="${mimeCodec}"`,
         channels: String(channels),
@@ -410,7 +440,7 @@ async function probeAudio({
         samplerate: 48_000,
       },
     })
-    if (supported) {
+    if (answer?.supported) {
       return { codec, maxChannels: channels }
     }
   }

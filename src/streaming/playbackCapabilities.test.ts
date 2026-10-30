@@ -152,6 +152,46 @@ function decodesAudioUpTo(channels: number): Decodes {
     configuration.audio === undefined || Number(configuration.audio.channels) <= channels
 }
 
+function answer(supported: boolean) {
+  return { supported, smooth: supported }
+}
+
+const NEVER_ANSWERED = new Promise<{ supported: boolean; smooth: boolean }>(() => {})
+
+function decodesOnlyAt720p(configuration: MediaDecodingConfiguration): boolean {
+  return configuration.video === undefined || configuration.video.height === 720
+}
+
+const DECLARATION_OF_THE_720P_ONLY_BROWSER_WITHOUT_OPUS: ClientCapabilityDeclarationInput = {
+  video: [
+    sdrVideoEntry({ codecProfiles: h264Profiles(31), maxWidth: 1280, maxHeight: 720 }),
+    sdrVideoEntry({
+      codecFamily: 'HEVC',
+      codecProfiles: [
+        { profile: 'HEVC_MAIN', maxLevel: 31, maxTier: 'MAIN' },
+        { profile: 'HEVC_MAIN_10', maxLevel: 31, maxTier: 'MAIN' },
+      ],
+      maxBitDepth: 10,
+      maxWidth: 1280,
+      maxHeight: 720,
+    }),
+    sdrVideoEntry({
+      codecFamily: 'AV1',
+      codecProfiles: [{ profile: 'AV1_MAIN', maxLevel: 31, maxTier: 'MAIN' }],
+      maxBitDepth: 10,
+      maxWidth: 1280,
+      maxHeight: 720,
+    }),
+  ],
+  audio: [
+    { codec: 'AAC', maxChannels: 6, hls: true },
+    { codec: 'AC3', maxChannels: 6, hls: true },
+    { codec: 'EAC3', maxChannels: 6, hls: true },
+    { codec: 'FLAC', maxChannels: 6, hls: true },
+    { codec: 'ALAC', maxChannels: 6, hls: true },
+  ],
+}
+
 describe('declarePlaybackCapabilities', () => {
   afterEach(() => {
     vi.useRealTimers()
@@ -540,25 +580,104 @@ describe('declarePlaybackCapabilities', () => {
     expect(declaration).toEqual(MINIMAL_DECLARATION)
   })
 
-  it('shouldDeclareTheMinimalDeclarationWhenDecodingInfoRejects', async () => {
+  it('shouldKeepEveryOtherAnswerWhenThe720pOnlyBrowserRejectsTheOpusProbe', async () => {
     const declaration = await declarePlaybackCapabilities(
       platformFixture({
-        decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) =>
-          codecOf(configuration) === 'opus'
-            ? Promise.reject(new TypeError('Unsupported configuration'))
-            : Promise.resolve({ supported: true, smooth: true }),
-        ),
+        decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) => {
+          if (codecOf(configuration) === 'opus') {
+            return Promise.reject(new TypeError('Unsupported configuration'))
+          }
+          return Promise.resolve(answer(decodesOnlyAt720p(configuration)))
+        }),
       }),
     )
 
-    expect(declaration).toEqual(MINIMAL_DECLARATION)
+    expect(declaration).toEqual(DECLARATION_OF_THE_720P_ONLY_BROWSER_WITHOUT_OPUS)
+  })
+
+  it('shouldKeepEveryOtherAnswerWhenThe720pOnlyBrowserLeavesProbesUnanswered', async () => {
+    vi.useFakeTimers()
+    const declaration = declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) => {
+          if (codecOf(configuration) === 'opus' || configuration.video?.height === 1080) {
+            return NEVER_ANSWERED
+          }
+          return Promise.resolve(answer(decodesOnlyAt720p(configuration)))
+        }),
+      }),
+    )
+
+    await vi.advanceTimersByTimeAsync(3_000)
+
+    await expect(declaration).resolves.toEqual(DECLARATION_OF_THE_720P_ONLY_BROWSER_WITHOUT_OPUS)
+  })
+
+  it('shouldDeclareTheLowestUnrefusedH264TierWhenTheBrowserRefusesEveryAnsweredH264Tier', async () => {
+    vi.useFakeTimers()
+    const declaration = declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) => {
+          if (!codecOf(configuration).startsWith('avc1')) {
+            return Promise.resolve(answer(true))
+          }
+          if (configuration.video?.height === 720) {
+            return NEVER_ANSWERED
+          }
+          return Promise.resolve(answer(false))
+        }),
+      }),
+    )
+
+    await vi.advanceTimersByTimeAsync(3_000)
+
+    expect(familyEntries(await declaration, 'H264')).toEqual([
+      sdrVideoEntry({ codecProfiles: h264Profiles(31), maxWidth: 1280, maxHeight: 720 }),
+    ])
+  })
+
+  it('shouldDeclareFullHdH264AndKeepEveryOtherAnswerWhenEveryH264ProbeFails', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) => {
+          if (codecOf(configuration).startsWith('avc1')) {
+            return Promise.reject(new TypeError('Unsupported configuration'))
+          }
+          return Promise.resolve(answer(true))
+        }),
+      }),
+    )
+
+    expect(familyEntries(declaration, 'H264')).toEqual(MINIMAL_DECLARATION.video)
+    expect(familyEntries(declaration, 'HEVC')).toHaveLength(1)
+    expect(audioEntry(declaration, 'AAC')?.maxChannels).toBe(6)
+  })
+
+  it('shouldDropAv1WhenNoAv1ProbeIsAnsweredEvenWhenMediaSourceAcceptsIt', async () => {
+    vi.useFakeTimers()
+    const declaration = declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) => {
+          if (codecOf(configuration).startsWith('av01')) {
+            return NEVER_ANSWERED
+          }
+          return Promise.resolve(answer(true))
+        }),
+        mediaSourceTypeSupported: (type) => type === AV1_PROBE,
+        userAgent: SAFARI,
+      }),
+    )
+
+    await vi.advanceTimersByTimeAsync(3_000)
+
+    expect(familyEntries(await declaration, 'AV1')).toEqual([])
   })
 
   it('shouldDeclareTheMinimalDeclarationWhenDecodingInfoNeverAnswers', async () => {
     vi.useFakeTimers()
     const declaration = declarePlaybackCapabilities(
       platformFixture({
-        decodingInfo: vi.fn(() => new Promise<{ supported: boolean; smooth: boolean }>(() => {})),
+        decodingInfo: vi.fn(() => NEVER_ANSWERED),
       }),
     )
 
