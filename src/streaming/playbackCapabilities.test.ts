@@ -6,6 +6,8 @@ import type {
 } from '../graphql/generated/graphql'
 import {
   CHROME_USER_AGENT,
+  IPHONE_SAFARI_HEVC_ANSWER,
+  IPHONE_SAFARI_USER_AGENT,
   MINIMAL_DECLARATION,
   playbackPlatformFixture,
 } from '../test/playbackCapabilities'
@@ -135,6 +137,23 @@ function answer(supported: boolean): DecodingAnswer {
 }
 
 const NEVER_ANSWERED = new Promise<DecodingAnswer>(() => {})
+
+function decodingInfoAnsweringHevc(
+  hevcAnswer: (configuration: MediaDecodingConfiguration) => DecodingAnswer,
+) {
+  return vi.fn((configuration: MediaDecodingConfiguration) => {
+    if (codecOf(configuration).startsWith('hvc1')) {
+      return Promise.resolve(hevcAnswer(configuration))
+    }
+    return Promise.resolve(answer(true))
+  })
+}
+
+const UNSMOOTH_SOFTWARE_ANSWER: DecodingAnswer = {
+  supported: true,
+  smooth: false,
+  powerEfficient: false,
+}
 
 function decodesOnlyAt720p(configuration: MediaDecodingConfiguration): boolean {
   return configuration.video === undefined || configuration.video.height === 720
@@ -361,6 +380,85 @@ describe('declarePlaybackCapabilities', () => {
           () => true,
           (configuration) => !codecOf(configuration).startsWith('hvc1'),
         ),
+      }),
+    )
+
+    expect(familyEntries(declaration, 'HEVC')).toEqual([])
+  })
+
+  it.each([
+    ['MediaSource', true],
+    ['NativePlayer', false],
+  ])(
+    'shouldDeclareHevcWhenIphoneSafariAnswersItPowerEfficientButNotSmoothThroughThe%s',
+    async (_, hlsJsSupported) => {
+      const declaration = await declarePlaybackCapabilities(
+        platformFixture({
+          decodingInfo: decodingInfoAnsweringHevc(() => IPHONE_SAFARI_HEVC_ANSWER),
+          hlsJsSupported,
+          nativeHlsSupported: true,
+          userAgent: IPHONE_SAFARI_USER_AGENT,
+        }),
+      )
+
+      expect(familyEntries(declaration, 'HEVC')).toEqual([
+        sdrVideoEntry({
+          codecFamily: 'HEVC',
+          codecProfiles: [
+            { profile: 'HEVC_MAIN', maxLevel: 51, maxTier: 'MAIN' },
+            { profile: 'HEVC_MAIN_10', maxLevel: 51, maxTier: 'MAIN' },
+          ],
+          maxBitDepth: 10,
+          maxWidth: 3840,
+          maxHeight: 2160,
+          maxFrameRate: 60,
+        }),
+      ])
+    },
+  )
+
+  it('shouldDeclareEightBitHevcWhenWebKitAnswersOnlyMainPowerEfficient', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: decodingInfoAnsweringHevc((configuration) =>
+          codecOf(configuration).startsWith('hvc1.2')
+            ? UNSMOOTH_SOFTWARE_ANSWER
+            : IPHONE_SAFARI_HEVC_ANSWER,
+        ),
+        userAgent: SAFARI,
+      }),
+    )
+
+    expect(familyEntries(declaration, 'HEVC')).toEqual([
+      sdrVideoEntry({
+        codecFamily: 'HEVC',
+        codecProfiles: [{ profile: 'HEVC_MAIN', maxLevel: 51, maxTier: 'MAIN' }],
+        maxWidth: 3840,
+        maxHeight: 2160,
+        maxFrameRate: 60,
+      }),
+    ])
+  })
+
+  it('shouldDropHevcWhenWebKitDecodesItOnlyWithDroppedFramesAndNotPowerEfficiently', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: decodingInfoAnsweringHevc(() => UNSMOOTH_SOFTWARE_ANSWER),
+        userAgent: SAFARI,
+      }),
+    )
+
+    expect(familyEntries(declaration, 'HEVC')).toEqual([])
+  })
+
+  it.each([
+    ['Chrome', CHROME_USER_AGENT],
+    ['Firefox', FIREFOX],
+  ])('shouldDropHevcWhen%sAnswersItPowerEfficientButNotSmooth', async (_, userAgent) => {
+    const declaration = await declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: decodingInfoAnsweringHevc(() => IPHONE_SAFARI_HEVC_ANSWER),
+        userAgent,
       }),
     )
 
