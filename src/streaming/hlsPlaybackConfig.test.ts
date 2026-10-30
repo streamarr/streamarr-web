@@ -1,5 +1,6 @@
-import type { BufferInfo } from 'hls.js'
-import { assert, describe, expect, it } from 'vitest'
+import { type BufferInfo, type LoaderStats, XhrLoader } from 'hls.js'
+import { HttpResponse, http } from 'msw'
+import { afterEach, assert, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import {
   fakeNetworkLoader,
   forwardBuffer,
@@ -8,7 +9,10 @@ import {
   segmentContext,
   segmentLoadConfiguration,
 } from '../test/fakeNetworkLoader'
+import { server } from '../test/server'
 import { hlsPlaybackConfig } from './hlsPlaybackConfig'
+
+const SEGMENT_URL = 'https://streamarr.test/api/stream/segment.m4s'
 
 interface ForwardBuffers {
   mainForwardBufferInfo: BufferInfo | null
@@ -24,9 +28,8 @@ function loadSegment(buffers: ForwardBuffers) {
   const SegmentLoader = config.fLoader
   assert(SegmentLoader)
   const loader = new SegmentLoader(config)
-  const callbacks = segmentCallbacks()
-  loader.load(segmentContext(), segmentLoadConfiguration(), callbacks)
-  return { loader, network, callbacks }
+  loader.load(segmentContext(), segmentLoadConfiguration(), segmentCallbacks())
+  return { loader, network }
 }
 
 function firstByteWaitsMs(buffers: ForwardBuffers): number[] {
@@ -35,7 +38,75 @@ function firstByteWaitsMs(buffers: ForwardBuffers): number[] {
   )
 }
 
+interface SegmentOutcome {
+  outcome: 'loaded' | 'failed' | 'timedOut' | 'aborted'
+  afterMs: number
+  requestAborted: boolean
+}
+
+// The server answers once the test responds, as it answers a starting variant's first segment once
+// the producer stores it.
+function heldSegmentResponse() {
+  let respond: (bytes: number) => void = () => {}
+  const response = new Promise<HttpResponse<ArrayBuffer>>((resolve) => {
+    respond = (bytes) => resolve(new HttpResponse(new ArrayBuffer(bytes)))
+  })
+  server.use(http.get(SEGMENT_URL, () => response))
+  onTestFinished(() => respond(0))
+  return { respond }
+}
+
+// The forward buffer of a video that plays at normal speed through `bufferedSeconds` of media.
+function playingVideo(bufferedSeconds: number) {
+  let bufferedUntilMs = performance.now() + bufferedSeconds * 1000
+  return {
+    buffers: {
+      get mainForwardBufferInfo() {
+        return forwardBuffer(Math.max(0, bufferedUntilMs - performance.now()) / 1000)
+      },
+      audioForwardBufferInfo: null,
+    },
+    seekForward(seconds: number) {
+      bufferedUntilMs -= seconds * 1000
+    },
+  }
+}
+
+// Loads a media segment as hls.js's fragment loader does, over hls.js's own network loader.
+function loadSegmentOverNetwork(buffers: ForwardBuffers) {
+  const config = hlsConfigWith(
+    hlsPlaybackConfig(() => buffers),
+    { Loader: XhrLoader },
+  )
+  const SegmentLoader = config.fLoader
+  assert(SegmentLoader)
+  const loader = new SegmentLoader(config)
+  const outcomes: SegmentOutcome[] = []
+  const startedAt = performance.now()
+  const settle = (outcome: SegmentOutcome['outcome'], stats: LoaderStats) =>
+    outcomes.push({
+      outcome,
+      afterMs: performance.now() - startedAt,
+      requestAborted: stats.aborted,
+    })
+  loader.load({ ...segmentContext(), url: SEGMENT_URL }, segmentLoadConfiguration(), {
+    onSuccess: (_response, stats) => settle('loaded', stats),
+    onError: (_response, _context, _details, stats) => settle('failed', stats),
+    onTimeout: (stats) => settle('timedOut', stats),
+    onAbort: (stats) => settle('aborted', stats),
+  })
+  return { loader, outcomes }
+}
+
 describe('hlsPlaybackConfig', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('shouldWaitForAStartingVariantsFirstSegmentWhenTheForwardBufferOutlastsTheWait', () => {
     expect(
       firstByteWaitsMs({ mainForwardBufferInfo: forwardBuffer(30), audioForwardBufferInfo: null }),
@@ -72,19 +143,18 @@ describe('hlsPlaybackConfig', () => {
   })
 
   it('shouldKeepTheRestOfTheSegmentPolicyWhenItExtendsTheWait', () => {
-    const { network, callbacks } = loadSegment({
+    const { network } = loadSegment({
       mainForwardBufferInfo: forwardBuffer(30),
       audioForwardBufferInfo: null,
     })
 
-    expect(network.loads).toEqual([
+    expect(network.loads.map(({ context, config }) => ({ context, config }))).toEqual([
       {
         context: segmentContext(),
         config: {
           ...segmentLoadConfiguration(),
           loadPolicy: { ...segmentLoadConfiguration().loadPolicy, maxTimeToFirstByteMs: 20_000 },
         },
-        callbacks,
       },
     ])
   })
@@ -142,5 +212,68 @@ describe('hlsPlaybackConfig', () => {
     }))
 
     expect(config.errorPenaltyExpireMs).toBe(60_000)
+  })
+
+  it('shouldTimeOutWhenTheBufferRunsOutAfterASeekForwardInsideIt', async () => {
+    heldSegmentResponse()
+    const video = playingVideo(30)
+    const { outcomes } = loadSegmentOverNetwork(video.buffers)
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    video.seekForward(20)
+    await vi.advanceTimersByTimeAsync(9_000)
+
+    expect(outcomes).toEqual([{ outcome: 'timedOut', afterMs: 10_000, requestAborted: true }])
+  })
+
+  it('shouldKeepTheDefaultWaitInReserveWhenASeekForwardShortensTheBuffer', async () => {
+    heldSegmentResponse()
+    const video = playingVideo(30)
+    const { outcomes } = loadSegmentOverNetwork(video.buffers)
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    video.seekForward(4)
+    await vi.advanceTimersByTimeAsync(14_999)
+    const beforeTheBufferReachesTheDefaultWait = [...outcomes]
+    await vi.advanceTimersByTimeAsync(1)
+
+    expect(beforeTheBufferReachesTheDefaultWait).toEqual([])
+    expect(outcomes).toEqual([{ outcome: 'timedOut', afterMs: 16_000, requestAborted: true }])
+  })
+
+  it('shouldWaitTheExtendedTimeWhenPlaybackConsumesTheBuffer', async () => {
+    heldSegmentResponse()
+    const { outcomes } = loadSegmentOverNetwork(playingVideo(30).buffers)
+
+    await vi.advanceTimersByTimeAsync(20_000)
+
+    expect(outcomes).toEqual([{ outcome: 'timedOut', afterMs: 20_000, requestAborted: true }])
+  })
+
+  it('shouldKeepLoadingTheSegmentWhenTheBufferRunsLowAfterItsFirstByte', async () => {
+    const segment = heldSegmentResponse()
+    const video = playingVideo(30)
+    const { outcomes } = loadSegmentOverNetwork(video.buffers)
+
+    await vi.advanceTimersByTimeAsync(15_000)
+    segment.respond(1_000)
+    await vi.advanceTimersByTimeAsync(0)
+    video.seekForward(15)
+    await vi.advanceTimersByTimeAsync(10_000)
+
+    expect(outcomes).toEqual([{ outcome: 'loaded', afterMs: 15_000, requestAborted: false }])
+  })
+
+  it('shouldReportAnAbortWhenHlsAbortsTheSegmentLoaderWhileItWaits', async () => {
+    heldSegmentResponse()
+    const video = playingVideo(30)
+    const { loader, outcomes } = loadSegmentOverNetwork(video.buffers)
+
+    await vi.advanceTimersByTimeAsync(5_000)
+    loader.abort()
+    video.seekForward(25)
+    await vi.advanceTimersByTimeAsync(20_000)
+
+    expect(outcomes).toEqual([{ outcome: 'aborted', afterMs: 5_000, requestAborted: true }])
   })
 })

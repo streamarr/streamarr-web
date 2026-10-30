@@ -18,6 +18,8 @@ const STARTING_VARIANT_WAIT_MS = 20_000
 // expiry covers a variant whose failure made hls.js switch variants; a timed-out request that
 // hls.js retries leaves only a fragment error, which no expiry lifts.
 const FAILED_VARIANT_PENALTY_MS = 60_000
+// hls.js checks a loading segment's progress against the forward buffer as often.
+const FORWARD_BUFFER_CHECK_MS = 100
 
 type ForwardBuffers = Pick<Hls, 'mainForwardBufferInfo' | 'audioForwardBufferInfo'>
 
@@ -35,6 +37,8 @@ export function hlsPlaybackConfig(player: () => ForwardBuffers): Partial<HlsConf
 function segmentLoaderWithinForwardBuffer(player: () => ForwardBuffers): FragmentLoaderConstructor {
   return class SegmentLoader implements Loader<FragmentLoaderContext> {
     private readonly network: Loader<FragmentLoaderContext>
+    private forwardBufferCheck: ReturnType<typeof setInterval> | undefined
+    private outlivedForwardBuffer = false
 
     constructor(config: HlsConfig) {
       // hls.js casts its network loader the same way: one loader class serves every request type.
@@ -55,33 +59,89 @@ function segmentLoaderWithinForwardBuffer(player: () => ForwardBuffers): Fragmen
       callbacks: LoaderCallbacks<FragmentLoaderContext>,
     ) {
       const { loadPolicy } = config
-      const maxTimeToFirstByteMs = firstByteWaitMs(
-        loadPolicy.maxTimeToFirstByteMs,
-        forwardBufferMs(player()),
-      )
+      const defaultWaitMs = loadPolicy.maxTimeToFirstByteMs
+      const maxTimeToFirstByteMs = firstByteWaitMs(defaultWaitMs, forwardBufferMs(player()))
       this.network.load(
         context,
         { ...config, loadPolicy: { ...loadPolicy, maxTimeToFirstByteMs } },
-        callbacks,
+        this.reportingTo(callbacks),
       )
+      if (maxTimeToFirstByteMs > defaultWaitMs) {
+        this.forwardBufferCheck = setInterval(
+          () => this.timeOutPastForwardBuffer(defaultWaitMs),
+          FORWARD_BUFFER_CHECK_MS,
+        )
+      }
     }
 
     abort() {
+      this.stopForwardBufferCheck()
       this.network.abort()
     }
 
     destroy() {
+      this.stopForwardBufferCheck()
       this.network.destroy()
+    }
+
+    // hls.js keeps a request alive across a seek inside the buffer, and a seek, a buffer flush or
+    // faster playback leaves less buffer than the wait was sized for, so the wait shrinks with it.
+    private timeOutPastForwardBuffer(defaultWaitMs: number) {
+      const { loading } = this.network.stats
+      if (loading.first) {
+        this.stopForwardBufferCheck()
+        return
+      }
+      const waitedMs = performance.now() - loading.start
+      const untilBufferRunsOutMs = waitedMs + forwardBufferMs(player())
+      if (waitedMs < firstByteWaitMs(defaultWaitMs, untilBufferRunsOutMs)) {
+        return
+      }
+      this.outlivedForwardBuffer = true
+      this.abort()
+    }
+
+    // The abort this loader makes when the buffer runs short reaches hls.js as the timeout it gets
+    // when a first byte is late, so hls.js recovers from both the same way.
+    private reportingTo(
+      callbacks: LoaderCallbacks<FragmentLoaderContext>,
+    ): LoaderCallbacks<FragmentLoaderContext> {
+      return {
+        ...callbacks,
+        onSuccess: (...args) => {
+          this.stopForwardBufferCheck()
+          callbacks.onSuccess(...args)
+        },
+        onError: (...args) => {
+          this.stopForwardBufferCheck()
+          callbacks.onError(...args)
+        },
+        onTimeout: (...args) => {
+          this.stopForwardBufferCheck()
+          callbacks.onTimeout(...args)
+        },
+        onAbort: (...args) => {
+          if (this.outlivedForwardBuffer) {
+            callbacks.onTimeout(...args)
+            return
+          }
+          callbacks.onAbort?.(...args)
+        },
+      }
+    }
+
+    private stopForwardBufferCheck() {
+      clearInterval(this.forwardBufferCheck)
     }
   }
 }
 
 // A request that gives up still leaves the default wait in the buffer, so the request hls.js makes
 // next, usually at a lower variant, has as long as any request had before playback would stall.
-function firstByteWaitMs(defaultWaitMs: number, forwardBufferMs: number): number {
+function firstByteWaitMs(defaultWaitMs: number, untilBufferRunsOutMs: number): number {
   return Math.max(
     defaultWaitMs,
-    Math.min(STARTING_VARIANT_WAIT_MS, forwardBufferMs - defaultWaitMs),
+    Math.min(STARTING_VARIANT_WAIT_MS, untilBufferRunsOutMs - defaultWaitMs),
   )
 }
 
