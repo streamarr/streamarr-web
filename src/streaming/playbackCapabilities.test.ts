@@ -778,6 +778,31 @@ describe('declarePlaybackCapabilities', () => {
     expect(declaration.audio.map((entry) => entry.maxChannels)).toEqual([2, 2, 2, 2, 2, 2])
   })
 
+  it('shouldDeclareStereoWhenTheBrowserLeavesEverySurroundProbeUnanswered', async () => {
+    vi.useFakeTimers()
+    const declaration = declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) => {
+          if (configuration.audio?.channels === '6') {
+            return NEVER_ANSWERED
+          }
+          return Promise.resolve(answer(true))
+        }),
+      }),
+    )
+
+    await vi.advanceTimersByTimeAsync(3_000)
+
+    expect((await declaration).audio).toEqual([
+      { codec: 'AAC', maxChannels: 2, hls: true },
+      { codec: 'AC3', maxChannels: 2, hls: true },
+      { codec: 'EAC3', maxChannels: 2, hls: true },
+      { codec: 'OPUS', maxChannels: 2, hls: true },
+      { codec: 'FLAC', maxChannels: 2, hls: true },
+      { codec: 'ALAC', maxChannels: 2, hls: true },
+    ])
+  })
+
   it('shouldDeclareAtMostSixChannelsWhenFirefoxConfirmsMore', async () => {
     const declaration = await declarePlaybackCapabilities(
       platformFixture({

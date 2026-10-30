@@ -554,16 +554,20 @@ async function probeAudio({
   mimeCodec: string
   askDecodingInfo: AskDecodingInfo
 }): Promise<AudioAnswer> {
-  for (const channels of CHANNEL_LADDER) {
-    const answer = await askDecodingInfo({
+  // Every rung starts at once: a rung asked only after a slow one would race an expired deadline.
+  const rungs = CHANNEL_LADDER.map((channels) => ({
+    channels,
+    answer: askDecodingInfo({
       audio: {
         contentType: `audio/mp4; codecs="${mimeCodec}"`,
         channels: String(channels),
         bitrate: 384_000,
         samplerate: 48_000,
       },
-    })
-    if (answer?.supported) {
+    }),
+  }))
+  for (const { channels, answer } of rungs) {
+    if ((await answer)?.supported) {
       return { codec, maxChannels: channels }
     }
   }
