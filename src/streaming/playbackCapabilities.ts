@@ -281,9 +281,9 @@ async function probeFamily({
     PICTURE_TIERS.map((tier) => probeTier({ family, tier, askDecodingInfo })),
   )
   const keepsUp = keepsUpOn({ platform, family })
-  let tiers = widestTiers(answers.flatMap((answer) => smoothTier({ family, answer, keepsUp })))
+  let tiers = widestTiers(answers.flatMap((answer) => tierThatKeepsUp({ family, answer, keepsUp })))
   if (tiers.length === 0) {
-    tiers = tiersWithoutSmoothAnswer({ platform, family, answers })
+    tiers = tiersWithoutAnswerThatKeepsUp({ platform, family, answers })
   }
   return tiers.map((decodedTier) => videoEntry({ family, decodedTier, hls }))
 }
@@ -309,7 +309,7 @@ async function probeTier({
 
 // A tier that decodes only with dropped frames stutters without a playback error, so no format
 // attempt recovers from it: only answers that keep up raise a limit.
-function smoothTier({
+function tierThatKeepsUp({
   family,
   answer,
   keepsUp,
@@ -329,8 +329,8 @@ function smoothTier({
   return [decoded]
 }
 
-// iPhone Safari answers HEVC Main and Main 10 supported and power-efficient, the hardware decoder,
-// yet never smooth, at every tier from 720p30 to 2160p60 (streamarr-web#130). On WebKit a
+// Safari on iOS 27.2, on a phone that decodes HEVC in hardware, answers HEVC Main and Main 10
+// supported and power-efficient but never smooth, at every tier from 720p30 to 2160p60. On WebKit a
 // power-efficient HEVC answer therefore keeps up; elsewhere only a smooth answer does.
 function keepsUpOn({
   platform,
@@ -357,12 +357,12 @@ function isRefusal(answer: ProbeAnswer): boolean {
   return answer !== null && !answer.supported
 }
 
-// H.264 is the server's encode, so without a smooth answer it keeps its lowest tier the browser
+// H.264 is the server's encode, so without an answer that keeps up it keeps its lowest tier the browser
 // answered supported, and the full HD tier only when no H.264 probe was answered at all. AV1 keeps
 // its lowest tier only on WebKit, when every answer was a refusal and the playing path corroborates
 // it; a supported but unsmooth answer is not under-reporting, and an unanswered probe is not an
 // answer.
-function tiersWithoutSmoothAnswer({
+function tiersWithoutAnswerThatKeepsUp({
   platform,
   family,
   answers,
@@ -373,7 +373,7 @@ function tiersWithoutSmoothAnswer({
 }): DecodedTier[] {
   const answered = answers.filter((answer) => answer.eightBit !== null)
   if (family === H264) {
-    return h264TierWithoutSmoothAnswer(answered)
+    return h264TierWithoutAnswerThatKeepsUp(answered)
   }
   const isEveryAnswerARefusal =
     answered.length > 0 && answered.every((answer) => isRefusal(answer.eightBit))
@@ -383,7 +383,7 @@ function tiersWithoutSmoothAnswer({
   return []
 }
 
-function h264TierWithoutSmoothAnswer(answered: readonly TierAnswers[]): DecodedTier[] {
+function h264TierWithoutAnswerThatKeepsUp(answered: readonly TierAnswers[]): DecodedTier[] {
   if (answered.length === 0) {
     return [eightBitTier(H264, FULL_HD_AT_30)]
   }
