@@ -341,7 +341,8 @@ async function probeTier({
 }
 
 // A tier that decodes only with dropped frames stutters without a playback error, so no format
-// attempt recovers from it: only answers that keep up raise a limit.
+// attempt recovers from it: only answers that keep up raise a limit. Each bit depth counts on its
+// own answer, and the tier holds only the codec profiles of the bit depths that keep up.
 function tierThatKeepsUp({
   family,
   answer,
@@ -351,15 +352,19 @@ function tierThatKeepsUp({
   answer: TierAnswers
   keepsUp: KeepsUp
 }): DecodedTier[] {
-  if (!keepsUp(answer.eightBit, answer.tier)) {
+  const keptUp: BitDepthProbe[] = []
+  if (keepsUp(answer.eightBit, answer.tier)) {
+    keptUp.push(family.eightBit)
+  }
+  if (family.tenBit && keepsUp(answer.tenBit, answer.tier)) {
+    keptUp.push(family.tenBit)
+  }
+  const profiles = keptUp.flatMap((probe) => probe.profiles)
+  if (profiles.length === 0) {
     return []
   }
-  const decoded = eightBitTier(family, answer.tier)
-  if (family.tenBit && keepsUp(answer.tenBit, answer.tier)) {
-    decoded.bitDepth = family.tenBit.bitDepth
-    decoded.profiles.push(...family.tenBit.profiles)
-  }
-  return [decoded]
+  const bitDepth = Math.max(...keptUp.map((probe) => probe.bitDepth))
+  return [{ tier: answer.tier, bitDepth, profiles }]
 }
 
 type KeepsUp = (answer: ProbeAnswer, tier: PictureTier) => boolean
