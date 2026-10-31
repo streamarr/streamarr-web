@@ -291,7 +291,7 @@ describe('declarePlaybackCapabilities', () => {
     ])
   })
 
-  it('shouldProbeEachHevcAndAv1TierWithinItsLevelsMainTierBitrate', async () => {
+  it('shouldStayWithinEachLevelsMainTierBitrateWhenProbingHevcAndAv1Tiers', async () => {
     const decodingInfo = decodingInfoAnswering(() => true)
 
     await declarePlaybackCapabilities(platformFixture({ decodingInfo }))
@@ -364,6 +364,19 @@ describe('declarePlaybackCapabilities', () => {
       { codecFamily: 'HEVC', profiles: ['HEVC_MAIN'], maxBitDepth: 8 },
       { codecFamily: 'AV1', profiles: ['AV1_MAIN'], maxBitDepth: 8 },
     ])
+  })
+
+  it('shouldDeclareNoAv1WhenOnlyTheTenBitProbeKeepsUp', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: decodingInfoAnswering(
+          () => true,
+          (configuration) => !codecOf(configuration).endsWith('M.08'),
+        ),
+      }),
+    )
+
+    expect(familyEntries(declaration, 'AV1')).toEqual([])
   })
 
   it('shouldDeclare720pWhenH264DecodesSmoothlyOnlyAt720p', async () => {

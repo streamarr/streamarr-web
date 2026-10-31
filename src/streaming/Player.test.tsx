@@ -1975,7 +1975,7 @@ describe('Player', () => {
     await waitFor(() => expect(activeSessions.size).toBe(0))
   })
 
-  it('shouldNeverCreateASessionForAMediaFileLeftWhileTheBrowserWasStillAnswering', async () => {
+  it('shouldNeverCreateASessionForAMediaFileWhenTheViewerLeftWhileTheBrowserWasStillAnswering', async () => {
     const probing = deferred()
     const answers = deferred()
     const decodingInfo = () => {
@@ -2005,7 +2005,7 @@ describe('Player', () => {
     await waitFor(() => expect(activeSessions.size).toBe(0))
   })
 
-  it('shouldStartTheNextMediaFileWithoutWaitingForTheLeftMediaFilesUnansweredProbes', async () => {
+  it('shouldStartTheNextMediaFileWithoutWaitingWhenTheLeftMediaFilesProbesGoUnanswered', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     const probing = deferred()
     const leftPlatform = playbackPlatformFixture({
