@@ -1079,4 +1079,52 @@ describe('browserPlaybackPlatform', () => {
 
     expect(platform.mediaSourceTypeSupported(AV1_PROBE)).toBe(true)
   })
+
+  it('shouldAcceptNoMediaSourceTypeWhenTheBrowserOffersNoMediaSource', () => {
+    vi.stubGlobal('MediaSource', undefined)
+    vi.stubGlobal('ManagedMediaSource', undefined)
+    vi.stubGlobal('WebKitMediaSource', undefined)
+
+    const platform = browserPlaybackPlatform(document.createElement('video'))
+
+    expect(platform.mediaSourceTypeSupported(AV1_PROBE)).toBe(false)
+  })
+
+  it('shouldAnswerCanPlayTypeFromTheElementThatPlaysTheStreamWhenAsked', () => {
+    const video = document.createElement('video')
+    video.canPlayType = (type) => (type === AV1_PROBE ? 'probably' : '')
+
+    const platform = browserPlaybackPlatform(video)
+
+    expect(platform.canPlayType(AV1_PROBE)).toBe('probably')
+  })
+
+  it('shouldAskTheBrowsersDecodingInfoWhenTheBrowserOffersMediaCapabilities', async () => {
+    const decodingInfo = vi.fn(() =>
+      Promise.resolve({ supported: true, smooth: true, powerEfficient: false }),
+    )
+    vi.stubGlobal('navigator', { userAgent: SAFARI, mediaCapabilities: { decodingInfo } })
+    const configuration: MediaDecodingConfiguration = {
+      type: 'media-source',
+      video: { contentType: AV1_PROBE, width: 1920, height: 1080, framerate: 30, bitrate: 1 },
+    }
+
+    const platform = browserPlaybackPlatform(document.createElement('video'))
+
+    await expect(platform.decodingInfo?.(configuration)).resolves.toEqual({
+      supported: true,
+      smooth: true,
+      powerEfficient: false,
+    })
+    expect(decodingInfo).toHaveBeenCalledWith(configuration)
+    expect(platform.userAgent).toBe(SAFARI)
+  })
+
+  it('shouldLeaveDecodingInfoAbsentWhenTheBrowserOffersNoMediaCapabilities', () => {
+    vi.stubGlobal('navigator', { userAgent: SAFARI })
+
+    const platform = browserPlaybackPlatform(document.createElement('video'))
+
+    expect(platform.decodingInfo).toBeUndefined()
+  })
 })
