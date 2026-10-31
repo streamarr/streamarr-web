@@ -664,7 +664,18 @@ describe('declarePlaybackCapabilities', () => {
     const declaration = await declarePlaybackCapabilities(
       platformFixture({
         decodingInfo: decodingInfoAnswering(
-          decodesOnly(['avc1.64002A', 'hvc1.1.6.L123.B0', 'av01.0.09M.08', 'mp4a.40.2']),
+          decodesOnly([
+            'avc1.64002A',
+            'avc1.640028',
+            'avc1.64001F',
+            'hvc1.1.6.L123.B0',
+            'hvc1.1.6.L120.B0',
+            'hvc1.1.6.L93.B0',
+            'av01.0.09M.08',
+            'av01.0.08M.08',
+            'av01.0.05M.08',
+            'mp4a.40.2',
+          ]),
         ),
       }),
     )
@@ -682,6 +693,20 @@ describe('declarePlaybackCapabilities', () => {
         maxFrameRate: 60,
       }),
     ])
+  })
+
+  it('shouldDeclareNoVideoMaximumWhenTheBrowserRefusesTheSmallerTiersItHolds', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: decodingInfoAnswering(
+          (configuration) =>
+            configuration.video === undefined ||
+            (configuration.video.width === 1920 && configuration.video.framerate === 60),
+        ),
+      }),
+    )
+
+    expect(declaration.video).toEqual([])
   })
 
   it('shouldKeepAv1WhenMediaSourceCorroboratesAFalseDecodingAnswer', async () => {
@@ -840,6 +865,19 @@ describe('declarePlaybackCapabilities', () => {
     ])
   })
 
+  it('shouldDeclareNoChannelMaximumWhenTheBrowserRefusesStereoBelowSurround', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: decodingInfoAnswering(
+          (configuration) =>
+            configuration.audio === undefined || configuration.audio.channels !== '2',
+        ),
+      }),
+    )
+
+    expect(declaration.audio).toEqual([{ codec: 'AAC', maxChannels: 2, hls: true }])
+  })
+
   it('shouldDeclareAtMostSixChannelsWhenFirefoxConfirmsMore', async () => {
     const declaration = await declarePlaybackCapabilities(
       platformFixture({
@@ -994,6 +1032,30 @@ describe('declarePlaybackCapabilities', () => {
             return Promise.resolve(UNSMOOTH_SOFTWARE_ANSWER)
           }
           if (isFullHdAtThirtyFrames(configuration)) {
+            return Promise.resolve(answer(false))
+          }
+          return NEVER_ANSWERED
+        }),
+      }),
+    )
+
+    await vi.advanceTimersByTimeAsync(3_000)
+
+    expect(familyEntries(await declaration, 'H264')).toEqual([])
+  })
+
+  it('shouldDeclareNoH264WhenTheOnlySupportedH264TierHoldsARefused720pTier', async () => {
+    vi.useFakeTimers()
+    const declaration = declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) => {
+          if (!codecOf(configuration).startsWith('avc1')) {
+            return Promise.resolve(answer(false))
+          }
+          if (isFullHdAtThirtyFrames(configuration)) {
+            return Promise.resolve(UNSMOOTH_SOFTWARE_ANSWER)
+          }
+          if (configuration.video?.height === 720) {
             return Promise.resolve(answer(false))
           }
           return NEVER_ANSWERED
