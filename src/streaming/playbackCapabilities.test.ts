@@ -982,6 +982,30 @@ describe('declarePlaybackCapabilities', () => {
     ])
   })
 
+  it('shouldDeclareNoH264WhenOnlyAnUnsmoothFourKTierIsSupportedAndFullHdIsRefused', async () => {
+    vi.useFakeTimers()
+    const declaration = declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) => {
+          if (!codecOf(configuration).startsWith('avc1')) {
+            return Promise.resolve(answer(false))
+          }
+          if (configuration.video?.width === 3840 && configuration.video.framerate === 60) {
+            return Promise.resolve(UNSMOOTH_SOFTWARE_ANSWER)
+          }
+          if (isFullHdAtThirtyFrames(configuration)) {
+            return Promise.resolve(answer(false))
+          }
+          return NEVER_ANSWERED
+        }),
+      }),
+    )
+
+    await vi.advanceTimersByTimeAsync(3_000)
+
+    expect(familyEntries(await declaration, 'H264')).toEqual([])
+  })
+
   it('shouldDeclareFullHdH264AndKeepEveryOtherAnswerWhenEveryH264ProbeFails', async () => {
     const declaration = await declarePlaybackCapabilities(
       platformFixture({

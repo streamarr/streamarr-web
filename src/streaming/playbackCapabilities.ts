@@ -460,12 +460,16 @@ function h264TierWithoutAnswerThatKeepsUp(answered: readonly TierAnswers[]): Dec
   if (supported.length === 0) {
     return []
   }
-  // Unanswered lower tiers never raise the fallback above the full HD tier declared without answers.
-  let tier = supported[supported.length - 1].tier
-  if (!holdsPicture(FULL_HD_AT_30, tier)) {
-    tier = FULL_HD_AT_30
+  const lowest = supported[supported.length - 1].tier
+  if (holdsPicture(FULL_HD_AT_30, lowest)) {
+    return [eightBitTier(H264, lowest)]
   }
-  return [eightBitTier(H264, tier)]
+  // Unanswered lower tiers never raise the fallback above the full HD tier declared without
+  // answers. Any answer below the lowest supported tier is a refusal, and a refused tier stays out.
+  if (answered.some((answer) => answer.tier === FULL_HD_AT_30)) {
+    return []
+  }
+  return [eightBitTier(H264, FULL_HD_AT_30)]
 }
 
 function eightBitTier(family: VideoFamily, tier: PictureTier): DecodedTier {
