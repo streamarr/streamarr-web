@@ -1,6 +1,7 @@
 import type { ApolloClient, ObservableQuery } from '@apollo/client'
 import Hls, { type ErrorData } from 'hls.js'
 import {
+  type ClientCapabilityDeclarationInput,
   type CreatePlaybackSessionMutation,
   DestroyPlaybackSessionDocument,
   PlaybackSessionDocument,
@@ -13,6 +14,7 @@ import {
 import { userErrorMessage, userErrorMessageOr } from '../graphql/userErrors'
 import { discardWatchedState } from '../media/watchedState'
 import { hlsPlaybackConfig } from './hlsPlaybackConfig'
+import { DECLARATION_REFUSAL_TYPENAMES } from './playbackCapabilities'
 import { hlsTrackSource, nativeTrackSource, type TrackSource } from './trackSources'
 
 // Progress is only worth a round trip once the playhead has moved this far since the last report.
@@ -41,13 +43,17 @@ const pendingCleanups = new WeakMap<ApolloClient, () => Promise<void>>()
 export function startPlayerPlayback({
   video,
   client,
+  declareCapabilities,
   createPlaybackSession,
   startPositionSeconds,
   onSourcePhase,
 }: {
   video: HTMLVideoElement
   client: ApolloClient
-  createPlaybackSession: () => Promise<{ data?: CreatePlaybackSessionMutation | null }>
+  declareCapabilities: () => Promise<ClientCapabilityDeclarationInput>
+  createPlaybackSession: (
+    capabilities: ClientCapabilityDeclarationInput,
+  ) => Promise<{ data?: CreatePlaybackSessionMutation | null }>
   startPositionSeconds?: number
   onSourcePhase: (phase: SourcePhase) => void
 }): () => void {
@@ -208,8 +214,18 @@ export function startPlayerPlayback({
       if (cancelled) {
         return
       }
+      // Leaving abandons the probes, so the next player's start never waits out their deadline.
+      const capabilities = await unlessAborted(declareCapabilities(), statusCancellation.signal)
+      if (cancelled || !capabilities) {
+        return
+      }
+      // The server requires a video entry, so a browser that decodes no video cannot play here.
+      if (capabilities.video.length === 0) {
+        showFailure(PLAYBACK_FAILURE_MESSAGE)
+        return
+      }
       // The UI deadline must not discard a late session ID that still needs destruction.
-      const result = await createPlaybackSession()
+      const result = await createPlaybackSession(capabilities)
       const payload = result.data?.createPlaybackSession
       const initialPlayback = payload?.playbackSession
       playbackSessionId = initialPlayback?.id ?? null
@@ -480,6 +496,15 @@ export function startPlayerPlayback({
   }
 }
 
+// Resolves undefined once the signal aborts; a signal aborted before the call waits for the work.
+function unlessAborted<T>(work: Promise<T>, signal: AbortSignal): Promise<T | undefined> {
+  return new Promise((resolve, reject) => {
+    const abandon = () => resolve(undefined)
+    signal.addEventListener('abort', abandon, { once: true })
+    void work.then(resolve, reject).finally(() => signal.removeEventListener('abort', abandon))
+  })
+}
+
 function waitForPlaybackStatus(signal: AbortSignal): Promise<void> {
   if (signal.aborted) {
     return Promise.resolve()
@@ -579,7 +604,10 @@ function createStartupDeadline(onExpired: () => void): StartupDeadline {
 
 function refusalMessage(payload: PlaybackSessionPayload | undefined): string {
   const refusal = payload?.userErrors[0]
-  return refusal ? userErrorMessage(refusal) : PLAYBACK_FAILURE_MESSAGE
+  if (!refusal || DECLARATION_REFUSAL_TYPENAMES.has(refusal.__typename)) {
+    return PLAYBACK_FAILURE_MESSAGE
+  }
+  return userErrorMessage(refusal)
 }
 
 function ignoreRefusedStart() {

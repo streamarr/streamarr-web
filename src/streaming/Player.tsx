@@ -5,6 +5,7 @@ import { CreatePlaybackSessionDocument } from '../graphql/generated/graphql'
 import { DetailBackButton } from '../media/DetailBack'
 import focusStyles from '../styles/focus.module.css'
 import { BufferingRing } from './BufferingRing'
+import { declarePlaybackCapabilities, type PlaybackPlatform } from './playbackCapabilities'
 import styles from './Player.module.css'
 import {
   PlayerControls,
@@ -23,10 +24,13 @@ export function Player({
   mediaFileId,
   startPositionSeconds,
   title,
+  playbackPlatform,
 }: Readonly<{
   mediaFileId: string
   startPositionSeconds?: number
   title?: PlayerTitle
+  /** Binds the browser facts the capability declaration is built from to the playing element. */
+  playbackPlatform: (video: HTMLVideoElement) => PlaybackPlatform
 }>) {
   const playerRef = useRef<HTMLElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -60,11 +64,13 @@ export function Player({
     return startPlayerPlayback({
       video,
       client,
-      createPlaybackSession: () => createPlaybackSession({ variables: { input: { mediaFileId } } }),
+      declareCapabilities: () => declarePlaybackCapabilities(playbackPlatform(video)),
+      createPlaybackSession: (capabilities) =>
+        createPlaybackSession({ variables: { input: { mediaFileId, capabilities } } }),
       startPositionSeconds,
       onSourcePhase: setSourcePhase,
     })
-  }, [mediaFileId, startPositionSeconds, createPlaybackSession, client, attempt])
+  }, [mediaFileId, startPositionSeconds, createPlaybackSession, client, attempt, playbackPlatform])
 
   return (
     <section
