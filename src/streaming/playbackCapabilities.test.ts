@@ -709,6 +709,27 @@ describe('declarePlaybackCapabilities', () => {
     expect(declaration.video).toEqual([])
   })
 
+  it('shouldKeepEightBitHevcWhenTheBrowserRefusesOnlyMainTenAt720p', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: decodingInfoAnswering(
+          (configuration) =>
+            !(codecOf(configuration).startsWith('hvc1.2') && configuration.video?.height === 720),
+        ),
+      }),
+    )
+
+    expect(familyEntries(declaration, 'HEVC')).toEqual([
+      sdrVideoEntry({
+        codecFamily: 'HEVC',
+        codecProfiles: [{ profile: 'HEVC_MAIN', maxLevel: 51, maxTier: 'MAIN' }],
+        maxWidth: 3840,
+        maxHeight: 2160,
+        maxFrameRate: 60,
+      }),
+    ])
+  })
+
   it('shouldKeepAv1WhenMediaSourceCorroboratesAFalseDecodingAnswer', async () => {
     const declaration = await declarePlaybackCapabilities(
       platformFixture({
