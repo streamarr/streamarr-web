@@ -315,7 +315,10 @@ function familyEntries({
   h264Answers: readonly TierAnswers[]
   hls: boolean
 }): VideoCapabilityEntryInput[] {
-  const keepsUp = keepsUpOn({ platform, family, answers, h264Answers })
+  const keepsUp = keepsUpWithoutSmallerRefusal({
+    answers,
+    keepsUp: keepsUpOn({ platform, family, answers, h264Answers }),
+  })
   let tiers = widestTiers(answers.flatMap((answer) => tierThatKeepsUp({ family, answer, keepsUp })))
   if (tiers.length === 0) {
     tiers = tiersWithoutAnswerThatKeepsUp({ platform, family, answers })
@@ -414,6 +417,22 @@ function keepsUpOn({
   }
 }
 
+// A maximum accepts every smaller value (ADR 0049), so no tier counts over a smaller tier it holds
+// that the browser refused at the same bit depth.
+function keepsUpWithoutSmallerRefusal({
+  answers,
+  keepsUp,
+}: {
+  answers: readonly TierAnswers[]
+  keepsUp: KeepsUp
+}): KeepsUp {
+  return (answer, bitDepth) =>
+    keepsUp(answer, bitDepth) &&
+    !answers.some(
+      (smaller) => holdsPicture(answer.tier, smaller.tier) && isRefusal(smaller[bitDepth]),
+    )
+}
+
 function isSmooth(answer: ProbeAnswer): boolean {
   return answer !== null && answer.supported && answer.smooth
 }
@@ -460,16 +479,15 @@ function h264TierWithoutAnswerThatKeepsUp(answered: readonly TierAnswers[]): Dec
   if (supported.length === 0) {
     return []
   }
-  const lowest = supported[supported.length - 1].tier
-  if (holdsPicture(FULL_HD_AT_30, lowest)) {
-    return [eightBitTier(H264, lowest)]
+  // Unanswered lower tiers never raise the fallback above the full HD tier declared without answers.
+  let tier = supported[supported.length - 1].tier
+  if (!holdsPicture(FULL_HD_AT_30, tier)) {
+    tier = FULL_HD_AT_30
   }
-  // Unanswered lower tiers never raise the fallback above the full HD tier declared without
-  // answers. Any answer below the lowest supported tier is a refusal, and a refused tier stays out.
-  if (answered.some((answer) => answer.tier === FULL_HD_AT_30)) {
+  if (answered.some((answer) => holdsPicture(tier, answer.tier) && isRefusal(answer.eightBit))) {
     return []
   }
-  return [eightBitTier(H264, FULL_HD_AT_30)]
+  return [eightBitTier(H264, tier)]
 }
 
 function eightBitTier(family: VideoFamily, tier: PictureTier): DecodedTier {
@@ -581,23 +599,26 @@ async function probeAudio({
   askDecodingInfo: AskDecodingInfo
 }): Promise<AudioAnswer> {
   // Every rung starts at once: a rung asked only after a slow one would race an expired deadline.
-  const rungs = CHANNEL_LADDER.map((channels) => ({
-    channels,
-    answer: askDecodingInfo({
-      audio: {
-        contentType: `audio/mp4; codecs="${mimeCodec}"`,
-        channels: String(channels),
-        bitrate: 384_000,
-        samplerate: 48_000,
-      },
-    }),
-  }))
-  for (const { channels, answer } of rungs) {
-    if ((await answer)?.supported) {
-      return { codec, maxChannels: channels }
-    }
+  const answers = await Promise.all(
+    CHANNEL_LADDER.map((channels) =>
+      askDecodingInfo({
+        audio: {
+          contentType: `audio/mp4; codecs="${mimeCodec}"`,
+          channels: String(channels),
+          bitrate: 384_000,
+          samplerate: 48_000,
+        },
+      }),
+    ),
+  )
+  // A channel maximum accepts every smaller count, so it never stands over a refused smaller rung.
+  const widest = CHANNEL_LADDER.findIndex(
+    (_, index) => answers[index]?.supported && !answers.slice(index + 1).some(isRefusal),
+  )
+  if (widest === -1) {
+    return { codec, maxChannels: null }
   }
-  return { codec, maxChannels: null }
+  return { codec, maxChannels: CHANNEL_LADDER[widest] }
 }
 
 function audioEntries({
