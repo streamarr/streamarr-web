@@ -932,6 +932,21 @@ describe('declarePlaybackCapabilities', () => {
     expect(declaration).toEqual(DECLARATION_OF_THE_720P_ONLY_BROWSER_WITHOUT_OPUS)
   })
 
+  it('shouldKeepEveryOtherAnswerWhenThe720pOnlyBrowserThrowsForTheOpusProbe', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) => {
+          if (codecOf(configuration) === 'opus') {
+            throw new TypeError('Unsupported configuration')
+          }
+          return Promise.resolve(answer(decodesOnlyAt720p(configuration)))
+        }),
+      }),
+    )
+
+    expect(declaration).toEqual(DECLARATION_OF_THE_720P_ONLY_BROWSER_WITHOUT_OPUS)
+  })
+
   it('shouldKeepEveryOtherAnswerWhenThe720pOnlyBrowserLeavesProbesUnanswered', async () => {
     vi.useFakeTimers()
     const declaration = declarePlaybackCapabilities(

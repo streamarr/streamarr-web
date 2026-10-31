@@ -233,11 +233,9 @@ export async function declarePlaybackCapabilities(
     timer = setTimeout(() => resolve(null), DECODING_INFO_TIMEOUT_MS)
   })
   const askDecodingInfo: AskDecodingInfo = (configuration) => {
-    // Called inside the executor so a decodingInfo that throws synchronously becomes a rejection,
-    // which settles this probe alone instead of failing every probe in the declaration.
-    const answer = new Promise<DecodingAnswer>((resolve) =>
-      resolve(decodingInfo({ type, ...configuration })),
-    )
+    // Called inside an async function so a decodingInfo that throws synchronously becomes a
+    // rejection, which settles this probe alone instead of failing every probe in the declaration.
+    const answer = (async () => decodingInfo({ type, ...configuration }))()
     return Promise.race([answer.catch(() => null), deadline])
   }
   try {
@@ -475,12 +473,12 @@ function h264TierWithoutAnswerThatKeepsUp(answered: readonly TierAnswers[]): Dec
   if (answered.length === 0) {
     return [eightBitTier(H264, FULL_HD_AT_30)]
   }
-  const supported = answered.filter((answer) => answer.eightBit?.supported)
-  if (supported.length === 0) {
+  const lowestSupported = answered.findLast((answer) => answer.eightBit?.supported)
+  if (!lowestSupported) {
     return []
   }
   // Unanswered lower tiers never raise the fallback above the full HD tier declared without answers.
-  let tier = supported[supported.length - 1].tier
+  let tier = lowestSupported.tier
   if (!holdsPicture(FULL_HD_AT_30, tier)) {
     tier = FULL_HD_AT_30
   }
