@@ -444,8 +444,8 @@ function isRefusal(answer: ProbeAnswer): boolean {
 }
 
 // H.264 is the server's encode, so without an answer that keeps up it keeps its lowest tier the
-// browser answered supported, and the full HD tier only when no H.264 probe was answered at all.
-// AV1 keeps its lowest tier only on WebKit, when every answer was a refusal and the playing path
+// browser answered supported, at most full HD and never over a refused tier, and full HD when no
+// H.264 probe was answered at all. AV1 keeps its lowest tier only on WebKit, when every answer was a refusal and the playing path
 // corroborates it; a supported but unsmooth answer is not under-reporting, and an unanswered probe
 // is not an answer.
 function tiersWithoutAnswerThatKeepsUp({
