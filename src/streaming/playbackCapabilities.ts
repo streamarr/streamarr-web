@@ -154,6 +154,8 @@ const HEVC: VideoFamily = {
   },
 }
 
+// AV1 Main covers both bit depths, so a 10-bit maximum also accepts 8-bit (ADR 0049): the 10-bit
+// probe names no profile, and a tier declares 10-bit only beside an 8-bit answer that keeps up.
 const AV1: VideoFamily = {
   codecFamily: 'AV1',
   maxTier: 'MAIN',
