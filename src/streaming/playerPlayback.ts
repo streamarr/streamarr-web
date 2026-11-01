@@ -276,7 +276,10 @@ function startSessionPlayback({
       onWaiting: (element) => {
         if (!element.seeking) tryEndAtRealEnd()
       },
-      onEnded: (element) => reportEnd(element.currentTime),
+      // An element that also ends where playback ended at the real end has nothing new to report.
+      onEnded: (element) => {
+        if (!endedAtRealEnd) reportEnd(element.currentTime)
+      },
     })
   }
 

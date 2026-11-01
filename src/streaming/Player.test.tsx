@@ -5232,6 +5232,22 @@ describe('Player', () => {
       expect(notice()).toBeEmptyDOMElement()
     })
 
+    it('shouldReportStoppedOnceWhenTheElementAlsoEndsAtTheRealEnd', async () => {
+      const { reports, video } = await playTheShortCopy()
+
+      playheadAt(video, REAL_END_SECONDS)
+      fireEvent(video, new Event('ended'))
+
+      await waitFor(() =>
+        expect(reports.at(-1)).toEqual({
+          sessionId: 'sess-1',
+          positionSeconds: REAL_END_SECONDS,
+          state: 'STOPPED',
+        }),
+      )
+      expect(reports.filter((report) => report.state === 'STOPPED')).toHaveLength(1)
+    })
+
     it('shouldKeepTheEndAsTheLastReportWhenTheBrowserFiresItsPauseEventsLate', async () => {
       const { reports, video } = await playTheShortCopy()
       // A browser's pause() queues its timeupdate and pause events rather than firing them inside.
