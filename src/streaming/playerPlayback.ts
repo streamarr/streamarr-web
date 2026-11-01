@@ -294,9 +294,9 @@ function startSessionPlayback({
     return realEnd !== null && video.currentTime >= realEnd - segmentSeconds
   }
 
-  // Ends playback as at the end of the media title, once for each time the playhead gets there.
+  // Ends playback as at the end of the media title. Callers end it only while it has not ended.
   function endAtRealEnd() {
-    if (realEnd === null || endedAtRealEnd) {
+    if (realEnd === null) {
       return
     }
     endedAtRealEnd = true
