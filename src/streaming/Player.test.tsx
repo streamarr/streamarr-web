@@ -5329,6 +5329,17 @@ describe('Player', () => {
       },
     )
 
+    it('shouldShowNoFailureWhenTheStreamFailsAfterTheViewerSeeksBackFromTheRealEnd', async () => {
+      const { video } = await playTheShortCopy()
+      stallAt(video, REAL_END_SECONDS - 2)
+      playheadAt(video, 600)
+
+      raiseHlsFatalError()
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(hls.destroy).not.toHaveBeenCalled()
+    })
+
     it('shouldKeepALearnedRealEndWhenTheStoppedStreamAttachesAgain', async () => {
       const { video } = await playTheShortCopy({ namedOnAttach: false })
       playheadAt(video, REAL_END_SECONDS - 100)

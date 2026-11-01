@@ -309,8 +309,12 @@ function startSessionPlayback({
     adoptPlayback(attachedPlayback)
   }
 
-  // Nothing past the real end can arrive, so a stall or a failure close to it is the end.
+  // Nothing past the real end can arrive, so a stall or a failure close to it is the end. A
+  // failure after the end, even once the viewer has sought back, belongs to the ended playback.
   function tryEndAtRealEnd(): boolean {
+    if (endedAtRealEnd) {
+      return true
+    }
     if (!withinASegmentOfRealEnd()) {
       return false
     }
