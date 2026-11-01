@@ -379,12 +379,17 @@ function startSessionPlayback({
   }
 
   function beginHandover() {
-    resume ??= currentResumePoint()
+    resume = resumePoint()
     detachSource()
     sessionId = null
     startupDeadline.end()
     startupDeadline = createStartupDeadline(expireStartup)
     onSourcePhase({ at: 'starting' })
+  }
+
+  // Where the next stream should pick up: a resume still waiting for metadata stands.
+  function resumePoint(): ResumePoint {
+    return resume ?? currentResumePoint()
   }
 
   function stopStatusCheck() {
@@ -575,7 +580,7 @@ function startSessionPlayback({
   window.addEventListener('pagehide', destroyBeforeThePageGoes)
 
   function leavePage(): ResumePoint | undefined {
-    const left = cancelled ? undefined : (resume ?? currentResumePoint())
+    const left = cancelled ? undefined : resumePoint()
     endPlayback()
     detachSource()
     destroyBeforeThePageGoes()
