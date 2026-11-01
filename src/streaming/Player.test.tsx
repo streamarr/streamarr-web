@@ -5206,7 +5206,10 @@ describe('Player', () => {
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
 
       timeOutTheNextSegment()
-      await act(async () => vi.advanceTimersByTimeAsync(30_000))
+      // The server may still replace the stream until the status check's deadline.
+      await act(async () => vi.advanceTimersByTimeAsync(29_000))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      await act(async () => vi.advanceTimersByTimeAsync(1_000))
 
       expect(screen.getByRole('alert')).toHaveTextContent("Playback couldn't start.")
     })
@@ -5489,11 +5492,15 @@ describe('Player', () => {
         vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
         learn(video)
         await act(async () => vi.advanceTimersByTimeAsync(30_000))
+        // Only the end learned above can end playback below.
+        serveAStatusWithoutARealEnd()
         hls.destroy.mockImplementation(() => video.load())
 
         stallAt(video, 600)
 
         expect(hls.loadSource).toHaveBeenCalledTimes(attachments)
+        playheadAt(video, REAL_END_SECONDS)
+        expect(video.paused).toBe(true)
       },
     )
 
