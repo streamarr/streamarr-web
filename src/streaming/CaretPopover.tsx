@@ -78,23 +78,20 @@ export function CaretPopover<Id>({
   const explanation = explainedIndex === null ? undefined : options[explainedIndex]?.caution
   const headingId = useId()
 
+  // The explanation's side depends on where the surface lands, so both move together.
   useLayoutEffect(() => {
-    const place = () => placeAbove(surfaceRef.current, anchorRef.current)
+    const place = () => {
+      placeAbove(surfaceRef.current, anchorRef.current)
+      placeExplanation({
+        explanation: explanationRef.current,
+        row: explainedIndex === null ? undefined : rowsOf(menuRef.current)[explainedIndex],
+        surface: surfaceRef.current,
+      })
+    }
     place()
     window.addEventListener('resize', place)
     return () => window.removeEventListener('resize', place)
-  }, [anchorRef])
-
-  useLayoutEffect(() => {
-    if (explainedIndex === null) {
-      return
-    }
-    placeExplanation({
-      explanation: explanationRef.current,
-      row: rowsOf(menuRef.current)[explainedIndex],
-      surface: surfaceRef.current,
-    })
-  }, [explainedIndex, explanation])
+  }, [anchorRef, explainedIndex, explanation])
 
   useEffect(() => {
     focusCheckedOrNearestRow(menuRef.current, 0)

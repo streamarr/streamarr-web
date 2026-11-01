@@ -839,6 +839,24 @@ test('on a phone the notice spans the player, and the explanation sits above the
   expect(explanation.x + explanation.width).toBeLessThanOrEqual(375)
 })
 
+test('the explanation moves above the menu when the player narrows while it shows', async ({
+  page,
+  request,
+}) => {
+  await openPlayerShowingMedia(page, request)
+  await startOriginalWithAnEncode(page)
+  await page.getByRole('button', { name: 'Quality: Auto' }).click()
+  await page.keyboard.press('ArrowUp')
+  await expect(page.getByText(ORIGINAL_EXPLANATION)).toBeVisible()
+
+  await page.setViewportSize({ width: 375, height: 667 })
+
+  const menu = (await page.getByRole('menu', { name: 'Quality' }).boundingBox()) as Box
+  const explanation = (await page.getByText(ORIGINAL_EXPLANATION).boundingBox()) as Box
+  expect(explanation.y + explanation.height).toBeLessThan(menu.y)
+  expect(explanation.x).toBeGreaterThanOrEqual(0)
+})
+
 test('a refusal keeps Retry above the control bar on a phone held sideways', async ({
   page,
   request,
