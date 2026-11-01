@@ -133,6 +133,8 @@ function startSessionPlayback({
   // Where the attached stream's media really ends, when its copy ran short of the advertised end.
   let realEnd: number | null = null
   let endedAtRealEnd = false
+  // Where the playhead stopped when playback ended; a viewer's seek after the end moves it away.
+  let endedPosition = 0
   // hls.js stops loading after a fatal error, so a failure that ended playback leaves the stream
   // to attach again before it can play.
   let attachedPlayback: PlaybackSessionFieldsFragment | null = null
@@ -243,8 +245,8 @@ function startSessionPlayback({
         if (resume) resume.playing = true
         playRequested = true
         if (!endedAtRealEnd) return
-        // As the element does after its own end, playing at the real end starts from the top.
-        if (withinASegmentOfRealEnd()) element.currentTime = 0
+        // As the element does after its own end, playing where playback ended starts from the top.
+        if (element.currentTime === endedPosition) element.currentTime = 0
         // A failure can be what ended playback, and hls.js stops loading after one.
         restartStoppedSource(element.currentTime)
       },
@@ -300,6 +302,7 @@ function startSessionPlayback({
     endedAtRealEnd = true
     stopStatusCheck()
     video.pause()
+    endedPosition = video.currentTime
     reportEnd(realEnd)
   }
 

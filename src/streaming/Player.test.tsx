@@ -5396,6 +5396,16 @@ describe('Player', () => {
       expect(video.paused).toBe(true)
     })
 
+    it('shouldPlayOnFromTheViewersSeekWhenTheViewerSeeksWithinTheLastSegmentAfterTheRealEnd', async () => {
+      const { video } = await playTheShortCopy()
+      stallAt(video, REAL_END_SECONDS - 2)
+      playheadAt(video, REAL_END_SECONDS - 3)
+
+      await act(() => video.play())
+
+      expect(video.currentTime).toBe(REAL_END_SECONDS - 3)
+    })
+
     it('shouldEndAtAStallWithinTheServersDefaultSegmentOfTheRealEndOnTheNativePath', async () => {
       hls.supported = false
       serveACopyThatRanShort({ namedOnAttach: true })
