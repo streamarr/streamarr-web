@@ -4792,24 +4792,36 @@ describe('Player', () => {
       expect(hls.destroy).not.toHaveBeenCalled()
     })
 
-    it('shouldKeepThePickedQualityWhenTheViewerRetries', async () => {
+    it('shouldRetryThePickedQualityFromTheStartPositionWhenTheViewerRetries', async () => {
       const log = servePlaybackChoices()
       const { user } = renderWithProviders(
-        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        <Player
+          playbackPlatform={withoutDecodingInfo}
+          mediaFileId="abcd"
+          startPositionSeconds={12}
+        />,
       )
-      await attachedVideo(choiceStreamUrl(1))
+      const video = await attachedVideo(choiceStreamUrl(1))
+      loadMetadata(video)
+      playheadAt(video, 73.25)
+      pressPause(video)
+      hls.destroy.mockImplementation(() => video.load())
       await pickQuality(user, '720p')
-      await attachedVideo(choiceStreamUrl(2))
+      await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(choiceStreamUrl(2)))
+      loadMetadata(video)
 
       raiseHlsFatalError()
       await user.click(await screen.findByRole('button', { name: 'Retry playback' }))
 
-      await attachedVideo(choiceStreamUrl(3))
+      await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(choiceStreamUrl(3)))
+      loadMetadata(video)
       expect(log.filter((entry) => entry.startsWith('create'))).toEqual([
         'create AUTO',
         'create HIGH_720P',
         'create HIGH_720P',
       ])
+      expect(video.currentTime).toBe(12)
+      expect(video.paused).toBe(false)
     })
 
     it('shouldStartTheNextMediaFileInAutoFromItsOwnStartAfterAPick', async () => {

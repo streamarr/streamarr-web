@@ -25,7 +25,8 @@ import { useVideoState } from './useVideoState'
 
 const STARTING: SourcePhase = { at: 'starting' }
 
-// Each pick is a new object, so picking Original again after it changed to Auto starts afresh.
+// Every pick and every Retry is a new object, so each starts a new playback session, even for the
+// same quality: picking Original again after it changed to Auto starts it afresh.
 interface ChoiceRequest {
   mediaFileId: string
   quality: VideoQuality
@@ -58,7 +59,6 @@ export function Player({
   })
   const client = useApolloClient()
   const [sourcePhase, setSourcePhase] = useState(STARTING)
-  const [attempt, setAttempt] = useState(0)
   const [choice, setChoice] = useState(() => startingChoice(mediaFileId))
   // Another media title starts in Auto from its own start position.
   if (choice.mediaFileId !== mediaFileId) {
@@ -107,15 +107,7 @@ export function Player({
     })
     playbackRef.current = playback
     return playback.stop
-  }, [
-    mediaFileId,
-    startPositionSeconds,
-    createPlaybackSession,
-    client,
-    attempt,
-    playbackPlatform,
-    choice,
-  ])
+  }, [mediaFileId, startPositionSeconds, createPlaybackSession, client, playbackPlatform, choice])
 
   function chooseQuality(picked: VideoQuality) {
     const playback = playbackRef.current
@@ -123,6 +115,11 @@ export function Player({
       return
     }
     setChoice({ mediaFileId, quality: picked, resumeFrom: playback.resumePoint() })
+  }
+
+  // The pick's resume point is long past by now, so Retry starts where playback first started.
+  function retry() {
+    setChoice({ mediaFileId, quality: choice.quality })
   }
 
   return (
@@ -137,7 +134,7 @@ export function Player({
       {sourcePhase.at === 'failed' && (
         <Alert className={styles.failure} color="red" role="alert">
           {sourcePhase.message}
-          <Button display="block" mt="sm" onClick={() => setAttempt((value) => value + 1)}>
+          <Button display="block" mt="sm" onClick={retry}>
             Retry playback
           </Button>
         </Alert>
