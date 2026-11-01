@@ -30,6 +30,7 @@ export const hls = {
   config: undefined as Partial<HlsConfig> | undefined,
   mainForwardBufferInfo: null as BufferInfo | null,
   audioForwardBufferInfo: null as BufferInfo | null,
+  latestLevelDetails: null as { targetduration: number } | null,
 }
 
 export function resetFakeHls() {
@@ -42,6 +43,7 @@ export function resetFakeHls() {
   hls.config = undefined
   hls.mainForwardBufferInfo = null
   hls.audioForwardBufferInfo = null
+  hls.latestLevelDetails = null
 }
 
 class FakeHls {
@@ -94,6 +96,9 @@ class FakeHls {
   }
   get audioForwardBufferInfo() {
     return hls.audioForwardBufferInfo
+  }
+  get latestLevelDetails() {
+    return hls.latestLevelDetails
   }
 }
 

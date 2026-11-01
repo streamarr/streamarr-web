@@ -24,6 +24,8 @@ const TIMELINE_REPORT_INTERVAL_SECONDS = 10
 const TIMELINE_CLEANUP_TIMEOUT_MS = 10_000
 const PLAYBACK_START_TIMEOUT_MS = 30_000
 const PLAYBACK_STATUS_INTERVAL_MS = 500
+// The server's default target segment duration, for a player that keeps the playlist to itself.
+const DEFAULT_SEGMENT_SECONDS = 6
 
 const PLAYBACK_FAILURE_MESSAGE = "Playback couldn't start. Try again."
 const FAILED_ATTEMPT_FALLBACK_MESSAGE = "This video can't be played right now. Try again later."
@@ -128,6 +130,9 @@ function startSessionPlayback({
   let lastReportedPosition = startAt ?? 0
   let lastKnownPosition: number | null = null
   let unacknowledgedEndPosition: number | null = null
+  // Where the attached stream's media really ends, when its copy ran short of the advertised end.
+  let realEnd: number | null = null
+  let endedAtRealEnd = false
   let timelineReports = Promise.resolve()
   const reportCancellation = new AbortController()
   const statusCancellation = new AbortController()
@@ -231,12 +236,19 @@ function startSessionPlayback({
         // Asked only after the seek, so the first frame to play is at the start position.
         void element.play().catch(ignoreRefusedStart)
       },
-      onPlay: () => {
+      onPlay: (element) => {
         if (resume) resume.playing = true
         playRequested = true
+        // As the element does after its own end, playing at the real end starts from the top.
+        if (endedAtRealEnd && withinASegmentOfRealEnd()) element.currentTime = 0
+        endedAtRealEnd = false
       },
       onTimeUpdate: (element) => {
         lastKnownPosition = element.currentTime
+        if (realEnd !== null && element.currentTime >= realEnd) {
+          endAtRealEnd()
+          return
+        }
         if (
           Math.abs(element.currentTime - lastReportedPosition) < TIMELINE_REPORT_INTERVAL_SECONDS
         ) {
@@ -250,6 +262,9 @@ function startSessionPlayback({
         lastKnownPosition = element.currentTime
         report('PAUSED', element.currentTime)
       },
+      onWaiting: () => {
+        tryEndAtRealEnd()
+      },
       onEnded: (element) => reportEnd(element.currentTime),
     })
   }
@@ -259,6 +274,40 @@ function startSessionPlayback({
     unacknowledgedEndPosition = endedAt
     // A replay can move the playhead while an earlier report holds the queue.
     reportStopped(() => endedAt)
+  }
+
+  // The last segment of a short copy can hold less media than its advertised length, so the
+  // element may stall up to one segment before the real end.
+  function withinASegmentOfRealEnd(): boolean {
+    const segmentSeconds = source?.segmentSeconds() ?? DEFAULT_SEGMENT_SECONDS
+    return realEnd !== null && video.currentTime >= realEnd - segmentSeconds
+  }
+
+  // Ends playback as at the end of the media title, once for each time the playhead gets there.
+  function endAtRealEnd() {
+    if (realEnd === null || endedAtRealEnd) {
+      return
+    }
+    endedAtRealEnd = true
+    video.pause()
+    reportEnd(realEnd)
+  }
+
+  // Nothing past the real end can arrive, so a stall or a failure close to it is the end.
+  function tryEndAtRealEnd(): boolean {
+    if (!withinASegmentOfRealEnd()) {
+      return false
+    }
+    endAtRealEnd()
+    return true
+  }
+
+  // The server named the real end only after the playhead may have reached it and stalled there.
+  function learnRealEnd(seconds: number) {
+    realEnd = seconds
+    if (video.currentTime >= seconds || video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
+      tryEndAtRealEnd()
+    }
   }
   let timeline = trackTimeline()
 
@@ -323,6 +372,8 @@ function startSessionPlayback({
       return
     }
     sessionId = attempt.streamSession.id
+    realEnd = attempt.streamSession.mediaEndSeconds
+    endedAtRealEnd = false
     const generation = sourceGeneration
     timeline.detach()
     timeline = trackTimeline()
@@ -342,7 +393,7 @@ function startSessionPlayback({
         void reconcilePlaybackStatus({ generation, fatal })
       },
       onFatal: () => {
-        if (cancelled || generation !== sourceGeneration) return
+        if (cancelled || generation !== sourceGeneration || tryEndAtRealEnd()) return
         stopStatusCheck()
         detachSource()
         showFailure(PLAYBACK_FAILURE_MESSAGE)
@@ -362,7 +413,8 @@ function startSessionPlayback({
       generation !== sourceGeneration ||
       reportingFormat ||
       !playbackSessionId ||
-      !sessionId
+      !sessionId ||
+      tryEndAtRealEnd()
     )
       return
     reportingFormat = true
@@ -478,6 +530,11 @@ function startSessionPlayback({
         attempt?.__typename === 'ReadyPlaybackFormatAttempt' &&
         attempt.streamSession.id === sessionId
       ) {
+        // The segments past a short copy's real end never come, and nothing replaces the stream.
+        if (attempt.streamSession.mediaEndSeconds !== null) {
+          learnRealEnd(attempt.streamSession.mediaEndSeconds)
+          return
+        }
         // The worker wakes HTTP waiters before publishing the logical replacement event.
         await waitForPlaybackStatus(check.controller.signal)
         continue
@@ -668,6 +725,7 @@ function attachTimeline(
     onTimeUpdate: TimelineHandler
     onPlay: TimelineHandler
     onPause: TimelineHandler
+    onWaiting: TimelineHandler
     onEnded: TimelineHandler
   },
 ): { detach: () => void } {
@@ -675,11 +733,13 @@ function attachTimeline(
   const onTimeUpdate = () => handlers.onTimeUpdate(video)
   const onPlay = () => handlers.onPlay(video)
   const onPause = () => handlers.onPause(video)
+  const onWaiting = () => handlers.onWaiting(video)
   const onEnded = () => handlers.onEnded(video)
   video.addEventListener('loadedmetadata', onLoadedMetadata)
   video.addEventListener('timeupdate', onTimeUpdate)
   video.addEventListener('play', onPlay)
   video.addEventListener('pause', onPause)
+  video.addEventListener('waiting', onWaiting)
   video.addEventListener('ended', onEnded)
   return {
     detach: () => {
@@ -687,6 +747,7 @@ function attachTimeline(
       video.removeEventListener('timeupdate', onTimeUpdate)
       video.removeEventListener('play', onPlay)
       video.removeEventListener('pause', onPause)
+      video.removeEventListener('waiting', onWaiting)
       video.removeEventListener('ended', onEnded)
     },
   }
@@ -756,6 +817,8 @@ function ignoreTimelineReportFailure() {
 interface StreamSource {
   detach: () => void
   tracks: TrackSource
+  /** The playlist's target segment duration, when the player can read it. */
+  segmentSeconds: () => number | undefined
 }
 
 interface StreamSourceOptions {
@@ -800,6 +863,7 @@ function attach(video: HTMLVideoElement, url: string, options: StreamSourceOptio
       hls.destroy()
     },
     tracks: hlsTrackSource(hls),
+    segmentSeconds: () => hls.latestLevelDetails?.targetduration,
   }
 }
 
@@ -863,5 +927,6 @@ function attachNative(
       video.load()
     },
     tracks: nativeTrackSource(video),
+    segmentSeconds: () => undefined,
   }
 }

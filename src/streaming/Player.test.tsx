@@ -262,6 +262,58 @@ async function showingVideo(streamUrl: string): Promise<HTMLVideoElement> {
 
 // Plays the `picked` row's choice, whose stream the browser then refuses, and shows the stream
 // that the server replaces it with, which plays with `choices`.
+const REAL_END_SECONDS = 2700
+
+// The copy ran short after every source stream ended, so the server names where the stream's
+// media really ends: on the attached attempt itself, or only once the status check asks.
+function serveACopyThatRanShort({ namedOnAttach }: { namedOnAttach: boolean }): TimelineReport[] {
+  const shortStream = { ...SESSION, mediaEndSeconds: REAL_END_SECONDS }
+  server.use(
+    graphql.mutation('CreatePlaybackSession', () =>
+      HttpResponse.json({
+        data: {
+          createPlaybackSession: {
+            playbackSession: readyPlaybackSession({
+              streamSession: namedOnAttach ? shortStream : SESSION,
+            }),
+            userErrors: [],
+          },
+        },
+      }),
+    ),
+    graphql.query('PlaybackSession', () =>
+      HttpResponse.json({
+        data: { playbackSession: readyPlaybackSession({ streamSession: shortStream }) },
+      }),
+    ),
+  )
+  return recordTimelineReports()
+}
+
+// Six-second segments, as the playlist's target duration declares them.
+async function playTheShortCopy({ namedOnAttach = true } = {}) {
+  const reports = serveACopyThatRanShort({ namedOnAttach })
+  hls.latestLevelDetails = { targetduration: 6 }
+  renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+  const video = await attachedVideo()
+  loadMetadata(video)
+  loadDuration(video, 2712)
+  return { reports, video }
+}
+
+// The playing element ran out of media at `seconds` and waits for more.
+function stallAt(video: HTMLVideoElement, seconds: number) {
+  playheadAt(video, seconds)
+  setReadyState(video, HTMLMediaElement.HAVE_CURRENT_DATA)
+  fireEvent(video, new Event('waiting'))
+}
+
+function answerTheNextSegmentWith503({ fatal }: { fatal: boolean }) {
+  const onError = hls.on.mock.calls.findLast(([event]) => event === 'hlsError')?.[1]
+  expect(onError).toBeTypeOf('function')
+  act(() => onError?.('hlsError', { fatal, type: 'networkError', response: { code: 503 } }))
+}
+
 async function watchAFallback(picked: string, choices: Partial<PlaybackChoices>) {
   const log = servePlaybackChoices()
   replaceTheRefusedStream(choices)
@@ -5030,6 +5082,154 @@ describe('Player', () => {
       expect(screen.getByRole('button', { name: 'Quality: Auto' })).toBeInTheDocument()
     })
   })
+  describe('real end of a short copy', () => {
+    it('shouldEndPlaybackWhenTheStatusCheckNamesARealEndThatThePlayheadReached', async () => {
+      const { video } = await playTheShortCopy({ namedOnAttach: false })
+      stallAt(video, REAL_END_SECONDS)
+
+      answerTheNextSegmentWith503({ fatal: false })
+
+      await waitFor(() => expect(video.paused).toBe(true))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(hls.destroy).not.toHaveBeenCalled()
+    })
+
+    it('shouldEndAtTheRealEndThatTheAttachedAttemptNames', async () => {
+      const { video } = await playTheShortCopy()
+
+      playheadAt(video, REAL_END_SECONDS - 1)
+      expect(video.paused).toBe(false)
+      playheadAt(video, REAL_END_SECONDS)
+
+      expect(video.paused).toBe(true)
+    })
+
+    it('shouldReportStoppedAtTheRealEnd', async () => {
+      const { reports, video } = await playTheShortCopy()
+
+      playheadAt(video, REAL_END_SECONDS + 0.4)
+
+      await waitFor(() =>
+        expect(reports.at(-1)).toEqual({
+          sessionId: 'sess-1',
+          positionSeconds: REAL_END_SECONDS,
+          state: 'STOPPED',
+        }),
+      )
+      expect(reports.filter((report) => report.state === 'STOPPED')).toHaveLength(1)
+    })
+
+    it('shouldEndAtAStallWithinOneSegmentOfTheRealEnd', async () => {
+      const { reports, video } = await playTheShortCopy()
+
+      stallAt(video, REAL_END_SECONDS - 5)
+
+      expect(video.paused).toBe(true)
+      await waitFor(() =>
+        expect(reports.at(-1)).toEqual({
+          sessionId: 'sess-1',
+          positionSeconds: REAL_END_SECONDS,
+          state: 'STOPPED',
+        }),
+      )
+    })
+
+    it('shouldKeepWaitingAtAStallMoreThanOneSegmentBeforeTheRealEnd', async () => {
+      const { video } = await playTheShortCopy()
+
+      stallAt(video, REAL_END_SECONDS - 7)
+
+      expect(video.paused).toBe(false)
+    })
+
+    it('shouldShowNoFailureWhenSegmentsPastTheRealEndAnswer503', async () => {
+      const { video } = await playTheShortCopy()
+      playheadAt(video, REAL_END_SECONDS - 20)
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      answerTheNextSegmentWith503({ fatal: true })
+      await act(async () => vi.advanceTimersByTimeAsync(30_000))
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(hls.destroy).not.toHaveBeenCalled()
+      expect(video.paused).toBe(false)
+    })
+
+    it('shouldEndInsteadOfFailingWhenTheStreamFailsWithinOneSegmentOfTheRealEnd', async () => {
+      const { video } = await playTheShortCopy()
+      playheadAt(video, REAL_END_SECONDS - 4)
+
+      raiseHlsFatalError()
+
+      expect(video.paused).toBe(true)
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(hls.destroy).not.toHaveBeenCalled()
+    })
+
+    it('shouldShowTheFailureWhenTheStreamFailsLongBeforeTheRealEnd', async () => {
+      const { video } = await playTheShortCopy()
+      playheadAt(video, REAL_END_SECONDS - 60)
+
+      raiseHlsFatalError()
+
+      expect(await screen.findByRole('alert')).toHaveTextContent("Playback couldn't start.")
+    })
+
+    it('shouldEndInsteadOfReportingAFormatFailureWithinOneSegmentOfTheRealEnd', async () => {
+      const failures: unknown[] = []
+      server.use(
+        graphql.mutation('ReportPlaybackFormatFailure', ({ variables }) => {
+          failures.push(variables)
+          return HttpResponse.json({ errors: [{ message: 'Unexpected format report' }] })
+        }),
+      )
+      const { video } = await playTheShortCopy()
+      playheadAt(video, REAL_END_SECONDS - 3)
+
+      refuseTheStreamsFormat()
+
+      expect(video.paused).toBe(true)
+      expect(failures).toEqual([])
+      expect(hls.destroy).not.toHaveBeenCalled()
+    })
+
+    it('shouldPlayFromTheStartWhenTheViewerPlaysAgainAfterTheRealEnd', async () => {
+      const { video } = await playTheShortCopy()
+      stallAt(video, REAL_END_SECONDS - 2)
+
+      await act(() => video.play())
+
+      expect(video.currentTime).toBe(0)
+      expect(video.paused).toBe(false)
+    })
+
+    it('shouldPlayOnFromTheViewersSeekWhenTheViewerSeeksBackAfterTheRealEnd', async () => {
+      const { video } = await playTheShortCopy()
+      stallAt(video, REAL_END_SECONDS - 2)
+      playheadAt(video, 600)
+
+      await act(() => video.play())
+
+      expect(video.currentTime).toBe(600)
+      playheadAt(video, REAL_END_SECONDS)
+      expect(video.paused).toBe(true)
+    })
+
+    it('shouldEndAtAStallWithinTheServersDefaultSegmentOfTheRealEndOnTheNativePath', async () => {
+      hls.supported = false
+      serveACopyThatRanShort({ namedOnAttach: true })
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+      const video = await nativeVideo()
+      loadMetadata(video)
+      loadFirstFrame(video)
+      await act(() => video.play())
+
+      stallAt(video, REAL_END_SECONDS - 5)
+
+      expect(video.paused).toBe(true)
+    })
+  })
+
   describe('format changes', () => {
     it('shouldSelectAutoAndShowTheNoticeWhenOriginalsCopyFallsBackToAnEncode', async () => {
       servePlaybackChoices()
