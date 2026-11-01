@@ -5232,22 +5232,6 @@ describe('Player', () => {
       expect(notice()).toBeEmptyDOMElement()
     })
 
-    it('shouldRestartTheStoppedStreamWhenTheViewerPlaysAgainAfterAFailureEndedPlayback', async () => {
-      const { video } = await playTheShortCopy()
-      playheadAt(video, REAL_END_SECONDS - 4)
-      raiseHlsFatalError()
-      expect(video.paused).toBe(true)
-      hls.destroy.mockImplementation(() => video.load())
-
-      await act(() => video.play())
-
-      expect(hls.loadSource).toHaveBeenCalledTimes(2)
-      loadMetadata(video)
-      expect(video.currentTime).toBe(0)
-      expect(video.paused).toBe(false)
-      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    })
-
     it('shouldKeepTheEndAsTheLastReportWhenTheBrowserFiresItsPauseEventsLate', async () => {
       const { reports, video } = await playTheShortCopy()
       // A browser's pause() queues its timeupdate and pause events rather than firing them inside.
@@ -5320,6 +5304,7 @@ describe('Player', () => {
     })
 
     it.each([
+      { failure: 'a fatal stream error', fail: raiseHlsFatalError },
       {
         failure: 'a fatal 503',
         fail: () => answerTheNextSegmentWith503({ fatal: true }),
@@ -5340,6 +5325,7 @@ describe('Player', () => {
         loadMetadata(video)
         expect(video.currentTime).toBe(0)
         expect(video.paused).toBe(false)
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
       },
     )
 
