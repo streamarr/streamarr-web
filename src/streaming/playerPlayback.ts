@@ -596,17 +596,14 @@ function startSessionPlayback({
       })
       if (!current()) return
       const playback = result.data?.playbackSession
-      const attempt = playback?.currentFormatAttempt
-      if (
-        attempt?.__typename === 'ReadyPlaybackFormatAttempt' &&
-        attempt.streamSession.id === sessionId
-      ) {
-        // The segments past a short copy's real end never come, and nothing replaces the stream.
-        if (attempt.streamSession.mediaEndSeconds !== null) {
-          learnRealEnd(attempt.streamSession.mediaEndSeconds)
-          if (check.fatal && !endedAtRealEnd) keepPlayingFromAStoppedSource()
-          return
-        }
+      const attachedStream = attachedStreamIn(playback)
+      const realEndOfStream = attachedStream?.mediaEndSeconds
+      // The segments past a short copy's real end never come, and nothing replaces the stream.
+      if (typeof realEndOfStream === 'number') {
+        playOnToTheRealEnd(realEndOfStream, check.fatal)
+        return
+      }
+      if (attachedStream) {
         // The worker wakes HTTP waiters before publishing the logical replacement event.
         await waitForPlaybackStatus(check.controller.signal)
         continue
@@ -621,6 +618,18 @@ function startSessionPlayback({
       adoptPlayback(resolved)
       return
     }
+  }
+
+  // The stream this player has attached, when the playback session still names it.
+  function attachedStreamIn(playback: PlaybackSessionFieldsFragment | null | undefined) {
+    const attempt = playback?.currentFormatAttempt
+    if (attempt?.__typename !== 'ReadyPlaybackFormatAttempt') return undefined
+    return attempt.streamSession.id === sessionId ? attempt.streamSession : undefined
+  }
+
+  function playOnToTheRealEnd(seconds: number, sourceFailed: boolean) {
+    learnRealEnd(seconds)
+    if (sourceFailed && !endedAtRealEnd) keepPlayingFromAStoppedSource()
   }
 
   // Buffered media plays on to the real end; a stall short of it needs the stream attached again.
