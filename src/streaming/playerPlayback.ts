@@ -135,6 +135,8 @@ function startSessionPlayback({
   let endedAtRealEnd = false
   // Where the playhead stopped when playback ended; a viewer's seek after the end moves it away.
   let endedPosition = 0
+  // hls.js stops loading after a fatal error, which a stream with a known real end may survive.
+  let sourceStopped = false
   // hls.js stops loading after a fatal error, so a failure that ended playback leaves the stream
   // to attach again before it can play.
   let attachedPlayback: PlaybackSessionFieldsFragment | null = null
@@ -248,7 +250,7 @@ function startSessionPlayback({
         // As the element does after its own end, playing where playback ended starts from the top.
         if (element.currentTime === endedPosition) element.currentTime = 0
         // A failure can be what ended playback, and hls.js stops loading after one.
-        restartStoppedSource(element.currentTime)
+        restartStoppedSource()
       },
       // The pause that ends playback reports its events after the end; the end stays the last word.
       onTimeUpdate: (element) => {
@@ -274,7 +276,8 @@ function startSessionPlayback({
       },
       // A seek waits for its own data, which can still come; only a stall in playback is an end.
       onWaiting: (element) => {
-        if (!element.seeking) tryEndAtRealEnd()
+        if (!element.seeking && tryEndAtRealEnd()) return
+        if (sourceStopped) restartStoppedSource()
       },
       // An element that also ends where playback ended at the real end has nothing new to report.
       onEnded: (element) => {
@@ -309,8 +312,8 @@ function startSessionPlayback({
     reportEnd(realEnd)
   }
 
-  function restartStoppedSource(position: number) {
-    resume = { position, playing: true }
+  function restartStoppedSource() {
+    resume = { position: video.currentTime, playing: !video.paused }
     detachSource()
     adoptPlayback(attachedPlayback)
   }
@@ -406,6 +409,7 @@ function startSessionPlayback({
     attachedPlayback = playback
     realEnd = attempt.streamSession.mediaEndSeconds ?? (sameStream ? realEnd : null)
     endedAtRealEnd = false
+    sourceStopped = false
     const generation = sourceGeneration
     timeline.detach()
     timeline = trackTimeline()
@@ -572,6 +576,7 @@ function startSessionPlayback({
         // The segments past a short copy's real end never come, and nothing replaces the stream.
         if (attempt.streamSession.mediaEndSeconds !== null) {
           learnRealEnd(attempt.streamSession.mediaEndSeconds)
+          if (check.fatal && !endedAtRealEnd) keepPlayingFromAStoppedSource()
           return
         }
         // The worker wakes HTTP waiters before publishing the logical replacement event.
@@ -588,6 +593,12 @@ function startSessionPlayback({
       adoptPlayback(resolved)
       return
     }
+  }
+
+  // Buffered media plays on to the real end; a stall short of it needs the stream attached again.
+  function keepPlayingFromAStoppedSource() {
+    sourceStopped = true
+    if (video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) restartStoppedSource()
   }
 
   function failSource() {

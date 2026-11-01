@@ -5156,6 +5156,7 @@ describe('Player', () => {
     it('shouldShowNoFailureWhenSegmentsPastTheRealEndAnswer503', async () => {
       const { video } = await playTheShortCopy()
       playheadAt(video, REAL_END_SECONDS - 20)
+      setReadyState(video, HTMLMediaElement.HAVE_ENOUGH_DATA)
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
 
       answerTheNextSegmentWith503({ fatal: true })
@@ -5247,6 +5248,61 @@ describe('Player', () => {
       )
       expect(reports.filter((report) => report.state === 'STOPPED')).toHaveLength(1)
     })
+
+    it('shouldAttachTheStreamAgainWhenAStreamThatStoppedBeforeTheRealEndRunsOutAfterASeek', async () => {
+      const { video } = await playTheShortCopy({ namedOnAttach: false })
+      playheadAt(video, REAL_END_SECONDS - 20)
+      answerTheNextSegmentWith503({ fatal: true })
+      hls.destroy.mockImplementation(() => video.load())
+      // The viewer seeks back out of the buffer while the status check is on its way.
+      stallAt(video, 600)
+
+      await waitFor(() => expect(hls.loadSource).toHaveBeenCalledTimes(2))
+      loadMetadata(video)
+
+      expect(video.currentTime).toBe(600)
+      expect(video.paused).toBe(false)
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      // The stream attached again loads by itself.
+      stallAt(video, 900)
+      expect(hls.loadSource).toHaveBeenCalledTimes(2)
+    })
+
+    it('shouldKeepAPausedViewerPausedWhenTheStreamThatStoppedAttachesAgainAtTheirSeek', async () => {
+      const { video } = await playTheShortCopy({ namedOnAttach: false })
+      playheadAt(video, REAL_END_SECONDS - 20)
+      answerTheNextSegmentWith503({ fatal: true })
+      hls.destroy.mockImplementation(() => video.load())
+      act(() => video.pause())
+      playheadAt(video, 600)
+      setReadyState(video, HTMLMediaElement.HAVE_METADATA)
+
+      await waitFor(() => expect(hls.loadSource).toHaveBeenCalledTimes(2))
+      loadMetadata(video)
+
+      expect(video.currentTime).toBe(600)
+      expect(video.paused).toBe(true)
+    })
+
+    it.each([
+      { fatal: true, attachments: 2 },
+      { fatal: false, attachments: 1 },
+    ])(
+      'shouldAttachTheStreamAgainWhenTheViewerSeeksOutOfTheBufferAfterTheStatusCheckOnlyIfThe503WasFatal(fatal: $fatal)',
+      async ({ fatal, attachments }) => {
+        const { video } = await playTheShortCopy({ namedOnAttach: false })
+        playheadAt(video, REAL_END_SECONDS - 20)
+        setReadyState(video, HTMLMediaElement.HAVE_ENOUGH_DATA)
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        answerTheNextSegmentWith503({ fatal })
+        await act(async () => vi.advanceTimersByTimeAsync(30_000))
+        hls.destroy.mockImplementation(() => video.load())
+
+        stallAt(video, 600)
+
+        expect(hls.loadSource).toHaveBeenCalledTimes(attachments)
+      },
+    )
 
     it('shouldKeepTheEndAsTheLastReportWhenTheBrowserFiresItsPauseEventsLate', async () => {
       const { reports, video } = await playTheShortCopy()
