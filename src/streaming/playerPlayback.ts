@@ -250,14 +250,15 @@ function startSessionPlayback({
         lastKnownPosition = element.currentTime
         report('PAUSED', element.currentTime)
       },
-      onEnded: (element) => {
-        const endedAt = element.currentTime
-        lastKnownPosition = endedAt
-        unacknowledgedEndPosition = endedAt
-        // A replay can move the playhead while an earlier report holds the queue.
-        reportStopped(() => endedAt)
-      },
+      onEnded: (element) => reportEnd(element.currentTime),
     })
+  }
+
+  function reportEnd(endedAt: number) {
+    lastKnownPosition = endedAt
+    unacknowledgedEndPosition = endedAt
+    // A replay can move the playhead while an earlier report holds the queue.
+    reportStopped(() => endedAt)
   }
   let timeline = trackTimeline()
 
