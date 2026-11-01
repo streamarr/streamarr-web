@@ -47,18 +47,22 @@ function isFullHdAtThirtyFrames(configuration: MediaDecodingConfiguration): bool
   return configuration.video?.width === 1920 && configuration.video.framerate === 30
 }
 
-// Main-tier maximum bitrates in bits per second, keyed by the level each codec string carries:
-// H.265 Table A.8 (MaxBR × CpbVclFactor 1000), AV1 Annex A.3 (MainMbps), and WebKit's AV1 table,
-// which counts a megabit as 2^20 bits and refuses a configuration above it before asking the
-// decoder (WebCore AV1Utilities.cpp).
-const HEVC_MAIN_TIER_BITRATES: Record<string, number> = {
+// Maximum bitrates in bits per second, keyed by the level each codec string carries: H.264 Table
+// A-1 (MaxBR × cpbBrVclFactor 1250 for the High profile), H.265 Table A.8 (Main-tier MaxBR ×
+// CpbVclFactor 1000), AV1 Annex A.3 (MainMbps), and WebKit's AV1 table, which counts a megabit as
+// 2^20 bits and refuses a configuration above it before asking the decoder (WebCore
+// AV1Utilities.cpp).
+const LEVEL_BITRATE_MAXIMUMS: Record<string, number> = {
+  '64001F': 17_500_000,
+  '640028': 25_000_000,
+  '64002A': 62_500_000,
+  '640033': 300_000_000,
+  '640034': 300_000_000,
   L93: 10_000_000,
   L120: 12_000_000,
   L123: 20_000_000,
   L150: 25_000_000,
   L153: 40_000_000,
-}
-const AV1_MAIN_TIER_BITRATES: Record<string, number> = {
   '05M': 10_000_000,
   '08M': 12_000_000,
   '09M': 20_000_000,
@@ -73,7 +77,7 @@ const WEBKIT_AV1_MAIN_TIER_BITRATES: Record<string, number> = {
   '13M': 40 * 2 ** 20,
 }
 
-function isWithinMainTierBitrate(
+function isWithinBitrateMaximum(
   configuration: MediaDecodingConfiguration,
   bitrates: Record<string, number>,
 ): boolean {
@@ -81,7 +85,7 @@ function isWithinMainTierBitrate(
     .split('.')
     .find((part) => part in bitrates)
   if (level === undefined) {
-    throw new Error(`No main-tier bitrate for ${codecOf(configuration)}`)
+    throw new Error(`No bitrate maximum for ${codecOf(configuration)}`)
   }
   return (configuration.video?.bitrate ?? 0) <= bitrates[level]
 }
@@ -213,6 +217,45 @@ const DECLARATION_OF_THE_720P_ONLY_BROWSER_WITHOUT_OPUS: ClientCapabilityDeclara
   ],
 }
 
+const DECLARATION_OF_EVERY_TIER: ClientCapabilityDeclarationInput = {
+  video: [
+    sdrVideoEntry({
+      codecFamily: 'H264',
+      codecProfiles: h264Profiles(52),
+      maxWidth: 3840,
+      maxHeight: 2160,
+      maxFrameRate: 60,
+    }),
+    sdrVideoEntry({
+      codecFamily: 'HEVC',
+      codecProfiles: [
+        { profile: 'HEVC_MAIN', maxLevel: 51, maxTier: 'MAIN' },
+        { profile: 'HEVC_MAIN_10', maxLevel: 51, maxTier: 'MAIN' },
+      ],
+      maxBitDepth: 10,
+      maxWidth: 3840,
+      maxHeight: 2160,
+      maxFrameRate: 60,
+    }),
+    sdrVideoEntry({
+      codecFamily: 'AV1',
+      codecProfiles: [{ profile: 'AV1_MAIN', maxLevel: 51, maxTier: 'MAIN' }],
+      maxBitDepth: 10,
+      maxWidth: 3840,
+      maxHeight: 2160,
+      maxFrameRate: 60,
+    }),
+  ],
+  audio: [
+    { codec: 'AAC', maxChannels: 6, hls: true },
+    { codec: 'AC3', maxChannels: 6, hls: true },
+    { codec: 'EAC3', maxChannels: 6, hls: true },
+    { codec: 'OPUS', maxChannels: 6, hls: true },
+    { codec: 'FLAC', maxChannels: 6, hls: true },
+    { codec: 'ALAC', maxChannels: 6, hls: true },
+  ],
+}
+
 describe('declarePlaybackCapabilities', () => {
   afterEach(() => {
     vi.useRealTimers()
@@ -221,34 +264,7 @@ describe('declarePlaybackCapabilities', () => {
   it('shouldDeclareOneEntryPerFamilyWhenTheBrowserDecodesEveryTier', async () => {
     const declaration = await declarePlaybackCapabilities(platformFixture())
 
-    expect(declaration.video).toEqual([
-      sdrVideoEntry({
-        codecFamily: 'H264',
-        codecProfiles: h264Profiles(52),
-        maxWidth: 3840,
-        maxHeight: 2160,
-        maxFrameRate: 60,
-      }),
-      sdrVideoEntry({
-        codecFamily: 'HEVC',
-        codecProfiles: [
-          { profile: 'HEVC_MAIN', maxLevel: 51, maxTier: 'MAIN' },
-          { profile: 'HEVC_MAIN_10', maxLevel: 51, maxTier: 'MAIN' },
-        ],
-        maxBitDepth: 10,
-        maxWidth: 3840,
-        maxHeight: 2160,
-        maxFrameRate: 60,
-      }),
-      sdrVideoEntry({
-        codecFamily: 'AV1',
-        codecProfiles: [{ profile: 'AV1_MAIN', maxLevel: 51, maxTier: 'MAIN' }],
-        maxBitDepth: 10,
-        maxWidth: 3840,
-        maxHeight: 2160,
-        maxFrameRate: 60,
-      }),
-    ])
+    expect(declaration.video).toEqual(DECLARATION_OF_EVERY_TIER.video)
   })
 
   it('shouldDeclareEachLimitPairingWhenFourKDecodesOnlyAtThirtyFrames', async () => {
@@ -273,7 +289,7 @@ describe('declarePlaybackCapabilities', () => {
         decodingInfo: decodingInfoAnswering(
           (configuration) =>
             !codecOf(configuration).startsWith('av01') ||
-            isWithinMainTierBitrate(configuration, WEBKIT_AV1_MAIN_TIER_BITRATES),
+            isWithinBitrateMaximum(configuration, WEBKIT_AV1_MAIN_TIER_BITRATES),
           (configuration) => configuration.video?.framerate !== 60,
         ),
         userAgent: SAFARI,
@@ -291,22 +307,18 @@ describe('declarePlaybackCapabilities', () => {
     ])
   })
 
-  it('shouldStayWithinEachLevelsMainTierBitrateWhenProbingHevcAndAv1Tiers', async () => {
-    const decodingInfo = decodingInfoAnswering(() => true)
+  it('shouldDeclareEveryTierWhenTheBrowserRefusesEveryConfigurationAboveItsLevelsBitrateMaximum', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: decodingInfoAnswering(
+          (configuration) =>
+            configuration.video === undefined ||
+            isWithinBitrateMaximum(configuration, LEVEL_BITRATE_MAXIMUMS),
+        ),
+      }),
+    )
 
-    await declarePlaybackCapabilities(platformFixture({ decodingInfo }))
-
-    const probes = decodingInfo.mock.calls.map(([configuration]) => configuration)
-    const hevcProbes = probes.filter((probe) => codecOf(probe).startsWith('hvc1'))
-    const av1Probes = probes.filter((probe) => codecOf(probe).startsWith('av01'))
-    expect(hevcProbes).not.toEqual([])
-    expect(av1Probes).not.toEqual([])
-    expect(
-      hevcProbes.filter((probe) => !isWithinMainTierBitrate(probe, HEVC_MAIN_TIER_BITRATES)),
-    ).toEqual([])
-    expect(
-      av1Probes.filter((probe) => !isWithinMainTierBitrate(probe, AV1_MAIN_TIER_BITRATES)),
-    ).toEqual([])
+    expect(declaration.video).toEqual(DECLARATION_OF_EVERY_TIER.video)
   })
 
   it('shouldBoundEachFamilyToItsSmoothTiersWhenHigherTiersDecodeOnlyWithDroppedFrames', async () => {
@@ -750,12 +762,11 @@ describe('declarePlaybackCapabilities', () => {
   })
 
   it('shouldKeepAv1WhenTheNativePlayerCorroboratesAFalseDecodingAnswer', async () => {
-    const decodingInfo = decodingInfoAnswering(
-      (configuration) => !codecOf(configuration).startsWith('av01'),
-    )
     const declaration = await declarePlaybackCapabilities(
       platformFixture({
-        decodingInfo,
+        decodingInfo: decodingInfoAnswering(
+          (configuration) => !codecOf(configuration).startsWith('av01'),
+        ),
         hlsJsSupported: false,
         nativeHlsSupported: true,
         canPlayType: (type) => (type === AV1_PROBE ? 'probably' : ''),
@@ -763,7 +774,12 @@ describe('declarePlaybackCapabilities', () => {
       }),
     )
 
-    expect(familyEntries(declaration, 'AV1')).toHaveLength(1)
+    expect(familyEntries(declaration, 'AV1')).toEqual([
+      sdrVideoEntry({
+        codecFamily: 'AV1',
+        codecProfiles: [{ profile: 'AV1_MAIN', maxLevel: 40, maxTier: 'MAIN' }],
+      }),
+    ])
   })
 
   it.each([
@@ -783,7 +799,7 @@ describe('declarePlaybackCapabilities', () => {
     expect(familyEntries(declaration, 'AV1')).toEqual([])
   })
 
-  it('shouldDropAv1WhenNothingCorroboratesAFalseDecodingAnswer', async () => {
+  it('shouldDropAv1WhenTheMediaSourceHlsJsPlaysThroughRefusesItEvenWhenTheElementAccepts', async () => {
     const declaration = await declarePlaybackCapabilities(
       platformFixture({
         decodingInfo: decodingInfoAnswering(
@@ -797,35 +813,40 @@ describe('declarePlaybackCapabilities', () => {
     expect(familyEntries(declaration, 'AV1')).toEqual([])
   })
 
-  it('shouldAskAboutMediaSourcePlaybackWhenHlsJsPlays', async () => {
-    const decodingInfo = decodingInfoAnswering(() => true)
-
-    await declarePlaybackCapabilities(platformFixture({ decodingInfo }))
-
-    expect(new Set(decodingInfo.mock.calls.map(([configuration]) => configuration.type))).toEqual(
-      new Set(['media-source']),
+  it('shouldDeclareTheMediaSourceAnswersWhenHlsJsPlays', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: decodingInfoAnswering(
+          (configuration) => configuration.type === 'media-source',
+        ),
+      }),
     )
+
+    expect(declaration).toEqual(DECLARATION_OF_EVERY_TIER)
   })
 
-  it('shouldAskAboutFilePlaybackWhenOnlyNativeHlsPlays', async () => {
-    const decodingInfo = decodingInfoAnswering(() => true)
-
-    await declarePlaybackCapabilities(
-      platformFixture({ decodingInfo, hlsJsSupported: false, nativeHlsSupported: true }),
+  it('shouldDeclareTheFilePlaybackAnswersWhenOnlyNativeHlsPlays', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: decodingInfoAnswering((configuration) => configuration.type === 'file'),
+        hlsJsSupported: false,
+        nativeHlsSupported: true,
+      }),
     )
 
-    expect(new Set(decodingInfo.mock.calls.map(([configuration]) => configuration.type))).toEqual(
-      new Set(['file']),
-    )
+    expect(declaration).toEqual(DECLARATION_OF_EVERY_TIER)
   })
 
-  it('shouldApplyNoVideoEntryToHlsWhenTheBrowserPlaysNoHls', async () => {
+  it('shouldApplyOnlyTheRequiredAacEntryToHlsWhenTheBrowserPlaysNoHls', async () => {
     const declaration = await declarePlaybackCapabilities(
       platformFixture({ hlsJsSupported: false, nativeHlsSupported: false }),
     )
 
-    expect(declaration.video.map((entry) => entry.hls)).toEqual([false, false, false])
-    expect(audioEntry(declaration, 'AAC')?.hls).toBe(true)
+    expect(
+      [...declaration.video, ...declaration.audio]
+        .filter((entry) => entry.hls)
+        .map((entry) => ('codec' in entry ? entry.codec : entry.codecFamily)),
+    ).toEqual(['AAC'])
   })
 
   it('shouldDeclareStereoAacForHlsWhenTheBrowserDecodesNoAudio', async () => {
@@ -841,14 +862,7 @@ describe('declarePlaybackCapabilities', () => {
   it('shouldDeclareEveryAudioCodecThatDecodesWhenTheBrowserConfirmsSurround', async () => {
     const declaration = await declarePlaybackCapabilities(platformFixture())
 
-    expect(declaration.audio).toEqual([
-      { codec: 'AAC', maxChannels: 6, hls: true },
-      { codec: 'AC3', maxChannels: 6, hls: true },
-      { codec: 'EAC3', maxChannels: 6, hls: true },
-      { codec: 'OPUS', maxChannels: 6, hls: true },
-      { codec: 'FLAC', maxChannels: 6, hls: true },
-      { codec: 'ALAC', maxChannels: 6, hls: true },
-    ])
+    expect(declaration.audio).toEqual(DECLARATION_OF_EVERY_TIER.audio)
   })
 
   it('shouldDeclareStereoWhenTheBrowserConfirmsOnlyStereo', async () => {
@@ -899,12 +913,9 @@ describe('declarePlaybackCapabilities', () => {
     expect(declaration.audio).toEqual([{ codec: 'AAC', maxChannels: 2, hls: true }])
   })
 
-  it('shouldDeclareAtMostSixChannelsWhenFirefoxConfirmsMore', async () => {
+  it('shouldDeclareAtMostSixChannelsWhenTheBrowserConfirmsMore', async () => {
     const declaration = await declarePlaybackCapabilities(
-      platformFixture({
-        decodingInfo: decodingInfoAnswering(decodesAudioUpTo(8)),
-        userAgent: FIREFOX,
-      }),
+      platformFixture({ decodingInfo: decodingInfoAnswering(decodesAudioUpTo(8)) }),
     )
 
     expect(Math.max(...declaration.audio.map((entry) => entry.maxChannels))).toBe(6)
@@ -1197,11 +1208,18 @@ describe('browserPlaybackPlatform', () => {
     expect(platform.canPlayType(AV1_PROBE)).toBe('probably')
   })
 
-  it('shouldAskTheBrowsersDecodingInfoWhenTheBrowserOffersMediaCapabilities', async () => {
-    const decodingInfo = vi.fn(() =>
-      Promise.resolve({ supported: true, smooth: true, powerEfficient: false }),
-    )
-    vi.stubGlobal('navigator', { userAgent: SAFARI, mediaCapabilities: { decodingInfo } })
+  it('shouldAnswerFromTheBrowsersDecodingInfoWhenTheBrowserOffersMediaCapabilities', async () => {
+    vi.stubGlobal('navigator', {
+      userAgent: SAFARI,
+      mediaCapabilities: {
+        decodingInfo: (configuration: MediaDecodingConfiguration) =>
+          Promise.resolve({
+            supported: configuration.video?.contentType === AV1_PROBE,
+            smooth: true,
+            powerEfficient: false,
+          }),
+      },
+    })
     const configuration: MediaDecodingConfiguration = {
       type: 'media-source',
       video: { contentType: AV1_PROBE, width: 1920, height: 1080, framerate: 30, bitrate: 1 },
@@ -1214,7 +1232,13 @@ describe('browserPlaybackPlatform', () => {
       smooth: true,
       powerEfficient: false,
     })
-    expect(decodingInfo).toHaveBeenCalledWith(configuration)
+  })
+
+  it('shouldReadTheUserAgentFromTheBrowserWhenBindingThePlatform', () => {
+    vi.stubGlobal('navigator', { userAgent: SAFARI })
+
+    const platform = browserPlaybackPlatform(document.createElement('video'))
+
     expect(platform.userAgent).toBe(SAFARI)
   })
 

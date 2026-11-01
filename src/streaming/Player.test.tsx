@@ -86,6 +86,31 @@ function serveSession(): TimelineReport[] {
   return recordTimelineReports()
 }
 
+function serveSessionRecordingDeclarations(): ClientCapabilityDeclarationInput[] {
+  const declarations: ClientCapabilityDeclarationInput[] = []
+  server.use(
+    graphql.mutation('CreatePlaybackSession', ({ variables }) => {
+      declarations.push(
+        (variables as { input: { capabilities: ClientCapabilityDeclarationInput } }).input
+          .capabilities,
+      )
+      return HttpResponse.json({
+        data: {
+          createPlaybackSession: {
+            playbackSession: readyPlaybackSession({ streamSession: SESSION }),
+            userErrors: [],
+          },
+        },
+      })
+    }),
+  )
+  return declarations
+}
+
+function codecFamilies(declarations: readonly ClientCapabilityDeclarationInput[]) {
+  return declarations.map(({ video }) => video.map((entry) => entry.codecFamily))
+}
+
 function recordTimelineReports(): TimelineReport[] {
   const reports: TimelineReport[] = []
   server.use(
@@ -619,21 +644,8 @@ describe('Player', () => {
   })
 
   it('shouldDeclareWhatTheBrowserDecodesWhenPlaybackStarts', async () => {
-    serveSession()
-    const created: { input: { capabilities: ClientCapabilityDeclarationInput } }[] = []
-    server.use(
-      graphql.mutation('CreatePlaybackSession', ({ variables }) => {
-        created.push(variables as unknown as (typeof created)[number])
-        return HttpResponse.json({
-          data: {
-            createPlaybackSession: {
-              playbackSession: readyPlaybackSession({ streamSession: SESSION }),
-              userErrors: [],
-            },
-          },
-        })
-      }),
-    )
+    recordTimelineReports()
+    const declarations = serveSessionRecordingDeclarations()
     const decodingInfo = (configuration: MediaDecodingConfiguration) => {
       const supported = !configuration.video?.contentType.includes('av01')
       return Promise.resolve({ supported, smooth: supported, powerEfficient: supported })
@@ -647,27 +659,12 @@ describe('Player', () => {
     )
     await attachedVideo()
 
-    expect(
-      created.map(({ input }) => input.capabilities.video.map((entry) => entry.codecFamily)),
-    ).toEqual([['H264', 'HEVC']])
+    expect(codecFamilies(declarations)).toEqual([['H264', 'HEVC']])
   })
 
   it('shouldDeclareHevcWhenIphoneSafariDecodesItPowerEfficientlyWithoutASmoothAnswer', async () => {
-    serveSession()
-    const created: { input: { capabilities: ClientCapabilityDeclarationInput } }[] = []
-    server.use(
-      graphql.mutation('CreatePlaybackSession', ({ variables }) => {
-        created.push(variables as unknown as (typeof created)[number])
-        return HttpResponse.json({
-          data: {
-            createPlaybackSession: {
-              playbackSession: readyPlaybackSession({ streamSession: SESSION }),
-              userErrors: [],
-            },
-          },
-        })
-      }),
-    )
+    recordTimelineReports()
+    const declarations = serveSessionRecordingDeclarations()
     const decodingInfo = (configuration: MediaDecodingConfiguration) => {
       if (configuration.video?.contentType.includes('hvc1')) {
         return Promise.resolve(IPHONE_SAFARI_HEVC_ANSWER)
@@ -685,27 +682,12 @@ describe('Player', () => {
     )
     await attachedVideo()
 
-    expect(
-      created.map(({ input }) => input.capabilities.video.map((entry) => entry.codecFamily)),
-    ).toEqual([['H264', 'HEVC', 'AV1']])
+    expect(codecFamilies(declarations)).toEqual([['H264', 'HEVC', 'AV1']])
   })
 
   it('shouldCapPowerEfficientHevcAtTheHighestTierH264KeepsUpWithWhenIphoneSafariPlays', async () => {
-    serveSession()
-    const created: { input: { capabilities: ClientCapabilityDeclarationInput } }[] = []
-    server.use(
-      graphql.mutation('CreatePlaybackSession', ({ variables }) => {
-        created.push(variables as unknown as (typeof created)[number])
-        return HttpResponse.json({
-          data: {
-            createPlaybackSession: {
-              playbackSession: readyPlaybackSession({ streamSession: SESSION }),
-              userErrors: [],
-            },
-          },
-        })
-      }),
-    )
+    recordTimelineReports()
+    const declarations = serveSessionRecordingDeclarations()
     const decodingInfo = (configuration: MediaDecodingConfiguration) => {
       if (configuration.video?.contentType.includes('hvc1')) {
         return Promise.resolve(IPHONE_SAFARI_HEVC_ANSWER)
@@ -724,8 +706,8 @@ describe('Player', () => {
     await attachedVideo()
 
     expect(
-      created.flatMap(({ input }) =>
-        input.capabilities.video
+      declarations.flatMap(({ video }) =>
+        video
           .filter((entry) => entry.codecFamily === 'HEVC')
           .map(({ maxHeight, maxFrameRate, maxBitDepth }) => ({
             maxHeight,
@@ -737,20 +719,7 @@ describe('Player', () => {
   })
 
   it('shouldShowThePlaybackFailureWithoutCreatingASessionWhenTheBrowserDecodesNoVideo', async () => {
-    const created: unknown[] = []
-    server.use(
-      graphql.mutation('CreatePlaybackSession', ({ variables }) => {
-        created.push(variables)
-        return HttpResponse.json({
-          data: {
-            createPlaybackSession: {
-              playbackSession: readyPlaybackSession({ streamSession: SESSION }),
-              userErrors: [],
-            },
-          },
-        })
-      }),
-    )
+    const declarations = serveSessionRecordingDeclarations()
     const decodingInfo = (configuration: MediaDecodingConfiguration) => {
       const supported = configuration.video === undefined
       return Promise.resolve({ supported, smooth: supported, powerEfficient: supported })
@@ -766,7 +735,7 @@ describe('Player', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       "Playback couldn't start. Try again.",
     )
-    expect(created).toEqual([])
+    expect(declarations).toEqual([])
     expect(hls.loadSource).not.toHaveBeenCalled()
   })
 
