@@ -10,7 +10,7 @@ import styles from './Player.module.css'
 import {
   PlayerControls,
   type PlayerTitle,
-  type TrackPickerKind,
+  type PickerKind,
   pickerOffersChoice,
 } from './PlayerControls'
 import { startPlayerPlayback, type SourcePhase } from './playerPlayback'
@@ -42,7 +42,7 @@ export function Player({
   const client = useApolloClient()
   const [sourcePhase, setSourcePhase] = useState(STARTING)
   const [attempt, setAttempt] = useState(0)
-  const [picker, setPicker] = useState<TrackPickerKind | null>(null)
+  const [picker, setPicker] = useState<PickerKind | null>(null)
   const tracks = sourcePhase.at === 'attached' ? sourcePhase.tracks : null
   const streamTracks = useStreamTracks(tracks)
   const openPicker = picker !== null && pickerOffersChoice(picker, streamTracks) ? picker : null

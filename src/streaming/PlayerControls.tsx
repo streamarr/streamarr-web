@@ -17,7 +17,7 @@ export interface PlayerTitle {
   detail?: string
 }
 
-export type TrackPickerKind = 'audio' | 'subtitles'
+export type PickerKind = 'audio' | 'subtitles'
 
 // Mantine's slider ends a drag only on touchend or mouseup. After a cancelled touch its drag stays
 // open until the next touchend or mouseup anywhere, and that late end must not seek.
@@ -29,10 +29,7 @@ const SUBTITLES_OFF: PopoverOption<null> = { id: null, label: 'Off' }
  * Whether a picker has a choice to make: one option alone would only repeat what its chip shows.
  * The subtitles picker always offers Off beside the stream's tracks.
  */
-export function pickerOffersChoice(
-  kind: TrackPickerKind,
-  { audio, subtitles }: StreamTracks,
-): boolean {
+export function pickerOffersChoice(kind: PickerKind, { audio, subtitles }: StreamTracks): boolean {
   return kind === 'audio' ? audio.options.length > 1 : subtitles.options.length > 0
 }
 
@@ -55,8 +52,8 @@ export function PlayerControls({
   videoState: VideoState
   /** The attached stream's tracks; null while no stream is attached. */
   tracks: TrackSource | null
-  openPicker: TrackPickerKind | null
-  onOpenPicker: (kind: TrackPickerKind | null) => void
+  openPicker: PickerKind | null
+  onOpenPicker: (kind: PickerKind | null) => void
   title?: PlayerTitle
 }>) {
   const [scrub, setScrub] = useState<Scrub | null>(null)
@@ -192,7 +189,7 @@ export function PlayerControls({
         </div>
         <div className={styles.end}>
           <QualityChip videoHeight={videoState.videoHeight} />
-          <TrackPicker
+          <ChoicePicker
             name="Audio"
             icon="audio-track"
             options={audio.options}
@@ -202,7 +199,7 @@ export function PlayerControls({
             onOpenChange={(open) => onOpenPicker(open ? 'audio' : null)}
             onChoose={(id) => tracks?.selectAudio(id)}
           />
-          <TrackPicker
+          <ChoicePicker
             name="Subtitles"
             icon="subtitles"
             options={[SUBTITLES_OFF, ...subtitles.options]}
@@ -316,7 +313,7 @@ function QualityChip({ videoHeight }: Readonly<{ videoHeight: number }>) {
   )
 }
 
-function TrackPicker<Id extends number | null>({
+function ChoicePicker<Id extends string | number | null>({
   name,
   icon,
   options,
