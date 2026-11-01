@@ -291,13 +291,14 @@ function serveACopyThatRanShort({ namedOnAttach }: { namedOnAttach: boolean }): 
 }
 
 // Six-second segments, as the playlist's target duration declares them.
-async function playTheShortCopy({ namedOnAttach = true } = {}) {
+async function playTheShortCopy({ namedOnAttach = true, showingFirstFrame = true } = {}) {
   const reports = serveACopyThatRanShort({ namedOnAttach })
   hls.latestLevelDetails = { targetduration: 6 }
   renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
   const video = await attachedVideo()
   loadMetadata(video)
   loadDuration(video, 2712)
+  if (showingFirstFrame) loadFirstFrame(video)
   return { reports, video }
 }
 
