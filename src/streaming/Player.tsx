@@ -75,12 +75,14 @@ export function Player({
   ) {
     setChoice(startingChoice({ mediaFileId, startPositionSeconds }))
   }
+  const { notice, marks, followPlaybackSession } = usePlaybackFallbacks(choice.start)
   const [picker, setPicker] = useState<PickerKind | null>(null)
   const tracks = sourcePhase.at === 'attached' ? sourcePhase.tracks : null
   const qualities = sourcePhase.at === 'attached' ? sourcePhase.qualities : null
   const quality = {
     offered: qualities?.offered ?? [],
     selected: qualities?.playing ?? choice.quality,
+    marks,
   }
   const streamTracks = useStreamTracks(tracks)
   const openPicker =
@@ -91,7 +93,6 @@ export function Player({
   if (picker !== openPicker) {
     setPicker(null)
   }
-  const { notice, followPlaybackSession } = usePlaybackFallbacks()
   const videoState = useVideoState(videoRef)
   const controlsHeld = videoState.paused || sourcePhase.at === 'failed' || openPicker !== null
   const idle = useIdle(controlsHeld, [controlsRef, backRef])

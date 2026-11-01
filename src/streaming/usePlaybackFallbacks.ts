@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { PlaybackFormatChange } from '../graphql/generated/graphql'
+import type { PlaybackFormatChange, VideoQuality } from '../graphql/generated/graphql'
 import type { QualityChoices } from './qualityChoices'
 
 const NOTICE_DURATION_MS = 6_000
@@ -17,12 +17,25 @@ const NOTICES: Record<Fallback, string> = {
     "This video couldn't play in Dolby Vision, so the HDR version is playing.",
 }
 
+const EXPLANATIONS: Record<Fallback, string> = {
+  'changed-to-auto': "This video couldn't play in its original form, so Quality changed to Auto.",
+  converted:
+    "This video couldn't play in its original form at this quality, so a converted version is playing.",
+  'dolby-vision-stripped': NOTICES['dolby-vision-stripped'],
+}
+
+/** The explanation beside each playback choice whose output fell back during the viewing. */
+export type QualityMarks = ReadonlyMap<VideoQuality, string>
+
+const NO_MARKS: QualityMarks = new Map()
+
 /** What a playing stream tells the player when it attaches. */
 export type FollowPlayingChoices = (qualities: QualityChoices) => void
 
 export interface PlaybackFallbacks {
   /** The text over the video after the latest fallback, until it disappears by itself. */
   notice: { text: string; serial: number } | null
+  marks: QualityMarks
   /**
    * Returns what to tell about each stream that one playback session attaches, so that session
    * announces each format change once.
@@ -42,9 +55,27 @@ function fallbackOf({ requested, playing, formatChange }: QualityChoices): Fallb
   return playing === requested ? 'converted' : 'changed-to-auto'
 }
 
-/** The notice after each fallback during a viewing. */
-export function usePlaybackFallbacks(): PlaybackFallbacks {
+// The requested choice keeps a mark while its output falls back, and loses it once it plays the
+// output it asked for. Each fallback replaces the explanation the choice had.
+function markFallback(marks: QualityMarks, qualities: QualityChoices): QualityMarks {
+  const fallback = fallbackOf(qualities)
+  const next = new Map(marks)
+  if (!fallback) {
+    next.delete(qualities.requested)
+    return next
+  }
+  next.set(qualities.requested, EXPLANATIONS[fallback])
+  return next
+}
+
+/**
+ * The notice after each fallback during a viewing, and the marks it leaves in the quality menu.
+ * Pass a new `viewing` object once the viewer leaves the media title: the first stream that a
+ * playback session of the new viewing attaches leaves only that viewing's marks.
+ */
+export function usePlaybackFallbacks(viewing: object): PlaybackFallbacks {
   const [notice, setNotice] = useState<PlaybackFallbacks['notice']>(null)
+  const [marked, setMarked] = useState({ viewing, marks: NO_MARKS })
 
   useEffect(() => {
     if (!notice) {
@@ -57,6 +88,10 @@ export function usePlaybackFallbacks(): PlaybackFallbacks {
   const followPlaybackSession = useCallback(() => {
     let announced: PlaybackFormatChange | null = null
     return (qualities: QualityChoices) => {
+      setMarked((current) => ({
+        viewing,
+        marks: markFallback(current.viewing === viewing ? current.marks : NO_MARKS, qualities),
+      }))
       const previous = announced
       announced = qualities.formatChange
       const fallback = fallbackOf(qualities)
@@ -66,7 +101,7 @@ export function usePlaybackFallbacks(): PlaybackFallbacks {
       const text = NOTICES[fallback]
       setNotice((shown) => ({ text, serial: (shown?.serial ?? 0) + 1 }))
     }
-  }, [])
+  }, [viewing])
 
-  return { notice, followPlaybackSession }
+  return { notice, marks: marked.marks, followPlaybackSession }
 }

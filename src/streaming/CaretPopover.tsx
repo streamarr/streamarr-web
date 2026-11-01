@@ -1,16 +1,21 @@
 import {
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type RefObject,
   useEffect,
   useId,
   useLayoutEffect,
   useRef,
+  useState,
 } from 'react'
 import { Icon } from '../ui/Icon'
 import styles from './CaretPopover.module.css'
 
 // The surface scrolls its rows rather than rise closer than this to the top of the screen.
 const SCREEN_EDGE_GAP_PX = 16
+// A caution's explanation is at most this wide, and sits this far from the surface.
+const EXPLANATION_MAX_WIDTH_PX = 240
+const EXPLANATION_GAP_PX = 8
 
 const ROW_MOVES = new Map<string, (index: number, count: number) => number>([
   ['ArrowDown', (index, count) => (index + 1) % count],
@@ -22,7 +27,22 @@ const ROW_MOVES = new Map<string, (index: number, count: number) => number>([
 export interface PopoverOption<Id> {
   id: Id
   label: string
+  /**
+   * Why the option asks for the viewer's attention. A mark after the label carries it as its
+   * accessible name, and the explanation shows beside the menu while the pointer hovers the row,
+   * while focus is on it, or after a tap on the mark.
+   */
+  caution?: string
 }
+
+// Which row's caution shows: the hovered row first, then a tapped mark, then the focused row.
+interface ExplainedRows {
+  hovered: number | null
+  tapped: number | null
+  focused: number | null
+}
+
+const NO_EXPLAINED_ROWS: ExplainedRows = { hovered: null, tapped: null, focused: null }
 
 /**
  * A menu of options above the control bar, its caret pointing down at the anchor that opened it.
@@ -50,6 +70,11 @@ export function CaretPopover<Id>({
   const surfaceRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const focusedRow = useRef<{ row: HTMLElement; index: number } | null>(null)
+  const explanationRef = useRef<HTMLDivElement>(null)
+  const markTouched = useRef(false)
+  const [explainedRows, setExplainedRows] = useState(NO_EXPLAINED_ROWS)
+  const explainedIndex = explainedRows.hovered ?? explainedRows.tapped ?? explainedRows.focused
+  const explanation = explainedIndex === null ? undefined : options[explainedIndex]?.caution
   const headingId = useId()
 
   useLayoutEffect(() => {
@@ -58,6 +83,17 @@ export function CaretPopover<Id>({
     window.addEventListener('resize', place)
     return () => window.removeEventListener('resize', place)
   }, [anchorRef])
+
+  useLayoutEffect(() => {
+    if (explainedIndex === null) {
+      return
+    }
+    placeExplanation({
+      explanation: explanationRef.current,
+      row: rowsOf(menuRef.current)[explainedIndex],
+      surface: surfaceRef.current,
+    })
+  }, [explainedIndex, explanation])
 
   useEffect(() => {
     focusCheckedOrNearestRow(menuRef.current, 0)
@@ -103,6 +139,23 @@ export function CaretPopover<Id>({
     onChoose(option)
   }
 
+  function explain(kind: keyof ExplainedRows, index: number) {
+    setExplainedRows((rows) => ({ ...rows, [kind]: index }))
+  }
+
+  function stopHovering(index: number) {
+    setExplainedRows((rows) => (rows.hovered === index ? { ...rows, hovered: null } : rows))
+  }
+
+  // A tap on the mark explains it rather than choosing the row; a mouse click chooses as usual.
+  function tapMark(event: ReactMouseEvent<HTMLElement>, index: number) {
+    if (!markTouched.current) {
+      return
+    }
+    event.stopPropagation()
+    setExplainedRows((rows) => ({ ...rows, tapped: rows.tapped === index ? null : index }))
+  }
+
   function handleRowKey(event: ReactKeyboardEvent<HTMLElement>) {
     // Shift+Tab lands on the anchor, which the outside checks count as part of the menu.
     if (event.key === 'Tab' && event.shiftKey) {
@@ -128,22 +181,50 @@ export function CaretPopover<Id>({
               type="button"
               role="menuitemradio"
               aria-checked={checked}
+              aria-label={cautionedName(option)}
               tabIndex={-1}
               className={styles.row}
               onClick={() => choose(option.id)}
               onFocus={(event) => {
                 focusedRow.current = { row: event.currentTarget, index }
+                explain('focused', index)
               }}
+              onPointerEnter={() => explain('hovered', index)}
+              onPointerLeave={() => stopHovering(index)}
               onKeyDown={handleRowKey}
             >
-              {option.label}
+              <span className={styles.label}>
+                {option.label}
+                {option.caution && (
+                  <span
+                    className={styles.caution}
+                    onPointerDown={(event) => {
+                      markTouched.current = event.pointerType === 'touch'
+                    }}
+                    onClick={(event) => tapMark(event, index)}
+                  >
+                    <Icon name="alert" size={14} label={option.caution} />
+                  </span>
+                )}
+              </span>
               {checked && <Icon name="check" size={14} />}
             </button>
           )
         })}
       </div>
+      {explanation && (
+        <div ref={explanationRef} className={styles.explanation} aria-hidden="true">
+          {explanation}
+        </div>
+      )}
     </div>
   )
+}
+
+// A row's name from its content would join the label and the mark's name with no space between
+// them, so a cautioned row names both itself, with a sentence break.
+function cautionedName<Id>({ label, caution }: PopoverOption<Id>): string | undefined {
+  return caution && `${label}. ${caution}`
 }
 
 function rowsOf(menu: HTMLElement | null): HTMLElement[] {
@@ -165,6 +246,29 @@ function moveBetweenRows(event: ReactKeyboardEvent<HTMLElement>) {
   event.preventDefault()
   const rows = rowsOf(event.currentTarget.parentElement)
   rows[move(rows.indexOf(event.currentTarget), rows.length)]?.focus()
+}
+
+// Level with its row on the side away from the screen edge, beside the menu so it covers no
+// other row, or above the menu where the screen leaves no room beside it.
+function placeExplanation({
+  explanation,
+  row,
+  surface,
+}: {
+  explanation: HTMLElement | null
+  row: HTMLElement | undefined
+  surface: HTMLElement | null
+}) {
+  if (!explanation || !row || !surface) {
+    return
+  }
+  if (surface.offsetLeft < EXPLANATION_MAX_WIDTH_PX + EXPLANATION_GAP_PX) {
+    explanation.dataset.side = 'above'
+    explanation.style.top = ''
+    return
+  }
+  explanation.dataset.side = 'start'
+  explanation.style.top = `${row.offsetTop - (row.parentElement?.scrollTop ?? 0)}px`
 }
 
 function placeAbove(surface: HTMLElement | null, anchor: HTMLElement | null) {

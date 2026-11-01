@@ -6,6 +6,7 @@ import { Icon, type IconName } from '../ui/Icon'
 import { CaretPopover, type PopoverOption } from './CaretPopover'
 import styles from './PlayerControls.module.css'
 import { qualityChipValue, qualityLabel } from './qualityChoices'
+import type { QualityMarks } from './usePlaybackFallbacks'
 import type { StreamTracks, TrackSource } from './trackSources'
 import { useSpaceToPlayOrPause } from './useSpaceToPlayOrPause'
 import { useStreamTracks } from './useStreamTracks'
@@ -21,10 +22,14 @@ export interface PlayerTitle {
 
 export type PickerKind = 'quality' | 'audio' | 'subtitles'
 
-/** The quality menu's choices, empty while no stream is attached, and the choice it shows selected. */
+/**
+ * The quality menu's choices, empty while no stream is attached, the choice it shows selected, and
+ * the explanation beside each choice whose output fell back.
+ */
 interface QualityMenu {
   offered: readonly VideoQuality[]
   selected: VideoQuality
+  marks: QualityMarks
 }
 
 /** What each picker offers: the stream's tracks and the playback choices the server lists. */
@@ -55,10 +60,13 @@ export function pickerOffersChoice(
 }
 
 // A choice the server added after this client has no name here, so the menu leaves it out.
-function qualityOptions(qualities: readonly VideoQuality[]): PopoverOption<VideoQuality>[] {
+function qualityOptions(
+  qualities: readonly VideoQuality[],
+  marks: QualityMarks = new Map(),
+): PopoverOption<VideoQuality>[] {
   return qualities.flatMap((id) => {
     const label = qualityLabel(id)
-    return label ? [{ id, label }] : []
+    return label ? [{ id, label, caution: marks.get(id) }] : []
   })
 }
 
@@ -225,7 +233,7 @@ export function PlayerControls({
           <ChoicePicker
             name="Quality"
             icon="quality"
-            options={qualityOptions(quality.offered)}
+            options={qualityOptions(quality.offered, quality.marks)}
             selected={quality.selected}
             value={qualityChipValue(quality.selected, videoState.videoHeight)}
             choosable={pickerOffersChoice('quality', choices)}

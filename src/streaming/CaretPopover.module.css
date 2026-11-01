@@ -69,3 +69,54 @@
   font-weight: var(--font-weight-semibold);
   color: var(--color-white);
 }
+
+.label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-6);
+}
+
+/* Never the error red: the mark explains a fallback, not a fault, and its shape carries that. */
+.caution {
+  display: inline-flex;
+  color: var(--text-secondary);
+
+  /* Nothing hovers a touch screen, so the mark takes a 44px target there without moving the row. */
+  @media (pointer: coarse) {
+    margin: -15px;
+    padding: 15px;
+  }
+}
+
+.row[aria-checked='true'] .caution,
+.row:focus .caution {
+  color: inherit;
+}
+
+/* The side and the top come from the row it explains; the explanation never takes a tap. */
+.explanation {
+  position: absolute;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: 240px;
+  padding: var(--spacing-8) var(--spacing-10);
+  border: var(--border-width-hairline) solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface-popover);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-prose);
+  color: var(--text-primary);
+  pointer-events: none;
+}
+
+.explanation[data-side='start'] {
+  right: calc(100% + 8px);
+}
+
+.explanation[data-side='above'] {
+  bottom: calc(100% + 8px);
+  left: 0;
+  width: auto;
+  max-width: none;
+  right: 0;
+}

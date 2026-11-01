@@ -52,6 +52,12 @@ const CONVERTED_NOTICE =
   'To choose another quality, open the Quality menu.'
 const DOLBY_VISION_NOTICE =
   "This video couldn't play in Dolby Vision, so the HDR version is playing."
+const ORIGINAL_EXPLANATION =
+  "This video couldn't play in its original form, so Quality changed to Auto."
+const FIXED_QUALITY_EXPLANATION =
+  "This video couldn't play in its original form at this quality, so a converted version is playing."
+const DOLBY_VISION_EXPLANATION =
+  "This video couldn't play in Dolby Vision, so the HDR version is playing."
 const ORIGINAL_CHANGED_TO_AUTO: Partial<PlaybackChoices> = {
   requestedChoice: 'ORIGINAL',
   playbackChoice: 'AUTO',
@@ -234,6 +240,16 @@ function refuseTheStreamsFormat() {
 
 function notice(): HTMLElement {
   return screen.getByRole('status')
+}
+
+async function openQualityMenu(user: UserEvent): Promise<HTMLElement> {
+  return openPicker(user, screen.getByRole('button', { name: /^Quality/ }))
+}
+
+function marksIn(menu: HTMLElement): string[] {
+  return within(menu)
+    .queryAllByRole('img')
+    .map((mark) => `${mark.closest('[role="menuitemradio"]')?.textContent}: ${mark.ariaLabel}`)
 }
 
 // Plays the `picked` row's choice, whose stream the browser then refuses, and attaches the stream
@@ -5185,6 +5201,140 @@ describe('Player', () => {
       await act(async () => vi.advanceTimersByTimeAsync(5_900))
       expect(notice().textContent).toBe(CHANGED_TO_AUTO_NOTICE)
       expect(screen.getByRole('button', { name: 'Quality: Auto' })).toBeInTheDocument()
+    })
+
+    it.each([
+      {
+        picked: 'Original',
+        choices: ORIGINAL_CHANGED_TO_AUTO,
+        selected: 'Auto',
+        mark: `Original: ${ORIGINAL_EXPLANATION}`,
+      },
+      {
+        picked: '720p',
+        choices: FIXED_QUALITY_CONVERTED,
+        selected: '720p',
+        mark: `720p: ${FIXED_QUALITY_EXPLANATION}`,
+      },
+      {
+        picked: 'Original',
+        choices: {
+          requestedChoice: 'ORIGINAL',
+          playbackChoice: 'ORIGINAL',
+          formatChange: 'DOLBY_VISION_STRIPPED',
+        },
+        selected: 'Original',
+        mark: `Original: ${DOLBY_VISION_EXPLANATION}`,
+      },
+    ] as const)(
+      'shouldMarkTheChoiceWhoseOutputFellBackWithItsExplanation(picked: $picked, plays: $selected)',
+      async ({ picked, choices, selected, mark }) => {
+        const { user } = await watchAFallback(picked, choices)
+
+        const menu = await openQualityMenu(user)
+
+        expect(marksIn(menu)).toEqual([mark])
+        expect(within(menu).getByRole('menuitemradio', { checked: true }).textContent).toBe(
+          selected,
+        )
+      },
+    )
+
+    it('shouldReadTheExplanationOnceWithTheMarkedRowForAssistiveTechnology', async () => {
+      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      const menu = await openQualityMenu(user)
+
+      await user.keyboard('{ArrowUp}')
+
+      const row = within(menu).getByRole('menuitemradio', {
+        name: `Original. ${ORIGINAL_EXPLANATION}`,
+      })
+      expect(row).toHaveFocus()
+      expect(screen.getByText(ORIGINAL_EXPLANATION)).toHaveAttribute('aria-hidden', 'true')
+    })
+
+    it('shouldExplainTheMarkWhileKeyboardFocusIsOnTheMarkedRow', async () => {
+      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      await openQualityMenu(user)
+      expect(screen.queryByText(ORIGINAL_EXPLANATION)).not.toBeInTheDocument()
+
+      await user.keyboard('{ArrowUp}')
+      expect(screen.getByText(ORIGINAL_EXPLANATION)).toBeInTheDocument()
+
+      await user.keyboard('{ArrowDown}')
+      expect(screen.queryByText(ORIGINAL_EXPLANATION)).not.toBeInTheDocument()
+    })
+
+    it('shouldExplainTheMarkWhileThePointerHoversTheMarkedRow', async () => {
+      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      const menu = await openQualityMenu(user)
+      const row = within(menu).getByRole('menuitemradio', { name: /^Original/ })
+
+      await user.hover(row)
+      expect(screen.getByText(ORIGINAL_EXPLANATION)).toBeInTheDocument()
+
+      await user.unhover(row)
+      expect(screen.queryByText(ORIGINAL_EXPLANATION)).not.toBeInTheDocument()
+    })
+
+    it('shouldExplainTheMarkOnATapWithoutPickingItsChoice', async () => {
+      const { user, log } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      const menu = await openQualityMenu(user)
+      const row = within(menu).getByRole('menuitemradio', { name: /^Original/ })
+
+      tap(within(row).getByRole('img'))
+
+      expect(screen.getByText(ORIGINAL_EXPLANATION)).toBeInTheDocument()
+      expect(screen.getByRole('menu')).toBe(menu)
+      expect(log.filter((entry) => entry.startsWith('create'))).toEqual([
+        'create AUTO',
+        'create ORIGINAL',
+      ])
+    })
+
+    it('shouldStartOriginalAfreshWhenTheViewerPicksItAgainAfterAFallback', async () => {
+      const { user, log } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+
+      await pickQuality(user, `Original. ${ORIGINAL_EXPLANATION}`)
+
+      await attachedVideo(choiceStreamUrl(3))
+      expect(log.slice(-2)).toEqual(['destroy playback-2', 'create ORIGINAL'])
+    })
+
+    it('shouldKeepTheMarkBesideOriginalWhenTheViewerPicksAFixedQualityAfterAFallback', async () => {
+      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+
+      await pickQuality(user, '720p')
+      await attachedVideo(choiceStreamUrl(3))
+
+      const menu = await openQualityMenu(user)
+      expect(marksIn(menu)).toEqual([`Original: ${ORIGINAL_EXPLANATION}`])
+      expect(within(menu).getByRole('menuitemradio', { checked: true }).textContent).toBe('720p')
+    })
+
+    it('shouldClearTheMarkWhenThePickedOriginalPlaysWithoutAFallback', async () => {
+      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+
+      await pickQuality(user, `Original. ${ORIGINAL_EXPLANATION}`)
+      await attachedVideo(choiceStreamUrl(3))
+
+      expect(marksIn(await openQualityMenu(user))).toEqual([])
+    })
+
+    it('shouldForgetTheMarksWhenTheNextMediaFileStarts', async () => {
+      servePlaybackChoices({
+        playing: (requested) => (requested === 'ORIGINAL' ? 'AUTO' : requested),
+        formatChange: (requested) => (requested === 'ORIGINAL' ? 'STARTED_WITH_ENCODE' : null),
+      })
+      const { user } = renderWithProviders(<Harness />)
+      await attachedVideo(choiceStreamUrl(1))
+      await pickQuality(user, 'Original')
+      await attachedVideo(choiceStreamUrl(2))
+
+      await user.click(screen.getByRole('button', { name: 'Next' }))
+      await attachedVideo(choiceStreamUrl(3))
+
+      expect(marksIn(await openQualityMenu(user))).toEqual([])
     })
 
     it('shouldShowNoNoticeWhenAutoRecoversFromAFailedCopy', async () => {
