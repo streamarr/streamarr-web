@@ -5373,7 +5373,7 @@ describe('Player', () => {
     it('shouldAttachTheStreamAgainWhenAStreamThatStoppedBeforeTheRealEndRunsOutAfterASeek', async () => {
       const { video } = await playTheShortCopy({ namedOnAttach: false })
       playheadAt(video, REAL_END_SECONDS - 20)
-      answerTheNextSegmentWith503({ fatal: true })
+      timeOutTheNextSegment()
       hls.destroy.mockImplementation(() => video.load())
       // The viewer seeks back out of the buffer while the status check is on its way.
       stallAt(video, 600)
@@ -5392,13 +5392,13 @@ describe('Player', () => {
     it('shouldShowTheFailureWhenTheStreamAttachedAgainStopsBeforeItsFirstFrame', async () => {
       const { video } = await playTheShortCopy({ namedOnAttach: false })
       playheadAt(video, REAL_END_SECONDS - 20)
-      answerTheNextSegmentWith503({ fatal: true })
+      timeOutTheNextSegment()
       hls.destroy.mockImplementation(() => video.load())
       stallAt(video, 600)
       await waitFor(() => expect(hls.loadSource).toHaveBeenCalledTimes(2))
       loadMetadata(video)
 
-      answerTheNextSegmentWith503({ fatal: true })
+      timeOutTheNextSegment()
 
       expect(await screen.findByRole('alert')).toHaveTextContent("Playback couldn't start.")
       expect(hls.loadSource).toHaveBeenCalledTimes(2)
@@ -5407,7 +5407,7 @@ describe('Player', () => {
     it('shouldKeepAPausedViewerPausedWhenTheStreamThatStoppedAttachesAgainAtTheirSeek', async () => {
       const { video } = await playTheShortCopy({ namedOnAttach: false })
       playheadAt(video, REAL_END_SECONDS - 20)
-      answerTheNextSegmentWith503({ fatal: true })
+      timeOutTheNextSegment()
       hls.destroy.mockImplementation(() => video.load())
       act(() => video.pause())
       playheadAt(video, 600)
@@ -5421,16 +5421,30 @@ describe('Player', () => {
     })
 
     it.each([
-      { fatal: true, attachments: 2 },
-      { fatal: false, attachments: 1 },
+      {
+        learnedFrom: 'a held segment request that timed out',
+        learn: timeOutTheNextSegment,
+        attachments: 2,
+      },
+      {
+        learnedFrom: 'a stall',
+        learn: (video: HTMLVideoElement) => stallAt(video, REAL_END_SECONDS - 20),
+        attachments: 1,
+      },
+      {
+        // A 503 that came while the copy still ran, before the server knew the real end.
+        learnedFrom: 'a 503 that hls.js retries',
+        learn: () => answerTheNextSegmentWith503({ fatal: false }),
+        attachments: 1,
+      },
     ])(
-      'shouldAttachTheStreamAgainWhenTheViewerSeeksOutOfTheBufferAfterTheStatusCheckOnlyIfThe503WasFatal(fatal: $fatal)',
-      async ({ fatal, attachments }) => {
+      'shouldAttachTheStreamAgainWhenTheViewerSeeksOutOfTheBufferOnlyIfTheStreamStopped(real end learned from $learnedFrom)',
+      async ({ learn, attachments }) => {
         const { video } = await playTheShortCopy({ namedOnAttach: false })
         playheadAt(video, REAL_END_SECONDS - 20)
         setReadyState(video, HTMLMediaElement.HAVE_ENOUGH_DATA)
         vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-        answerTheNextSegmentWith503({ fatal })
+        learn(video)
         await act(async () => vi.advanceTimersByTimeAsync(30_000))
         hls.destroy.mockImplementation(() => video.load())
 
@@ -5485,7 +5499,7 @@ describe('Player', () => {
         }),
       )
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-      answerTheNextSegmentWith503({ fatal: true })
+      timeOutTheNextSegment()
 
       playheadAt(video, REAL_END_SECONDS)
       answered.resolve()
@@ -5570,7 +5584,7 @@ describe('Player', () => {
       const { video } = await playTheShortCopy({ namedOnAttach: false })
       playheadAt(video, REAL_END_SECONDS - 20)
       setReadyState(video, HTMLMediaElement.HAVE_ENOUGH_DATA)
-      answerTheNextSegmentWith503({ fatal: true })
+      timeOutTheNextSegment()
       // The seek waits for media past the real end, which never comes.
       Object.defineProperty(video, 'seeking', { value: true, configurable: true })
       stallAt(video, REAL_END_SECONDS + 5)
@@ -5579,13 +5593,13 @@ describe('Player', () => {
       expect(hls.loadSource).toHaveBeenCalledTimes(1)
     })
 
-    it('shouldLetASeekCloseToTheEndPlayWhenTheStatusCheckNamesTheEndDuringIt', async () => {
+    it('shouldLetASeekCloseToTheEndPlayWhenTheStatusNamesTheEndDuringIt', async () => {
       const { video } = await playTheShortCopy({ namedOnAttach: false })
       Object.defineProperty(video, 'seeking', { value: true, configurable: true })
-      stallAt(video, REAL_END_SECONDS - 3)
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
 
-      answerTheNextSegmentWith503({ fatal: false })
+      // The seek's own wait reads the status, which names the real end while the seek goes on.
+      stallAt(video, REAL_END_SECONDS - 3)
       await act(async () => vi.advanceTimersByTimeAsync(30_000))
 
       expect(video.paused).toBe(false)
@@ -5596,10 +5610,7 @@ describe('Player', () => {
 
     it.each([
       { failure: 'a fatal stream error', fail: raiseHlsFatalError },
-      {
-        failure: 'a fatal 503',
-        fail: () => answerTheNextSegmentWith503({ fatal: true }),
-      },
+      { failure: 'a held segment request that timed out', fail: timeOutTheNextSegment },
       { failure: 'a format failure', fail: refuseTheStreamsFormat },
     ])(
       'shouldAttachTheStreamAgainWhenTheViewerPlaysAfterAFailureEndedPlayback($failure)',
@@ -5634,7 +5645,6 @@ describe('Player', () => {
     it('shouldKeepALearnedRealEndWhenTheStoppedStreamAttachesAgain', async () => {
       const { video } = await playTheShortCopy({ namedOnAttach: false })
       playheadAt(video, REAL_END_SECONDS - 100)
-      answerTheNextSegmentWith503({ fatal: false })
       stallAt(video, REAL_END_SECONDS - 4)
       await waitFor(() => expect(video.paused).toBe(true))
       raiseHlsFatalError()
@@ -5658,7 +5668,7 @@ describe('Player', () => {
       )
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
 
-      answerTheNextSegmentWith503({ fatal: true })
+      timeOutTheNextSegment()
       await act(async () => vi.advanceTimersByTimeAsync(30_000))
 
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
