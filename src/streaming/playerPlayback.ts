@@ -591,14 +591,8 @@ function startSessionPlayback({
     id: string
   }) {
     while (current() && !check.controller.signal.aborted) {
-      const result = await client.query({
-        query: PlaybackSessionDocument,
-        variables: { id },
-        fetchPolicy: 'no-cache',
-        context: { fetchOptions: { signal: check.controller.signal } },
-      })
+      const playback = await readPlaybackSession(id, check.controller.signal)
       if (!current()) return
-      const playback = result.data?.playbackSession
       const attachedStream = attachedStreamIn(playback)
       const realEndOfStream = attachedStream?.mediaEndSeconds
       // The segments past a short copy's real end never come, and nothing replaces the stream.
@@ -663,21 +657,26 @@ function startSessionPlayback({
       !signal.aborted &&
       playback?.currentFormatAttempt.__typename === 'PendingPlaybackFormatAttempt'
     ) {
-      const result = await client.query({
-        query: PlaybackSessionDocument,
-        variables: { id: initial.id },
-        fetchPolicy: 'no-cache',
-        context: { fetchOptions: { signal } },
-      })
+      const next = await readPlaybackSession(initial.id, signal)
       if (!current()) {
         return undefined
       }
-      playback = result.data?.playbackSession
+      playback = next
       if (playback?.currentFormatAttempt.__typename === 'PendingPlaybackFormatAttempt') {
         await waitForPlaybackStatus(signal)
       }
     }
     return playback
+  }
+
+  async function readPlaybackSession(id: string, signal: AbortSignal) {
+    const result = await client.query({
+      query: PlaybackSessionDocument,
+      variables: { id },
+      fetchPolicy: 'no-cache',
+      context: { fetchOptions: { signal } },
+    })
+    return result.data?.playbackSession
   }
 
   function showFailure(message: string) {
