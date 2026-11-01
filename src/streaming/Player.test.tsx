@@ -3835,16 +3835,29 @@ describe('Player', () => {
     })
 
     it.each([
-      { playing: 'AUTO', name: 'Quality: Auto · 720p', shown: 'Auto · 720p' },
-      { playing: 'ORIGINAL', name: 'Quality: Original · 720p', shown: 'Original · 720p' },
-      { playing: 'HIGH_720P', name: 'Quality: 720p', shown: '720p' },
-      { playing: 'EIGHT_K', name: 'Quality', shown: '' },
+      { picked: null, plays: 'AUTO', name: 'Quality: Auto · 720p', shown: 'Auto · 720p' },
+      {
+        picked: 'Original',
+        plays: 'ORIGINAL',
+        name: 'Quality: Original · 720p',
+        shown: 'Original · 720p',
+      },
+      { picked: '720p', plays: 'HIGH_720P', name: 'Quality: 720p', shown: '720p' },
+      { picked: 'Original', plays: 'EIGHT_K', name: 'Quality', shown: '' },
     ])(
-      'shouldShowThePlayingChoiceOnTheQualityChipWithTheHeightItsNameLacks($playing)',
-      async ({ playing, name, shown }) => {
-        servePlaybackChoices({ playing: () => playing as VideoQuality })
-        renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+      'shouldShowThePlayingChoiceOnTheQualityChipWithTheHeightItsNameLacks($plays)',
+      async ({ picked, plays, name, shown }) => {
+        servePlaybackChoices({
+          playing: (requested) => (requested === 'AUTO' ? 'AUTO' : (plays as VideoQuality)),
+        })
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
         const video = await attachedVideo(choiceStreamUrl(1))
+        if (picked) {
+          await pickQuality(user, picked)
+          await attachedVideo(choiceStreamUrl(2))
+        }
 
         Object.defineProperty(video, 'videoHeight', { value: 720, configurable: true })
         fireEvent(video, new Event('resize'))
