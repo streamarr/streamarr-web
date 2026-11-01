@@ -276,6 +276,8 @@ function startSessionPlayback({
       },
       // A seek waits for its own data, which can still come; only a stall in playback is an end.
       onWaiting: (element) => {
+        // The browser queues the event, so the media can have come by the time it fires.
+        if (element.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) return
         if (!element.seeking && tryEndAtRealEnd()) return
         if (sourceStopped) restartStoppedSource()
       },

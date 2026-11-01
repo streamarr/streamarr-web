@@ -5360,6 +5360,17 @@ describe('Player', () => {
       expect(hls.destroy).not.toHaveBeenCalled()
     })
 
+    it('shouldPlayOnWhenAWaitingEventArrivesAfterTheMediaHasCome', async () => {
+      const { video } = await playTheShortCopy()
+      playheadAt(video, REAL_END_SECONDS - 3)
+      // The browser queued the event while the element waited; the data came before it fired.
+      setReadyState(video, HTMLMediaElement.HAVE_ENOUGH_DATA)
+
+      fireEvent(video, new Event('waiting'))
+
+      expect(video.paused).toBe(false)
+    })
+
     it('shouldLetASeekCloseToTheEndPlayWhenTheStatusCheckNamesTheEndDuringIt', async () => {
       const { video } = await playTheShortCopy({ namedOnAttach: false })
       Object.defineProperty(video, 'seeking', { value: true, configurable: true })
