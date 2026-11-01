@@ -82,16 +82,20 @@ export function CaretPopover<Id>({
   const reservedRoom = useRef(0)
   const headingId = useId()
 
-  // The explanation's side depends on where the surface lands, so both move together.
+  // The explanation's side depends on where the surface lands, so both move together. The height
+  // limit is written once, at its final value: an interim taller limit would clamp the rows'
+  // scroll position, and the shorter one would not restore it.
   useLayoutEffect(() => {
     const place = () => {
-      placeAbove(surfaceRef.current, anchorRef.current)
+      const surface = surfaceRef.current
+      placeAbove(surface, anchorRef.current)
       reservedRoom.current = placeExplanation({
         explanation: explanationRef.current,
         row: explainedIndex === null ? undefined : rowsOf(menuRef.current)[explainedIndex],
-        surface: surfaceRef.current,
+        surface,
         reservedRoom: reservedRoom.current,
       })
+      limitHeight(surface, reservedRoom.current)
     }
     place()
     window.addEventListener('resize', place)
@@ -270,9 +274,8 @@ function longestCautionOf<Id>(options: readonly PopoverOption<Id>[]): string | u
 }
 
 // Level with its row on the side away from the screen edge, beside the menu so it covers no
-// other row, or above the menu where the screen leaves no room beside it. Above the menu, the
-// rows scroll in less height so the explanation stays on screen; returns the room kept for it,
-// which only grows while the menu is open.
+// other row, or above the menu where the screen leaves no room beside it. Returns the room the
+// menu keeps above itself for it, which only grows while it stays above.
 function placeExplanation({
   explanation,
   row,
@@ -290,13 +293,21 @@ function placeExplanation({
   if (surface.offsetLeft < EXPLANATION_MAX_WIDTH_PX + EXPLANATION_GAP_PX) {
     explanation.dataset.side = 'above'
     explanation.style.top = ''
-    const room = Math.max(reservedRoom, explanation.offsetHeight + EXPLANATION_GAP_PX)
-    surface.style.maxHeight = `${surface.getBoundingClientRect().bottom - SCREEN_EDGE_GAP_PX - room}px`
-    return room
+    return Math.max(reservedRoom, explanation.offsetHeight + EXPLANATION_GAP_PX)
   }
   explanation.dataset.side = 'start'
   explanation.style.top = row ? `${row.offsetTop - (row.parentElement?.scrollTop ?? 0)}px` : ''
-  return reservedRoom
+  return 0
+}
+
+// The rows scroll rather than rise closer to the top of the screen than the gap, plus the room
+// kept above them.
+function limitHeight(surface: HTMLElement | null, roomAbove: number) {
+  if (!surface) {
+    return
+  }
+  const limit = surface.getBoundingClientRect().bottom - SCREEN_EDGE_GAP_PX - roomAbove
+  surface.style.maxHeight = `${limit}px`
 }
 
 function placeAbove(surface: HTMLElement | null, anchor: HTMLElement | null) {
@@ -311,5 +322,4 @@ function placeAbove(surface: HTMLElement | null, anchor: HTMLElement | null) {
   const left = Math.min(Math.max(caretX - surface.offsetWidth / 2, 0), furthestLeft)
   surface.style.left = `${left}px`
   surface.style.setProperty('--caret-left', `${caretX - left - surface.clientLeft}px`)
-  surface.style.maxHeight = `${surface.getBoundingClientRect().bottom - SCREEN_EDGE_GAP_PX}px`
 }
