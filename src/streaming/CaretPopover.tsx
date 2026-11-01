@@ -268,6 +268,9 @@ function placeExplanation({
   if (surface.offsetLeft < EXPLANATION_MAX_WIDTH_PX + EXPLANATION_GAP_PX) {
     explanation.dataset.side = 'above'
     explanation.style.top = ''
+    // The rows scroll in less height, so the explanation above them stays on screen too.
+    const room = explanation.offsetHeight + EXPLANATION_GAP_PX
+    surface.style.maxHeight = `${surface.getBoundingClientRect().bottom - SCREEN_EDGE_GAP_PX - room}px`
     return
   }
   explanation.dataset.side = 'start'
