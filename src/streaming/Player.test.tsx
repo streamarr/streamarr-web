@@ -1,5 +1,6 @@
 import {
   OFFERED_FOR_FULL_HD,
+  type PlaybackChoices,
   readyPlaybackSession,
   destroyedPlaybackSession,
 } from '../test/playbackSession'
@@ -32,6 +33,8 @@ import { server } from '../test/server'
 import type {
   ClientCapabilityDeclarationInput,
   CreatePlaybackSessionInput,
+  PlaybackFormatChange,
+  ReportPlaybackFormatFailureInput,
   VideoQuality,
 } from '../graphql/generated/graphql'
 import type { PlaybackPlatform } from './playbackCapabilities'
@@ -41,6 +44,24 @@ vi.mock('hls.js', async () => (await import('../test/fakeHls')).hlsModule)
 
 const withoutDecodingInfo = () => playbackPlatformFixture()
 const STREAM_URL = '/api/stream/abcd/multivariant.m3u8?t=playback-token'
+const CHANGED_TO_AUTO_NOTICE =
+  "This video couldn't play in its original form, so a converted version is playing. " +
+  'Quality is now set to Auto. To choose another quality, open the Quality menu.'
+const CONVERTED_NOTICE =
+  "This video couldn't play in its original form, so a converted version is playing. " +
+  'To choose another quality, open the Quality menu.'
+const DOLBY_VISION_NOTICE =
+  "This video couldn't play in Dolby Vision, so the HDR version is playing."
+const ORIGINAL_CHANGED_TO_AUTO: Partial<PlaybackChoices> = {
+  requestedChoice: 'ORIGINAL',
+  playbackChoice: 'AUTO',
+  formatChange: 'COPY_FAILED',
+}
+const FIXED_QUALITY_CONVERTED: Partial<PlaybackChoices> = {
+  requestedChoice: 'HIGH_720P',
+  playbackChoice: 'HIGH_720P',
+  formatChange: 'COPY_FAILED',
+}
 const SESSION = { id: 'sess-1', streamUrl: STREAM_URL, transcodeMode: 'REMUX' } as const
 const DECLARATION_REFUSAL = 'capabilities.video[0].maxWidth must be above zero.'
 const CAPACITY_REFUSAL = 'Every transcode slot is busy. Try again in a moment.'
@@ -116,13 +137,15 @@ function serveSessionRecordingDeclarations(): ClientCapabilityDeclarationInput[]
 }
 
 // Each creation answers a new playback session that names the choice asked for, Auto when none
-// was, or the one `playing` says the server plays instead. Every creation and destruction joins
-// the log.
+// was, or the one `playing` says the server plays instead, with the format change `formatChange`
+// names. Every creation and destruction joins the log.
 function servePlaybackChoices({
   playing = (requested) => requested,
+  formatChange = () => null,
   offered = OFFERED_FOR_FULL_HD,
 }: {
   playing?: (requested: VideoQuality) => VideoQuality
+  formatChange?: (requested: VideoQuality) => PlaybackFormatChange | null
   offered?: VideoQuality[]
 } = {}): string[] {
   const log: string[] = []
@@ -144,6 +167,7 @@ function servePlaybackChoices({
               },
               requestedChoice: requested,
               playbackChoice: playing(requested),
+              formatChange: formatChange(requested),
               offeredChoices: offered,
             }),
             userErrors: [],
@@ -163,6 +187,53 @@ function servePlaybackChoices({
 
 function choiceStreamUrl(creation: number) {
   return `/api/stream/choice-${creation}/multivariant.m3u8?t=playback-token`
+}
+
+function replacementStream(replacement: number) {
+  return {
+    ...SESSION,
+    id: `sess-replacement-${replacement}`,
+    streamUrl: `/api/stream/replacement-${replacement}/multivariant.m3u8?t=playback-token`,
+  }
+}
+
+// The format failure report answers with the attempt that replaces the refused stream, already
+// Ready on `stream`, and with the choices the server names for it.
+function replaceTheRefusedStream(choices: Partial<PlaybackChoices>, stream = replacementStream(1)) {
+  server.use(
+    graphql.mutation('ReportPlaybackFormatFailure', ({ variables }) => {
+      const { playbackSessionId } = (variables as { input: ReportPlaybackFormatFailureInput }).input
+      return HttpResponse.json({
+        data: {
+          reportPlaybackFormatFailure: {
+            playbackSession: readyPlaybackSession({
+              id: String(playbackSessionId),
+              streamSession: stream,
+              ...choices,
+            }),
+            userErrors: [],
+          },
+        },
+      })
+    }),
+  )
+}
+
+// What a player raises when the browser cannot play the stream's codecs, on the latest stream.
+function refuseTheStreamsFormat() {
+  const onError = hls.on.mock.calls.findLast(([event]) => event === 'hlsError')?.[1]
+  expect(onError).toBeTypeOf('function')
+  act(() =>
+    onError?.('hlsError', {
+      fatal: true,
+      type: 'mediaError',
+      details: 'manifestIncompatibleCodecsError',
+    }),
+  )
+}
+
+function notice(): HTMLElement {
+  return screen.getByRole('status')
 }
 
 function codecFamilies(declarations: readonly ClientCapabilityDeclarationInput[]) {
@@ -4916,6 +4987,224 @@ describe('Player', () => {
         'create HIGH_720P',
         'create AUTO',
       ])
+      expect(screen.getByRole('button', { name: 'Quality: Auto' })).toBeInTheDocument()
+    })
+  })
+  describe('format changes', () => {
+    it('shouldSelectAutoAndShowTheNoticeWhenOriginalsCopyFallsBackToAnEncode', async () => {
+      servePlaybackChoices()
+      const replacement = replacementStream(1)
+      server.use(
+        graphql.mutation('ReportPlaybackFormatFailure', () =>
+          HttpResponse.json({
+            data: {
+              reportPlaybackFormatFailure: {
+                playbackSession: {
+                  ...readyPlaybackSession({ id: 'playback-2', streamSession: SESSION }),
+                  ...ORIGINAL_CHANGED_TO_AUTO,
+                  currentFormatAttempt: {
+                    __typename: 'PendingPlaybackFormatAttempt',
+                    streamSessionId: replacement.id,
+                  },
+                },
+                userErrors: [],
+              },
+            },
+          }),
+        ),
+        graphql.query('PlaybackSession', () =>
+          HttpResponse.json({
+            data: {
+              playbackSession: readyPlaybackSession({
+                id: 'playback-2',
+                streamSession: replacement,
+                ...ORIGINAL_CHANGED_TO_AUTO,
+              }),
+            },
+          }),
+        ),
+      )
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await attachedVideo(choiceStreamUrl(1))
+      await pickQuality(user, 'Original')
+      await attachedVideo(choiceStreamUrl(2))
+      expect(notice()).toBeEmptyDOMElement()
+
+      refuseTheStreamsFormat()
+
+      await attachedVideo(replacement.streamUrl)
+      expect(notice().textContent).toBe(CHANGED_TO_AUTO_NOTICE)
+      expect(screen.getByRole('button', { name: 'Quality: Auto' })).toBeInTheDocument()
+    })
+
+    it('shouldShowTheNoticeAndSelectAutoWhenOriginalStartsWithAnEncode', async () => {
+      servePlaybackChoices({
+        playing: (requested) => (requested === 'ORIGINAL' ? 'AUTO' : requested),
+        formatChange: (requested) => (requested === 'ORIGINAL' ? 'STARTED_WITH_ENCODE' : null),
+      })
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await attachedVideo(choiceStreamUrl(1))
+
+      await pickQuality(user, 'Original')
+
+      await attachedVideo(choiceStreamUrl(2))
+      expect(notice().textContent).toBe(CHANGED_TO_AUTO_NOTICE)
+      expect(screen.getByRole('button', { name: 'Quality: Auto' })).toBeInTheDocument()
+    })
+
+    it('shouldKeepTheFixedQualityAndOmitTheAutoSentenceWhenItsCopyFallsBack', async () => {
+      servePlaybackChoices()
+      replaceTheRefusedStream(FIXED_QUALITY_CONVERTED)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await attachedVideo(choiceStreamUrl(1))
+      await pickQuality(user, '720p')
+      await attachedVideo(choiceStreamUrl(2))
+
+      refuseTheStreamsFormat()
+
+      await attachedVideo(replacementStream(1).streamUrl)
+      expect(notice().textContent).toBe(CONVERTED_NOTICE)
+      expect(screen.getByRole('button', { name: 'Quality: 720p' })).toBeInTheDocument()
+    })
+
+    it.each([
+      { picked: 'Original', requested: 'ORIGINAL' },
+      { picked: '720p', requested: 'HIGH_720P' },
+    ] as const)(
+      'shouldShowTheDolbyVisionNoticeAndKeepTheSelectionWhenDolbyVisionIsStripped(picked: $picked)',
+      async ({ picked, requested }) => {
+        servePlaybackChoices()
+        replaceTheRefusedStream({
+          requestedChoice: requested,
+          playbackChoice: requested,
+          formatChange: 'DOLBY_VISION_STRIPPED',
+        })
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        await attachedVideo(choiceStreamUrl(1))
+        await pickQuality(user, picked)
+        await attachedVideo(choiceStreamUrl(2))
+
+        refuseTheStreamsFormat()
+
+        await attachedVideo(replacementStream(1).streamUrl)
+        expect(notice().textContent).toBe(DOLBY_VISION_NOTICE)
+        expect(screen.getByRole('button', { name: `Quality: ${picked}` })).toBeInTheDocument()
+      },
+    )
+
+    it('shouldHideTheNoticeAfterSixSecondsWithoutPausingPlayback', async () => {
+      servePlaybackChoices()
+      replaceTheRefusedStream(FIXED_QUALITY_CONVERTED)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await attachedVideo(choiceStreamUrl(1))
+      await pickQuality(user, '720p')
+      const video = await attachedVideo(choiceStreamUrl(2))
+      loadMetadata(video)
+      hls.destroy.mockImplementation(() => video.load())
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      refuseTheStreamsFormat()
+      await attachedVideo(replacementStream(1).streamUrl)
+      loadMetadata(video)
+      expect(notice().textContent).toBe(CONVERTED_NOTICE)
+
+      await act(async () => vi.advanceTimersByTimeAsync(5_900))
+      expect(notice().textContent).toBe(CONVERTED_NOTICE)
+      await act(async () => vi.advanceTimersByTimeAsync(100))
+      expect(notice()).toBeEmptyDOMElement()
+      expect(video.paused).toBe(false)
+    })
+
+    it('shouldShowTheNoticeOnceWhenTheSameChangeMovesToAnotherStream', async () => {
+      servePlaybackChoices()
+      replaceTheRefusedStream(ORIGINAL_CHANGED_TO_AUTO)
+      server.use(
+        graphql.query('PlaybackSession', () =>
+          HttpResponse.json({
+            data: {
+              playbackSession: readyPlaybackSession({
+                id: 'playback-2',
+                streamSession: replacementStream(2),
+                ...ORIGINAL_CHANGED_TO_AUTO,
+              }),
+            },
+          }),
+        ),
+      )
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await attachedVideo(choiceStreamUrl(1))
+      await pickQuality(user, 'Original')
+      await attachedVideo(choiceStreamUrl(2))
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      refuseTheStreamsFormat()
+      await attachedVideo(replacementStream(1).streamUrl)
+      await act(async () => vi.advanceTimersByTimeAsync(6_000))
+      expect(notice()).toBeEmptyDOMElement()
+
+      const onError = hls.on.mock.calls.findLast(([event]) => event === 'hlsError')?.[1]
+      act(() =>
+        onError?.('hlsError', { fatal: false, type: 'networkError', response: { code: 503 } }),
+      )
+
+      await attachedVideo(replacementStream(2).streamUrl)
+      expect(notice()).toBeEmptyDOMElement()
+    })
+
+    it('shouldReplaceTheNoticeAndStartItsTimeAgainWhenTheCopyWithoutDolbyVisionAlsoFallsBack', async () => {
+      servePlaybackChoices()
+      replaceTheRefusedStream({
+        requestedChoice: 'ORIGINAL',
+        playbackChoice: 'ORIGINAL',
+        formatChange: 'DOLBY_VISION_STRIPPED',
+      })
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await attachedVideo(choiceStreamUrl(1))
+      await pickQuality(user, 'Original')
+      await attachedVideo(choiceStreamUrl(2))
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      refuseTheStreamsFormat()
+      await attachedVideo(replacementStream(1).streamUrl)
+      expect(notice().textContent).toBe(DOLBY_VISION_NOTICE)
+      await act(async () => vi.advanceTimersByTimeAsync(4_000))
+      replaceTheRefusedStream(ORIGINAL_CHANGED_TO_AUTO, replacementStream(2))
+
+      refuseTheStreamsFormat()
+      await attachedVideo(replacementStream(2).streamUrl)
+
+      expect(notice().textContent).toBe(CHANGED_TO_AUTO_NOTICE)
+      await act(async () => vi.advanceTimersByTimeAsync(5_900))
+      expect(notice().textContent).toBe(CHANGED_TO_AUTO_NOTICE)
+      expect(screen.getByRole('button', { name: 'Quality: Auto' })).toBeInTheDocument()
+    })
+
+    it('shouldShowNoNoticeWhenAutoRecoversFromAFailedCopy', async () => {
+      servePlaybackChoices()
+      replaceTheRefusedStream({
+        requestedChoice: 'AUTO',
+        playbackChoice: 'AUTO',
+        formatChange: null,
+      })
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+      await attachedVideo(choiceStreamUrl(1))
+
+      refuseTheStreamsFormat()
+
+      await attachedVideo(replacementStream(1).streamUrl)
+      expect(notice()).toBeEmptyDOMElement()
       expect(screen.getByRole('button', { name: 'Quality: Auto' })).toBeInTheDocument()
     })
   })

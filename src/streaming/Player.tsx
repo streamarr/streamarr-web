@@ -5,6 +5,7 @@ import { CreatePlaybackSessionDocument, type VideoQuality } from '../graphql/gen
 import { DetailBackButton } from '../media/DetailBack'
 import focusStyles from '../styles/focus.module.css'
 import { BufferingRing } from './BufferingRing'
+import { PlaybackNotice } from './PlaybackNotice'
 import { declarePlaybackCapabilities, type PlaybackPlatform } from './playbackCapabilities'
 import styles from './Player.module.css'
 import {
@@ -20,6 +21,7 @@ import {
   type SourcePhase,
 } from './playerPlayback'
 import { useIdle } from './useIdle'
+import { usePlaybackFallbacks } from './usePlaybackFallbacks'
 import { useStreamTracks } from './useStreamTracks'
 import { useVideoState } from './useVideoState'
 
@@ -89,6 +91,7 @@ export function Player({
   if (picker !== openPicker) {
     setPicker(null)
   }
+  const { notice, followPlaybackSession } = usePlaybackFallbacks()
   const videoState = useVideoState(videoRef)
   const controlsHeld = videoState.paused || sourcePhase.at === 'failed' || openPicker !== null
   const idle = useIdle(controlsHeld, [controlsRef, backRef])
@@ -99,6 +102,7 @@ export function Player({
       return undefined
     }
     setSourcePhase(STARTING)
+    const followPlayingChoices = followPlaybackSession()
 
     const playback = startPlayerPlayback({
       video,
@@ -112,11 +116,24 @@ export function Player({
         }),
       startPositionSeconds,
       resumeFrom: choice.resumeFrom,
-      onSourcePhase: setSourcePhase,
+      onSourcePhase: (phase) => {
+        setSourcePhase(phase)
+        if (phase.at === 'attached') {
+          followPlayingChoices(phase.qualities)
+        }
+      },
     })
     playbackRef.current = playback
     return playback.stop
-  }, [mediaFileId, startPositionSeconds, createPlaybackSession, client, playbackPlatform, choice])
+  }, [
+    mediaFileId,
+    startPositionSeconds,
+    createPlaybackSession,
+    client,
+    playbackPlatform,
+    choice,
+    followPlaybackSession,
+  ])
 
   function chooseQuality(picked: VideoQuality) {
     const playback = playbackRef.current
@@ -152,6 +169,7 @@ export function Player({
         <div ref={backRef} className={`${styles.back} ${styles.chrome}`}>
           <DetailBackButton />
         </div>
+        <PlaybackNotice notice={notice} />
       </div>
       <PlayerControls
         ref={controlsRef}

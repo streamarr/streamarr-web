@@ -9,7 +9,8 @@ type ReadyAttempt = Extract<
   { __typename: 'ReadyPlaybackFormatAttempt' }
 >
 type StreamSession = ReadyAttempt['streamSession']
-type PlaybackChoices = Pick<
+/** The fields that say which playback choice was asked for, which plays, and why they differ. */
+export type PlaybackChoices = Pick<
   PlaybackSessionFieldsFragment,
   'requestedChoice' | 'playbackChoice' | 'formatChange' | 'offeredChoices'
 >
