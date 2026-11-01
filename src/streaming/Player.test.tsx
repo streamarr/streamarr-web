@@ -5204,6 +5204,34 @@ describe('Player', () => {
       expect(hls.destroy).not.toHaveBeenCalled()
     })
 
+    it('shouldEndAtTheRealEndThatTheServerAnswersAFormatFailureReportWith', async () => {
+      const shortStream = { ...SESSION, mediaEndSeconds: REAL_END_SECONDS }
+      server.use(
+        graphql.mutation('ReportPlaybackFormatFailure', () =>
+          HttpResponse.json({
+            data: {
+              reportPlaybackFormatFailure: {
+                playbackSession: readyPlaybackSession({ streamSession: shortStream }),
+                userErrors: [],
+              },
+            },
+          }),
+        ),
+      )
+      const { video } = await playTheShortCopy({ namedOnAttach: false })
+      playheadAt(video, REAL_END_SECONDS - 30)
+      hls.destroy.mockImplementation(() => video.load())
+
+      refuseTheStreamsFormat()
+      await waitFor(() => expect(hls.loadSource).toHaveBeenCalledTimes(2))
+      loadMetadata(video)
+      playheadAt(video, REAL_END_SECONDS)
+
+      expect(video.paused).toBe(true)
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(notice()).toBeEmptyDOMElement()
+    })
+
     it('shouldPlayFromTheStartWhenTheViewerPlaysAgainAfterTheRealEnd', async () => {
       const { video } = await playTheShortCopy()
       stallAt(video, REAL_END_SECONDS - 2)
