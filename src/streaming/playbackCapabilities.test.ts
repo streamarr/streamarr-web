@@ -84,8 +84,10 @@ function isWithinBitrateMaximum(
   const level = codecOf(configuration)
     .split('.')
     .find((part) => part in bitrates)
+  // A refusal, not a throw: the declaration counts a throwing probe as unanswered, and an
+  // unanswered tier blocks nothing, so a malformed codec string would pass unseen.
   if (level === undefined) {
-    throw new Error(`No bitrate maximum for ${codecOf(configuration)}`)
+    return false
   }
   return (configuration.video?.bitrate ?? 0) <= bitrates[level]
 }
