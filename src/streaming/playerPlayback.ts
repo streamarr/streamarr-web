@@ -262,8 +262,9 @@ function startSessionPlayback({
         lastKnownPosition = element.currentTime
         report('PAUSED', element.currentTime)
       },
-      onWaiting: () => {
-        tryEndAtRealEnd()
+      // A seek waits for its own data, which can still come; only a stall in playback is an end.
+      onWaiting: (element) => {
+        if (!element.seeking) tryEndAtRealEnd()
       },
       onEnded: (element) => reportEnd(element.currentTime),
     })

@@ -5142,6 +5142,15 @@ describe('Player', () => {
       expect(video.paused).toBe(false)
     })
 
+    it('shouldPlayTheLastSecondsWhenTheViewerSeeksCloseToTheRealEnd', async () => {
+      const { video } = await playTheShortCopy()
+      Object.defineProperty(video, 'seeking', { value: true, configurable: true })
+
+      stallAt(video, REAL_END_SECONDS - 3)
+
+      expect(video.paused).toBe(false)
+    })
+
     it('shouldShowNoFailureWhenSegmentsPastTheRealEndAnswer503', async () => {
       const { video } = await playTheShortCopy()
       playheadAt(video, REAL_END_SECONDS - 20)
