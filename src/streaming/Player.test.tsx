@@ -4732,6 +4732,28 @@ describe('Player', () => {
       },
     )
 
+    it('shouldStayPausedWhenTheViewerPicksAgainAfterPickingWhilePaused', async () => {
+      servePlaybackChoices()
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      const video = await attachedVideo(choiceStreamUrl(1))
+      loadMetadata(video)
+      playheadAt(video, 73.25)
+      pressPause(video)
+      hls.destroy.mockImplementation(() => video.load())
+      await pickQuality(user, 'Original')
+      await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(choiceStreamUrl(2)))
+      loadMetadata(video)
+
+      await pickQuality(user, '720p')
+
+      await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(choiceStreamUrl(3)))
+      loadMetadata(video)
+      expect(video.currentTime).toBe(73.25)
+      expect(video.paused).toBe(true)
+    })
+
     it.each([
       { picked: 'Original', plays: 'AUTO', shown: 'Auto' },
       { picked: 'Original', plays: 'ORIGINAL', shown: 'Original' },
