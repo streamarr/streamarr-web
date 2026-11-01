@@ -595,15 +595,7 @@ describe('Player', () => {
         return HttpResponse.json({
           data: {
             createPlaybackSession: {
-              playbackSession: {
-                id: 'playback-1',
-                formatAttemptCount: 1,
-                maximumFormatAttempts: 3,
-                currentFormatAttempt: {
-                  __typename: 'ReadyPlaybackFormatAttempt',
-                  streamSession: SESSION,
-                },
-              },
+              playbackSession: readyPlaybackSession({ id: 'playback-1', streamSession: SESSION }),
               userErrors: [],
             },
           },

@@ -2,6 +2,10 @@ fragment PlaybackSessionFields on PlaybackSession {
   id
   formatAttemptCount
   maximumFormatAttempts
+  requestedChoice
+  playbackChoice
+  formatChange
+  offeredChoices
   currentFormatAttempt {
     __typename
     ... on PendingPlaybackFormatAttempt {
@@ -12,6 +16,8 @@ fragment PlaybackSessionFields on PlaybackSession {
         id
         streamUrl
         transcodeMode
+        videoRange
+        mediaEndSeconds
       }
     }
     ... on FailedPlaybackFormatAttempt {

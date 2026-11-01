@@ -115,13 +115,19 @@ const PLAYER_OPERATIONS: Record<string, unknown> = {
       playbackSession: {
         id: 'playback-1',
         formatAttemptCount: 1,
-        maximumFormatAttempts: 3,
+        maximumFormatAttempts: 4,
+        requestedChoice: 'AUTO',
+        playbackChoice: 'AUTO',
+        formatChange: null,
+        offeredChoices: ['ORIGINAL', 'AUTO', 'HIGH_720P', 'MEDIUM_480P', 'LOW_360P'],
         currentFormatAttempt: {
           __typename: 'ReadyPlaybackFormatAttempt',
           streamSession: {
             id: 'sess-1',
             streamUrl: '/api/stream/e2e/multivariant.m3u8?t=playback-token',
             transcodeMode: 'REMUX',
+            videoRange: 'SDR',
+            mediaEndSeconds: null,
           },
         },
       },
