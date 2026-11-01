@@ -886,12 +886,23 @@ test('on a small phone held sideways hovering the marked row keeps the menu stil
   const original = page.getByRole('menuitemradio', { name: /^Original/ })
 
   await original.hover()
-  const hovered = (await original.boundingBox()) as Box
-  // A row that moved from under the pointer would end its hover and move back, again and again.
-  await page.waitForTimeout(300)
-
   await expect(page.getByText(ORIGINAL_EXPLANATION)).toBeVisible()
-  expect(((await original.boundingBox()) as Box).y).toBe(hovered.y)
+
+  // A row that moved from under the pointer would end its hover and move back, frame after frame.
+  const rowTops = await original.evaluate(
+    (row) =>
+      new Promise<number[]>((resolve) => {
+        const tops: number[] = []
+        const sample = () => {
+          tops.push(row.getBoundingClientRect().top)
+          if (tops.length < 30) requestAnimationFrame(sample)
+          else resolve(tops)
+        }
+        requestAnimationFrame(sample)
+      }),
+  )
+  expect(new Set(rowTops).size).toBe(1)
+  await expect(page.getByText(ORIGINAL_EXPLANATION)).toBeVisible()
 })
 
 test('a refusal keeps Retry above the control bar on a phone held sideways', async ({
