@@ -5248,6 +5248,20 @@ describe('Player', () => {
       },
     )
 
+    it('shouldReplaceTheMarksExplanationWhenTheCopyWithoutDolbyVisionAlsoFallsBack', async () => {
+      const { user } = await watchAFallback('Original', {
+        requestedChoice: 'ORIGINAL',
+        playbackChoice: 'ORIGINAL',
+        formatChange: 'DOLBY_VISION_STRIPPED',
+      })
+      replaceTheRefusedStream(ORIGINAL_CHANGED_TO_AUTO, replacementStream(2))
+
+      refuseTheStreamsFormat()
+      await showingVideo(replacementStream(2).streamUrl)
+
+      expect(marksIn(await openQualityMenu(user))).toEqual([`Original: ${ORIGINAL_EXPLANATION}`])
+    })
+
     it('shouldReadTheExplanationOnceWithTheMarkedRowForAssistiveTechnology', async () => {
       const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
       const menu = await openQualityMenu(user)
