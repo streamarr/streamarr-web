@@ -5314,6 +5314,30 @@ describe('Player', () => {
       ])
     })
 
+    it.each([
+      {
+        way: 'a mouse click on the mark',
+        press: (row: HTMLElement, user: UserEvent) => user.click(within(row).getByRole('img')),
+      },
+      { way: 'a tap beside the mark', press: (row: HTMLElement) => tap(row) },
+      {
+        way: 'the keyboard after a tap on the mark',
+        press: async (row: HTMLElement, user: UserEvent) => {
+          tap(within(row).getByRole('img'))
+          row.focus()
+          await user.keyboard('{Enter}')
+        },
+      },
+    ])('shouldPickTheMarkedChoiceOn($way)', async ({ press }) => {
+      const { user, log } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      const menu = await openQualityMenu(user)
+
+      await press(within(menu).getByRole('menuitemradio', { name: /^Original/ }), user)
+
+      await showingVideo(choiceStreamUrl(3))
+      expect(log.slice(-2)).toEqual(['destroy playback-2', 'create ORIGINAL'])
+    })
+
     it('shouldStartOriginalAfreshWhenTheViewerPicksItAgainAfterAFallback', async () => {
       const { user, log } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
 
