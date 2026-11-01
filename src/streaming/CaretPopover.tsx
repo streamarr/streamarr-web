@@ -36,6 +36,7 @@ export interface PopoverOption<Id> {
 }
 
 // Which row's caution shows: the hovered row first, then a tapped mark, then the focused row.
+// Focus moving to a row clears the other two.
 interface ExplainedRows {
   hovered: number | null
   tapped: number | null
@@ -139,8 +140,13 @@ export function CaretPopover<Id>({
     onChoose(option)
   }
 
-  function explain(kind: keyof ExplainedRows, index: number) {
-    setExplainedRows((rows) => ({ ...rows, [kind]: index }))
+  // Moving focus supersedes whatever the pointer last explained, even where it still rests.
+  function explainFocused(index: number) {
+    setExplainedRows({ hovered: null, tapped: null, focused: index })
+  }
+
+  function explainHovered(index: number) {
+    setExplainedRows((rows) => ({ ...rows, hovered: index }))
   }
 
   function stopHovering(index: number) {
@@ -187,9 +193,9 @@ export function CaretPopover<Id>({
               onClick={() => choose(option.id)}
               onFocus={(event) => {
                 focusedRow.current = { row: event.currentTarget, index }
-                explain('focused', index)
+                explainFocused(index)
               }}
-              onPointerEnter={() => explain('hovered', index)}
+              onPointerEnter={() => explainHovered(index)}
               onPointerLeave={() => stopHovering(index)}
               onKeyDown={handleRowKey}
             >

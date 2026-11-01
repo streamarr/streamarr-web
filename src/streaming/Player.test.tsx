@@ -5419,6 +5419,16 @@ describe('Player', () => {
       expect(marksIn(await openQualityMenu(user))).toEqual([])
     })
 
+    it('shouldExplainTheFocusedMarkWhileThePointerRestsOnAnUnmarkedRow', async () => {
+      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      const menu = await openQualityMenu(user)
+      await user.hover(within(menu).getByRole('menuitemradio', { name: 'Auto' }))
+
+      await user.keyboard('{ArrowUp}')
+
+      expect(screen.getByText(ORIGINAL_EXPLANATION)).toBeInTheDocument()
+    })
+
     it('shouldShowNoNoticeWhenAutoRecoversFromAFailedCopy', async () => {
       servePlaybackChoices()
       replaceTheRefusedStream({
