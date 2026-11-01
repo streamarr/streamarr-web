@@ -135,7 +135,6 @@ function startSessionPlayback({
   let endedAtRealEnd = false
   // hls.js stops loading after a fatal error, so a failure that ended playback leaves the stream
   // to attach again before it can play.
-  let sourceStoppedAtEnd = false
   let attachedPlayback: PlaybackSessionFieldsFragment | null = null
   let timelineReports = Promise.resolve()
   const reportCancellation = new AbortController()
@@ -243,10 +242,11 @@ function startSessionPlayback({
       onPlay: (element) => {
         if (resume) resume.playing = true
         playRequested = true
+        if (!endedAtRealEnd) return
         // As the element does after its own end, playing at the real end starts from the top.
-        if (endedAtRealEnd && withinASegmentOfRealEnd()) element.currentTime = 0
-        endedAtRealEnd = false
-        if (sourceStoppedAtEnd) restartStoppedSource(element.currentTime)
+        if (withinASegmentOfRealEnd()) element.currentTime = 0
+        // A failure can be what ended playback, and hls.js stops loading after one.
+        restartStoppedSource(element.currentTime)
       },
       // The pause that ends playback reports its events after the end; the end stays the last word.
       onTimeUpdate: (element) => {
@@ -304,7 +304,6 @@ function startSessionPlayback({
   }
 
   function restartStoppedSource(position: number) {
-    sourceStoppedAtEnd = false
     resume = { position, playing: true }
     detachSource()
     adoptPlayback(attachedPlayback)
@@ -397,7 +396,6 @@ function startSessionPlayback({
     attachedPlayback = playback
     realEnd = attempt.streamSession.mediaEndSeconds ?? (sameStream ? realEnd : null)
     endedAtRealEnd = false
-    sourceStoppedAtEnd = false
     const generation = sourceGeneration
     timeline.detach()
     timeline = trackTimeline()
@@ -418,10 +416,7 @@ function startSessionPlayback({
       },
       onFatal: () => {
         if (cancelled || generation !== sourceGeneration) return
-        if (tryEndAtRealEnd()) {
-          sourceStoppedAtEnd = true
-          return
-        }
+        if (tryEndAtRealEnd()) return
         stopStatusCheck()
         detachSource()
         showFailure(PLAYBACK_FAILURE_MESSAGE)

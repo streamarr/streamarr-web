@@ -5319,6 +5319,30 @@ describe('Player', () => {
       expect(video.paused).toBe(true)
     })
 
+    it.each([
+      {
+        failure: 'a fatal 503',
+        fail: () => answerTheNextSegmentWith503({ fatal: true }),
+      },
+      { failure: 'a format failure', fail: refuseTheStreamsFormat },
+    ])(
+      'shouldAttachTheStreamAgainWhenTheViewerPlaysAfterAFailureEndedPlayback($failure)',
+      async ({ fail }) => {
+        const { video } = await playTheShortCopy()
+        playheadAt(video, REAL_END_SECONDS - 4)
+        fail()
+        await waitFor(() => expect(video.paused).toBe(true))
+        hls.destroy.mockImplementation(() => video.load())
+
+        await act(() => video.play())
+
+        expect(hls.loadSource).toHaveBeenCalledTimes(2)
+        loadMetadata(video)
+        expect(video.currentTime).toBe(0)
+        expect(video.paused).toBe(false)
+      },
+    )
+
     it('shouldKeepALearnedRealEndWhenTheStoppedStreamAttachesAgain', async () => {
       const { video } = await playTheShortCopy({ namedOnAttach: false })
       playheadAt(video, REAL_END_SECONDS - 100)
