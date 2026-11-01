@@ -1,6 +1,5 @@
 import {
   type KeyboardEvent as ReactKeyboardEvent,
-  type MouseEvent as ReactMouseEvent,
   type RefObject,
   useEffect,
   useId,
@@ -72,7 +71,7 @@ export function CaretPopover<Id>({
   const menuRef = useRef<HTMLDivElement>(null)
   const focusedRow = useRef<{ row: HTMLElement; index: number } | null>(null)
   const explanationRef = useRef<HTMLDivElement>(null)
-  const markTouched = useRef(false)
+  const pressedByTouch = useRef(false)
   const [explainedRows, setExplainedRows] = useState(NO_EXPLAINED_ROWS)
   const explainedIndex = explainedRows.hovered ?? explainedRows.tapped ?? explainedRows.focused
   const explanation = explainedIndex === null ? undefined : options[explainedIndex]?.caution
@@ -160,11 +159,7 @@ export function CaretPopover<Id>({
   }
 
   // A tap on the mark explains it rather than choosing the row; a mouse click chooses as usual.
-  function tapMark(event: ReactMouseEvent<HTMLElement>, index: number) {
-    if (!markTouched.current) {
-      return
-    }
-    event.stopPropagation()
+  function tapMark(index: number) {
     setExplainedRows((rows) => ({ ...rows, tapped: rows.tapped === index ? null : index }))
   }
 
@@ -196,7 +191,16 @@ export function CaretPopover<Id>({
               aria-label={cautionedName(option)}
               tabIndex={-1}
               className={styles.row}
-              onClick={() => choose(option.id)}
+              onPointerDown={(event) => {
+                pressedByTouch.current = event.pointerType === 'touch'
+              }}
+              onClick={(event) => {
+                if (pressedByTouch.current && isOnTheMark(event)) {
+                  tapMark(index)
+                  return
+                }
+                choose(option.id)
+              }}
               onFocus={(event) => {
                 focusedRow.current = { row: event.currentTarget, index }
                 explainFocused(index)
@@ -208,13 +212,7 @@ export function CaretPopover<Id>({
               <span className={styles.label}>
                 {option.label}
                 {option.caution && (
-                  <span
-                    className={styles.caution}
-                    onPointerDown={(event) => {
-                      markTouched.current = event.pointerType === 'touch'
-                    }}
-                    onClick={(event) => tapMark(event, index)}
-                  >
+                  <span className={styles.caution} data-mark>
                     <Icon name="alert" size={14} label={option.caution} />
                   </span>
                 )}
@@ -322,4 +320,9 @@ function placeAbove(surface: HTMLElement | null, anchor: HTMLElement | null) {
   const left = Math.min(Math.max(caretX - surface.offsetWidth / 2, 0), furthestLeft)
   surface.style.left = `${left}px`
   surface.style.setProperty('--caret-left', `${caretX - left - surface.clientLeft}px`)
+}
+
+// A touch on the mark explains it; anywhere else on the row picks the choice.
+function isOnTheMark(event: { target: EventTarget }): boolean {
+  return event.target instanceof Element && event.target.closest('[data-mark]') !== null
 }
