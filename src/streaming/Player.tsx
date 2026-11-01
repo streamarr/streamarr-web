@@ -28,13 +28,19 @@ const STARTING: SourcePhase = { at: 'starting' }
 // Every pick and every Retry is a new object, so each starts a new playback session, even for the
 // same quality: picking Original again after it changed to Auto starts it afresh.
 interface ChoiceRequest {
-  mediaFileId: string
+  start: PlaybackStart
   quality: VideoQuality
   resumeFrom?: ResumePoint
 }
 
-function startingChoice(mediaFileId: string): ChoiceRequest {
-  return { mediaFileId, quality: 'AUTO' }
+// Where the player was asked to start: a pick holds only until the player is asked to start anew.
+interface PlaybackStart {
+  mediaFileId: string
+  startPositionSeconds?: number
+}
+
+function startingChoice(start: PlaybackStart): ChoiceRequest {
+  return { start, quality: 'AUTO' }
 }
 
 export function Player({
@@ -59,10 +65,13 @@ export function Player({
   })
   const client = useApolloClient()
   const [sourcePhase, setSourcePhase] = useState(STARTING)
-  const [choice, setChoice] = useState(() => startingChoice(mediaFileId))
-  // Another media title starts in Auto from its own start position.
-  if (choice.mediaFileId !== mediaFileId) {
-    setChoice(startingChoice(mediaFileId))
+  const [choice, setChoice] = useState(() => startingChoice({ mediaFileId, startPositionSeconds }))
+  // Another media title, or a new start position, starts in Auto from that start.
+  if (
+    choice.start.mediaFileId !== mediaFileId ||
+    choice.start.startPositionSeconds !== startPositionSeconds
+  ) {
+    setChoice(startingChoice({ mediaFileId, startPositionSeconds }))
   }
   const [picker, setPicker] = useState<PickerKind | null>(null)
   const tracks = sourcePhase.at === 'attached' ? sourcePhase.tracks : null
@@ -114,12 +123,12 @@ export function Player({
     if (!playback || picked === quality.selected) {
       return
     }
-    setChoice({ mediaFileId, quality: picked, resumeFrom: playback.resumePoint() })
+    setChoice({ start: choice.start, quality: picked, resumeFrom: playback.resumePoint() })
   }
 
   // The pick's resume point is long past by now, so Retry starts where playback first started.
   function retry() {
-    setChoice({ mediaFileId, quality: choice.quality })
+    setChoice({ start: choice.start, quality: choice.quality })
   }
 
   return (

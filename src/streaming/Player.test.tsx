@@ -618,6 +618,22 @@ function Harness({
   )
 }
 
+function StartPositionHarness() {
+  const [startPositionSeconds, setStartPositionSeconds] = useState(12)
+  return (
+    <>
+      <button type="button" onClick={() => setStartPositionSeconds(120)}>
+        Start at 120
+      </button>
+      <Player
+        playbackPlatform={withoutDecodingInfo}
+        mediaFileId="abcd"
+        startPositionSeconds={startPositionSeconds}
+      />
+    </>
+  )
+}
+
 function RemountHarness() {
   const [shown, setShown] = useState(true)
   return (
@@ -4822,6 +4838,28 @@ describe('Player', () => {
       ])
       expect(video.currentTime).toBe(12)
       expect(video.paused).toBe(false)
+    })
+
+    it('shouldStartAtTheNewStartPositionInAutoWhenTheStartPositionChangesAfterAPick', async () => {
+      const log = servePlaybackChoices()
+      const { user } = renderWithProviders(<StartPositionHarness />)
+      const video = await attachedVideo(choiceStreamUrl(1))
+      loadMetadata(video)
+      playheadAt(video, 73.25)
+      await pickQuality(user, '720p')
+      await attachedVideo(choiceStreamUrl(2))
+      hls.destroy.mockImplementationOnce(() => video.load())
+
+      await user.click(screen.getByRole('button', { name: 'Start at 120' }))
+
+      await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(choiceStreamUrl(3)))
+      loadMetadata(video)
+      expect(video.currentTime).toBe(120)
+      expect(log.filter((entry) => entry.startsWith('create'))).toEqual([
+        'create AUTO',
+        'create HIGH_720P',
+        'create AUTO',
+      ])
     })
 
     it('shouldStartTheNextMediaFileInAutoFromItsOwnStartAfterAPick', async () => {
