@@ -10,6 +10,7 @@ import {
   ReportPlaybackFormatFailureDocument,
   ReportStreamSessionTimelineDocument,
   type ReportStreamSessionTimelineMutationVariables,
+  type VideoRange,
 } from '../graphql/generated/graphql'
 import { userErrorMessage, userErrorMessageOr } from '../graphql/userErrors'
 import { discardWatchedState } from '../media/watchedState'
@@ -32,7 +33,7 @@ type PlaybackSessionPayload = CreatePlaybackSessionMutation['createPlaybackSessi
 
 export type SourcePhase =
   | { at: 'starting' }
-  | { at: 'attached'; tracks: TrackSource; qualities: QualityChoices }
+  | { at: 'attached'; tracks: TrackSource; qualities: QualityChoices; videoRange: VideoRange }
   | { at: 'failed'; message: string }
 
 /** Where playback picks up on a new stream: the playhead, and whether it plays on from there. */
@@ -339,7 +340,13 @@ function startSessionPlayback({
     onSourcePhase({
       at: 'attached',
       tracks: source.tracks,
-      qualities: { offered: playback.offeredChoices, playing: playback.playbackChoice },
+      qualities: {
+        offered: playback.offeredChoices,
+        requested: playback.requestedChoice,
+        playing: playback.playbackChoice,
+        formatChange: playback.formatChange,
+      },
+      videoRange: attempt.streamSession.videoRange,
     })
   }
 
