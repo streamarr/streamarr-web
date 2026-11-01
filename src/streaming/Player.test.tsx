@@ -5269,6 +5269,21 @@ describe('Player', () => {
       expect(hls.loadSource).toHaveBeenCalledTimes(2)
     })
 
+    it('shouldShowTheFailureWhenTheStreamAttachedAgainStopsBeforeItsFirstFrame', async () => {
+      const { video } = await playTheShortCopy({ namedOnAttach: false })
+      playheadAt(video, REAL_END_SECONDS - 20)
+      answerTheNextSegmentWith503({ fatal: true })
+      hls.destroy.mockImplementation(() => video.load())
+      stallAt(video, 600)
+      await waitFor(() => expect(hls.loadSource).toHaveBeenCalledTimes(2))
+      loadMetadata(video)
+
+      answerTheNextSegmentWith503({ fatal: true })
+
+      expect(await screen.findByRole('alert')).toHaveTextContent("Playback couldn't start.")
+      expect(hls.loadSource).toHaveBeenCalledTimes(2)
+    })
+
     it('shouldKeepAPausedViewerPausedWhenTheStreamThatStoppedAttachesAgainAtTheirSeek', async () => {
       const { video } = await playTheShortCopy({ namedOnAttach: false })
       playheadAt(video, REAL_END_SECONDS - 20)

@@ -615,7 +615,13 @@ function startSessionPlayback({
   }
 
   // Buffered media plays on to the real end; a stall short of it needs the stream attached again.
+  // A stream that stops before its first frame has played nothing, so attaching it again would
+  // only repeat the failure.
   function keepPlayingFromAStoppedSource() {
+    if (!firstFrameShown) {
+      failSource()
+      return
+    }
     sourceStopped = true
     if (video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) restartStoppedSource()
   }
