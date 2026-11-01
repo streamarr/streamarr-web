@@ -148,8 +148,10 @@ export function Player({
           </Button>
         </Alert>
       )}
-      <div ref={backRef} className={`${styles.back} ${styles.chrome}`}>
-        <DetailBackButton />
+      <div className={styles.topStart}>
+        <div ref={backRef} className={`${styles.back} ${styles.chrome}`}>
+          <DetailBackButton />
+        </div>
       </div>
       <PlayerControls
         ref={controlsRef}
