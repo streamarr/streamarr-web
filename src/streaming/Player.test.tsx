@@ -5108,6 +5108,8 @@ describe('Player', () => {
       const { reports, video } = await playTheShortCopy()
 
       playheadAt(video, REAL_END_SECONDS + 0.4)
+      // The element reports its playhead again as it pauses there.
+      playheadAt(video, REAL_END_SECONDS + 0.4)
 
       await waitFor(() =>
         expect(reports.at(-1)).toEqual({
