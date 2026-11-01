@@ -315,6 +315,20 @@ function answerTheNextSegmentWith503({ fatal }: { fatal: boolean }) {
   act(() => onError?.('hlsError', { fatal, type: 'networkError', response: { code: 503 } }))
 }
 
+// The playback status names the attached stream with no real end; returns how often it was read.
+function serveAStatusWithoutARealEnd(): () => number {
+  let reads = 0
+  server.use(
+    graphql.query('PlaybackSession', () => {
+      reads += 1
+      return HttpResponse.json({
+        data: { playbackSession: readyPlaybackSession({ streamSession: SESSION }) },
+      })
+    }),
+  )
+  return () => reads
+}
+
 async function watchAFallback(picked: string, choices: Partial<PlaybackChoices>) {
   const log = servePlaybackChoices()
   replaceTheRefusedStream(choices)
@@ -5084,15 +5098,35 @@ describe('Player', () => {
     })
   })
   describe('real end of a short copy', () => {
-    it('shouldEndPlaybackWhenTheStatusCheckNamesARealEndThatThePlayheadReached', async () => {
-      const { video } = await playTheShortCopy({ namedOnAttach: false })
-      stallAt(video, REAL_END_SECONDS)
+    it('shouldEndPlaybackWhenAStallFindsTheRealEndInThePlaybackStatus', async () => {
+      const { reports, video } = await playTheShortCopy({ namedOnAttach: false })
 
-      answerTheNextSegmentWith503({ fatal: false })
+      // The server holds the request past the real end, so the element stalls without an error.
+      stallAt(video, REAL_END_SECONDS - 2)
 
       await waitFor(() => expect(video.paused).toBe(true))
+      await waitFor(() =>
+        expect(reports.at(-1)).toEqual({
+          sessionId: 'sess-1',
+          positionSeconds: REAL_END_SECONDS,
+          state: 'STOPPED',
+        }),
+      )
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
       expect(hls.destroy).not.toHaveBeenCalled()
+    })
+
+    it('shouldKeepWaitingAndReadTheStatusOnceWhenAStallFindsNoRealEnd', async () => {
+      const { video } = await playTheShortCopy({ namedOnAttach: false })
+      const statusReads = serveAStatusWithoutARealEnd()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, REAL_END_SECONDS - 2)
+      await act(async () => vi.advanceTimersByTimeAsync(30_000))
+
+      expect(statusReads()).toBe(1)
+      expect(video.paused).toBe(false)
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     })
 
     it('shouldEndAtTheRealEndThatTheAttachedAttemptNames', async () => {

@@ -141,6 +141,7 @@ function startSessionPlayback({
   // A browser can finish a seek before it fires the seek's queued waiting event, so a seek that
   // finished without the media to play on waits until playback resumes.
   let seekUnresumed = false
+  let askingForRealEnd = false
   // hls.js stops loading after a fatal error, so a failure that ended playback leaves the stream
   // to attach again before it can play.
   let attachedPlayback: PlaybackSessionFieldsFragment | null = null
@@ -291,6 +292,10 @@ function startSessionPlayback({
       onWaiting: (element) => {
         // The browser queues the event, so the media can have come by the time it fires.
         if (element.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) return
+        if (realEnd === null) {
+          void askForRealEnd(sourceGeneration)
+          return
+        }
         if (!seekingBeforeRealEnd() && tryEndAtRealEnd()) return
         if (sourceStopped) restartStoppedSource()
       },
@@ -356,6 +361,24 @@ function startSessionPlayback({
     }
     endAtRealEnd()
     return true
+  }
+
+  // The server holds a segment request past a short copy's real end instead of refusing it, so a
+  // stall asks once whether the attached stream ends there. A status check already on its way
+  // reads the same answer.
+  async function askForRealEnd(generation: number) {
+    if (askingForRealEnd || statusCheck || reportingFormat || !playbackSessionId) return
+    askingForRealEnd = true
+    try {
+      const playback = await readPlaybackSession(playbackSessionId, statusCancellation.signal)
+      const seconds = attachedStreamIn(playback)?.mediaEndSeconds
+      if (cancelled || generation !== sourceGeneration || realEnd !== null) return
+      if (typeof seconds === 'number') learnRealEnd(seconds)
+    } catch {
+      // A stall that learns nothing waits as before; the stream's own errors still surface.
+    } finally {
+      askingForRealEnd = false
+    }
   }
 
   // The server named the real end only after the playhead may have reached it and stalled there.
