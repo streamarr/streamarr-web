@@ -5172,6 +5172,20 @@ describe('Player', () => {
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     })
 
+    it('shouldShowTheFailureAtTheStatusDeadlineWhenAStallsStatusReadNeverAnswers', async () => {
+      const { video } = await playTheShortCopy({ namedOnAttach: false })
+      server.use(graphql.query('PlaybackSession', () => new Promise<never>(() => undefined)))
+      stallAt(video, REAL_END_SECONDS - 20)
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      timeOutTheNextSegment()
+      await act(async () => vi.advanceTimersByTimeAsync(29_000))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      await act(async () => vi.advanceTimersByTimeAsync(1_000))
+
+      expect(screen.getByRole('alert')).toHaveTextContent("Playback couldn't start.")
+    })
+
     it('shouldReadNoStatusWhileHlsJsRetriesASegmentThatTimedOut', async () => {
       const { video } = await playTheShortCopy({ namedOnAttach: false })
       const statusReads = serveAStatusWithoutARealEnd()

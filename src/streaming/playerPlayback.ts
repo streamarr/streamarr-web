@@ -690,7 +690,9 @@ function startSessionPlayback({
       query: PlaybackSessionDocument,
       variables: { id },
       fetchPolicy: 'no-cache',
-      context: { fetchOptions: { signal } },
+      // Apollo would otherwise join an identical read already on its way, which this signal cannot
+      // abort, so a read that never answers would hold every later deadline open.
+      context: { fetchOptions: { signal }, queryDeduplication: false },
     })
     return result.data?.playbackSession
   }
