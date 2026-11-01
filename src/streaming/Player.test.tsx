@@ -662,6 +662,25 @@ describe('Player', () => {
     expect(codecFamilies(declarations)).toEqual([['H264', 'HEVC']])
   })
 
+  it('shouldDeclareTheBrowsersCurrentAnswersWhenTheViewerRetries', async () => {
+    recordTimelineReports()
+    const declarations = serveSessionRecordingDeclarations()
+    let platform = withoutDecodingInfo()
+    const { user } = renderWithProviders(
+      <Player playbackPlatform={() => platform} mediaFileId="abcd" />,
+    )
+    await attachedVideo()
+    platform = playbackPlatformFixture({
+      decodingInfo: () => Promise.resolve({ supported: true, smooth: true, powerEfficient: true }),
+    })
+
+    raiseHlsFatalError()
+    await user.click(await screen.findByRole('button', { name: 'Retry playback' }))
+
+    await waitFor(() => expect(declarations).toHaveLength(2))
+    expect(codecFamilies(declarations)).toEqual([['H264'], ['H264', 'HEVC', 'AV1']])
+  })
+
   it('shouldDeclareHevcWhenIphoneSafariDecodesItPowerEfficientlyWithoutASmoothAnswer', async () => {
     recordTimelineReports()
     const declarations = serveSessionRecordingDeclarations()

@@ -657,6 +657,22 @@ describe('declarePlaybackCapabilities', () => {
     expect(familyEntries(declaration, 'HEVC')).toEqual([])
   })
 
+  it('shouldDropAv1WhenWebKitAnswersItPowerEfficientButNotSmooth', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) => {
+          if (codecOf(configuration).startsWith('av01')) {
+            return Promise.resolve(IPHONE_SAFARI_HEVC_ANSWER)
+          }
+          return Promise.resolve(answer(true))
+        }),
+        userAgent: IPHONE_SAFARI_USER_AGENT,
+      }),
+    )
+
+    expect(familyEntries(declaration, 'AV1')).toEqual([])
+  })
+
   it('shouldDropAv1WhenItDecodesOnlyWithDroppedFramesEvenWhenMediaSourceAcceptsIt', async () => {
     const declaration = await declarePlaybackCapabilities(
       platformFixture({
@@ -780,6 +796,22 @@ describe('declarePlaybackCapabilities', () => {
         codecProfiles: [{ profile: 'AV1_MAIN', maxLevel: 40, maxTier: 'MAIN' }],
       }),
     ])
+  })
+
+  it('shouldDropAv1WhenTheNativePlayerOnlyMaybePlaysItAfterAFalseDecodingAnswer', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: decodingInfoAnswering(
+          (configuration) => !codecOf(configuration).startsWith('av01'),
+        ),
+        hlsJsSupported: false,
+        nativeHlsSupported: true,
+        canPlayType: (type) => (type === AV1_PROBE ? 'maybe' : ''),
+        userAgent: SAFARI,
+      }),
+    )
+
+    expect(familyEntries(declaration, 'AV1')).toEqual([])
   })
 
   it.each([
@@ -997,6 +1029,27 @@ describe('declarePlaybackCapabilities', () => {
     await expect(declaration).resolves.toEqual(DECLARATION_OF_THE_720P_ONLY_BROWSER_WITHOUT_OPUS)
   })
 
+  it('shouldKeepEveryAnswerWhenTheBrowserAnswersJustBeforeTheThreeSecondDeadline', async () => {
+    vi.useFakeTimers()
+    const declaration = declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: vi.fn(
+          (configuration: MediaDecodingConfiguration) =>
+            new Promise<DecodingAnswer>((resolve) => {
+              const answered = answer(
+                codecOf(configuration) !== 'opus' && decodesOnlyAt720p(configuration),
+              )
+              setTimeout(() => resolve(answered), 2_999)
+            }),
+        ),
+      }),
+    )
+
+    await vi.advanceTimersByTimeAsync(2_999)
+
+    await expect(declaration).resolves.toEqual(DECLARATION_OF_THE_720P_ONLY_BROWSER_WITHOUT_OPUS)
+  })
+
   it('shouldDeclareNoH264WhenTheBrowserRefusesEveryAnsweredH264Tier', async () => {
     vi.useFakeTimers()
     const declaration = declarePlaybackCapabilities(
@@ -1188,6 +1241,32 @@ describe('browserPlaybackPlatform', () => {
 
     expect(platform.mediaSourceTypeSupported(AV1_PROBE)).toBe(true)
   })
+
+  it('shouldAskWebKitMediaSourceWhenTheBrowserOffersNeitherMediaSourceNorManagedMediaSource', () => {
+    vi.stubGlobal('MediaSource', undefined)
+    vi.stubGlobal('ManagedMediaSource', undefined)
+    vi.stubGlobal('WebKitMediaSource', { isTypeSupported: () => true })
+
+    const platform = browserPlaybackPlatform(document.createElement('video'))
+
+    expect(platform.mediaSourceTypeSupported(AV1_PROBE)).toBe(true)
+  })
+
+  it.each([
+    ['maybe', true],
+    ['probably', true],
+    ['', false],
+  ] as const)(
+    'shouldDecideNativeHlsFromTheElementWhenItAnswers"%s"ForTheHlsPlaylistType',
+    (answered, nativeHlsSupported) => {
+      const video = document.createElement('video')
+      video.canPlayType = (type) => (type === 'application/vnd.apple.mpegurl' ? answered : '')
+
+      const platform = browserPlaybackPlatform(video)
+
+      expect(platform.nativeHlsSupported).toBe(nativeHlsSupported)
+    },
+  )
 
   it('shouldAcceptNoMediaSourceTypeWhenTheBrowserOffersNoMediaSource', () => {
     vi.stubGlobal('MediaSource', undefined)
