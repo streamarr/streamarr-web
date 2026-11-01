@@ -137,6 +137,7 @@ function startSessionPlayback({
   let endedPosition = 0
   // hls.js stops loading after a fatal error, which a stream with a known real end may survive.
   let sourceStopped = false
+  let firstFrameShown = false
   // hls.js stops loading after a fatal error, so a failure that ended playback leaves the stream
   // to attach again before it can play.
   let attachedPlayback: PlaybackSessionFieldsFragment | null = null
@@ -296,10 +297,13 @@ function startSessionPlayback({
   }
 
   // The last segment of a short copy can hold less media than its advertised length, so the
-  // element may stall up to one segment before the real end.
+  // element may stall up to one segment before the real end. Before its first frame, the element
+  // waits for the media it starts with, which can still come.
   function withinASegmentOfRealEnd(): boolean {
+    if (realEnd === null) return false
+    if (video.currentTime >= realEnd) return true
     const segmentSeconds = source?.segmentSeconds() ?? DEFAULT_SEGMENT_SECONDS
-    return realEnd !== null && video.currentTime >= realEnd - segmentSeconds
+    return firstFrameShown && video.currentTime >= realEnd - segmentSeconds
   }
 
   // Ends playback as at the end of the media title. Callers end it only while it has not ended.
@@ -421,6 +425,7 @@ function startSessionPlayback({
     realEnd = attempt.streamSession.mediaEndSeconds ?? (sameStream ? realEnd : null)
     endedAtRealEnd = false
     sourceStopped = false
+    firstFrameShown = false
     const generation = sourceGeneration
     timeline.detach()
     timeline = trackTimeline()
@@ -432,7 +437,10 @@ function startSessionPlayback({
     }
     source = attach(video, attempt.streamSession.streamUrl, {
       startupDeadline,
-      onFirstFrame: () => onOutputShown(qualities),
+      onFirstFrame: () => {
+        firstFrameShown = true
+        onOutputShown(qualities)
+      },
       onFormatFailure: (reason) => {
         void reportFormatFailure(reason, generation)
       },

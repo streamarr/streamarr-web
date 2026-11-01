@@ -5361,6 +5361,38 @@ describe('Player', () => {
       expect(hls.destroy).not.toHaveBeenCalled()
     })
 
+    it('shouldKeepWaitingForTheFirstFrameWhenPlaybackStartsWithinOneSegmentOfTheRealEnd', async () => {
+      const { video } = await playTheShortCopy({ showingFirstFrame: false })
+
+      stallAt(video, REAL_END_SECONDS - 3)
+
+      expect(video.paused).toBe(false)
+    })
+
+    it('shouldEndAtTheRealEndWhenPlaybackStartsPastItBeforeTheFirstFrame', async () => {
+      const { video } = await playTheShortCopy({ showingFirstFrame: false })
+      // The seek past the real end waits for media that never comes, so no timeupdate follows it.
+      Object.defineProperty(video, 'seeking', { value: true, configurable: true })
+      video.currentTime = REAL_END_SECONDS + 5
+
+      fireEvent(video, new Event('waiting'))
+
+      expect(video.paused).toBe(true)
+    })
+
+    it('shouldKeepWaitingForTheFirstFrameOfTheStreamAttachedAgainWithinOneSegmentOfTheRealEnd', async () => {
+      const { video } = await playTheShortCopy()
+      playheadAt(video, REAL_END_SECONDS)
+      playheadAt(video, REAL_END_SECONDS - 3)
+      hls.destroy.mockImplementation(() => video.load())
+      await act(() => video.play())
+      loadMetadata(video)
+
+      stallAt(video, REAL_END_SECONDS - 3)
+
+      expect(video.paused).toBe(false)
+    })
+
     it('shouldShowNoStartupFailureWhenPlaybackEndsAtTheRealEndBeforeTheFirstFrame', async () => {
       hls.supported = false
       serveACopyThatRanShort({ namedOnAttach: true })
