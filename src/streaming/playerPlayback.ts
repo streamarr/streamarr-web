@@ -138,8 +138,8 @@ function startSessionPlayback({
   // hls.js stops loading after a fatal error, which a stream with a known real end may survive.
   let sourceStopped = false
   let firstFrameShown = false
-  // A browser can finish a seek before it fires the seek's queued waiting event, so the seek's
-  // wait lasts until playback resumes.
+  // A browser can finish a seek before it fires the seek's queued waiting event, so a seek that
+  // finished without the media to play on waits until playback resumes.
   let seekUnresumed = false
   // hls.js stops loading after a fatal error, so a failure that ended playback leaves the stream
   // to attach again before it can play.
@@ -280,6 +280,9 @@ function startSessionPlayback({
       },
       onSeeking: () => {
         seekUnresumed = true
+      },
+      onSeeked: (element) => {
+        if (element.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) seekUnresumed = false
       },
       onPlaying: () => {
         seekUnresumed = false
@@ -819,6 +822,7 @@ function attachTimeline(
     onPlay: TimelineHandler
     onPause: TimelineHandler
     onSeeking: TimelineHandler
+    onSeeked: TimelineHandler
     onPlaying: TimelineHandler
     onWaiting: TimelineHandler
     onEnded: TimelineHandler
@@ -829,6 +833,7 @@ function attachTimeline(
   const onPlay = () => handlers.onPlay(video)
   const onPause = () => handlers.onPause(video)
   const onSeeking = () => handlers.onSeeking(video)
+  const onSeeked = () => handlers.onSeeked(video)
   const onPlaying = () => handlers.onPlaying(video)
   const onWaiting = () => handlers.onWaiting(video)
   const onEnded = () => handlers.onEnded(video)
@@ -837,6 +842,7 @@ function attachTimeline(
   video.addEventListener('play', onPlay)
   video.addEventListener('pause', onPause)
   video.addEventListener('seeking', onSeeking)
+  video.addEventListener('seeked', onSeeked)
   video.addEventListener('playing', onPlaying)
   video.addEventListener('waiting', onWaiting)
   video.addEventListener('ended', onEnded)
@@ -847,6 +853,7 @@ function attachTimeline(
       video.removeEventListener('play', onPlay)
       video.removeEventListener('pause', onPause)
       video.removeEventListener('seeking', onSeeking)
+      video.removeEventListener('seeked', onSeeked)
       video.removeEventListener('playing', onPlaying)
       video.removeEventListener('waiting', onWaiting)
       video.removeEventListener('ended', onEnded)

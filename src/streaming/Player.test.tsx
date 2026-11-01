@@ -5156,16 +5156,31 @@ describe('Player', () => {
 
     it('shouldPlayTheLastSecondsWhenTheSeeksWaitingEventFiresAfterTheSeekCompletes', async () => {
       const { video } = await playTheShortCopy()
-      playheadAt(video, REAL_END_SECONDS - 3)
       fireEvent(video, new Event('seeking'))
+      playheadAt(video, REAL_END_SECONDS - 3)
+      setReadyState(video, HTMLMediaElement.HAVE_CURRENT_DATA)
 
       // The browser queued the seek's waiting event and finished the seek before firing it.
-      stallAt(video, REAL_END_SECONDS - 3)
+      fireEvent(video, new Event('seeked'))
+      fireEvent(video, new Event('waiting'))
 
       expect(video.paused).toBe(false)
       // Once playback resumes, a stall is a stall again.
       fireEvent(video, new Event('playing'))
       stallAt(video, REAL_END_SECONDS - 1)
+      expect(video.paused).toBe(true)
+    })
+
+    it('shouldEndAtAStallWithinOneSegmentAfterASeekWithinTheBuffer', async () => {
+      const { video } = await playTheShortCopy()
+      fireEvent(video, new Event('seeking'))
+      playheadAt(video, REAL_END_SECONDS - 20)
+      // The media at the seek was buffered, so playback goes on without a playing event.
+      setReadyState(video, HTMLMediaElement.HAVE_ENOUGH_DATA)
+      fireEvent(video, new Event('seeked'))
+
+      stallAt(video, REAL_END_SECONDS - 1)
+
       expect(video.paused).toBe(true)
     })
 
