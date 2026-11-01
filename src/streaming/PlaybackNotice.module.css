@@ -1,5 +1,6 @@
 /* The notice sits under Back, whether the controls show or not, and takes no taps or focus. */
 .region {
+  display: block;
   pointer-events: none;
 
   @media (max-width: 600px) {
@@ -10,6 +11,7 @@
 /* One animation spans the notice's 6 seconds: it fades in over the first 200 ms and out over
    the last 200 ms. The player removes it when the 6 seconds end. */
 .notice {
+  display: block;
   box-sizing: border-box;
   max-width: 420px;
   padding: var(--spacing-12) var(--spacing-16);

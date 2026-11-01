@@ -8,12 +8,12 @@ export function PlaybackNotice({
   notice,
 }: Readonly<{ notice: { text: string; serial: number } | null }>) {
   return (
-    <div role="status" className={styles.region}>
+    <output className={styles.region}>
       {notice && (
-        <div key={notice.serial} className={styles.notice}>
+        <span key={notice.serial} className={styles.notice}>
           {notice.text}
-        </div>
+        </span>
       )}
-    </div>
+    </output>
   )
 }
