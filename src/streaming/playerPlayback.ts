@@ -138,6 +138,9 @@ function startSessionPlayback({
   // hls.js stops loading after a fatal error, which a stream with a known real end may survive.
   let sourceStopped = false
   let firstFrameShown = false
+  // A browser can finish a seek before it fires the seek's queued waiting event, so the seek's
+  // wait lasts until playback resumes.
+  let seekUnresumed = false
   // hls.js stops loading after a fatal error, so a failure that ended playback leaves the stream
   // to attach again before it can play.
   let attachedPlayback: PlaybackSessionFieldsFragment | null = null
@@ -275,6 +278,12 @@ function startSessionPlayback({
         lastKnownPosition = element.currentTime
         report('PAUSED', element.currentTime)
       },
+      onSeeking: () => {
+        seekUnresumed = true
+      },
+      onPlaying: () => {
+        seekUnresumed = false
+      },
       // A seek before the real end waits for its own data, which can still come.
       onWaiting: (element) => {
         // The browser queues the event, so the media can have come by the time it fires.
@@ -330,7 +339,7 @@ function startSessionPlayback({
 
   // A seek's wait for media before the real end is no stall, but media past it never comes.
   function seekingBeforeRealEnd(): boolean {
-    return video.seeking && realEnd !== null && video.currentTime < realEnd
+    return (video.seeking || seekUnresumed) && realEnd !== null && video.currentTime < realEnd
   }
 
   // Nothing past the real end can arrive, so a stall or a failure close to it is the end. A
@@ -800,6 +809,8 @@ function attachTimeline(
     onTimeUpdate: TimelineHandler
     onPlay: TimelineHandler
     onPause: TimelineHandler
+    onSeeking: TimelineHandler
+    onPlaying: TimelineHandler
     onWaiting: TimelineHandler
     onEnded: TimelineHandler
   },
@@ -808,12 +819,16 @@ function attachTimeline(
   const onTimeUpdate = () => handlers.onTimeUpdate(video)
   const onPlay = () => handlers.onPlay(video)
   const onPause = () => handlers.onPause(video)
+  const onSeeking = () => handlers.onSeeking(video)
+  const onPlaying = () => handlers.onPlaying(video)
   const onWaiting = () => handlers.onWaiting(video)
   const onEnded = () => handlers.onEnded(video)
   video.addEventListener('loadedmetadata', onLoadedMetadata)
   video.addEventListener('timeupdate', onTimeUpdate)
   video.addEventListener('play', onPlay)
   video.addEventListener('pause', onPause)
+  video.addEventListener('seeking', onSeeking)
+  video.addEventListener('playing', onPlaying)
   video.addEventListener('waiting', onWaiting)
   video.addEventListener('ended', onEnded)
   return {
@@ -822,6 +837,8 @@ function attachTimeline(
       video.removeEventListener('timeupdate', onTimeUpdate)
       video.removeEventListener('play', onPlay)
       video.removeEventListener('pause', onPause)
+      video.removeEventListener('seeking', onSeeking)
+      video.removeEventListener('playing', onPlaying)
       video.removeEventListener('waiting', onWaiting)
       video.removeEventListener('ended', onEnded)
     },
