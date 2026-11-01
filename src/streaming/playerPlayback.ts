@@ -308,6 +308,8 @@ function startSessionPlayback({
       return
     }
     endedAtRealEnd = true
+    // Playback that ended has started; only attaching the stream again starts it anew.
+    startupDeadline.end()
     stopStatusCheck()
     video.pause()
     endedPosition = video.currentTime
@@ -317,6 +319,8 @@ function startSessionPlayback({
   function restartStoppedSource() {
     resume = { position: video.currentTime, playing: !video.paused }
     detachSource()
+    startupDeadline.end()
+    startupDeadline = createStartupDeadline(expireStartup)
     adoptPlayback(attachedPlayback)
   }
 

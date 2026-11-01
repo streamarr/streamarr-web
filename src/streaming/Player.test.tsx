@@ -5361,6 +5361,33 @@ describe('Player', () => {
       expect(hls.destroy).not.toHaveBeenCalled()
     })
 
+    it('shouldShowNoStartupFailureWhenPlaybackEndsAtTheRealEndBeforeTheFirstFrame', async () => {
+      hls.supported = false
+      serveACopyThatRanShort({ namedOnAttach: true })
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+      await act(async () => vi.advanceTimersByTimeAsync(0))
+      const video = await nativeVideo()
+      loadMetadata(video)
+
+      stallAt(video, REAL_END_SECONDS)
+      await act(async () => vi.advanceTimersByTimeAsync(30_000))
+
+      expect(video.paused).toBe(true)
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('shouldShowTheStartupFailureWhenTheStreamAttachedAgainAfterTheRealEndNeverLoads', async () => {
+      const { video } = await playTheShortCopy()
+      playheadAt(video, REAL_END_SECONDS)
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      await act(() => video.play())
+      await act(async () => vi.advanceTimersByTimeAsync(30_000))
+
+      expect(screen.getByRole('alert')).toHaveTextContent('Playback is taking too long to start.')
+    })
+
     it('shouldPlayOnWhenAWaitingEventArrivesAfterTheMediaHasCome', async () => {
       const { video } = await playTheShortCopy()
       playheadAt(video, REAL_END_SECONDS - 3)
