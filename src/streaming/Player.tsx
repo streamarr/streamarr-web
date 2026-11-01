@@ -1,7 +1,7 @@
 import { useApolloClient, useMutation } from '@apollo/client/react'
 import { Alert, Button } from '@mantine/core'
 import { useEffect, useRef, useState } from 'react'
-import { CreatePlaybackSessionDocument } from '../graphql/generated/graphql'
+import { CreatePlaybackSessionDocument, type VideoQuality } from '../graphql/generated/graphql'
 import { DetailBackButton } from '../media/DetailBack'
 import focusStyles from '../styles/focus.module.css'
 import { BufferingRing } from './BufferingRing'
@@ -9,16 +9,32 @@ import { declarePlaybackCapabilities, type PlaybackPlatform } from './playbackCa
 import styles from './Player.module.css'
 import {
   PlayerControls,
-  type PlayerTitle,
   type PickerKind,
+  type PlayerTitle,
   pickerOffersChoice,
 } from './PlayerControls'
-import { startPlayerPlayback, type SourcePhase } from './playerPlayback'
+import {
+  type PlayerPlayback,
+  type ResumePoint,
+  startPlayerPlayback,
+  type SourcePhase,
+} from './playerPlayback'
 import { useIdle } from './useIdle'
 import { useStreamTracks } from './useStreamTracks'
 import { useVideoState } from './useVideoState'
 
 const STARTING: SourcePhase = { at: 'starting' }
+
+// Each pick is a new object, so picking Original again after it changed to Auto starts afresh.
+interface ChoiceRequest {
+  mediaFileId: string
+  quality: VideoQuality
+  resumeFrom?: ResumePoint
+}
+
+function startingChoice(mediaFileId: string): ChoiceRequest {
+  return { mediaFileId, quality: 'AUTO' }
+}
 
 export function Player({
   mediaFileId,
@@ -36,16 +52,30 @@ export function Player({
   const videoRef = useRef<HTMLVideoElement>(null)
   const controlsRef = useRef<HTMLDivElement>(null)
   const backRef = useRef<HTMLDivElement>(null)
+  const playbackRef = useRef<PlayerPlayback>(null)
   const [createPlaybackSession] = useMutation(CreatePlaybackSessionDocument, {
     fetchPolicy: 'no-cache',
   })
   const client = useApolloClient()
   const [sourcePhase, setSourcePhase] = useState(STARTING)
   const [attempt, setAttempt] = useState(0)
+  const [choice, setChoice] = useState(() => startingChoice(mediaFileId))
+  // Another media title starts in Auto from its own start position.
+  if (choice.mediaFileId !== mediaFileId) {
+    setChoice(startingChoice(mediaFileId))
+  }
   const [picker, setPicker] = useState<PickerKind | null>(null)
   const tracks = sourcePhase.at === 'attached' ? sourcePhase.tracks : null
+  const qualities = sourcePhase.at === 'attached' ? sourcePhase.qualities : null
+  const quality = {
+    offered: qualities?.offered ?? [],
+    selected: qualities?.playing ?? choice.quality,
+  }
   const streamTracks = useStreamTracks(tracks)
-  const openPicker = picker !== null && pickerOffersChoice(picker, streamTracks) ? picker : null
+  const openPicker =
+    picker !== null && pickerOffersChoice(picker, { ...streamTracks, qualities: quality.offered })
+      ? picker
+      : null
   // A picker that loses its choices, or its stream with them, closes rather than reopen later.
   if (picker !== openPicker) {
     setPicker(null)
@@ -61,18 +91,39 @@ export function Player({
     }
     setSourcePhase(STARTING)
 
-    return startPlayerPlayback({
+    const playback = startPlayerPlayback({
       video,
       client,
       declareCapabilities: () => declarePlaybackCapabilities(playbackPlatform(video)),
       createPlaybackSession: (capabilities) =>
         createPlaybackSession({
-          variables: { input: { mediaFileId, capabilities, options: { quality: 'AUTO' } } },
+          variables: {
+            input: { mediaFileId, capabilities, options: { quality: choice.quality } },
+          },
         }),
       startPositionSeconds,
+      resumeFrom: choice.resumeFrom,
       onSourcePhase: setSourcePhase,
     })
-  }, [mediaFileId, startPositionSeconds, createPlaybackSession, client, attempt, playbackPlatform])
+    playbackRef.current = playback
+    return playback.stop
+  }, [
+    mediaFileId,
+    startPositionSeconds,
+    createPlaybackSession,
+    client,
+    attempt,
+    playbackPlatform,
+    choice,
+  ])
+
+  function chooseQuality(picked: VideoQuality) {
+    const playback = playbackRef.current
+    if (!playback || picked === quality.selected) {
+      return
+    }
+    setChoice({ mediaFileId, quality: picked, resumeFrom: playback.resumePoint() })
+  }
 
   return (
     <section
@@ -101,6 +152,8 @@ export function Player({
         videoRef={videoRef}
         videoState={videoState}
         tracks={tracks}
+        quality={quality}
+        onChooseQuality={chooseQuality}
         openPicker={openPicker}
         onOpenPicker={setPicker}
         title={title}

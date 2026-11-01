@@ -619,7 +619,7 @@ test('after Tab to Mute, Space mutes and playback continues', async ({ page, req
   expect(await videoPaused(page)).toBe(false)
 })
 
-test('Space pauses the video after Tab to the Quality chip, which opens nothing', async ({
+test('Space pauses the video after Tab to the Audio chip, which opens nothing', async ({
   page,
   request,
 }) => {
@@ -634,6 +634,7 @@ test('Space pauses the video after Tab to the Quality chip, which opens nothing'
     page.getByRole('button', { name: 'Pause' }),
     page.getByRole('button', { name: 'Forward 10 seconds' }),
     page.getByRole('button', { name: /^Quality/ }),
+    page.getByRole('button', { name: 'Audio: Audio' }),
   ])
 
   await page.keyboard.press('Space')
@@ -687,20 +688,53 @@ test('a clicked Forward 10 seconds shows no focus ring while Space plays and pau
   expect(await ringOnActiveElement(page)).toMatchObject(RING)
 })
 
-test('a clicked Quality chip, which opens nothing, shows no focus ring while Space plays and pauses', async ({
+test('a clicked Audio chip, which opens nothing, shows no focus ring while Space plays and pauses', async ({
   page,
   request,
 }) => {
   await openPlayerFromThePlayLink(page, request)
   await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible()
-  const quality = page.getByRole('button', { name: /^Quality/ })
-  await clickAriaDisabled(page, quality)
+  const audio = page.getByRole('button', { name: 'Audio: Audio' })
+  await clickAriaDisabled(page, audio)
 
   await page.keyboard.press('Space')
 
   expect(await videoPaused(page)).toBe(true)
-  await expect(quality).toBeFocused()
+  await expect(audio).toBeFocused()
   expect(await ringOnActiveElement(page)).not.toMatchObject(RING)
+})
+
+test('the Quality menu lists the choices the server offers and starts the picked one afresh', async ({
+  page,
+  request,
+}) => {
+  await openPlayer(page, request)
+  const calls: string[] = []
+  page.on('request', (call) => {
+    if (call.url().endsWith('/graphql')) calls.push(operationName(call))
+  })
+
+  await page.getByRole('button', { name: 'Quality: Auto' }).click()
+  const quality = page.getByRole('menu', { name: 'Quality' })
+  await expect(quality.getByRole('menuitemradio')).toHaveText([
+    'Original',
+    'Auto',
+    '720p',
+    '480p',
+    '360p',
+  ])
+  await expect(quality.getByRole('menuitemradio', { checked: true })).toHaveText('Auto')
+  const created = page.waitForRequest((call) => operationName(call) === 'CreatePlaybackSession')
+  await page.keyboard.press('Home')
+  await page.keyboard.press('Enter')
+
+  const input = ((await created).postDataJSON() as { variables: { input: unknown } }).variables
+    .input
+  expect(input).toMatchObject({ mediaFileId: 'file-1', options: { quality: 'ORIGINAL' } })
+  expect(calls.filter((name) => name.endsWith('PlaybackSession'))).toEqual([
+    'DestroyPlaybackSession',
+    'CreatePlaybackSession',
+  ])
 })
 
 test('a refusal keeps Retry above the control bar on a phone held sideways', async ({

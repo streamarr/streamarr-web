@@ -1,4 +1,8 @@
-import { readyPlaybackSession, destroyedPlaybackSession } from '../test/playbackSession'
+import {
+  OFFERED_FOR_FULL_HD,
+  readyPlaybackSession,
+  destroyedPlaybackSession,
+} from '../test/playbackSession'
 import { useApolloClient } from '@apollo/client/react'
 import { deferred } from '../test/deferred'
 import { act, cleanup, configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
@@ -116,7 +120,11 @@ function serveSessionRecordingDeclarations(): ClientCapabilityDeclarationInput[]
 // the log.
 function servePlaybackChoices({
   playing = (requested) => requested,
-}: { playing?: (requested: VideoQuality) => VideoQuality } = {}): string[] {
+  offered = OFFERED_FOR_FULL_HD,
+}: {
+  playing?: (requested: VideoQuality) => VideoQuality
+  offered?: VideoQuality[]
+} = {}): string[] {
   const log: string[] = []
   server.use(
     graphql.mutation('CreatePlaybackSession', ({ variables }) => {
@@ -136,6 +144,7 @@ function servePlaybackChoices({
               },
               requestedChoice: requested,
               playbackChoice: playing(requested),
+              offeredChoices: offered,
             }),
             userErrors: [],
           },
@@ -436,8 +445,9 @@ function refuseToStartPlayback(video: HTMLVideoElement) {
   )
 }
 
+// Raised on the latest stream's hls.js instance, the one attached now.
 function raiseHlsFatalError() {
-  const onError = hls.on.mock.calls.find(([event]) => event === 'hlsError')?.[1]
+  const onError = hls.on.mock.calls.findLast(([event]) => event === 'hlsError')?.[1]
   expect(onError).toBeTypeOf('function')
   act(() => onError?.('hlsError', { fatal: true, type: 'networkError' }))
 }
@@ -528,6 +538,11 @@ function offerHlsTracks({
 async function openPicker(user: UserEvent, chip: HTMLElement): Promise<HTMLElement> {
   await user.click(chip)
   return screen.getByRole('menu')
+}
+
+async function pickQuality(user: UserEvent, row: string) {
+  const menu = await openPicker(user, screen.getByRole('button', { name: /^Quality/ }))
+  await user.click(within(menu).getByRole('menuitemradio', { name: row }))
 }
 
 function renderedVideo(): HTMLVideoElement {
@@ -3819,23 +3834,24 @@ describe('Player', () => {
       expect(screen.getByRole('button', { name: 'Mute' })).toBeInTheDocument()
     })
 
-    it('shouldShowTheQualityInUseOnAStatusChipThatOpensNothing', async () => {
-      serveSession()
-      const { user } = renderWithProviders(
-        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
-      )
-      const video = await attachedVideo()
-      expect(screen.getByRole('button', { name: 'Quality: Auto' })).toHaveTextContent(/^Auto$/)
+    it.each([
+      { playing: 'AUTO', name: 'Quality: Auto · 720p', shown: 'Auto · 720p' },
+      { playing: 'ORIGINAL', name: 'Quality: Original · 720p', shown: 'Original · 720p' },
+      { playing: 'HIGH_720P', name: 'Quality: 720p', shown: '720p' },
+      { playing: 'EIGHT_K', name: 'Quality', shown: '' },
+    ])(
+      'shouldShowThePlayingChoiceOnTheQualityChipWithTheHeightItsNameLacks($playing)',
+      async ({ playing, name, shown }) => {
+        servePlaybackChoices({ playing: () => playing as VideoQuality })
+        renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+        const video = await attachedVideo(choiceStreamUrl(1))
 
-      Object.defineProperty(video, 'videoHeight', { value: 720, configurable: true })
-      fireEvent(video, new Event('resize'))
+        Object.defineProperty(video, 'videoHeight', { value: 720, configurable: true })
+        fireEvent(video, new Event('resize'))
 
-      const chip = screen.getByRole('button', { name: 'Quality: Auto · 720p' })
-      expect(chip).toHaveTextContent(/^Auto · 720p$/)
-      expect(chip).toHaveAttribute('aria-disabled', 'true')
-      await user.click(chip)
-      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
-    })
+        expect(screen.getByRole('button', { name })).toHaveTextContent(new RegExp(`^${shown}$`))
+      },
+    )
 
     it('shouldShowTheStreamsOnlyAudioTrackAndSubtitlesOffOnChipsThatOpenNothing', async () => {
       serveSession()
@@ -4613,6 +4629,175 @@ describe('Player', () => {
       await attachedVideo(choiceStreamUrl(1))
 
       expect(log).toEqual(['create AUTO'])
+    })
+
+    it('shouldOfferTheChoicesThatTheServerListsInItsOrder', async () => {
+      servePlaybackChoices()
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await attachedVideo(choiceStreamUrl(1))
+
+      const menu = await openPicker(user, screen.getByRole('button', { name: 'Quality: Auto' }))
+
+      expect(
+        within(menu)
+          .getAllByRole('menuitemradio')
+          .map((row) => row.textContent),
+      ).toEqual(['Original', 'Auto', '1080p', '720p', '480p', '360p'])
+      expect(within(menu).getByRole('menuitemradio', { checked: true })).toHaveTextContent('Auto')
+    })
+
+    it('shouldLeaveOutAChoiceThisPlayerCannotName', async () => {
+      servePlaybackChoices({
+        offered: ['ORIGINAL', 'AUTO', 'EIGHT_K' as VideoQuality, 'HIGH_720P'],
+      })
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await attachedVideo(choiceStreamUrl(1))
+
+      const menu = await openPicker(user, screen.getByRole('button', { name: 'Quality: Auto' }))
+
+      expect(
+        within(menu)
+          .getAllByRole('menuitemradio')
+          .map((row) => row.textContent),
+      ).toEqual(['Original', 'Auto', '720p'])
+    })
+
+    it('shouldOpenTheQualityMenuOnlyWhileAStreamIsAttached', async () => {
+      servePlaybackChoices()
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+      const chip = screen.getByRole('button', { name: 'Quality: Auto' })
+      expect(chip).toHaveAttribute('aria-disabled', 'true')
+
+      await attachedVideo(choiceStreamUrl(1))
+      expect(chip).not.toHaveAttribute('aria-disabled')
+
+      raiseHlsFatalError()
+      expect(await screen.findByRole('alert')).toBeInTheDocument()
+      expect(chip).toHaveAttribute('aria-disabled', 'true')
+    })
+
+    it('shouldDestroyTheCurrentPlaybackSessionBeforeCreatingThePickedChoice', async () => {
+      const log = servePlaybackChoices()
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await attachedVideo(choiceStreamUrl(1))
+
+      await pickQuality(user, 'Original')
+
+      await attachedVideo(choiceStreamUrl(2))
+      expect(log).toEqual(['create AUTO', 'destroy playback-1', 'create ORIGINAL'])
+    })
+
+    it.each([true, false])(
+      'shouldResumeAtThePlayheadWhenTheViewerPicksAnotherQuality(playing: %s)',
+      async (playing) => {
+        servePlaybackChoices()
+        const { user } = renderWithProviders(
+          <Player
+            playbackPlatform={withoutDecodingInfo}
+            mediaFileId="abcd"
+            startPositionSeconds={12}
+          />,
+        )
+        const video = await attachedVideo(choiceStreamUrl(1))
+        loadMetadata(video)
+        playheadAt(video, 73.25)
+        if (!playing) pressPause(video)
+        hls.destroy.mockImplementationOnce(() => video.load())
+
+        await pickQuality(user, '720p')
+
+        await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(choiceStreamUrl(2)))
+        loadMetadata(video)
+        expect(video.currentTime).toBe(73.25)
+        expect(video.paused).toBe(!playing)
+      },
+    )
+
+    it.each([
+      { picked: 'Original', plays: 'AUTO', shown: 'Auto' },
+      { picked: 'Original', plays: 'ORIGINAL', shown: 'Original' },
+      { picked: '720p', plays: 'HIGH_720P', shown: '720p' },
+    ] as const)(
+      'shouldSelectThePlaybackChoiceThatTheServerNames(picked: $picked, plays: $plays)',
+      async ({ picked, plays, shown }) => {
+        servePlaybackChoices({ playing: (requested) => (requested === 'AUTO' ? 'AUTO' : plays) })
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        await attachedVideo(choiceStreamUrl(1))
+
+        await pickQuality(user, picked)
+        await attachedVideo(choiceStreamUrl(2))
+
+        const chip = screen.getByRole('button', { name: `Quality: ${shown}` })
+        const menu = await openPicker(user, chip)
+        expect(within(menu).getByRole('menuitemradio', { checked: true })).toHaveTextContent(
+          new RegExp(`^${shown}$`),
+        )
+      },
+    )
+
+    it('shouldKeepThePlaybackSessionWhenTheViewerPicksTheChoiceThatPlays', async () => {
+      const log = servePlaybackChoices()
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await attachedVideo(choiceStreamUrl(1))
+
+      await pickQuality(user, 'Auto')
+
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+      expect(log).toEqual(['create AUTO'])
+      expect(hls.destroy).not.toHaveBeenCalled()
+    })
+
+    it('shouldKeepThePickedQualityWhenTheViewerRetries', async () => {
+      const log = servePlaybackChoices()
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await attachedVideo(choiceStreamUrl(1))
+      await pickQuality(user, '720p')
+      await attachedVideo(choiceStreamUrl(2))
+
+      raiseHlsFatalError()
+      await user.click(await screen.findByRole('button', { name: 'Retry playback' }))
+
+      await attachedVideo(choiceStreamUrl(3))
+      expect(log.filter((entry) => entry.startsWith('create'))).toEqual([
+        'create AUTO',
+        'create HIGH_720P',
+        'create HIGH_720P',
+      ])
+    })
+
+    it('shouldStartTheNextMediaFileInAutoFromItsOwnStartAfterAPick', async () => {
+      const log = servePlaybackChoices()
+      const { user } = renderWithProviders(<Harness />)
+      const video = await attachedVideo(choiceStreamUrl(1))
+      loadMetadata(video)
+      playheadAt(video, 73.25)
+      await pickQuality(user, '720p')
+      await attachedVideo(choiceStreamUrl(2))
+      hls.destroy.mockImplementationOnce(() => video.load())
+
+      await user.click(screen.getByRole('button', { name: 'Next' }))
+
+      await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(choiceStreamUrl(3)))
+      loadMetadata(video)
+      expect(video.currentTime).toBe(0)
+      expect(log.filter((entry) => entry.startsWith('create'))).toEqual([
+        'create AUTO',
+        'create HIGH_720P',
+        'create AUTO',
+      ])
+      expect(screen.getByRole('button', { name: 'Quality: Auto' })).toBeInTheDocument()
     })
   })
 })

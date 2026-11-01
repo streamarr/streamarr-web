@@ -15,6 +15,7 @@ import { userErrorMessage, userErrorMessageOr } from '../graphql/userErrors'
 import { discardWatchedState } from '../media/watchedState'
 import { hlsPlaybackConfig } from './hlsPlaybackConfig'
 import { DECLARATION_REFUSAL_TYPENAMES } from './playbackCapabilities'
+import type { QualityChoices } from './qualityChoices'
 import { hlsTrackSource, nativeTrackSource, type TrackSource } from './trackSources'
 
 // Progress is only worth a round trip once the playhead has moved this far since the last report.
@@ -30,7 +31,22 @@ type PlaybackState = ReportStreamSessionTimelineMutationVariables['state']
 type PlaybackSessionPayload = CreatePlaybackSessionMutation['createPlaybackSession']
 
 export type SourcePhase =
-  { at: 'starting' } | { at: 'attached'; tracks: TrackSource } | { at: 'failed'; message: string }
+  | { at: 'starting' }
+  | { at: 'attached'; tracks: TrackSource; qualities: QualityChoices }
+  | { at: 'failed'; message: string }
+
+/** Where playback picks up on a new stream: the playhead, and whether it plays on from there. */
+export interface ResumePoint {
+  position: number
+  playing: boolean
+}
+
+export interface PlayerPlayback {
+  /** Leaves playback: reports the final position and releases the playback session. */
+  stop: () => void
+  /** Where a playback session started in this one's place should resume. */
+  resumePoint: () => ResumePoint
+}
 
 interface PlaybackStatusCheck {
   controller: AbortController
@@ -46,20 +62,12 @@ interface PlayerPlaybackOptions {
     capabilities: ClientCapabilityDeclarationInput,
   ) => Promise<{ data?: CreatePlaybackSessionMutation | null }>
   startPositionSeconds?: number
+  /** Takes the place of the start position when this playback replaces one the viewer was watching. */
+  resumeFrom?: ResumePoint
   onSourcePhase: (phase: SourcePhase) => void
 }
 
-interface SessionPlaybackOptions extends PlayerPlaybackOptions {
-  resumeFrom?: ResumePoint
-}
-
-interface ResumePoint {
-  position: number
-  playing: boolean
-}
-
-interface SessionPlayback {
-  stop: () => void
+interface SessionPlayback extends PlayerPlayback {
   leavePage: () => ResumePoint | undefined
 }
 
@@ -67,7 +75,7 @@ const pendingCleanups = new WeakMap<ApolloClient, () => Promise<void>>()
 
 // React never unmounts a page the browser unloads or keeps in its back-forward cache, so the page
 // lifecycle, not the Player effect, has to end the session when the viewer leaves the page.
-export function startPlayerPlayback(options: PlayerPlaybackOptions): () => void {
+export function startPlayerPlayback(options: PlayerPlaybackOptions): PlayerPlayback {
   let playback = startSessionPlayback(options)
   let left: ResumePoint | undefined
   const onPageHide = () => {
@@ -81,18 +89,18 @@ export function startPlayerPlayback(options: PlayerPlaybackOptions): () => void 
     const resumeFrom = left
     left = undefined
     options.onSourcePhase({ at: 'starting' })
-    playback = startSessionPlayback({
-      ...options,
-      startPositionSeconds: resumeFrom.position,
-      resumeFrom,
-    })
+    playback = startSessionPlayback({ ...options, resumeFrom })
   }
   window.addEventListener('pagehide', onPageHide)
   window.addEventListener('pageshow', onPageShow)
-  return () => {
-    window.removeEventListener('pagehide', onPageHide)
-    window.removeEventListener('pageshow', onPageShow)
-    playback.stop()
+  return {
+    stop: () => {
+      window.removeEventListener('pagehide', onPageHide)
+      window.removeEventListener('pageshow', onPageShow)
+      playback.stop()
+    },
+    // A page hidden by the browser resumes where the viewer left it.
+    resumePoint: () => left ?? playback.resumePoint(),
   }
 }
 
@@ -104,7 +112,7 @@ function startSessionPlayback({
   startPositionSeconds,
   onSourcePhase,
   resumeFrom,
-}: SessionPlaybackOptions): SessionPlayback {
+}: PlayerPlaybackOptions): SessionPlayback {
   let source: StreamSource | null = null
   let cancelled = false
   let sessionId: string | null = null
@@ -112,8 +120,9 @@ function startSessionPlayback({
   let sourceGeneration = 0
   let reportingFormat = false
   let statusCheck: PlaybackStatusCheck | undefined
-  let resume = resumeFrom
-  let lastReportedPosition = startPositionSeconds ?? 0
+  const startAt = resumeFrom?.position ?? startPositionSeconds
+  let resume: ResumePoint | undefined = resumeFrom && { ...resumeFrom }
+  let lastReportedPosition = startAt ?? 0
   let lastKnownPosition: number | null = null
   let unacknowledgedEndPosition: number | null = null
   let timelineReports = Promise.resolve()
@@ -196,7 +205,7 @@ function startSessionPlayback({
     })
   }
 
-  // A restored page already carries the viewer's choice to play or pause.
+  // A resume carries the viewer's own play or pause, so the start never decides it for them.
   let playRequested = resumeFrom !== undefined
   function trackTimeline() {
     return attachTimeline(video, {
@@ -209,8 +218,8 @@ function startSessionPlayback({
           if (previous.playing) void element.play().catch(ignoreRefusedStart)
           return
         }
-        if (startPositionSeconds) {
-          element.currentTime = startPositionSeconds
+        if (startAt) {
+          element.currentTime = startAt
         }
         // Before metadata, only the viewer can ask to play. Their choice stands, even a later Pause.
         if (playRequested) {
@@ -305,7 +314,7 @@ function startSessionPlayback({
       showFailure(userErrorMessageOr(attempt.error, FAILED_ATTEMPT_FALLBACK_MESSAGE))
       return
     }
-    if (attempt?.__typename !== 'ReadyPlaybackFormatAttempt') {
+    if (!playback || attempt?.__typename !== 'ReadyPlaybackFormatAttempt') {
       showFailure(PLAYBACK_FAILURE_MESSAGE)
       return
     }
@@ -328,7 +337,11 @@ function startSessionPlayback({
         showFailure(PLAYBACK_FAILURE_MESSAGE)
       },
     })
-    onSourcePhase({ at: 'attached', tracks: source.tracks })
+    onSourcePhase({
+      at: 'attached',
+      tracks: source.tracks,
+      qualities: { offered: playback.offeredChoices, playing: playback.playbackChoice },
+    })
   }
 
   async function reportFormatFailure(reason: PlaybackFormatFailure, generation: number) {
@@ -373,7 +386,7 @@ function startSessionPlayback({
       position:
         video.readyState >= HTMLMediaElement.HAVE_METADATA
           ? video.currentTime
-          : (startPositionSeconds ?? video.currentTime),
+          : (startAt ?? video.currentTime),
       playing: !playRequested || !video.paused,
     }
   }
@@ -389,7 +402,10 @@ function startSessionPlayback({
 
   // Where the next stream should pick up: a resume still waiting for metadata stands.
   function resumePoint(): ResumePoint {
-    return resume ?? currentResumePoint()
+    if (resume) {
+      return { ...resume }
+    }
+    return currentResumePoint()
   }
 
   function stopStatusCheck() {
@@ -596,6 +612,7 @@ function startSessionPlayback({
       detachSource()
       requestCleanup()
     },
+    resumePoint,
     leavePage,
   }
 }
