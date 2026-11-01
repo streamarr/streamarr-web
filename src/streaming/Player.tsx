@@ -66,7 +66,9 @@ export function Player({
       client,
       declareCapabilities: () => declarePlaybackCapabilities(playbackPlatform(video)),
       createPlaybackSession: (capabilities) =>
-        createPlaybackSession({ variables: { input: { mediaFileId, capabilities } } }),
+        createPlaybackSession({
+          variables: { input: { mediaFileId, capabilities, options: { quality: 'AUTO' } } },
+        }),
       startPositionSeconds,
       onSourcePhase: setSourcePhase,
     })

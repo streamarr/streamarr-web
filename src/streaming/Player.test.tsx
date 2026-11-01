@@ -25,7 +25,11 @@ import {
 } from '../test/playbackCapabilities'
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
-import type { ClientCapabilityDeclarationInput } from '../graphql/generated/graphql'
+import type {
+  ClientCapabilityDeclarationInput,
+  CreatePlaybackSessionInput,
+  VideoQuality,
+} from '../graphql/generated/graphql'
 import type { PlaybackPlatform } from './playbackCapabilities'
 import { Player } from './Player'
 
@@ -105,6 +109,51 @@ function serveSessionRecordingDeclarations(): ClientCapabilityDeclarationInput[]
     }),
   )
   return declarations
+}
+
+// Each creation answers a new playback session that names the choice asked for, Auto when none
+// was, or the one `playing` says the server plays instead. Every creation and destruction joins
+// the log.
+function servePlaybackChoices({
+  playing = (requested) => requested,
+}: { playing?: (requested: VideoQuality) => VideoQuality } = {}): string[] {
+  const log: string[] = []
+  server.use(
+    graphql.mutation('CreatePlaybackSession', ({ variables }) => {
+      const { options } = (variables as { input: CreatePlaybackSessionInput }).input
+      log.push(`create ${options?.quality ?? 'without a choice'}`)
+      const requested = options?.quality ?? 'AUTO'
+      const number = log.filter((entry) => entry.startsWith('create')).length
+      return HttpResponse.json({
+        data: {
+          createPlaybackSession: {
+            playbackSession: readyPlaybackSession({
+              id: `playback-${number}`,
+              streamSession: {
+                ...SESSION,
+                id: `sess-${number}`,
+                streamUrl: choiceStreamUrl(number),
+              },
+              requestedChoice: requested,
+              playbackChoice: playing(requested),
+            }),
+            userErrors: [],
+          },
+        },
+      })
+    }),
+    graphql.mutation('DestroyPlaybackSession', ({ variables }) => {
+      const destroyed = destroyedPlaybackSession(variables)
+      log.push(`destroy ${destroyed.playbackSessionId}`)
+      return HttpResponse.json({ data: { destroyPlaybackSession: destroyed } })
+    }),
+  )
+  recordTimelineReports()
+  return log
+}
+
+function choiceStreamUrl(creation: number) {
+  return `/api/stream/choice-${creation}/multivariant.m3u8?t=playback-token`
 }
 
 function codecFamilies(declarations: readonly ClientCapabilityDeclarationInput[]) {
@@ -613,7 +662,15 @@ describe('Player', () => {
     )
 
     await attachedVideo()
-    expect(created).toEqual([{ input: { mediaFileId: 'abcd', capabilities: MINIMAL_DECLARATION } }])
+    expect(created).toEqual([
+      {
+        input: {
+          mediaFileId: 'abcd',
+          capabilities: MINIMAL_DECLARATION,
+          options: { quality: 'AUTO' },
+        },
+      },
+    ])
     unmount()
     await waitFor(() => expect(destroyed).toEqual([{ input: { playbackSessionId: 'playback-1' } }]))
   })
@@ -2194,7 +2251,13 @@ describe('Player', () => {
 
     await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(STREAM_URL))
     expect(hls.attachMedia).toHaveBeenCalledOnce()
-    expect(variables).toEqual({ input: { mediaFileId: 'abcd', capabilities: MINIMAL_DECLARATION } })
+    expect(variables).toEqual({
+      input: {
+        mediaFileId: 'abcd',
+        capabilities: MINIMAL_DECLARATION,
+        options: { quality: 'AUTO' },
+      },
+    })
   })
 
   it('shouldDestroyASessionThatFinishesCreatingAfterThePlayerLeaves', async () => {
@@ -4539,6 +4602,17 @@ describe('Player', () => {
       loadDuration(video, 2824)
 
       expect(screen.getByText('0:00 / 47:04')).toBeInTheDocument()
+    })
+  })
+
+  describe('quality', () => {
+    it('shouldStartInAutoWhenThePlayerOpens', async () => {
+      const log = servePlaybackChoices()
+
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+      await attachedVideo(choiceStreamUrl(1))
+
+      expect(log).toEqual(['create AUTO'])
     })
   })
 })
