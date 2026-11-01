@@ -5371,6 +5371,19 @@ describe('Player', () => {
       expect(video.paused).toBe(false)
     })
 
+    it('shouldEndAtTheRealEndWhenTheViewerSeeksPastItAndTheStatusCheckNamesItDuringTheSeek', async () => {
+      const { video } = await playTheShortCopy({ namedOnAttach: false })
+      playheadAt(video, REAL_END_SECONDS - 20)
+      setReadyState(video, HTMLMediaElement.HAVE_ENOUGH_DATA)
+      answerTheNextSegmentWith503({ fatal: true })
+      // The seek waits for media past the real end, which never comes.
+      Object.defineProperty(video, 'seeking', { value: true, configurable: true })
+      stallAt(video, REAL_END_SECONDS + 5)
+
+      await waitFor(() => expect(video.paused).toBe(true))
+      expect(hls.loadSource).toHaveBeenCalledTimes(1)
+    })
+
     it('shouldLetASeekCloseToTheEndPlayWhenTheStatusCheckNamesTheEndDuringIt', async () => {
       const { video } = await playTheShortCopy({ namedOnAttach: false })
       Object.defineProperty(video, 'seeking', { value: true, configurable: true })

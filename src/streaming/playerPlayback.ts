@@ -274,11 +274,11 @@ function startSessionPlayback({
         lastKnownPosition = element.currentTime
         report('PAUSED', element.currentTime)
       },
-      // A seek waits for its own data, which can still come; only a stall in playback is an end.
+      // A seek before the real end waits for its own data, which can still come.
       onWaiting: (element) => {
         // The browser queues the event, so the media can have come by the time it fires.
         if (element.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) return
-        if (!element.seeking && tryEndAtRealEnd()) return
+        if (!seekingBeforeRealEnd() && tryEndAtRealEnd()) return
         if (sourceStopped) restartStoppedSource()
       },
       // An element that also ends where playback ended at the real end has nothing new to report.
@@ -320,6 +320,11 @@ function startSessionPlayback({
     adoptPlayback(attachedPlayback)
   }
 
+  // A seek's wait for media before the real end is no stall, but media past it never comes.
+  function seekingBeforeRealEnd(): boolean {
+    return video.seeking && realEnd !== null && video.currentTime < realEnd
+  }
+
   // Nothing past the real end can arrive, so a stall or a failure close to it is the end. A
   // failure after the end, even once the viewer has sought back, belongs to the ended playback.
   function tryEndAtRealEnd(): boolean {
@@ -336,7 +341,7 @@ function startSessionPlayback({
   // The server named the real end only after the playhead may have reached it and stalled there.
   function learnRealEnd(seconds: number) {
     realEnd = seconds
-    if (video.seeking) {
+    if (seekingBeforeRealEnd()) {
       return
     }
     if (video.currentTime >= seconds || video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
