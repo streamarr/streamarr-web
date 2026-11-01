@@ -133,6 +133,10 @@ function startSessionPlayback({
   // Where the attached stream's media really ends, when its copy ran short of the advertised end.
   let realEnd: number | null = null
   let endedAtRealEnd = false
+  // hls.js stops loading after a fatal error, so a failure that ended playback leaves the stream
+  // to attach again before it can play.
+  let sourceStoppedAtEnd = false
+  let attachedPlayback: PlaybackSessionFieldsFragment | null = null
   let timelineReports = Promise.resolve()
   const reportCancellation = new AbortController()
   const statusCancellation = new AbortController()
@@ -242,8 +246,11 @@ function startSessionPlayback({
         // As the element does after its own end, playing at the real end starts from the top.
         if (endedAtRealEnd && withinASegmentOfRealEnd()) element.currentTime = 0
         endedAtRealEnd = false
+        if (sourceStoppedAtEnd) restartStoppedSource(element.currentTime)
       },
+      // The pause that ends playback reports its events after the end; the end stays the last word.
       onTimeUpdate: (element) => {
+        if (endedAtRealEnd) return
         lastKnownPosition = element.currentTime
         if (realEnd !== null && element.currentTime >= realEnd) {
           endAtRealEnd()
@@ -258,6 +265,7 @@ function startSessionPlayback({
         report('PLAYING', element.currentTime)
       },
       onPause: (element) => {
+        if (endedAtRealEnd) return
         if (resume) resume.playing = false
         lastKnownPosition = element.currentTime
         report('PAUSED', element.currentTime)
@@ -290,8 +298,16 @@ function startSessionPlayback({
       return
     }
     endedAtRealEnd = true
+    stopStatusCheck()
     video.pause()
     reportEnd(realEnd)
+  }
+
+  function restartStoppedSource(position: number) {
+    sourceStoppedAtEnd = false
+    resume = { position, playing: true }
+    detachSource()
+    adoptPlayback(attachedPlayback)
   }
 
   // Nothing past the real end can arrive, so a stall or a failure close to it is the end.
@@ -306,6 +322,9 @@ function startSessionPlayback({
   // The server named the real end only after the playhead may have reached it and stalled there.
   function learnRealEnd(seconds: number) {
     realEnd = seconds
+    if (video.seeking) {
+      return
+    }
     if (video.currentTime >= seconds || video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
       tryEndAtRealEnd()
     }
@@ -372,9 +391,13 @@ function startSessionPlayback({
       showFailure(PLAYBACK_FAILURE_MESSAGE)
       return
     }
+    // The same stream attached again keeps the real end a status check named for it.
+    const sameStream = attempt.streamSession.id === sessionId
     sessionId = attempt.streamSession.id
-    realEnd = attempt.streamSession.mediaEndSeconds
+    attachedPlayback = playback
+    realEnd = attempt.streamSession.mediaEndSeconds ?? (sameStream ? realEnd : null)
     endedAtRealEnd = false
+    sourceStoppedAtEnd = false
     const generation = sourceGeneration
     timeline.detach()
     timeline = trackTimeline()
@@ -394,7 +417,11 @@ function startSessionPlayback({
         void reconcilePlaybackStatus({ generation, fatal })
       },
       onFatal: () => {
-        if (cancelled || generation !== sourceGeneration || tryEndAtRealEnd()) return
+        if (cancelled || generation !== sourceGeneration) return
+        if (tryEndAtRealEnd()) {
+          sourceStoppedAtEnd = true
+          return
+        }
         stopStatusCheck()
         detachSource()
         showFailure(PLAYBACK_FAILURE_MESSAGE)
@@ -486,7 +513,13 @@ function startSessionPlayback({
     generation: number
     fatal: boolean
   }) {
-    if (cancelled || generation !== sourceGeneration || reportingFormat || !playbackSessionId)
+    if (
+      cancelled ||
+      generation !== sourceGeneration ||
+      reportingFormat ||
+      !playbackSessionId ||
+      endedAtRealEnd
+    )
       return
     if (statusCheck) {
       statusCheck.fatal ||= fatal

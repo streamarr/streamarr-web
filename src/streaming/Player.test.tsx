@@ -5232,6 +5232,127 @@ describe('Player', () => {
       expect(notice()).toBeEmptyDOMElement()
     })
 
+    it('shouldRestartTheStoppedStreamWhenTheViewerPlaysAgainAfterAFailureEndedPlayback', async () => {
+      const { video } = await playTheShortCopy()
+      playheadAt(video, REAL_END_SECONDS - 4)
+      raiseHlsFatalError()
+      expect(video.paused).toBe(true)
+      hls.destroy.mockImplementation(() => video.load())
+
+      await act(() => video.play())
+
+      expect(hls.loadSource).toHaveBeenCalledTimes(2)
+      loadMetadata(video)
+      expect(video.currentTime).toBe(0)
+      expect(video.paused).toBe(false)
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('shouldKeepTheEndAsTheLastReportWhenTheBrowserFiresItsPauseEventsLate', async () => {
+      const { reports, video } = await playTheShortCopy()
+      // A browser's pause() queues its timeupdate and pause events rather than firing them inside.
+      Object.defineProperty(video, 'pause', {
+        configurable: true,
+        value: () => {
+          Object.defineProperty(video, 'paused', {
+            value: true,
+            writable: true,
+            configurable: true,
+          })
+          queueMicrotask(() => {
+            fireEvent(video, new Event('timeupdate'))
+            fireEvent(video, new Event('pause'))
+          })
+        },
+      })
+
+      stallAt(video, REAL_END_SECONDS - 5)
+
+      await waitFor(() =>
+        expect(reports.at(-1)).toEqual({
+          sessionId: 'sess-1',
+          positionSeconds: REAL_END_SECONDS,
+          state: 'STOPPED',
+        }),
+      )
+      await act(async () => cleanup())
+      await waitFor(() =>
+        expect(reports.filter((report) => report.state === 'STOPPED')).toHaveLength(1),
+      )
+      expect(reports.at(-1)?.positionSeconds).toBe(REAL_END_SECONDS)
+      expect(reports.filter((report) => report.state === 'PAUSED')).toEqual([])
+    })
+
+    it('shouldShowNoFailureWhenAStatusCheckFailsAfterPlaybackEndedAtTheRealEnd', async () => {
+      const { video } = await playTheShortCopy()
+      const answered = deferred()
+      server.use(
+        graphql.query('PlaybackSession', async () => {
+          await answered.promise
+          return HttpResponse.json({ errors: [{ message: 'Server unavailable' }] })
+        }),
+      )
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      answerTheNextSegmentWith503({ fatal: true })
+
+      playheadAt(video, REAL_END_SECONDS)
+      answered.resolve()
+      await act(async () => vi.advanceTimersByTimeAsync(30_000))
+
+      expect(video.paused).toBe(true)
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(hls.destroy).not.toHaveBeenCalled()
+    })
+
+    it('shouldLetASeekCloseToTheEndPlayWhenTheStatusCheckNamesTheEndDuringIt', async () => {
+      const { video } = await playTheShortCopy({ namedOnAttach: false })
+      Object.defineProperty(video, 'seeking', { value: true, configurable: true })
+      stallAt(video, REAL_END_SECONDS - 3)
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      answerTheNextSegmentWith503({ fatal: false })
+      await act(async () => vi.advanceTimersByTimeAsync(30_000))
+
+      expect(video.paused).toBe(false)
+      Object.defineProperty(video, 'seeking', { value: false, configurable: true })
+      fireEvent(video, new Event('waiting'))
+      expect(video.paused).toBe(true)
+    })
+
+    it('shouldKeepALearnedRealEndWhenTheStoppedStreamAttachesAgain', async () => {
+      const { video } = await playTheShortCopy({ namedOnAttach: false })
+      playheadAt(video, REAL_END_SECONDS - 100)
+      answerTheNextSegmentWith503({ fatal: false })
+      stallAt(video, REAL_END_SECONDS - 4)
+      await waitFor(() => expect(video.paused).toBe(true))
+      raiseHlsFatalError()
+      hls.destroy.mockImplementation(() => video.load())
+      await act(() => video.play())
+      loadMetadata(video)
+
+      playheadAt(video, REAL_END_SECONDS)
+
+      expect(video.paused).toBe(true)
+    })
+
+    it('shouldShowNoFailureWhenAStreamErrorAfterTheRealEndFindsTheServerUnavailable', async () => {
+      const { video } = await playTheShortCopy()
+      playheadAt(video, REAL_END_SECONDS)
+      expect(video.paused).toBe(true)
+      server.use(
+        graphql.query('PlaybackSession', () =>
+          HttpResponse.json({ errors: [{ message: 'Server unavailable' }] }),
+        ),
+      )
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      answerTheNextSegmentWith503({ fatal: true })
+      await act(async () => vi.advanceTimersByTimeAsync(30_000))
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(hls.destroy).not.toHaveBeenCalled()
+    })
+
     it('shouldPlayFromTheStartWhenTheViewerPlaysAgainAfterTheRealEnd', async () => {
       const { video } = await playTheShortCopy()
       stallAt(video, REAL_END_SECONDS - 2)
