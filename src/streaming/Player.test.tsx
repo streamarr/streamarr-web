@@ -315,14 +315,12 @@ function answerTheNextSegmentWith503({ fatal }: { fatal: boolean }) {
   act(() => onError?.('hlsError', { fatal, type: 'networkError', response: { code: 503 } }))
 }
 
-// hls.js gave up on a segment request after its retries, as on one the server holds past the
-// real end.
-function timeOutTheNextSegment() {
+// hls.js timed out a segment request, as one the server holds past the real end. A fatal timeout
+// is the last after hls.js's retries.
+function timeOutTheNextSegment({ fatal = true } = {}) {
   const onError = hls.on.mock.calls.findLast(([event]) => event === 'hlsError')?.[1]
   expect(onError).toBeTypeOf('function')
-  act(() =>
-    onError?.('hlsError', { fatal: true, type: 'networkError', details: 'fragLoadTimeOut' }),
-  )
+  act(() => onError?.('hlsError', { fatal, type: 'networkError', details: 'fragLoadTimeOut' }))
 }
 
 // The playback status names the attached stream with no real end; returns how often it was read.
@@ -5139,6 +5137,24 @@ describe('Player', () => {
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     })
 
+    it('shouldKeepWaitingWhenAStallFindsARealEndOnlyForAnotherStream', async () => {
+      const { video } = await playTheShortCopy({ namedOnAttach: false })
+      const replacement = { ...SESSION, id: 'sess-2', mediaEndSeconds: REAL_END_SECONDS }
+      server.use(
+        graphql.query('PlaybackSession', () =>
+          HttpResponse.json({
+            data: { playbackSession: readyPlaybackSession({ streamSession: replacement }) },
+          }),
+        ),
+      )
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, REAL_END_SECONDS - 2)
+      await act(async () => vi.advanceTimersByTimeAsync(30_000))
+
+      expect(video.paused).toBe(false)
+    })
+
     it('shouldPlayOnToTheRealEndWhenAHeldSegmentTimesOutWhileThePausedViewerHasMediaBuffered', async () => {
       const { video } = await playTheShortCopy({ namedOnAttach: false })
       act(() => video.pause())
@@ -5153,6 +5169,19 @@ describe('Player', () => {
       playheadAt(video, REAL_END_SECONDS)
 
       expect(video.paused).toBe(true)
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('shouldReadNoStatusWhileHlsJsRetriesASegmentThatTimedOut', async () => {
+      const { video } = await playTheShortCopy({ namedOnAttach: false })
+      const statusReads = serveAStatusWithoutARealEnd()
+      setReadyState(video, HTMLMediaElement.HAVE_ENOUGH_DATA)
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      timeOutTheNextSegment({ fatal: false })
+      await act(async () => vi.advanceTimersByTimeAsync(30_000))
+
+      expect(statusReads()).toBe(0)
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     })
 
@@ -5423,7 +5452,7 @@ describe('Player', () => {
     it.each([
       {
         learnedFrom: 'a held segment request that timed out',
-        learn: timeOutTheNextSegment,
+        learn: () => timeOutTheNextSegment(),
         attachments: 2,
       },
       {
@@ -5610,7 +5639,7 @@ describe('Player', () => {
 
     it.each([
       { failure: 'a fatal stream error', fail: raiseHlsFatalError },
-      { failure: 'a held segment request that timed out', fail: timeOutTheNextSegment },
+      { failure: 'a held segment request that timed out', fail: () => timeOutTheNextSegment() },
       { failure: 'a format failure', fail: refuseTheStreamsFormat },
     ])(
       'shouldAttachTheStreamAgainWhenTheViewerPlaysAfterAFailureEndedPlayback($failure)',
