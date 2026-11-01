@@ -236,6 +236,22 @@ function notice(): HTMLElement {
   return screen.getByRole('status')
 }
 
+// Plays the `picked` row's choice, whose stream the browser then refuses, and attaches the stream
+// that the server replaces it with, which plays with `choices`.
+async function watchAFallback(picked: string, choices: Partial<PlaybackChoices>) {
+  const log = servePlaybackChoices()
+  replaceTheRefusedStream(choices)
+  const { user } = renderWithProviders(
+    <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+  )
+  await attachedVideo(choiceStreamUrl(1))
+  await pickQuality(user, picked)
+  const video = await attachedVideo(choiceStreamUrl(2))
+  refuseTheStreamsFormat()
+  await attachedVideo(replacementStream(1).streamUrl)
+  return { user, log, video }
+}
+
 function codecFamilies(declarations: readonly ClientCapabilityDeclarationInput[]) {
   return declarations.map(({ video }) => video.map((entry) => entry.codecFamily))
 }
@@ -5057,18 +5073,8 @@ describe('Player', () => {
     })
 
     it('shouldKeepTheFixedQualityAndOmitTheAutoSentenceWhenItsCopyFallsBack', async () => {
-      servePlaybackChoices()
-      replaceTheRefusedStream(FIXED_QUALITY_CONVERTED)
-      const { user } = renderWithProviders(
-        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
-      )
-      await attachedVideo(choiceStreamUrl(1))
-      await pickQuality(user, '720p')
-      await attachedVideo(choiceStreamUrl(2))
+      await watchAFallback('720p', FIXED_QUALITY_CONVERTED)
 
-      refuseTheStreamsFormat()
-
-      await attachedVideo(replacementStream(1).streamUrl)
       expect(notice().textContent).toBe(CONVERTED_NOTICE)
       expect(screen.getByRole('button', { name: 'Quality: 720p' })).toBeInTheDocument()
     })
@@ -5079,22 +5085,12 @@ describe('Player', () => {
     ] as const)(
       'shouldShowTheDolbyVisionNoticeAndKeepTheSelectionWhenDolbyVisionIsStripped(picked: $picked)',
       async ({ picked, requested }) => {
-        servePlaybackChoices()
-        replaceTheRefusedStream({
+        await watchAFallback(picked, {
           requestedChoice: requested,
           playbackChoice: requested,
           formatChange: 'DOLBY_VISION_STRIPPED',
         })
-        const { user } = renderWithProviders(
-          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
-        )
-        await attachedVideo(choiceStreamUrl(1))
-        await pickQuality(user, picked)
-        await attachedVideo(choiceStreamUrl(2))
 
-        refuseTheStreamsFormat()
-
-        await attachedVideo(replacementStream(1).streamUrl)
         expect(notice().textContent).toBe(DOLBY_VISION_NOTICE)
         expect(screen.getByRole('button', { name: `Quality: ${picked}` })).toBeInTheDocument()
       },
