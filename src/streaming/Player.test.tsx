@@ -5278,13 +5278,13 @@ describe('Player', () => {
     it('shouldExplainTheMarkWhileKeyboardFocusIsOnTheMarkedRow', async () => {
       const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
       await openQualityMenu(user)
-      expect(screen.queryByText(ORIGINAL_EXPLANATION)).not.toBeInTheDocument()
+      expect(screen.getByText(ORIGINAL_EXPLANATION)).not.toBeVisible()
 
       await user.keyboard('{ArrowUp}')
-      expect(screen.getByText(ORIGINAL_EXPLANATION)).toBeInTheDocument()
+      expect(screen.getByText(ORIGINAL_EXPLANATION)).toBeVisible()
 
       await user.keyboard('{ArrowDown}')
-      expect(screen.queryByText(ORIGINAL_EXPLANATION)).not.toBeInTheDocument()
+      expect(screen.getByText(ORIGINAL_EXPLANATION)).not.toBeVisible()
     })
 
     it('shouldExplainTheMarkWhileThePointerHoversTheMarkedRow', async () => {
@@ -5293,10 +5293,10 @@ describe('Player', () => {
       const row = within(menu).getByRole('menuitemradio', { name: /^Original/ })
 
       await user.hover(row)
-      expect(screen.getByText(ORIGINAL_EXPLANATION)).toBeInTheDocument()
+      expect(screen.getByText(ORIGINAL_EXPLANATION)).toBeVisible()
 
       await user.unhover(row)
-      expect(screen.queryByText(ORIGINAL_EXPLANATION)).not.toBeInTheDocument()
+      expect(screen.getByText(ORIGINAL_EXPLANATION)).not.toBeVisible()
     })
 
     it('shouldExplainTheMarkOnATapWithoutPickingItsChoice', async () => {
@@ -5306,7 +5306,7 @@ describe('Player', () => {
 
       tap(within(row).getByRole('img'))
 
-      expect(screen.getByText(ORIGINAL_EXPLANATION)).toBeInTheDocument()
+      expect(screen.getByText(ORIGINAL_EXPLANATION)).toBeVisible()
       expect(screen.getByRole('menu')).toBe(menu)
       expect(log.filter((entry) => entry.startsWith('create'))).toEqual([
         'create AUTO',
@@ -5440,7 +5440,7 @@ describe('Player', () => {
 
       await user.keyboard('{ArrowUp}')
 
-      expect(screen.getByText(ORIGINAL_EXPLANATION)).toBeInTheDocument()
+      expect(screen.getByText(ORIGINAL_EXPLANATION)).toBeVisible()
     })
 
     it('shouldShowNoNoticeWhenAutoRecoversFromAFailedCopy', async () => {

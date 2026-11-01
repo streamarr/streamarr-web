@@ -76,16 +76,21 @@ export function CaretPopover<Id>({
   const [explainedRows, setExplainedRows] = useState(NO_EXPLAINED_ROWS)
   const explainedIndex = explainedRows.hovered ?? explainedRows.tapped ?? explainedRows.focused
   const explanation = explainedIndex === null ? undefined : options[explainedIndex]?.caution
+  // The menu keeps room for its longest explanation from the start, so no explanation that
+  // shows or goes moves a row: a row moving under the pointer would end its own hover.
+  const longestCaution = longestCautionOf(options)
+  const reservedRoom = useRef(0)
   const headingId = useId()
 
   // The explanation's side depends on where the surface lands, so both move together.
   useLayoutEffect(() => {
     const place = () => {
       placeAbove(surfaceRef.current, anchorRef.current)
-      placeExplanation({
+      reservedRoom.current = placeExplanation({
         explanation: explanationRef.current,
         row: explainedIndex === null ? undefined : rowsOf(menuRef.current)[explainedIndex],
         surface: surfaceRef.current,
+        reservedRoom: reservedRoom.current,
       })
     }
     place()
@@ -215,9 +220,14 @@ export function CaretPopover<Id>({
           )
         })}
       </div>
-      {explanation && (
-        <div ref={explanationRef} className={styles.explanation} aria-hidden="true">
-          {explanation}
+      {longestCaution && (
+        <div
+          ref={explanationRef}
+          className={styles.explanation}
+          style={explanation ? undefined : { visibility: 'hidden' }}
+          aria-hidden="true"
+        >
+          {explanation ?? longestCaution}
         </div>
       )}
     </div>
@@ -251,30 +261,42 @@ function moveBetweenRows(event: ReactKeyboardEvent<HTMLElement>) {
   rows[move(rows.indexOf(event.currentTarget), rows.length)]?.focus()
 }
 
+function longestCautionOf<Id>(options: readonly PopoverOption<Id>[]): string | undefined {
+  return options.reduce<string | undefined>(
+    (longest, { caution }) =>
+      caution && caution.length > (longest?.length ?? 0) ? caution : longest,
+    undefined,
+  )
+}
+
 // Level with its row on the side away from the screen edge, beside the menu so it covers no
-// other row, or above the menu where the screen leaves no room beside it.
+// other row, or above the menu where the screen leaves no room beside it. Above the menu, the
+// rows scroll in less height so the explanation stays on screen; returns the room kept for it,
+// which only grows while the menu is open.
 function placeExplanation({
   explanation,
   row,
   surface,
+  reservedRoom,
 }: {
   explanation: HTMLElement | null
   row: HTMLElement | undefined
   surface: HTMLElement | null
-}) {
-  if (!explanation || !row || !surface) {
-    return
+  reservedRoom: number
+}): number {
+  if (!explanation || !surface) {
+    return reservedRoom
   }
   if (surface.offsetLeft < EXPLANATION_MAX_WIDTH_PX + EXPLANATION_GAP_PX) {
     explanation.dataset.side = 'above'
     explanation.style.top = ''
-    // The rows scroll in less height, so the explanation above them stays on screen too.
-    const room = explanation.offsetHeight + EXPLANATION_GAP_PX
+    const room = Math.max(reservedRoom, explanation.offsetHeight + EXPLANATION_GAP_PX)
     surface.style.maxHeight = `${surface.getBoundingClientRect().bottom - SCREEN_EDGE_GAP_PX - room}px`
-    return
+    return room
   }
   explanation.dataset.side = 'start'
-  explanation.style.top = `${row.offsetTop - (row.parentElement?.scrollTop ?? 0)}px`
+  explanation.style.top = row ? `${row.offsetTop - (row.parentElement?.scrollTop ?? 0)}px` : ''
+  return reservedRoom
 }
 
 function placeAbove(surface: HTMLElement | null, anchor: HTMLElement | null) {

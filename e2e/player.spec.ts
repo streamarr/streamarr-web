@@ -875,6 +875,25 @@ test('on a small phone held sideways the explanation above the menu stays on scr
   await expect(page.getByRole('menuitemradio', { name: /^Original/ })).toBeInViewport()
 })
 
+test('on a small phone held sideways hovering the marked row keeps the menu still', async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize({ width: 568, height: 320 })
+  await openPlayerShowingMedia(page, request)
+  await startOriginalWithAnEncode(page)
+  await page.getByRole('button', { name: 'Quality: Auto' }).click()
+  const original = page.getByRole('menuitemradio', { name: /^Original/ })
+
+  await original.hover()
+  const hovered = (await original.boundingBox()) as Box
+  // A row that moved from under the pointer would end its hover and move back, again and again.
+  await page.waitForTimeout(300)
+
+  await expect(page.getByText(ORIGINAL_EXPLANATION)).toBeVisible()
+  expect(((await original.boundingBox()) as Box).y).toBe(hovered.y)
+})
+
 test('a refusal keeps Retry above the control bar on a phone held sideways', async ({
   page,
   request,
