@@ -737,8 +737,17 @@ test('the Quality menu lists the choices the server offers and starts the picked
   ])
 })
 
+// Routes added later take precedence, so the first media segment's route follows the player's.
+async function openPlayerShowingMedia(page: Page, request: APIRequestContext): Promise<void> {
+  await routePlayer(page, request)
+  await serveTheFirstMediaSegment(page)
+  await page.goto(PLAYER_PATH)
+  await expect(page.getByRole('slider', { name: 'Seek' })).toHaveAttribute('aria-disabled', 'false')
+}
+
 // Picking Original answers a playback session whose first attempt is an encode, so Original
-// changes to Auto: the notice shows and the Quality menu marks Original.
+// changes to Auto: once the new stream shows its first frame, the notice shows and the Quality
+// menu marks Original.
 async function startOriginalWithAnEncode(page: Page): Promise<void> {
   await page.route('**/graphql', async (route) => {
     const body = route.request().postDataJSON() as {
@@ -784,7 +793,7 @@ test('the notice sits under Back, and the mark explains itself beside the menu, 
   page,
   request,
 }) => {
-  await openPlayer(page, request)
+  await openPlayerShowingMedia(page, request)
   await startOriginalWithAnEncode(page)
   const back = (await page.getByRole('button', { name: 'Back', exact: true }).boundingBox()) as Box
   const notice = (await page
@@ -811,7 +820,7 @@ test('on a phone the notice spans the player, and the explanation sits above the
   request,
 }) => {
   await page.setViewportSize({ width: 375, height: 667 })
-  await openPlayer(page, request)
+  await openPlayerShowingMedia(page, request)
   await startOriginalWithAnEncode(page)
   const notice = (await page
     .getByRole('status')

@@ -29,7 +29,7 @@ export type QualityMarks = ReadonlyMap<VideoQuality, string>
 
 const NO_MARKS: QualityMarks = new Map()
 
-/** What a playing stream tells the player when it attaches. */
+/** What a stream tells the player once it shows its first frame. */
 export type FollowPlayingChoices = (qualities: QualityChoices) => void
 
 export interface PlaybackFallbacks {
@@ -37,8 +37,8 @@ export interface PlaybackFallbacks {
   notice: { text: string; serial: number } | null
   marks: QualityMarks
   /**
-   * Returns what to tell about each stream that one playback session attaches, so that session
-   * announces each format change once.
+   * Starts following a new playback session, which takes down the notice about an earlier one, and
+   * returns what to tell about each stream it shows, so that it announces each format change once.
    */
   followPlaybackSession: () => FollowPlayingChoices
 }
@@ -70,8 +70,8 @@ function markFallback(marks: QualityMarks, qualities: QualityChoices): QualityMa
 
 /**
  * The notice after each fallback during a viewing, and the marks it leaves in the quality menu.
- * Pass a new `viewing` object once the viewer leaves the media title: the first stream that a
- * playback session of the new viewing attaches leaves only that viewing's marks.
+ * Pass a new `viewing` object once the viewer leaves the media title: its first playback session
+ * starts without marks.
  */
 export function usePlaybackFallbacks(viewing: object): PlaybackFallbacks {
   const [notice, setNotice] = useState<PlaybackFallbacks['notice']>(null)
@@ -86,12 +86,11 @@ export function usePlaybackFallbacks(viewing: object): PlaybackFallbacks {
   }, [notice])
 
   const followPlaybackSession = useCallback(() => {
+    setNotice(null)
+    setMarked((current) => (current.viewing === viewing ? current : { viewing, marks: NO_MARKS }))
     let announced: PlaybackFormatChange | null = null
     return (qualities: QualityChoices) => {
-      setMarked((current) => ({
-        viewing,
-        marks: markFallback(current.viewing === viewing ? current.marks : NO_MARKS, qualities),
-      }))
+      setMarked((current) => ({ viewing, marks: markFallback(current.marks, qualities) }))
       const previous = announced
       announced = qualities.formatChange
       const fallback = fallbackOf(qualities)

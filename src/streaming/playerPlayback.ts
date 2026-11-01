@@ -66,6 +66,8 @@ interface PlayerPlaybackOptions {
   /** Takes the place of the start position when this playback replaces one the viewer was watching. */
   resumeFrom?: ResumePoint
   onSourcePhase: (phase: SourcePhase) => void
+  /** Called once each attached stream shows its first frame, with the choices that stream plays. */
+  onOutputShown: (qualities: QualityChoices) => void
 }
 
 interface SessionPlayback extends PlayerPlayback {
@@ -111,6 +113,7 @@ function startSessionPlayback({
   createPlaybackSession,
   startPositionSeconds,
   onSourcePhase,
+  onOutputShown,
   resumeFrom,
 }: PlayerPlaybackOptions): SessionPlayback {
   let source: StreamSource | null = null
@@ -322,8 +325,15 @@ function startSessionPlayback({
     const generation = sourceGeneration
     timeline.detach()
     timeline = trackTimeline()
+    const qualities: QualityChoices = {
+      offered: playback.offeredChoices,
+      requested: playback.requestedChoice,
+      playing: playback.playbackChoice,
+      formatChange: playback.formatChange,
+    }
     source = attach(video, attempt.streamSession.streamUrl, {
       startupDeadline,
+      onFirstFrame: () => onOutputShown(qualities),
       onFormatFailure: (reason) => {
         void reportFormatFailure(reason, generation)
       },
@@ -340,12 +350,7 @@ function startSessionPlayback({
     onSourcePhase({
       at: 'attached',
       tracks: source.tracks,
-      qualities: {
-        offered: playback.offeredChoices,
-        requested: playback.requestedChoice,
-        playing: playback.playbackChoice,
-        formatChange: playback.formatChange,
-      },
+      qualities,
       videoRange: attempt.streamSession.videoRange,
     })
   }
@@ -754,6 +759,7 @@ interface StreamSource {
 
 interface StreamSourceOptions {
   onFatal: () => void
+  onFirstFrame: () => void
   onFormatFailure: (reason: PlaybackFormatFailure) => void
   onStatusRequired: (fatal: boolean) => void
   startupDeadline: StartupDeadline
@@ -782,10 +788,12 @@ function attach(video: HTMLVideoElement, url: string, options: StreamSourceOptio
   const onVideoError = () => handleVideoError(video, options)
   video.addEventListener('error', onVideoError)
   video.addEventListener('loadedmetadata', options.startupDeadline.end)
+  video.addEventListener('loadeddata', options.onFirstFrame, { once: true })
   hls.loadSource(url)
   hls.attachMedia(video)
   return {
     detach: () => {
+      video.removeEventListener('loadeddata', options.onFirstFrame)
       video.removeEventListener('loadedmetadata', options.startupDeadline.end)
       video.removeEventListener('error', onVideoError)
       hls.destroy()
@@ -826,7 +834,7 @@ function attachNative(
   url: string,
   options: StreamSourceOptions,
 ): StreamSource {
-  const { startupDeadline } = options
+  const { startupDeadline, onFirstFrame } = options
   const onVideoError = () => handleVideoError(video, options)
   // WebKit loads metadata from the playlists alone, so startup ends on the first frame. A browser
   // may withhold that frame until the viewer presses play, so a suspend while paused holds startup
@@ -838,6 +846,7 @@ function attachNative(
   }
   video.addEventListener('error', onVideoError)
   video.addEventListener('loadeddata', startupDeadline.end)
+  video.addEventListener('loadeddata', onFirstFrame, { once: true })
   video.addEventListener('suspend', holdWhilePaused)
   video.addEventListener('play', startupDeadline.rearm)
   video.src = url
@@ -845,6 +854,7 @@ function attachNative(
     detach: () => {
       video.removeEventListener('error', onVideoError)
       video.removeEventListener('loadeddata', startupDeadline.end)
+      video.removeEventListener('loadeddata', onFirstFrame)
       video.removeEventListener('suspend', holdWhilePaused)
       video.removeEventListener('play', startupDeadline.rearm)
       // The same reset hls.js performs on detach: the element stops fetching the stream.

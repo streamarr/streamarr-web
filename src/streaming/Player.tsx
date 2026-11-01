@@ -103,7 +103,6 @@ export function Player({
       return undefined
     }
     setSourcePhase(STARTING)
-    const followPlayingChoices = followPlaybackSession()
 
     const playback = startPlayerPlayback({
       video,
@@ -117,12 +116,8 @@ export function Player({
         }),
       startPositionSeconds,
       resumeFrom: choice.resumeFrom,
-      onSourcePhase: (phase) => {
-        setSourcePhase(phase)
-        if (phase.at === 'attached') {
-          followPlayingChoices(phase.qualities)
-        }
-      },
+      onSourcePhase: setSourcePhase,
+      onOutputShown: followPlaybackSession(),
     })
     playbackRef.current = playback
     return playback.stop

@@ -252,7 +252,15 @@ function marksIn(menu: HTMLElement): string[] {
     .map((mark) => `${mark.closest('[role="menuitemradio"]')?.textContent}: ${mark.ariaLabel}`)
 }
 
-// Plays the `picked` row's choice, whose stream the browser then refuses, and attaches the stream
+// The stream at `streamUrl` attached, loaded and shows its first frame.
+async function showingVideo(streamUrl: string): Promise<HTMLVideoElement> {
+  const video = await attachedVideo(streamUrl)
+  loadMetadata(video)
+  loadFirstFrame(video)
+  return video
+}
+
+// Plays the `picked` row's choice, whose stream the browser then refuses, and shows the stream
 // that the server replaces it with, which plays with `choices`.
 async function watchAFallback(picked: string, choices: Partial<PlaybackChoices>) {
   const log = servePlaybackChoices()
@@ -260,11 +268,11 @@ async function watchAFallback(picked: string, choices: Partial<PlaybackChoices>)
   const { user } = renderWithProviders(
     <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
   )
-  await attachedVideo(choiceStreamUrl(1))
+  await showingVideo(choiceStreamUrl(1))
   await pickQuality(user, picked)
-  const video = await attachedVideo(choiceStreamUrl(2))
+  const video = await showingVideo(choiceStreamUrl(2))
   refuseTheStreamsFormat()
-  await attachedVideo(replacementStream(1).streamUrl)
+  await showingVideo(replacementStream(1).streamUrl)
   return { user, log, video }
 }
 
@@ -5059,14 +5067,14 @@ describe('Player', () => {
       const { user } = renderWithProviders(
         <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
       )
-      await attachedVideo(choiceStreamUrl(1))
+      await showingVideo(choiceStreamUrl(1))
       await pickQuality(user, 'Original')
-      await attachedVideo(choiceStreamUrl(2))
+      await showingVideo(choiceStreamUrl(2))
       expect(notice()).toBeEmptyDOMElement()
 
       refuseTheStreamsFormat()
 
-      await attachedVideo(replacement.streamUrl)
+      await showingVideo(replacement.streamUrl)
       expect(notice().textContent).toBe(CHANGED_TO_AUTO_NOTICE)
       expect(screen.getByRole('button', { name: 'Quality: Auto' })).toBeInTheDocument()
     })
@@ -5079,11 +5087,11 @@ describe('Player', () => {
       const { user } = renderWithProviders(
         <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
       )
-      await attachedVideo(choiceStreamUrl(1))
+      await showingVideo(choiceStreamUrl(1))
 
       await pickQuality(user, 'Original')
 
-      await attachedVideo(choiceStreamUrl(2))
+      await showingVideo(choiceStreamUrl(2))
       expect(notice().textContent).toBe(CHANGED_TO_AUTO_NOTICE)
       expect(screen.getByRole('button', { name: 'Quality: Auto' })).toBeInTheDocument()
     })
@@ -5118,15 +5126,15 @@ describe('Player', () => {
       const { user } = renderWithProviders(
         <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
       )
-      await attachedVideo(choiceStreamUrl(1))
+      await showingVideo(choiceStreamUrl(1))
       await pickQuality(user, '720p')
-      const video = await attachedVideo(choiceStreamUrl(2))
+      const video = await showingVideo(choiceStreamUrl(2))
       loadMetadata(video)
       hls.destroy.mockImplementation(() => video.load())
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
 
       refuseTheStreamsFormat()
-      await attachedVideo(replacementStream(1).streamUrl)
+      await showingVideo(replacementStream(1).streamUrl)
       loadMetadata(video)
       expect(notice().textContent).toBe(CONVERTED_NOTICE)
 
@@ -5156,12 +5164,12 @@ describe('Player', () => {
       const { user } = renderWithProviders(
         <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
       )
-      await attachedVideo(choiceStreamUrl(1))
+      await showingVideo(choiceStreamUrl(1))
       await pickQuality(user, 'Original')
-      await attachedVideo(choiceStreamUrl(2))
+      await showingVideo(choiceStreamUrl(2))
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
       refuseTheStreamsFormat()
-      await attachedVideo(replacementStream(1).streamUrl)
+      await showingVideo(replacementStream(1).streamUrl)
       await act(async () => vi.advanceTimersByTimeAsync(6_000))
       expect(notice()).toBeEmptyDOMElement()
 
@@ -5170,7 +5178,7 @@ describe('Player', () => {
         onError?.('hlsError', { fatal: false, type: 'networkError', response: { code: 503 } }),
       )
 
-      await attachedVideo(replacementStream(2).streamUrl)
+      await showingVideo(replacementStream(2).streamUrl)
       expect(notice()).toBeEmptyDOMElement()
     })
 
@@ -5184,18 +5192,18 @@ describe('Player', () => {
       const { user } = renderWithProviders(
         <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
       )
-      await attachedVideo(choiceStreamUrl(1))
+      await showingVideo(choiceStreamUrl(1))
       await pickQuality(user, 'Original')
-      await attachedVideo(choiceStreamUrl(2))
+      await showingVideo(choiceStreamUrl(2))
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
       refuseTheStreamsFormat()
-      await attachedVideo(replacementStream(1).streamUrl)
+      await showingVideo(replacementStream(1).streamUrl)
       expect(notice().textContent).toBe(DOLBY_VISION_NOTICE)
       await act(async () => vi.advanceTimersByTimeAsync(4_000))
       replaceTheRefusedStream(ORIGINAL_CHANGED_TO_AUTO, replacementStream(2))
 
       refuseTheStreamsFormat()
-      await attachedVideo(replacementStream(2).streamUrl)
+      await showingVideo(replacementStream(2).streamUrl)
 
       expect(notice().textContent).toBe(CHANGED_TO_AUTO_NOTICE)
       await act(async () => vi.advanceTimersByTimeAsync(5_900))
@@ -5297,7 +5305,7 @@ describe('Player', () => {
 
       await pickQuality(user, `Original. ${ORIGINAL_EXPLANATION}`)
 
-      await attachedVideo(choiceStreamUrl(3))
+      await showingVideo(choiceStreamUrl(3))
       expect(log.slice(-2)).toEqual(['destroy playback-2', 'create ORIGINAL'])
     })
 
@@ -5305,7 +5313,7 @@ describe('Player', () => {
       const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
 
       await pickQuality(user, '720p')
-      await attachedVideo(choiceStreamUrl(3))
+      await showingVideo(choiceStreamUrl(3))
 
       const menu = await openQualityMenu(user)
       expect(marksIn(menu)).toEqual([`Original: ${ORIGINAL_EXPLANATION}`])
@@ -5316,7 +5324,7 @@ describe('Player', () => {
       const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
 
       await pickQuality(user, `Original. ${ORIGINAL_EXPLANATION}`)
-      await attachedVideo(choiceStreamUrl(3))
+      await showingVideo(choiceStreamUrl(3))
 
       expect(marksIn(await openQualityMenu(user))).toEqual([])
     })
@@ -5327,12 +5335,86 @@ describe('Player', () => {
         formatChange: (requested) => (requested === 'ORIGINAL' ? 'STARTED_WITH_ENCODE' : null),
       })
       const { user } = renderWithProviders(<Harness />)
-      await attachedVideo(choiceStreamUrl(1))
+      await showingVideo(choiceStreamUrl(1))
       await pickQuality(user, 'Original')
-      await attachedVideo(choiceStreamUrl(2))
+      await showingVideo(choiceStreamUrl(2))
 
       await user.click(screen.getByRole('button', { name: 'Next' }))
-      await attachedVideo(choiceStreamUrl(3))
+      await showingVideo(choiceStreamUrl(3))
+
+      expect(marksIn(await openQualityMenu(user))).toEqual([])
+    })
+
+    it('shouldShowTheNoticeOnceTheReplacementShowsItsFirstFrame', async () => {
+      servePlaybackChoices()
+      replaceTheRefusedStream(FIXED_QUALITY_CONVERTED)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await showingVideo(choiceStreamUrl(1))
+      await pickQuality(user, '720p')
+      await showingVideo(choiceStreamUrl(2))
+      refuseTheStreamsFormat()
+      const video = await attachedVideo(replacementStream(1).streamUrl)
+      loadMetadata(video)
+      expect(notice()).toBeEmptyDOMElement()
+
+      loadFirstFrame(video)
+
+      expect(notice().textContent).toBe(CONVERTED_NOTICE)
+    })
+
+    it('shouldShowNoNoticeWhenTheReplacementFailsBeforeItsFirstFrame', async () => {
+      servePlaybackChoices()
+      replaceTheRefusedStream(FIXED_QUALITY_CONVERTED)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await showingVideo(choiceStreamUrl(1))
+      await pickQuality(user, '720p')
+      await showingVideo(choiceStreamUrl(2))
+      refuseTheStreamsFormat()
+      await attachedVideo(replacementStream(1).streamUrl)
+
+      raiseHlsFatalError()
+
+      expect(await screen.findByRole('alert')).toBeInTheDocument()
+      expect(notice()).toBeEmptyDOMElement()
+    })
+
+    it('shouldClearTheNoticeWhenTheViewerPicksAnotherChoice', async () => {
+      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      expect(notice().textContent).toBe(CHANGED_TO_AUTO_NOTICE)
+
+      await pickQuality(user, '720p')
+
+      expect(notice()).toBeEmptyDOMElement()
+    })
+
+    it('shouldClearTheNoticeWhenTheNextMediaFileStarts', async () => {
+      servePlaybackChoices({
+        playing: (requested) => (requested === 'ORIGINAL' ? 'AUTO' : requested),
+        formatChange: (requested) => (requested === 'ORIGINAL' ? 'STARTED_WITH_ENCODE' : null),
+      })
+      const { user } = renderWithProviders(<Harness />)
+      await showingVideo(choiceStreamUrl(1))
+      await pickQuality(user, 'Original')
+      await showingVideo(choiceStreamUrl(2))
+      expect(notice().textContent).toBe(CHANGED_TO_AUTO_NOTICE)
+
+      await user.click(screen.getByRole('button', { name: 'Next' }))
+
+      expect(notice()).toBeEmptyDOMElement()
+    })
+
+    it('shouldKeepTheMarkUntilThePickedOriginalShowsItsFirstFrame', async () => {
+      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      await pickQuality(user, `Original. ${ORIGINAL_EXPLANATION}`)
+      const video = await attachedVideo(choiceStreamUrl(3))
+      expect(marksIn(await openQualityMenu(user))).toEqual([`Original: ${ORIGINAL_EXPLANATION}`])
+      await user.keyboard('{Escape}')
+
+      loadFirstFrame(video)
 
       expect(marksIn(await openQualityMenu(user))).toEqual([])
     })
@@ -5345,11 +5427,11 @@ describe('Player', () => {
         formatChange: null,
       })
       renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
-      await attachedVideo(choiceStreamUrl(1))
+      await showingVideo(choiceStreamUrl(1))
 
       refuseTheStreamsFormat()
 
-      await attachedVideo(replacementStream(1).streamUrl)
+      await showingVideo(replacementStream(1).streamUrl)
       expect(notice()).toBeEmptyDOMElement()
       expect(screen.getByRole('button', { name: 'Quality: Auto' })).toBeInTheDocument()
     })
