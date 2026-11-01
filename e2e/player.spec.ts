@@ -737,6 +737,99 @@ test('the Quality menu lists the choices the server offers and starts the picked
   ])
 })
 
+// Picking Original answers a playback session whose first attempt is an encode, so Original
+// changes to Auto: the notice shows and the Quality menu marks Original.
+async function startOriginalWithAnEncode(page: Page): Promise<void> {
+  await page.route('**/graphql', async (route) => {
+    const body = route.request().postDataJSON() as {
+      operationName?: string
+      variables?: { input?: { options?: { quality?: string } } }
+    } | null
+    if (
+      body?.operationName !== 'CreatePlaybackSession' ||
+      body.variables?.input?.options?.quality !== 'ORIGINAL'
+    ) {
+      return route.fallback()
+    }
+    const created = PLAYER_OPERATIONS.CreatePlaybackSession as {
+      createPlaybackSession: { playbackSession: object }
+    }
+    return route.fulfill({
+      json: {
+        data: {
+          createPlaybackSession: {
+            ...created.createPlaybackSession,
+            playbackSession: {
+              ...created.createPlaybackSession.playbackSession,
+              id: 'playback-2',
+              requestedChoice: 'ORIGINAL',
+              playbackChoice: 'AUTO',
+              formatChange: 'STARTED_WITH_ENCODE',
+            },
+          },
+        },
+      },
+    })
+  })
+  await page.getByRole('button', { name: 'Quality: Auto' }).click()
+  await page.keyboard.press('Home')
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('status')).toContainText('Quality is now set to Auto.')
+}
+
+const ORIGINAL_EXPLANATION =
+  "This video couldn't play in its original form, so Quality changed to Auto."
+
+test('the notice sits under Back, and the mark explains itself beside the menu, level with its row', async ({
+  page,
+  request,
+}) => {
+  await openPlayer(page, request)
+  await startOriginalWithAnEncode(page)
+  const back = (await page.getByRole('button', { name: 'Back', exact: true }).boundingBox()) as Box
+  const notice = (await page
+    .getByRole('status')
+    .getByText(/converted/)
+    .boundingBox()) as Box
+  expect(notice.x).toBeCloseTo(back.x, 0)
+  expect(notice.y).toBeGreaterThan(back.y + back.height)
+
+  await page.getByRole('button', { name: 'Quality: Auto' }).click()
+  await page.keyboard.press('ArrowUp')
+
+  const menu = (await page.getByRole('menu', { name: 'Quality' }).boundingBox()) as Box
+  const row = (await page
+    .getByRole('menuitemradio', { name: `Original. ${ORIGINAL_EXPLANATION}` })
+    .boundingBox()) as Box
+  const explanation = (await page.getByText(ORIGINAL_EXPLANATION).boundingBox()) as Box
+  expect(explanation.x + explanation.width).toBeLessThan(menu.x)
+  expect(explanation.y).toBeCloseTo(row.y, 0)
+})
+
+test('on a phone the notice spans the player, and the explanation sits above the menu', async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize({ width: 375, height: 667 })
+  await openPlayer(page, request)
+  await startOriginalWithAnEncode(page)
+  const notice = (await page
+    .getByRole('status')
+    .getByText(/converted/)
+    .boundingBox()) as Box
+  expect(notice.x).toBeCloseTo(16, 0)
+  expect(notice.width).toBeCloseTo(375 - 2 * 16, 0)
+
+  await page.getByRole('button', { name: 'Quality: Auto' }).click()
+  await page.keyboard.press('ArrowUp')
+
+  const menu = (await page.getByRole('menu', { name: 'Quality' }).boundingBox()) as Box
+  const explanation = (await page.getByText(ORIGINAL_EXPLANATION).boundingBox()) as Box
+  expect(explanation.y + explanation.height).toBeLessThan(menu.y)
+  expect(explanation.x).toBeGreaterThanOrEqual(0)
+  expect(explanation.x + explanation.width).toBeLessThanOrEqual(375)
+})
+
 test('a refusal keeps Retry above the control bar on a phone held sideways', async ({
   page,
   request,

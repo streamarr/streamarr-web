@@ -69,3 +69,10 @@
     left: var(--spacing-16);
   }
 }
+
+/* A narrow player gives a notice under Back the whole width less the insets. */
+@media (max-width: 600px) {
+  .topStart {
+    right: var(--spacing-16);
+  }
+}
