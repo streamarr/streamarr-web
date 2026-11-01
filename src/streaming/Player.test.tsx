@@ -315,6 +315,16 @@ function answerTheNextSegmentWith503({ fatal }: { fatal: boolean }) {
   act(() => onError?.('hlsError', { fatal, type: 'networkError', response: { code: 503 } }))
 }
 
+// hls.js gave up on a segment request after its retries, as on one the server holds past the
+// real end.
+function timeOutTheNextSegment() {
+  const onError = hls.on.mock.calls.findLast(([event]) => event === 'hlsError')?.[1]
+  expect(onError).toBeTypeOf('function')
+  act(() =>
+    onError?.('hlsError', { fatal: true, type: 'networkError', details: 'fragLoadTimeOut' }),
+  )
+}
+
 // The playback status names the attached stream with no real end; returns how often it was read.
 function serveAStatusWithoutARealEnd(): () => number {
   let reads = 0
@@ -5129,6 +5139,35 @@ describe('Player', () => {
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     })
 
+    it('shouldPlayOnToTheRealEndWhenAHeldSegmentTimesOutWhileThePausedViewerHasMediaBuffered', async () => {
+      const { video } = await playTheShortCopy({ namedOnAttach: false })
+      act(() => video.pause())
+      playheadAt(video, REAL_END_SECONDS - 20)
+      setReadyState(video, HTMLMediaElement.HAVE_ENOUGH_DATA)
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      timeOutTheNextSegment()
+      await act(async () => vi.advanceTimersByTimeAsync(30_000))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      await act(() => video.play())
+      playheadAt(video, REAL_END_SECONDS)
+
+      expect(video.paused).toBe(true)
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('shouldShowTheFailureWhenASegmentTimesOutAndTheStatusNamesNoRealEnd', async () => {
+      const { video } = await playTheShortCopy({ namedOnAttach: false })
+      serveAStatusWithoutARealEnd()
+      playheadAt(video, REAL_END_SECONDS - 20)
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      timeOutTheNextSegment()
+      await act(async () => vi.advanceTimersByTimeAsync(30_000))
+
+      expect(screen.getByRole('alert')).toHaveTextContent("Playback couldn't start.")
+    })
+
     it('shouldEndAtTheRealEndThatTheAttachedAttemptNames', async () => {
       const { video } = await playTheShortCopy()
 
@@ -5218,13 +5257,13 @@ describe('Player', () => {
       expect(video.paused).toBe(true)
     })
 
-    it('shouldShowNoFailureWhenSegmentsPastTheRealEndAnswer503', async () => {
+    it('shouldShowNoFailureWhenAHeldSegmentPastTheRealEndTimesOut', async () => {
       const { video } = await playTheShortCopy()
       playheadAt(video, REAL_END_SECONDS - 20)
       setReadyState(video, HTMLMediaElement.HAVE_ENOUGH_DATA)
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
 
-      answerTheNextSegmentWith503({ fatal: true })
+      timeOutTheNextSegment()
       await act(async () => vi.advanceTimersByTimeAsync(30_000))
 
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
@@ -5241,6 +5280,23 @@ describe('Player', () => {
       expect(video.paused).toBe(true)
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
       expect(hls.destroy).not.toHaveBeenCalled()
+    })
+
+    it('shouldEndWithoutAFailureWhenASegmentTimesOutWithinOneSegmentOfTheRealEndAndTheServerIsUnavailable', async () => {
+      const { video } = await playTheShortCopy()
+      server.use(
+        graphql.query('PlaybackSession', () =>
+          HttpResponse.json({ errors: [{ message: 'Server unavailable' }] }),
+        ),
+      )
+      playheadAt(video, REAL_END_SECONDS - 4)
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      timeOutTheNextSegment()
+      await act(async () => vi.advanceTimersByTimeAsync(30_000))
+
+      expect(video.paused).toBe(true)
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     })
 
     it('shouldShowTheFailureWhenTheStreamFailsLongBeforeTheRealEnd', async () => {

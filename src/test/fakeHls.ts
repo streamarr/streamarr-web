@@ -52,6 +52,7 @@ class FakeHls {
     MANIFEST_INCOMPATIBLE_CODECS_ERROR: 'manifestIncompatibleCodecsError',
     BUFFER_INCOMPATIBLE_CODECS_ERROR: 'bufferIncompatibleCodecsError',
     BUFFER_ADD_CODEC_ERROR: 'bufferAddCodecError',
+    FRAG_LOAD_TIMEOUT: 'fragLoadTimeOut',
   }
   static Events = {
     ERROR: 'hlsError',

@@ -480,6 +480,8 @@ function startSessionPlayback({
         void reportFormatFailure(reason, generation)
       },
       onStatusRequired: (fatal) => {
+        // A stream that stops for good within one segment of the real end has ended there.
+        if (fatal && generation === sourceGeneration && tryEndAtRealEnd()) return
         void reconcilePlaybackStatus({ generation, fatal })
       },
       onFatal: () => {
@@ -968,6 +970,12 @@ function attach(video: HTMLVideoElement, url: string, options: StreamSourceOptio
   hls.on(Hls.Events.ERROR, (_event, data) => {
     if (data.type === Hls.ErrorTypes.NETWORK_ERROR && data.response?.code === 503) {
       options.onStatusRequired(data.fatal)
+      return
+    }
+    // The server holds a segment request past a short copy's real end, so only the playback
+    // status can tell a request that never ends from a failure.
+    if (data.fatal && data.details === Hls.ErrorDetails.FRAG_LOAD_TIMEOUT) {
+      options.onStatusRequired(true)
       return
     }
     if (!data.fatal) {
