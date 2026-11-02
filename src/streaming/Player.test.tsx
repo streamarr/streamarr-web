@@ -6057,6 +6057,39 @@ describe('Player', () => {
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     })
 
+    it('shouldKeepPlayingWhenTheMediaArrivesBeforeItsPlayingEventWhileTheStallsStatusIsRead', async () => {
+      const video = await playingVideo()
+      const lateRead = holdTheSecondStatusRead()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS))
+      setReadyState(video, HTMLMediaElement.HAVE_ENOUGH_DATA)
+      await act(async () => {
+        lateRead.answer()
+        await vi.advanceTimersByTimeAsync(PLAYBACK_START_TIMEOUT_MS)
+      })
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(hls.destroy).not.toHaveBeenCalled()
+    })
+
+    it('shouldKeepWaitingWhenTheViewerPausesBeforeThePauseEventWhileTheStallsStatusIsRead', async () => {
+      const video = await playingVideo()
+      const lateRead = holdTheSecondStatusRead()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS))
+      Object.defineProperty(video, 'paused', { writable: true, value: true, configurable: true })
+      await act(async () => {
+        lateRead.answer()
+        await vi.advanceTimersByTimeAsync(PLAYBACK_START_TIMEOUT_MS)
+      })
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
     it('shouldAttachTheReplacementWhenAStallOutlastsTheLimitAndTheStatusNamesAnotherStream', async () => {
       const video = await playingVideo()
       const replacement = replacementStream(1)

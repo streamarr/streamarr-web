@@ -434,6 +434,8 @@ function startSessionPlayback({
     clearTimeout(deadline)
     if (stall !== ended) return
     stall = undefined
+    // The media element can resume or pause before it fires the event that stops the limit.
+    if (video.paused || video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) return
     if (!status.read) {
       failStalledStream()
       return
