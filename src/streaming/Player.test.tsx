@@ -130,9 +130,9 @@ function hideThePage({ persisted }: { persisted: boolean }) {
   })
 }
 
-function showThePage({ persisted }: { persisted: boolean }) {
+function restoreThePage() {
   act(() => {
-    window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted }))
+    window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))
   })
 }
 
@@ -2766,7 +2766,7 @@ describe('Player', () => {
       playheadAt(video, 42)
 
       hideThePage({ persisted: true })
-      showThePage({ persisted: true })
+      restoreThePage()
 
       await waitFor(() => expect(hls.loadSource).toHaveBeenCalledTimes(2))
       loadMetadata(video)
@@ -2785,7 +2785,7 @@ describe('Player', () => {
       video.pause()
 
       hideThePage({ persisted: true })
-      showThePage({ persisted: true })
+      restoreThePage()
 
       await waitFor(() => expect(hls.loadSource).toHaveBeenCalledTimes(2))
       loadMetadata(video)
@@ -2814,12 +2814,92 @@ describe('Player', () => {
       await started.promise
 
       hideThePage({ persisted: true })
-      showThePage({ persisted: true })
+      restoreThePage()
       gate.resolve()
 
       await waitFor(() => expect(hls.loadSource).toHaveBeenCalledOnce())
       expect(createAttempts).toEqual(['abcd', 'abcd'])
       expect(activeSessions).toEqual(new Set(['playback-sess-abcd']))
+    })
+
+    it('shouldStartTheRestoredSessionWithoutWaitingForATimelineReportHeldWhenThePageWasHidden', async () => {
+      const created = countCreatedSessions()
+      const reportStarted = deferred()
+      const reportHeld = deferred()
+      server.use(
+        graphql.mutation('ReportStreamSessionTimeline', async () => {
+          reportStarted.resolve()
+          await reportHeld.promise
+          return HttpResponse.json({ data: { reportStreamSessionTimeline: true } })
+        }),
+      )
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await attachedVideo()
+      playheadAt(video, 42)
+      await reportStarted.promise
+
+      hideThePage({ persisted: true })
+      restoreThePage()
+
+      await waitFor(() => expect(hls.loadSource).toHaveBeenCalledTimes(2))
+      expect(created.count).toBe(2)
+      reportHeld.resolve()
+    })
+
+    it('shouldResumeWhereTheViewerLeftWhenThePageIsHiddenWhileAnotherFormatStarts', async () => {
+      hls.supported = false
+      countCreatedSessions()
+      const formatReported = deferred()
+      server.use(
+        graphql.mutation('ReportPlaybackFormatFailure', async () => {
+          formatReported.resolve()
+          return new Promise<never>(() => undefined)
+        }),
+      )
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await nativeVideo()
+      loadMetadata(video)
+      playheadAt(video, 42)
+      Object.defineProperty(video, 'error', { configurable: true, value: { code: 3 } })
+      fireEvent(video, new Event('error'))
+      await formatReported.promise
+      // Releasing the failed format rewound the element, as a browser does.
+      expect(video.currentTime).toBe(0)
+
+      hideThePage({ persisted: true })
+      restoreThePage()
+
+      await nativeVideo()
+      loadMetadata(video)
+      expect(video.currentTime).toBe(42)
+      expect(video.paused).toBe(false)
+    })
+
+    it('shouldClearAnEarlierFailureWhileTheRestoredPageStartsAgain', async () => {
+      refuseSession()
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      expect(await screen.findByRole('alert')).toHaveTextContent(CAPACITY_REFUSAL)
+      const creationHeld = deferred()
+      server.use(
+        graphql.mutation('CreatePlaybackSession', async () => {
+          await creationHeld.promise
+          return HttpResponse.json({
+            data: {
+              createPlaybackSession: {
+                playbackSession: readyPlaybackSession({ streamSession: SESSION }),
+                userErrors: [],
+              },
+            },
+          })
+        }),
+      )
+
+      hideThePage({ persisted: true })
+      restoreThePage()
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      creationHeld.resolve()
+      await attachedVideo()
     })
 
     it('shouldRetryAFailedCloseBeforeStartingAnotherSessionWhenThePageIsHidden', async () => {
@@ -2852,7 +2932,7 @@ describe('Player', () => {
       await attachedVideo()
 
       hideThePage({ persisted: true })
-      showThePage({ persisted: true })
+      restoreThePage()
 
       await waitFor(() => expect(hls.loadSource).toHaveBeenCalledTimes(2))
       expect(calls).toEqual(['create', 'failed keepalive destroy', 'destroy', 'create'])
@@ -2868,21 +2948,20 @@ describe('Player', () => {
       expect(screen.getByRole('alert')).toHaveTextContent('Playback is taking too long to start.')
 
       hideThePage({ persisted: true })
-      showThePage({ persisted: true })
+      restoreThePage()
 
       expect(screen.getByRole('alert')).toHaveTextContent('Playback is taking too long to start.')
       expect(created.count).toBe(1)
       expect(hls.loadSource).toHaveBeenCalledOnce()
     })
 
-    it('shouldKeepPlayingWhenThePageIsShownWithoutReturningFromTheBackForwardCache', async () => {
+    it('shouldKeepPlayingWhenThePageIsShownWithoutHavingBeenHidden', async () => {
       const created = countCreatedSessions()
       const closed = recordClosedSessions()
       renderWithProviders(<Player mediaFileId="abcd" />)
       await attachedVideo()
 
-      showThePage({ persisted: false })
-      showThePage({ persisted: true })
+      restoreThePage()
 
       expect(created.count).toBe(1)
       expect(closed).toEqual([])
@@ -2900,7 +2979,7 @@ describe('Player', () => {
       )
 
       hideThePage({ persisted: true })
-      showThePage({ persisted: true })
+      restoreThePage()
 
       expect(closed).toHaveLength(1)
       expect(created.count).toBe(1)

@@ -68,8 +68,9 @@ export function startPlayerPlayback(options: PlayerPlaybackOptions): () => void 
   const onPageHide = () => {
     left = playback.leavePage()
   }
-  const onPageShow = (event: PageTransitionEvent) => {
-    if (!event.persisted || !left) {
+  // Only a page restored from the back-forward cache shows again after it was hidden.
+  const onPageShow = () => {
+    if (!left) {
       return
     }
     const resumeFrom = left
