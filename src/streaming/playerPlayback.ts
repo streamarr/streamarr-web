@@ -58,12 +58,7 @@ interface SessionPlayback {
   leavePage: () => ResumePoint | undefined
 }
 
-interface PendingCleanup {
-  release: () => Promise<void>
-  destroyBeforeThePageGoes: () => void
-}
-
-const pendingCleanups = new WeakMap<ApolloClient, PendingCleanup>()
+const pendingCleanups = new WeakMap<ApolloClient, () => Promise<void>>()
 
 // React never unmounts a page the browser unloads or keeps in its back-forward cache, so the page
 // lifecycle, not the Player effect, has to end the session when the viewer leaves the page.
@@ -121,6 +116,7 @@ function startSessionPlayback({
   let previousCleanup = pendingCleanups.get(client)
   let cleanupInFlight: Promise<void> | undefined
   let destroyOnLeavingPage: Promise<void> | undefined
+  let destroyingOnLeavingPage = false
 
   async function destroySession(id: string, { keepalive = false } = {}) {
     const controller = new AbortController()
@@ -258,7 +254,7 @@ function startSessionPlayback({
   let startupDeadline = createStartupDeadline(expireStartup)
   const startup = Promise.resolve()
     .then(async () => {
-      await previousCleanup?.release()
+      await previousCleanup?.()
       previousCleanup = undefined
       if (cancelled) {
         return
@@ -499,7 +495,7 @@ function startSessionPlayback({
 
   async function finishCleanup() {
     await startup
-    await previousCleanup?.release()
+    await previousCleanup?.()
     previousCleanup = undefined
     const deadline = setTimeout(() => reportCancellation.abort(), TIMELINE_CLEANUP_TIMEOUT_MS)
     await timelineReports.finally(() => clearTimeout(deadline))
@@ -510,7 +506,8 @@ function startSessionPlayback({
       playbackSessionId = null
       sessionId = null
     }
-    if (pendingCleanups.get(client) === ownCleanup) {
+    window.removeEventListener('pagehide', destroyBeforeThePageGoes)
+    if (pendingCleanups.get(client) === releaseSession) {
       pendingCleanups.delete(client)
     }
   }
@@ -525,7 +522,7 @@ function startSessionPlayback({
 
   function requestCleanup() {
     // A failed or pending destroy retains ownership; a later startup can retry the same cleanup.
-    pendingCleanups.set(client, ownCleanup)
+    pendingCleanups.set(client, releaseSession)
     void releaseSession().catch(() => undefined)
   }
 
@@ -538,25 +535,28 @@ function startSessionPlayback({
 
   // The browser cancels an ordinary request when it unloads the page, and the page runs no more
   // script once it is gone, so the destroy goes out at once with keepalive, ahead of any reports.
-  // A playback that is still releasing its session has no listener of its own, so the next one
-  // passes the page exit along. The server ignores a destroy for a session already closed.
+  // The session playback listens until its session is released, because a stopped one may still
+  // hold it after the Player has gone.
   function destroyBeforeThePageGoes() {
-    previousCleanup?.destroyBeforeThePageGoes()
     // A report that reaches the server after the destroy only meets a closed session.
     reportCancellation.abort()
     const id = playbackSessionId
-    if (!id) {
+    if (!id || destroyingOnLeavingPage) {
       return
     }
-    destroyOnLeavingPage = destroySession(id, { keepalive: true }).then(
-      () => {
-        playbackSessionId = null
-      },
-      () => undefined,
-    )
+    destroyingOnLeavingPage = true
+    destroyOnLeavingPage = destroySession(id, { keepalive: true })
+      .then(
+        () => {
+          playbackSessionId = null
+        },
+        () => undefined,
+      )
+      .finally(() => {
+        destroyingOnLeavingPage = false
+      })
   }
-
-  const ownCleanup: PendingCleanup = { release: releaseSession, destroyBeforeThePageGoes }
+  window.addEventListener('pagehide', destroyBeforeThePageGoes)
 
   function leavePage(): ResumePoint | undefined {
     const left = cancelled ? undefined : (resume ?? currentResumePoint())

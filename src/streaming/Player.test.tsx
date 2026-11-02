@@ -2854,6 +2854,32 @@ describe('Player', () => {
       reportHeld.resolve()
     })
 
+    it('shouldCloseTheSessionTheLeftPlayerIsStillReleasingWhenThePageIsHidden', async () => {
+      serveSession()
+      const reportStarted = deferred()
+      const reportHeld = deferred()
+      server.use(
+        graphql.mutation('ReportStreamSessionTimeline', async () => {
+          reportStarted.resolve()
+          await reportHeld.promise
+          return HttpResponse.json({ data: { reportStreamSessionTimeline: true } })
+        }),
+      )
+      const closed = recordClosedSessions()
+      renderWithProviders(<RemountHarness />)
+      const video = await attachedVideo()
+      playheadAt(video, 42)
+      await reportStarted.promise
+      fireEvent.click(screen.getByRole('button', { name: 'Leave playback' }))
+
+      hideThePage({ persisted: false })
+
+      await waitFor(() =>
+        expect(closed).toEqual([{ playbackSessionId: 'playback-sess-1', keepalive: true }]),
+      )
+      reportHeld.resolve()
+    })
+
     it('shouldCloseASessionThatFinishesCreatingAfterThePageIsHiddenBeforeStartingAnother', async () => {
       const gate = deferred()
       const started = deferred()
