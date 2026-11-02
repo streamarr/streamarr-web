@@ -488,12 +488,16 @@ function startSessionPlayback({
     void releaseSession().catch(() => undefined)
   }
 
+  function endPlayback() {
+    cancelled = true
+    statusCancellation.abort()
+    stopStatusCheck()
+    startupDeadline.end()
+  }
+
   return {
     stop: () => {
-      cancelled = true
-      statusCancellation.abort()
-      stopStatusCheck()
-      startupDeadline.end()
+      endPlayback()
       reportStopped(() => unacknowledgedEndPosition)
       reportStopped(() => lastKnownPosition)
       detachSource()
