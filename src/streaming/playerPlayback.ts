@@ -99,8 +99,7 @@ export function startPlayerPlayback(options: PlayerPlaybackOptions): PlayerPlayb
       window.removeEventListener('pageshow', onPageShow)
       playback.stop()
     },
-    // A page hidden by the browser resumes where the viewer left it.
-    resumePoint: () => left ?? playback.resumePoint(),
+    resumePoint: () => playback.resumePoint(),
   }
 }
 
