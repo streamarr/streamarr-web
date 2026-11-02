@@ -410,7 +410,8 @@ export interface components {
     schemas: {
         AcceptInvitationRequest: {
             code: string;
-            cookieMode?: boolean;
+            /** @default false */
+            cookieMode: boolean;
             displayName: string;
             password: string;
         };
@@ -492,7 +493,8 @@ export interface components {
             remainingManagers?: string[];
         };
         LoginRequest: {
-            cookieMode?: boolean;
+            /** @default false */
+            cookieMode: boolean;
             deviceName?: string;
             email: string;
             password: string;
@@ -517,7 +519,8 @@ export interface components {
             profileId: string;
         };
         SetupRequest: {
-            cookieMode?: boolean;
+            /** @default false */
+            cookieMode: boolean;
             displayName: string;
             email: string;
             householdName: string;
