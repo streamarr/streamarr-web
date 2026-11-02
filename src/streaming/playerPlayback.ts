@@ -44,6 +44,10 @@ interface PlayerPlaybackOptions {
   onSourcePhase: (phase: SourcePhase) => void
 }
 
+interface SessionPlaybackOptions extends PlayerPlaybackOptions {
+  resumeFrom?: ResumePoint
+}
+
 interface ResumePoint {
   position: number
   playing: boolean
@@ -51,13 +55,39 @@ interface ResumePoint {
 
 interface SessionPlayback {
   stop: () => void
+  leavePage: () => ResumePoint | undefined
 }
 
 const pendingCleanups = new WeakMap<ApolloClient, () => Promise<void>>()
 
+// React never unmounts a page the browser unloads or keeps in its back-forward cache, so the page
+// lifecycle, not the Player effect, has to end the session when the viewer leaves the page.
 export function startPlayerPlayback(options: PlayerPlaybackOptions): () => void {
-  const playback = startSessionPlayback(options)
-  return () => playback.stop()
+  let playback = startSessionPlayback(options)
+  let left: ResumePoint | undefined
+  const onPageHide = () => {
+    left = playback.leavePage()
+  }
+  const onPageShow = (event: PageTransitionEvent) => {
+    if (!event.persisted || !left) {
+      return
+    }
+    const resumeFrom = left
+    left = undefined
+    options.onSourcePhase({ at: 'starting' })
+    playback = startSessionPlayback({
+      ...options,
+      startPositionSeconds: resumeFrom.position,
+      resumeFrom,
+    })
+  }
+  window.addEventListener('pagehide', onPageHide)
+  window.addEventListener('pageshow', onPageShow)
+  return () => {
+    window.removeEventListener('pagehide', onPageHide)
+    window.removeEventListener('pageshow', onPageShow)
+    playback.stop()
+  }
 }
 
 function startSessionPlayback({
@@ -66,7 +96,8 @@ function startSessionPlayback({
   createPlaybackSession,
   startPositionSeconds,
   onSourcePhase,
-}: PlayerPlaybackOptions): SessionPlayback {
+  resumeFrom,
+}: SessionPlaybackOptions): SessionPlayback {
   let source: StreamSource | null = null
   let cancelled = false
   let sessionId: string | null = null
@@ -74,7 +105,7 @@ function startSessionPlayback({
   let sourceGeneration = 0
   let reportingFormat = false
   let statusCheck: PlaybackStatusCheck | undefined
-  let resume: ResumePoint | undefined
+  let resume = resumeFrom
   let lastReportedPosition = startPositionSeconds ?? 0
   let lastKnownPosition: number | null = null
   let unacknowledgedEndPosition: number | null = null
@@ -83,15 +114,16 @@ function startSessionPlayback({
   const statusCancellation = new AbortController()
   let previousCleanup = pendingCleanups.get(client)
   let cleanupInFlight: Promise<void> | undefined
+  let destroyOnLeavingPage: Promise<void> | undefined
 
-  async function destroySession(id: string) {
+  async function destroySession(id: string, { keepalive = false } = {}) {
     const controller = new AbortController()
     const deadline = setTimeout(() => controller.abort(), PLAYBACK_START_TIMEOUT_MS)
     const result = await client
       .mutate({
         mutation: DestroyPlaybackSessionDocument,
         variables: { input: { playbackSessionId: id } },
-        context: { fetchOptions: { signal: controller.signal } },
+        context: { fetchOptions: { signal: controller.signal, keepalive } },
       })
       .finally(() => clearTimeout(deadline))
     const payload = result.data?.destroyPlaybackSession
@@ -464,6 +496,8 @@ function startSessionPlayback({
     previousCleanup = undefined
     const deadline = setTimeout(() => reportCancellation.abort(), TIMELINE_CLEANUP_TIMEOUT_MS)
     await timelineReports.finally(() => clearTimeout(deadline))
+    // A destroy that failed while the page was hidden leaves the ID in place for this one to retry.
+    await destroyOnLeavingPage
     if (playbackSessionId) {
       await destroySession(playbackSessionId)
       playbackSessionId = null
@@ -495,6 +529,30 @@ function startSessionPlayback({
     startupDeadline.end()
   }
 
+  // The browser cancels an ordinary request when it unloads the page, and the page runs no more
+  // script once it is gone, so the destroy goes out at once with keepalive, ahead of any reports.
+  function leavePage(): ResumePoint | undefined {
+    if (cancelled) {
+      return undefined
+    }
+    const left = resume ?? currentResumePoint()
+    endPlayback()
+    // A report that reaches the server after the destroy only meets a closed session.
+    reportCancellation.abort()
+    detachSource()
+    const id = playbackSessionId
+    if (id) {
+      destroyOnLeavingPage = destroySession(id, { keepalive: true }).then(
+        () => {
+          playbackSessionId = null
+        },
+        () => undefined,
+      )
+    }
+    requestCleanup()
+    return left
+  }
+
   return {
     stop: () => {
       endPlayback()
@@ -503,6 +561,7 @@ function startSessionPlayback({
       detachSource()
       requestCleanup()
     },
+    leavePage,
   }
 }
 

@@ -373,7 +373,7 @@ function barControls(page: Page): Locator[] {
 }
 
 test.afterEach(async ({ page }) => {
-  await page.unrouteAll({ behavior: 'ignoreErrors' })
+  if (!page.isClosed()) await page.unrouteAll({ behavior: 'ignoreErrors' })
 })
 
 test('keyboard focus draws the theme ring on each player control', async ({ page, request }) => {
@@ -547,6 +547,42 @@ test('the player opened from its address waits on Play when the browser refuses 
   const video = page.locator('video')
   expect(await video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(true)
   expect(await video.evaluate((element: HTMLVideoElement) => element.muted)).toBe(false)
+})
+
+const DESTROYED_PLAYBACK_SESSIONS = `${STUB_URL}/__test/destroyed-playback-sessions`
+
+// Playwright does not report the keepalive request a page sends while it unloads, so the stub API
+// answers DestroyPlaybackSession itself and lists the sessions it destroyed.
+async function openPlayerThatDestroysThroughTheStub(page: Page, request: APIRequestContext) {
+  await request.delete(DESTROYED_PLAYBACK_SESSIONS)
+  await openPlayer(page, request, { operations: { DestroyPlaybackSession: undefined } })
+}
+
+async function destroyedPlaybackSessions(request: APIRequestContext): Promise<string[]> {
+  const response = await request.get(DESTROYED_PLAYBACK_SESSIONS)
+  const body = (await response.json()) as { destroyedPlaybackSessions: string[] }
+  return body.destroyedPlaybackSessions
+}
+
+// The browser unloads the page without unmounting its React tree, so only the page lifecycle can
+// end the session, and the request that ends it has to outlive the page.
+test('leaving the player for another page closes its playback session', async ({
+  page,
+  request,
+}) => {
+  await openPlayerThatDestroysThroughTheStub(page, request)
+
+  await page.goto('about:blank')
+
+  await expect.poll(() => destroyedPlaybackSessions(request)).toEqual(['playback-1'])
+})
+
+test('closing the tab closes its playback session', async ({ page, request }) => {
+  await openPlayerThatDestroysThroughTheStub(page, request)
+
+  await page.close()
+
+  await expect.poll(() => destroyedPlaybackSessions(request)).toEqual(['playback-1'])
 })
 
 test('Space pauses and resumes a playing video', async ({ page, request }) => {
