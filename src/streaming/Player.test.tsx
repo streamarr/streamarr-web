@@ -4770,6 +4770,40 @@ describe('Player', () => {
       expect(video.paused).toBe(true)
     })
 
+    it.each([true, false])(
+      'shouldRestoreThePickedQualityWhereTheViewerLeftWhenThePageReturnsAfterAPick(playing: %s)',
+      async (playing) => {
+        const log = servePlaybackChoices()
+        const closed = recordClosedSessions()
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        const video = await attachedVideo(choiceStreamUrl(1))
+        loadMetadata(video)
+        playheadAt(video, 73.25)
+        if (!playing) pressPause(video)
+        hls.destroy.mockImplementation(() => video.load())
+        await pickQuality(user, '720p')
+        await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(choiceStreamUrl(2)))
+        loadMetadata(video)
+        playheadAt(video, 80)
+
+        hideThePage({ persisted: true })
+        restoreThePage()
+
+        await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(choiceStreamUrl(3)))
+        loadMetadata(video)
+        expect(log.filter((entry) => entry.startsWith('create'))).toEqual([
+          'create AUTO',
+          'create HIGH_720P',
+          'create HIGH_720P',
+        ])
+        expect(closed).toContainEqual({ playbackSessionId: 'playback-2', keepalive: true })
+        expect(video.currentTime).toBe(80)
+        expect(video.paused).toBe(!playing)
+      },
+    )
+
     it.each([
       { picked: 'Original', plays: 'AUTO', shown: 'Auto' },
       { picked: 'Original', plays: 'ORIGINAL', shown: 'Original' },
