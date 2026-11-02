@@ -292,13 +292,17 @@ function startSessionPlayback({
         lastKnownPosition = element.currentTime
         report('PAUSED', element.currentTime)
       },
-      // A seek starts a new wait for media.
-      onSeeking: () => {
+      // A seek starts a new wait for media, which a browser need not announce with a waiting event
+      // when the seek leaves a stall.
+      onSeeking: (element) => {
         clearStallLimit()
+        if (!element.paused) startStallLimit()
         seekUnresumed = true
       },
       onSeeked: (element) => {
-        if (element.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) seekUnresumed = false
+        if (element.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) return
+        clearStallLimit()
+        seekUnresumed = false
       },
       onPlaying: () => {
         clearStallLimit()
@@ -403,7 +407,7 @@ function startSessionPlayback({
   let timeline = trackTimeline()
 
   // Only the end of the stall, a pause, a seek or a detached stream stops the limit; a later
-  // waiting event of the same stall leaves it running.
+  // waiting event of the same stall leaves it running, and a seek starts it again.
   function startStallLimit() {
     if (stall || !playbackSessionId) return
     const id = playbackSessionId
@@ -434,8 +438,10 @@ function startSessionPlayback({
     clearTimeout(deadline)
     if (stall !== ended) return
     stall = undefined
-    // The media element can resume or pause before it fires the event that stops the limit.
-    if (video.paused || video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) return
+    // The media element can resume, pause or seek before it fires the event that stops the limit.
+    if (video.paused || video.seeking || video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) {
+      return
+    }
     if (!status.read) {
       failStalledStream()
       return

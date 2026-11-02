@@ -5930,6 +5930,55 @@ describe('Player', () => {
       expect(screen.getByRole('alert')).toHaveTextContent("This video can't be played right now.")
     })
 
+    it('shouldGiveTheWholeLimitToASeekThatLeavesAStallWithoutAWaitingEvent', async () => {
+      const video = await playingVideo()
+      serveAStatusWithoutARealEnd()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 1_000))
+      video.currentTime = 500
+      fireEvent(video, new Event('seeking'))
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 1))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      await act(async () => vi.advanceTimersByTimeAsync(1))
+
+      expect(screen.getByRole('alert')).toHaveTextContent("This video can't be played right now.")
+    })
+
+    it('shouldKeepPlayingWhenASeekDuringAStallLandsOnBufferedMedia', async () => {
+      const video = await playingVideo()
+      serveAStatusWithoutARealEnd()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      fireEvent(video, new Event('seeking'))
+      setReadyState(video, HTMLMediaElement.HAVE_ENOUGH_DATA)
+      fireEvent(video, new Event('seeked'))
+      await act(async () => vi.advanceTimersByTimeAsync(2 * STALL_LIMIT_MS))
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('shouldGiveTheWholeLimitToASeekThatStartsBeforeItsEventWhileTheStallsStatusIsRead', async () => {
+      const video = await playingVideo()
+      const lateRead = holdTheSecondStatusRead()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS))
+      Object.defineProperty(video, 'seeking', { value: true, configurable: true })
+      await act(async () => lateRead.answer())
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      fireEvent(video, new Event('seeking'))
+      Object.defineProperty(video, 'seeking', { value: false, configurable: true })
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 1))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      await act(async () => vi.advanceTimersByTimeAsync(1))
+
+      expect(screen.getByRole('alert')).toHaveTextContent("This video can't be played right now.")
+    })
+
     it('shouldKeepPlayingWhenPlaybackResumesWhileTheStallsStatusReadIsOnItsWay', async () => {
       const video = await playingVideo()
       let answer: () => void = () => undefined
