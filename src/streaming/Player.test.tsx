@@ -2793,6 +2793,67 @@ describe('Player', () => {
       expect(video.paused).toBe(true)
     })
 
+    it('shouldKeepAPausedVideoPausedWhenThePageReturnsFromTheBackForwardCacheASecondTime', async () => {
+      countCreatedSessions()
+      renderWithProviders(<Player mediaFileId="abcd" />)
+      const video = await attachedVideo()
+      loadMetadata(video)
+      playheadAt(video, 42)
+      video.pause()
+      hideThePage({ persisted: true })
+      restoreThePage()
+      await waitFor(() => expect(hls.loadSource).toHaveBeenCalledTimes(2))
+      loadMetadata(video)
+
+      hideThePage({ persisted: true })
+      restoreThePage()
+
+      await waitFor(() => expect(hls.loadSource).toHaveBeenCalledTimes(3))
+      loadMetadata(video)
+      expect(video.currentTime).toBe(42)
+      expect(video.paused).toBe(true)
+    })
+
+    it('shouldCloseTheSessionThePlayerIsStillReleasingWhenThePageIsHidden', async () => {
+      recordTimelineReports()
+      server.use(
+        graphql.mutation('CreatePlaybackSession', ({ variables }) => {
+          const { mediaFileId } = variables.input as { mediaFileId: string }
+          const streamSession = { ...SESSION, id: `sess-${mediaFileId}` }
+          return HttpResponse.json({
+            data: {
+              createPlaybackSession: {
+                playbackSession: readyPlaybackSession({ streamSession }),
+                userErrors: [],
+              },
+            },
+          })
+        }),
+      )
+      const reportStarted = deferred()
+      const reportHeld = deferred()
+      server.use(
+        graphql.mutation('ReportStreamSessionTimeline', async () => {
+          reportStarted.resolve()
+          await reportHeld.promise
+          return HttpResponse.json({ data: { reportStreamSessionTimeline: true } })
+        }),
+      )
+      const closed = recordClosedSessions()
+      renderWithProviders(<Harness />)
+      const video = await attachedVideo()
+      playheadAt(video, 42)
+      await reportStarted.promise
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+
+      hideThePage({ persisted: false })
+
+      await waitFor(() =>
+        expect(closed).toEqual([{ playbackSessionId: 'playback-sess-a', keepalive: true }]),
+      )
+      reportHeld.resolve()
+    })
+
     it('shouldCloseASessionThatFinishesCreatingAfterThePageIsHiddenBeforeStartingAnother', async () => {
       const gate = deferred()
       const started = deferred()
