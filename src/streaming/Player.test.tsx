@@ -5946,6 +5946,73 @@ describe('Player', () => {
       expect(screen.getByRole('alert')).toHaveTextContent("This video can't be played right now.")
     })
 
+    it('shouldShowTheFailureWhenTheLimitExpiresDuringASeekIntoUnbufferedMediaThatNeverGetsData', async () => {
+      const video = await playingVideo()
+      serveAStatusWithoutARealEnd()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      // The seek into unbuffered media waits for data that never comes, so seeking stays true.
+      video.currentTime = 500
+      setReadyState(video, HTMLMediaElement.HAVE_METADATA)
+      Object.defineProperty(video, 'seeking', { value: true, configurable: true })
+      fireEvent(video, new Event('seeking'))
+      await act(async () =>
+        vi.advanceTimersByTimeAsync(10 * (STALL_LIMIT_MS + PLAYBACK_START_TIMEOUT_MS)),
+      )
+
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        "This video can't be played right now. Try again later.",
+      )
+      expect(hls.destroy).toHaveBeenCalled()
+    })
+
+    it('shouldGiveTheWholeLimitToASeekThatStartsBeforeItsEventAfterAnEarlierSeekFinishedWithoutMedia', async () => {
+      const video = await playingVideo()
+      const lateRead = holdTheSecondStatusRead()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      // The first seek finishes, but the media to play at its position has not come.
+      video.currentTime = 500
+      fireEvent(video, new Event('seeking'))
+      fireEvent(video, new Event('seeked'))
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS))
+      // The second seek starts while the stall's status is read, before its event fires.
+      Object.defineProperty(video, 'seeking', { value: true, configurable: true })
+      await act(async () => lateRead.answer())
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      fireEvent(video, new Event('seeking'))
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 1))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      await act(async () => vi.advanceTimersByTimeAsync(1 + PLAYBACK_START_TIMEOUT_MS))
+
+      expect(screen.getByRole('alert')).toHaveTextContent("This video can't be played right now.")
+    })
+
+    it('shouldGiveTheWholeLimitToASeekThatReplacesAnUnfinishedSeekBeforeItsEventFires', async () => {
+      const video = await playingVideo()
+      const lateRead = holdTheSecondStatusRead()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      // The first seek waits for media that has not come when the limit runs out.
+      video.currentTime = 500
+      Object.defineProperty(video, 'seeking', { value: true, configurable: true })
+      fireEvent(video, new Event('seeking'))
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS))
+      // A second seek aborts the first without a seeked event, before its own event fires.
+      video.currentTime = 800
+      await act(async () => lateRead.answer())
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      fireEvent(video, new Event('seeking'))
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 1))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      await act(async () => vi.advanceTimersByTimeAsync(1 + PLAYBACK_START_TIMEOUT_MS))
+
+      expect(screen.getByRole('alert')).toHaveTextContent("This video can't be played right now.")
+    })
+
     it('shouldKeepPlayingWhenASeekDuringAStallLandsOnBufferedMedia', async () => {
       const video = await playingVideo()
       serveAStatusWithoutARealEnd()

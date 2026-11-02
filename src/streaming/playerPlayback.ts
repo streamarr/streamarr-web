@@ -153,6 +153,10 @@ function startSessionPlayback({
   // A browser can finish a seek before it fires the seek's queued waiting event, so a seek that
   // finished without the media to play on waits until playback resumes.
   let seekUnresumed = false
+  // The position of the seek whose seeking event has fired and whose seeked event has not. The
+  // element keeps such a seek running for as long as no media comes, so its stall limit fails it
+  // like any stall. A seek to another position replaced it, and that seek's event is still to come.
+  let seekUnderwayTo: number | null = null
   // hls.js stops loading after a fatal error, so a failure that ended playback leaves the stream
   // to attach again before it can play.
   let attachedPlayback: PlaybackSessionFieldsFragment | null = null
@@ -298,8 +302,10 @@ function startSessionPlayback({
         clearStallLimit()
         if (!element.paused) startStallLimit()
         seekUnresumed = true
+        seekUnderwayTo = element.currentTime
       },
       onSeeked: (element) => {
+        seekUnderwayTo = null
         if (element.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) return
         clearStallLimit()
         seekUnresumed = false
@@ -439,7 +445,12 @@ function startSessionPlayback({
     if (stall !== ended) return
     stall = undefined
     // The media element can resume, pause or seek before it fires the event that stops the limit.
-    if (video.paused || video.seeking || video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) {
+    // A seek whose event has not fired yet starts its own limit when the event fires.
+    if (
+      video.paused ||
+      (video.seeking && video.currentTime !== seekUnderwayTo) ||
+      video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA
+    ) {
       return
     }
     if (!status.read) {
