@@ -1,4 +1,9 @@
-import { readyPlaybackSession, destroyedPlaybackSession } from '../test/playbackSession'
+import {
+  OFFERED_FOR_FULL_HD,
+  type PlaybackChoices,
+  readyPlaybackSession,
+  destroyedPlaybackSession,
+} from '../test/playbackSession'
 import { useApolloClient } from '@apollo/client/react'
 import { deferred } from '../test/deferred'
 import { act, cleanup, configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
@@ -16,14 +21,55 @@ import {
   segmentLoadConfiguration,
 } from '../test/fakeNetworkLoader'
 import { type FakeAudioTrack, type FakeTextTrack, giveElementTracks } from '../test/mediaTracks'
+import {
+  IPHONE_SAFARI_HEVC_ANSWER,
+  IPHONE_SAFARI_USER_AGENT,
+  MINIMAL_DECLARATION,
+  playbackPlatformFixture,
+  smoothUpToFullHd,
+} from '../test/playbackCapabilities'
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
+import type {
+  ClientCapabilityDeclarationInput,
+  CreatePlaybackSessionInput,
+  PlaybackFormatChange,
+  ReportPlaybackFormatFailureInput,
+  VideoQuality,
+} from '../graphql/generated/graphql'
+import type { PlaybackPlatform } from './playbackCapabilities'
 import { Player } from './Player'
 
 vi.mock('hls.js', async () => (await import('../test/fakeHls')).hlsModule)
 
+const withoutDecodingInfo = () => playbackPlatformFixture()
 const STREAM_URL = '/api/stream/abcd/multivariant.m3u8?t=playback-token'
+const CHANGED_TO_AUTO_NOTICE =
+  "This video couldn't play in its original form, so a converted version is playing. " +
+  'Quality is now set to Auto. To choose another quality, open the Quality menu.'
+const CONVERTED_NOTICE =
+  "This video couldn't play in its original form, so a converted version is playing. " +
+  'To choose another quality, open the Quality menu.'
+const DOLBY_VISION_NOTICE =
+  "This video couldn't play in Dolby Vision, so the HDR version is playing."
+const ORIGINAL_EXPLANATION =
+  "This video couldn't play in its original form, so Quality changed to Auto."
+const FIXED_QUALITY_EXPLANATION =
+  "This video couldn't play in its original form at this quality, so a converted version is playing."
+const DOLBY_VISION_EXPLANATION =
+  "This video couldn't play in Dolby Vision, so the HDR version is playing."
+const ORIGINAL_CHANGED_TO_AUTO: Partial<PlaybackChoices> = {
+  requestedChoice: 'ORIGINAL',
+  playbackChoice: 'AUTO',
+  formatChange: 'COPY_FAILED',
+}
+const FIXED_QUALITY_CONVERTED: Partial<PlaybackChoices> = {
+  requestedChoice: 'HIGH_720P',
+  playbackChoice: 'HIGH_720P',
+  formatChange: 'COPY_FAILED',
+}
 const SESSION = { id: 'sess-1', streamUrl: STREAM_URL, transcodeMode: 'REMUX' } as const
+const DECLARATION_REFUSAL = 'capabilities.video[0].maxWidth must be above zero.'
 const CAPACITY_REFUSAL = 'Every transcode slot is busy. Try again in a moment.'
 const INVALID_PLAN =
   "This video can't be played right now. Ask your server admin to check the server logs."
@@ -73,6 +119,306 @@ function serveSession(): TimelineReport[] {
     ),
   )
   return recordTimelineReports()
+}
+
+function serveSessionRecordingDeclarations(): ClientCapabilityDeclarationInput[] {
+  const declarations: ClientCapabilityDeclarationInput[] = []
+  server.use(
+    graphql.mutation('CreatePlaybackSession', ({ variables }) => {
+      declarations.push(
+        (variables as { input: { capabilities: ClientCapabilityDeclarationInput } }).input
+          .capabilities,
+      )
+      return HttpResponse.json({
+        data: {
+          createPlaybackSession: {
+            playbackSession: readyPlaybackSession({ streamSession: SESSION }),
+            userErrors: [],
+          },
+        },
+      })
+    }),
+  )
+  return declarations
+}
+
+// Each creation answers a new playback session that names the choice asked for, Auto when none
+// was, or the one `playing` says the server plays instead, with the format change `formatChange`
+// names. Every creation and destruction joins the log.
+function servePlaybackChoices({
+  playing = (requested) => requested,
+  formatChange = () => null,
+  offered = OFFERED_FOR_FULL_HD,
+}: {
+  playing?: (requested: VideoQuality) => VideoQuality
+  formatChange?: (requested: VideoQuality) => PlaybackFormatChange | null
+  offered?: VideoQuality[]
+} = {}): string[] {
+  const log: string[] = []
+  server.use(
+    graphql.mutation('CreatePlaybackSession', ({ variables }) => {
+      const { options } = (variables as { input: CreatePlaybackSessionInput }).input
+      log.push(`create ${options?.quality ?? 'without a choice'}`)
+      const requested = options?.quality ?? 'AUTO'
+      const number = log.filter((entry) => entry.startsWith('create')).length
+      return HttpResponse.json({
+        data: {
+          createPlaybackSession: {
+            playbackSession: readyPlaybackSession({
+              id: `playback-${number}`,
+              streamSession: {
+                ...SESSION,
+                id: `sess-${number}`,
+                streamUrl: choiceStreamUrl(number),
+              },
+              requestedChoice: requested,
+              playbackChoice: playing(requested),
+              formatChange: formatChange(requested),
+              offeredChoices: offered,
+            }),
+            userErrors: [],
+          },
+        },
+      })
+    }),
+    graphql.mutation('DestroyPlaybackSession', ({ variables }) => {
+      const destroyed = destroyedPlaybackSession(variables)
+      log.push(`destroy ${destroyed.playbackSessionId}`)
+      return HttpResponse.json({ data: { destroyPlaybackSession: destroyed } })
+    }),
+  )
+  recordTimelineReports()
+  return log
+}
+
+function choiceStreamUrl(creation: number) {
+  return `/api/stream/choice-${creation}/multivariant.m3u8?t=playback-token`
+}
+
+function replacementStream(replacement: number) {
+  return {
+    ...SESSION,
+    id: `sess-replacement-${replacement}`,
+    streamUrl: `/api/stream/replacement-${replacement}/multivariant.m3u8?t=playback-token`,
+  }
+}
+
+// The format failure report answers with the attempt that replaces the refused stream, already
+// Ready on `stream`, and with the choices the server names for it.
+function replaceTheRefusedStream(choices: Partial<PlaybackChoices>, stream = replacementStream(1)) {
+  server.use(
+    graphql.mutation('ReportPlaybackFormatFailure', ({ variables }) => {
+      const { playbackSessionId } = (variables as { input: ReportPlaybackFormatFailureInput }).input
+      return HttpResponse.json({
+        data: {
+          reportPlaybackFormatFailure: {
+            playbackSession: readyPlaybackSession({
+              id: String(playbackSessionId),
+              streamSession: stream,
+              ...choices,
+            }),
+            userErrors: [],
+          },
+        },
+      })
+    }),
+  )
+}
+
+// What a player raises when the browser cannot play the stream's codecs, on the latest stream.
+function refuseTheStreamsFormat() {
+  const onError = hls.on.mock.calls.findLast(([event]) => event === 'hlsError')?.[1]
+  expect(onError).toBeTypeOf('function')
+  act(() =>
+    onError?.('hlsError', {
+      fatal: true,
+      type: 'mediaError',
+      details: 'manifestIncompatibleCodecsError',
+    }),
+  )
+}
+
+function notice(): HTMLElement {
+  return screen.getByRole('status')
+}
+
+async function openQualityMenu(user: UserEvent): Promise<HTMLElement> {
+  return openPicker(user, screen.getByRole('button', { name: /^Quality/ }))
+}
+
+function marksIn(menu: HTMLElement): string[] {
+  return within(menu)
+    .queryAllByRole('img')
+    .map((mark) => `${mark.closest('[role="menuitemradio"]')?.textContent}: ${mark.ariaLabel}`)
+}
+
+// The stream at `streamUrl` attached, loaded and shows its first frame.
+async function showingVideo(streamUrl: string): Promise<HTMLVideoElement> {
+  const video = await attachedVideo(streamUrl)
+  loadMetadata(video)
+  loadFirstFrame(video)
+  return video
+}
+
+// Plays the `picked` row's choice, whose stream the browser then refuses, and shows the stream
+// that the server replaces it with, which plays with `choices`.
+const REAL_END_SECONDS = 2700
+
+// The copy ran short after every source stream ended, so the server names where the stream's
+// media really ends: on the attached attempt itself, or only once the status check asks.
+function serveACopyThatRanShort({ namedOnAttach }: { namedOnAttach: boolean }): TimelineReport[] {
+  const shortStream = { ...SESSION, mediaEndSeconds: REAL_END_SECONDS }
+  server.use(
+    graphql.mutation('CreatePlaybackSession', () =>
+      HttpResponse.json({
+        data: {
+          createPlaybackSession: {
+            playbackSession: readyPlaybackSession({
+              streamSession: namedOnAttach ? shortStream : SESSION,
+            }),
+            userErrors: [],
+          },
+        },
+      }),
+    ),
+    graphql.query('PlaybackSession', () =>
+      HttpResponse.json({
+        data: { playbackSession: readyPlaybackSession({ streamSession: shortStream }) },
+      }),
+    ),
+  )
+  return recordTimelineReports()
+}
+
+// Six-second segments, as the playlist's target duration declares them.
+async function playTheShortCopy({ namedOnAttach = true, showingFirstFrame = true } = {}) {
+  const reports = serveACopyThatRanShort({ namedOnAttach })
+  hls.latestLevelDetails = { targetduration: 6 }
+  renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+  const video = await attachedVideo()
+  loadMetadata(video)
+  loadDuration(video, 2712)
+  if (showingFirstFrame) loadFirstFrame(video)
+  return { reports, video }
+}
+
+// The playing element ran out of media at `seconds` and waits for more.
+function stallAt(video: HTMLVideoElement, seconds: number) {
+  playheadAt(video, seconds)
+  setReadyState(video, HTMLMediaElement.HAVE_CURRENT_DATA)
+  fireEvent(video, new Event('waiting'))
+}
+
+function answerTheNextSegmentWith503({ fatal }: { fatal: boolean }) {
+  const onError = hls.on.mock.calls.findLast(([event]) => event === 'hlsError')?.[1]
+  expect(onError).toBeTypeOf('function')
+  act(() => onError?.('hlsError', { fatal, type: 'networkError', response: { code: 503 } }))
+}
+
+// hls.js timed out a segment request, as one the server holds past the real end. A fatal timeout
+// is the last after hls.js's retries.
+function timeOutTheNextSegment({ fatal = true } = {}) {
+  const onError = hls.on.mock.calls.findLast(([event]) => event === 'hlsError')?.[1]
+  expect(onError).toBeTypeOf('function')
+  act(() => onError?.('hlsError', { fatal, type: 'networkError', details: 'fragLoadTimeOut' }))
+}
+
+// The playback status names the attached stream with no real end; returns how often it was read.
+function serveAStatusWithoutARealEnd(): () => number {
+  let reads = 0
+  server.use(
+    graphql.query('PlaybackSession', () => {
+      reads += 1
+      return HttpResponse.json({
+        data: { playbackSession: readyPlaybackSession({ streamSession: SESSION }) },
+      })
+    }),
+  )
+  return () => reads
+}
+
+// How long playback may wait for media at a playhead that does not move.
+const STALL_LIMIT_MS = 45_000
+const PLAYBACK_START_TIMEOUT_MS = 30_000
+
+// A stream with no real end plays from its first frame.
+async function playingVideo(): Promise<HTMLVideoElement> {
+  serveSession()
+  renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+  const video = await showingVideo(STREAM_URL)
+  expect(video.paused).toBe(false)
+  return video
+}
+
+// The stall's first status read names no real end for the attached stream, and later reads do.
+function serveTheRealEndFromTheSecondStatusRead() {
+  let reads = 0
+  server.use(
+    graphql.query('PlaybackSession', () => {
+      reads += 1
+      const streamSession =
+        reads === 1 ? SESSION : { ...SESSION, mediaEndSeconds: REAL_END_SECONDS }
+      return HttpResponse.json({
+        data: { playbackSession: readyPlaybackSession({ streamSession }) },
+      })
+    }),
+  )
+}
+
+// Every status read names the attached stream; the second answers only once released.
+function holdTheSecondStatusRead(): { answer: () => void } {
+  let reads = 0
+  let release: () => void = () => undefined
+  const held = new Promise<void>((resolve) => (release = resolve))
+  server.use(
+    graphql.query('PlaybackSession', async () => {
+      reads += 1
+      if (reads === 2) await held
+      return HttpResponse.json({
+        data: { playbackSession: readyPlaybackSession({ streamSession: SESSION }) },
+      })
+    }),
+  )
+  return { answer: () => release() }
+}
+
+// Only the second status read names another stream; every other read names the attached one.
+function serveAnotherStreamOnlyAtTheSecondStatusRead() {
+  let reads = 0
+  server.use(
+    graphql.query('PlaybackSession', () => {
+      reads += 1
+      const streamSession = reads === 2 ? replacementStream(1) : SESSION
+      return HttpResponse.json({
+        data: { playbackSession: readyPlaybackSession({ streamSession }) },
+      })
+    }),
+  )
+}
+
+// The media the stalled element waited for arrived, and the playhead moves on.
+function resumeAfterTheStall(video: HTMLVideoElement) {
+  setReadyState(video, HTMLMediaElement.HAVE_ENOUGH_DATA)
+  fireEvent(video, new Event('playing'))
+  playheadAt(video, video.currentTime + 1)
+}
+
+async function watchAFallback(picked: string, choices: Partial<PlaybackChoices>) {
+  const log = servePlaybackChoices()
+  replaceTheRefusedStream(choices)
+  const { user } = renderWithProviders(
+    <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+  )
+  await showingVideo(choiceStreamUrl(1))
+  await pickQuality(user, picked)
+  const video = await showingVideo(choiceStreamUrl(2))
+  refuseTheStreamsFormat()
+  await showingVideo(replacementStream(1).streamUrl)
+  return { user, log, video }
+}
+
+function codecFamilies(declarations: readonly ClientCapabilityDeclarationInput[]) {
+  return declarations.map(({ video }) => video.map((entry) => entry.codecFamily))
 }
 
 function recordTimelineReports(): TimelineReport[] {
@@ -351,8 +697,9 @@ function refuseToStartPlayback(video: HTMLVideoElement) {
   )
 }
 
+// Raised on the latest stream's hls.js instance, the one attached now.
 function raiseHlsFatalError() {
-  const onError = hls.on.mock.calls.find(([event]) => event === 'hlsError')?.[1]
+  const onError = hls.on.mock.calls.findLast(([event]) => event === 'hlsError')?.[1]
   expect(onError).toBeTypeOf('function')
   act(() => onError?.('hlsError', { fatal: true, type: 'networkError' }))
 }
@@ -445,6 +792,11 @@ async function openPicker(user: UserEvent, chip: HTMLElement): Promise<HTMLEleme
   return screen.getByRole('menu')
 }
 
+async function pickQuality(user: UserEvent, row: string) {
+  const menu = await openPicker(user, screen.getByRole('button', { name: /^Quality/ }))
+  await user.click(within(menu).getByRole('menuitemradio', { name: row }))
+}
+
 function renderedVideo(): HTMLVideoElement {
   const video = document.querySelector('video')
   assert(video, 'no video element rendered')
@@ -504,14 +856,32 @@ function playedToTheEnd(video: HTMLVideoElement, durationSeconds: number) {
   fireEvent(video, new Event('ended'))
 }
 
-function Harness() {
+function Harness({
+  playbackPlatform = withoutDecodingInfo,
+}: Readonly<{ playbackPlatform?: () => PlaybackPlatform }>) {
   const [mediaFileId, setMediaFileId] = useState('a')
   return (
     <>
       <button type="button" onClick={() => setMediaFileId('b')}>
         Next
       </button>
-      <Player mediaFileId={mediaFileId} />
+      <Player playbackPlatform={playbackPlatform} mediaFileId={mediaFileId} />
+    </>
+  )
+}
+
+function StartPositionHarness() {
+  const [startPositionSeconds, setStartPositionSeconds] = useState(12)
+  return (
+    <>
+      <button type="button" onClick={() => setStartPositionSeconds(120)}>
+        Start at 120
+      </button>
+      <Player
+        playbackPlatform={withoutDecodingInfo}
+        mediaFileId="abcd"
+        startPositionSeconds={startPositionSeconds}
+      />
     </>
   )
 }
@@ -523,7 +893,7 @@ function RemountHarness() {
       <button type="button" onClick={() => setShown((value) => !value)}>
         {shown ? 'Leave playback' : 'Return to playback'}
       </button>
-      {shown && <Player mediaFileId="abcd" />}
+      {shown && <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />}
     </>
   )
 }
@@ -557,15 +927,7 @@ describe('Player', () => {
         return HttpResponse.json({
           data: {
             createPlaybackSession: {
-              playbackSession: {
-                id: 'playback-1',
-                formatAttemptCount: 1,
-                maximumFormatAttempts: 3,
-                currentFormatAttempt: {
-                  __typename: 'ReadyPlaybackFormatAttempt',
-                  streamSession: SESSION,
-                },
-              },
+              playbackSession: readyPlaybackSession({ id: 'playback-1', streamSession: SESSION }),
               userErrors: [],
             },
           },
@@ -578,17 +940,27 @@ describe('Player', () => {
         })
       }),
     )
-    const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
+    const { unmount } = renderWithProviders(
+      <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+    )
 
     await attachedVideo()
-    expect(created).toEqual([{ input: { mediaFileId: 'abcd' } }])
+    expect(created).toEqual([
+      {
+        input: {
+          mediaFileId: 'abcd',
+          capabilities: MINIMAL_DECLARATION,
+          options: { quality: 'AUTO' },
+        },
+      },
+    ])
     unmount()
     await waitFor(() => expect(destroyed).toEqual([{ input: { playbackSessionId: 'playback-1' } }]))
   })
 
   it('shouldWaitForAStartingVariantWithinItsOwnForwardBufferWhenHlsLoadsASegment', async () => {
     serveSession()
-    renderWithProviders(<Player mediaFileId="abcd" />)
+    renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
     await attachedVideo()
     hls.mainForwardBufferInfo = forwardBuffer(30)
     const network = fakeNetworkLoader()
@@ -601,6 +973,121 @@ describe('Player', () => {
     expect(network.loads.map(({ config }) => config.loadPolicy.maxTimeToFirstByteMs)).toEqual([
       20_000,
     ])
+  })
+
+  it('shouldDeclareWhatTheBrowserDecodesWhenPlaybackStarts', async () => {
+    recordTimelineReports()
+    const declarations = serveSessionRecordingDeclarations()
+    const decodingInfo = (configuration: MediaDecodingConfiguration) => {
+      const supported = !configuration.video?.contentType.includes('av01')
+      return Promise.resolve({ supported, smooth: supported, powerEfficient: supported })
+    }
+
+    renderWithProviders(
+      <Player
+        playbackPlatform={() => playbackPlatformFixture({ decodingInfo })}
+        mediaFileId="abcd"
+      />,
+    )
+    await attachedVideo()
+
+    expect(codecFamilies(declarations)).toEqual([['H264', 'HEVC']])
+  })
+
+  it('shouldDeclareTheBrowsersCurrentAnswersWhenTheViewerRetries', async () => {
+    recordTimelineReports()
+    const declarations = serveSessionRecordingDeclarations()
+    let platform = withoutDecodingInfo()
+    const { user } = renderWithProviders(
+      <Player playbackPlatform={() => platform} mediaFileId="abcd" />,
+    )
+    await attachedVideo()
+    platform = playbackPlatformFixture({
+      decodingInfo: () => Promise.resolve({ supported: true, smooth: true, powerEfficient: true }),
+    })
+
+    raiseHlsFatalError()
+    await user.click(await screen.findByRole('button', { name: 'Retry playback' }))
+
+    await waitFor(() => expect(declarations).toHaveLength(2))
+    expect(codecFamilies(declarations)).toEqual([['H264'], ['H264', 'HEVC', 'AV1']])
+  })
+
+  it('shouldDeclareHevcWhenIphoneSafariDecodesItPowerEfficientlyWithoutASmoothAnswer', async () => {
+    recordTimelineReports()
+    const declarations = serveSessionRecordingDeclarations()
+    const decodingInfo = (configuration: MediaDecodingConfiguration) => {
+      if (configuration.video?.contentType.includes('hvc1')) {
+        return Promise.resolve(IPHONE_SAFARI_HEVC_ANSWER)
+      }
+      return Promise.resolve({ supported: true, smooth: true, powerEfficient: true })
+    }
+
+    renderWithProviders(
+      <Player
+        playbackPlatform={() =>
+          playbackPlatformFixture({ decodingInfo, userAgent: IPHONE_SAFARI_USER_AGENT })
+        }
+        mediaFileId="abcd"
+      />,
+    )
+    await attachedVideo()
+
+    expect(codecFamilies(declarations)).toEqual([['H264', 'HEVC', 'AV1']])
+  })
+
+  it('shouldCapPowerEfficientHevcAtTheHighestTierH264KeepsUpWithWhenIphoneSafariPlays', async () => {
+    recordTimelineReports()
+    const declarations = serveSessionRecordingDeclarations()
+    const decodingInfo = (configuration: MediaDecodingConfiguration) => {
+      if (configuration.video?.contentType.includes('hvc1')) {
+        return Promise.resolve(IPHONE_SAFARI_HEVC_ANSWER)
+      }
+      return Promise.resolve(smoothUpToFullHd(configuration))
+    }
+
+    renderWithProviders(
+      <Player
+        playbackPlatform={() =>
+          playbackPlatformFixture({ decodingInfo, userAgent: IPHONE_SAFARI_USER_AGENT })
+        }
+        mediaFileId="abcd"
+      />,
+    )
+    await attachedVideo()
+
+    expect(
+      declarations.flatMap(({ video }) =>
+        video
+          .filter((entry) => entry.codecFamily === 'HEVC')
+          .map(({ maxHeight, maxFrameRate, maxBitDepth }) => ({
+            maxHeight,
+            maxFrameRate,
+            maxBitDepth,
+          })),
+      ),
+    ).toEqual([{ maxHeight: 1080, maxFrameRate: 60, maxBitDepth: 10 }])
+  })
+
+  it('shouldShowThePlaybackFailureWithoutCreatingASessionWhenTheBrowserDecodesNoVideo', async () => {
+    const declarations = serveSessionRecordingDeclarations()
+    const decodingInfo = (configuration: MediaDecodingConfiguration) => {
+      const supported = configuration.video === undefined
+      return Promise.resolve({ supported, smooth: supported, powerEfficient: supported })
+    }
+
+    renderWithProviders(
+      <Player
+        playbackPlatform={() => playbackPlatformFixture({ decodingInfo })}
+        mediaFileId="abcd"
+      />,
+    )
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "Playback couldn't start. Try again.",
+    )
+    expect(declarations).toEqual([])
+    expect(hls.loadSource).not.toHaveBeenCalled()
   })
 
   it('shouldAttachTheReadyChildWhenInitialPlaybackIsPending', async () => {
@@ -643,7 +1130,7 @@ describe('Player', () => {
       }),
     )
 
-    renderWithProviders(<Player mediaFileId="abcd" />)
+    renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
 
     await attachedVideo()
     expect(queries).toEqual([{ id: 'playback-sess-1' }, { id: 'playback-sess-1' }])
@@ -675,7 +1162,7 @@ describe('Player', () => {
       ),
     )
 
-    renderWithProviders(<Player mediaFileId="abcd" />)
+    renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       "This video file can't be played. Ask your server admin to check the file.",
@@ -699,7 +1186,7 @@ describe('Player', () => {
         ),
       )
 
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
 
       expect(await screen.findByRole('alert')).toHaveTextContent(shown)
       expect(hls.loadSource).not.toHaveBeenCalled()
@@ -732,7 +1219,7 @@ describe('Player', () => {
           HttpResponse.json({ data: { playbackSession: failedPlaybackSession(error) } }),
         ),
       )
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       await attachedVideo()
       const onError = hls.on.mock.calls.find(([event]) => event === 'hlsError')?.[1]
       assert(onError)
@@ -765,7 +1252,7 @@ describe('Player', () => {
           return HttpResponse.json({ errors: [{ message: 'Unexpected format report' }] })
         }),
       )
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await attachedVideo()
       loadMetadata(video)
       const onError = hls.on.mock.calls.find(([event]) => event === 'hlsError')?.[1]
@@ -824,7 +1311,13 @@ describe('Player', () => {
           })
         }),
       )
-      renderWithProviders(<Player mediaFileId="abcd" startPositionSeconds={12} />)
+      renderWithProviders(
+        <Player
+          playbackPlatform={withoutDecodingInfo}
+          mediaFileId="abcd"
+          startPositionSeconds={12}
+        />,
+      )
       const video = await attachedVideo()
       loadMetadata(video)
       playheadAt(video, 73.25)
@@ -918,7 +1411,9 @@ describe('Player', () => {
           })
         }),
       )
-      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
       const video = await (mse ? attachedVideo() : nativeVideo())
       loadMetadata(video)
       playheadAt(video, 44.75)
@@ -996,7 +1491,7 @@ describe('Player', () => {
           })
         }),
       )
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await attachedVideo()
       loadMetadata(video)
       playheadAt(video, 61.5)
@@ -1042,7 +1537,7 @@ describe('Player', () => {
           return HttpResponse.json({ errors: [{ message: 'Unexpected format report' }] })
         }),
       )
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await (hls.supported ? attachedVideo() : nativeVideo())
       loadMetadata(video)
       loadFirstFrame(video)
@@ -1108,7 +1603,7 @@ describe('Player', () => {
         }),
       ),
     )
-    renderWithProviders(<Player mediaFileId="abcd" />)
+    renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
     await attachedVideo()
     const onError = hls.on.mock.calls.find(([event]) => event === 'hlsError')?.[1]
     assert(onError)
@@ -1164,7 +1659,9 @@ describe('Player', () => {
         })
       }),
     )
-    const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
+    const { unmount } = renderWithProviders(
+      <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+    )
     await act(() => statusStarted.promise)
 
     unmount()
@@ -1203,7 +1700,7 @@ describe('Player', () => {
         return HttpResponse.json({ errors: [{ message: 'Unexpected format report' }] })
       }),
     )
-    renderWithProviders(<Player mediaFileId="abcd" />)
+    renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
     await attachedVideo()
     const onError = hls.on.mock.calls.find(([event]) => event === 'hlsError')?.[1]
     assert(onError)
@@ -1236,7 +1733,13 @@ describe('Player', () => {
         }),
       ),
     )
-    renderWithProviders(<Player mediaFileId="abcd" startPositionSeconds={143.5} />)
+    renderWithProviders(
+      <Player
+        playbackPlatform={withoutDecodingInfo}
+        mediaFileId="abcd"
+        startPositionSeconds={143.5}
+      />,
+    )
     const video = await attachedVideo()
     const onError = hls.on.mock.calls.find(([event]) => event === 'hlsError')?.[1]
     assert(onError)
@@ -1288,7 +1791,7 @@ describe('Player', () => {
         }),
       ),
     )
-    renderWithProviders(<Player mediaFileId="abcd" />)
+    renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
     const video = await attachedVideo()
     loadMetadata(video)
     playheadAt(video, 12)
@@ -1361,7 +1864,7 @@ describe('Player', () => {
           })
         }),
       )
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       await attachedVideo()
       const onError = hls.on.mock.calls.find(([event]) => event === 'hlsError')?.[1]
       assert(onError)
@@ -1397,7 +1900,7 @@ describe('Player', () => {
             : HttpResponse.json({ errors: [{ message: 'Unavailable' }] }),
         ),
       )
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       await attachedVideo()
       const onError = hls.on.mock.calls.find(([event]) => event === 'hlsError')?.[1]
       assert(onError)
@@ -1434,7 +1937,9 @@ describe('Player', () => {
         })
       }),
     )
-    const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
+    const { unmount } = renderWithProviders(
+      <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+    )
     await attachedVideo()
     const onError = hls.on.mock.calls.find(([event]) => event === 'hlsError')?.[1]
     assert(onError)
@@ -1464,7 +1969,7 @@ describe('Player', () => {
       useEffect(() => {
         readCache = () => JSON.stringify(client.cache.extract())
       }, [client])
-      return <Player mediaFileId="abcd" />
+      return <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />
     }
     const nextStream = {
       ...SESSION,
@@ -1562,7 +2067,7 @@ describe('Player', () => {
         return HttpResponse.json({ data: { reportStreamSessionTimeline: true } })
       }),
     )
-    renderWithProviders(<Player mediaFileId="abcd" />)
+    renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
     const video = await attachedVideo()
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     playheadAt(video, 12)
@@ -1730,7 +2235,9 @@ describe('Player', () => {
       },
     })
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-    const { user, unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
+    const { user, unmount } = renderWithProviders(
+      <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+    )
     await act(async () => vi.advanceTimersByTimeAsync(0))
     await creationStarted.promise
 
@@ -1786,7 +2293,9 @@ describe('Player', () => {
       },
     })
 
-    const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
+    const { unmount } = renderWithProviders(
+      <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+    )
     await started.promise
     await act(async () => response.resolve())
 
@@ -1834,6 +2343,68 @@ describe('Player', () => {
 
     unmount()
     await waitFor(() => expect(activeSessions.size).toBe(0))
+  })
+
+  it('shouldNeverCreateASessionForAMediaFileWhenTheViewerLeftWhileTheBrowserWasStillAnswering', async () => {
+    const probing = deferred()
+    const answers = deferred()
+    const decodingInfo = () => {
+      probing.resolve()
+      return answers.promise.then(() => ({ supported: true, smooth: true, powerEfficient: true }))
+    }
+    const creationAttempts: string[] = []
+    const activeSessions = serveSingleWorkerSlot({
+      onCreateAttempt: (mediaFileId) => creationAttempts.push(mediaFileId),
+    })
+
+    const { user, unmount } = renderWithProviders(
+      <Harness playbackPlatform={() => playbackPlatformFixture({ decodingInfo })} />,
+    )
+    await probing.promise
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    answers.resolve()
+
+    await waitFor(() =>
+      expect(hls.loadSource).toHaveBeenCalledExactlyOnceWith(
+        '/api/stream/b/multivariant.m3u8?t=playback-token',
+      ),
+    )
+    expect(creationAttempts).toEqual(['b'])
+
+    unmount()
+    await waitFor(() => expect(activeSessions.size).toBe(0))
+  })
+
+  it('shouldStartTheNextMediaFileWithoutWaitingWhenTheLeftMediaFilesProbesGoUnanswered', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const probing = deferred()
+    const leftPlatform = playbackPlatformFixture({
+      decodingInfo: () => {
+        probing.resolve()
+        return new Promise(() => {})
+      },
+    })
+    const platforms = [leftPlatform]
+    const creationAttempts: string[] = []
+    serveSingleWorkerSlot({
+      onCreateAttempt: (mediaFileId) => creationAttempts.push(mediaFileId),
+    })
+
+    renderWithProviders(
+      <Harness playbackPlatform={() => platforms.shift() ?? withoutDecodingInfo()} />,
+    )
+    await probing.promise
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    // Short of the probe deadline: the left media file's probes are still unanswered.
+    await act(async () => vi.advanceTimersByTimeAsync(2_999))
+    vi.useRealTimers()
+
+    await waitFor(() =>
+      expect(hls.loadSource).toHaveBeenCalledExactlyOnceWith(
+        '/api/stream/b/multivariant.m3u8?t=playback-token',
+      ),
+    )
+    expect(creationAttempts).toEqual(['b'])
   })
 
   it('shouldReleaseThePlayingSessionAfterItsFinalReportBeforeStartingTheNextMediaFile', async () => {
@@ -1896,7 +2467,9 @@ describe('Player', () => {
         return HttpResponse.json({ data: { reportStreamSessionTimeline: true } })
       }),
     )
-    const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
+    const { unmount } = renderWithProviders(
+      <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+    )
     const video = await attachedVideo()
     playheadAt(video, 12)
     await started.promise
@@ -1929,7 +2502,9 @@ describe('Player', () => {
         })
       }),
     )
-    const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
+    const { unmount } = renderWithProviders(
+      <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+    )
     const video = await attachedVideo()
     playheadAt(video, 12)
     await started.promise
@@ -1955,11 +2530,17 @@ describe('Player', () => {
       }),
     )
 
-    renderWithProviders(<Player mediaFileId="abcd" />)
+    renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
 
     await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(STREAM_URL))
     expect(hls.attachMedia).toHaveBeenCalledOnce()
-    expect(variables).toEqual({ input: { mediaFileId: 'abcd' } })
+    expect(variables).toEqual({
+      input: {
+        mediaFileId: 'abcd',
+        capabilities: MINIMAL_DECLARATION,
+        options: { quality: 'AUTO' },
+      },
+    })
   })
 
   it('shouldDestroyASessionThatFinishesCreatingAfterThePlayerLeaves', async () => {
@@ -1986,7 +2567,9 @@ describe('Player', () => {
         })
       }),
     )
-    const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
+    const { unmount } = renderWithProviders(
+      <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+    )
     await started.promise
     unmount()
     gate.resolve()
@@ -2014,7 +2597,9 @@ describe('Player', () => {
         })
       }),
     )
-    const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
+    const { unmount } = renderWithProviders(
+      <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+    )
     const video = await attachedVideo()
     playheadAt(video, 5)
     unmount()
@@ -2027,7 +2612,7 @@ describe('Player', () => {
   it('shouldShowErrorWhenSessionCreationFails', async () => {
     failSessionCreation()
 
-    renderWithProviders(<Player mediaFileId="abcd" />)
+    renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
 
     expect(await screen.findByRole('alert')).toBeInTheDocument()
   })
@@ -2035,10 +2620,39 @@ describe('Player', () => {
   it('shouldShowTheServersRefusalWhenTheSessionIsRefused', async () => {
     refuseSession()
 
-    renderWithProviders(<Player mediaFileId="abcd" />)
+    renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
 
     expect(await screen.findByRole('alert')).toHaveTextContent(CAPACITY_REFUSAL)
     expect(hls.loadSource).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    'CapabilityValuesRequiredError',
+    'HlsAacCapabilityRequiredError',
+    'CapabilityListTooLongError',
+    'CapabilityMaximumInvalidError',
+    'CapabilityProfileMismatchError',
+    'VideoCodecTierInvalidError',
+  ])('shouldShowThePlaybackFailureWhenTheServerRefusesTheDeclarationWith%s', async (typename) => {
+    server.use(
+      graphql.mutation('CreatePlaybackSession', () =>
+        HttpResponse.json({
+          data: {
+            createPlaybackSession: {
+              playbackSession: null,
+              userErrors: [{ __typename: typename, message: DECLARATION_REFUSAL }],
+            },
+          },
+        }),
+      ),
+    )
+
+    renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "Playback couldn't start. Try again.",
+    )
+    expect(screen.getByRole('alert')).not.toHaveTextContent(DECLARATION_REFUSAL)
   })
 
   it('shouldReportAFatalStreamErrorAndTearDownHls', async () => {
@@ -2054,7 +2668,7 @@ describe('Player', () => {
         }),
       ),
     )
-    renderWithProviders(<Player mediaFileId="abcd" />)
+    renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
     await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(STREAM_URL))
 
     raiseHlsFatalError()
@@ -2067,7 +2681,7 @@ describe('Player', () => {
     hls.supported = false
     serveSession()
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-    renderWithProviders(<Player mediaFileId="abcd" />)
+    renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
     const video = await nativeVideo()
 
     fireEvent(video, new Event('error'))
@@ -2098,7 +2712,9 @@ describe('Player', () => {
         })
       }),
     )
-    const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+    const { user } = renderWithProviders(
+      <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+    )
     const video = await nativeVideo()
     fireEvent(video, new Event('error'))
     await user.click(await screen.findByRole('button', { name: 'Retry playback' }))
@@ -2115,7 +2731,9 @@ describe('Player', () => {
   it('shouldReportTheLastPositionWhenLeavingAfterANativePlaybackError', async () => {
     hls.supported = false
     const reports = serveSession()
-    const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
+    const { unmount } = renderWithProviders(
+      <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+    )
     const video = await nativeVideo()
     playheadAt(video, 25)
     fireEvent(video, new Event('error'))
@@ -2136,7 +2754,7 @@ describe('Player', () => {
       hls.supported = supported
       const activeSessions = serveSingleWorkerSlot()
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await streamingVideo()
 
       await act(async () => vi.advanceTimersByTimeAsync(30_000))
@@ -2156,7 +2774,7 @@ describe('Player', () => {
       hls.supported = supported
       serveSession()
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await streamingVideo()
 
       startStream(video)
@@ -2171,7 +2789,7 @@ describe('Player', () => {
     hls.supported = false
     const activeSessions = serveSingleWorkerSlot()
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-    renderWithProviders(<Player mediaFileId="abcd" />)
+    renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
     const video = await nativeVideo()
 
     loadMetadata(video)
@@ -2188,7 +2806,13 @@ describe('Player', () => {
     const activeSessions = serveSingleWorkerSlot()
     const reports = recordTimelineReports()
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-    renderWithProviders(<Player mediaFileId="abcd" startPositionSeconds={120} />)
+    renderWithProviders(
+      <Player
+        playbackPlatform={withoutDecodingInfo}
+        mediaFileId="abcd"
+        startPositionSeconds={120}
+      />,
+    )
     const video = await nativeVideo()
     loadMetadata(video)
 
@@ -2205,7 +2829,7 @@ describe('Player', () => {
       hls.supported = false
       const activeSessions = serveSingleWorkerSlot()
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await nativeVideo()
 
       reachWaitingPoint(video)
@@ -2225,7 +2849,7 @@ describe('Player', () => {
       hls.supported = false
       const activeSessions = serveSingleWorkerSlot()
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await nativeVideo()
       reachWaitingPoint(video)
       fireEvent(video, new Event('suspend'))
@@ -2249,7 +2873,7 @@ describe('Player', () => {
       hls.supported = false
       const activeSessions = serveSingleWorkerSlot()
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await nativeVideo()
       reachWaitingPoint(video)
       fireEvent(video, new Event('suspend'))
@@ -2270,7 +2894,7 @@ describe('Player', () => {
     const activeSessions = serveSingleWorkerSlot()
     recordTimelineReports()
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-    renderWithProviders(<Player mediaFileId="abcd" />)
+    renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
     const video = await nativeVideo()
     loadMetadata(video)
     pressPlay(video)
@@ -2289,7 +2913,7 @@ describe('Player', () => {
     hls.supported = false
     serveSession()
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-    renderWithProviders(<Player mediaFileId="abcd" />)
+    renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
     const video = await nativeVideo()
     refuseToStartPlayback(video)
 
@@ -2326,7 +2950,7 @@ describe('Player', () => {
     async (_outcome, { serve, message }) => {
       serve()
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'], shouldAdvanceTime: true })
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       expect(await screen.findByRole('alert')).toHaveTextContent(message)
 
       await act(async () => vi.advanceTimersByTimeAsync(30_000))
@@ -2362,7 +2986,13 @@ describe('Player', () => {
 
   it('shouldSeekToTheStartPositionOnceMetadataLoads', async () => {
     serveSession()
-    renderWithProviders(<Player mediaFileId="abcd" startPositionSeconds={120} />)
+    renderWithProviders(
+      <Player
+        playbackPlatform={withoutDecodingInfo}
+        mediaFileId="abcd"
+        startPositionSeconds={120}
+      />,
+    )
     const video = await attachedVideo()
 
     loadMetadata(video)
@@ -2372,7 +3002,7 @@ describe('Player', () => {
 
   it('shouldStartFromTheBeginningWhenNoStartPositionIsGiven', async () => {
     serveSession()
-    renderWithProviders(<Player mediaFileId="abcd" />)
+    renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
     const video = await attachedVideo()
 
     loadMetadata(video)
@@ -2385,7 +3015,7 @@ describe('Player', () => {
     async (_path, { supported, streamingVideo }) => {
       hls.supported = supported
       serveSession()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await streamingVideo()
 
       loadMetadata(video)
@@ -2397,7 +3027,13 @@ describe('Player', () => {
 
   it('shouldStartPlaybackOnlyOnceTheStartPositionIsApplied', async () => {
     serveSession()
-    renderWithProviders(<Player mediaFileId="abcd" startPositionSeconds={120} />)
+    renderWithProviders(
+      <Player
+        playbackPlatform={withoutDecodingInfo}
+        mediaFileId="abcd"
+        startPositionSeconds={120}
+      />,
+    )
     const video = await attachedVideo()
     const startedAt: number[] = []
     video.addEventListener('play', () => startedAt.push(video.currentTime))
@@ -2409,7 +3045,7 @@ describe('Player', () => {
 
   it('shouldWaitOnPlayWithoutAnAlertWhenTheBrowserRefusesToStartPlayback', async () => {
     serveSession()
-    renderWithProviders(<Player mediaFileId="abcd" />)
+    renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
     const video = await attachedVideo()
     const play = refuseToStartPlayback(video)
 
@@ -2427,7 +3063,9 @@ describe('Player', () => {
     async (_path, { supported, streamingVideo }) => {
       hls.supported = supported
       serveSession()
-      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
       const video = await streamingVideo()
       await user.click(screen.getByRole('button', { name: 'Play' }))
       await user.click(screen.getByRole('button', { name: 'Pause' }))
@@ -2441,7 +3079,9 @@ describe('Player', () => {
 
   it('shouldStartPlaybackOnceARetriedStreamLoads', async () => {
     serveSession()
-    const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+    const { user } = renderWithProviders(
+      <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+    )
     await attachedVideo()
     raiseHlsFatalError()
     await user.click(await screen.findByRole('button', { name: 'Retry playback' }))
@@ -2458,7 +3098,9 @@ describe('Player', () => {
     async (_path, { supported, streamingVideo }) => {
       hls.supported = supported
       serveSession()
-      const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const { unmount } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
       const video = await streamingVideo()
       const play = replacePlay(video, () => Promise.resolve())
       unmount()
@@ -2474,7 +3116,7 @@ describe('Player', () => {
     async (_path, { supported, streamingVideo, failStream }) => {
       hls.supported = supported
       serveSession()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await streamingVideo()
       const play = replacePlay(video, () => Promise.resolve())
       failStream(video)
@@ -2492,7 +3134,7 @@ describe('Player', () => {
       hls.supported = supported
       serveSession()
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await streamingVideo()
       const play = replacePlay(video, () => Promise.resolve())
       await act(async () => vi.advanceTimersByTimeAsync(30_000))
@@ -2507,7 +3149,7 @@ describe('Player', () => {
 
   it('shouldReportPlayingTimelineEveryTenSecondsOfPlayback', async () => {
     const reports = serveSession()
-    renderWithProviders(<Player mediaFileId="abcd" />)
+    renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
     const video = await attachedVideo()
 
     playheadAt(video, 3)
@@ -2524,7 +3166,7 @@ describe('Player', () => {
 
   it('shouldReportPausedStateOnPause', async () => {
     const reports = serveSession()
-    renderWithProviders(<Player mediaFileId="abcd" />)
+    renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
     const video = await attachedVideo()
 
     video.currentTime = 7
@@ -2537,7 +3179,9 @@ describe('Player', () => {
 
   it('shouldReportStoppedStateAtTheLastKnownPositionOnUnmount', async () => {
     const reports = serveSession()
-    const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
+    const { unmount } = renderWithProviders(
+      <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+    )
     const video = await attachedVideo()
     playheadAt(video, 42)
     await waitFor(() => expect(reports).toHaveLength(1))
@@ -2559,7 +3203,9 @@ describe('Player', () => {
         })
       }),
     )
-    const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
+    const { unmount } = renderWithProviders(
+      <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+    )
     const video = await attachedVideo()
 
     playedToTheEnd(video, 5400)
@@ -2579,7 +3225,9 @@ describe('Player', () => {
   it('shouldReportStoppedAgainOnLeavingWhenTheEndOfPlaybackReportFailed', async () => {
     const reports = serveSession()
     const stopRefused = refuseTheFirstStoppedReport(reports)
-    const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
+    const { unmount } = renderWithProviders(
+      <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+    )
     const video = await attachedVideo()
     playedToTheEnd(video, 5400)
     await waitFor(() => expect(stopRefused()).toBe(true))
@@ -2597,7 +3245,9 @@ describe('Player', () => {
   it('shouldReportStoppedAtTheFinalPositionOnLeavingWhenTheEndOfPlaybackReportFailedBeforeAReplay', async () => {
     const reports = serveSession()
     const stopRefused = refuseTheFirstStoppedReport(reports)
-    const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
+    const { unmount } = renderWithProviders(
+      <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+    )
     const video = await attachedVideo()
     playedToTheEnd(video, 5400)
     await waitFor(() => expect(stopRefused()).toBe(true))
@@ -2631,7 +3281,9 @@ describe('Player', () => {
         })
       }),
     )
-    const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
+    const { unmount } = renderWithProviders(
+      <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+    )
     const video = await attachedVideo()
     playedToTheEnd(video, 5400)
     await waitFor(() => expect(reports.at(-1)?.state).toBe('STOPPED'))
@@ -2655,7 +3307,9 @@ describe('Player', () => {
         return HttpResponse.json({ data: { reportStreamSessionTimeline: true } })
       }),
     )
-    const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
+    const { unmount } = renderWithProviders(
+      <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+    )
     const video = await attachedVideo()
     playedToTheEnd(video, 5400)
     await waitFor(() => expect(reports.at(-1)?.state).toBe('STOPPED'))
@@ -2683,7 +3337,7 @@ describe('Player', () => {
         return HttpResponse.json({ data: { reportStreamSessionTimeline: true } })
       }),
     )
-    renderWithProviders(<Player mediaFileId="abcd" />)
+    renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
     const video = await attachedVideo()
     playedToTheEnd(video, 5400)
     await waitFor(() => expect(reports.at(-1)?.state).toBe('PAUSED'))
@@ -2700,7 +3354,9 @@ describe('Player', () => {
 
   it('shouldReportStoppedAtTheLastKnownPositionWhenTheViewerReplaysAfterTheEndAndLeaves', async () => {
     const reports = serveSession()
-    const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
+    const { unmount } = renderWithProviders(
+      <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+    )
     const video = await attachedVideo()
     playedToTheEnd(video, 5400)
     await waitFor(() => expect(reports.at(-1)?.state).toBe('STOPPED'))
@@ -2721,7 +3377,7 @@ describe('Player', () => {
     it('shouldCloseThePlaybackSessionWithARequestThatOutlivesThePageWhenThePageIsHidden', async () => {
       serveSession()
       const closed = recordClosedSessions()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       await attachedVideo()
 
       hideThePage({ persisted: false })
@@ -2744,7 +3400,7 @@ describe('Player', () => {
         }),
       )
       const closed = recordClosedSessions()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await attachedVideo()
       playheadAt(video, 42)
       await reportStarted.promise
@@ -2760,7 +3416,13 @@ describe('Player', () => {
     it('shouldStartANewPlaybackSessionWhereTheViewerLeftWhenThePageReturnsFromTheBackForwardCache', async () => {
       const created = countCreatedSessions()
       const closed = recordClosedSessions()
-      renderWithProviders(<Player mediaFileId="abcd" startPositionSeconds={10} />)
+      renderWithProviders(
+        <Player
+          playbackPlatform={withoutDecodingInfo}
+          mediaFileId="abcd"
+          startPositionSeconds={10}
+        />,
+      )
       const video = await attachedVideo()
       loadMetadata(video)
       playheadAt(video, 42)
@@ -2778,7 +3440,7 @@ describe('Player', () => {
 
     it('shouldKeepAPausedVideoPausedWhenThePageReturnsFromTheBackForwardCache', async () => {
       countCreatedSessions()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await attachedVideo()
       loadMetadata(video)
       playheadAt(video, 42)
@@ -2795,7 +3457,7 @@ describe('Player', () => {
 
     it('shouldKeepAPausedVideoPausedWhenThePageReturnsFromTheBackForwardCacheASecondTime', async () => {
       countCreatedSessions()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await attachedVideo()
       loadMetadata(video)
       playheadAt(video, 42)
@@ -2897,7 +3559,7 @@ describe('Player', () => {
           }
         },
       })
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       await started.promise
 
       hideThePage({ persisted: true })
@@ -2920,7 +3582,7 @@ describe('Player', () => {
           return HttpResponse.json({ data: { reportStreamSessionTimeline: true } })
         }),
       )
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await attachedVideo()
       playheadAt(video, 42)
       await reportStarted.promise
@@ -2943,7 +3605,7 @@ describe('Player', () => {
           return new Promise<never>(() => undefined)
         }),
       )
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await nativeVideo()
       loadMetadata(video)
       playheadAt(video, 42)
@@ -2964,7 +3626,7 @@ describe('Player', () => {
 
     it('shouldClearAnEarlierFailureWhileTheRestoredPageStartsAgain', async () => {
       refuseSession()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       expect(await screen.findByRole('alert')).toHaveTextContent(CAPACITY_REFUSAL)
       const creationHeld = deferred()
       server.use(
@@ -3015,7 +3677,7 @@ describe('Player', () => {
           })
         }),
       )
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       await attachedVideo()
 
       hideThePage({ persisted: true })
@@ -3028,7 +3690,7 @@ describe('Player', () => {
     it('shouldOfferRetryRatherThanStartAgainWhenThePageReturnsAfterStartupTimedOut', async () => {
       const created = countCreatedSessions()
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       await attachedVideo()
       await act(async () => vi.advanceTimersByTimeAsync(30_000))
       vi.useRealTimers()
@@ -3045,7 +3707,7 @@ describe('Player', () => {
     it('shouldKeepPlayingWhenThePageIsShownWithoutHavingBeenHidden', async () => {
       const created = countCreatedSessions()
       const closed = recordClosedSessions()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       await attachedVideo()
 
       restoreThePage()
@@ -3058,7 +3720,9 @@ describe('Player', () => {
     it('shouldStopWatchingThePageWhenThePlayerUnmounts', async () => {
       const created = countCreatedSessions()
       const closed = recordClosedSessions()
-      const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const { unmount } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
       await attachedVideo()
       unmount()
       await waitFor(() =>
@@ -3082,7 +3746,7 @@ describe('Player', () => {
 
     it('shouldHandPlaybackToTheControlBarInsteadOfTheBrowserControls', async () => {
       serveSession()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       expect(screen.getByRole('button', { name: 'Play' })).toBeDisabled()
 
       const video = await attachedVideo()
@@ -3094,7 +3758,9 @@ describe('Player', () => {
 
     it('shouldPlayAndPauseFromTheRoundButton', async () => {
       serveSession()
-      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
       const video = await attachedVideo()
 
       await user.click(screen.getByRole('button', { name: 'Play' }))
@@ -3107,7 +3773,9 @@ describe('Player', () => {
 
     it('shouldPlayAndPauseWithSpace', async () => {
       serveSession()
-      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
       const video = await attachedVideo()
 
       await user.keyboard(' ')
@@ -3121,7 +3789,9 @@ describe('Player', () => {
 
     it('shouldPlayOnceWhileSpaceIsHeldDown', async () => {
       serveSession()
-      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
       const video = await attachedVideo()
 
       await user.keyboard('[Space>2/]')
@@ -3133,7 +3803,9 @@ describe('Player', () => {
       'shouldNeitherPlayNorPauseWhenSpaceIsPressedWith%s',
       async (modifier) => {
         serveSession()
-        const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
         const video = await attachedVideo()
 
         await user.keyboard(`{${modifier}>}[Space]{/${modifier}}`)
@@ -3144,7 +3816,9 @@ describe('Player', () => {
 
     it('shouldNeitherPlayNorPauseWithSpaceWhilePlayIsDisabled', async () => {
       serveSession()
-      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
       const video = await attachedVideo()
       raiseHlsFatalError()
       expect(screen.getByRole('button', { name: 'Play' })).toBeDisabled()
@@ -3157,7 +3831,9 @@ describe('Player', () => {
     it('shouldLeaveAClickedMuteAsItIsWhenSpaceIsPressedBeforeTheStreamAttaches', async () => {
       const creationResponse = deferred()
       serveSingleWorkerSlot({ beforeCreated: () => creationResponse.promise })
-      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
       await user.click(screen.getByRole('button', { name: 'Mute' }))
       const unmute = screen.getByRole('button', { name: 'Unmute' })
       expect(screen.getByRole('button', { name: 'Play' })).toBeDisabled()
@@ -3172,7 +3848,9 @@ describe('Player', () => {
 
     it('shouldPauseWithSpaceAndSkipNoFurtherAfterAClickOnForward', async () => {
       serveSession()
-      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
       const video = await seekableVideo(2824)
       await act(() => video.play())
       await user.click(screen.getByRole('button', { name: 'Forward 10 seconds' }))
@@ -3186,7 +3864,9 @@ describe('Player', () => {
 
     it('shouldPauseAndShowTheFadedControlsOnSpace', async () => {
       serveSession()
-      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
       const video = await attachedVideo()
       const player = screen.getByRole('region', { name: 'Player' })
       await playUntilFaded(video)
@@ -3201,7 +3881,7 @@ describe('Player', () => {
 
     it('shouldHoldSeekingUntilTheDurationIsKnown', async () => {
       serveSession()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await attachedVideo()
       expect(screen.getByRole('button', { name: 'Back 10 seconds' })).toBeDisabled()
       expect(screen.getByRole('button', { name: 'Forward 10 seconds' })).toBeDisabled()
@@ -3216,7 +3896,9 @@ describe('Player', () => {
 
     it('shouldSkipTenSecondsWithinTheVideo', async () => {
       serveSession()
-      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
       const video = await seekableVideo(45)
       playheadAt(video, 30)
 
@@ -3232,7 +3914,9 @@ describe('Player', () => {
 
     it('shouldSeekFromTheSeekSliderByKeyboardWithoutPausing', async () => {
       const reports = serveSession()
-      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
       const video = await seekableVideo(2824)
       await user.click(screen.getByRole('button', { name: 'Play' }))
       playheadAt(video, 30)
@@ -3252,7 +3936,9 @@ describe('Player', () => {
     it('shouldPauseWhileScrubbingAndSeekOnRelease', async () => {
       serveSession()
       layOutSeekTrack()
-      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
       const video = await seekableVideo(2000)
       await user.click(screen.getByRole('button', { name: 'Play' }))
       const seek = screen.getByRole('slider', { name: 'Seek' })
@@ -3269,7 +3955,9 @@ describe('Player', () => {
 
     it('shouldKeepPlayingWhenAPressOnTheSeekSliderMissesItsTrack', async () => {
       const reports = serveSession()
-      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
       const video = await seekableVideo(2824)
       await user.click(screen.getByRole('button', { name: 'Play' }))
       const seekRoot = screen.getByRole('slider', { name: 'Seek' }).closest('.mantine-Slider-root')
@@ -3286,7 +3974,7 @@ describe('Player', () => {
     it('shouldResumePlaybackWhereItWasWhenATouchScrubIsCancelled', async () => {
       const reports = serveSession()
       layOutSeekTrack()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await seekableVideo(2000)
       await act(() => video.play())
       playheadAt(video, 30)
@@ -3313,7 +4001,7 @@ describe('Player', () => {
     it('shouldSeekOnlyWhereTheViewerNextAsksWhenATouchScrubWasCancelled', async () => {
       serveSession()
       layOutSeekTrack()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await seekableVideo(2000)
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
       await act(() => video.play())
@@ -3342,7 +4030,7 @@ describe('Player', () => {
 
     it('shouldLeaveAReleasedStreamStoppedWhenATouchScrubIsCancelled', async () => {
       serveSession()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await seekableVideo(2000)
       await act(() => video.play())
       const seek = screen.getByRole('slider', { name: 'Seek' })
@@ -3358,7 +4046,7 @@ describe('Player', () => {
     it('shouldLeaveAReleasedStreamStoppedWhenTheScrubEndsAfterTheStreamFails', async () => {
       serveSession()
       layOutSeekTrack()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await seekableVideo(2000)
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
       await act(() => video.play())
@@ -3378,7 +4066,9 @@ describe('Player', () => {
 
     it('shouldMuteAndSetTheVolume', async () => {
       serveSession()
-      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
       const video = await attachedVideo()
       const volume = screen.getByRole('slider', { name: 'Volume' })
       expect(volume).toHaveAttribute('aria-valuetext', '100%')
@@ -3397,7 +4087,9 @@ describe('Player', () => {
 
     it('shouldRestoreFullVolumeWhenUnmutingFromZero', async () => {
       serveSession()
-      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
       const video = await attachedVideo()
       act(() => screen.getByRole('slider', { name: 'Volume' }).focus())
 
@@ -3410,25 +4102,43 @@ describe('Player', () => {
       expect(screen.getByRole('button', { name: 'Mute' })).toBeInTheDocument()
     })
 
-    it('shouldShowTheQualityInUseOnAStatusChipThatOpensNothing', async () => {
-      serveSession()
-      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
-      const video = await attachedVideo()
-      expect(screen.getByRole('button', { name: 'Quality: Auto' })).toHaveTextContent(/^Auto$/)
+    it.each([
+      { picked: null, plays: 'AUTO', name: 'Quality: Auto · 720p', shown: 'Auto · 720p' },
+      {
+        picked: 'Original',
+        plays: 'ORIGINAL',
+        name: 'Quality: Original · 720p',
+        shown: 'Original · 720p',
+      },
+      { picked: '720p', plays: 'HIGH_720P', name: 'Quality: 720p', shown: '720p' },
+      { picked: 'Original', plays: 'EIGHT_K', name: 'Quality', shown: '' },
+    ])(
+      'shouldShowThePlayingChoiceOnTheQualityChipWithTheHeightItsNameLacks($plays)',
+      async ({ picked, plays, name, shown }) => {
+        servePlaybackChoices({
+          playing: (requested) => (requested === 'AUTO' ? 'AUTO' : (plays as VideoQuality)),
+        })
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        const video = await attachedVideo(choiceStreamUrl(1))
+        if (picked) {
+          await pickQuality(user, picked)
+          await attachedVideo(choiceStreamUrl(2))
+        }
 
-      Object.defineProperty(video, 'videoHeight', { value: 720, configurable: true })
-      fireEvent(video, new Event('resize'))
+        Object.defineProperty(video, 'videoHeight', { value: 720, configurable: true })
+        fireEvent(video, new Event('resize'))
 
-      const chip = screen.getByRole('button', { name: 'Quality: Auto · 720p' })
-      expect(chip).toHaveTextContent(/^Auto · 720p$/)
-      expect(chip).toHaveAttribute('aria-disabled', 'true')
-      await user.click(chip)
-      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
-    })
+        expect(screen.getByRole('button', { name })).toHaveTextContent(new RegExp(`^${shown}$`))
+      },
+    )
 
     it('shouldShowTheStreamsOnlyAudioTrackAndSubtitlesOffOnChipsThatOpenNothing', async () => {
       serveSession()
-      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
       await attachedVideo()
 
       offerHlsTracks({ audio: [{ name: 'Audio' }], audioTrack: 0 })
@@ -3446,7 +4156,7 @@ describe('Player', () => {
 
     it('shouldShowTheSubtitlesInUseOnTheSubtitlesChip', async () => {
       serveSession()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       await attachedVideo()
 
       offerHlsTracks({
@@ -3461,7 +4171,7 @@ describe('Player', () => {
 
     it('shouldHoldTheTrackChipsPlacesBeforeTheStreamNamesItsTracks', async () => {
       serveSession()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
 
       expect(screen.getByRole('button', { name: 'Audio' })).toHaveTextContent(/^$/)
       expect(screen.getByRole('button', { name: 'Subtitles: Off' })).toBeInTheDocument()
@@ -3471,7 +4181,7 @@ describe('Player', () => {
 
     it('shouldForgetTheStreamsTracksOnceAFailureReleasesIt', async () => {
       serveSession()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       await attachedVideo()
       offerHlsTracks({
         audio: [{ name: 'English' }],
@@ -3490,7 +4200,7 @@ describe('Player', () => {
     it('shouldShowTheElementsOwnTracksOnTheNativePath', async () => {
       hls.supported = false
       serveSession()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const english: FakeTextTrack = {
         kind: 'subtitles',
         label: 'English',
@@ -3518,7 +4228,9 @@ describe('Player', () => {
 
     it('shouldSwitchSubtitlesFromThePicker', async () => {
       serveSession()
-      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
       await attachedVideo()
       offerHlsTracks({ subtitles: [{ name: 'English' }, { name: 'English (SDH)' }] })
       const chip = screen.getByRole('button', { name: 'Subtitles: Off' })
@@ -3546,7 +4258,9 @@ describe('Player', () => {
 
     it('shouldMoveThroughTheAudioPickerByKeyboardAndChooseWithEnter', async () => {
       serveSession()
-      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
       await attachedVideo()
       offerHlsTracks({
         audio: [{ name: 'English' }, { name: 'Français' }, { name: 'Commentary' }],
@@ -3575,7 +4289,9 @@ describe('Player', () => {
 
     it('shouldStartThePickersFocusOnTheTrackInUse', async () => {
       serveSession()
-      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
       await attachedVideo()
       offerHlsTracks({ audio: [{ name: 'English' }, { name: 'Français' }], audioTrack: 1 })
 
@@ -3586,7 +4302,9 @@ describe('Player', () => {
 
     it('shouldMoveFocusToTheTrackInUseWhenTheFocusedTrackGoes', async () => {
       serveSession()
-      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
       await attachedVideo()
       offerHlsTracks({
         audio: [{ name: 'English' }, { name: 'Français' }, { name: 'Commentary' }],
@@ -3607,7 +4325,9 @@ describe('Player', () => {
 
     it('shouldMoveFocusToTheNearestTrackWhenTheFocusedTrackGoesAndNoneIsInUse', async () => {
       serveSession()
-      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
       await attachedVideo()
       offerHlsTracks({ audio: [{ name: 'English' }, { name: 'Français' }, { name: 'Commentary' }] })
       act(() => screen.getByRole('button', { name: 'Audio' }).focus())
@@ -3620,7 +4340,9 @@ describe('Player', () => {
 
     it('shouldKeepFocusOnTheFocusedTrackWhenAnotherTrackGoes', async () => {
       serveSession()
-      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
       await attachedVideo()
       offerHlsTracks({
         audio: [{ name: 'English' }, { name: 'Français' }, { name: 'Commentary' }],
@@ -3636,7 +4358,9 @@ describe('Player', () => {
 
     it('shouldCloseThePickerWithoutChoosingOnEscapeAnOutsidePressOrItsChip', async () => {
       serveSession()
-      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
       const video = await attachedVideo()
       offerHlsTracks({ audio: [{ name: 'English' }, { name: 'Français' }], audioTrack: 0 })
       const chip = screen.getByRole('button', { name: 'Audio: English' })
@@ -3659,7 +4383,9 @@ describe('Player', () => {
 
     it('shouldCloseThePickerWhenTabMovesFocusOn', async () => {
       serveSession()
-      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
       await attachedVideo()
       offerHlsTracks({ audio: [{ name: 'English' }, { name: 'Français' }], audioTrack: 0 })
       await openPicker(user, screen.getByRole('button', { name: 'Audio: English' }))
@@ -3672,7 +4398,9 @@ describe('Player', () => {
 
     it('shouldCloseThePickerWhenShiftTabReturnsFocusToItsChip', async () => {
       serveSession()
-      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
       await attachedVideo()
       offerHlsTracks({ audio: [{ name: 'English' }, { name: 'Français' }], audioTrack: 0 })
       const chip = screen.getByRole('button', { name: 'Audio: English' })
@@ -3688,7 +4416,9 @@ describe('Player', () => {
     it('shouldSwitchTheElementsOwnTracksFromThePickersOnTheNativePath', async () => {
       hls.supported = false
       serveSession()
-      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
       const audio: FakeAudioTrack[] = [
         { label: 'English', language: 'en', enabled: true },
         { label: 'Commentary', language: 'en', enabled: false },
@@ -3712,7 +4442,9 @@ describe('Player', () => {
 
     it('shouldCloseAnOpenPickerWhenPlaybackFailsAndKeepItClosedAfterRetry', async () => {
       serveSession()
-      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
       await attachedVideo()
       const tracks = { audio: [{ name: 'English' }, { name: 'Français' }], audioTrack: 0 }
       offerHlsTracks(tracks)
@@ -3736,7 +4468,9 @@ describe('Player', () => {
 
     it('shouldKeepAPickerClosedOnceItsChoicesGoAndReturn', async () => {
       serveSession()
-      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
       await attachedVideo()
       const choices = { audio: [{ name: 'English' }, { name: 'Français' }], audioTrack: 0 }
       offerHlsTracks(choices)
@@ -3761,7 +4495,9 @@ describe('Player', () => {
         configurable: true,
         value: exitFullscreen,
       })
-      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
       const player = screen.getByRole('region', { name: 'Player' })
       const requestFullscreen = vi.fn(() => Promise.resolve())
       Object.defineProperty(player, 'requestFullscreen', { value: requestFullscreen })
@@ -3778,7 +4514,7 @@ describe('Player', () => {
     it('shouldOfferNoFullScreenWhereTheBrowserCannotGiveIt', async () => {
       serveSession()
       Object.defineProperty(document, 'fullscreenEnabled', { configurable: true, value: false })
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       await attachedVideo()
 
       expect(screen.getByRole('region', { name: 'Player' })).toBeInTheDocument()
@@ -3787,7 +4523,7 @@ describe('Player', () => {
 
     it('shouldFadeTheControlsAfterThreeSecondsOfPlaybackUntilThePointerOrKeyboardWakesThem', async () => {
       serveSession()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await attachedVideo()
       const player = screen.getByRole('region', { name: 'Player' })
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
@@ -3811,7 +4547,7 @@ describe('Player', () => {
       'shouldWakeTheFadedControlsWhenFocusLandsOn%sWithoutAKeyPress',
       async (control) => {
         serveSession()
-        renderWithProviders(<Player mediaFileId="abcd" />)
+        renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
         const video = await attachedVideo()
         const player = screen.getByRole('region', { name: 'Player' })
         await playUntilFaded(video)
@@ -3825,7 +4561,7 @@ describe('Player', () => {
 
     it('shouldFadeTheControlsAgainThreeSecondsAfterFocusLandsWhileFocusStaysOnThem', async () => {
       serveSession()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await attachedVideo()
       const player = screen.getByRole('region', { name: 'Player' })
       await playUntilFaded(video)
@@ -3842,7 +4578,7 @@ describe('Player', () => {
 
     it('shouldRestartTheFadeWhenFocusMovesBetweenTheShownControls', async () => {
       serveSession()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await attachedVideo()
       const player = screen.getByRole('region', { name: 'Player' })
       await playUntilFaded(video)
@@ -3862,7 +4598,7 @@ describe('Player', () => {
       renderWithProviders(
         <>
           <button type="button">Elsewhere</button>
-          <Player mediaFileId="abcd" />
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />
         </>,
       )
       const video = await attachedVideo()
@@ -3875,7 +4611,7 @@ describe('Player', () => {
 
     it('shouldKeepTheControlsWhilePausedOrWhileTheMouseRestsOnTheBar', async () => {
       serveSession()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await attachedVideo()
       const player = screen.getByRole('region', { name: 'Player' })
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
@@ -3895,7 +4631,7 @@ describe('Player', () => {
 
     it('shouldKeepTheControlsWhileTheMouseRestsOnBack', async () => {
       serveSession()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await attachedVideo()
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
       moveMouse(screen.getByRole('button', { name: 'Back' }), video)
@@ -3908,7 +4644,9 @@ describe('Player', () => {
 
     it('shouldKeepTheControlsWhileAPickerIsOpen', async () => {
       serveSession()
-      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
       const video = await attachedVideo()
       const player = screen.getByRole('region', { name: 'Player' })
       offerHlsTracks({ audio: [{ name: 'English' }, { name: 'Français' }], audioTrack: 0 })
@@ -3927,7 +4665,9 @@ describe('Player', () => {
 
     it('shouldFadeTheControlsOnceTheOpenPickersChoicesAreGone', async () => {
       serveSession()
-      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
       const video = await attachedVideo()
       const player = screen.getByRole('region', { name: 'Player' })
       offerHlsTracks({ audio: [{ name: 'English' }, { name: 'Français' }], audioTrack: 0 })
@@ -3944,7 +4684,7 @@ describe('Player', () => {
 
     it('shouldLetTheTapThatWakesTheFadedControlsPressNothing', async () => {
       serveSession()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await attachedVideo()
       await playUntilFaded(video)
       const pause = screen.getByRole('button', { name: 'Pause' })
@@ -3960,7 +4700,7 @@ describe('Player', () => {
     it('shouldLetTheTapThatWakesTheFadedControlsMoveNoSlider', async () => {
       serveSession()
       layOutSeekTrack()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await seekableVideo(2000)
       await playUntilFaded(video)
       const seekTrack = screen
@@ -3977,7 +4717,7 @@ describe('Player', () => {
 
     it('shouldPressOnTheNextTapWhenTheTouchThatWokeTheControlsMadeNoClick', async () => {
       serveSession()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await attachedVideo()
       await playUntilFaded(video)
       const pause = screen.getByRole('button', { name: 'Pause' })
@@ -3991,7 +4731,7 @@ describe('Player', () => {
 
     it('shouldPlayOnATapWhenTheControlsHaveBeenHeldPastThreeSeconds', async () => {
       serveSession()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await attachedVideo()
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
       await act(() => video.play())
@@ -4005,7 +4745,7 @@ describe('Player', () => {
 
     it('shouldChooseATrackOnATapWhenAPickerHasHeldTheControlsPastThreeSeconds', async () => {
       serveSession()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await attachedVideo()
       offerHlsTracks({ audio: [{ name: 'English' }, { name: 'Français' }], audioTrack: 0 })
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
@@ -4020,7 +4760,7 @@ describe('Player', () => {
 
     it('shouldFadeTheControlsWhileATouchRestsOnTheBar', async () => {
       serveSession()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await attachedVideo()
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
       await act(() => video.play())
@@ -4033,7 +4773,7 @@ describe('Player', () => {
 
     it('shouldFadeTheControlsOnceTheMouseLeavesTheBarAfterTheGlyphUnderItWasReplaced', async () => {
       serveSession()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await attachedVideo()
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
       const playGlyph = screen.getByRole('button', { name: 'Play' }).querySelector('svg')
@@ -4050,7 +4790,7 @@ describe('Player', () => {
 
     it('shouldFadeTheControlsOnceTheMouseLeavesTheWindowFromTheBar', async () => {
       serveSession()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await attachedVideo()
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
       moveMouse(screen.getByRole('button', { name: 'Play' }), video)
@@ -4068,7 +4808,7 @@ describe('Player', () => {
 
     it('shouldKeepBackOnScreenWhileAPlaybackFailureShows', async () => {
       serveSession()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await attachedVideo()
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
       await act(() => video.play())
@@ -4084,7 +4824,7 @@ describe('Player', () => {
 
     it('shouldShowTheBufferingRingWhileThePlayingVideoWaitsForData', async () => {
       serveSession()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await attachedVideo()
       setReadyState(video, HTMLMediaElement.HAVE_FUTURE_DATA)
       await act(() => video.play())
@@ -4107,7 +4847,7 @@ describe('Player', () => {
     it('shouldShowTheVideoStoppedOnceAFailureReleasesTheStream', async () => {
       hls.supported = false
       serveSession()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await nativeVideo()
       await act(() => video.play())
       fireEvent(video, new Event('waiting'))
@@ -4122,7 +4862,9 @@ describe('Player', () => {
 
     it('shouldShowTheSkippedToPositionAsSoonAsTheSeekStarts', async () => {
       serveSession()
-      const { user } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
       const video = await seekableVideo(2824)
 
       await user.click(screen.getByRole('button', { name: 'Forward 10 seconds' }))
@@ -4135,6 +4877,7 @@ describe('Player', () => {
       serveSession()
       renderWithProviders(
         <Player
+          playbackPlatform={withoutDecodingInfo}
           mediaFileId="abcd"
           title={{ heading: 'Northern Line', detail: 'S2 E5 — Breakage' }}
         />,
@@ -4149,13 +4892,1792 @@ describe('Player', () => {
 
     it('shouldShowTheTimecodeAloneOnceTheDurationIsKnownWithoutATitle', async () => {
       serveSession()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await attachedVideo()
       expect(screen.queryByText(/ \/ /)).not.toBeInTheDocument()
 
       loadDuration(video, 2824)
 
       expect(screen.getByText('0:00 / 47:04')).toBeInTheDocument()
+    })
+  })
+
+  describe('quality', () => {
+    it('shouldStartInAutoWhenThePlayerOpens', async () => {
+      const log = servePlaybackChoices()
+
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+      await attachedVideo(choiceStreamUrl(1))
+
+      expect(log).toEqual(['create AUTO'])
+    })
+
+    it('shouldOfferTheChoicesThatTheServerListsInItsOrder', async () => {
+      servePlaybackChoices()
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await attachedVideo(choiceStreamUrl(1))
+
+      const menu = await openPicker(user, screen.getByRole('button', { name: 'Quality: Auto' }))
+
+      expect(
+        within(menu)
+          .getAllByRole('menuitemradio')
+          .map((row) => row.textContent),
+      ).toEqual(['Original', 'Auto', '1080p', '720p', '480p', '360p'])
+      expect(within(menu).getByRole('menuitemradio', { checked: true })).toHaveTextContent('Auto')
+    })
+
+    it('shouldLeaveOutAChoiceThisPlayerCannotName', async () => {
+      servePlaybackChoices({
+        offered: ['ORIGINAL', 'AUTO', 'EIGHT_K' as VideoQuality, 'HIGH_720P'],
+      })
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await attachedVideo(choiceStreamUrl(1))
+
+      const menu = await openPicker(user, screen.getByRole('button', { name: 'Quality: Auto' }))
+
+      expect(
+        within(menu)
+          .getAllByRole('menuitemradio')
+          .map((row) => row.textContent),
+      ).toEqual(['Original', 'Auto', '720p'])
+    })
+
+    it('shouldOpenTheQualityMenuOnlyWhileAStreamIsAttached', async () => {
+      servePlaybackChoices()
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+      const chip = screen.getByRole('button', { name: 'Quality: Auto' })
+      expect(chip).toHaveAttribute('aria-disabled', 'true')
+
+      await attachedVideo(choiceStreamUrl(1))
+      expect(chip).not.toHaveAttribute('aria-disabled')
+
+      raiseHlsFatalError()
+      expect(await screen.findByRole('alert')).toBeInTheDocument()
+      expect(chip).toHaveAttribute('aria-disabled', 'true')
+    })
+
+    it('shouldDestroyTheCurrentPlaybackSessionBeforeCreatingThePickedChoice', async () => {
+      const log = servePlaybackChoices()
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await attachedVideo(choiceStreamUrl(1))
+
+      await pickQuality(user, 'Original')
+
+      await attachedVideo(choiceStreamUrl(2))
+      expect(log).toEqual(['create AUTO', 'destroy playback-1', 'create ORIGINAL'])
+    })
+
+    it.each([true, false])(
+      'shouldResumeAtThePlayheadWhenTheViewerPicksAnotherQuality(playing: %s)',
+      async (playing) => {
+        servePlaybackChoices()
+        const { user } = renderWithProviders(
+          <Player
+            playbackPlatform={withoutDecodingInfo}
+            mediaFileId="abcd"
+            startPositionSeconds={12}
+          />,
+        )
+        const video = await attachedVideo(choiceStreamUrl(1))
+        loadMetadata(video)
+        playheadAt(video, 73.25)
+        if (!playing) pressPause(video)
+        hls.destroy.mockImplementationOnce(() => video.load())
+
+        await pickQuality(user, '720p')
+
+        await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(choiceStreamUrl(2)))
+        loadMetadata(video)
+        expect(video.currentTime).toBe(73.25)
+        expect(video.paused).toBe(!playing)
+      },
+    )
+
+    it('shouldStayPausedWhenTheViewerPicksAgainAfterPickingWhilePaused', async () => {
+      servePlaybackChoices()
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      const video = await attachedVideo(choiceStreamUrl(1))
+      loadMetadata(video)
+      playheadAt(video, 73.25)
+      pressPause(video)
+      hls.destroy.mockImplementation(() => video.load())
+      await pickQuality(user, 'Original')
+      await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(choiceStreamUrl(2)))
+      loadMetadata(video)
+
+      await pickQuality(user, '720p')
+
+      await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(choiceStreamUrl(3)))
+      loadMetadata(video)
+      expect(video.currentTime).toBe(73.25)
+      expect(video.paused).toBe(true)
+    })
+
+    it.each([true, false])(
+      'shouldRestoreThePickedQualityWhereTheViewerLeftWhenThePageReturnsAfterAPick(playing: %s)',
+      async (playing) => {
+        const log = servePlaybackChoices()
+        const closed = recordClosedSessions()
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        const video = await attachedVideo(choiceStreamUrl(1))
+        loadMetadata(video)
+        playheadAt(video, 73.25)
+        if (!playing) pressPause(video)
+        hls.destroy.mockImplementation(() => video.load())
+        await pickQuality(user, '720p')
+        await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(choiceStreamUrl(2)))
+        loadMetadata(video)
+        playheadAt(video, 80)
+
+        hideThePage({ persisted: true })
+        restoreThePage()
+
+        await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(choiceStreamUrl(3)))
+        loadMetadata(video)
+        expect(log.filter((entry) => entry.startsWith('create'))).toEqual([
+          'create AUTO',
+          'create HIGH_720P',
+          'create HIGH_720P',
+        ])
+        expect(closed).toContainEqual({ playbackSessionId: 'playback-2', keepalive: true })
+        expect(video.currentTime).toBe(80)
+        expect(video.paused).toBe(!playing)
+      },
+    )
+
+    it.each([
+      { picked: 'Original', plays: 'AUTO', shown: 'Auto' },
+      { picked: 'Original', plays: 'ORIGINAL', shown: 'Original' },
+      { picked: '720p', plays: 'HIGH_720P', shown: '720p' },
+    ] as const)(
+      'shouldSelectThePlaybackChoiceThatTheServerNames(picked: $picked, plays: $plays)',
+      async ({ picked, plays, shown }) => {
+        servePlaybackChoices({ playing: (requested) => (requested === 'AUTO' ? 'AUTO' : plays) })
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        await attachedVideo(choiceStreamUrl(1))
+
+        await pickQuality(user, picked)
+        await attachedVideo(choiceStreamUrl(2))
+
+        const chip = screen.getByRole('button', { name: `Quality: ${shown}` })
+        const menu = await openPicker(user, chip)
+        expect(within(menu).getByRole('menuitemradio', { checked: true })).toHaveTextContent(
+          new RegExp(`^${shown}$`),
+        )
+      },
+    )
+
+    it('shouldKeepThePlaybackSessionWhenTheViewerPicksTheChoiceThatPlays', async () => {
+      const log = servePlaybackChoices()
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await attachedVideo(choiceStreamUrl(1))
+
+      await pickQuality(user, 'Auto')
+
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+      expect(log).toEqual(['create AUTO'])
+      expect(hls.destroy).not.toHaveBeenCalled()
+    })
+
+    it('shouldRetryThePickedQualityFromTheStartPositionWhenTheViewerRetries', async () => {
+      const log = servePlaybackChoices()
+      const { user } = renderWithProviders(
+        <Player
+          playbackPlatform={withoutDecodingInfo}
+          mediaFileId="abcd"
+          startPositionSeconds={12}
+        />,
+      )
+      const video = await attachedVideo(choiceStreamUrl(1))
+      loadMetadata(video)
+      playheadAt(video, 73.25)
+      pressPause(video)
+      hls.destroy.mockImplementation(() => video.load())
+      await pickQuality(user, '720p')
+      await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(choiceStreamUrl(2)))
+      loadMetadata(video)
+
+      raiseHlsFatalError()
+      await user.click(await screen.findByRole('button', { name: 'Retry playback' }))
+
+      await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(choiceStreamUrl(3)))
+      loadMetadata(video)
+      expect(log.filter((entry) => entry.startsWith('create'))).toEqual([
+        'create AUTO',
+        'create HIGH_720P',
+        'create HIGH_720P',
+      ])
+      expect(video.currentTime).toBe(12)
+      expect(video.paused).toBe(false)
+    })
+
+    it('shouldStartAtTheNewStartPositionInAutoWhenTheStartPositionChangesAfterAPick', async () => {
+      const log = servePlaybackChoices()
+      const { user } = renderWithProviders(<StartPositionHarness />)
+      const video = await attachedVideo(choiceStreamUrl(1))
+      loadMetadata(video)
+      playheadAt(video, 73.25)
+      await pickQuality(user, '720p')
+      await attachedVideo(choiceStreamUrl(2))
+      hls.destroy.mockImplementationOnce(() => video.load())
+
+      await user.click(screen.getByRole('button', { name: 'Start at 120' }))
+
+      await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(choiceStreamUrl(3)))
+      loadMetadata(video)
+      expect(video.currentTime).toBe(120)
+      expect(log.filter((entry) => entry.startsWith('create'))).toEqual([
+        'create AUTO',
+        'create HIGH_720P',
+        'create AUTO',
+      ])
+    })
+
+    it('shouldStartTheNextMediaFileInAutoFromItsOwnStartAfterAPick', async () => {
+      const log = servePlaybackChoices()
+      const { user } = renderWithProviders(<Harness />)
+      const video = await attachedVideo(choiceStreamUrl(1))
+      loadMetadata(video)
+      playheadAt(video, 73.25)
+      await pickQuality(user, '720p')
+      await attachedVideo(choiceStreamUrl(2))
+      hls.destroy.mockImplementationOnce(() => video.load())
+
+      await user.click(screen.getByRole('button', { name: 'Next' }))
+
+      await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(choiceStreamUrl(3)))
+      loadMetadata(video)
+      expect(video.currentTime).toBe(0)
+      expect(log.filter((entry) => entry.startsWith('create'))).toEqual([
+        'create AUTO',
+        'create HIGH_720P',
+        'create AUTO',
+      ])
+      expect(screen.getByRole('button', { name: 'Quality: Auto' })).toBeInTheDocument()
+    })
+  })
+  describe('real end of a short copy', () => {
+    it('shouldEndPlaybackWhenAStallFindsTheRealEndInThePlaybackStatus', async () => {
+      const { reports, video } = await playTheShortCopy({ namedOnAttach: false })
+
+      // The server holds the request past the real end, so the element stalls without an error.
+      stallAt(video, REAL_END_SECONDS - 2)
+
+      await waitFor(() => expect(video.paused).toBe(true))
+      await waitFor(() =>
+        expect(reports.at(-1)).toEqual({
+          sessionId: 'sess-1',
+          positionSeconds: REAL_END_SECONDS,
+          state: 'STOPPED',
+        }),
+      )
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(hls.destroy).not.toHaveBeenCalled()
+    })
+
+    it('shouldKeepWaitingAndReadTheStatusOnceWhenAStallFindsNoRealEnd', async () => {
+      const { video } = await playTheShortCopy({ namedOnAttach: false })
+      const statusReads = serveAStatusWithoutARealEnd()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, REAL_END_SECONDS - 2)
+      await act(async () => vi.advanceTimersByTimeAsync(30_000))
+
+      expect(statusReads()).toBe(1)
+      expect(video.paused).toBe(false)
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('shouldKeepWaitingWhenAStallFindsARealEndOnlyForAnotherStream', async () => {
+      const { video } = await playTheShortCopy({ namedOnAttach: false })
+      const replacement = { ...SESSION, id: 'sess-2', mediaEndSeconds: REAL_END_SECONDS }
+      server.use(
+        graphql.query('PlaybackSession', () =>
+          HttpResponse.json({
+            data: { playbackSession: readyPlaybackSession({ streamSession: replacement }) },
+          }),
+        ),
+      )
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, REAL_END_SECONDS - 2)
+      await act(async () => vi.advanceTimersByTimeAsync(30_000))
+
+      expect(video.paused).toBe(false)
+    })
+
+    it('shouldPlayOnToTheRealEndWhenAHeldSegmentTimesOutWhileThePausedViewerHasMediaBuffered', async () => {
+      const { video } = await playTheShortCopy({ namedOnAttach: false })
+      act(() => video.pause())
+      playheadAt(video, REAL_END_SECONDS - 20)
+      setReadyState(video, HTMLMediaElement.HAVE_ENOUGH_DATA)
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      timeOutTheNextSegment()
+      await act(async () => vi.advanceTimersByTimeAsync(30_000))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      await act(() => video.play())
+      playheadAt(video, REAL_END_SECONDS)
+
+      expect(video.paused).toBe(true)
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('shouldShowTheFailureAtTheStatusDeadlineWhenAStallsStatusReadNeverAnswers', async () => {
+      const { video } = await playTheShortCopy({ namedOnAttach: false })
+      server.use(graphql.query('PlaybackSession', () => new Promise<never>(() => undefined)))
+      stallAt(video, REAL_END_SECONDS - 20)
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      timeOutTheNextSegment()
+      await act(async () => vi.advanceTimersByTimeAsync(29_000))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      await act(async () => vi.advanceTimersByTimeAsync(1_000))
+
+      expect(screen.getByRole('alert')).toHaveTextContent("Playback couldn't start.")
+    })
+
+    it('shouldReadNoStatusWhileHlsJsRetriesASegmentThatTimedOut', async () => {
+      const { video } = await playTheShortCopy({ namedOnAttach: false })
+      const statusReads = serveAStatusWithoutARealEnd()
+      setReadyState(video, HTMLMediaElement.HAVE_ENOUGH_DATA)
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      timeOutTheNextSegment({ fatal: false })
+      await act(async () => vi.advanceTimersByTimeAsync(30_000))
+
+      expect(statusReads()).toBe(0)
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('shouldShowTheFailureWhenASegmentTimesOutAndTheStatusNamesNoRealEnd', async () => {
+      const { video } = await playTheShortCopy({ namedOnAttach: false })
+      serveAStatusWithoutARealEnd()
+      playheadAt(video, REAL_END_SECONDS - 20)
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      timeOutTheNextSegment()
+      // The server may still replace the stream until the status check's deadline.
+      await act(async () => vi.advanceTimersByTimeAsync(29_000))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      await act(async () => vi.advanceTimersByTimeAsync(1_000))
+
+      expect(screen.getByRole('alert')).toHaveTextContent("Playback couldn't start.")
+    })
+
+    it('shouldEndAtTheRealEndThatTheAttachedAttemptNames', async () => {
+      const { video } = await playTheShortCopy()
+
+      playheadAt(video, REAL_END_SECONDS - 1)
+      expect(video.paused).toBe(false)
+      playheadAt(video, REAL_END_SECONDS)
+
+      expect(video.paused).toBe(true)
+    })
+
+    it('shouldReportStoppedAtTheRealEnd', async () => {
+      const { reports, video } = await playTheShortCopy()
+
+      playheadAt(video, REAL_END_SECONDS + 0.4)
+      // The element reports its playhead again as it pauses there.
+      playheadAt(video, REAL_END_SECONDS + 0.4)
+
+      await waitFor(() =>
+        expect(reports.at(-1)).toEqual({
+          sessionId: 'sess-1',
+          positionSeconds: REAL_END_SECONDS,
+          state: 'STOPPED',
+        }),
+      )
+      expect(reports.filter((report) => report.state === 'STOPPED')).toHaveLength(1)
+    })
+
+    it('shouldEndAtAStallWithinOneSegmentOfTheRealEnd', async () => {
+      const { reports, video } = await playTheShortCopy()
+
+      stallAt(video, REAL_END_SECONDS - 5)
+
+      expect(video.paused).toBe(true)
+      await waitFor(() =>
+        expect(reports.at(-1)).toEqual({
+          sessionId: 'sess-1',
+          positionSeconds: REAL_END_SECONDS,
+          state: 'STOPPED',
+        }),
+      )
+    })
+
+    it('shouldKeepWaitingAtAStallMoreThanOneSegmentBeforeTheRealEnd', async () => {
+      const { video } = await playTheShortCopy()
+
+      stallAt(video, REAL_END_SECONDS - 7)
+
+      expect(video.paused).toBe(false)
+    })
+
+    it('shouldPlayTheLastSecondsWhenTheViewerSeeksCloseToTheRealEnd', async () => {
+      const { video } = await playTheShortCopy()
+      Object.defineProperty(video, 'seeking', { value: true, configurable: true })
+
+      stallAt(video, REAL_END_SECONDS - 3)
+
+      expect(video.paused).toBe(false)
+    })
+
+    it('shouldPlayTheLastSecondsWhenTheSeeksWaitingEventFiresAfterTheSeekCompletes', async () => {
+      const { video } = await playTheShortCopy()
+      fireEvent(video, new Event('seeking'))
+      playheadAt(video, REAL_END_SECONDS - 3)
+      setReadyState(video, HTMLMediaElement.HAVE_CURRENT_DATA)
+
+      // The browser queued the seek's waiting event and finished the seek before firing it.
+      fireEvent(video, new Event('seeked'))
+      fireEvent(video, new Event('waiting'))
+
+      expect(video.paused).toBe(false)
+      // Once playback resumes, a stall is a stall again.
+      fireEvent(video, new Event('playing'))
+      stallAt(video, REAL_END_SECONDS - 1)
+      expect(video.paused).toBe(true)
+    })
+
+    it('shouldEndAtAStallWithinOneSegmentAfterASeekWithinTheBuffer', async () => {
+      const { video } = await playTheShortCopy()
+      fireEvent(video, new Event('seeking'))
+      playheadAt(video, REAL_END_SECONDS - 20)
+      // The media at the seek was buffered, so playback goes on without a playing event.
+      setReadyState(video, HTMLMediaElement.HAVE_ENOUGH_DATA)
+      fireEvent(video, new Event('seeked'))
+
+      stallAt(video, REAL_END_SECONDS - 1)
+
+      expect(video.paused).toBe(true)
+    })
+
+    it('shouldShowNoFailureWhenAHeldSegmentPastTheRealEndTimesOut', async () => {
+      const { video } = await playTheShortCopy()
+      playheadAt(video, REAL_END_SECONDS - 20)
+      setReadyState(video, HTMLMediaElement.HAVE_ENOUGH_DATA)
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      timeOutTheNextSegment()
+      await act(async () => vi.advanceTimersByTimeAsync(30_000))
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(hls.destroy).not.toHaveBeenCalled()
+      expect(video.paused).toBe(false)
+    })
+
+    it('shouldEndInsteadOfFailingWhenTheStreamFailsWithinOneSegmentOfTheRealEnd', async () => {
+      const { video } = await playTheShortCopy()
+      playheadAt(video, REAL_END_SECONDS - 4)
+
+      raiseHlsFatalError()
+
+      expect(video.paused).toBe(true)
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(hls.destroy).not.toHaveBeenCalled()
+    })
+
+    it('shouldEndWithoutAFailureWhenASegmentTimesOutWithinOneSegmentOfTheRealEndAndTheServerIsUnavailable', async () => {
+      const { video } = await playTheShortCopy()
+      server.use(
+        graphql.query('PlaybackSession', () =>
+          HttpResponse.json({ errors: [{ message: 'Server unavailable' }] }),
+        ),
+      )
+      playheadAt(video, REAL_END_SECONDS - 4)
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      timeOutTheNextSegment()
+      await act(async () => vi.advanceTimersByTimeAsync(30_000))
+
+      expect(video.paused).toBe(true)
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('shouldShowTheFailureWhenTheStreamFailsLongBeforeTheRealEnd', async () => {
+      const { video } = await playTheShortCopy()
+      playheadAt(video, REAL_END_SECONDS - 60)
+
+      raiseHlsFatalError()
+
+      expect(await screen.findByRole('alert')).toHaveTextContent("Playback couldn't start.")
+    })
+
+    it('shouldEndInsteadOfReportingAFormatFailureWithinOneSegmentOfTheRealEnd', async () => {
+      const failures: unknown[] = []
+      server.use(
+        graphql.mutation('ReportPlaybackFormatFailure', ({ variables }) => {
+          failures.push(variables)
+          return HttpResponse.json({ errors: [{ message: 'Unexpected format report' }] })
+        }),
+      )
+      const { video } = await playTheShortCopy()
+      playheadAt(video, REAL_END_SECONDS - 3)
+
+      refuseTheStreamsFormat()
+
+      expect(video.paused).toBe(true)
+      expect(failures).toEqual([])
+      expect(hls.destroy).not.toHaveBeenCalled()
+    })
+
+    it('shouldEndAtTheRealEndThatTheServerAnswersAFormatFailureReportWith', async () => {
+      const shortStream = { ...SESSION, mediaEndSeconds: REAL_END_SECONDS }
+      server.use(
+        graphql.mutation('ReportPlaybackFormatFailure', () =>
+          HttpResponse.json({
+            data: {
+              reportPlaybackFormatFailure: {
+                playbackSession: readyPlaybackSession({ streamSession: shortStream }),
+                userErrors: [],
+              },
+            },
+          }),
+        ),
+      )
+      const { video } = await playTheShortCopy({ namedOnAttach: false })
+      playheadAt(video, REAL_END_SECONDS - 30)
+      hls.destroy.mockImplementation(() => video.load())
+
+      refuseTheStreamsFormat()
+      await waitFor(() => expect(hls.loadSource).toHaveBeenCalledTimes(2))
+      loadMetadata(video)
+      playheadAt(video, REAL_END_SECONDS)
+
+      expect(video.paused).toBe(true)
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(notice()).toBeEmptyDOMElement()
+    })
+
+    it('shouldReportStoppedOnceWhenTheElementAlsoEndsAtTheRealEnd', async () => {
+      const { reports, video } = await playTheShortCopy()
+
+      playheadAt(video, REAL_END_SECONDS)
+      fireEvent(video, new Event('ended'))
+
+      await waitFor(() =>
+        expect(reports.at(-1)).toEqual({
+          sessionId: 'sess-1',
+          positionSeconds: REAL_END_SECONDS,
+          state: 'STOPPED',
+        }),
+      )
+      expect(reports.filter((report) => report.state === 'STOPPED')).toHaveLength(1)
+    })
+
+    it('shouldAttachTheStreamAgainWhenAStreamThatStoppedBeforeTheRealEndRunsOutAfterASeek', async () => {
+      const { video } = await playTheShortCopy({ namedOnAttach: false })
+      playheadAt(video, REAL_END_SECONDS - 20)
+      timeOutTheNextSegment()
+      hls.destroy.mockImplementation(() => video.load())
+      // The viewer seeks back out of the buffer while the status check is on its way.
+      stallAt(video, 600)
+
+      await waitFor(() => expect(hls.loadSource).toHaveBeenCalledTimes(2))
+      loadMetadata(video)
+
+      expect(video.currentTime).toBe(600)
+      expect(video.paused).toBe(false)
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      // The stream attached again loads by itself.
+      stallAt(video, 900)
+      expect(hls.loadSource).toHaveBeenCalledTimes(2)
+    })
+
+    it('shouldShowTheFailureWhenTheStreamAttachedAgainStopsBeforeItsFirstFrame', async () => {
+      const { video } = await playTheShortCopy({ namedOnAttach: false })
+      playheadAt(video, REAL_END_SECONDS - 20)
+      timeOutTheNextSegment()
+      hls.destroy.mockImplementation(() => video.load())
+      stallAt(video, 600)
+      await waitFor(() => expect(hls.loadSource).toHaveBeenCalledTimes(2))
+      loadMetadata(video)
+
+      timeOutTheNextSegment()
+
+      expect(await screen.findByRole('alert')).toHaveTextContent("Playback couldn't start.")
+      expect(hls.loadSource).toHaveBeenCalledTimes(2)
+    })
+
+    it('shouldKeepAPausedViewerPausedWhenTheStreamThatStoppedAttachesAgainAtTheirSeek', async () => {
+      const { video } = await playTheShortCopy({ namedOnAttach: false })
+      playheadAt(video, REAL_END_SECONDS - 20)
+      timeOutTheNextSegment()
+      hls.destroy.mockImplementation(() => video.load())
+      act(() => video.pause())
+      playheadAt(video, 600)
+      setReadyState(video, HTMLMediaElement.HAVE_METADATA)
+
+      await waitFor(() => expect(hls.loadSource).toHaveBeenCalledTimes(2))
+      loadMetadata(video)
+
+      expect(video.currentTime).toBe(600)
+      expect(video.paused).toBe(true)
+    })
+
+    it.each([
+      {
+        learnedFrom: 'a held segment request that timed out',
+        learn: () => timeOutTheNextSegment(),
+        attachments: 2,
+      },
+      {
+        learnedFrom: 'a stall',
+        learn: (video: HTMLVideoElement) => stallAt(video, REAL_END_SECONDS - 20),
+        attachments: 1,
+      },
+      {
+        // A 503 that came while the copy still ran, before the server knew the real end.
+        learnedFrom: 'a 503 that hls.js retries',
+        learn: () => answerTheNextSegmentWith503({ fatal: false }),
+        attachments: 1,
+      },
+    ])(
+      'shouldAttachTheStreamAgainWhenTheViewerSeeksOutOfTheBufferOnlyIfTheStreamStopped(real end learned from $learnedFrom)',
+      async ({ learn, attachments }) => {
+        const { video } = await playTheShortCopy({ namedOnAttach: false })
+        playheadAt(video, REAL_END_SECONDS - 20)
+        setReadyState(video, HTMLMediaElement.HAVE_ENOUGH_DATA)
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        learn(video)
+        await act(async () => vi.advanceTimersByTimeAsync(30_000))
+        // Only the end learned above can end playback below.
+        serveAStatusWithoutARealEnd()
+        hls.destroy.mockImplementation(() => video.load())
+
+        stallAt(video, 600)
+
+        expect(hls.loadSource).toHaveBeenCalledTimes(attachments)
+        playheadAt(video, REAL_END_SECONDS)
+        expect(video.paused).toBe(true)
+      },
+    )
+
+    it('shouldKeepTheEndAsTheLastReportWhenTheBrowserFiresItsPauseEventsLate', async () => {
+      const { reports, video } = await playTheShortCopy()
+      // A browser's pause() queues its timeupdate and pause events rather than firing them inside.
+      Object.defineProperty(video, 'pause', {
+        configurable: true,
+        value: () => {
+          Object.defineProperty(video, 'paused', {
+            value: true,
+            writable: true,
+            configurable: true,
+          })
+          queueMicrotask(() => {
+            fireEvent(video, new Event('timeupdate'))
+            fireEvent(video, new Event('pause'))
+          })
+        },
+      })
+
+      stallAt(video, REAL_END_SECONDS - 5)
+
+      await waitFor(() =>
+        expect(reports.at(-1)).toEqual({
+          sessionId: 'sess-1',
+          positionSeconds: REAL_END_SECONDS,
+          state: 'STOPPED',
+        }),
+      )
+      await act(async () => cleanup())
+      await waitFor(() =>
+        expect(reports.filter((report) => report.state === 'STOPPED')).toHaveLength(1),
+      )
+      expect(reports.at(-1)?.positionSeconds).toBe(REAL_END_SECONDS)
+      expect(reports.filter((report) => report.state === 'PAUSED')).toEqual([])
+    })
+
+    it('shouldShowNoFailureWhenAStatusCheckFailsAfterPlaybackEndedAtTheRealEnd', async () => {
+      const { video } = await playTheShortCopy()
+      const answered = deferred()
+      server.use(
+        graphql.query('PlaybackSession', async () => {
+          await answered.promise
+          return HttpResponse.json({ errors: [{ message: 'Server unavailable' }] })
+        }),
+      )
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      timeOutTheNextSegment()
+
+      playheadAt(video, REAL_END_SECONDS)
+      answered.resolve()
+      await act(async () => vi.advanceTimersByTimeAsync(30_000))
+
+      expect(video.paused).toBe(true)
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(hls.destroy).not.toHaveBeenCalled()
+    })
+
+    it('shouldKeepWaitingForTheFirstFrameWhenPlaybackStartsWithinOneSegmentOfTheRealEnd', async () => {
+      const { video } = await playTheShortCopy({ showingFirstFrame: false })
+
+      stallAt(video, REAL_END_SECONDS - 3)
+
+      expect(video.paused).toBe(false)
+    })
+
+    it('shouldEndAtTheRealEndWhenPlaybackStartsPastItBeforeTheFirstFrame', async () => {
+      const { video } = await playTheShortCopy({ showingFirstFrame: false })
+      // The seek past the real end waits for media that never comes, so no timeupdate follows it.
+      Object.defineProperty(video, 'seeking', { value: true, configurable: true })
+      video.currentTime = REAL_END_SECONDS + 5
+
+      fireEvent(video, new Event('waiting'))
+
+      expect(video.paused).toBe(true)
+    })
+
+    it('shouldKeepWaitingForTheFirstFrameOfTheStreamAttachedAgainWithinOneSegmentOfTheRealEnd', async () => {
+      const { video } = await playTheShortCopy()
+      playheadAt(video, REAL_END_SECONDS)
+      playheadAt(video, REAL_END_SECONDS - 3)
+      hls.destroy.mockImplementation(() => video.load())
+      await act(() => video.play())
+      loadMetadata(video)
+
+      stallAt(video, REAL_END_SECONDS - 3)
+
+      expect(video.paused).toBe(false)
+    })
+
+    it('shouldShowNoStartupFailureWhenPlaybackEndsAtTheRealEndBeforeTheFirstFrame', async () => {
+      hls.supported = false
+      serveACopyThatRanShort({ namedOnAttach: true })
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+      await act(async () => vi.advanceTimersByTimeAsync(0))
+      const video = await nativeVideo()
+      loadMetadata(video)
+
+      stallAt(video, REAL_END_SECONDS)
+      await act(async () => vi.advanceTimersByTimeAsync(30_000))
+
+      expect(video.paused).toBe(true)
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('shouldShowTheStartupFailureWhenTheStreamAttachedAgainAfterTheRealEndNeverLoads', async () => {
+      const { video } = await playTheShortCopy()
+      playheadAt(video, REAL_END_SECONDS)
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      await act(() => video.play())
+      await act(async () => vi.advanceTimersByTimeAsync(30_000))
+
+      expect(screen.getByRole('alert')).toHaveTextContent('Playback is taking too long to start.')
+    })
+
+    it('shouldPlayOnWhenAWaitingEventArrivesAfterTheMediaHasCome', async () => {
+      const { video } = await playTheShortCopy()
+      playheadAt(video, REAL_END_SECONDS - 3)
+      // The browser queued the event while the element waited; the data came before it fired.
+      setReadyState(video, HTMLMediaElement.HAVE_ENOUGH_DATA)
+
+      fireEvent(video, new Event('waiting'))
+
+      expect(video.paused).toBe(false)
+    })
+
+    it('shouldEndAtTheRealEndWhenTheViewerSeeksPastItAndTheStatusCheckNamesItDuringTheSeek', async () => {
+      const { video } = await playTheShortCopy({ namedOnAttach: false })
+      playheadAt(video, REAL_END_SECONDS - 20)
+      setReadyState(video, HTMLMediaElement.HAVE_ENOUGH_DATA)
+      timeOutTheNextSegment()
+      // The seek waits for media past the real end, which never comes.
+      Object.defineProperty(video, 'seeking', { value: true, configurable: true })
+      stallAt(video, REAL_END_SECONDS + 5)
+
+      await waitFor(() => expect(video.paused).toBe(true))
+      expect(hls.loadSource).toHaveBeenCalledTimes(1)
+    })
+
+    it('shouldLetASeekCloseToTheEndPlayWhenTheStatusNamesTheEndDuringIt', async () => {
+      const { video } = await playTheShortCopy({ namedOnAttach: false })
+      Object.defineProperty(video, 'seeking', { value: true, configurable: true })
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      // The seek's own wait reads the status, which names the real end while the seek goes on.
+      stallAt(video, REAL_END_SECONDS - 3)
+      await act(async () => vi.advanceTimersByTimeAsync(30_000))
+
+      expect(video.paused).toBe(false)
+      Object.defineProperty(video, 'seeking', { value: false, configurable: true })
+      fireEvent(video, new Event('waiting'))
+      expect(video.paused).toBe(true)
+    })
+
+    it.each([
+      { failure: 'a fatal stream error', fail: raiseHlsFatalError },
+      { failure: 'a held segment request that timed out', fail: () => timeOutTheNextSegment() },
+      { failure: 'a format failure', fail: refuseTheStreamsFormat },
+    ])(
+      'shouldAttachTheStreamAgainWhenTheViewerPlaysAfterAFailureEndedPlayback($failure)',
+      async ({ fail }) => {
+        const { video } = await playTheShortCopy()
+        playheadAt(video, REAL_END_SECONDS - 4)
+        fail()
+        await waitFor(() => expect(video.paused).toBe(true))
+        hls.destroy.mockImplementation(() => video.load())
+
+        await act(() => video.play())
+
+        expect(hls.loadSource).toHaveBeenCalledTimes(2)
+        loadMetadata(video)
+        expect(video.currentTime).toBe(0)
+        expect(video.paused).toBe(false)
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      },
+    )
+
+    it('shouldShowNoFailureWhenTheStreamFailsAfterTheViewerSeeksBackFromTheRealEnd', async () => {
+      const { video } = await playTheShortCopy()
+      stallAt(video, REAL_END_SECONDS - 2)
+      playheadAt(video, 600)
+
+      raiseHlsFatalError()
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(hls.destroy).not.toHaveBeenCalled()
+    })
+
+    it('shouldKeepALearnedRealEndWhenTheStoppedStreamAttachesAgain', async () => {
+      const { video } = await playTheShortCopy({ namedOnAttach: false })
+      playheadAt(video, REAL_END_SECONDS - 100)
+      stallAt(video, REAL_END_SECONDS - 4)
+      await waitFor(() => expect(video.paused).toBe(true))
+      raiseHlsFatalError()
+      hls.destroy.mockImplementation(() => video.load())
+      await act(() => video.play())
+      loadMetadata(video)
+
+      playheadAt(video, REAL_END_SECONDS)
+
+      expect(video.paused).toBe(true)
+    })
+
+    it('shouldShowNoFailureWhenAStreamErrorAfterTheRealEndFindsTheServerUnavailable', async () => {
+      const { video } = await playTheShortCopy()
+      playheadAt(video, REAL_END_SECONDS)
+      expect(video.paused).toBe(true)
+      server.use(
+        graphql.query('PlaybackSession', () =>
+          HttpResponse.json({ errors: [{ message: 'Server unavailable' }] }),
+        ),
+      )
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      timeOutTheNextSegment()
+      await act(async () => vi.advanceTimersByTimeAsync(30_000))
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(hls.destroy).not.toHaveBeenCalled()
+    })
+
+    it('shouldPlayFromTheStartWhenTheViewerPlaysAgainAfterTheRealEnd', async () => {
+      const { video } = await playTheShortCopy()
+      stallAt(video, REAL_END_SECONDS - 2)
+
+      await act(() => video.play())
+
+      expect(video.currentTime).toBe(0)
+      expect(video.paused).toBe(false)
+    })
+
+    it('shouldPlayOnFromTheViewersSeekWhenTheViewerSeeksBackAfterTheRealEnd', async () => {
+      const { video } = await playTheShortCopy()
+      stallAt(video, REAL_END_SECONDS - 2)
+      playheadAt(video, 600)
+
+      await act(() => video.play())
+
+      expect(video.currentTime).toBe(600)
+      playheadAt(video, REAL_END_SECONDS)
+      expect(video.paused).toBe(true)
+    })
+
+    it('shouldPlayOnFromTheViewersSeekWhenTheViewerSeeksWithinTheLastSegmentAfterTheRealEnd', async () => {
+      const { video } = await playTheShortCopy()
+      stallAt(video, REAL_END_SECONDS - 2)
+      playheadAt(video, REAL_END_SECONDS - 3)
+
+      await act(() => video.play())
+
+      expect(video.currentTime).toBe(REAL_END_SECONDS - 3)
+    })
+
+    it('shouldEndAtAStallWithinTheServersDefaultSegmentOfTheRealEndOnTheNativePath', async () => {
+      hls.supported = false
+      serveACopyThatRanShort({ namedOnAttach: true })
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+      const video = await nativeVideo()
+      loadMetadata(video)
+      loadFirstFrame(video)
+      await act(() => video.play())
+
+      stallAt(video, REAL_END_SECONDS - 5)
+
+      expect(video.paused).toBe(true)
+    })
+  })
+
+  describe('stalled playback', () => {
+    it('shouldShowTheFailureWhenAStallOutlastsTheLimitAndTheStatusStillNamesTheStream', async () => {
+      const video = await playingVideo()
+      serveAStatusWithoutARealEnd()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 1))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      await act(async () => vi.advanceTimersByTimeAsync(1))
+
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        "This video can't be played right now. Try again later.",
+      )
+      expect(hls.destroy).toHaveBeenCalled()
+    })
+
+    it('shouldKeepPlayingWhenPlaybackResumesBeforeTheStallLimit', async () => {
+      const video = await playingVideo()
+      serveAStatusWithoutARealEnd()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 1_000))
+      resumeAfterTheStall(video)
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS))
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(hls.destroy).not.toHaveBeenCalled()
+    })
+
+    it('shouldGiveEachStallTheWholeLimitWhenPlaybackResumedBetweenThem', async () => {
+      const video = await playingVideo()
+      serveAStatusWithoutARealEnd()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 1_000))
+      resumeAfterTheStall(video)
+      stallAt(video, 102)
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 1))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      await act(async () => vi.advanceTimersByTimeAsync(1))
+
+      expect(screen.getByRole('alert')).toHaveTextContent("This video can't be played right now.")
+    })
+
+    it('shouldGiveAStallTheWholeLimitWhenTheViewerPlaysAgainAfterPausingDuringIt', async () => {
+      const video = await playingVideo()
+      serveAStatusWithoutARealEnd()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 1_000))
+      act(() => video.pause())
+      await act(() => video.play())
+      stallAt(video, 100)
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 1))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      await act(async () => vi.advanceTimersByTimeAsync(1))
+
+      expect(screen.getByRole('alert')).toHaveTextContent("This video can't be played right now.")
+    })
+
+    it('shouldKeepWaitingWhenTheViewerPausesDuringAStall', async () => {
+      const video = await playingVideo()
+      serveAStatusWithoutARealEnd()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      act(() => video.pause())
+      await act(async () => vi.advanceTimersByTimeAsync(2 * STALL_LIMIT_MS))
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('shouldGiveTheWholeLimitToAStallAfterTheViewerSeeksAway', async () => {
+      const video = await playingVideo()
+      serveAStatusWithoutARealEnd()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 1_000))
+      fireEvent(video, new Event('seeking'))
+      stallAt(video, 500)
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 1))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      await act(async () => vi.advanceTimersByTimeAsync(1))
+
+      expect(screen.getByRole('alert')).toHaveTextContent("This video can't be played right now.")
+    })
+
+    it('shouldGiveTheWholeLimitToASeekThatLeavesAStallWithoutAWaitingEvent', async () => {
+      const video = await playingVideo()
+      serveAStatusWithoutARealEnd()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 1_000))
+      video.currentTime = 500
+      fireEvent(video, new Event('seeking'))
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 1))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      await act(async () => vi.advanceTimersByTimeAsync(1))
+
+      expect(screen.getByRole('alert')).toHaveTextContent("This video can't be played right now.")
+    })
+
+    it('shouldShowTheFailureWhenTheLimitExpiresDuringASeekIntoUnbufferedMediaThatNeverGetsData', async () => {
+      const video = await playingVideo()
+      serveAStatusWithoutARealEnd()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      // The seek into unbuffered media waits for data that never comes, so seeking stays true.
+      video.currentTime = 500
+      setReadyState(video, HTMLMediaElement.HAVE_METADATA)
+      Object.defineProperty(video, 'seeking', { value: true, configurable: true })
+      fireEvent(video, new Event('seeking'))
+      await act(async () =>
+        vi.advanceTimersByTimeAsync(10 * (STALL_LIMIT_MS + PLAYBACK_START_TIMEOUT_MS)),
+      )
+
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        "This video can't be played right now. Try again later.",
+      )
+      expect(hls.destroy).toHaveBeenCalled()
+    })
+
+    it('shouldGiveTheWholeLimitToASeekThatStartsBeforeItsEventAfterAnEarlierSeekFinishedWithoutMedia', async () => {
+      const video = await playingVideo()
+      const lateRead = holdTheSecondStatusRead()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      // The first seek finishes, but the media to play at its position has not come.
+      video.currentTime = 500
+      fireEvent(video, new Event('seeking'))
+      fireEvent(video, new Event('seeked'))
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS))
+      // The second seek starts while the stall's status is read, before its event fires.
+      Object.defineProperty(video, 'seeking', { value: true, configurable: true })
+      await act(async () => lateRead.answer())
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      fireEvent(video, new Event('seeking'))
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 1))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      await act(async () => vi.advanceTimersByTimeAsync(1 + PLAYBACK_START_TIMEOUT_MS))
+
+      expect(screen.getByRole('alert')).toHaveTextContent("This video can't be played right now.")
+    })
+
+    it('shouldGiveTheWholeLimitToASeekThatReplacesAnUnfinishedSeekBeforeItsEventFires', async () => {
+      const video = await playingVideo()
+      const lateRead = holdTheSecondStatusRead()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      // The first seek waits for media that has not come when the limit runs out.
+      video.currentTime = 500
+      Object.defineProperty(video, 'seeking', { value: true, configurable: true })
+      fireEvent(video, new Event('seeking'))
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS))
+      // A second seek aborts the first without a seeked event, before its own event fires.
+      video.currentTime = 800
+      await act(async () => lateRead.answer())
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      fireEvent(video, new Event('seeking'))
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 1))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      await act(async () => vi.advanceTimersByTimeAsync(1 + PLAYBACK_START_TIMEOUT_MS))
+
+      expect(screen.getByRole('alert')).toHaveTextContent("This video can't be played right now.")
+    })
+
+    it('shouldKeepPlayingWhenASeekDuringAStallLandsOnBufferedMedia', async () => {
+      const video = await playingVideo()
+      serveAStatusWithoutARealEnd()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      fireEvent(video, new Event('seeking'))
+      setReadyState(video, HTMLMediaElement.HAVE_ENOUGH_DATA)
+      fireEvent(video, new Event('seeked'))
+      await act(async () => vi.advanceTimersByTimeAsync(2 * STALL_LIMIT_MS))
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('shouldGiveTheWholeLimitToASeekThatStartsBeforeItsEventWhileTheStallsStatusIsRead', async () => {
+      const video = await playingVideo()
+      const lateRead = holdTheSecondStatusRead()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS))
+      Object.defineProperty(video, 'seeking', { value: true, configurable: true })
+      await act(async () => lateRead.answer())
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      fireEvent(video, new Event('seeking'))
+      Object.defineProperty(video, 'seeking', { value: false, configurable: true })
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 1))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      await act(async () => vi.advanceTimersByTimeAsync(1))
+
+      expect(screen.getByRole('alert')).toHaveTextContent("This video can't be played right now.")
+    })
+
+    it('shouldKeepPlayingWhenPlaybackResumesWhileTheStallsStatusReadIsOnItsWay', async () => {
+      const video = await playingVideo()
+      let answer: () => void = () => undefined
+      server.use(
+        graphql.query('PlaybackSession', async () => {
+          await new Promise<void>((resolve) => (answer = resolve))
+          return HttpResponse.json({
+            data: { playbackSession: readyPlaybackSession({ streamSession: SESSION }) },
+          })
+        }),
+      )
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS))
+      resumeAfterTheStall(video)
+      await act(async () => {
+        answer()
+        await vi.advanceTimersByTimeAsync(PLAYBACK_START_TIMEOUT_MS)
+      })
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(hls.destroy).not.toHaveBeenCalled()
+    })
+
+    it('shouldEndPlaybackWhenTheStatusNamesTheRealEndWhereTheStallOutlastsTheLimit', async () => {
+      const { reports, video } = await playTheShortCopy({ namedOnAttach: false })
+      serveTheRealEndFromTheSecondStatusRead()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, REAL_END_SECONDS - 2)
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS))
+
+      expect(video.paused).toBe(true)
+      expect(reports.at(-1)).toEqual({
+        sessionId: 'sess-1',
+        positionSeconds: REAL_END_SECONDS,
+        state: 'STOPPED',
+      })
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('shouldShowTheFailureWhenTheStatusNamesARealEndFarFromWhereTheStallOutlastsTheLimit', async () => {
+      const { video } = await playTheShortCopy({ namedOnAttach: false })
+      serveTheRealEndFromTheSecondStatusRead()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      await act(async () => vi.advanceTimersByTimeAsync(2 * STALL_LIMIT_MS))
+
+      expect(screen.getByRole('alert')).toHaveTextContent("This video can't be played right now.")
+      expect(hls.loadSource).toHaveBeenCalledTimes(1)
+    })
+
+    it('shouldShowTheFailureWhenAStallOutlastsTheLimitAndThePlaybackStatusCannotBeRead', async () => {
+      const video = await playingVideo()
+      server.use(graphql.query('PlaybackSession', () => HttpResponse.error()))
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS))
+
+      expect(screen.getByRole('alert')).toHaveTextContent("This video can't be played right now.")
+      expect(hls.destroy).toHaveBeenCalled()
+    })
+
+    it('shouldShowTheFailureAtTheStatusDeadlineWhenTheStallsStatusReadNeverAnswers', async () => {
+      const video = await playingVideo()
+      server.use(graphql.query('PlaybackSession', () => new Promise<never>(() => undefined)))
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      await act(async () =>
+        vi.advanceTimersByTimeAsync(STALL_LIMIT_MS + PLAYBACK_START_TIMEOUT_MS - 1),
+      )
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      await act(async () => vi.advanceTimersByTimeAsync(1))
+
+      expect(screen.getByRole('alert')).toHaveTextContent("This video can't be played right now.")
+    })
+
+    it('shouldGiveANewStallTheWholeLimitWhenAnEarlierStallsStatusAnswersLate', async () => {
+      const video = await playingVideo()
+      const lateRead = holdTheSecondStatusRead()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS))
+      fireEvent(video, new Event('seeking'))
+      stallAt(video, 500)
+      await act(async () => {
+        lateRead.answer()
+        await vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 1)
+      })
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      await act(async () => vi.advanceTimersByTimeAsync(1))
+
+      expect(screen.getByRole('alert')).toHaveTextContent("This video can't be played right now.")
+    })
+
+    it('shouldShowTheFailureAfterAnotherLimitWhenAReplacementNamedOnceIsNeverAttached', async () => {
+      const video = await playingVideo()
+      serveAnotherStreamOnlyAtTheSecondStatusRead()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      await act(async () => vi.advanceTimersByTimeAsync(2 * STALL_LIMIT_MS - 1))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      await act(async () => vi.advanceTimersByTimeAsync(1))
+
+      expect(screen.getByRole('alert')).toHaveTextContent("This video can't be played right now.")
+      expect(hls.loadSource).toHaveBeenCalledTimes(1)
+    })
+
+    it('shouldKeepPlayingWhenPlaybackResumesAfterAReplacementWasNamedOnlyOnce', async () => {
+      const video = await playingVideo()
+      serveAnotherStreamOnlyAtTheSecondStatusRead()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS + 1_000))
+      resumeAfterTheStall(video)
+      await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_START_TIMEOUT_MS))
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('shouldKeepPlayingWhenTheMediaArrivesBeforeItsPlayingEventWhileTheStallsStatusIsRead', async () => {
+      const video = await playingVideo()
+      const lateRead = holdTheSecondStatusRead()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS))
+      setReadyState(video, HTMLMediaElement.HAVE_ENOUGH_DATA)
+      await act(async () => {
+        lateRead.answer()
+        await vi.advanceTimersByTimeAsync(PLAYBACK_START_TIMEOUT_MS)
+      })
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(hls.destroy).not.toHaveBeenCalled()
+    })
+
+    it('shouldKeepWaitingWhenTheViewerPausesBeforeThePauseEventWhileTheStallsStatusIsRead', async () => {
+      const video = await playingVideo()
+      const lateRead = holdTheSecondStatusRead()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS))
+      Object.defineProperty(video, 'paused', { writable: true, value: true, configurable: true })
+      await act(async () => {
+        lateRead.answer()
+        await vi.advanceTimersByTimeAsync(PLAYBACK_START_TIMEOUT_MS)
+      })
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('shouldAttachTheReplacementWhenAStallOutlastsTheLimitAndTheStatusNamesAnotherStream', async () => {
+      const video = await playingVideo()
+      const replacement = replacementStream(1)
+      server.use(
+        graphql.query('PlaybackSession', () =>
+          HttpResponse.json({
+            data: { playbackSession: readyPlaybackSession({ streamSession: replacement }) },
+          }),
+        ),
+      )
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS + 1_000))
+
+      expect(hls.loadSource).toHaveBeenLastCalledWith(replacement.streamUrl)
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('format changes', () => {
+    it('shouldSelectAutoAndShowTheNoticeWhenOriginalsCopyFallsBackToAnEncode', async () => {
+      servePlaybackChoices()
+      const replacement = replacementStream(1)
+      server.use(
+        graphql.mutation('ReportPlaybackFormatFailure', () =>
+          HttpResponse.json({
+            data: {
+              reportPlaybackFormatFailure: {
+                playbackSession: {
+                  ...readyPlaybackSession({ id: 'playback-2', streamSession: SESSION }),
+                  ...ORIGINAL_CHANGED_TO_AUTO,
+                  currentFormatAttempt: {
+                    __typename: 'PendingPlaybackFormatAttempt',
+                    streamSessionId: replacement.id,
+                  },
+                },
+                userErrors: [],
+              },
+            },
+          }),
+        ),
+        graphql.query('PlaybackSession', () =>
+          HttpResponse.json({
+            data: {
+              playbackSession: readyPlaybackSession({
+                id: 'playback-2',
+                streamSession: replacement,
+                ...ORIGINAL_CHANGED_TO_AUTO,
+              }),
+            },
+          }),
+        ),
+      )
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await showingVideo(choiceStreamUrl(1))
+      await pickQuality(user, 'Original')
+      await showingVideo(choiceStreamUrl(2))
+      expect(notice()).toBeEmptyDOMElement()
+
+      refuseTheStreamsFormat()
+
+      await showingVideo(replacement.streamUrl)
+      expect(notice().textContent).toBe(CHANGED_TO_AUTO_NOTICE)
+      expect(screen.getByRole('button', { name: 'Quality: Auto' })).toBeInTheDocument()
+    })
+
+    it('shouldShowTheNoticeAndSelectAutoWhenOriginalStartsWithAnEncode', async () => {
+      servePlaybackChoices({
+        playing: (requested) => (requested === 'ORIGINAL' ? 'AUTO' : requested),
+        formatChange: (requested) => (requested === 'ORIGINAL' ? 'STARTED_WITH_ENCODE' : null),
+      })
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await showingVideo(choiceStreamUrl(1))
+
+      await pickQuality(user, 'Original')
+
+      await showingVideo(choiceStreamUrl(2))
+      expect(notice().textContent).toBe(CHANGED_TO_AUTO_NOTICE)
+      expect(screen.getByRole('button', { name: 'Quality: Auto' })).toBeInTheDocument()
+    })
+
+    it('shouldKeepTheFixedQualityAndOmitTheAutoSentenceWhenItsCopyFallsBack', async () => {
+      await watchAFallback('720p', FIXED_QUALITY_CONVERTED)
+
+      expect(notice().textContent).toBe(CONVERTED_NOTICE)
+      expect(screen.getByRole('button', { name: 'Quality: 720p' })).toBeInTheDocument()
+    })
+
+    it.each([
+      { picked: 'Original', requested: 'ORIGINAL' },
+      { picked: '720p', requested: 'HIGH_720P' },
+    ] as const)(
+      'shouldShowTheDolbyVisionNoticeAndKeepTheSelectionWhenDolbyVisionIsStripped(picked: $picked)',
+      async ({ picked, requested }) => {
+        await watchAFallback(picked, {
+          requestedChoice: requested,
+          playbackChoice: requested,
+          formatChange: 'DOLBY_VISION_STRIPPED',
+        })
+
+        expect(notice().textContent).toBe(DOLBY_VISION_NOTICE)
+        expect(screen.getByRole('button', { name: `Quality: ${picked}` })).toBeInTheDocument()
+      },
+    )
+
+    it('shouldHideTheNoticeAfterSixSecondsWithoutPausingPlayback', async () => {
+      servePlaybackChoices()
+      replaceTheRefusedStream(FIXED_QUALITY_CONVERTED)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await showingVideo(choiceStreamUrl(1))
+      await pickQuality(user, '720p')
+      const video = await showingVideo(choiceStreamUrl(2))
+      loadMetadata(video)
+      hls.destroy.mockImplementation(() => video.load())
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      refuseTheStreamsFormat()
+      await showingVideo(replacementStream(1).streamUrl)
+      loadMetadata(video)
+      expect(notice().textContent).toBe(CONVERTED_NOTICE)
+
+      await act(async () => vi.advanceTimersByTimeAsync(5_900))
+      expect(notice().textContent).toBe(CONVERTED_NOTICE)
+      await act(async () => vi.advanceTimersByTimeAsync(100))
+      expect(notice()).toBeEmptyDOMElement()
+      expect(video.paused).toBe(false)
+    })
+
+    it('shouldShowTheNoticeOnceWhenTheSameChangeMovesToAnotherStream', async () => {
+      servePlaybackChoices()
+      replaceTheRefusedStream(ORIGINAL_CHANGED_TO_AUTO)
+      server.use(
+        graphql.query('PlaybackSession', () =>
+          HttpResponse.json({
+            data: {
+              playbackSession: readyPlaybackSession({
+                id: 'playback-2',
+                streamSession: replacementStream(2),
+                ...ORIGINAL_CHANGED_TO_AUTO,
+              }),
+            },
+          }),
+        ),
+      )
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await showingVideo(choiceStreamUrl(1))
+      await pickQuality(user, 'Original')
+      await showingVideo(choiceStreamUrl(2))
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      refuseTheStreamsFormat()
+      await showingVideo(replacementStream(1).streamUrl)
+      await act(async () => vi.advanceTimersByTimeAsync(6_000))
+      expect(notice()).toBeEmptyDOMElement()
+
+      const onError = hls.on.mock.calls.findLast(([event]) => event === 'hlsError')?.[1]
+      act(() =>
+        onError?.('hlsError', { fatal: false, type: 'networkError', response: { code: 503 } }),
+      )
+
+      await showingVideo(replacementStream(2).streamUrl)
+      expect(notice()).toBeEmptyDOMElement()
+    })
+
+    it('shouldReplaceTheNoticeAndStartItsTimeAgainWhenTheCopyWithoutDolbyVisionAlsoFallsBack', async () => {
+      servePlaybackChoices()
+      replaceTheRefusedStream({
+        requestedChoice: 'ORIGINAL',
+        playbackChoice: 'ORIGINAL',
+        formatChange: 'DOLBY_VISION_STRIPPED',
+      })
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await showingVideo(choiceStreamUrl(1))
+      await pickQuality(user, 'Original')
+      await showingVideo(choiceStreamUrl(2))
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      refuseTheStreamsFormat()
+      await showingVideo(replacementStream(1).streamUrl)
+      expect(notice().textContent).toBe(DOLBY_VISION_NOTICE)
+      await act(async () => vi.advanceTimersByTimeAsync(4_000))
+      replaceTheRefusedStream(ORIGINAL_CHANGED_TO_AUTO, replacementStream(2))
+
+      refuseTheStreamsFormat()
+      await showingVideo(replacementStream(2).streamUrl)
+
+      expect(notice().textContent).toBe(CHANGED_TO_AUTO_NOTICE)
+      await act(async () => vi.advanceTimersByTimeAsync(5_900))
+      expect(notice().textContent).toBe(CHANGED_TO_AUTO_NOTICE)
+      expect(screen.getByRole('button', { name: 'Quality: Auto' })).toBeInTheDocument()
+    })
+
+    it.each([
+      {
+        picked: 'Original',
+        choices: ORIGINAL_CHANGED_TO_AUTO,
+        selected: 'Auto',
+        mark: `Original: ${ORIGINAL_EXPLANATION}`,
+      },
+      {
+        picked: '720p',
+        choices: FIXED_QUALITY_CONVERTED,
+        selected: '720p',
+        mark: `720p: ${FIXED_QUALITY_EXPLANATION}`,
+      },
+      {
+        picked: 'Original',
+        choices: {
+          requestedChoice: 'ORIGINAL',
+          playbackChoice: 'ORIGINAL',
+          formatChange: 'DOLBY_VISION_STRIPPED',
+        },
+        selected: 'Original',
+        mark: `Original: ${DOLBY_VISION_EXPLANATION}`,
+      },
+    ] as const)(
+      'shouldMarkTheChoiceWhoseOutputFellBackWithItsExplanation(picked: $picked, plays: $selected)',
+      async ({ picked, choices, selected, mark }) => {
+        const { user } = await watchAFallback(picked, choices)
+
+        const menu = await openQualityMenu(user)
+
+        expect(marksIn(menu)).toEqual([mark])
+        expect(within(menu).getByRole('menuitemradio', { checked: true }).textContent).toBe(
+          selected,
+        )
+      },
+    )
+
+    it('shouldReplaceTheMarksExplanationWhenTheCopyWithoutDolbyVisionAlsoFallsBack', async () => {
+      const { user } = await watchAFallback('Original', {
+        requestedChoice: 'ORIGINAL',
+        playbackChoice: 'ORIGINAL',
+        formatChange: 'DOLBY_VISION_STRIPPED',
+      })
+      replaceTheRefusedStream(ORIGINAL_CHANGED_TO_AUTO, replacementStream(2))
+
+      refuseTheStreamsFormat()
+      await showingVideo(replacementStream(2).streamUrl)
+
+      expect(marksIn(await openQualityMenu(user))).toEqual([`Original: ${ORIGINAL_EXPLANATION}`])
+    })
+
+    it('shouldReadTheExplanationOnceWithTheMarkedRowForAssistiveTechnology', async () => {
+      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      const menu = await openQualityMenu(user)
+
+      await user.keyboard('{ArrowUp}')
+
+      const row = within(menu).getByRole('menuitemradio', {
+        name: `Original. ${ORIGINAL_EXPLANATION}`,
+      })
+      expect(row).toHaveFocus()
+      expect(screen.getByText(ORIGINAL_EXPLANATION)).toHaveAttribute('aria-hidden', 'true')
+    })
+
+    it('shouldExplainTheMarkWhileKeyboardFocusIsOnTheMarkedRow', async () => {
+      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      await openQualityMenu(user)
+      expect(screen.getByText(ORIGINAL_EXPLANATION)).not.toBeVisible()
+
+      await user.keyboard('{ArrowUp}')
+      expect(screen.getByText(ORIGINAL_EXPLANATION)).toBeVisible()
+
+      await user.keyboard('{ArrowDown}')
+      expect(screen.getByText(ORIGINAL_EXPLANATION)).not.toBeVisible()
+    })
+
+    it('shouldExplainTheMarkWhileThePointerHoversTheMarkedRow', async () => {
+      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      const menu = await openQualityMenu(user)
+      const row = within(menu).getByRole('menuitemradio', { name: /^Original/ })
+
+      await user.hover(row)
+      expect(screen.getByText(ORIGINAL_EXPLANATION)).toBeVisible()
+
+      await user.unhover(row)
+      expect(screen.getByText(ORIGINAL_EXPLANATION)).not.toBeVisible()
+    })
+
+    it('shouldExplainTheMarkOnATapWithoutPickingItsChoice', async () => {
+      const { user, log } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      const menu = await openQualityMenu(user)
+      const row = within(menu).getByRole('menuitemradio', { name: /^Original/ })
+
+      tap(within(row).getByRole('img'))
+
+      expect(screen.getByText(ORIGINAL_EXPLANATION)).toBeVisible()
+      expect(screen.getByRole('menu')).toBe(menu)
+      expect(log.filter((entry) => entry.startsWith('create'))).toEqual([
+        'create AUTO',
+        'create ORIGINAL',
+      ])
+    })
+
+    it.each([
+      {
+        way: 'a mouse click on the mark',
+        press: (row: HTMLElement, user: UserEvent) => user.click(within(row).getByRole('img')),
+      },
+      { way: 'a tap beside the mark', press: (row: HTMLElement) => tap(row) },
+      {
+        way: 'the keyboard after a tap on the mark',
+        press: async (row: HTMLElement, user: UserEvent) => {
+          tap(within(row).getByRole('img'))
+          row.focus()
+          await user.keyboard('{Enter}')
+        },
+      },
+    ])('shouldPickTheMarkedChoiceOn($way)', async ({ press }) => {
+      const { user, log } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      const menu = await openQualityMenu(user)
+
+      await press(within(menu).getByRole('menuitemradio', { name: /^Original/ }), user)
+
+      await showingVideo(choiceStreamUrl(3))
+      expect(log.slice(-2)).toEqual(['destroy playback-2', 'create ORIGINAL'])
+    })
+
+    it('shouldStartOriginalAfreshWhenTheViewerPicksItAgainAfterAFallback', async () => {
+      const { user, log } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+
+      await pickQuality(user, `Original. ${ORIGINAL_EXPLANATION}`)
+
+      await showingVideo(choiceStreamUrl(3))
+      expect(log.slice(-2)).toEqual(['destroy playback-2', 'create ORIGINAL'])
+    })
+
+    it('shouldKeepTheMarkBesideOriginalWhenTheViewerPicksAFixedQualityAfterAFallback', async () => {
+      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+
+      await pickQuality(user, '720p')
+      await showingVideo(choiceStreamUrl(3))
+
+      const menu = await openQualityMenu(user)
+      expect(marksIn(menu)).toEqual([`Original: ${ORIGINAL_EXPLANATION}`])
+      expect(within(menu).getByRole('menuitemradio', { checked: true }).textContent).toBe('720p')
+    })
+
+    it('shouldClearTheMarkWhenThePickedOriginalPlaysWithoutAFallback', async () => {
+      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+
+      await pickQuality(user, `Original. ${ORIGINAL_EXPLANATION}`)
+      await showingVideo(choiceStreamUrl(3))
+
+      expect(marksIn(await openQualityMenu(user))).toEqual([])
+    })
+
+    it('shouldForgetTheMarksWhenTheNextMediaFileStarts', async () => {
+      servePlaybackChoices({
+        playing: (requested) => (requested === 'ORIGINAL' ? 'AUTO' : requested),
+        formatChange: (requested) => (requested === 'ORIGINAL' ? 'STARTED_WITH_ENCODE' : null),
+      })
+      const { user } = renderWithProviders(<Harness />)
+      await showingVideo(choiceStreamUrl(1))
+      await pickQuality(user, 'Original')
+      await showingVideo(choiceStreamUrl(2))
+
+      await user.click(screen.getByRole('button', { name: 'Next' }))
+      await showingVideo(choiceStreamUrl(3))
+
+      expect(marksIn(await openQualityMenu(user))).toEqual([])
+    })
+
+    it('shouldShowTheNoticeOnceTheReplacementShowsItsFirstFrame', async () => {
+      servePlaybackChoices()
+      replaceTheRefusedStream(FIXED_QUALITY_CONVERTED)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await showingVideo(choiceStreamUrl(1))
+      await pickQuality(user, '720p')
+      await showingVideo(choiceStreamUrl(2))
+      refuseTheStreamsFormat()
+      const video = await attachedVideo(replacementStream(1).streamUrl)
+      loadMetadata(video)
+      expect(notice()).toBeEmptyDOMElement()
+
+      loadFirstFrame(video)
+
+      expect(notice().textContent).toBe(CONVERTED_NOTICE)
+    })
+
+    it('shouldShowNoNoticeWhenTheReplacementFailsBeforeItsFirstFrame', async () => {
+      servePlaybackChoices()
+      replaceTheRefusedStream(FIXED_QUALITY_CONVERTED)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await showingVideo(choiceStreamUrl(1))
+      await pickQuality(user, '720p')
+      await showingVideo(choiceStreamUrl(2))
+      refuseTheStreamsFormat()
+      await attachedVideo(replacementStream(1).streamUrl)
+
+      raiseHlsFatalError()
+
+      expect(await screen.findByRole('alert')).toBeInTheDocument()
+      expect(notice()).toBeEmptyDOMElement()
+    })
+
+    it('shouldClearTheNoticeWhenTheViewerPicksAnotherChoice', async () => {
+      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      expect(notice().textContent).toBe(CHANGED_TO_AUTO_NOTICE)
+
+      await pickQuality(user, '720p')
+
+      expect(notice()).toBeEmptyDOMElement()
+    })
+
+    it('shouldClearTheNoticeWhenTheNextMediaFileStarts', async () => {
+      servePlaybackChoices({
+        playing: (requested) => (requested === 'ORIGINAL' ? 'AUTO' : requested),
+        formatChange: (requested) => (requested === 'ORIGINAL' ? 'STARTED_WITH_ENCODE' : null),
+      })
+      const { user } = renderWithProviders(<Harness />)
+      await showingVideo(choiceStreamUrl(1))
+      await pickQuality(user, 'Original')
+      await showingVideo(choiceStreamUrl(2))
+      expect(notice().textContent).toBe(CHANGED_TO_AUTO_NOTICE)
+
+      await user.click(screen.getByRole('button', { name: 'Next' }))
+
+      expect(notice()).toBeEmptyDOMElement()
+    })
+
+    it('shouldKeepTheMarkUntilThePickedOriginalShowsItsFirstFrame', async () => {
+      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      await pickQuality(user, `Original. ${ORIGINAL_EXPLANATION}`)
+      const video = await attachedVideo(choiceStreamUrl(3))
+      expect(marksIn(await openQualityMenu(user))).toEqual([`Original: ${ORIGINAL_EXPLANATION}`])
+      await user.keyboard('{Escape}')
+
+      loadFirstFrame(video)
+
+      expect(marksIn(await openQualityMenu(user))).toEqual([])
+    })
+
+    it('shouldExplainTheFocusedMarkWhileThePointerRestsOnAnUnmarkedRow', async () => {
+      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      const menu = await openQualityMenu(user)
+      await user.hover(within(menu).getByRole('menuitemradio', { name: 'Auto' }))
+
+      await user.keyboard('{ArrowUp}')
+
+      expect(screen.getByText(ORIGINAL_EXPLANATION)).toBeVisible()
+    })
+
+    it('shouldShowNoNoticeWhenAutoRecoversFromAFailedCopy', async () => {
+      servePlaybackChoices()
+      replaceTheRefusedStream({
+        requestedChoice: 'AUTO',
+        playbackChoice: 'AUTO',
+        formatChange: null,
+      })
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+      await showingVideo(choiceStreamUrl(1))
+
+      refuseTheStreamsFormat()
+
+      await showingVideo(replacementStream(1).streamUrl)
+      expect(notice()).toBeEmptyDOMElement()
+      expect(screen.getByRole('button', { name: 'Quality: Auto' })).toBeInTheDocument()
     })
   })
 })

@@ -37,10 +37,21 @@
   object-fit: contain;
 }
 
-.back {
+/* Back holds the corner, and whatever else belongs at the top left stacks under it. The column
+   lets taps through to the video; Back takes them while it shows. */
+.topStart {
   position: absolute;
   top: var(--spacing-24);
   left: var(--spacing-page);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-12);
+  pointer-events: none;
+}
+
+.back {
+  pointer-events: auto;
 }
 
 .failure {
@@ -53,8 +64,15 @@
 }
 
 @media (max-width: 48em) {
-  .back {
+  .topStart {
     top: var(--spacing-16);
     left: var(--spacing-16);
+  }
+}
+
+/* A narrow player gives a notice under Back the whole width less the insets. */
+@media (max-width: 600px) {
+  .topStart {
+    right: var(--spacing-16);
   }
 }

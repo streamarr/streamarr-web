@@ -3,6 +3,7 @@ import { readyPlaybackSession, destroyedPlaybackSession } from '../../test/playb
 import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
 import { HttpResponse, graphql } from 'msw'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { CreatePlaybackSessionInput } from '../../graphql/generated/graphql'
 import { hls } from '../../test/fakeHls'
 import { meFixture } from '../../test/meFixture'
 import { renderAppAt } from '../../test/render'
@@ -82,7 +83,11 @@ function serveMediaTitles(): unknown[] {
 }
 
 async function attachedVideo(): Promise<HTMLVideoElement> {
-  await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(STREAM_URL))
+  return attachedVideoAt(STREAM_URL)
+}
+
+async function attachedVideoAt(streamUrl: string): Promise<HTMLVideoElement> {
+  await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(streamUrl))
   const video = document.querySelector('video')
   if (!video) {
     throw new Error('no video element rendered')
@@ -121,6 +126,50 @@ describe('/play/$mediaFileId', () => {
     fireEvent(video, new Event('loadedmetadata'))
 
     expect(video.currentTime).toBe(startsAt)
+  })
+
+  it('shouldStartAtTheNewPositionInAutoWhenThePlayerMovesThereAfterAQualityPick', async () => {
+    serveApp()
+    const created: string[] = []
+    server.use(
+      graphql.mutation('CreatePlaybackSession', ({ variables }) => {
+        const { options } = (variables as { input: CreatePlaybackSessionInput }).input
+        created.push(options?.quality ?? 'without a choice')
+        const id = `sess-${created.length}`
+        return HttpResponse.json({
+          data: {
+            createPlaybackSession: {
+              playbackSession: readyPlaybackSession({
+                streamSession: { id, streamUrl: `/api/stream/${id}.m3u8`, transcodeMode: 'REMUX' },
+                requestedChoice: options?.quality ?? 'AUTO',
+                playbackChoice: options?.quality ?? 'AUTO',
+              }),
+              userErrors: [],
+            },
+          },
+        })
+      }),
+    )
+    const { user, router } = renderAppAt('/play/file-1')
+    const video = await attachedVideoAt('/api/stream/sess-1.m3u8')
+    fireEvent(video, new Event('loadedmetadata'))
+    video.currentTime = 73.25
+    await user.click(screen.getByRole('button', { name: 'Quality: Auto' }))
+    await user.click(screen.getByRole('menuitemradio', { name: '720p' }))
+    await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith('/api/stream/sess-2.m3u8'))
+
+    await act(() =>
+      router.navigate({
+        to: '/play/$mediaFileId',
+        params: { mediaFileId: 'file-1' },
+        search: { position: 120 },
+      }),
+    )
+
+    await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith('/api/stream/sess-3.m3u8'))
+    fireEvent(video, new Event('loadedmetadata'))
+    expect(video.currentTime).toBe(120)
+    expect(created).toEqual(['AUTO', 'HIGH_720P', 'AUTO'])
   })
 
   it('shouldNameTheEpisodeAndItsSeriesInTheTitleLine', async () => {

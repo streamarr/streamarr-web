@@ -115,13 +115,19 @@ const PLAYER_OPERATIONS: Record<string, unknown> = {
       playbackSession: {
         id: 'playback-1',
         formatAttemptCount: 1,
-        maximumFormatAttempts: 3,
+        maximumFormatAttempts: 4,
+        requestedChoice: 'AUTO',
+        playbackChoice: 'AUTO',
+        formatChange: null,
+        offeredChoices: ['ORIGINAL', 'AUTO', 'HIGH_720P', 'MEDIUM_480P', 'LOW_360P'],
         currentFormatAttempt: {
           __typename: 'ReadyPlaybackFormatAttempt',
           streamSession: {
             id: 'sess-1',
             streamUrl: '/api/stream/e2e/multivariant.m3u8?t=playback-token',
             transcodeMode: 'REMUX',
+            videoRange: 'SDR',
+            mediaEndSeconds: null,
           },
         },
       },
@@ -613,7 +619,7 @@ test('after Tab to Mute, Space mutes and playback continues', async ({ page, req
   expect(await videoPaused(page)).toBe(false)
 })
 
-test('Space pauses the video after Tab to the Quality chip, which opens nothing', async ({
+test('Space pauses the video after Tab to the Audio chip, which opens nothing', async ({
   page,
   request,
 }) => {
@@ -628,6 +634,7 @@ test('Space pauses the video after Tab to the Quality chip, which opens nothing'
     page.getByRole('button', { name: 'Pause' }),
     page.getByRole('button', { name: 'Forward 10 seconds' }),
     page.getByRole('button', { name: /^Quality/ }),
+    page.getByRole('button', { name: 'Audio: Audio' }),
   ])
 
   await page.keyboard.press('Space')
@@ -681,20 +688,221 @@ test('a clicked Forward 10 seconds shows no focus ring while Space plays and pau
   expect(await ringOnActiveElement(page)).toMatchObject(RING)
 })
 
-test('a clicked Quality chip, which opens nothing, shows no focus ring while Space plays and pauses', async ({
+test('a clicked Audio chip, which opens nothing, shows no focus ring while Space plays and pauses', async ({
   page,
   request,
 }) => {
   await openPlayerFromThePlayLink(page, request)
   await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible()
-  const quality = page.getByRole('button', { name: /^Quality/ })
-  await clickAriaDisabled(page, quality)
+  const audio = page.getByRole('button', { name: 'Audio: Audio' })
+  await clickAriaDisabled(page, audio)
 
   await page.keyboard.press('Space')
 
   expect(await videoPaused(page)).toBe(true)
-  await expect(quality).toBeFocused()
+  await expect(audio).toBeFocused()
   expect(await ringOnActiveElement(page)).not.toMatchObject(RING)
+})
+
+test('the Quality menu lists the choices the server offers and starts the picked one afresh', async ({
+  page,
+  request,
+}) => {
+  await openPlayer(page, request)
+  const calls: string[] = []
+  page.on('request', (call) => {
+    if (call.url().endsWith('/graphql')) calls.push(operationName(call))
+  })
+
+  await page.getByRole('button', { name: 'Quality: Auto' }).click()
+  const quality = page.getByRole('menu', { name: 'Quality' })
+  await expect(quality.getByRole('menuitemradio')).toHaveText([
+    'Original',
+    'Auto',
+    '720p',
+    '480p',
+    '360p',
+  ])
+  await expect(quality.getByRole('menuitemradio', { checked: true })).toHaveText('Auto')
+  const created = page.waitForRequest((call) => operationName(call) === 'CreatePlaybackSession')
+  await page.keyboard.press('Home')
+  await page.keyboard.press('Enter')
+
+  const input = ((await created).postDataJSON() as { variables: { input: unknown } }).variables
+    .input
+  expect(input).toMatchObject({ mediaFileId: 'file-1', options: { quality: 'ORIGINAL' } })
+  expect(calls.filter((name) => name.endsWith('PlaybackSession'))).toEqual([
+    'DestroyPlaybackSession',
+    'CreatePlaybackSession',
+  ])
+})
+
+// Routes added later take precedence, so the first media segment's route follows the player's.
+async function openPlayerShowingMedia(page: Page, request: APIRequestContext): Promise<void> {
+  await routePlayer(page, request)
+  await serveTheFirstMediaSegment(page)
+  await page.goto(PLAYER_PATH)
+  await expect(page.getByRole('slider', { name: 'Seek' })).toHaveAttribute('aria-disabled', 'false')
+}
+
+// Picking Original answers a playback session whose first attempt is an encode, so Original
+// changes to Auto: once the new stream shows its first frame, the notice shows and the Quality
+// menu marks Original.
+async function startOriginalWithAnEncode(page: Page): Promise<void> {
+  await page.route('**/graphql', async (route) => {
+    const body = route.request().postDataJSON() as {
+      operationName?: string
+      variables?: { input?: { options?: { quality?: string } } }
+    } | null
+    if (
+      body?.operationName !== 'CreatePlaybackSession' ||
+      body.variables?.input?.options?.quality !== 'ORIGINAL'
+    ) {
+      return route.fallback()
+    }
+    const created = PLAYER_OPERATIONS.CreatePlaybackSession as {
+      createPlaybackSession: { playbackSession: object }
+    }
+    return route.fulfill({
+      json: {
+        data: {
+          createPlaybackSession: {
+            ...created.createPlaybackSession,
+            playbackSession: {
+              ...created.createPlaybackSession.playbackSession,
+              id: 'playback-2',
+              requestedChoice: 'ORIGINAL',
+              playbackChoice: 'AUTO',
+              formatChange: 'STARTED_WITH_ENCODE',
+            },
+          },
+        },
+      },
+    })
+  })
+  await page.getByRole('button', { name: 'Quality: Auto' }).click()
+  await page.keyboard.press('Home')
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('status')).toContainText('Quality is now set to Auto.')
+}
+
+const ORIGINAL_EXPLANATION =
+  "This video couldn't play in its original form, so Quality changed to Auto."
+
+test('the notice sits under Back, and the mark explains itself beside the menu, level with its row', async ({
+  page,
+  request,
+}) => {
+  await openPlayerShowingMedia(page, request)
+  await startOriginalWithAnEncode(page)
+  const back = (await page.getByRole('button', { name: 'Back', exact: true }).boundingBox()) as Box
+  const notice = (await page
+    .getByRole('status')
+    .getByText(/converted/)
+    .boundingBox()) as Box
+  expect(notice.x).toBeCloseTo(back.x, 0)
+  expect(notice.y).toBeGreaterThan(back.y + back.height)
+
+  await page.getByRole('button', { name: 'Quality: Auto' }).click()
+  await page.keyboard.press('ArrowUp')
+
+  const menu = (await page.getByRole('menu', { name: 'Quality' }).boundingBox()) as Box
+  const row = (await page
+    .getByRole('menuitemradio', { name: `Original. ${ORIGINAL_EXPLANATION}` })
+    .boundingBox()) as Box
+  const explanation = (await page.getByText(ORIGINAL_EXPLANATION).boundingBox()) as Box
+  expect(explanation.x + explanation.width).toBeLessThan(menu.x)
+  expect(explanation.y).toBeCloseTo(row.y, 0)
+})
+
+test('on a phone the notice spans the player, and the explanation sits above the menu', async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize({ width: 375, height: 667 })
+  await openPlayerShowingMedia(page, request)
+  await startOriginalWithAnEncode(page)
+  const notice = (await page
+    .getByRole('status')
+    .getByText(/converted/)
+    .boundingBox()) as Box
+  expect(notice.x).toBeCloseTo(16, 0)
+  expect(notice.width).toBeCloseTo(375 - 2 * 16, 0)
+
+  await page.getByRole('button', { name: 'Quality: Auto' }).click()
+  await page.keyboard.press('ArrowUp')
+
+  const menu = (await page.getByRole('menu', { name: 'Quality' }).boundingBox()) as Box
+  const explanation = (await page.getByText(ORIGINAL_EXPLANATION).boundingBox()) as Box
+  expect(explanation.y + explanation.height).toBeLessThan(menu.y)
+  expect(explanation.x).toBeGreaterThanOrEqual(0)
+  expect(explanation.x + explanation.width).toBeLessThanOrEqual(375)
+})
+
+test('the explanation moves above the menu when the player narrows while it shows', async ({
+  page,
+  request,
+}) => {
+  await openPlayerShowingMedia(page, request)
+  await startOriginalWithAnEncode(page)
+  await page.getByRole('button', { name: 'Quality: Auto' }).click()
+  await page.keyboard.press('ArrowUp')
+  await expect(page.getByText(ORIGINAL_EXPLANATION)).toBeVisible()
+
+  await page.setViewportSize({ width: 375, height: 667 })
+
+  const menu = (await page.getByRole('menu', { name: 'Quality' }).boundingBox()) as Box
+  const explanation = (await page.getByText(ORIGINAL_EXPLANATION).boundingBox()) as Box
+  expect(explanation.y + explanation.height).toBeLessThan(menu.y)
+  expect(explanation.x).toBeGreaterThanOrEqual(0)
+})
+
+test('on a small phone held sideways the explanation above the menu stays on screen', async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize({ width: 568, height: 320 })
+  await openPlayerShowingMedia(page, request)
+  await startOriginalWithAnEncode(page)
+  await page.getByRole('button', { name: 'Quality: Auto' }).click()
+
+  await page.keyboard.press('ArrowUp')
+
+  const menu = (await page.getByRole('menu', { name: 'Quality' }).boundingBox()) as Box
+  const explanation = (await page.getByText(ORIGINAL_EXPLANATION).boundingBox()) as Box
+  expect(explanation.y).toBeGreaterThanOrEqual(0)
+  expect(explanation.y + explanation.height).toBeLessThan(menu.y)
+  await expect(page.getByRole('menuitemradio', { name: /^Original/ })).toBeInViewport()
+})
+
+test('on a small phone held sideways hovering the marked row keeps the menu still', async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize({ width: 568, height: 320 })
+  await openPlayerShowingMedia(page, request)
+  await startOriginalWithAnEncode(page)
+  await page.getByRole('button', { name: 'Quality: Auto' }).click()
+  const original = page.getByRole('menuitemradio', { name: /^Original/ })
+
+  await original.hover()
+  await expect(page.getByText(ORIGINAL_EXPLANATION)).toBeVisible()
+
+  // A row that moved from under the pointer would end its hover and move back, frame after frame.
+  const rowTops = await original.evaluate(
+    (row) =>
+      new Promise<number[]>((resolve) => {
+        const tops: number[] = []
+        const sample = () => {
+          tops.push(row.getBoundingClientRect().top)
+          if (tops.length < 30) requestAnimationFrame(sample)
+          else resolve(tops)
+        }
+        requestAnimationFrame(sample)
+      }),
+  )
+  expect(new Set(rowTops).size).toBe(1)
+  await expect(page.getByText(ORIGINAL_EXPLANATION)).toBeVisible()
 })
 
 test('a refusal keeps Retry above the control bar on a phone held sideways', async ({

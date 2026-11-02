@@ -1,6 +1,7 @@
 import type { ApolloClient, ObservableQuery } from '@apollo/client'
 import Hls, { type ErrorData } from 'hls.js'
 import {
+  type ClientCapabilityDeclarationInput,
   type CreatePlaybackSessionMutation,
   DestroyPlaybackSessionDocument,
   PlaybackSessionDocument,
@@ -9,10 +10,13 @@ import {
   ReportPlaybackFormatFailureDocument,
   ReportStreamSessionTimelineDocument,
   type ReportStreamSessionTimelineMutationVariables,
+  type VideoRange,
 } from '../graphql/generated/graphql'
 import { userErrorMessage, userErrorMessageOr } from '../graphql/userErrors'
 import { discardWatchedState } from '../media/watchedState'
 import { hlsPlaybackConfig } from './hlsPlaybackConfig'
+import { DECLARATION_REFUSAL_TYPENAMES } from './playbackCapabilities'
+import type { QualityChoices } from './qualityChoices'
 import { hlsTrackSource, nativeTrackSource, type TrackSource } from './trackSources'
 
 // Progress is only worth a round trip once the playhead has moved this far since the last report.
@@ -20,6 +24,14 @@ const TIMELINE_REPORT_INTERVAL_SECONDS = 10
 const TIMELINE_CLEANUP_TIMEOUT_MS = 10_000
 const PLAYBACK_START_TIMEOUT_MS = 30_000
 const PLAYBACK_STATUS_INTERVAL_MS = 500
+// The server's default target segment duration, for a player that keeps the playlist to itself.
+const DEFAULT_SEGMENT_SECONDS = 6
+// By the server's defaults, it replaces a job attempt that stores nothing for 10 s and gives the
+// replacement up to 22 s to store its first segment, so a stall it can still end ends within about
+// 32 s and one segment's transfer. Once the buffer is empty, hls.js abandons a segment request
+// whose first byte takes 10 s and may ask another variant for the segment, which starts the
+// server's count again, so no request may live to hear the server give up on the segment.
+const STALL_LIMIT_MS = 45_000
 
 const PLAYBACK_FAILURE_MESSAGE = "Playback couldn't start. Try again."
 const FAILED_ATTEMPT_FALLBACK_MESSAGE = "This video can't be played right now. Try again later."
@@ -28,7 +40,28 @@ type PlaybackState = ReportStreamSessionTimelineMutationVariables['state']
 type PlaybackSessionPayload = CreatePlaybackSessionMutation['createPlaybackSession']
 
 export type SourcePhase =
-  { at: 'starting' } | { at: 'attached'; tracks: TrackSource } | { at: 'failed'; message: string }
+  | { at: 'starting' }
+  | { at: 'attached'; tracks: TrackSource; qualities: QualityChoices; videoRange: VideoRange }
+  | { at: 'failed'; message: string }
+
+/** Where playback picks up on a new stream: the playhead, and whether it plays on from there. */
+export interface ResumePoint {
+  position: number
+  playing: boolean
+}
+
+export interface PlayerPlayback {
+  /** Leaves playback: reports the final position and releases the playback session. */
+  stop: () => void
+  /** Where a playback session started in this one's place should resume. */
+  resumePoint: () => ResumePoint
+}
+
+// A stall's limit, and the status read once the stall outlasts it.
+interface Stall {
+  timer: ReturnType<typeof setTimeout>
+  controller: AbortController
+}
 
 interface PlaybackStatusCheck {
   controller: AbortController
@@ -39,22 +72,19 @@ interface PlaybackStatusCheck {
 interface PlayerPlaybackOptions {
   video: HTMLVideoElement
   client: ApolloClient
-  createPlaybackSession: () => Promise<{ data?: CreatePlaybackSessionMutation | null }>
+  declareCapabilities: () => Promise<ClientCapabilityDeclarationInput>
+  createPlaybackSession: (
+    capabilities: ClientCapabilityDeclarationInput,
+  ) => Promise<{ data?: CreatePlaybackSessionMutation | null }>
   startPositionSeconds?: number
-  onSourcePhase: (phase: SourcePhase) => void
-}
-
-interface SessionPlaybackOptions extends PlayerPlaybackOptions {
+  /** Takes the place of the start position when this playback replaces one the viewer was watching. */
   resumeFrom?: ResumePoint
+  onSourcePhase: (phase: SourcePhase) => void
+  /** Called once each attached stream shows its first frame, with the choices that stream plays. */
+  onOutputShown: (qualities: QualityChoices) => void
 }
 
-interface ResumePoint {
-  position: number
-  playing: boolean
-}
-
-interface SessionPlayback {
-  stop: () => void
+interface SessionPlayback extends PlayerPlayback {
   leavePage: () => ResumePoint | undefined
 }
 
@@ -62,7 +92,7 @@ const pendingCleanups = new WeakMap<ApolloClient, () => Promise<void>>()
 
 // React never unmounts a page the browser unloads or keeps in its back-forward cache, so the page
 // lifecycle, not the Player effect, has to end the session when the viewer leaves the page.
-export function startPlayerPlayback(options: PlayerPlaybackOptions): () => void {
+export function startPlayerPlayback(options: PlayerPlaybackOptions): PlayerPlayback {
   let playback = startSessionPlayback(options)
   let left: ResumePoint | undefined
   const onPageHide = () => {
@@ -76,29 +106,30 @@ export function startPlayerPlayback(options: PlayerPlaybackOptions): () => void 
     const resumeFrom = left
     left = undefined
     options.onSourcePhase({ at: 'starting' })
-    playback = startSessionPlayback({
-      ...options,
-      startPositionSeconds: resumeFrom.position,
-      resumeFrom,
-    })
+    playback = startSessionPlayback({ ...options, resumeFrom })
   }
   window.addEventListener('pagehide', onPageHide)
   window.addEventListener('pageshow', onPageShow)
-  return () => {
-    window.removeEventListener('pagehide', onPageHide)
-    window.removeEventListener('pageshow', onPageShow)
-    playback.stop()
+  return {
+    stop: () => {
+      window.removeEventListener('pagehide', onPageHide)
+      window.removeEventListener('pageshow', onPageShow)
+      playback.stop()
+    },
+    resumePoint: () => playback.resumePoint(),
   }
 }
 
 function startSessionPlayback({
   video,
   client,
+  declareCapabilities,
   createPlaybackSession,
   startPositionSeconds,
   onSourcePhase,
+  onOutputShown,
   resumeFrom,
-}: SessionPlaybackOptions): SessionPlayback {
+}: PlayerPlaybackOptions): SessionPlayback {
   let source: StreamSource | null = null
   let cancelled = false
   let sessionId: string | null = null
@@ -106,10 +137,30 @@ function startSessionPlayback({
   let sourceGeneration = 0
   let reportingFormat = false
   let statusCheck: PlaybackStatusCheck | undefined
-  let resume = resumeFrom
-  let lastReportedPosition = startPositionSeconds ?? 0
+  const startAt = resumeFrom?.position ?? startPositionSeconds
+  let resume: ResumePoint | undefined = resumeFrom && { ...resumeFrom }
+  let lastReportedPosition = startAt ?? 0
   let lastKnownPosition: number | null = null
   let unacknowledgedEndPosition: number | null = null
+  // Where the attached stream's media really ends, when its copy ran short of the advertised end.
+  let realEnd: number | null = null
+  let endedAtRealEnd = false
+  // Where the playhead stopped when playback ended; a viewer's seek after the end moves it away.
+  let endedPosition = 0
+  // hls.js stops loading after a fatal error, which a stream with a known real end may survive.
+  let sourceStopped = false
+  let firstFrameShown = false
+  // A browser can finish a seek before it fires the seek's queued waiting event, so a seek that
+  // finished without the media to play on waits until playback resumes.
+  let seekUnresumed = false
+  // The position of the seek whose seeking event has fired and whose seeked event has not. The
+  // element keeps such a seek running for as long as no media comes, so its stall limit fails it
+  // like any stall. A seek to another position replaced it, and that seek's event is still to come.
+  let seekUnderwayTo: number | null = null
+  // hls.js stops loading after a fatal error, so a failure that ended playback leaves the stream
+  // to attach again before it can play.
+  let attachedPlayback: PlaybackSessionFieldsFragment | null = null
+  let stall: Stall | undefined
   let timelineReports = Promise.resolve()
   const reportCancellation = new AbortController()
   const statusCancellation = new AbortController()
@@ -190,7 +241,7 @@ function startSessionPlayback({
     })
   }
 
-  // A restored page already carries the viewer's choice to play or pause.
+  // A resume carries the viewer's own play or pause, so the start never decides it for them.
   let playRequested = resumeFrom !== undefined
   function trackTimeline() {
     return attachTimeline(video, {
@@ -203,8 +254,8 @@ function startSessionPlayback({
           if (previous.playing) void element.play().catch(ignoreRefusedStart)
           return
         }
-        if (startPositionSeconds) {
-          element.currentTime = startPositionSeconds
+        if (startAt) {
+          element.currentTime = startAt
         }
         // Before metadata, only the viewer can ask to play. Their choice stands, even a later Pause.
         if (playRequested) {
@@ -213,12 +264,23 @@ function startSessionPlayback({
         // Asked only after the seek, so the first frame to play is at the start position.
         void element.play().catch(ignoreRefusedStart)
       },
-      onPlay: () => {
+      onPlay: (element) => {
         if (resume) resume.playing = true
         playRequested = true
+        if (!endedAtRealEnd) return
+        // As the element does after its own end, playing where playback ended starts from the top.
+        if (element.currentTime === endedPosition) element.currentTime = 0
+        // A failure can be what ended playback, and hls.js stops loading after one.
+        restartStoppedSource()
       },
+      // The pause that ends playback reports its events after the end; the end stays the last word.
       onTimeUpdate: (element) => {
+        if (endedAtRealEnd) return
         lastKnownPosition = element.currentTime
+        if (realEnd !== null && element.currentTime >= realEnd) {
+          endAtRealEnd()
+          return
+        }
         if (
           Math.abs(element.currentTime - lastReportedPosition) < TIMELINE_REPORT_INTERVAL_SECONDS
         ) {
@@ -228,20 +290,190 @@ function startSessionPlayback({
         report('PLAYING', element.currentTime)
       },
       onPause: (element) => {
+        clearStallLimit()
+        if (endedAtRealEnd) return
         if (resume) resume.playing = false
         lastKnownPosition = element.currentTime
         report('PAUSED', element.currentTime)
       },
+      // A seek starts a new wait for media, which a browser need not announce with a waiting event
+      // when the seek leaves a stall.
+      onSeeking: (element) => {
+        clearStallLimit()
+        if (!element.paused) startStallLimit()
+        seekUnresumed = true
+        seekUnderwayTo = element.currentTime
+      },
+      onSeeked: (element) => {
+        seekUnderwayTo = null
+        if (element.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) return
+        clearStallLimit()
+        seekUnresumed = false
+      },
+      onPlaying: () => {
+        clearStallLimit()
+        seekUnresumed = false
+      },
+      // A seek before the real end waits for its own data, which can still come.
+      onWaiting: (element) => {
+        // The browser queues the event, so the media can have come by the time it fires.
+        if (element.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) return
+        if (realEnd === null) void askForRealEnd()
+        if (!seekingBeforeRealEnd() && tryEndAtRealEnd()) return
+        startStallLimit()
+        if (sourceStopped) restartStoppedSource()
+      },
+      // An element that also ends where playback ended at the real end has nothing new to report.
       onEnded: (element) => {
-        const endedAt = element.currentTime
-        lastKnownPosition = endedAt
-        unacknowledgedEndPosition = endedAt
-        // A replay can move the playhead while an earlier report holds the queue.
-        reportStopped(() => endedAt)
+        if (!endedAtRealEnd) reportEnd(element.currentTime)
       },
     })
   }
+
+  function reportEnd(endedAt: number) {
+    lastKnownPosition = endedAt
+    unacknowledgedEndPosition = endedAt
+    // A replay can move the playhead while an earlier report holds the queue.
+    reportStopped(() => endedAt)
+  }
+
+  // The last segment of a short copy can hold less media than its advertised length, so the
+  // element may stall up to one segment before the real end. Before its first frame, the element
+  // waits for the media it starts with, which can still come.
+  function withinASegmentOfRealEnd(): boolean {
+    if (realEnd === null) return false
+    if (video.currentTime >= realEnd) return true
+    const segmentSeconds = source?.segmentSeconds() ?? DEFAULT_SEGMENT_SECONDS
+    return firstFrameShown && video.currentTime >= realEnd - segmentSeconds
+  }
+
+  // Ends playback as at the end of the media title. Callers end it only while it has not ended.
+  function endAtRealEnd() {
+    if (realEnd === null) {
+      return
+    }
+    endedAtRealEnd = true
+    // Playback that ended has started; only attaching the stream again starts it anew.
+    startupDeadline.end()
+    stopStatusCheck()
+    video.pause()
+    endedPosition = video.currentTime
+    reportEnd(realEnd)
+  }
+
+  function restartStoppedSource() {
+    resume = { position: video.currentTime, playing: !video.paused }
+    detachSource()
+    startupDeadline.end()
+    startupDeadline = createStartupDeadline(expireStartup)
+    adoptPlayback(attachedPlayback)
+  }
+
+  // A seek's wait for media before the real end is no stall, but media past it never comes.
+  function seekingBeforeRealEnd(): boolean {
+    return (video.seeking || seekUnresumed) && realEnd !== null && video.currentTime < realEnd
+  }
+
+  // Nothing past the real end can arrive, so a stall or a failure close to it is the end. A
+  // failure after the end, even once the viewer has sought back, belongs to the ended playback.
+  function tryEndAtRealEnd(): boolean {
+    if (endedAtRealEnd) {
+      return true
+    }
+    if (!withinASegmentOfRealEnd()) {
+      return false
+    }
+    endAtRealEnd()
+    return true
+  }
+
+  // The server holds a segment request past a short copy's real end instead of refusing it, so a
+  // stall asks once whether the stream still attached when the answer comes ends there.
+  async function askForRealEnd() {
+    if (!playbackSessionId) return
+    try {
+      const playback = await readPlaybackSession(playbackSessionId, statusCancellation.signal)
+      const seconds = attachedStreamIn(playback)?.mediaEndSeconds
+      if (!cancelled && typeof seconds === 'number') learnRealEnd(seconds)
+    } catch {
+      // A stall that learns nothing waits as before; the stream's own errors still surface.
+    }
+  }
+
+  // The server named the real end only after the playhead may have reached it and stalled there.
+  function learnRealEnd(seconds: number) {
+    realEnd = seconds
+    if (seekingBeforeRealEnd()) {
+      return
+    }
+    if (video.currentTime >= seconds || video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
+      tryEndAtRealEnd()
+    }
+  }
   let timeline = trackTimeline()
+
+  // Only the end of the stall, a pause, a seek or a detached stream stops the limit; a later
+  // waiting event of the same stall leaves it running, and a seek starts it again.
+  function startStallLimit() {
+    if (stall || !playbackSessionId) return
+    const id = playbackSessionId
+    const started: Stall = {
+      controller: new AbortController(),
+      timer: setTimeout(() => void endStall(started, id), STALL_LIMIT_MS),
+    }
+    stall = started
+  }
+
+  // Also abandons the status read of a stall that outlasted the limit.
+  function clearStallLimit() {
+    if (!stall) return
+    clearTimeout(stall.timer)
+    stall.controller.abort()
+    stall = undefined
+  }
+
+  // A stall that outlasts the limit fails the stream, unless it stalled at a real end that the
+  // playback status names now, or the status names another stream, which the status check then
+  // attaches.
+  async function endStall(ended: Stall, id: string) {
+    const deadline = setTimeout(() => ended.controller.abort(), PLAYBACK_START_TIMEOUT_MS)
+    const status = await readPlaybackSession(id, ended.controller.signal).then(
+      (playback) => ({ read: true as const, playback }),
+      () => ({ read: false as const }),
+    )
+    clearTimeout(deadline)
+    if (stall !== ended) return
+    stall = undefined
+    // The media element can resume, pause or seek before it fires the event that stops the limit.
+    // A seek whose event has not fired yet starts its own limit when the event fires.
+    if (
+      video.paused ||
+      (video.seeking && video.currentTime !== seekUnderwayTo) ||
+      video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA
+    ) {
+      return
+    }
+    if (!status.read) {
+      failStalledStream()
+      return
+    }
+    const attachedStream = attachedStreamIn(status.playback)
+    // Attaching the other stream detaches this one, which stops the next limit.
+    if (!attachedStream) {
+      startStallLimit()
+      void reconcilePlaybackStatus({ generation: sourceGeneration, fatal: false })
+      return
+    }
+    const seconds = attachedStream.mediaEndSeconds
+    if (typeof seconds === 'number') learnRealEnd(seconds)
+    if (!endedAtRealEnd) failStalledStream()
+  }
+
+  function failStalledStream() {
+    stopStatusCheck()
+    detachSource()
+    showFailure(FAILED_ATTEMPT_FALLBACK_MESSAGE)
+  }
 
   function expireStartup() {
     cancelled = true
@@ -259,8 +491,18 @@ function startSessionPlayback({
       if (cancelled) {
         return
       }
+      // Leaving abandons the probes, so the next player's start never waits out their deadline.
+      const capabilities = await unlessAborted(declareCapabilities(), statusCancellation.signal)
+      if (cancelled || !capabilities) {
+        return
+      }
+      // The server requires a video entry, so a browser that decodes no video cannot play here.
+      if (capabilities.video.length === 0) {
+        showFailure(PLAYBACK_FAILURE_MESSAGE)
+        return
+      }
       // The UI deadline must not discard a late session ID that still needs destruction.
-      const result = await createPlaybackSession()
+      const result = await createPlaybackSession(capabilities)
       const payload = result.data?.createPlaybackSession
       const initialPlayback = payload?.playbackSession
       playbackSessionId = initialPlayback?.id ?? null
@@ -289,30 +531,55 @@ function startSessionPlayback({
       showFailure(userErrorMessageOr(attempt.error, FAILED_ATTEMPT_FALLBACK_MESSAGE))
       return
     }
-    if (attempt?.__typename !== 'ReadyPlaybackFormatAttempt') {
+    if (!playback || attempt?.__typename !== 'ReadyPlaybackFormatAttempt') {
       showFailure(PLAYBACK_FAILURE_MESSAGE)
       return
     }
+    // The same stream attached again keeps the real end a status check named for it.
+    const sameStream = attempt.streamSession.id === sessionId
     sessionId = attempt.streamSession.id
+    attachedPlayback = playback
+    realEnd = attempt.streamSession.mediaEndSeconds ?? (sameStream ? realEnd : null)
+    endedAtRealEnd = false
+    sourceStopped = false
+    firstFrameShown = false
     const generation = sourceGeneration
     timeline.detach()
     timeline = trackTimeline()
+    const qualities: QualityChoices = {
+      offered: playback.offeredChoices,
+      requested: playback.requestedChoice,
+      playing: playback.playbackChoice,
+      formatChange: playback.formatChange,
+    }
     source = attach(video, attempt.streamSession.streamUrl, {
       startupDeadline,
+      onFirstFrame: () => {
+        firstFrameShown = true
+        onOutputShown(qualities)
+      },
       onFormatFailure: (reason) => {
         void reportFormatFailure(reason, generation)
       },
       onStatusRequired: (fatal) => {
+        // A stream that stops for good within one segment of the real end has ended there.
+        if (fatal && tryEndAtRealEnd()) return
         void reconcilePlaybackStatus({ generation, fatal })
       },
       onFatal: () => {
         if (cancelled || generation !== sourceGeneration) return
+        if (tryEndAtRealEnd()) return
         stopStatusCheck()
         detachSource()
         showFailure(PLAYBACK_FAILURE_MESSAGE)
       },
     })
-    onSourcePhase({ at: 'attached', tracks: source.tracks })
+    onSourcePhase({
+      at: 'attached',
+      tracks: source.tracks,
+      qualities,
+      videoRange: attempt.streamSession.videoRange,
+    })
   }
 
   async function reportFormatFailure(reason: PlaybackFormatFailure, generation: number) {
@@ -321,7 +588,8 @@ function startSessionPlayback({
       generation !== sourceGeneration ||
       reportingFormat ||
       !playbackSessionId ||
-      !sessionId
+      !sessionId ||
+      tryEndAtRealEnd()
     )
       return
     reportingFormat = true
@@ -357,18 +625,26 @@ function startSessionPlayback({
       position:
         video.readyState >= HTMLMediaElement.HAVE_METADATA
           ? video.currentTime
-          : (startPositionSeconds ?? video.currentTime),
+          : (startAt ?? video.currentTime),
       playing: !playRequested || !video.paused,
     }
   }
 
   function beginHandover() {
-    resume ??= currentResumePoint()
+    resume = resumePoint()
     detachSource()
     sessionId = null
     startupDeadline.end()
     startupDeadline = createStartupDeadline(expireStartup)
     onSourcePhase({ at: 'starting' })
+  }
+
+  // Where the next stream should pick up: a resume still waiting for metadata stands.
+  function resumePoint(): ResumePoint {
+    if (resume) {
+      return { ...resume }
+    }
+    return currentResumePoint()
   }
 
   function stopStatusCheck() {
@@ -384,7 +660,13 @@ function startSessionPlayback({
     generation: number
     fatal: boolean
   }) {
-    if (cancelled || generation !== sourceGeneration || reportingFormat || !playbackSessionId)
+    if (
+      cancelled ||
+      generation !== sourceGeneration ||
+      reportingFormat ||
+      !playbackSessionId ||
+      endedAtRealEnd
+    )
       return
     if (statusCheck) {
       statusCheck.fatal ||= fatal
@@ -416,19 +698,16 @@ function startSessionPlayback({
     id: string
   }) {
     while (current() && !check.controller.signal.aborted) {
-      const result = await client.query({
-        query: PlaybackSessionDocument,
-        variables: { id },
-        fetchPolicy: 'no-cache',
-        context: { fetchOptions: { signal: check.controller.signal } },
-      })
+      const playback = await readPlaybackSession(id, check.controller.signal)
       if (!current()) return
-      const playback = result.data?.playbackSession
-      const attempt = playback?.currentFormatAttempt
-      if (
-        attempt?.__typename === 'ReadyPlaybackFormatAttempt' &&
-        attempt.streamSession.id === sessionId
-      ) {
+      const attachedStream = attachedStreamIn(playback)
+      const realEndOfStream = attachedStream?.mediaEndSeconds
+      // The segments past a short copy's real end never come, and nothing replaces the stream.
+      if (typeof realEndOfStream === 'number') {
+        playOnToTheRealEnd(realEndOfStream, check.fatal)
+        return
+      }
+      if (attachedStream) {
         // The worker wakes HTTP waiters before publishing the logical replacement event.
         await waitForPlaybackStatus(check.controller.signal)
         continue
@@ -443,6 +722,30 @@ function startSessionPlayback({
       adoptPlayback(resolved)
       return
     }
+  }
+
+  // The stream this player has attached, when the playback session still names it.
+  function attachedStreamIn(playback: PlaybackSessionFieldsFragment | null | undefined) {
+    const attempt = playback?.currentFormatAttempt
+    if (attempt?.__typename !== 'ReadyPlaybackFormatAttempt') return undefined
+    return attempt.streamSession.id === sessionId ? attempt.streamSession : undefined
+  }
+
+  function playOnToTheRealEnd(seconds: number, sourceFailed: boolean) {
+    learnRealEnd(seconds)
+    if (sourceFailed && !endedAtRealEnd) keepPlayingFromAStoppedSource()
+  }
+
+  // Buffered media plays on to the real end; a stall short of it needs the stream attached again.
+  // A stream that stops before its first frame has played nothing, so attaching it again would
+  // only repeat the failure.
+  function keepPlayingFromAStoppedSource() {
+    if (!firstFrameShown) {
+      failSource()
+      return
+    }
+    sourceStopped = true
+    if (video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) restartStoppedSource()
   }
 
   function failSource() {
@@ -461,21 +764,28 @@ function startSessionPlayback({
       !signal.aborted &&
       playback?.currentFormatAttempt.__typename === 'PendingPlaybackFormatAttempt'
     ) {
-      const result = await client.query({
-        query: PlaybackSessionDocument,
-        variables: { id: initial.id },
-        fetchPolicy: 'no-cache',
-        context: { fetchOptions: { signal } },
-      })
+      const next = await readPlaybackSession(initial.id, signal)
       if (!current()) {
         return undefined
       }
-      playback = result.data?.playbackSession
+      playback = next
       if (playback?.currentFormatAttempt.__typename === 'PendingPlaybackFormatAttempt') {
         await waitForPlaybackStatus(signal)
       }
     }
     return playback
+  }
+
+  async function readPlaybackSession(id: string, signal: AbortSignal) {
+    const result = await client.query({
+      query: PlaybackSessionDocument,
+      variables: { id },
+      fetchPolicy: 'no-cache',
+      // Apollo would otherwise join an identical read already on its way, which this signal cannot
+      // abort, so a read that never answers would hold every later deadline open.
+      context: { fetchOptions: { signal }, queryDeduplication: false },
+    })
+    return result.data?.playbackSession
   }
 
   function showFailure(message: string) {
@@ -514,6 +824,7 @@ function startSessionPlayback({
 
   function detachSource() {
     sourceGeneration += 1
+    clearStallLimit()
     // Releasing the stream rewinds the element; the timeline must not record the rewind.
     timeline.detach()
     source?.detach()
@@ -559,7 +870,7 @@ function startSessionPlayback({
   window.addEventListener('pagehide', destroyBeforeThePageGoes)
 
   function leavePage(): ResumePoint | undefined {
-    const left = cancelled ? undefined : (resume ?? currentResumePoint())
+    const left = cancelled ? undefined : resumePoint()
     endPlayback()
     detachSource()
     destroyBeforeThePageGoes()
@@ -575,8 +886,18 @@ function startSessionPlayback({
       detachSource()
       requestCleanup()
     },
+    resumePoint,
     leavePage,
   }
+}
+
+// Resolves undefined once the signal aborts; a signal aborted before the call waits for the work.
+function unlessAborted<T>(work: Promise<T>, signal: AbortSignal): Promise<T | undefined> {
+  return new Promise((resolve, reject) => {
+    const abandon = () => resolve(undefined)
+    signal.addEventListener('abort', abandon, { once: true })
+    void work.then(resolve, reject).finally(() => signal.removeEventListener('abort', abandon))
+  })
 }
 
 function waitForPlaybackStatus(signal: AbortSignal): Promise<void> {
@@ -609,6 +930,10 @@ function attachTimeline(
     onTimeUpdate: TimelineHandler
     onPlay: TimelineHandler
     onPause: TimelineHandler
+    onSeeking: TimelineHandler
+    onSeeked: TimelineHandler
+    onPlaying: TimelineHandler
+    onWaiting: TimelineHandler
     onEnded: TimelineHandler
   },
 ): { detach: () => void } {
@@ -616,11 +941,19 @@ function attachTimeline(
   const onTimeUpdate = () => handlers.onTimeUpdate(video)
   const onPlay = () => handlers.onPlay(video)
   const onPause = () => handlers.onPause(video)
+  const onSeeking = () => handlers.onSeeking(video)
+  const onSeeked = () => handlers.onSeeked(video)
+  const onPlaying = () => handlers.onPlaying(video)
+  const onWaiting = () => handlers.onWaiting(video)
   const onEnded = () => handlers.onEnded(video)
   video.addEventListener('loadedmetadata', onLoadedMetadata)
   video.addEventListener('timeupdate', onTimeUpdate)
   video.addEventListener('play', onPlay)
   video.addEventListener('pause', onPause)
+  video.addEventListener('seeking', onSeeking)
+  video.addEventListener('seeked', onSeeked)
+  video.addEventListener('playing', onPlaying)
+  video.addEventListener('waiting', onWaiting)
   video.addEventListener('ended', onEnded)
   return {
     detach: () => {
@@ -628,6 +961,10 @@ function attachTimeline(
       video.removeEventListener('timeupdate', onTimeUpdate)
       video.removeEventListener('play', onPlay)
       video.removeEventListener('pause', onPause)
+      video.removeEventListener('seeking', onSeeking)
+      video.removeEventListener('seeked', onSeeked)
+      video.removeEventListener('playing', onPlaying)
+      video.removeEventListener('waiting', onWaiting)
       video.removeEventListener('ended', onEnded)
     },
   }
@@ -678,7 +1015,10 @@ function createStartupDeadline(onExpired: () => void): StartupDeadline {
 
 function refusalMessage(payload: PlaybackSessionPayload | undefined): string {
   const refusal = payload?.userErrors[0]
-  return refusal ? userErrorMessage(refusal) : PLAYBACK_FAILURE_MESSAGE
+  if (!refusal || DECLARATION_REFUSAL_TYPENAMES.has(refusal.__typename)) {
+    return PLAYBACK_FAILURE_MESSAGE
+  }
+  return userErrorMessage(refusal)
 }
 
 function ignoreRefusedStart() {
@@ -694,10 +1034,13 @@ function ignoreTimelineReportFailure() {
 interface StreamSource {
   detach: () => void
   tracks: TrackSource
+  /** The playlist's target segment duration, when the player can read it. */
+  segmentSeconds: () => number | undefined
 }
 
 interface StreamSourceOptions {
   onFatal: () => void
+  onFirstFrame: () => void
   onFormatFailure: (reason: PlaybackFormatFailure) => void
   onStatusRequired: (fatal: boolean) => void
   startupDeadline: StartupDeadline
@@ -714,6 +1057,12 @@ function attach(video: HTMLVideoElement, url: string, options: StreamSourceOptio
       options.onStatusRequired(data.fatal)
       return
     }
+    // The server holds a segment request past a short copy's real end, so only the playback
+    // status can tell a request that never ends from a failure.
+    if (data.fatal && data.details === Hls.ErrorDetails.FRAG_LOAD_TIMEOUT) {
+      options.onStatusRequired(true)
+      return
+    }
     if (!data.fatal) {
       return
     }
@@ -726,15 +1075,18 @@ function attach(video: HTMLVideoElement, url: string, options: StreamSourceOptio
   const onVideoError = () => handleVideoError(video, options)
   video.addEventListener('error', onVideoError)
   video.addEventListener('loadedmetadata', options.startupDeadline.end)
+  video.addEventListener('loadeddata', options.onFirstFrame, { once: true })
   hls.loadSource(url)
   hls.attachMedia(video)
   return {
     detach: () => {
+      video.removeEventListener('loadeddata', options.onFirstFrame)
       video.removeEventListener('loadedmetadata', options.startupDeadline.end)
       video.removeEventListener('error', onVideoError)
       hls.destroy()
     },
     tracks: hlsTrackSource(hls),
+    segmentSeconds: () => hls.latestLevelDetails?.targetduration,
   }
 }
 
@@ -770,7 +1122,7 @@ function attachNative(
   url: string,
   options: StreamSourceOptions,
 ): StreamSource {
-  const { startupDeadline } = options
+  const { startupDeadline, onFirstFrame } = options
   const onVideoError = () => handleVideoError(video, options)
   // WebKit loads metadata from the playlists alone, so startup ends on the first frame. A browser
   // may withhold that frame until the viewer presses play, so a suspend while paused holds startup
@@ -782,6 +1134,7 @@ function attachNative(
   }
   video.addEventListener('error', onVideoError)
   video.addEventListener('loadeddata', startupDeadline.end)
+  video.addEventListener('loadeddata', onFirstFrame, { once: true })
   video.addEventListener('suspend', holdWhilePaused)
   video.addEventListener('play', startupDeadline.rearm)
   video.src = url
@@ -789,6 +1142,7 @@ function attachNative(
     detach: () => {
       video.removeEventListener('error', onVideoError)
       video.removeEventListener('loadeddata', startupDeadline.end)
+      video.removeEventListener('loadeddata', onFirstFrame)
       video.removeEventListener('suspend', holdWhilePaused)
       video.removeEventListener('play', startupDeadline.rearm)
       // The same reset hls.js performs on detach: the element stops fetching the stream.
@@ -796,5 +1150,6 @@ function attachNative(
       video.load()
     },
     tracks: nativeTrackSource(video),
+    segmentSeconds: () => undefined,
   }
 }

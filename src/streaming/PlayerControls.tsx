@@ -1,9 +1,12 @@
 import { Slider } from '@mantine/core'
 import { type Ref, type RefObject, useEffect, useId, useRef, useState } from 'react'
+import type { VideoQuality } from '../graphql/generated/graphql'
 import { formatTimecode } from '../media/formatting'
 import { Icon, type IconName } from '../ui/Icon'
 import { CaretPopover, type PopoverOption } from './CaretPopover'
 import styles from './PlayerControls.module.css'
+import { qualityChipValue, qualityLabel } from './qualityChoices'
+import type { QualityMarks } from './usePlaybackFallbacks'
 import type { StreamTracks, TrackSource } from './trackSources'
 import { useSpaceToPlayOrPause } from './useSpaceToPlayOrPause'
 import { useStreamTracks } from './useStreamTracks'
@@ -17,7 +20,20 @@ export interface PlayerTitle {
   detail?: string
 }
 
-export type TrackPickerKind = 'audio' | 'subtitles'
+export type PickerKind = 'quality' | 'audio' | 'subtitles'
+
+/**
+ * The quality menu's choices, empty while no stream is attached, the choice it shows selected, and
+ * the explanation beside each choice whose output fell back.
+ */
+interface QualityMenu {
+  offered: readonly VideoQuality[]
+  selected: VideoQuality
+  marks: QualityMarks
+}
+
+/** What each picker offers: the stream's tracks and the playback choices the server lists. */
+type PickerChoices = StreamTracks & { qualities: readonly VideoQuality[] }
 
 // Mantine's slider ends a drag only on touchend or mouseup. After a cancelled touch its drag stays
 // open until the next touchend or mouseup anywhere, and that late end must not seek.
@@ -30,10 +46,28 @@ const SUBTITLES_OFF: PopoverOption<null> = { id: null, label: 'Off' }
  * The subtitles picker always offers Off beside the stream's tracks.
  */
 export function pickerOffersChoice(
-  kind: TrackPickerKind,
-  { audio, subtitles }: StreamTracks,
+  kind: PickerKind,
+  { audio, subtitles, qualities }: PickerChoices,
 ): boolean {
-  return kind === 'audio' ? audio.options.length > 1 : subtitles.options.length > 0
+  switch (kind) {
+    case 'quality':
+      return qualityOptions(qualities).length > 1
+    case 'audio':
+      return audio.options.length > 1
+    case 'subtitles':
+      return subtitles.options.length > 0
+  }
+}
+
+// A choice the server added after this client has no name here, so the menu leaves it out.
+function qualityOptions(
+  qualities: readonly VideoQuality[],
+  marks: QualityMarks = new Map(),
+): PopoverOption<VideoQuality>[] {
+  return qualities.flatMap((id) => {
+    const label = qualityLabel(id)
+    return label ? [{ id, label, caution: marks.get(id) }] : []
+  })
 }
 
 export function PlayerControls({
@@ -43,6 +77,8 @@ export function PlayerControls({
   videoRef,
   videoState,
   tracks,
+  quality,
+  onChooseQuality,
   openPicker,
   onOpenPicker,
   title,
@@ -55,14 +91,17 @@ export function PlayerControls({
   videoState: VideoState
   /** The attached stream's tracks; null while no stream is attached. */
   tracks: TrackSource | null
-  openPicker: TrackPickerKind | null
-  onOpenPicker: (kind: TrackPickerKind | null) => void
+  quality: QualityMenu
+  onChooseQuality: (choice: VideoQuality) => void
+  openPicker: PickerKind | null
+  onOpenPicker: (kind: PickerKind | null) => void
   title?: PlayerTitle
 }>) {
   const [scrub, setScrub] = useState<Scrub | null>(null)
   const attached = tracks !== null
   const streamTracks = useStreamTracks(tracks)
   const { audio, subtitles } = streamTracks
+  const choices = { ...streamTracks, qualities: quality.offered }
   const durationKnown = Number.isFinite(videoState.duration)
   const timecodeAt = (seconds: number) =>
     formatTimecode({ positionSeconds: seconds, durationSeconds: videoState.duration })
@@ -191,24 +230,34 @@ export function PlayerControls({
           />
         </div>
         <div className={styles.end}>
-          <QualityChip videoHeight={videoState.videoHeight} />
-          <TrackPicker
+          <ChoicePicker
+            name="Quality"
+            icon="quality"
+            options={qualityOptions(quality.offered, quality.marks)}
+            selected={quality.selected}
+            value={qualityChipValue(quality.selected, videoState.videoHeight)}
+            choosable={pickerOffersChoice('quality', choices)}
+            open={openPicker === 'quality'}
+            onOpenChange={(open) => onOpenPicker(open ? 'quality' : null)}
+            onChoose={onChooseQuality}
+          />
+          <ChoicePicker
             name="Audio"
             icon="audio-track"
             options={audio.options}
             selected={audio.selected}
-            choosable={pickerOffersChoice('audio', streamTracks)}
+            choosable={pickerOffersChoice('audio', choices)}
             open={openPicker === 'audio'}
             onOpenChange={(open) => onOpenPicker(open ? 'audio' : null)}
             onChoose={(id) => tracks?.selectAudio(id)}
           />
-          <TrackPicker
+          <ChoicePicker
             name="Subtitles"
             icon="subtitles"
             options={[SUBTITLES_OFF, ...subtitles.options]}
             selected={subtitles.selected}
             showsActiveTrack={subtitles.selected !== null}
-            choosable={pickerOffersChoice('subtitles', streamTracks)}
+            choosable={pickerOffersChoice('subtitles', choices)}
             open={openPicker === 'subtitles'}
             onOpenChange={(open) => onOpenPicker(open ? 'subtitles' : null)}
             onChoose={(id) => tracks?.selectSubtitles(id)}
@@ -305,22 +354,12 @@ function VolumeControl({
   )
 }
 
-// Holds the quality menu's place and shows the quality in use until the menu has choices to offer.
-function QualityChip({ videoHeight }: Readonly<{ videoHeight: number }>) {
-  return (
-    <StatusChip
-      name="Quality"
-      icon="quality"
-      value={videoHeight > 0 ? `Auto · ${videoHeight}p` : 'Auto'}
-    />
-  )
-}
-
-function TrackPicker<Id extends number | null>({
+function ChoicePicker<Id extends string | number | null>({
   name,
   icon,
   options,
   selected,
+  value = options.find((option) => option.id === selected)?.label,
   showsActiveTrack,
   choosable,
   open,
@@ -331,6 +370,8 @@ function TrackPicker<Id extends number | null>({
   icon: IconName
   options: readonly PopoverOption<Id>[]
   selected: Id | null
+  /** What the chip shows; the selected option's label unless given. */
+  value?: string
   showsActiveTrack?: boolean
   choosable: boolean
   open: boolean
@@ -348,7 +389,7 @@ function TrackPicker<Id extends number | null>({
       <StatusChip
         name={name}
         icon={icon}
-        value={options.find((option) => option.id === selected)?.label}
+        value={value}
         showsActiveTrack={showsActiveTrack}
         menu={menu}
       />
