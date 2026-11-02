@@ -26,6 +26,12 @@ const PLAYBACK_START_TIMEOUT_MS = 30_000
 const PLAYBACK_STATUS_INTERVAL_MS = 500
 // The server's default target segment duration, for a player that keeps the playlist to itself.
 const DEFAULT_SEGMENT_SECONDS = 6
+// By the server's defaults, it replaces a job attempt that stores nothing for 10 s and gives the
+// replacement up to 22 s to store its first segment, so a stall it can still end ends within about
+// 32 s and one segment's transfer. Once the buffer is empty, hls.js abandons a segment request
+// whose first byte takes 10 s and may ask another variant for the segment, which starts the
+// server's count again, so no request may live to hear the server give up on the segment.
+const STALL_LIMIT_MS = 45_000
 
 const PLAYBACK_FAILURE_MESSAGE = "Playback couldn't start. Try again."
 const FAILED_ATTEMPT_FALLBACK_MESSAGE = "This video can't be played right now. Try again later."
@@ -144,6 +150,7 @@ function startSessionPlayback({
   // hls.js stops loading after a fatal error, so a failure that ended playback leaves the stream
   // to attach again before it can play.
   let attachedPlayback: PlaybackSessionFieldsFragment | null = null
+  let stallLimit: ReturnType<typeof setTimeout> | undefined
   let timelineReports = Promise.resolve()
   const reportCancellation = new AbortController()
   const statusCancellation = new AbortController()
@@ -273,18 +280,22 @@ function startSessionPlayback({
         report('PLAYING', element.currentTime)
       },
       onPause: (element) => {
+        clearStallLimit()
         if (endedAtRealEnd) return
         if (resume) resume.playing = false
         lastKnownPosition = element.currentTime
         report('PAUSED', element.currentTime)
       },
+      // A seek starts a new wait for media.
       onSeeking: () => {
+        clearStallLimit()
         seekUnresumed = true
       },
       onSeeked: (element) => {
         if (element.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) seekUnresumed = false
       },
       onPlaying: () => {
+        clearStallLimit()
         seekUnresumed = false
       },
       // A seek before the real end waits for its own data, which can still come.
@@ -293,6 +304,7 @@ function startSessionPlayback({
         if (element.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) return
         if (realEnd === null) void askForRealEnd()
         if (!seekingBeforeRealEnd() && tryEndAtRealEnd()) return
+        startStallLimit()
         if (sourceStopped) restartStoppedSource()
       },
       // An element that also ends where playback ended at the real end has nothing new to report.
@@ -383,6 +395,45 @@ function startSessionPlayback({
     }
   }
   let timeline = trackTimeline()
+
+  // Only the end of the stall, a pause, a seek or a detached stream stops the limit; a later
+  // waiting event of the same stall leaves it running.
+  function startStallLimit() {
+    if (stallLimit !== undefined) return
+    stallLimit = setTimeout(() => {
+      stallLimit = undefined
+      void endStall()
+    }, STALL_LIMIT_MS)
+  }
+
+  function clearStallLimit() {
+    clearTimeout(stallLimit)
+    stallLimit = undefined
+  }
+
+  // A stall that outlasts the limit fails the stream, unless it stalled at a real end that the
+  // playback status names now, or the status names another stream, which the fatal status check
+  // then attaches.
+  async function endStall() {
+    if (!playbackSessionId) return
+    const generation = sourceGeneration
+    const playback = await readPlaybackSession(playbackSessionId, statusCancellation.signal).catch(
+      () => undefined,
+    )
+    const stillStalled = !video.paused && video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA
+    if (cancelled || generation !== sourceGeneration || !stillStalled) return
+    const attachedStream = attachedStreamIn(playback)
+    if (!attachedStream) {
+      void reconcilePlaybackStatus({ generation, fatal: true })
+      return
+    }
+    const seconds = attachedStream.mediaEndSeconds
+    if (typeof seconds === 'number') learnRealEnd(seconds)
+    if (endedAtRealEnd) return
+    stopStatusCheck()
+    detachSource()
+    showFailure(FAILED_ATTEMPT_FALLBACK_MESSAGE)
+  }
 
   function expireStartup() {
     cancelled = true
@@ -733,6 +784,7 @@ function startSessionPlayback({
 
   function detachSource() {
     sourceGeneration += 1
+    clearStallLimit()
     // Releasing the stream rewinds the element; the timeline must not record the rewind.
     timeline.detach()
     source?.detach()

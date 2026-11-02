@@ -337,6 +337,41 @@ function serveAStatusWithoutARealEnd(): () => number {
   return () => reads
 }
 
+// How long playback may wait for media at a playhead that does not move.
+const STALL_LIMIT_MS = 45_000
+const PLAYBACK_START_TIMEOUT_MS = 30_000
+
+// A stream with no real end plays from its first frame.
+async function playingVideo(): Promise<HTMLVideoElement> {
+  serveSession()
+  renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+  const video = await showingVideo(STREAM_URL)
+  expect(video.paused).toBe(false)
+  return video
+}
+
+// The stall's first status read names no real end for the attached stream, and later reads do.
+function serveTheRealEndFromTheSecondStatusRead() {
+  let reads = 0
+  server.use(
+    graphql.query('PlaybackSession', () => {
+      reads += 1
+      const streamSession =
+        reads === 1 ? SESSION : { ...SESSION, mediaEndSeconds: REAL_END_SECONDS }
+      return HttpResponse.json({
+        data: { playbackSession: readyPlaybackSession({ streamSession }) },
+      })
+    }),
+  )
+}
+
+// The media the stalled element waited for arrived, and the playhead moves on.
+function resumeAfterTheStall(video: HTMLVideoElement) {
+  setReadyState(video, HTMLMediaElement.HAVE_ENOUGH_DATA)
+  fireEvent(video, new Event('playing'))
+  playheadAt(video, video.currentTime + 1)
+}
+
 async function watchAFallback(picked: string, choices: Partial<PlaybackChoices>) {
   const log = servePlaybackChoices()
   replaceTheRefusedStream(choices)
@@ -5769,6 +5804,184 @@ describe('Player', () => {
       stallAt(video, REAL_END_SECONDS - 5)
 
       expect(video.paused).toBe(true)
+    })
+  })
+
+  describe('stalled playback', () => {
+    it('shouldShowTheFailureWhenAStallOutlastsTheLimitAndTheStatusStillNamesTheStream', async () => {
+      const video = await playingVideo()
+      serveAStatusWithoutARealEnd()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 1))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      await act(async () => vi.advanceTimersByTimeAsync(1))
+
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        "This video can't be played right now. Try again later.",
+      )
+      expect(hls.destroy).toHaveBeenCalled()
+    })
+
+    it('shouldKeepPlayingWhenPlaybackResumesBeforeTheStallLimit', async () => {
+      const video = await playingVideo()
+      serveAStatusWithoutARealEnd()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 1_000))
+      resumeAfterTheStall(video)
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS))
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(hls.destroy).not.toHaveBeenCalled()
+    })
+
+    it('shouldGiveEachStallTheWholeLimitWhenPlaybackResumedBetweenThem', async () => {
+      const video = await playingVideo()
+      serveAStatusWithoutARealEnd()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 1_000))
+      resumeAfterTheStall(video)
+      stallAt(video, 102)
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 1))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      await act(async () => vi.advanceTimersByTimeAsync(1))
+
+      expect(screen.getByRole('alert')).toHaveTextContent("This video can't be played right now.")
+    })
+
+    it('shouldGiveAStallTheWholeLimitWhenTheViewerPlaysAgainAfterPausingDuringIt', async () => {
+      const video = await playingVideo()
+      serveAStatusWithoutARealEnd()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 1_000))
+      act(() => video.pause())
+      await act(() => video.play())
+      stallAt(video, 100)
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 1))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      await act(async () => vi.advanceTimersByTimeAsync(1))
+
+      expect(screen.getByRole('alert')).toHaveTextContent("This video can't be played right now.")
+    })
+
+    it('shouldKeepWaitingWhenTheViewerPausesDuringAStall', async () => {
+      const video = await playingVideo()
+      serveAStatusWithoutARealEnd()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      act(() => video.pause())
+      await act(async () => vi.advanceTimersByTimeAsync(2 * STALL_LIMIT_MS))
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('shouldGiveTheWholeLimitToAStallAfterTheViewerSeeksAway', async () => {
+      const video = await playingVideo()
+      serveAStatusWithoutARealEnd()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 1_000))
+      fireEvent(video, new Event('seeking'))
+      stallAt(video, 500)
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 1))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      await act(async () => vi.advanceTimersByTimeAsync(1))
+
+      expect(screen.getByRole('alert')).toHaveTextContent("This video can't be played right now.")
+    })
+
+    it('shouldKeepPlayingWhenPlaybackResumesWhileTheStallsStatusReadIsOnItsWay', async () => {
+      const video = await playingVideo()
+      let answer: () => void = () => undefined
+      server.use(
+        graphql.query('PlaybackSession', async () => {
+          await new Promise<void>((resolve) => (answer = resolve))
+          return HttpResponse.json({
+            data: { playbackSession: readyPlaybackSession({ streamSession: SESSION }) },
+          })
+        }),
+      )
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS))
+      resumeAfterTheStall(video)
+      await act(async () => {
+        answer()
+        await vi.advanceTimersByTimeAsync(PLAYBACK_START_TIMEOUT_MS)
+      })
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(hls.destroy).not.toHaveBeenCalled()
+    })
+
+    it('shouldEndPlaybackWhenTheStatusNamesTheRealEndWhereTheStallOutlastsTheLimit', async () => {
+      const { reports, video } = await playTheShortCopy({ namedOnAttach: false })
+      serveTheRealEndFromTheSecondStatusRead()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, REAL_END_SECONDS - 2)
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS))
+
+      expect(video.paused).toBe(true)
+      expect(reports.at(-1)).toEqual({
+        sessionId: 'sess-1',
+        positionSeconds: REAL_END_SECONDS,
+        state: 'STOPPED',
+      })
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('shouldShowTheFailureWhenTheStatusNamesARealEndFarFromWhereTheStallOutlastsTheLimit', async () => {
+      const { video } = await playTheShortCopy({ namedOnAttach: false })
+      serveTheRealEndFromTheSecondStatusRead()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      await act(async () => vi.advanceTimersByTimeAsync(2 * STALL_LIMIT_MS))
+
+      expect(screen.getByRole('alert')).toHaveTextContent("This video can't be played right now.")
+      expect(hls.loadSource).toHaveBeenCalledTimes(1)
+    })
+
+    it('shouldShowTheFailureWhenAStallOutlastsTheLimitAndThePlaybackStatusCannotBeRead', async () => {
+      const video = await playingVideo()
+      server.use(graphql.query('PlaybackSession', () => HttpResponse.error()))
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS))
+
+      expect(screen.getByRole('alert')).toHaveTextContent("Playback couldn't start.")
+      expect(hls.destroy).toHaveBeenCalled()
+    })
+
+    it('shouldAttachTheReplacementWhenAStallOutlastsTheLimitAndTheStatusNamesAnotherStream', async () => {
+      const video = await playingVideo()
+      const replacement = replacementStream(1)
+      server.use(
+        graphql.query('PlaybackSession', () =>
+          HttpResponse.json({
+            data: { playbackSession: readyPlaybackSession({ streamSession: replacement }) },
+          }),
+        ),
+      )
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS + 1_000))
+
+      expect(hls.loadSource).toHaveBeenLastCalledWith(replacement.streamUrl)
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     })
   })
 
