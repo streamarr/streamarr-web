@@ -3039,7 +3039,7 @@ describe('Player', () => {
     it('shouldCloseThePlaybackSessionWithARequestThatOutlivesThePageWhenThePageIsHidden', async () => {
       serveSession()
       const closed = recordClosedSessions()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       await attachedVideo()
 
       hideThePage({ persisted: false })
@@ -3062,7 +3062,7 @@ describe('Player', () => {
         }),
       )
       const closed = recordClosedSessions()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await attachedVideo()
       playheadAt(video, 42)
       await reportStarted.promise
@@ -3078,7 +3078,13 @@ describe('Player', () => {
     it('shouldStartANewPlaybackSessionWhereTheViewerLeftWhenThePageReturnsFromTheBackForwardCache', async () => {
       const created = countCreatedSessions()
       const closed = recordClosedSessions()
-      renderWithProviders(<Player mediaFileId="abcd" startPositionSeconds={10} />)
+      renderWithProviders(
+        <Player
+          playbackPlatform={withoutDecodingInfo}
+          mediaFileId="abcd"
+          startPositionSeconds={10}
+        />,
+      )
       const video = await attachedVideo()
       loadMetadata(video)
       playheadAt(video, 42)
@@ -3096,7 +3102,7 @@ describe('Player', () => {
 
     it('shouldKeepAPausedVideoPausedWhenThePageReturnsFromTheBackForwardCache', async () => {
       countCreatedSessions()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await attachedVideo()
       loadMetadata(video)
       playheadAt(video, 42)
@@ -3113,7 +3119,7 @@ describe('Player', () => {
 
     it('shouldKeepAPausedVideoPausedWhenThePageReturnsFromTheBackForwardCacheASecondTime', async () => {
       countCreatedSessions()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await attachedVideo()
       loadMetadata(video)
       playheadAt(video, 42)
@@ -3215,7 +3221,7 @@ describe('Player', () => {
           }
         },
       })
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       await started.promise
 
       hideThePage({ persisted: true })
@@ -3238,7 +3244,7 @@ describe('Player', () => {
           return HttpResponse.json({ data: { reportStreamSessionTimeline: true } })
         }),
       )
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await attachedVideo()
       playheadAt(video, 42)
       await reportStarted.promise
@@ -3261,7 +3267,7 @@ describe('Player', () => {
           return new Promise<never>(() => undefined)
         }),
       )
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await nativeVideo()
       loadMetadata(video)
       playheadAt(video, 42)
@@ -3282,7 +3288,7 @@ describe('Player', () => {
 
     it('shouldClearAnEarlierFailureWhileTheRestoredPageStartsAgain', async () => {
       refuseSession()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       expect(await screen.findByRole('alert')).toHaveTextContent(CAPACITY_REFUSAL)
       const creationHeld = deferred()
       server.use(
@@ -3333,7 +3339,7 @@ describe('Player', () => {
           })
         }),
       )
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       await attachedVideo()
 
       hideThePage({ persisted: true })
@@ -3346,7 +3352,7 @@ describe('Player', () => {
     it('shouldOfferRetryRatherThanStartAgainWhenThePageReturnsAfterStartupTimedOut', async () => {
       const created = countCreatedSessions()
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       await attachedVideo()
       await act(async () => vi.advanceTimersByTimeAsync(30_000))
       vi.useRealTimers()
@@ -3363,7 +3369,7 @@ describe('Player', () => {
     it('shouldKeepPlayingWhenThePageIsShownWithoutHavingBeenHidden', async () => {
       const created = countCreatedSessions()
       const closed = recordClosedSessions()
-      renderWithProviders(<Player mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       await attachedVideo()
 
       restoreThePage()
@@ -3376,7 +3382,9 @@ describe('Player', () => {
     it('shouldStopWatchingThePageWhenThePlayerUnmounts', async () => {
       const created = countCreatedSessions()
       const closed = recordClosedSessions()
-      const { unmount } = renderWithProviders(<Player mediaFileId="abcd" />)
+      const { unmount } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
       await attachedVideo()
       unmount()
       await waitFor(() =>
