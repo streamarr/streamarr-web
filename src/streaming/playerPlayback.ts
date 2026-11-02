@@ -36,21 +36,37 @@ interface PlaybackStatusCheck {
   fatal: boolean
 }
 
-const pendingCleanups = new WeakMap<ApolloClient, () => Promise<void>>()
-
-export function startPlayerPlayback({
-  video,
-  client,
-  createPlaybackSession,
-  startPositionSeconds,
-  onSourcePhase,
-}: {
+interface PlayerPlaybackOptions {
   video: HTMLVideoElement
   client: ApolloClient
   createPlaybackSession: () => Promise<{ data?: CreatePlaybackSessionMutation | null }>
   startPositionSeconds?: number
   onSourcePhase: (phase: SourcePhase) => void
-}): () => void {
+}
+
+interface ResumePoint {
+  position: number
+  playing: boolean
+}
+
+interface SessionPlayback {
+  stop: () => void
+}
+
+const pendingCleanups = new WeakMap<ApolloClient, () => Promise<void>>()
+
+export function startPlayerPlayback(options: PlayerPlaybackOptions): () => void {
+  const playback = startSessionPlayback(options)
+  return () => playback.stop()
+}
+
+function startSessionPlayback({
+  video,
+  client,
+  createPlaybackSession,
+  startPositionSeconds,
+  onSourcePhase,
+}: PlayerPlaybackOptions): SessionPlayback {
   let source: StreamSource | null = null
   let cancelled = false
   let sessionId: string | null = null
@@ -58,7 +74,7 @@ export function startPlayerPlayback({
   let sourceGeneration = 0
   let reportingFormat = false
   let statusCheck: PlaybackStatusCheck | undefined
-  let resume: { position: number; playing: boolean } | undefined
+  let resume: ResumePoint | undefined
   let lastReportedPosition = startPositionSeconds ?? 0
   let lastKnownPosition: number | null = null
   let unacknowledgedEndPosition: number | null = null
@@ -301,14 +317,18 @@ export function startPlayerPlayback({
     }
   }
 
-  function beginHandover() {
-    resume ??= {
+  function currentResumePoint(): ResumePoint {
+    return {
       position:
         video.readyState >= HTMLMediaElement.HAVE_METADATA
           ? video.currentTime
           : (startPositionSeconds ?? video.currentTime),
       playing: !playRequested || !video.paused,
     }
+  }
+
+  function beginHandover() {
+    resume ??= currentResumePoint()
     detachSource()
     sessionId = null
     startupDeadline.end()
@@ -468,15 +488,17 @@ export function startPlayerPlayback({
     void releaseSession().catch(() => undefined)
   }
 
-  return () => {
-    cancelled = true
-    statusCancellation.abort()
-    stopStatusCheck()
-    startupDeadline.end()
-    reportStopped(() => unacknowledgedEndPosition)
-    reportStopped(() => lastKnownPosition)
-    detachSource()
-    requestCleanup()
+  return {
+    stop: () => {
+      cancelled = true
+      statusCancellation.abort()
+      stopStatusCheck()
+      startupDeadline.end()
+      reportStopped(() => unacknowledgedEndPosition)
+      reportStopped(() => lastKnownPosition)
+      detachSource()
+      requestCleanup()
+    },
   }
 }
 
