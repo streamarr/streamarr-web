@@ -3,7 +3,9 @@
 // POST /__test/mode, which also invalidates the simulated access token. It also accepts the
 // GraphQL WebSocket upgrade, so a spec can prove the dev proxy forwards one: GET /__test/socket
 // reports each upgrade's headers and the live operations, and POST /__test/socket/publish sends
-// a change to every live operation of a name.
+// a change to every live operation of a name. It records each playback session a page destroys,
+// because Playwright does not report the keepalive request a page sends while it unloads: GET
+// /__test/destroyed-playback-sessions lists them, and DELETE clears the list.
 import { createServer } from 'node:http'
 import { WebSocketServer } from 'ws'
 
@@ -11,6 +13,7 @@ const port = Number(process.env.STUB_PORT ?? 5198)
 
 let mode = 'renewable'
 let accessValid = false
+let destroyedPlaybackSessions = []
 
 const household = { __typename: 'HouseholdSummary', id: 'household-1', name: 'Dev Household' }
 const profile = {
@@ -143,6 +146,10 @@ function route(request, response, raw) {
     publish(JSON.parse(raw))
     return json(response, 200, {})
   }
+  if (pathname === '/__test/destroyed-playback-sessions') {
+    if (request.method === 'DELETE') destroyedPlaybackSessions = []
+    return json(response, 200, { destroyedPlaybackSessions })
+  }
   if (request.method === 'GET' && pathname === '/api/auth/status') {
     return json(response, 200, { setupComplete: true, devicePairingEnabled: false })
   }
@@ -163,8 +170,15 @@ function route(request, response, raw) {
     if (!accessValid) {
       return json(response, 401, { code: 'EXPIRED_TOKEN', message: 'Authentication is required.' })
     }
-    const { operationName } = JSON.parse(raw)
+    const { operationName, variables } = JSON.parse(raw)
     if (operationName === 'Me') return json(response, 200, { data: { me } })
+    if (operationName === 'DestroyPlaybackSession') {
+      const { playbackSessionId } = variables.input
+      destroyedPlaybackSessions.push(playbackSessionId)
+      return json(response, 200, {
+        data: { destroyPlaybackSession: { playbackSessionId, userErrors: [] } },
+      })
+    }
     if (operationName === 'Libraries') return json(response, 200, { data: { libraries } })
     if (operationName === 'Home') {
       return json(response, 200, {
