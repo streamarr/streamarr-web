@@ -57,6 +57,12 @@ export interface PlayerPlayback {
   resumePoint: () => ResumePoint
 }
 
+// A stall's limit, and the status read once the stall outlasts it.
+interface Stall {
+  timer: ReturnType<typeof setTimeout>
+  controller: AbortController
+}
+
 interface PlaybackStatusCheck {
   controller: AbortController
   generation: number
@@ -150,7 +156,7 @@ function startSessionPlayback({
   // hls.js stops loading after a fatal error, so a failure that ended playback leaves the stream
   // to attach again before it can play.
   let attachedPlayback: PlaybackSessionFieldsFragment | null = null
-  let stallLimit: ReturnType<typeof setTimeout> | undefined
+  let stall: Stall | undefined
   let timelineReports = Promise.resolve()
   const reportCancellation = new AbortController()
   const statusCancellation = new AbortController()
@@ -399,37 +405,52 @@ function startSessionPlayback({
   // Only the end of the stall, a pause, a seek or a detached stream stops the limit; a later
   // waiting event of the same stall leaves it running.
   function startStallLimit() {
-    if (stallLimit !== undefined) return
-    stallLimit = setTimeout(() => {
-      stallLimit = undefined
-      void endStall()
-    }, STALL_LIMIT_MS)
+    if (stall || !playbackSessionId) return
+    const id = playbackSessionId
+    const started: Stall = {
+      controller: new AbortController(),
+      timer: setTimeout(() => void endStall(started, id), STALL_LIMIT_MS),
+    }
+    stall = started
   }
 
+  // Also abandons the status read of a stall that outlasted the limit.
   function clearStallLimit() {
-    clearTimeout(stallLimit)
-    stallLimit = undefined
+    if (!stall) return
+    clearTimeout(stall.timer)
+    stall.controller.abort()
+    stall = undefined
   }
 
   // A stall that outlasts the limit fails the stream, unless it stalled at a real end that the
-  // playback status names now, or the status names another stream, which the fatal status check
-  // then attaches.
-  async function endStall() {
-    if (!playbackSessionId) return
-    const generation = sourceGeneration
-    const playback = await readPlaybackSession(playbackSessionId, statusCancellation.signal).catch(
-      () => undefined,
+  // playback status names now, or the status names another stream, which the status check then
+  // attaches.
+  async function endStall(ended: Stall, id: string) {
+    const deadline = setTimeout(() => ended.controller.abort(), PLAYBACK_START_TIMEOUT_MS)
+    const status = await readPlaybackSession(id, ended.controller.signal).then(
+      (playback) => ({ read: true as const, playback }),
+      () => ({ read: false as const }),
     )
-    const stillStalled = !video.paused && video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA
-    if (cancelled || generation !== sourceGeneration || !stillStalled) return
-    const attachedStream = attachedStreamIn(playback)
+    clearTimeout(deadline)
+    if (stall !== ended) return
+    stall = undefined
+    if (!status.read) {
+      failStalledStream()
+      return
+    }
+    const attachedStream = attachedStreamIn(status.playback)
+    // Attaching the other stream detaches this one, which stops the next limit.
     if (!attachedStream) {
-      void reconcilePlaybackStatus({ generation, fatal: true })
+      startStallLimit()
+      void reconcilePlaybackStatus({ generation: sourceGeneration, fatal: false })
       return
     }
     const seconds = attachedStream.mediaEndSeconds
     if (typeof seconds === 'number') learnRealEnd(seconds)
-    if (endedAtRealEnd) return
+    if (!endedAtRealEnd) failStalledStream()
+  }
+
+  function failStalledStream() {
     stopStatusCheck()
     detachSource()
     showFailure(FAILED_ATTEMPT_FALLBACK_MESSAGE)
