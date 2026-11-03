@@ -19,7 +19,20 @@ export default defineConfig({
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    // Firefox and WebKit run only the decodingInfo spec, whose answers differ by engine.
+    {
+      name: 'firefox',
+      testMatch: 'decoding-info-channels.spec.ts',
+      use: { ...devices['Desktop Firefox'] },
+    },
+    {
+      name: 'webkit',
+      testMatch: 'decoding-info-channels.spec.ts',
+      use: { ...devices['Desktop Safari'] },
+    },
+  ],
   webServer: [
     {
       name: 'stub-api',

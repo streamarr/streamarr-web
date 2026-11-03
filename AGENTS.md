@@ -7,7 +7,8 @@
 - One unit test file: `npx vitest run src/sw/decisions.test.ts`; add `-t shouldInterceptGraphqlFetch` for one test. One browser spec: `npx playwright test e2e/session-renewal.spec.ts`
 - `npm run test:watch` — unit tests in watch mode
 - `npm run test:coverage` — unit tests with coverage; the session-renewal core is gated at 95% per file, and the run writes `coverage/lcov.info` for SonarCloud
-- `npm run test:e2e` — browser suite (Playwright drives vite dev against the API stub in `e2e/`). Run `npx playwright install chromium` once, and again after a Playwright upgrade
+- `npm run test:e2e` — browser suite (Playwright drives vite dev against the API stub in `e2e/`). Run `npx playwright install chromium firefox webkit` once, and again after a Playwright upgrade. Firefox and WebKit run only `e2e/decoding-info-channels.spec.ts`, which records `decodingInfo`'s audio answers at each channel count
+- `node e2e/record-safari-decoding-info.ts` — records real Safari's answers to the same `decodingInfo` questions through `safaridriver` on a Mac; never in CI. Run `safaridriver --enable` once, then `safaridriver -p 4444` before the script
 - `npx playwright test -c playwright.replay.config.ts` — replays a library scan's live updates, and a scroll through a large library, in Chromium and WebKit, and reports main-thread time and memory; on demand, never in CI. `REPLAY_BUILD=1` measures the production bundle; `REPLAY_TITLES` and `REPLAY_RATE` size the scan, `REPLAY_LIBRARY` the scrolled library
 - `npm run format` — Prettier; format before committing. `npm run format:check` is the CI gate
 - `npm run lint` — ESLint: type-checked typescript-eslint and React Hooks rules (`eslint.config.js`)
@@ -21,7 +22,7 @@
 - `npm run tokens:check` — CI drift gate: fail if the committed tokens differ from streamarr-ux
 - `TOKENS_REF` pins the streamarr-ux commit the tokens come from; `npm run tokens` is the only way
   `src/styles/tokens.generated.css` changes — never edit it by hand
-- CI (`.github/workflows/ci.yml`) installs with `npm ci --ignore-scripts` — no dependency needs its lifecycle scripts — then runs `format:check`, `lint`, `typecheck`, `test:coverage`, `codegen:check`, `build`, the SonarCloud analysis, `test:e2e`, then `tokens:check`
+- CI (`.github/workflows/ci.yml`) installs with `npm ci --ignore-scripts` — no dependency needs its lifecycle scripts — then runs `format:check`, `lint`, `typecheck`, `test:coverage`, `codegen:check`, `build`, the SonarCloud analysis, `test:e2e` in Chromium, then `tokens:check`. A second job runs the `decodingInfo` spec in Firefox and WebKit
 
 ## Engineering Philosophy
 
