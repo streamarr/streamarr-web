@@ -56,7 +56,7 @@ export interface PlayerPlayback {
   /** Where a playback session started in this one's place should resume. */
   resumePoint: () => ResumePoint
   /**
-   * Moves the playhead for the viewer. The call ends the running stall limit at once, and the
+   * Moves the playhead for the viewer. A running stall limit starts again at once, and the
    * element's seeking event starts the seek's own limit.
    */
   seek: (seconds: number) => void
@@ -432,11 +432,14 @@ function startSessionPlayback({
   }
 
   // The element fires the seeking event from a queued task, which then starts the seek's own
-  // limit. An earlier stall's status read can answer before that task runs, so the earlier stall's
-  // limit ends here, as the viewer seeks.
+  // limit. An earlier stall's status read can answer before that task runs, so a running limit
+  // starts again here, as the viewer seeks. A browser that ignores the seek fires no event, and
+  // the stall keeps a limit.
   function seek(seconds: number) {
     video.currentTime = seconds
+    if (!stall) return
     clearStallLimit()
+    startStallLimit()
   }
 
   // Also abandons the status read of a stall that outlasted the limit.

@@ -6071,6 +6071,23 @@ describe('Player', () => {
       expect(screen.getByRole('alert')).toHaveTextContent("This video can't be played right now.")
     })
 
+    // The browser ignores a seek, without a seeking event, while the element has no seekable range.
+    it('shouldFailAStallAfterTheWholeLimitWhenTheElementAnnouncedNoneOfTheViewersSeekDuringIt', async () => {
+      const video = await playingVideo()
+      loadDuration(video, 2000)
+      serveAStatusWithoutARealEnd()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      stallAt(video, 100)
+      await act(async () => vi.advanceTimersByTimeAsync(10_000))
+      fireEvent.click(screen.getByRole('button', { name: 'Forward 10 seconds' }))
+      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 1))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      await act(async () => vi.advanceTimersByTimeAsync(1 + PLAYBACK_START_TIMEOUT_MS))
+
+      expect(screen.getByRole('alert')).toHaveTextContent("This video can't be played right now.")
+    })
+
     it('shouldKeepPlayingWhenASeekDuringAStallLandsOnBufferedMedia', async () => {
       const video = await playingVideo()
       serveAStatusWithoutARealEnd()
