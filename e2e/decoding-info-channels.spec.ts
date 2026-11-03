@@ -1,8 +1,10 @@
 import { expect, test } from '@playwright/test'
+import { writeFile } from 'node:fs/promises'
 import {
   answersThatDependOnChannelCount,
   CHANNEL_COUNT_PROBE,
   recordDecodingInfo,
+  supportedFlacAnswersAboveItsLimit,
 } from './decodingInfoChannels'
 
 // The capability declaration takes an audio codec's channel maximum from decodingInfo's answers at
@@ -20,14 +22,20 @@ test('decodingInfo answers each audio codec the same at every channel count', as
   await page.goto('/decoding-info')
 
   const record = await page.evaluate(recordDecodingInfo, CHANNEL_COUNT_PROBE)
+  // The file stays in test-results after the run, whichever reporter ran.
+  const recording = testInfo.outputPath('decoding-info-channel-counts.json')
+  await writeFile(recording, JSON.stringify(record, null, 2))
   await testInfo.attach('decoding-info-channel-counts.json', {
-    body: JSON.stringify(record, null, 2),
+    path: recording,
     contentType: 'application/json',
   })
 
-  expect(answersThatDependOnChannelCount(record.answers)).toEqual([])
-  // FLAC carries at most 8 channels, so a supported answer at 32 shows that the count goes
-  // unchecked. Without it, refusals at every count would also pass the comparison above.
-  const flacAt32 = Object.values(record.answers.FLAC).map((byChannels) => byChannels['32'])
-  expect(flacAt32).toContainEqual(expect.stringMatching(/^supported/))
+  expect(
+    answersThatDependOnChannelCount(record.answers),
+    'answers that change with the channel count',
+  ).toEqual([])
+  expect(
+    supportedFlacAnswersAboveItsLimit(record.answers),
+    'FLAC answered supported above its 8-channel limit',
+  ).not.toEqual([])
 })
