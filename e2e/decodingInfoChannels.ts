@@ -19,8 +19,6 @@ export type ChannelCountAnswers = Record<string, Record<string, Record<string, s
 export interface ChannelCountRecord {
   userAgent: string
   answers: ChannelCountAnswers
-  /** The most channels the default audio output plays, or null where no AudioContext starts. */
-  maxChannelCount: number | null
 }
 
 export const CHANNEL_COUNT_PROBE: ChannelCountProbe = {
@@ -72,15 +70,7 @@ export async function recordDecodingInfo(probe: ChannelCountProbe): Promise<Chan
       }
     }
   }
-  let maxChannelCount: number | null = null
-  try {
-    const context = new AudioContext()
-    maxChannelCount = context.destination.maxChannelCount
-    await context.close()
-  } catch {
-    // A host without an audio output device starts no AudioContext.
-  }
-  return { userAgent: navigator.userAgent, answers, maxChannelCount }
+  return { userAgent: navigator.userAgent, answers }
 }
 
 /**
