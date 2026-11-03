@@ -95,10 +95,10 @@ jobs:
           fi
           npm run tokens:check
 
-  # Firefox and WebKit run only the decodingInfo spec. A separate job keeps their installs off the
+  # Firefox and WebKit run only the capability specs. A separate job keeps their installs off the
   # build job's clock.
   decoding-info:
-    name: Record decodingInfo answers in Firefox and WebKit
+    name: Run the capability specs in Firefox and WebKit
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
