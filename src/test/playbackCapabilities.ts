@@ -43,7 +43,10 @@ export const MINIMAL_DECLARATION: ClientCapabilityDeclarationInput = {
   audio: [{ codec: 'AAC', maxChannels: 2, hls: true }],
 }
 
-/** Desktop Chrome playing through hls.js, without decodingInfo unless the overrides supply it. */
+/**
+ * Desktop Chrome playing through hls.js to a 7.1 output, without decodingInfo unless the overrides
+ * supply it.
+ */
 export function playbackPlatformFixture(
   overrides: Partial<PlaybackPlatform> = {},
 ): PlaybackPlatform {
@@ -53,6 +56,7 @@ export function playbackPlatformFixture(
     mediaSourceTypeSupported: () => false,
     canPlayType: () => '',
     userAgent: CHROME_USER_AGENT,
+    audioOutputChannels: () => Promise.resolve(8),
     ...overrides,
   }
 }

@@ -135,11 +135,6 @@ function decodesOnly(codecs: string[]): Decodes {
   return (configuration) => codecs.includes(codecOf(configuration))
 }
 
-function decodesAudioUpTo(channels: number): Decodes {
-  return (configuration) =>
-    configuration.audio === undefined || Number(configuration.audio.channels) <= channels
-}
-
 function answer(supported: boolean): DecodingAnswer {
   return { supported, smooth: supported, powerEfficient: supported }
 }
@@ -893,66 +888,65 @@ describe('declarePlaybackCapabilities', () => {
     expect(declaration.audio).toEqual([{ codec: 'AAC', maxChannels: 2, hls: true }])
   })
 
-  it('shouldDeclareEveryAudioCodecThatDecodesWhenTheBrowserConfirmsSurround', async () => {
+  it('shouldDeclareSixChannelsForEveryAudioCodecWhenTheOutputPlaysEightChannels', async () => {
     const declaration = await declarePlaybackCapabilities(platformFixture())
 
     expect(declaration.audio).toEqual(DECLARATION_OF_EVERY_TIER.audio)
   })
 
-  it('shouldDeclareStereoWhenTheBrowserConfirmsOnlyStereo', async () => {
+  it.each([
+    [6, 6],
+    [4, 4],
+    [2, 2],
+    [1, 2],
+    [0, 2],
+  ])(
+    'shouldCapEveryAudioCodecWhenTheOutputPlays%iChannels',
+    async (outputChannels, declaredChannels) => {
+      const declaration = await declarePlaybackCapabilities(
+        platformFixture({ audioOutputChannels: () => Promise.resolve(outputChannels) }),
+      )
+
+      expect(declaration.audio.map((entry) => entry.maxChannels)).toEqual(
+        Array(6).fill(declaredChannels),
+      )
+    },
+  )
+
+  it('shouldDeclareEveryAudioCodecInStereoWhenReadingTheOutputFails', async () => {
     const declaration = await declarePlaybackCapabilities(
       platformFixture({
-        decodingInfo: decodingInfoAnswering(decodesAudioUpTo(2)),
+        audioOutputChannels: () =>
+          Promise.reject(new DOMException('No device', 'NotSupportedError')),
       }),
     )
 
     expect(declaration.audio.map((entry) => entry.maxChannels)).toEqual([2, 2, 2, 2, 2, 2])
   })
 
-  it('shouldDeclareStereoWhenTheBrowserLeavesEverySurroundProbeUnanswered', async () => {
-    vi.useFakeTimers()
-    const declaration = declarePlaybackCapabilities(
-      platformFixture({
-        decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) => {
-          if (configuration.audio?.channels === '6') {
-            return NEVER_ANSWERED
-          }
-          return Promise.resolve(answer(true))
-        }),
-      }),
-    )
-
-    await vi.advanceTimersByTimeAsync(3_000)
-
-    expect((await declaration).audio).toEqual([
-      { codec: 'AAC', maxChannels: 2, hls: true },
-      { codec: 'AC3', maxChannels: 2, hls: true },
-      { codec: 'EAC3', maxChannels: 2, hls: true },
-      { codec: 'OPUS', maxChannels: 2, hls: true },
-      { codec: 'FLAC', maxChannels: 2, hls: true },
-      { codec: 'ALAC', maxChannels: 2, hls: true },
-    ])
-  })
-
-  it('shouldDeclareNoChannelMaximumWhenTheBrowserRefusesStereoBelowSurround', async () => {
+  it('shouldAskDecodingInfoAtTheOutputsChannelCountWhenTheOutputPlaysFourChannels', async () => {
     const declaration = await declarePlaybackCapabilities(
       platformFixture({
         decodingInfo: decodingInfoAnswering(
           (configuration) =>
-            configuration.audio === undefined || configuration.audio.channels !== '2',
+            configuration.audio === undefined || configuration.audio.channels === '4',
         ),
+        audioOutputChannels: () => Promise.resolve(4),
       }),
     )
 
-    expect(declaration.audio).toEqual([{ codec: 'AAC', maxChannels: 2, hls: true }])
+    expect(declaration.audio.map((entry) => entry.maxChannels)).toEqual([4, 4, 4, 4, 4, 4])
   })
 
-  it('shouldDeclareAtMostSixChannelsWhenTheBrowserConfirmsMore', async () => {
-    const declaration = await declarePlaybackCapabilities(
-      platformFixture({ decodingInfo: decodingInfoAnswering(decodesAudioUpTo(8)) }),
+  it('shouldDeclareTheMinimalDeclarationWhenTheOutputLeavesItsChannelCountUnansweredAtTheDeadline', async () => {
+    vi.useFakeTimers()
+    const declaration = declarePlaybackCapabilities(
+      platformFixture({ audioOutputChannels: () => new Promise<number>(() => {}) }),
     )
 
-    expect(Math.max(...declaration.audio.map((entry) => entry.maxChannels))).toBe(6)
+    await vi.advanceTimersByTimeAsync(3_000)
+
+    await expect(declaration).resolves.toEqual(MINIMAL_DECLARATION)
   })
 
   it.each([
@@ -1221,6 +1215,23 @@ describe('declarePlaybackCapabilities', () => {
   })
 })
 
+// An AudioContext whose default output plays maxChannelCount channels, and whose close() settles
+// when closed does.
+function audioContextReporting({
+  maxChannelCount,
+  closed = Promise.resolve(),
+}: {
+  maxChannelCount: number
+  closed?: Promise<void>
+}) {
+  return class {
+    readonly destination = { maxChannelCount }
+    close(): Promise<void> {
+      return closed
+    }
+  }
+}
+
 describe('browserPlaybackPlatform', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
@@ -1321,6 +1332,44 @@ describe('browserPlaybackPlatform', () => {
     const platform = browserPlaybackPlatform(document.createElement('video'))
 
     expect(platform.userAgent).toBe(SAFARI)
+  })
+
+  it('shouldAnswerTheDefaultOutputsChannelMaximumWhenTheBrowserOffersAudioContext', async () => {
+    vi.stubGlobal('AudioContext', audioContextReporting({ maxChannelCount: 6 }))
+
+    const platform = browserPlaybackPlatform(document.createElement('video'))
+
+    await expect(platform.audioOutputChannels()).resolves.toBe(6)
+  })
+
+  it('shouldAnswerOnlyAfterTheAudioContextClosesWhenReadingTheOutput', async () => {
+    let finishClosing = () => {}
+    const closed = new Promise<void>((resolve) => {
+      finishClosing = resolve
+    })
+    vi.stubGlobal('AudioContext', audioContextReporting({ maxChannelCount: 6, closed }))
+    const platform = browserPlaybackPlatform(document.createElement('video'))
+    let answered = false
+
+    const reading = platform.audioOutputChannels().then((channels) => {
+      answered = true
+      return channels
+    })
+    // A macrotask runs only after every pending microtask has settled.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    const answeredBeforeClose = answered
+    finishClosing()
+
+    expect(answeredBeforeClose).toBe(false)
+    await expect(reading).resolves.toBe(6)
+  })
+
+  it('shouldAnswerNoChannelsWhenTheBrowserOffersNoAudioContext', async () => {
+    vi.stubGlobal('AudioContext', undefined)
+
+    const platform = browserPlaybackPlatform(document.createElement('video'))
+
+    await expect(platform.audioOutputChannels()).resolves.toBe(0)
   })
 
   it('shouldLeaveDecodingInfoAbsentWhenTheBrowserOffersNoMediaCapabilities', () => {

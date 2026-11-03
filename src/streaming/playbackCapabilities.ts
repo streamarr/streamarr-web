@@ -52,6 +52,11 @@ export interface PlaybackPlatform {
   /** `canPlayType` of the media element. */
   canPlayType: (type: string) => CanPlayTypeResult
   userAgent: string
+  /**
+   * The most channels the default audio output plays. Resolves 0 where the browser reports none, and
+   * settles only after any AudioContext it opened has closed.
+   */
+  audioOutputChannels: () => Promise<number>
 }
 
 // The declaration gates the start of playback, so every probe shares one deadline and a probe left
@@ -181,9 +186,9 @@ const AUDIO_CODECS: readonly { codec: AudioCodec; mimeCodec: string }[] = [
   { codec: 'ALAC', mimeCodec: 'alac' },
 ]
 
-// The ladder stops at 5.1: Firefox stays at 6 channels until a 7.1 channel-order test passes, and
-// nobody has measured whether decodingInfo honors channel counts (streamarr-web#29).
-const CHANNEL_LADDER = [6, 2]
+// No entry declares more than 5.1 until a browser passes a 7.1 channel-order test
+// (streamarr-web#29): Firefox hands 7.1 AAC over in the wrong order.
+const SURROUND_MAXIMUM = 6
 const STEREO = 2
 
 interface DecodedTier {
@@ -239,7 +244,12 @@ export async function declarePlaybackCapabilities(
     return Promise.race([answer.catch(() => null), deadline])
   }
   try {
-    return await probeDeclaration({ platform, askDecodingInfo, hls })
+    // The audio probes ask at the channel count the entries declare, so the output comes first.
+    const outputChannels = await Promise.race([
+      platform.audioOutputChannels().catch(() => 0),
+      deadline.then(() => 0),
+    ])
+    return await probeDeclaration({ platform, askDecodingInfo, hls, outputChannels })
   } finally {
     clearTimeout(timer)
   }
@@ -249,15 +259,21 @@ async function probeDeclaration({
   platform,
   askDecodingInfo,
   hls,
+  outputChannels,
 }: {
   platform: PlaybackPlatform
   askDecodingInfo: AskDecodingInfo
   hls: boolean
+  outputChannels: number
 }): Promise<ClientCapabilityDeclarationInput> {
+  // A host without an audio device reports 0 channels, and every output plays stereo.
+  const channels = Math.min(Math.max(outputChannels, STEREO), SURROUND_MAXIMUM)
   const [video, audio] = await Promise.all([
     probeVideo({ platform, askDecodingInfo, hls }),
     Promise.all(
-      AUDIO_CODECS.map(({ codec, mimeCodec }) => probeAudio({ codec, mimeCodec, askDecodingInfo })),
+      AUDIO_CODECS.map(({ codec, mimeCodec }) =>
+        probeAudio({ codec, mimeCodec, channels, askDecodingInfo }),
+      ),
     ),
   ])
   return {
@@ -587,36 +603,31 @@ function codecProfile({
   return capability
 }
 
+// No engine's decodingInfo answer depends on the channel count (e2e/decoding-info-channels.spec.ts),
+// so one probe per codec asks at the count its entry would declare.
 async function probeAudio({
   codec,
   mimeCodec,
+  channels,
   askDecodingInfo,
 }: {
   codec: AudioCodec
   mimeCodec: string
+  channels: number
   askDecodingInfo: AskDecodingInfo
 }): Promise<AudioAnswer> {
-  // Every rung starts at once: a rung asked only after a slow one would race an expired deadline.
-  const answers = await Promise.all(
-    CHANNEL_LADDER.map((channels) =>
-      askDecodingInfo({
-        audio: {
-          contentType: `audio/mp4; codecs="${mimeCodec}"`,
-          channels: String(channels),
-          bitrate: 384_000,
-          samplerate: 48_000,
-        },
-      }),
-    ),
-  )
-  // A channel maximum accepts every smaller count, so it never stands over a refused smaller rung.
-  const widest = CHANNEL_LADDER.findIndex(
-    (_, index) => answers[index]?.supported && !answers.slice(index + 1).some(isRefusal),
-  )
-  if (widest === -1) {
+  const answer = await askDecodingInfo({
+    audio: {
+      contentType: `audio/mp4; codecs="${mimeCodec}"`,
+      channels: String(channels),
+      bitrate: 384_000,
+      samplerate: 48_000,
+    },
+  })
+  if (!answer?.supported) {
     return { codec, maxChannels: null }
   }
-  return { codec, maxChannels: CHANNEL_LADDER[widest] }
+  return { codec, maxChannels: channels }
 }
 
 function audioEntries({
@@ -677,6 +688,20 @@ function minimalDeclaration(hls: boolean): ClientCapabilityDeclarationInput {
   }
 }
 
+async function audioOutputChannels(): Promise<number> {
+  // TypeScript's DOM library declares AudioContext in every browser; older browsers lack it.
+  const scope: { AudioContext?: typeof AudioContext } = globalThis
+  if (!scope.AudioContext) {
+    return 0
+  }
+  const context = new scope.AudioContext()
+  try {
+    return context.destination.maxChannelCount
+  } finally {
+    await context.close()
+  }
+}
+
 interface MediaSourceType {
   isTypeSupported: (type: string) => boolean
 }
@@ -697,6 +722,7 @@ export function browserPlaybackPlatform(video: HTMLVideoElement): PlaybackPlatfo
     mediaSourceTypeSupported: (type) => mediaSource?.isTypeSupported(type) ?? false,
     canPlayType: (type) => video.canPlayType(type),
     userAgent: navigator.userAgent,
+    audioOutputChannels,
   }
   if ('mediaCapabilities' in navigator) {
     platform.decodingInfo = (configuration) =>
