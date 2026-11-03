@@ -6013,32 +6013,46 @@ describe('Player', () => {
       expect(screen.getByRole('alert')).toHaveTextContent("This video can't be played right now.")
     })
 
-    it('shouldGiveTheWholeLimitToTheViewersSeekToTheSamePositionBeforeItsEventWhileAnUnfinishedSeeksStatusIsRead', async () => {
-      const video = await playingVideo()
-      loadDuration(video, 2000)
-      const lateRead = holdTheSecondStatusRead()
-      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-      const back = screen.getByRole('button', { name: 'Back 10 seconds' })
+    // From a playhead at 5 s, each control seeks to the start of the media title.
+    it.each([
+      {
+        control: 'Back 10 seconds',
+        seekToTheStart: () =>
+          fireEvent.click(screen.getByRole('button', { name: 'Back 10 seconds' })),
+      },
+      {
+        control: 'the seek slider',
+        seekToTheStart: () =>
+          fireEvent.keyDown(screen.getByRole('slider', { name: 'Seek' }), { key: 'Home' }),
+      },
+    ])(
+      'shouldGiveTheWholeLimitToTheViewersSeekToTheSamePositionBeforeItsEventWhileAnUnfinishedSeeksStatusIsRead($control)',
+      async ({ seekToTheStart }) => {
+        const video = await playingVideo()
+        loadDuration(video, 2000)
+        const lateRead = holdTheSecondStatusRead()
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
 
-      stallAt(video, 5)
-      // The viewer's seek to the start waits for media that has not come when the limit runs out.
-      fireEvent.click(back)
-      setReadyState(video, HTMLMediaElement.HAVE_METADATA)
-      Object.defineProperty(video, 'seeking', { value: true, configurable: true })
-      fireEvent(video, new Event('seeking'))
-      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS))
-      // The viewer seeks to the start again, before the element fires that seek's event.
-      fireEvent.click(back)
-      await act(async () => lateRead.answer())
-      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-      fireEvent(video, new Event('seeking'))
-      await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 1))
-      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-      await act(async () => vi.advanceTimersByTimeAsync(1 + PLAYBACK_START_TIMEOUT_MS))
+        stallAt(video, 5)
+        // The viewer's seek to the start waits for media that has not come when the limit runs out.
+        seekToTheStart()
+        setReadyState(video, HTMLMediaElement.HAVE_METADATA)
+        Object.defineProperty(video, 'seeking', { value: true, configurable: true })
+        fireEvent(video, new Event('seeking'))
+        await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS))
+        // The viewer seeks to the start again, before the element fires that seek's event.
+        seekToTheStart()
+        await act(async () => lateRead.answer())
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+        fireEvent(video, new Event('seeking'))
+        await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 1))
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+        await act(async () => vi.advanceTimersByTimeAsync(1 + PLAYBACK_START_TIMEOUT_MS))
 
-      expect(video.currentTime).toBe(0)
-      expect(screen.getByRole('alert')).toHaveTextContent("This video can't be played right now.")
-    })
+        expect(video.currentTime).toBe(0)
+        expect(screen.getByRole('alert')).toHaveTextContent("This video can't be played right now.")
+      },
+    )
 
     it('shouldGiveALaterStallTheWholeLimitWhenTheElementAnnouncedNoneOfTheViewersSeek', async () => {
       const video = await playingVideo()
