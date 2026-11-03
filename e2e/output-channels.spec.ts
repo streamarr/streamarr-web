@@ -2,10 +2,13 @@ import { expect, test, type Page } from '@playwright/test'
 import type { ClientCapabilityDeclarationInput } from '../src/graphql/generated/graphql'
 import { CHANNEL_COUNT_PROBE, recordDecodingInfo } from './decodingInfoChannels'
 
-// Each playback session builds a new declaration, and each declaration opens and closes an
-// AudioContext to read the output's channel count. On the Linux CI runner, WebKit's web process
-// once crashed when a page asked decodingInfo questions and then opened an AudioContext. This spec
-// builds declarations after decodingInfo questions in one page, in every engine.
+// Each playback session builds a new declaration, and each declaration reads the output's channel
+// count through an AudioContext. On the Linux CI runner, WebKit's web process crashed on the next
+// media call after a page read maxChannelCount, so the declaration skips that read there. This spec
+// builds declarations around decodingInfo questions in one page, in every engine. It never retries,
+// so a crash fails it.
+
+test.describe.configure({ retries: 0 })
 
 type Capabilities = typeof import('../src/streaming/playbackCapabilities')
 

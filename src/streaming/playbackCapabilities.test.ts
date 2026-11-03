@@ -1343,6 +1343,7 @@ describe('browserPlaybackPlatform', () => {
   })
 
   it('shouldAnswerTheDefaultOutputsChannelMaximumWhenTheBrowserOffersAudioContext', async () => {
+    vi.stubGlobal('navigator', { userAgent: SAFARI, platform: 'MacIntel' })
     vi.stubGlobal('AudioContext', audioContextReporting({ maxChannelCount: 6 }))
 
     const platform = browserPlaybackPlatform(document.createElement('video'))
@@ -1355,6 +1356,7 @@ describe('browserPlaybackPlatform', () => {
     const closed = new Promise<void>((resolve) => {
       finishClosing = resolve
     })
+    vi.stubGlobal('navigator', { userAgent: SAFARI, platform: 'MacIntel' })
     vi.stubGlobal('AudioContext', audioContextReporting({ maxChannelCount: 6, closed }))
     const platform = browserPlaybackPlatform(document.createElement('video'))
     let answered = false
@@ -1370,6 +1372,24 @@ describe('browserPlaybackPlatform', () => {
 
     expect(answeredBeforeClose).toBe(false)
     await expect(reading).resolves.toBe(6)
+  })
+
+  it('shouldAnswerNoChannelsWhenWebKitRunsOnLinuxEvenWhenItsOutputPlaysSurround', async () => {
+    vi.stubGlobal('navigator', { userAgent: SAFARI, platform: 'Linux x86_64' })
+    vi.stubGlobal('AudioContext', audioContextReporting({ maxChannelCount: 6 }))
+
+    const platform = browserPlaybackPlatform(document.createElement('video'))
+
+    await expect(platform.audioOutputChannels()).resolves.toBe(0)
+  })
+
+  it('shouldAnswerTheDefaultOutputsChannelMaximumWhenFirefoxRunsOnLinux', async () => {
+    vi.stubGlobal('navigator', { userAgent: FIREFOX, platform: 'Linux x86_64' })
+    vi.stubGlobal('AudioContext', audioContextReporting({ maxChannelCount: 6 }))
+
+    const platform = browserPlaybackPlatform(document.createElement('video'))
+
+    await expect(platform.audioOutputChannels()).resolves.toBe(6)
   })
 
   it('shouldAnswerNoChannelsWhenTheBrowserOffersNoAudioContext', async () => {

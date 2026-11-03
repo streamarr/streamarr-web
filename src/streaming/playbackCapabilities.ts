@@ -728,6 +728,12 @@ export function browserPlaybackPlatform(video: HTMLVideoElement): PlaybackPlatfo
     userAgent: navigator.userAgent,
     audioOutputChannels,
   }
+  // WebKit on Linux plays audio through GStreamer. On the Linux CI runner, its web process crashed
+  // on the next media call after a page read maxChannelCount, so there it declares stereo. The
+  // platform names the operating system even where a quirk or a test sets a Mac user agent.
+  if (isWebKit(navigator.userAgent) && /^Linux/.test(navigator.platform)) {
+    platform.audioOutputChannels = () => Promise.resolve(0)
+  }
   if ('mediaCapabilities' in navigator) {
     platform.decodingInfo = (configuration) =>
       navigator.mediaCapabilities.decodingInfo(configuration)
