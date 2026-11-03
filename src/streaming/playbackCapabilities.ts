@@ -245,10 +245,14 @@ export async function declarePlaybackCapabilities(
   }
   try {
     // The audio probes ask at the channel count the entries declare, so the output comes first.
+    // A probe started after the deadline could not count, so an unanswered read starts none.
     const outputChannels = await Promise.race([
       platform.audioOutputChannels().catch(() => 0),
-      deadline.then(() => 0),
+      deadline,
     ])
+    if (outputChannels === null) {
+      return minimalDeclaration(hls)
+    }
     return await probeDeclaration({ platform, askDecodingInfo, hls, outputChannels })
   } finally {
     clearTimeout(timer)

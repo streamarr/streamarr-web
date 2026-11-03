@@ -938,15 +938,23 @@ describe('declarePlaybackCapabilities', () => {
     expect(declaration.audio.map((entry) => entry.maxChannels)).toEqual([4, 4, 4, 4, 4, 4])
   })
 
-  it('shouldDeclareTheMinimalDeclarationWhenTheOutputLeavesItsChannelCountUnansweredAtTheDeadline', async () => {
+  it('shouldAskNoDecodingInfoQuestionWhenTheOutputLeavesItsChannelCountUnansweredAtTheDeadline', async () => {
     vi.useFakeTimers()
+    const asked: MediaDecodingConfiguration[] = []
     const declaration = declarePlaybackCapabilities(
-      platformFixture({ audioOutputChannels: () => new Promise<number>(() => {}) }),
+      platformFixture({
+        decodingInfo: (configuration) => {
+          asked.push(configuration)
+          return Promise.resolve(answer(true))
+        },
+        audioOutputChannels: () => new Promise<number>(() => {}),
+      }),
     )
 
     await vi.advanceTimersByTimeAsync(3_000)
 
     await expect(declaration).resolves.toEqual(MINIMAL_DECLARATION)
+    expect(asked).toEqual([])
   })
 
   it.each([
