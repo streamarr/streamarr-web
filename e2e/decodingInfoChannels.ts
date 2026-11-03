@@ -84,13 +84,31 @@ export async function recordDecodingInfo(probe: ChannelCountProbe): Promise<Chan
 }
 
 /**
- * Each codec and decoding type whose answer changes with the channel count. An empty list means
- * the browser ignores the channel count.
+ * Each codec and decoding type whose answer changes with the channel count. Refusals at every
+ * count also leave this list empty, so supportedFlacAnswersAboveItsLimit must find an answer too.
  */
 export function answersThatDependOnChannelCount(answers: ChannelCountAnswers): string[] {
   return Object.entries(answers).flatMap(([codec, byType]) =>
     Object.entries(byType)
       .filter(([, byChannels]) => new Set(Object.values(byChannels)).size > 1)
       .map(([type, byChannels]) => `${codec} ${type}: ${JSON.stringify(byChannels)}`),
+  )
+}
+
+// FLAC carries at most 8 channels.
+const FLAC_CHANNEL_LIMIT = 8
+
+/**
+ * FLAC's supported answers at channel counts above 8. A browser that checks the count refuses
+ * them all, so one such answer shows that the count goes unchecked.
+ */
+export function supportedFlacAnswersAboveItsLimit(answers: ChannelCountAnswers): string[] {
+  return Object.entries(answers.FLAC ?? {}).flatMap(([type, byChannels]) =>
+    Object.entries(byChannels)
+      .filter(
+        ([channels, answer]) =>
+          Number(channels) > FLAC_CHANNEL_LIMIT && answer.startsWith('supported'),
+      )
+      .map(([channels, answer]) => `FLAC ${type} at ${channels} channels: ${answer}`),
   )
 }
