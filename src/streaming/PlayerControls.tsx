@@ -41,6 +41,12 @@ type Scrub = { at: 'dragging'; seconds: number; resume: boolean } | { at: 'aband
 
 const SUBTITLES_OFF: PopoverOption<null> = { id: null, label: 'Off' }
 
+/** A track the viewer chose in a picker, by the language code the stream tags it with. */
+export type ChosenTrack =
+  | { kind: 'audio'; language?: string }
+  | { kind: 'subtitles'; language?: string }
+  | { kind: 'subtitles-off' }
+
 /**
  * Whether a picker has a choice to make: one option alone would only repeat what its chip shows.
  * The subtitles picker always offers Off beside the stream's tracks.
@@ -82,6 +88,7 @@ export function PlayerControls({
   onChooseQuality,
   openPicker,
   onOpenPicker,
+  onTrackChosen,
   title,
 }: Readonly<{
   ref: Ref<HTMLDivElement>
@@ -98,6 +105,8 @@ export function PlayerControls({
   onChooseQuality: (choice: VideoQuality) => void
   openPicker: PickerKind | null
   onOpenPicker: (kind: PickerKind | null) => void
+  /** Hears each audio or subtitle track the viewer switches to, after the stream switched. */
+  onTrackChosen?: (chosen: ChosenTrack) => void
   title?: PlayerTitle
 }>) {
   const [scrub, setScrub] = useState<Scrub | null>(null)
@@ -252,7 +261,13 @@ export function PlayerControls({
             choosable={pickerOffersChoice('audio', choices)}
             open={openPicker === 'audio'}
             onOpenChange={(open) => onOpenPicker(open ? 'audio' : null)}
-            onChoose={(id) => tracks?.selectAudio(id)}
+            onChoose={(id) => {
+              if (!tracks || id === audio.selected) {
+                return
+              }
+              tracks.selectAudio(id)
+              onTrackChosen?.({ kind: 'audio', language: languageOf(audio.options, id) })
+            }}
           />
           <ChoicePicker
             name="Subtitles"
@@ -263,13 +278,30 @@ export function PlayerControls({
             choosable={pickerOffersChoice('subtitles', choices)}
             open={openPicker === 'subtitles'}
             onOpenChange={(open) => onOpenPicker(open ? 'subtitles' : null)}
-            onChoose={(id) => tracks?.selectSubtitles(id)}
+            onChoose={(id) => {
+              if (!tracks || id === subtitles.selected) {
+                return
+              }
+              tracks.selectSubtitles(id)
+              onTrackChosen?.(
+                id === null
+                  ? { kind: 'subtitles-off' }
+                  : { kind: 'subtitles', language: languageOf(subtitles.options, id) },
+              )
+            }}
           />
           <FullscreenButton targetRef={playerRef} />
         </div>
       </div>
     </div>
   )
+}
+
+function languageOf(
+  options: readonly { id: number; language?: string }[],
+  id: number,
+): string | undefined {
+  return options.find((option) => option.id === id)?.language
 }
 
 function TitleLine({

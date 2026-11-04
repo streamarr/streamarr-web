@@ -61,12 +61,15 @@ describe('hlsTrackSource', () => {
     expect(source.read()).toEqual({
       audio: {
         options: [
-          { id: 0, label: 'English' },
-          { id: 1, label: 'Commentary' },
+          { id: 0, label: 'English', language: 'en' },
+          { id: 1, label: 'Commentary', language: 'en' },
         ],
         selected: 1,
       },
-      subtitles: { options: [{ id: 0, label: 'English (SDH)' }], selected: null },
+      subtitles: {
+        options: [{ id: 0, label: 'English (SDH)', language: 'en' }],
+        selected: null,
+      },
     })
   })
 
@@ -85,6 +88,11 @@ describe('hlsTrackSource', () => {
       'French',
       'Track 2',
       'Track 3',
+    ])
+    expect(source.read().audio.options.map((option) => option.language)).toEqual([
+      'fr',
+      undefined,
+      'not a language',
     ])
   })
 
@@ -147,15 +155,15 @@ describe('nativeTrackSource', () => {
     expect(nativeTrackSource(video).read()).toEqual({
       audio: {
         options: [
-          { id: 0, label: 'English' },
-          { id: 1, label: 'German' },
+          { id: 0, label: 'English', language: 'en' },
+          { id: 1, label: 'German', language: 'de' },
         ],
         selected: 1,
       },
       subtitles: {
         options: [
-          { id: 0, label: 'English' },
-          { id: 1, label: 'English (SDH)' },
+          { id: 0, label: 'English', language: 'en' },
+          { id: 1, label: 'English (SDH)', language: 'en' },
         ],
         selected: 1,
       },

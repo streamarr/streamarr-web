@@ -3,6 +3,8 @@ import Hls, { type MediaPlaylist } from 'hls.js'
 interface TrackOption {
   id: number
   label: string
+  /** The language code the stream tags the track with, such as `fr` or `fre`; none when untagged. */
+  language?: string
 }
 
 /** The tracks of one kind a stream offers, and the one in use; null when none is. */
@@ -226,11 +228,19 @@ function choice(options: TrackOption[], selectedIndex: number): TrackChoice {
 function hlsTrackOption(track: HlsTrack, index: number): TrackOption {
   // hls.js names a rendition that declares no NAME after its language code.
   const name = track.name === track.lang ? undefined : track.name
-  return { id: index, label: trackLabel({ name, language: track.lang }, index) }
+  return {
+    id: index,
+    label: trackLabel({ name, language: track.lang }, index),
+    language: track.lang || undefined,
+  }
 }
 
 function elementTrackOption(track: ElementTrack, index: number): TrackOption {
-  return { id: index, label: trackLabel({ name: track.label, language: track.language }, index) }
+  return {
+    id: index,
+    label: trackLabel({ name: track.label, language: track.language }, index),
+    language: track.language || undefined,
+  }
 }
 
 // The interface is in English, so the languages it names are too.

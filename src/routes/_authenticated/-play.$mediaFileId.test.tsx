@@ -182,6 +182,31 @@ describe('/play/$mediaFileId', () => {
     expect(screen.getByText('S2 E5 — Breakage')).toBeVisible()
   })
 
+  it('shouldStoreAnAudioSwitchForTheEpisodeThePlayLinkNames', async () => {
+    serveApp()
+    serveMediaTitles()
+    const overrides: unknown[] = []
+    server.use(
+      graphql.mutation('SetLanguageOverride', ({ variables }) => {
+        overrides.push(variables.input)
+        return HttpResponse.json({ data: { setLanguageOverride: { item: null, userErrors: [] } } })
+      }),
+    )
+    const { user } = renderAppAt('/play/file-1?episode=e1')
+    await attachedVideo()
+    hls.audioTracks = [
+      { name: 'English', lang: 'en' },
+      { name: '日本語', lang: 'ja' },
+    ]
+    hls.audioTrack = 0
+    act(() => hls.emit('hlsAudioTracksUpdated'))
+
+    await user.click(screen.getByRole('button', { name: 'Audio: English' }))
+    await user.click(screen.getByRole('menuitemradio', { name: '日本語' }))
+
+    await waitFor(() => expect(overrides).toEqual([{ itemId: 'e1', audioLanguage: 'JA' }]))
+  })
+
   it('shouldNameAnEpisodeWithoutATitleByItsNumber', async () => {
     serveApp()
     serveMediaTitles()

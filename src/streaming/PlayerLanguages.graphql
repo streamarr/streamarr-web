@@ -1,0 +1,19 @@
+query PlayerWiderSubtitleMode($id: ID!, $movie: Boolean!) {
+  episode(id: $id) @skip(if: $movie) {
+    __typename
+    id
+    season {
+      __typename
+      id
+      languagePreference {
+        ...LanguagePreferenceFields
+      }
+    }
+  }
+  me {
+    __typename
+    languagePreferences {
+      ...ProfileLanguagePreferencesFields
+    }
+  }
+}

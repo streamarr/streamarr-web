@@ -35,13 +35,20 @@ import {
   playbackPlatformFixture,
   smoothUpToFullHd,
 } from '../test/playbackCapabilities'
+import { languagePreferenceFixture, profileLanguagesFixture } from '../test/languageFixtures'
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
 import type {
   ClientCapabilityDeclarationInput,
   CreatePlaybackSessionInput,
   PlaybackFormatChange,
+  PlayerWiderSubtitleModeQuery,
+  PlayerWiderSubtitleModeQueryVariables,
   ReportPlaybackFormatFailureInput,
+  SetLanguageOverrideInput,
+  SetLanguageOverrideMutation,
+  SetLanguageOverrideMutationVariables,
+  SubtitleMode,
   SwitchPlaybackAudioTrackInput,
   SwitchPlaybackAudioTrackMutation,
   VideoQuality,
@@ -4993,6 +5000,161 @@ describe('Player', () => {
 
       expect(screen.getByText('0:00 / 47:04')).toBeInTheDocument()
     })
+  })
+
+  describe('language switches', () => {
+    const EPISODE = { kind: 'episode', id: 'e1' } as const
+    const MOVIE = { kind: 'movie', id: 'm1' } as const
+
+    function serveOverrides({ seasonMode = 'FORCED', profileMode = 'FORCED' } = {}) {
+      const inputs: SetLanguageOverrideInput[] = []
+      server.use(
+        graphql.mutation<SetLanguageOverrideMutation, SetLanguageOverrideMutationVariables>(
+          'SetLanguageOverride',
+          ({ variables: { input } }) => {
+            inputs.push(input)
+            return HttpResponse.json({
+              data: { setLanguageOverride: { item: null, userErrors: [] } },
+            })
+          },
+        ),
+        graphql.query<PlayerWiderSubtitleModeQuery, PlayerWiderSubtitleModeQueryVariables>(
+          'PlayerWiderSubtitleMode',
+          ({ variables: { movie } }) =>
+            HttpResponse.json({
+              data: {
+                ...(!movie && {
+                  episode: {
+                    __typename: 'Episode',
+                    id: 'e1',
+                    season: {
+                      __typename: 'Season',
+                      id: 'season-1',
+                      languagePreference: languagePreferenceFixture({
+                        subtitleMode: seasonMode as SubtitleMode,
+                      }),
+                    },
+                  },
+                }),
+                me: {
+                  __typename: 'Me',
+                  languagePreferences: profileLanguagesFixture({
+                    subtitleMode: profileMode as SubtitleMode,
+                  }),
+                },
+              },
+            }),
+        ),
+      )
+      return inputs
+    }
+
+    async function pickTrack(user: UserEvent, chip: RegExp, row: string) {
+      const menu = await openPicker(user, screen.getByRole('button', { name: chip }))
+      await user.click(within(menu).getByRole('menuitemradio', { name: row }))
+    }
+
+    it('shouldStoreTheAudioLanguageForThatEpisodeOnlyWhenTheViewerSwitchesAudio', async () => {
+      serveSession()
+      const inputs = serveOverrides()
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" mediaTitle={EPISODE} />,
+      )
+      await attachedVideo()
+      offerHlsTracks({
+        audio: [
+          { name: 'English', lang: 'en' },
+          { name: 'Français', lang: 'fre' },
+        ],
+        audioTrack: 0,
+      })
+
+      await pickTrack(user, /^Audio/, 'Français')
+
+      expect(hls.audioTrack).toBe(1)
+      await waitFor(() => expect(inputs).toEqual([{ itemId: 'e1', audioLanguage: 'FR' }]))
+    })
+
+    it('shouldStoreTheAudioLanguageForTheMovieWhenTheViewerSwitchesAudio', async () => {
+      serveSession()
+      const inputs = serveOverrides()
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" mediaTitle={MOVIE} />,
+      )
+      await attachedVideo()
+      offerHlsTracks({
+        audio: [
+          { name: 'English', lang: 'en' },
+          { name: 'Português', lang: 'pt-BR' },
+        ],
+        audioTrack: 0,
+      })
+
+      await pickTrack(user, /^Audio/, 'Português')
+
+      await waitFor(() => expect(inputs).toEqual([{ itemId: 'm1', audioLanguage: 'PT_BR' }]))
+    })
+
+    it('shouldStoreNothingForATrackThatNamesNoLanguage', async () => {
+      serveSession()
+      const inputs = serveOverrides()
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" mediaTitle={EPISODE} />,
+      )
+      await attachedVideo()
+      offerHlsTracks({
+        audio: [
+          { name: 'English', lang: 'en' },
+          { name: 'Mystery' },
+          { name: 'Deutsch', lang: 'de' },
+        ],
+        audioTrack: 0,
+      })
+
+      await pickTrack(user, /^Audio/, 'Mystery')
+      await pickTrack(user, /^Audio/, 'Deutsch')
+
+      await waitFor(() => expect(inputs).toEqual([{ itemId: 'e1', audioLanguage: 'DE' }]))
+    })
+
+    it('shouldStoreSubtitlesAlwaysInTheirLanguageWhenTheViewerTurnsThemOn', async () => {
+      serveSession()
+      const inputs = serveOverrides()
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" mediaTitle={EPISODE} />,
+      )
+      await attachedVideo()
+      offerHlsTracks({ subtitles: [{ name: 'English', lang: 'en' }] })
+
+      await pickTrack(user, /^Subtitles/, 'English')
+
+      await waitFor(() =>
+        expect(inputs).toEqual([{ itemId: 'e1', subtitleLanguage: 'EN', subtitleMode: 'ALWAYS' }]),
+      )
+    })
+
+    it.each([
+      { title: EPISODE, wider: { seasonMode: 'FORCED' }, stored: 'FORCED' },
+      { title: EPISODE, wider: { seasonMode: 'OFF' }, stored: 'OFF' },
+      { title: MOVIE, wider: { seasonMode: 'OFF', profileMode: 'FORCED' }, stored: 'FORCED' },
+      { title: MOVIE, wider: { profileMode: 'OFF' }, stored: 'OFF' },
+    ])(
+      'shouldStoreTheWiderLevelsOffOrElseForcedWhenTheViewerTurnsSubtitlesOff $title.kind $stored',
+      async ({ title, wider, stored }) => {
+        serveSession()
+        const inputs = serveOverrides(wider)
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" mediaTitle={title} />,
+        )
+        await attachedVideo()
+        offerHlsTracks({ subtitles: [{ name: 'English', lang: 'en' }], subtitleTrack: 0 })
+
+        await pickTrack(user, /^Subtitles/, 'Off')
+
+        expect(hls.subtitleTrack).toBe(-1)
+        await waitFor(() => expect(inputs).toEqual([{ itemId: title.id, subtitleMode: stored }]))
+      },
+    )
   })
 
   describe('quality', () => {

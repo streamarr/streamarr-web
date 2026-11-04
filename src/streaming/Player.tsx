@@ -21,8 +21,10 @@ import {
   type SourcePhase,
 } from './playerPlayback'
 import { useIdle } from './useIdle'
+import { useLanguageSwitchReport } from './useLanguageSwitchReport'
 import { usePlaybackFallbacks } from './usePlaybackFallbacks'
 import { useStreamTracks } from './useStreamTracks'
+import type { PlayableMediaTitle } from './usePlayerTitle'
 import { useVideoState } from './useVideoState'
 
 const STARTING: SourcePhase = { at: 'starting' }
@@ -49,11 +51,14 @@ export function Player({
   mediaFileId,
   startPositionSeconds,
   title,
+  mediaTitle,
   playbackPlatform,
 }: Readonly<{
   mediaFileId: string
   startPositionSeconds?: number
   title?: PlayerTitle
+  /** The episode or movie playing, which keeps the viewer's audio and subtitle switches. */
+  mediaTitle?: PlayableMediaTitle
   /** Binds the browser facts the capability declaration is built from to the playing element. */
   playbackPlatform: (video: HTMLVideoElement) => PlaybackPlatform
 }>) {
@@ -93,6 +98,7 @@ export function Player({
   if (picker !== openPicker) {
     setPicker(null)
   }
+  const reportTrackChosen = useLanguageSwitchReport(mediaTitle)
   const videoState = useVideoState(videoRef)
   const controlsHeld = videoState.paused || sourcePhase.at === 'failed' || openPicker !== null
   const idle = useIdle(controlsHeld, [controlsRef, backRef])
@@ -190,6 +196,7 @@ export function Player({
         onChooseQuality={chooseQuality}
         openPicker={openPicker}
         onOpenPicker={setPicker}
+        onTrackChosen={reportTrackChosen}
         title={title}
       />
     </section>
