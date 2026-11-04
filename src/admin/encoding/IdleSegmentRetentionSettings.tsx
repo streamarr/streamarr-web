@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from '@apollo/client/react'
 import { Button, Center, Loader, NumberInput } from '@mantine/core'
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   ChangeIdleSegmentRetentionDocument,
   IdleSegmentRetentionSettingDocument,
@@ -123,7 +123,7 @@ function RetentionForm({
   const minutes = typeof value === 'number' ? value : null
   const changed = minutes !== null && minutes !== setting.minutes
 
-  function submit(event: FormEvent) {
+  function submit(event: React.SubmitEvent) {
     event.preventDefault()
     if (minutes === null || !changed || busy) return
     onSave(minutes)
