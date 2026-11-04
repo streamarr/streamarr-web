@@ -552,13 +552,13 @@ function tierThatKeepsUp({
 }: {
   family: VideoFamily
   answer: TierAnswers
-  keepsUp: KeepsUp
+  keepsUp: KeepsUp<TierAnswers>
 }): DecodedTier[] {
   const keptUp: BitDepthProbe[] = []
-  if (keepsUp(answer, 'eightBit')) {
+  if (keepsUp(answer, (answers) => answers.eightBit)) {
     keptUp.push(family.eightBit)
   }
-  if (family.tenBit && keepsUp(answer, 'tenBit')) {
+  if (family.tenBit && keepsUp(answer, (answers) => answers.tenBit)) {
     keptUp.push(family.tenBit)
   }
   const profiles = keptUp.flatMap((probe) => probe.profiles)
@@ -569,9 +569,10 @@ function tierThatKeepsUp({
   return [{ tier: answer.tier, bitDepth, profiles }]
 }
 
-type BitDepthKey = 'eightBit' | 'tenBit'
+// One probe's answer at a tier, such as the 10-bit answer of a family's tier.
+type AnswerOf<T> = (answers: T) => ProbeAnswer
 
-type KeepsUp = (answer: TierAnswers, bitDepth: BitDepthKey) => boolean
+type KeepsUp<T> = (answers: T, answerOf: AnswerOf<T>) => boolean
 
 // Safari on iOS 27.2, on a phone that decodes HEVC in hardware, answers HEVC Main and Main 10
 // supported and power-efficient but never smooth, at every tier from 720p30 to 2160p60. On WebKit a
@@ -585,7 +586,7 @@ type KeepsUp = (answer: TierAnswers, bitDepth: BitDepthKey) => boolean
 // dropped and the server encodes instead. WebKit answers HEVC smooth up to the decoder's maximum
 // playback level, so once a profile answers smooth at any tier, its smooth answers are its ceiling
 // and power efficiency no longer stands in for them. Elsewhere only a smooth answer keeps up.
-function keepsUpOn({
+function keepsUpOn<T extends { tier: PictureTier }>({
   platform,
   family,
   answers,
@@ -593,40 +594,40 @@ function keepsUpOn({
 }: {
   platform: PlaybackPlatform
   family: VideoFamily
-  answers: readonly TierAnswers[]
+  answers: readonly T[]
   h264Answers: readonly TierAnswers[]
-}): KeepsUp {
+}): KeepsUp<T> {
   if (family !== HEVC || !isWebKit(platform.userAgent)) {
-    return (answer, bitDepth) => isSmooth(answer[bitDepth])
+    return (answer, answerOf) => isSmooth(answerOf(answer))
   }
   const budget = h264Answers.filter((answer) => isSmooth(answer.eightBit))
-  return (answer, bitDepth) => {
-    if (isSmooth(answer[bitDepth])) {
+  return (answer, answerOf) => {
+    if (isSmooth(answerOf(answer))) {
       return true
     }
-    if (answers.some((other) => isSmooth(other[bitDepth]))) {
+    if (answers.some((other) => isSmooth(answerOf(other)))) {
       return false
     }
     return (
-      isPowerEfficient(answer[bitDepth]) &&
+      isPowerEfficient(answerOf(answer)) &&
       budget.some((h264) => holdsPicture(h264.tier, answer.tier))
     )
   }
 }
 
 // A maximum accepts every smaller value (ADR 0049), so no tier counts over a smaller tier it holds
-// that the browser refused at the same bit depth.
-function keepsUpWithoutSmallerRefusal({
+// that the browser refused for the same probe.
+function keepsUpWithoutSmallerRefusal<T extends { tier: PictureTier }>({
   answers,
   keepsUp,
 }: {
-  answers: readonly TierAnswers[]
-  keepsUp: KeepsUp
-}): KeepsUp {
-  return (answer, bitDepth) =>
-    keepsUp(answer, bitDepth) &&
+  answers: readonly T[]
+  keepsUp: KeepsUp<T>
+}): KeepsUp<T> {
+  return (answer, answerOf) =>
+    keepsUp(answer, answerOf) &&
     !answers.some(
-      (smaller) => holdsPicture(answer.tier, smaller.tier) && isRefusal(smaller[bitDepth]),
+      (smaller) => holdsPicture(answer.tier, smaller.tier) && isRefusal(answerOf(smaller)),
     )
 }
 
