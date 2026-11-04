@@ -24,6 +24,7 @@ fragment PlaybackSessionFields on PlaybackSession {
         ... on DirectPlayStreamSession {
           sourceContainer
           videoRange
+          audioTrackPosition
         }
       }
     }

@@ -45,3 +45,14 @@ export function giveElementTracks(
   Object.defineProperty(video, 'textTracks', { configurable: true, value: textTracks })
   return { audioTracks, textTracks }
 }
+
+/** Adds tracks to an element's audio track list, as a browser does once it reads them from a file. */
+export function listAudioTracks(list: EventTarget, tracks: FakeAudioTrack[]) {
+  const listed = Number(Reflect.get(list, 'length'))
+  tracks.forEach((track, index) => {
+    announceSwitches(track, list)
+    Object.assign(list, { [listed + index]: track })
+  })
+  Object.assign(list, { length: listed + tracks.length })
+  list.dispatchEvent(new Event('addtrack'))
+}

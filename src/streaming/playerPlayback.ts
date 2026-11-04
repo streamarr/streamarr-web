@@ -18,7 +18,12 @@ import { hlsPlaybackConfig } from './hlsPlaybackConfig'
 import { type DynamicRangeChoice, hlsVideoPreference } from './hlsVideoPreference'
 import { DECLARATION_REFUSAL_TYPENAMES } from './playbackCapabilities'
 import type { QualityChoices } from './qualityChoices'
-import { hlsTrackSource, nativeTrackSource, type TrackSource } from './trackSources'
+import {
+  hlsTrackSource,
+  nativeTrackSource,
+  selectAudioTrackOnceListed,
+  type TrackSource,
+} from './trackSources'
 
 // Progress is only worth a round trip once the playhead has moved this far since the last report.
 const TIMELINE_REPORT_INTERVAL_SECONDS = 10
@@ -624,9 +629,8 @@ function startSessionPlayback({
       playing: playback.playbackChoice,
       formatChange: playback.formatChange,
     }
-    const attachStream =
-      attempt.streamSession.__typename === 'DirectPlayStreamSession' ? attachSourceFile : attach
-    source = attachStream(video, attempt.streamSession.streamUrl, {
+    const { streamSession } = attempt
+    const options: StreamSourceOptions = {
       startupDeadline,
       videoPreference: hlsVideoPreference(declaration, dynamicRange),
       onFirstFrame: () => {
@@ -648,7 +652,11 @@ function startSessionPlayback({
         detachSource()
         showFailure(PLAYBACK_FAILURE_MESSAGE)
       },
-    })
+    }
+    source =
+      streamSession.__typename === 'DirectPlayStreamSession'
+        ? attachSourceFile(video, streamSession, options)
+        : attach(video, streamSession.streamUrl, options)
     onSourcePhase({
       at: 'attached',
       tracks: source.tracks,
@@ -1235,9 +1243,15 @@ const MEDIA_ERR_SRC_NOT_SUPPORTED = 4
 // Direct play hands the source file to the element, which reads it with byte-range requests. The
 // element has parsed the file's header by its metadata, so startup ends there, even when the
 // browser withholds the first frame until the viewer presses play.
+interface SourceFile {
+  streamUrl: string
+  /** The audio track the stream decision names among the file's audio tracks; null for none. */
+  audioTrackPosition: number | null
+}
+
 function attachSourceFile(
   video: HTMLVideoElement,
-  url: string,
+  { streamUrl: url, audioTrackPosition }: SourceFile,
   options: StreamSourceOptions,
 ): StreamSource {
   const { startupDeadline, onFirstFrame } = options
@@ -1249,9 +1263,15 @@ function attachSourceFile(
   video.addEventListener('loadedmetadata', startupDeadline.end)
   video.addEventListener('loadeddata', onFirstFrame, { once: true })
   video.src = url
+  // The element starts the file's default audio track, which can differ from the named one.
+  let stopAudioSelection = () => {}
+  if (audioTrackPosition !== null) {
+    stopAudioSelection = selectAudioTrackOnceListed(video, audioTrackPosition)
+  }
   return {
     detach: () => {
       detached.abort()
+      stopAudioSelection()
       video.removeEventListener('error', onVideoError)
       video.removeEventListener('loadedmetadata', startupDeadline.end)
       video.removeEventListener('loadeddata', onFirstFrame)

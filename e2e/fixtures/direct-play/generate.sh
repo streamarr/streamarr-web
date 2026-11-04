@@ -1,7 +1,7 @@
 #!/bin/sh
 # Writes the direct-play fixtures beside this script: one second of a 128x72 test pattern at
 # 24 frames per second with a 440 Hz stereo tone, in each container and sample entry the web
-# client declares. Run from anywhere with FFmpeg 8 built with libx264, libx265, libsvtav1 and
+# client declares, and one file with a second audio track. Run from anywhere with FFmpeg 8 built with libx264, libx265, libsvtav1 and
 # libopus; e2e/direct-play.spec.ts reads the files it writes.
 set -eu
 cd "$(dirname "$0")"
@@ -39,3 +39,11 @@ ffmpeg -y -hide_banner -loglevel error $source_args $common \
   -c:v libx265 -profile:v main10 -pix_fmt yuv420p10le -tag:v hvc1 \
   -x265-params 'log-level=error:hdr10=1:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:master-display=G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(10000000,1):max-cll=1000,400' \
   -c:a aac -b:a 64k -movflags +faststart hevc-hvc1-pq.mp4
+
+# H.264 avc1 with two AAC audio tracks: English at 440 Hz, the default, then French at 880 Hz.
+ffmpeg -y -hide_banner -loglevel error $source_args \
+  -f lavfi -i sine=frequency=880:sample_rate=48000:duration=1 \
+  -map 0:v -map 1:a -map 2:a $common \
+  -c:v libx264 -profile:v high -pix_fmt yuv420p -tag:v avc1 \
+  -c:a aac -b:a 64k -metadata:s:a:0 language=eng -metadata:s:a:1 language=fra \
+  -disposition:a:0 default -disposition:a:1 0 -movflags +faststart h264-avc1-two-audio-tracks.mp4

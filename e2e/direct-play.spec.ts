@@ -202,6 +202,77 @@ test('the media element plays every file whose container and sample entry the en
   expect(results['h264-avc1.mp4'].declared).toBe(true)
 })
 
+const TWO_AUDIO_TRACKS_FILE = 'h264-avc1-two-audio-tracks.mp4'
+const TWO_AUDIO_TRACKS_PATH = '/direct-play-fixtures/two-audio-tracks.mp4'
+
+// Of Playwright's engines, only WebKit lists a file's audio tracks on the media element; Chromium
+// and Firefox list them only behind a flag or a preference.
+const SELECTS_AUDIO_TRACK: Record<string, boolean> = {
+  chromium: false,
+  firefox: false,
+  webkit: true,
+}
+
+test('the engine declares that it selects an audio track only where it switches a file to another one', async ({
+  page,
+  browserName,
+}) => {
+  await page.route('**/direct-play-fixtures', (route) =>
+    route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Direct play</title>' }),
+  )
+  await page.route(`**${TWO_AUDIO_TRACKS_PATH}`, (route) =>
+    serveFile(route, fixturePath(TWO_AUDIO_TRACKS_FILE), 'video/mp4'),
+  )
+  await page.goto('/direct-play-fixtures')
+
+  const answer = await page.evaluate(
+    async ({ path, src }) => {
+      const capabilities = (await import(/* @vite-ignore */ path)) as Capabilities
+      const declaration = await capabilities.declarePlaybackCapabilities(
+        capabilities.browserPlaybackPlatform(document.createElement('video')),
+      )
+      const video = document.createElement('video')
+      video.muted = true
+      // WebKit lists the file's audio tracks after its metadata and before its first frame.
+      const loaded = new Promise((resolve) =>
+        video.addEventListener('loadeddata', resolve, { once: true }),
+      )
+      video.src = src
+      document.body.append(video)
+      await loaded
+      // lib.dom declares no audioTracks.
+      const list = Reflect.get(video, 'audioTracks') as ArrayLike<{ enabled: boolean }> | undefined
+      const tracks = list ? Array.from(list) : []
+      tracks.forEach((track, index) => {
+        track.enabled = index === 1
+      })
+      const played = new Promise<boolean>((resolve) => {
+        const deadline = setTimeout(() => resolve(false), 10_000)
+        video.addEventListener('timeupdate', () => {
+          if (video.currentTime > 0) {
+            clearTimeout(deadline)
+            resolve(true)
+          }
+        })
+      })
+      void video.play().catch(() => undefined)
+      return {
+        declared: declaration.selectsAudioTrackInDirectPlay,
+        played: await played,
+        enabled: tracks.map((track) => track.enabled),
+      }
+    },
+    { path: CAPABILITIES_MODULE, src: TWO_AUDIO_TRACKS_PATH },
+  )
+
+  const selects = SELECTS_AUDIO_TRACK[browserName]
+  expect(answer).toEqual({
+    declared: selects,
+    played: true,
+    enabled: selects ? [false, true] : [],
+  })
+})
+
 const SOURCE_FILE_URL = '/api/stream/e2e/source.mp4?t=playback-token'
 const MULTIVARIANT_URL = '/api/stream/e2e-fallback/multivariant.m3u8?t=playback-token'
 
@@ -225,7 +296,34 @@ const DIRECT_PLAY_SESSION = readyPlaybackSession({
   streamUrl: SOURCE_FILE_URL,
   sourceContainer: 'MP4',
   videoRange: 'SDR',
+  audioTrackPosition: 0,
 })
+
+// The stream decision names the file's second audio track, French, for the Profile.
+const SECOND_AUDIO_TRACK_DIRECT_PLAY_SESSION = readyPlaybackSession({
+  __typename: 'DirectPlayStreamSession',
+  id: 'sess-1',
+  streamUrl: SOURCE_FILE_URL,
+  sourceContainer: 'MP4',
+  videoRange: 'SDR',
+  audioTrackPosition: 1,
+})
+
+const HLS_SESSION = readyPlaybackSession({
+  __typename: 'HlsStreamSession',
+  id: 'sess-1',
+  streamUrl: MULTIVARIANT_URL,
+  transcodeMode: 'REMUX',
+  videoRange: 'SDR',
+  mediaEndSeconds: null,
+})
+
+// As the server decides for a file with two audio tracks (ADR 0045).
+function twoAudioTrackFileSession(capabilities: ClientCapabilityDeclarationInput) {
+  return capabilities.selectsAudioTrackInDirectPlay
+    ? SECOND_AUDIO_TRACK_DIRECT_PLAY_SESSION
+    : HLS_SESSION
+}
 
 const HLS_FALLBACK_SESSION = {
   ...readyPlaybackSession({
@@ -255,12 +353,19 @@ const PLAYER_OPERATIONS: Record<string, unknown> = {
   },
 }
 
-// Opens the player on a direct-play session whose source file `serveSource` answers, and returns
-// each format failure the player reports.
+// Opens the player on the playback session `playbackSessionFor` answers for the declaration the
+// player sends, a direct-play session unless it says otherwise, with a source file that
+// `serveSource` answers, and returns each format failure the player reports.
 async function openDirectPlay(
   page: Page,
   request: APIRequestContext,
-  serveSource: (route: Route) => Promise<void>,
+  {
+    serveSource,
+    playbackSessionFor = () => DIRECT_PLAY_SESSION,
+  }: {
+    serveSource: (route: Route) => Promise<void>
+    playbackSessionFor?: (capabilities: ClientCapabilityDeclarationInput) => unknown
+  },
 ): Promise<ReportPlaybackFormatFailureInput[]> {
   const reports: ReportPlaybackFormatFailureInput[] = []
   await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
@@ -268,11 +373,22 @@ async function openDirectPlay(
   await page.route('**/graphql', async (route) => {
     const body = route.request().postDataJSON() as {
       operationName?: string
-      variables?: { input?: ReportPlaybackFormatFailureInput }
+      variables?: {
+        input?: ReportPlaybackFormatFailureInput & {
+          capabilities?: ClientCapabilityDeclarationInput
+        }
+      }
     } | null
     const operationName = body?.operationName ?? ''
-    if (operationName === 'ReportPlaybackFormatFailure' && body?.variables?.input) {
-      reports.push(body.variables.input)
+    const input = body?.variables?.input
+    if (operationName === 'ReportPlaybackFormatFailure' && input) {
+      reports.push(input)
+    }
+    if (operationName === 'CreatePlaybackSession' && input?.capabilities) {
+      const playbackSession = playbackSessionFor(input.capabilities)
+      return route.fulfill({
+        json: { data: { createPlaybackSession: { playbackSession, userErrors: [] } } },
+      })
     }
     const data = PLAYER_OPERATIONS[operationName]
     return data ? route.fulfill({ json: { data } }) : route.continue()
@@ -290,9 +406,9 @@ test('the player plays a direct-play session from its source file without HLS', 
   page.on('request', (sent) => {
     if (sent.url().includes('.m3u8')) playlistRequests.push(sent.url())
   })
-  await openDirectPlay(page, request, (route) =>
-    serveFile(route, fixturePath('h264-avc1.mp4'), 'video/mp4'),
-  )
+  await openDirectPlay(page, request, {
+    serveSource: (route) => serveFile(route, fixturePath('h264-avc1.mp4'), 'video/mp4'),
+  })
 
   const video = page.locator('video')
   await expect
@@ -312,9 +428,10 @@ test('the player reports a source file it cannot open and starts the HLS fallbac
   const fallbackRequested = page.waitForRequest((sent) => sent.url().includes(MULTIVARIANT_URL))
   await page.route('**/api/stream/e2e-fallback/**', (route) => route.abort())
 
-  const reports = await openDirectPlay(page, request, (route) =>
-    route.fulfill({ contentType: 'video/mp4', body: 'This is not a media file.' }),
-  )
+  const reports = await openDirectPlay(page, request, {
+    serveSource: (route) =>
+      route.fulfill({ contentType: 'video/mp4', body: 'This is not a media file.' }),
+  })
 
   await fallbackRequested
   expect(reports).toEqual([
@@ -326,10 +443,63 @@ test('the player shows the failure without a format attempt when the source file
   page,
   request,
 }) => {
-  const reports = await openDirectPlay(page, request, (route) =>
-    route.fulfill({ status: 404, contentType: 'text/plain', body: 'Not Found' }),
-  )
+  const reports = await openDirectPlay(page, request, {
+    serveSource: (route) =>
+      route.fulfill({ status: 404, contentType: 'text/plain', body: 'Not Found' }),
+  })
 
   await expect(page.getByRole('alert')).toContainText("Playback couldn't start.")
   expect(reports).toEqual([])
+})
+
+test('the player plays a file with two audio tracks over HLS where the engine selects no audio track', async ({
+  page,
+  request,
+  browserName,
+}) => {
+  test.skip(SELECTS_AUDIO_TRACK[browserName], 'this engine selects an audio track')
+  const sourceRequests: string[] = []
+  page.on('request', (sent) => {
+    if (sent.url().includes('/api/stream/e2e/source.mp4')) sourceRequests.push(sent.url())
+  })
+  const hlsRequested = page.waitForRequest((sent) => sent.url().includes(MULTIVARIANT_URL))
+  await page.route('**/api/stream/e2e-fallback/**', (route) => route.abort())
+
+  await openDirectPlay(page, request, {
+    serveSource: (route) => serveFile(route, fixturePath(TWO_AUDIO_TRACKS_FILE), 'video/mp4'),
+    playbackSessionFor: twoAudioTrackFileSession,
+  })
+
+  await hlsRequested
+  expect(sourceRequests).toEqual([])
+})
+
+test('the player direct-plays a file with two audio tracks on the track the stream decision names where the engine selects one', async ({
+  page,
+  request,
+  browserName,
+}) => {
+  test.skip(!SELECTS_AUDIO_TRACK[browserName], 'this engine selects no audio track')
+  const playlistRequests: string[] = []
+  page.on('request', (sent) => {
+    if (sent.url().includes('.m3u8')) playlistRequests.push(sent.url())
+  })
+
+  await openDirectPlay(page, request, {
+    serveSource: (route) => serveFile(route, fixturePath(TWO_AUDIO_TRACKS_FILE), 'video/mp4'),
+    playbackSessionFor: twoAudioTrackFileSession,
+  })
+
+  const video = page.locator('video')
+  await expect
+    .poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime))
+    .toBeGreaterThan(0)
+  const enabled = await video.evaluate((element: HTMLVideoElement) =>
+    Array.from(Reflect.get(element, 'audioTracks') as ArrayLike<{ enabled: boolean }>).map(
+      (track) => track.enabled,
+    ),
+  )
+  expect(enabled).toEqual([false, true])
+  await expect(page.getByRole('button', { name: 'Audio: French' })).toBeVisible()
+  expect(playlistRequests).toEqual([])
 })

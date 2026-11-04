@@ -21,7 +21,12 @@ import {
   segmentContext,
   segmentLoadConfiguration,
 } from '../test/fakeNetworkLoader'
-import { type FakeAudioTrack, type FakeTextTrack, giveElementTracks } from '../test/mediaTracks'
+import {
+  type FakeAudioTrack,
+  type FakeTextTrack,
+  giveElementTracks,
+  listAudioTracks,
+} from '../test/mediaTracks'
 import {
   IPHONE_SAFARI_HEVC_ANSWER,
   IPHONE_SAFARI_USER_AGENT,
@@ -6890,7 +6895,11 @@ describe('Player', () => {
     // The source file answers each request with `sourceStatus`, as the server's endpoint would.
     function serveDirectPlay({
       sourceStatus = 206,
-    }: { sourceStatus?: number } = {}): ReportPlaybackFormatFailureInput[] {
+      audioTrackPosition = 0,
+    }: {
+      sourceStatus?: number
+      audioTrackPosition?: number | null
+    } = {}): ReportPlaybackFormatFailureInput[] {
       const reports: ReportPlaybackFormatFailureInput[] = []
       server.use(
         http.get(
@@ -6907,7 +6916,7 @@ describe('Player', () => {
               createPlaybackSession: {
                 playbackSession: readyDirectPlaySession({
                   id: 'playback-1',
-                  streamSession: SOURCE_FILE,
+                  streamSession: { ...SOURCE_FILE, audioTrackPosition },
                 }),
                 userErrors: [],
               },
@@ -6954,6 +6963,76 @@ describe('Player', () => {
       expect(video.paused).toBe(false)
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Quality: Original' })).toBeInTheDocument()
+    })
+
+    // WebKit lists a file's audio tracks only after the file's metadata has loaded.
+    it('shouldSelectTheAudioTrackTheStreamDecisionNamesWhenTheElementListsTheFilesAudioTracks', async () => {
+      serveDirectPlay({ audioTrackPosition: 1 })
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+      const { audioTracks } = giveElementTracks(renderedVideo(), {})
+      const video = await nativeVideo(SOURCE_FILE.streamUrl)
+      loadMetadata(video)
+      const audio: FakeAudioTrack[] = [
+        { label: '', language: 'en', enabled: true },
+        { label: '', language: 'fr', enabled: false },
+      ]
+
+      act(() => listAudioTracks(audioTracks, audio))
+
+      expect(audio.map((track) => track.enabled)).toEqual([false, true])
+      expect(screen.getByRole('button', { name: 'Audio: French' })).toBeInTheDocument()
+    })
+
+    it('shouldSelectTheNamedAudioTrackOnlyOnceTheElementListsItWhenItListsTheTracksOneByOne', async () => {
+      serveDirectPlay({ audioTrackPosition: 1 })
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+      const { audioTracks } = giveElementTracks(renderedVideo(), {})
+      await nativeVideo(SOURCE_FILE.streamUrl)
+      const english: FakeAudioTrack = { label: '', language: 'en', enabled: true }
+      const french: FakeAudioTrack = { label: '', language: 'fr', enabled: false }
+
+      act(() => listAudioTracks(audioTracks, [english]))
+      expect(english.enabled).toBe(true)
+      act(() => listAudioTracks(audioTracks, [french]))
+
+      expect([english.enabled, french.enabled]).toEqual([false, true])
+    })
+
+    it('shouldKeepTheViewersAudioTrackWhenTheElementListsAnotherTrackAfterSelectingTheNamedOne', async () => {
+      serveDirectPlay({ audioTrackPosition: 0 })
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      const { audioTracks } = giveElementTracks(renderedVideo(), {})
+      await nativeVideo(SOURCE_FILE.streamUrl)
+      const audio: FakeAudioTrack[] = [
+        { label: '', language: 'en', enabled: true },
+        { label: '', language: 'fr', enabled: false },
+      ]
+      act(() => listAudioTracks(audioTracks, audio))
+      await user.click(screen.getByRole('button', { name: 'Audio: English' }))
+      await user.click(screen.getByRole('menuitemradio', { name: 'French' }))
+
+      act(() =>
+        listAudioTracks(audioTracks, [{ label: 'Commentary', language: 'en', enabled: false }]),
+      )
+
+      expect(audio.map((track) => track.enabled)).toEqual([false, true])
+    })
+
+    it('shouldKeepTheFilesOwnAudioTrackWhenTheStreamDecisionNamesNone', async () => {
+      serveDirectPlay({ audioTrackPosition: null })
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+      const { audioTracks } = giveElementTracks(renderedVideo(), {})
+      await nativeVideo(SOURCE_FILE.streamUrl)
+      const audio: FakeAudioTrack[] = [
+        { label: '', language: 'en', enabled: false },
+        { label: '', language: 'fr', enabled: true },
+      ]
+
+      act(() => listAudioTracks(audioTracks, audio))
+
+      expect(audio.map((track) => track.enabled)).toEqual([false, true])
     })
 
     it.each([

@@ -130,6 +130,29 @@ export function nativeTrackSource(video: HTMLVideoElement): TrackSource {
   }
 }
 
+/**
+ * Selects the audio track at `position` once the element lists it among the tracks it reads from
+ * the file, and returns a function that stops waiting. Call it after giving the element its source,
+ * which empties the element's track lists.
+ */
+export function selectAudioTrackOnceListed(video: HTMLVideoElement, position: number): () => void {
+  const list = audioTrackListOf(video)
+  if (!(list instanceof EventTarget)) {
+    return () => undefined
+  }
+  const stop = () => list.removeEventListener('addtrack', onAddTrack)
+  function onAddTrack() {
+    const tracks = audioTracksOf(video)
+    if (tracks.length <= position) return
+    stop()
+    tracks.forEach((track, index) => {
+      track.enabled = index === position
+    })
+  }
+  list.addEventListener('addtrack', onAddTrack)
+  return stop
+}
+
 // lib.dom does not declare audioTracks, and only some browsers implement it.
 function audioTrackListOf(video: HTMLVideoElement): unknown {
   return Reflect.get(video, 'audioTracks')

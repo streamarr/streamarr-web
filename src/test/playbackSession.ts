@@ -51,7 +51,10 @@ export function readyPlaybackSession({
   })
 }
 
-/** A playback session that plays Original, as the viewer asked, by direct play of an SDR MP4 file. */
+/**
+ * A playback session that plays Original, as the viewer asked, by direct play of an SDR MP4 file
+ * whose first audio track plays.
+ */
 export function readyDirectPlaySession({
   streamSession,
   id = `playback-${streamSession.id}`,
@@ -68,6 +71,7 @@ export function readyDirectPlaySession({
       __typename: 'DirectPlayStreamSession',
       sourceContainer: 'MP4',
       videoRange: 'SDR',
+      audioTrackPosition: 0,
       ...streamSession,
     },
   })
