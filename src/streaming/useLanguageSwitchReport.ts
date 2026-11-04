@@ -1,6 +1,6 @@
 import type { ApolloClient } from '@apollo/client'
 import { useApolloClient } from '@apollo/client/react'
-import { useEffect, useRef } from 'react'
+import { useRef } from 'react'
 import {
   PlayerWiderSubtitleModeDocument,
   SetLanguageOverrideDocument,
@@ -33,32 +33,37 @@ export function useLanguageSwitchReport(
 ): (chosen: ChosenTrack) => void {
   const client = useApolloClient()
   const stores = useRef<Promise<void>>(Promise.resolve())
-  const generation = useRef(0)
-
-  useEffect(() => {
-    const nextGeneration = () => {
-      generation.current += 1
-      return Promise.resolve()
-    }
-    const stopOnReset = client.onResetStore(nextGeneration)
-    const stopOnClear = client.onClearStore(nextGeneration)
-    return () => {
-      stopOnReset()
-      stopOnClear()
-    }
-  }, [client])
 
   return (chosen) => {
     if (!mediaTitle) {
       return
     }
-    const started = generation.current
-    const isCurrent = () => generation.current === started
+    // Fenced from the pick until its store settles, even after the player closes.
+    const fence = resetFence(client)
     // The switch already plays; a failure to store it only means a resume starts from the wider
     // levels, which is what playback did before the switch.
     stores.current = stores.current
-      .then(() => storeSwitch({ client, mediaTitle, chosen, isCurrent }))
+      .then(() => storeSwitch({ client, mediaTitle, chosen, isCurrent: fence.isCurrent }))
       .catch(() => undefined)
+      .finally(fence.stop)
+  }
+}
+
+// Whether the store has been reset or cleared, as a Profile or account switch does, since now.
+function resetFence(client: ApolloClient): { isCurrent: () => boolean; stop: () => void } {
+  let current = true
+  const outdate = () => {
+    current = false
+    return Promise.resolve()
+  }
+  const stopOnReset = client.onResetStore(outdate)
+  const stopOnClear = client.onClearStore(outdate)
+  return {
+    isCurrent: () => current,
+    stop: () => {
+      stopOnReset()
+      stopOnClear()
+    },
   }
 }
 

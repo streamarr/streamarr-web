@@ -5252,6 +5252,67 @@ describe('Player', () => {
       )
     })
 
+    it('shouldDropASwitchStillQueuedWhenTheStoreResetsAfterThePlayerCloses', async () => {
+      serveSession()
+      const inputs = serveOverrides()
+      const first = deferred()
+      server.use(
+        graphql.mutation('SetLanguageOverride', async ({ variables }) => {
+          inputs.push(variables.input as SetLanguageOverrideInput)
+          if (inputs.length === 1) {
+            await first.promise
+          }
+          return HttpResponse.json({
+            data: { setLanguageOverride: { item: null, userErrors: [] } },
+          })
+        }),
+      )
+      let resetStore: (() => Promise<unknown>) | undefined
+      let closePlayer: (() => void) | undefined
+      function Playing() {
+        const client = useApolloClient()
+        const [open, setOpen] = useState(true)
+        useEffect(() => {
+          resetStore = () => client.resetStore()
+          closePlayer = () => setOpen(false)
+        }, [client])
+        return open ? (
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" mediaTitle={EPISODE} />
+        ) : null
+      }
+      const { user } = renderWithProviders(<Playing />)
+      await attachedVideo()
+      offerHlsTracks({
+        audio: [
+          { name: 'English', lang: 'en' },
+          { name: 'Français', lang: 'fr' },
+          { name: 'Deutsch', lang: 'de' },
+        ],
+        audioTrack: 0,
+      })
+
+      await pickTrack(user, /^Audio/, 'Français')
+      await waitFor(() => expect(inputs).toHaveLength(1))
+      await pickTrack(user, /^Audio/, 'Deutsch')
+      act(() => closePlayer?.())
+      await act(async () => {
+        await resetStore?.()
+      })
+      const firstAnswered = new Promise<void>((resolve) => {
+        const answered = () => {
+          server.events.removeListener('response:mocked', answered)
+          resolve()
+        }
+        server.events.on('response:mocked', answered)
+      })
+      first.resolve()
+      await firstAnswered
+      // A queued switch that was not dropped is sent as soon as the first store settles.
+      await new Promise((resolve) => setTimeout(resolve))
+
+      expect(inputs).toEqual([{ itemId: 'e1', audioLanguage: 'FR' }])
+    })
+
     it('shouldKeepPlayingTheSwitchedTrackWhenTheServerCannotStoreIt', async () => {
       serveSession()
       serveOverrides()
