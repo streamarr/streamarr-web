@@ -16,6 +16,12 @@ const SECTIONS = [
     region: 'Library administration',
   },
   { to: '/settings/server/encoding', icon: 'encoding', label: 'Encoding', region: 'Encoding' },
+  {
+    to: '/settings/server/streams',
+    icon: 'play',
+    label: 'Active streams',
+    region: 'Active streams',
+  },
 ] as const satisfies readonly {
   to: string
   icon: IconName

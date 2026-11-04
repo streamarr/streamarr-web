@@ -1,0 +1,34 @@
+query ActiveStreams {
+  activeStreams {
+    ...ActiveStreamFields
+  }
+}
+
+subscription ActiveStreamsChanged {
+  activeStreamsChanged {
+    playbackSessionId
+    activeStream {
+      ...ActiveStreamFields
+    }
+  }
+}
+
+fragment ActiveStreamFields on ActiveStream {
+  playbackSessionId
+  profile {
+    id
+    name
+  }
+  deviceName
+  mediaFileId
+  title
+  seriesTitle
+  seasonNumber
+  episodeNumber
+  positionSeconds
+  state
+  decision {
+    ...PlaybackDecisionFields
+  }
+  workers
+}
