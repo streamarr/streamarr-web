@@ -6047,7 +6047,7 @@ describe('Player', () => {
         fireEvent(video, new Event('seeking'))
         await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 1))
         expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-        await act(async () => vi.advanceTimersByTimeAsync(1 + PLAYBACK_START_TIMEOUT_MS))
+        await act(async () => vi.advanceTimersByTimeAsync(1))
 
         expect(video.currentTime).toBe(0)
         expect(screen.getByRole('alert')).toHaveTextContent("This video can't be played right now.")
@@ -6083,7 +6083,7 @@ describe('Player', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Forward 10 seconds' }))
       await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 1))
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-      await act(async () => vi.advanceTimersByTimeAsync(1 + PLAYBACK_START_TIMEOUT_MS))
+      await act(async () => vi.advanceTimersByTimeAsync(1))
 
       expect(screen.getByRole('alert')).toHaveTextContent("This video can't be played right now.")
     })
