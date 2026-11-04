@@ -136,6 +136,7 @@ async function fixture(page: Page, libraries = [movie, shows]) {
       return reply({
         idleSegmentRetentionSetting: {
           __typename: 'IdleSegmentRetentionSetting',
+          id: '0b8f7a2e-5d41-4c3a-9e6f-2a1d8c7b4e90',
           minutes: 60,
           minimumMinutes: 5,
           maximumMinutes: 10_080,

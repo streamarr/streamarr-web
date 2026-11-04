@@ -17,6 +17,7 @@ import { server } from '../../test/server'
 const ENCODING = '/settings/server/encoding'
 const SAVED_ONE_HOUR: IdleSegmentRetentionSettingFieldsFragment = {
   __typename: 'IdleSegmentRetentionSetting',
+  id: '0b8f7a2e-5d41-4c3a-9e6f-2a1d8c7b4e90',
   minutes: 60,
   minimumMinutes: 5,
   maximumMinutes: 10_080,
@@ -124,6 +125,34 @@ describe('idle segment retention settings', () => {
     await waitFor(() => expect(state.changes).toEqual([30]))
     await waitFor(() => expect(saveButton()).toBeDisabled())
     expect(await retentionField()).toHaveValue('30')
+  })
+
+  it('shouldShowSavedRetentionFromCacheWhenAdminReturnsBeforeRereadAnswers', async () => {
+    const state = serve()
+    const { user } = renderAppAt(ENCODING)
+    const field = await retentionField()
+    await user.clear(field)
+    await user.type(field, '30')
+    await user.click(saveButton())
+    await waitFor(() => expect(state.changes).toEqual([30]))
+    await waitFor(() => expect(saveButton()).toBeDisabled())
+    const readsAfterSave = state.reads
+    const reread = deferred()
+    server.use(
+      graphql.query<IdleSegmentRetentionSettingQuery>(
+        'IdleSegmentRetentionSetting',
+        async () => {
+          state.reads++
+          await reread.promise
+          return HttpResponse.json({ data: { idleSegmentRetentionSetting: state.setting } })
+        },
+        { once: true },
+      ),
+    )
+    await returnToEncoding(user)
+    expect(await retentionField()).toHaveValue('30')
+    await waitFor(() => expect(state.reads).toBe(readsAfterSave + 1))
+    reread.resolve()
   })
 
   it('shouldKeepSaveDisabledWhenFieldIsEmpty', async () => {

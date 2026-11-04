@@ -54,18 +54,7 @@ export function IdleSegmentRetentionSettings() {
   async function save(minutes: number) {
     setRefusal(null)
     try {
-      const { data } = await change({
-        variables: { input: { minutes } },
-        update(cache, { data: result }) {
-          // A save that answers after the admin left may be older than a save made on return.
-          const saved = result?.changeIdleSegmentRetention?.idleSegmentRetentionSetting
-          if (saved && mounted.current)
-            cache.writeQuery({
-              query: IdleSegmentRetentionSettingDocument,
-              data: { idleSegmentRetentionSetting: saved },
-            })
-        },
-      })
+      const { data } = await change({ variables: { input: { minutes } } })
       const payload = data?.changeIdleSegmentRetention
       if (payload?.userErrors.length) {
         setRefusal(payload.userErrors.map(userErrorMessage).join(' '))

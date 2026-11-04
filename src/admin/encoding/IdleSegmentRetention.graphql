@@ -1,5 +1,6 @@
 fragment IdleSegmentRetentionSettingFields on IdleSegmentRetentionSetting {
   __typename
+  id
   minutes
   minimumMinutes
   maximumMinutes
