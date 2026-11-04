@@ -287,11 +287,20 @@ function hdrVideoEntry(entry: Partial<VideoCapabilityEntryInput>): VideoCapabili
 }
 
 // An HDR10 stream is 10-bit PQ in BT.2020 primaries with SMPTE ST 2086 static metadata, and an HLG
-// stream is 10-bit HLG in BT.2020 primaries with no static metadata.
+// stream is 10-bit HLG in BT.2020 primaries with no static metadata. An AV1 codecs parameter also
+// names the colour (AV1 Codec ISO Media File Format Binding): 4:2:0 chroma, BT.2020 primaries (9),
+// PQ (16) or HLG (18) transfer, the BT.2020 non-constant-luminance matrix (9) and limited range.
+// Omitted, those fields mean BT.709, and Chromium refuses a question whose codec string and colour
+// disagree.
+const AV1_TRANSFER_CHARACTERISTICS: Record<CompatibleBase, string> = { PQ: '16', HLG: '18' }
+
 function asksAbout(configuration: MediaDecodingConfiguration, base: CompatibleBase): boolean {
   const { video } = configuration
   const codec = codecOf(configuration)
-  const isTenBit = codec.startsWith('hvc1.2.') || /^av01\..*\.10$/.test(codec)
+  const av1Colour = `0.110.09.${AV1_TRANSFER_CHARACTERISTICS[base]}.09.0`
+  const isTenBit =
+    codec.startsWith('hvc1.2.') ||
+    new RegExp(`^av01\\.0\\.\\d{2}M\\.10\\.${av1Colour}$`).test(codec)
   if (!video || !isTenBit || video.colorGamut !== 'rec2020') {
     return false
   }

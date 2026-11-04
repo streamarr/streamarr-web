@@ -153,6 +153,8 @@ interface VideoFamily {
   maxTier?: VideoCodecTier
   eightBit: BitDepthProbe
   tenBit?: BitDepthProbe
+  // The 10-bit codec string an HDR question asks about, given the stream's transfer characteristics.
+  hdrCodec?: (level: number, transferCharacteristics: number) => string
   dolbyVision?: readonly DolbyVisionProbe[]
 }
 
@@ -175,6 +177,7 @@ const HEVC: VideoFamily = {
     profiles: ['HEVC_MAIN_10'],
     codec: (level) => `hvc1.2.4.L${level * 3}.B0`,
   },
+  hdrCodec: (level) => `hvc1.2.4.L${level * 3}.B0`,
   dolbyVision: [
     { profiles: ['PROFILE_5'], codec: (level) => dolbyVisionCodec('dvh1.05', level) },
     {
@@ -191,6 +194,11 @@ const AV1: VideoFamily = {
   maxTier: 'MAIN',
   eightBit: { bitDepth: 8, profiles: ['AV1_MAIN'], codec: (level) => av1Codec(level, 8) },
   tenBit: { bitDepth: 10, profiles: [], codec: (level) => av1Codec(level, 10) },
+  // Omitted colour fields mean BT.709, and Chromium refuses a question whose codec string and colour
+  // disagree, so an HDR question names 4:2:0 chroma, BT.2020 primaries, the stream's transfer, the
+  // BT.2020 non-constant-luminance matrix and limited range.
+  hdrCodec: (level, transferCharacteristics) =>
+    `${av1Codec(level, 10)}.0.110.09.${transferCharacteristics}.09.0`,
   dolbyVision: [
     {
       profiles: ['PROFILE_10_0', 'PROFILE_10_1', 'PROFILE_10_4'],
@@ -207,12 +215,22 @@ type ColorQuestion = Pick<VideoConfiguration, 'colorGamut' | 'transferFunction' 
 
 // Each base asks about a family's 10-bit codec string in BT.2020 primaries. PQ asks with the SMPTE
 // ST 2086 static metadata that an HDR10 copy carries; HLG carries none.
-const COMPATIBLE_BASE_PROBES: readonly { base: DeclaredCompatibleBase; color: ColorQuestion }[] = [
+// The transfer characteristics are the H.273 code points: 16 is PQ and 18 is HLG.
+const COMPATIBLE_BASE_PROBES: readonly {
+  base: DeclaredCompatibleBase
+  transferCharacteristics: number
+  color: ColorQuestion
+}[] = [
   {
     base: 'PQ',
+    transferCharacteristics: 16,
     color: { colorGamut: 'rec2020', transferFunction: 'pq', hdrMetadataType: 'smpteSt2086' },
   },
-  { base: 'HLG', color: { colorGamut: 'rec2020', transferFunction: 'hlg' } },
+  {
+    base: 'HLG',
+    transferCharacteristics: 18,
+    color: { colorGamut: 'rec2020', transferFunction: 'hlg' },
+  },
 ]
 
 // Dolby Vision profiles 5 and 10.0 have no compatible base, so an entry may list them without one
@@ -384,17 +402,19 @@ function probeHdr({
   family: VideoFamily
   askDecodingInfo: AskDecodingInfo
 }): Promise<HdrTierAnswers[]> {
-  const { tenBit, dolbyVision = [] } = family
-  if (!platform.displaysHighDynamicRange || !tenBit) {
+  const { hdrCodec, dolbyVision = [] } = family
+  if (!platform.displaysHighDynamicRange || !hdrCodec) {
     return Promise.resolve([])
   }
   return Promise.all(
     PICTURE_TIERS.map(async (tier) => {
-      const codec = tenBit.codec(tier.levels[family.codecFamily])
+      const level = tier.levels[family.codecFamily]
       const [bases, dolbyVisionAnswers] = await Promise.all([
         Promise.all(
-          COMPATIBLE_BASE_PROBES.map(({ color }) =>
-            askDecodingInfo(videoConfiguration(tier, codec, color)),
+          COMPATIBLE_BASE_PROBES.map(({ transferCharacteristics, color }) =>
+            askDecodingInfo(
+              videoConfiguration(tier, hdrCodec(level, transferCharacteristics), color),
+            ),
           ),
         ),
         Promise.all(
