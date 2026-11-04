@@ -81,7 +81,7 @@ function isSdrEntry(entry: VideoCapabilityEntryInput): boolean {
   return entry.compatibleBases.length === 1 && entry.compatibleBases[0] === 'SDR'
 }
 
-test('an HDR display adds HDR entries beside unchanged SDR entries, and the engine answers every HDR question', async ({
+test('an HDR display adds HDR entries the server accepts beside unchanged SDR entries, and the engine answers every HDR question', async ({
   page,
 }, testInfo) => {
   await page.route('**/hdr-declaration', (route) =>
@@ -108,14 +108,27 @@ test('an HDR display adds HDR entries beside unchanged SDR entries, and the engi
   expect(Object.keys(hdrDisplay.answers).length).toBeGreaterThan(0)
   expect(hdrDisplay.declaration.video.filter(isSdrEntry)).toEqual(sdrDisplay.declaration.video)
   expect(hdrDisplay.declaration.audio).toEqual(sdrDisplay.declaration.audio)
-  // Each HDR entry follows the 10-bit SDR entry whose maximums it keeps.
-  hdrDisplay.declaration.video.forEach((entry, index) => {
-    if (isSdrEntry(entry)) {
-      return
-    }
-    const sdrEntry = hdrDisplay.declaration.video[index - 1]
-    expect(sdrEntry.maxBitDepth).toBe(10)
-    expect({ ...entry, compatibleBases: ['SDR'], dolbyVisionProfiles: [] }).toEqual(sdrEntry)
+  // The server refuses an entry with no compatible base unless it lists Dolby Vision profile 5 or
+  // 10.0, and a Dolby Vision profile outside the entry's codec family (ADR 0049).
+  const dolbyVisionFamilies: Record<string, string> = {
+    PROFILE_5: 'HEVC',
+    PROFILE_8_1: 'HEVC',
+    PROFILE_8_4: 'HEVC',
+    PROFILE_10_0: 'AV1',
+    PROFILE_10_1: 'AV1',
+    PROFILE_10_4: 'AV1',
+  }
+  for (const entry of hdrDisplay.declaration.video.filter((video) => !isSdrEntry(video))) {
+    const profiles = entry.dolbyVisionProfiles.map(({ profile }) => profile)
+    expect(entry.maxBitDepth).toBe(10)
     expect(entry.hdr10Plus).toBe(false)
-  })
+    expect(entry.compatibleBases).not.toContain('SDR')
+    expect(
+      entry.compatibleBases.length > 0 ||
+        profiles.some((profile) => profile === 'PROFILE_5' || profile === 'PROFILE_10_0'),
+    ).toBe(true)
+    expect(profiles.every((profile) => dolbyVisionFamilies[profile] === entry.codecFamily)).toBe(
+      true,
+    )
+  }
 })

@@ -6,6 +6,7 @@ import type {
   CreatePlaybackSessionMutation,
   DeclaredCompatibleBase,
   DolbyVisionProfile,
+  DolbyVisionProfileCapabilityInput,
   VideoCapabilityEntryInput,
   VideoCodecFamily,
   VideoCodecProfile,
@@ -153,9 +154,15 @@ interface VideoFamily {
   maxTier?: VideoCodecTier
   eightBit: BitDepthProbe
   tenBit?: BitDepthProbe
+  hdr?: HdrProbe
+}
+
+interface HdrProbe {
+  // The codec profiles of a 10-bit HDR stream, which every HDR entry of the family lists.
+  profiles: readonly VideoCodecProfile[]
   // The 10-bit codec string an HDR question asks about, given the stream's transfer characteristics.
-  hdrCodec?: (level: number, transferCharacteristics: number) => string
-  dolbyVision?: readonly DolbyVisionProbe[]
+  codec: (level: number, transferCharacteristics: number) => string
+  dolbyVision: readonly DolbyVisionProbe[]
 }
 
 // A High decoder also decodes Main and Constrained Baseline streams, not Baseline's extra tools.
@@ -177,14 +184,17 @@ const HEVC: VideoFamily = {
     profiles: ['HEVC_MAIN_10'],
     codec: (level) => `hvc1.2.4.L${level * 3}.B0`,
   },
-  hdrCodec: (level) => `hvc1.2.4.L${level * 3}.B0`,
-  dolbyVision: [
-    { profiles: ['PROFILE_5'], codec: (level) => dolbyVisionCodec('dvh1.05', level) },
-    {
-      profiles: ['PROFILE_8_1', 'PROFILE_8_4'],
-      codec: (level) => dolbyVisionCodec('dvh1.08', level),
-    },
-  ],
+  hdr: {
+    profiles: ['HEVC_MAIN_10'],
+    codec: (level) => `hvc1.2.4.L${level * 3}.B0`,
+    dolbyVision: [
+      { profiles: ['PROFILE_5'], codec: (level) => dolbyVisionCodec('dvh1.05', level) },
+      {
+        profiles: ['PROFILE_8_1', 'PROFILE_8_4'],
+        codec: (level) => dolbyVisionCodec('dvh1.08', level),
+      },
+    ],
+  },
 }
 
 // AV1 Main covers both bit depths, so a 10-bit maximum also accepts 8-bit (ADR 0049): the 10-bit
@@ -194,17 +204,20 @@ const AV1: VideoFamily = {
   maxTier: 'MAIN',
   eightBit: { bitDepth: 8, profiles: ['AV1_MAIN'], codec: (level) => av1Codec(level, 8) },
   tenBit: { bitDepth: 10, profiles: [], codec: (level) => av1Codec(level, 10) },
-  // Omitted colour fields mean BT.709, and Chromium refuses a question whose codec string and colour
-  // disagree, so an HDR question names 4:2:0 chroma, BT.2020 primaries, the stream's transfer, the
-  // BT.2020 non-constant-luminance matrix and limited range.
-  hdrCodec: (level, transferCharacteristics) =>
-    `${av1Codec(level, 10)}.0.110.09.${transferCharacteristics}.09.0`,
-  dolbyVision: [
-    {
-      profiles: ['PROFILE_10_0', 'PROFILE_10_1', 'PROFILE_10_4'],
-      codec: (level) => dolbyVisionCodec('dav1.10', level),
-    },
-  ],
+  hdr: {
+    profiles: ['AV1_MAIN'],
+    // Omitted colour fields mean BT.709, and Chromium refuses a question whose codec string and
+    // colour disagree, so an HDR question names 4:2:0 chroma, BT.2020 primaries, the stream's
+    // transfer, the BT.2020 non-constant-luminance matrix and limited range.
+    codec: (level, transferCharacteristics) =>
+      `${av1Codec(level, 10)}.0.110.09.${transferCharacteristics}.09.0`,
+    dolbyVision: [
+      {
+        profiles: ['PROFILE_10_0', 'PROFILE_10_1', 'PROFILE_10_4'],
+        codec: (level) => dolbyVisionCodec('dav1.10', level),
+      },
+    ],
+  },
 }
 
 function dolbyVisionCodec(codecAndProfile: string, level: number): string {
@@ -402,8 +415,8 @@ function probeHdr({
   family: VideoFamily
   askDecodingInfo: AskDecodingInfo
 }): Promise<HdrTierAnswers[]> {
-  const { hdrCodec, dolbyVision = [] } = family
-  if (!platform.displaysHighDynamicRange || !hdrCodec) {
+  const { hdr } = family
+  if (!platform.displaysHighDynamicRange || !hdr) {
     return Promise.resolve([])
   }
   return Promise.all(
@@ -413,12 +426,12 @@ function probeHdr({
         Promise.all(
           COMPATIBLE_BASE_PROBES.map(({ transferCharacteristics, color }) =>
             askDecodingInfo(
-              videoConfiguration(tier, hdrCodec(level, transferCharacteristics), color),
+              videoConfiguration(tier, hdr.codec(level, transferCharacteristics), color),
             ),
           ),
         ),
         Promise.all(
-          dolbyVision.map((probe) =>
+          hdr.dolbyVision.map((probe) =>
             askDecodingInfo(videoConfiguration(tier, probe.codec(tier.dolbyVisionLevel))),
           ),
         ),
@@ -461,36 +474,75 @@ function familyEntries({
   if (tiers.length === 0) {
     tiers = tiersWithoutAnswerThatKeepsUp({ platform, family, answers })
   }
-  return tiers.flatMap((decodedTier) => {
-    const sdrEntry = videoEntry({ family, decodedTier, hls })
-    return [sdrEntry, ...hdrEntry({ family, decodedTier, hdrAnswers, sdrEntry })]
-  })
+  return [
+    ...tiers.map((decodedTier) => videoEntry({ family, decodedTier, hls })),
+    ...hdrEntries({ platform, family, hdrAnswers, h264Answers, hls }),
+  ]
 }
 
-// An HDR entry follows a 10-bit entry and keeps its maximums: the 10-bit answer at that tier
-// already says whether the browser keeps up, so an HDR answer only needs to be supported.
-function hdrEntry({
+interface HdrTier {
+  tier: PictureTier
+  compatibleBases: DeclaredCompatibleBase[]
+  dolbyVisionProfiles: DolbyVisionProfileCapabilityInput[]
+}
+
+// Each HDR format counts at a tier on its own answer, under the same keeps-up rules as SDR: a 10-bit
+// SDR answer that keeps up says nothing about tone mapping or a decoder's lower HDR level. HDR
+// tiers fold as SDR tiers do, so a tier stays when no wider tier accepts every format it does.
+function hdrEntries({
+  platform,
   family,
-  decodedTier,
   hdrAnswers,
-  sdrEntry,
+  h264Answers,
+  hls,
 }: {
+  platform: PlaybackPlatform
   family: VideoFamily
-  decodedTier: DecodedTier
   hdrAnswers: readonly HdrTierAnswers[]
-  sdrEntry: VideoCapabilityEntryInput
+  h264Answers: readonly TierAnswers[]
+  hls: boolean
 }): VideoCapabilityEntryInput[] {
-  const { tier, bitDepth } = decodedTier
-  if (bitDepth < 10) {
+  const { hdr } = family
+  if (!hdr) {
     return []
   }
-  const accepts = (answerOf: (answers: HdrTierAnswers) => ProbeAnswer) =>
-    isAcceptedUpTo({ tier, hdrAnswers, answerOf })
+  const keepsUp = keepsUpWithoutSmallerRefusal({
+    answers: hdrAnswers,
+    keepsUp: keepsUpOn({ platform, family, answers: hdrAnswers, h264Answers }),
+  })
+  const kept: HdrTier[] = []
+  for (const answers of hdrAnswers) {
+    const candidate = hdrTier({ hdr, answers, keepsUp })
+    if (candidate && !kept.some((wider) => isHdrTierCoveredBy(candidate, wider))) {
+      kept.push(candidate)
+    }
+  }
+  return kept.map(({ tier, compatibleBases, dolbyVisionProfiles }) => ({
+    ...videoEntry({
+      family,
+      decodedTier: { tier, bitDepth: 10, profiles: [...hdr.profiles] },
+      hls,
+    }),
+    compatibleBases,
+    dolbyVisionProfiles,
+  }))
+}
+
+function hdrTier({
+  hdr,
+  answers,
+  keepsUp,
+}: {
+  hdr: HdrProbe
+  answers: HdrTierAnswers
+  keepsUp: KeepsUp<HdrTierAnswers>
+}): HdrTier | null {
+  const { tier } = answers
   const compatibleBases = COMPATIBLE_BASE_PROBES.filter((_, index) =>
-    accepts((answers) => answers.bases[index]),
+    keepsUp(answers, (tierAnswers) => tierAnswers.bases[index]),
   ).map(({ base }) => base)
-  const dolbyVisionProfiles = (family.dolbyVision ?? [])
-    .filter((_, index) => accepts((answers) => answers.dolbyVision[index]))
+  const dolbyVisionProfiles = hdr.dolbyVision
+    .filter((_, index) => keepsUp(answers, (tierAnswers) => tierAnswers.dolbyVision[index]))
     .flatMap(({ profiles }) =>
       profiles.map((profile) => ({ profile, maxLevel: tier.dolbyVisionLevel })),
     )
@@ -498,28 +550,18 @@ function hdrEntry({
     BASELESS_DOLBY_VISION_PROFILES.has(profile),
   )
   if (compatibleBases.length === 0 && !listsBaselessProfile) {
-    return []
+    return null
   }
-  return [{ ...sdrEntry, compatibleBases, dolbyVisionProfiles }]
+  return { tier, compatibleBases, dolbyVisionProfiles }
 }
 
-// A maximum accepts every smaller value (ADR 0049), so an HDR answer counts at a tier only when no
-// smaller tier it holds was refused.
-function isAcceptedUpTo({
-  tier,
-  hdrAnswers,
-  answerOf,
-}: {
-  tier: PictureTier
-  hdrAnswers: readonly HdrTierAnswers[]
-  answerOf: (answers: HdrTierAnswers) => ProbeAnswer
-}): boolean {
-  const atTier = hdrAnswers.find((answers) => answers.tier === tier)
-  if (!atTier || !answerOf(atTier)?.supported) {
-    return false
-  }
-  return !hdrAnswers.some(
-    (smaller) => holdsPicture(tier, smaller.tier) && isRefusal(answerOf(smaller)),
+// A wider tier's Dolby Vision level is at least the narrower tier's, since it holds the picture.
+function isHdrTierCoveredBy(candidate: HdrTier, wider: HdrTier): boolean {
+  const widerProfiles = wider.dolbyVisionProfiles.map(({ profile }) => profile)
+  return (
+    holdsPicture(wider.tier, candidate.tier) &&
+    candidate.compatibleBases.every((base) => wider.compatibleBases.includes(base)) &&
+    candidate.dolbyVisionProfiles.every(({ profile }) => widerProfiles.includes(profile))
   )
 }
 

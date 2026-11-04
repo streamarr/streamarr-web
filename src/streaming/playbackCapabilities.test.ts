@@ -282,9 +282,32 @@ const UHD_AT_60_AV1_ENTRY = sdrVideoEntry({
   maxFrameRate: 60,
 })
 
-function hdrVideoEntry(entry: Partial<VideoCapabilityEntryInput>): VideoCapabilityEntryInput {
-  return sdrVideoEntry({ compatibleBases: ['PQ', 'HLG'], ...entry })
+// HDR10, HLG and Dolby Vision profiles 5 and 8 are 10-bit HEVC Main 10 streams. AV1 Main covers
+// 10-bit too.
+function hevcMainTen(maxLevel: number) {
+  return [{ profile: 'HEVC_MAIN_10' as const, maxLevel, maxTier: 'MAIN' as const }]
 }
+
+/** An HEVC HDR entry with PQ and HLG at 2160p60, unless the caller names other values. */
+function hdrVideoEntry(entry: Partial<VideoCapabilityEntryInput>): VideoCapabilityEntryInput {
+  return sdrVideoEntry({
+    codecFamily: 'HEVC',
+    codecProfiles: hevcMainTen(51),
+    maxBitDepth: 10,
+    maxWidth: 3840,
+    maxHeight: 2160,
+    maxFrameRate: 60,
+    compatibleBases: ['PQ', 'HLG'],
+    ...entry,
+  })
+}
+
+const UHD_AT_60_HEVC_HDR_ENTRY = hdrVideoEntry({})
+
+const UHD_AT_60_AV1_HDR_ENTRY = hdrVideoEntry({
+  codecFamily: 'AV1',
+  codecProfiles: [{ profile: 'AV1_MAIN', maxLevel: 51, maxTier: 'MAIN' }],
+})
 
 // An HDR10 stream is 10-bit PQ in BT.2020 primaries with SMPTE ST 2086 static metadata, and an HLG
 // stream is 10-bit HLG in BT.2020 primaries with no static metadata. An AV1 codecs parameter also
@@ -1335,15 +1358,15 @@ describe('declarePlaybackCapabilities', () => {
     await expect(declaration).resolves.toEqual(MINIMAL_DECLARATION)
   })
 
-  it('shouldAddAnHdrEntryWithPqAndHlgAfterEachHevcAndAv1EntryWhenTheDisplayShowsBoth', async () => {
+  it('shouldAddAnHevcAndAnAv1HdrEntryWithPqAndHlgWhenTheDisplayShowsBoth', async () => {
     const declaration = await declarePlaybackCapabilities(hdrPlatformFixture())
 
     expect(declaration.video).toEqual([
       DECLARATION_OF_EVERY_TIER.video[0],
       UHD_AT_60_HEVC_ENTRY,
-      hdrVideoEntry({ ...UHD_AT_60_HEVC_ENTRY, compatibleBases: ['PQ', 'HLG'] }),
+      UHD_AT_60_HEVC_HDR_ENTRY,
       UHD_AT_60_AV1_ENTRY,
-      hdrVideoEntry({ ...UHD_AT_60_AV1_ENTRY, compatibleBases: ['PQ', 'HLG'] }),
+      UHD_AT_60_AV1_HDR_ENTRY,
     ])
   })
 
@@ -1367,7 +1390,7 @@ describe('declarePlaybackCapabilities', () => {
 
       expect(familyEntries(declaration, 'HEVC')).toEqual([
         UHD_AT_60_HEVC_ENTRY,
-        hdrVideoEntry({ ...UHD_AT_60_HEVC_ENTRY, compatibleBases: [base] }),
+        hdrVideoEntry({ compatibleBases: [base] }),
       ])
     },
   )
@@ -1380,32 +1403,27 @@ describe('declarePlaybackCapabilities', () => {
     expect(declaration.video).toEqual(DECLARATION_OF_EVERY_TIER.video)
   })
 
-  it('shouldAddNoHdrEntryAfterAnEightBitEntryWhenTenBitDecodesOnlyWithDroppedFrames', async () => {
-    const browser = hdrBrowser()
+  it('shouldAddNoHdrEntryWhenHdrDecodesOnlyWithDroppedFramesAlthoughSdrKeepsUp', async () => {
+    const browser = hdrBrowser({ dolbyVision: ['dvh1.05', 'dvh1.08', 'dav1.10'] })
     const declaration = await declarePlaybackCapabilities(
       hdrPlatformFixture({
         decodingInfo: vi.fn(async (configuration: MediaDecodingConfiguration) => {
           const answered = await browser(configuration)
-          if (codecOf(configuration).startsWith('hvc1.2.')) {
-            return { ...answered, smooth: false }
+          const isHdrQuestion =
+            configuration.video?.transferFunction !== undefined ||
+            /^(dvh1|dav1)/.test(codecOf(configuration))
+          if (isHdrQuestion && answered.supported) {
+            return { supported: true, smooth: false, powerEfficient: true }
           }
           return answered
         }),
       }),
     )
 
-    expect(familyEntries(declaration, 'HEVC')).toEqual([
-      sdrVideoEntry({
-        codecFamily: 'HEVC',
-        codecProfiles: [{ profile: 'HEVC_MAIN', maxLevel: 51, maxTier: 'MAIN' }],
-        maxWidth: 3840,
-        maxHeight: 2160,
-        maxFrameRate: 60,
-      }),
-    ])
+    expect(declaration.video).toEqual(DECLARATION_OF_EVERY_TIER.video)
   })
 
-  it('shouldGiveEachHdrEntryTheMaximumsOfTheEntryItFollowsWhenFourKDecodesOnlyAtThirtyFrames', async () => {
+  it('shouldDeclareEachHdrPairingWhenFourKDecodesOnlyAtThirtyFrames', async () => {
     const browser = hdrBrowser({ dolbyVision: ['dvh1.08'] })
     const declaration = await declarePlaybackCapabilities(
       hdrPlatformFixture({
@@ -1417,44 +1435,81 @@ describe('declarePlaybackCapabilities', () => {
         }),
       }),
     )
-    const uhdAt30 = sdrVideoEntry({
-      codecFamily: 'HEVC',
-      codecProfiles: [
-        { profile: 'HEVC_MAIN', maxLevel: 50, maxTier: 'MAIN' },
-        { profile: 'HEVC_MAIN_10', maxLevel: 50, maxTier: 'MAIN' },
-      ],
-      maxBitDepth: 10,
-      maxWidth: 3840,
-      maxHeight: 2160,
-    })
-    const fullHdAt60 = sdrVideoEntry({
-      codecFamily: 'HEVC',
-      codecProfiles: [
-        { profile: 'HEVC_MAIN', maxLevel: 41, maxTier: 'MAIN' },
-        { profile: 'HEVC_MAIN_10', maxLevel: 41, maxTier: 'MAIN' },
-      ],
-      maxBitDepth: 10,
-      maxFrameRate: 60,
-    })
+    const profileEight = (maxLevel: number) => [
+      { profile: 'PROFILE_8_1' as const, maxLevel },
+      { profile: 'PROFILE_8_4' as const, maxLevel },
+    ]
+
+    expect(
+      familyEntries(declaration, 'HEVC').filter((entry) => entry.compatibleBases[0] !== 'SDR'),
+    ).toEqual([
+      hdrVideoEntry({
+        codecProfiles: hevcMainTen(50),
+        maxFrameRate: 30,
+        dolbyVisionProfiles: profileEight(7),
+      }),
+      hdrVideoEntry({
+        codecProfiles: hevcMainTen(41),
+        maxWidth: 1920,
+        maxHeight: 1080,
+        dolbyVisionProfiles: profileEight(5),
+      }),
+    ])
+  })
+
+  it('shouldDeclarePqUpToTheLargestPictureItShowsWhenTheBrowserRefusesPqOnlyAtFourK', async () => {
+    const browser = hdrBrowser()
+    const declaration = await declarePlaybackCapabilities(
+      hdrPlatformFixture({
+        decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) => {
+          if (
+            configuration.video?.transferFunction === 'pq' &&
+            configuration.video.width === 3840
+          ) {
+            return Promise.resolve(answer(false))
+          }
+          return browser(configuration)
+        }),
+      }),
+    )
 
     expect(familyEntries(declaration, 'HEVC')).toEqual([
-      uhdAt30,
-      hdrVideoEntry({
-        ...uhdAt30,
-        compatibleBases: ['PQ', 'HLG'],
-        dolbyVisionProfiles: [
-          { profile: 'PROFILE_8_1', maxLevel: 7 },
-          { profile: 'PROFILE_8_4', maxLevel: 7 },
-        ],
+      UHD_AT_60_HEVC_ENTRY,
+      hdrVideoEntry({ compatibleBases: ['HLG'] }),
+      hdrVideoEntry({ codecProfiles: hevcMainTen(41), maxWidth: 1920, maxHeight: 1080 }),
+    ])
+  })
+
+  it('shouldDeclareProfileFiveAtThirtyFramesBesidePqAtSixtyWhenTheBrowserDecodesDolbyVisionOnlyUpToFourKAtThirty', async () => {
+    const browser = hdrBrowser({ dolbyVision: ['dvh1.05'] })
+    const declaration = await declarePlaybackCapabilities(
+      hdrPlatformFixture({
+        decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) => {
+          if (
+            codecOf(configuration).startsWith('dvh1') &&
+            configuration.video?.framerate === 60 &&
+            configuration.video.width === 3840
+          ) {
+            return Promise.resolve(answer(false))
+          }
+          return browser(configuration)
+        }),
       }),
-      fullHdAt60,
+    )
+
+    expect(familyEntries(declaration, 'HEVC')).toEqual([
+      UHD_AT_60_HEVC_ENTRY,
+      UHD_AT_60_HEVC_HDR_ENTRY,
       hdrVideoEntry({
-        ...fullHdAt60,
-        compatibleBases: ['PQ', 'HLG'],
-        dolbyVisionProfiles: [
-          { profile: 'PROFILE_8_1', maxLevel: 5 },
-          { profile: 'PROFILE_8_4', maxLevel: 5 },
-        ],
+        codecProfiles: hevcMainTen(50),
+        maxFrameRate: 30,
+        dolbyVisionProfiles: [{ profile: 'PROFILE_5', maxLevel: 7 }],
+      }),
+      hdrVideoEntry({
+        codecProfiles: hevcMainTen(41),
+        maxWidth: 1920,
+        maxHeight: 1080,
+        dolbyVisionProfiles: [{ profile: 'PROFILE_5', maxLevel: 5 }],
       }),
     ])
   })
@@ -1477,7 +1532,7 @@ describe('declarePlaybackCapabilities', () => {
 
     expect(familyEntries(declaration, 'HEVC')).toEqual([
       UHD_AT_60_HEVC_ENTRY,
-      hdrVideoEntry({ ...UHD_AT_60_HEVC_ENTRY, compatibleBases: ['HLG'] }),
+      hdrVideoEntry({ compatibleBases: ['HLG'] }),
     ])
   })
 
@@ -1511,14 +1566,14 @@ describe('declarePlaybackCapabilities', () => {
       expect((await declaration).video).toEqual([
         DECLARATION_OF_EVERY_TIER.video[0],
         UHD_AT_60_HEVC_ENTRY,
-        hdrVideoEntry({ ...UHD_AT_60_HEVC_ENTRY, compatibleBases: ['HLG'] }),
+        hdrVideoEntry({ compatibleBases: ['HLG'] }),
         UHD_AT_60_AV1_ENTRY,
-        hdrVideoEntry({ ...UHD_AT_60_AV1_ENTRY, compatibleBases: ['HLG'] }),
+        { ...UHD_AT_60_AV1_HDR_ENTRY, compatibleBases: ['HLG'] },
       ])
     },
   )
 
-  it('shouldAddAnHdrEntryAfterPowerEfficientHevcWhenIphoneSafariAnswersHdrPowerEfficientButNotSmooth', async () => {
+  it('shouldDeclareHevcHdrWhenIphoneSafariAnswersItPowerEfficientButNotSmooth', async () => {
     const browser = hdrBrowser()
     const declaration = await declarePlaybackCapabilities(
       hdrPlatformFixture({
@@ -1535,7 +1590,7 @@ describe('declarePlaybackCapabilities', () => {
 
     expect(familyEntries(declaration, 'HEVC')).toEqual([
       UHD_AT_60_HEVC_ENTRY,
-      hdrVideoEntry({ ...UHD_AT_60_HEVC_ENTRY, compatibleBases: ['PQ', 'HLG'] }),
+      UHD_AT_60_HEVC_HDR_ENTRY,
     ])
   })
 
@@ -1544,19 +1599,19 @@ describe('declarePlaybackCapabilities', () => {
       hdrPlatformFixture({ decodingInfo: hdrBrowser({ dolbyVision: ['dvh1.05', 'dvh1.08'] }) }),
     )
 
-    expect(familyEntries(declaration, 'HEVC')).toEqual([
+    expect(declaration.video).toEqual([
+      DECLARATION_OF_EVERY_TIER.video[0],
       UHD_AT_60_HEVC_ENTRY,
       hdrVideoEntry({
-        ...UHD_AT_60_HEVC_ENTRY,
-        compatibleBases: ['PQ', 'HLG'],
         dolbyVisionProfiles: [
           { profile: 'PROFILE_5', maxLevel: 9 },
           { profile: 'PROFILE_8_1', maxLevel: 9 },
           { profile: 'PROFILE_8_4', maxLevel: 9 },
         ],
       }),
+      UHD_AT_60_AV1_ENTRY,
+      UHD_AT_60_AV1_HDR_ENTRY,
     ])
-    expect(familyEntries(declaration, 'AV1')[1]?.dolbyVisionProfiles).toEqual([])
   })
 
   it('shouldListAv1DolbyVisionProfilesAtTheEntrysLevelWhenTheBrowserDecodesDav1', async () => {
@@ -1564,19 +1619,20 @@ describe('declarePlaybackCapabilities', () => {
       hdrPlatformFixture({ decodingInfo: hdrBrowser({ dolbyVision: ['dav1.10'] }) }),
     )
 
-    expect(familyEntries(declaration, 'AV1')).toEqual([
+    expect(declaration.video).toEqual([
+      DECLARATION_OF_EVERY_TIER.video[0],
+      UHD_AT_60_HEVC_ENTRY,
+      UHD_AT_60_HEVC_HDR_ENTRY,
       UHD_AT_60_AV1_ENTRY,
-      hdrVideoEntry({
-        ...UHD_AT_60_AV1_ENTRY,
-        compatibleBases: ['PQ', 'HLG'],
+      {
+        ...UHD_AT_60_AV1_HDR_ENTRY,
         dolbyVisionProfiles: [
           { profile: 'PROFILE_10_0', maxLevel: 9 },
           { profile: 'PROFILE_10_1', maxLevel: 9 },
           { profile: 'PROFILE_10_4', maxLevel: 9 },
         ],
-      }),
+      },
     ])
-    expect(familyEntries(declaration, 'HEVC')[1]?.dolbyVisionProfiles).toEqual([])
   })
 
   it('shouldDeclareNoDolbyVisionProfileWhenTheBrowserRefusesItForASmallerPictureTheEntryHolds', async () => {
@@ -1594,7 +1650,7 @@ describe('declarePlaybackCapabilities', () => {
 
     expect(familyEntries(declaration, 'HEVC')).toEqual([
       UHD_AT_60_HEVC_ENTRY,
-      hdrVideoEntry({ ...UHD_AT_60_HEVC_ENTRY, compatibleBases: ['PQ', 'HLG'] }),
+      UHD_AT_60_HEVC_HDR_ENTRY,
     ])
   })
 
@@ -1606,7 +1662,6 @@ describe('declarePlaybackCapabilities', () => {
     expect(familyEntries(declaration, 'HEVC')).toEqual([
       UHD_AT_60_HEVC_ENTRY,
       hdrVideoEntry({
-        ...UHD_AT_60_HEVC_ENTRY,
         compatibleBases: [],
         dolbyVisionProfiles: [{ profile: 'PROFILE_5', maxLevel: 9 }],
       }),
