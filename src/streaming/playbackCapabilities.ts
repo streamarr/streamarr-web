@@ -7,11 +7,13 @@ import type {
   DeclaredCompatibleBase,
   DolbyVisionProfile,
   DolbyVisionProfileCapabilityInput,
+  SourceContainer,
   VideoCapabilityEntryInput,
   VideoCodecFamily,
   VideoCodecProfile,
   VideoCodecProfileCapabilityInput,
   VideoCodecTier,
+  VideoSampleEntry,
 } from '../graphql/generated/graphql'
 
 type CreatePlaybackSessionErrorTypename = NonNullable<
@@ -302,19 +304,31 @@ interface HdrTierAnswers {
   dolbyVision: ProbeAnswer[]
 }
 
-// maxChannels is null when the browser confirmed no channel count for the codec.
+// maxChannels is null when the HLS path confirmed no channel count for the codec. The direct-play
+// containers are those the media element plays the codec from, at the probed channel count.
 interface AudioAnswer {
   codec: AudioCodec
+  channels: number
   maxChannels: number | null
+  directPlayContainers: SourceContainer[]
 }
+
+type VideoQuestion = Omit<MediaDecodingConfiguration, 'type'> & { video: VideoConfiguration }
 
 type AskDecodingInfo = (
   configuration: Omit<MediaDecodingConfiguration, 'type'>,
 ) => Promise<ProbeAnswer>
 
+interface Askers {
+  /** Asks about the path that plays HLS: hls.js's media source, or the media element itself. */
+  askDecodingInfo: AskDecodingInfo
+  /** Asks about the media element playing a file, as direct play does. */
+  askFileDecodingInfo: AskDecodingInfo
+}
+
 /**
- * What this browser plays over HLS, built fresh for each playback session from the platform's
- * answers. Never rejects: each probe the browser rejects or leaves unanswered counts as
+ * What this browser plays over HLS, and from MP4 and WebM files in its own media element, built
+ * fresh for each playback session from the platform's answers. Never rejects: each probe the browser rejects or leaves unanswered counts as
  * unconfirmed, and a browser without decodingInfo gets the minimal declaration.
  */
 export async function declarePlaybackCapabilities(
@@ -333,12 +347,16 @@ export async function declarePlaybackCapabilities(
   const deadline = new Promise<null>((resolve) => {
     timer = setTimeout(() => resolve(null), DECODING_INFO_TIMEOUT_MS)
   })
-  const askDecodingInfo: AskDecodingInfo = (configuration) => {
-    // Called inside an async function so a decodingInfo that throws synchronously becomes a
-    // rejection, which settles this probe alone instead of failing every probe in the declaration.
-    const answer = (async () => decodingInfo({ type, ...configuration }))()
-    return Promise.race([answer.catch(() => null), deadline])
-  }
+  const askAs =
+    (asked: MediaDecodingType): AskDecodingInfo =>
+    (configuration) => {
+      // Called inside an async function so a decodingInfo that throws synchronously becomes a
+      // rejection, which settles this probe alone instead of failing every probe in the declaration.
+      const answer = (async () => decodingInfo({ type: asked, ...configuration }))()
+      return Promise.race([answer.catch(() => null), deadline])
+    }
+  // Direct play hands the file to the media element, so its questions ask about file playback.
+  const askers: Askers = { askDecodingInfo: askAs(type), askFileDecodingInfo: askAs('file') }
   try {
     // The audio probes ask at the channel count the entries declare, so the output comes first.
     // A probe started after the deadline could not count, so an unanswered read starts none.
@@ -349,7 +367,7 @@ export async function declarePlaybackCapabilities(
     if (outputChannels === null) {
       return minimalDeclaration(hls)
     }
-    return await probeDeclaration({ platform, askDecodingInfo, hls, outputChannels })
+    return await probeDeclaration({ platform, askers, hls, outputChannels })
   } finally {
     clearTimeout(timer)
   }
@@ -357,30 +375,40 @@ export async function declarePlaybackCapabilities(
 
 async function probeDeclaration({
   platform,
-  askDecodingInfo,
+  askers,
   hls,
   outputChannels,
 }: {
   platform: PlaybackPlatform
-  askDecodingInfo: AskDecodingInfo
+  askers: Askers
   hls: boolean
   outputChannels: number
 }): Promise<ClientCapabilityDeclarationInput> {
+  const { askDecodingInfo, askFileDecodingInfo } = askers
   // A host without an audio device reports 0 channels, and every output plays stereo.
   const channels = Math.min(Math.max(outputChannels, STEREO), SURROUND_MAXIMUM)
   const [video, audio] = await Promise.all([
-    probeVideo({ platform, askDecodingInfo, hls }),
+    probeVideo({ platform, askDecodingInfo, hls }).then((entries) =>
+      withVideoDirectPlay({ platform, askFileDecodingInfo, entries }),
+    ),
     Promise.all(
       AUDIO_CODECS.map(({ codec, mimeCodec }) =>
-        probeAudio({ codec, mimeCodec, channels, askDecodingInfo }),
+        probeAudio({ codec, mimeCodec, channels, platform, askers }),
       ),
     ),
   ])
   return {
-    video,
-    audio: audioEntries({ answers: audio, userAgent: platform.userAgent, hls }),
+    video: video.filter(appliesToADelivery),
+    audio: audioEntries({ answers: audio, userAgent: platform.userAgent, hls }).filter(
+      appliesToADelivery,
+    ),
     selectsAudioTrackInDirectPlay: SELECTS_AUDIO_TRACK_IN_DIRECT_PLAY,
   }
+}
+
+// The server refuses an entry that applies neither to HLS nor to direct play from a container.
+function appliesToADelivery(entry: { hls: boolean; directPlayContainers?: unknown[] }): boolean {
+  return entry.hls || (entry.directPlayContainers?.length ?? 0) > 0
 }
 
 async function probeVideo({
@@ -763,7 +791,7 @@ function videoConfiguration(
   tier: PictureTier,
   codec: string,
   color: ColorQuestion = {},
-): Omit<MediaDecodingConfiguration, 'type'> {
+): VideoQuestion {
   return {
     video: {
       contentType: `video/mp4; codecs="${codec}"`,
@@ -862,25 +890,50 @@ async function probeAudio({
   codec,
   mimeCodec,
   channels,
-  askDecodingInfo,
+  platform,
+  askers,
 }: {
   codec: AudioCodec
   mimeCodec: string
   channels: number
-  askDecodingInfo: AskDecodingInfo
+  platform: PlaybackPlatform
+  askers: Askers
 }): Promise<AudioAnswer> {
-  const answer = await askDecodingInfo({
-    audio: {
-      contentType: `audio/mp4; codecs="${mimeCodec}"`,
-      channels: String(channels),
-      bitrate: 384_000,
-      samplerate: 48_000,
-    },
+  const audio = (contentType: string): Omit<MediaDecodingConfiguration, 'type'> => ({
+    audio: { contentType, channels: String(channels), bitrate: 384_000, samplerate: 48_000 },
   })
-  if (!answer?.supported) {
-    return { codec, maxChannels: null }
+  const playsFromFile = async ({ container, mimeType }: AudioFileType) => {
+    const contentType = `${mimeType}; codecs="${mimeCodec}"`
+    if (platform.canPlayType(contentType) !== 'probably') {
+      return []
+    }
+    const answer = await askers.askFileDecodingInfo(audio(contentType))
+    return answer?.supported ? [container] : []
   }
-  return { codec, maxChannels: channels }
+  const [answer, directPlayContainers] = await Promise.all([
+    askers.askDecodingInfo(audio(`audio/mp4; codecs="${mimeCodec}"`)),
+    Promise.all(audioFileTypes(codec).map(playsFromFile)).then((found) => found.flat()),
+  ])
+  return {
+    codec,
+    channels,
+    maxChannels: answer?.supported ? channels : null,
+    directPlayContainers,
+  }
+}
+
+interface AudioFileType {
+  container: SourceContainer
+  mimeType: string
+}
+
+// The browser plays Matroska only as WebM, whose audio is Opus or Vorbis.
+function audioFileTypes(codec: AudioCodec): AudioFileType[] {
+  const mp4: AudioFileType = { container: 'MP4', mimeType: 'audio/mp4' }
+  if (codec === 'OPUS') {
+    return [mp4, { container: 'MATROSKA', mimeType: 'audio/webm' }]
+  }
+  return [mp4]
 }
 
 function audioEntries({
@@ -893,18 +946,43 @@ function audioEntries({
   hls: boolean
 }): AudioCapabilityEntryInput[] {
   const entries: AudioCapabilityEntryInput[] = []
-  for (const { codec, maxChannels } of answers) {
+  for (const { codec, channels, maxChannels, directPlayContainers } of answers) {
     if (codec === 'AAC') {
       // The server's audio encode is AAC, so every declaration carries an HLS AAC entry.
-      entries.push({ codec, maxChannels: maxChannels ?? STEREO, hls: true })
+      entries.push(
+        withContainers<AudioCapabilityEntryInput>(
+          { codec, maxChannels: maxChannels ?? STEREO, hls: true },
+          directPlayContainers,
+        ),
+      )
       continue
     }
-    if (maxChannels === null) {
+    if (maxChannels === null && directPlayContainers.length === 0) {
       continue
     }
-    entries.push({ codec, maxChannels: channelCap({ codec, maxChannels, userAgent }), hls })
+    entries.push(
+      withContainers<AudioCapabilityEntryInput>(
+        {
+          codec,
+          maxChannels: channelCap({ codec, maxChannels: maxChannels ?? channels, userAgent }),
+          hls: hls && maxChannels !== null,
+        },
+        directPlayContainers,
+      ),
+    )
   }
   return entries
+}
+
+// An entry that applies to no direct play leaves the list out, which the server reads as empty.
+function withContainers<T extends { directPlayContainers?: SourceContainer[] | null }>(
+  entry: T,
+  directPlayContainers: SourceContainer[],
+): T {
+  if (directPlayContainers.length === 0) {
+    return entry
+  }
+  return { ...entry, directPlayContainers }
 }
 
 // Measured: 5.1 Opus fails in WebKit's native player and in hls.js on WebKit.
@@ -926,6 +1004,211 @@ function channelCap({
 // Every iPhone browser is WebKit; Blink keeps AppleWebKit in its user agent beside Chrome/.
 function isWebKit(userAgent: string): boolean {
   return /AppleWebKit\//.test(userAgent) && !/\b(?:Chrome|Chromium)\//.test(userAgent)
+}
+
+// The sample entries that name a coding format in an MP4 file, keyed by the one each probe's codec
+// string starts with. A browser may play a format from one sample entry and not another: WebKit
+// plays hvc1 and avc1 files, never hev1 or avc3.
+const SAMPLE_ENTRIES: Record<string, readonly { sampleEntry: VideoSampleEntry; fourCc: string }[]> =
+  {
+    avc1: [
+      { sampleEntry: 'AVC1', fourCc: 'avc1' },
+      { sampleEntry: 'AVC3', fourCc: 'avc3' },
+    ],
+    hvc1: [
+      { sampleEntry: 'HVC1', fourCc: 'hvc1' },
+      { sampleEntry: 'HEV1', fourCc: 'hev1' },
+    ],
+    av01: [{ sampleEntry: 'AV01', fourCc: 'av01' }],
+    dvh1: [
+      { sampleEntry: 'DVH1', fourCc: 'dvh1' },
+      { sampleEntry: 'DVHE', fourCc: 'dvhe' },
+    ],
+    dav1: [{ sampleEntry: 'DAV1', fourCc: 'dav1' }],
+  }
+
+const VIDEO_FAMILIES: Partial<Record<VideoCodecFamily, VideoFamily>> = { H264, HEVC, AV1 }
+
+// Direct play reuses each entry's limits, so the media element must play a file at the entry's
+// widest picture for every stream the entry accepts. A sample entry counts only when the element
+// plays every such stream from it, and MP4 counts only beside a sample entry, as the server
+// requires. Matroska counts only as WebM.
+async function withVideoDirectPlay({
+  platform,
+  askFileDecodingInfo,
+  entries,
+}: {
+  platform: PlaybackPlatform
+  askFileDecodingInfo: AskDecodingInfo
+  entries: VideoCapabilityEntryInput[]
+}): Promise<VideoCapabilityEntryInput[]> {
+  return Promise.all(
+    entries.map(async (entry) => {
+      const family = VIDEO_FAMILIES[entry.codecFamily]
+      if (!family) {
+        return entry
+      }
+      const questions = entryQuestions({ family, entry })
+      const playsAll = (asked: readonly VideoQuestion[]) =>
+        playsEveryFile({ platform, family, askFileDecodingInfo, questions: asked })
+      const [sampleEntries, webm] = await Promise.all([
+        mp4SampleEntries({ questions, playsAll }),
+        playsAll(webmQuestions(questions)),
+      ])
+      const containers: SourceContainer[] = []
+      if (sampleEntries.length > 0) {
+        containers.push('MP4')
+      }
+      if (webm) {
+        containers.push('MATROSKA')
+      }
+      if (containers.length === 0) {
+        return entry
+      }
+      return { ...withContainers(entry, containers), directPlaySampleEntries: sampleEntries }
+    }),
+  )
+}
+
+async function mp4SampleEntries({
+  questions,
+  playsAll,
+}: {
+  questions: readonly VideoQuestion[]
+  playsAll: (asked: readonly VideoQuestion[]) => Promise<boolean>
+}): Promise<VideoSampleEntry[]> {
+  const byFourCc = new Map<string, VideoQuestion[]>()
+  for (const question of questions) {
+    const fourCc = fourCcOf(question)
+    byFourCc.set(fourCc, [...(byFourCc.get(fourCc) ?? []), question])
+  }
+  const accepted = await Promise.all(
+    [...byFourCc].flatMap(([fourCc, asked]) =>
+      (SAMPLE_ENTRIES[fourCc] ?? []).map(async ({ sampleEntry, fourCc: relabelled }) => {
+        const plays = await playsAll(asked.map((question) => withFourCc(question, relabelled)))
+        return plays ? [sampleEntry] : []
+      }),
+    ),
+  )
+  return accepted.flat()
+}
+
+async function playsEveryFile({
+  platform,
+  family,
+  askFileDecodingInfo,
+  questions,
+}: {
+  platform: PlaybackPlatform
+  family: VideoFamily
+  askFileDecodingInfo: AskDecodingInfo
+  questions: readonly VideoQuestion[]
+}): Promise<boolean> {
+  if (
+    questions.length === 0 ||
+    questions.some(({ video }) => platform.canPlayType(video.contentType) !== 'probably')
+  ) {
+    return false
+  }
+  const answers = await Promise.all(questions.map((question) => askFileDecodingInfo(question)))
+  return answers.every((answer) => keepsUpFromFile({ platform, family, answer }))
+}
+
+// As for HLS, power efficiency stands in for smoothness only for HEVC on WebKit, whose entries
+// already hold at most the H.264 cap.
+function keepsUpFromFile({
+  platform,
+  family,
+  answer,
+}: {
+  platform: PlaybackPlatform
+  family: VideoFamily
+  answer: ProbeAnswer
+}): boolean {
+  if (isSmooth(answer)) {
+    return true
+  }
+  return family === HEVC && isWebKit(platform.userAgent) && isPowerEfficient(answer)
+}
+
+// The questions whose answers made the entry: one per bit depth of its SDR profiles, or one per
+// compatible base and Dolby Vision codec string of an HDR entry, at its widest picture.
+function entryQuestions({
+  family,
+  entry,
+}: {
+  family: VideoFamily
+  entry: VideoCapabilityEntryInput
+}): VideoQuestion[] {
+  const tier = PICTURE_TIERS.find(
+    ({ width, height, frameRate }) =>
+      width === entry.maxWidth && height === entry.maxHeight && frameRate === entry.maxFrameRate,
+  )
+  if (!tier) {
+    return []
+  }
+  const level = tier.levels[family.codecFamily]
+  const { hdr } = family
+  if (!entry.compatibleBases.includes('SDR') && hdr) {
+    return hdrQuestions({ family, hdr, tier, entry })
+  }
+  const profiles = entry.codecProfiles.map(({ profile }) => profile)
+  return [family.eightBit, family.tenBit]
+    .filter((probe) => probe !== undefined)
+    .filter(
+      (probe) =>
+        probe.bitDepth <= entry.maxBitDepth &&
+        (probe.profiles.length === 0 ||
+          probe.profiles.some((profile) => profiles.includes(profile))),
+    )
+    .map((probe) => videoConfiguration(tier, probe.codec(level)))
+}
+
+function hdrQuestions({
+  family,
+  hdr,
+  tier,
+  entry,
+}: {
+  family: VideoFamily
+  hdr: HdrProbe
+  tier: PictureTier
+  entry: VideoCapabilityEntryInput
+}): VideoQuestion[] {
+  const level = tier.levels[family.codecFamily]
+  const listed = entry.dolbyVisionProfiles.map(({ profile }) => profile)
+  const bases = COMPATIBLE_BASE_PROBES.filter(({ base }) =>
+    entry.compatibleBases.includes(base),
+  ).map(({ transferCharacteristics, color }) =>
+    videoConfiguration(tier, hdr.codec(level, transferCharacteristics), color),
+  )
+  const dolbyVision = hdr.dolbyVision
+    .filter(({ profiles }) => profiles.some((profile) => listed.includes(profile)))
+    .map((probe) => videoConfiguration(tier, probe.codec(tier.dolbyVisionLevel)))
+  return [...bases, ...dolbyVision]
+}
+
+const CODECS_PARAMETER = /codecs="(\w{4})/
+
+function fourCcOf({ video }: VideoQuestion): string {
+  return CODECS_PARAMETER.exec(video.contentType)?.[1] ?? ''
+}
+
+function withFourCc(question: VideoQuestion, fourCc: string): VideoQuestion {
+  const contentType = question.video.contentType.replace(CODECS_PARAMETER, `codecs="${fourCc}`)
+  return { ...question, video: { ...question.video, contentType } }
+}
+
+// WebM carries AV1 but not Dolby Vision, H.264 or HEVC.
+function webmQuestions(questions: readonly VideoQuestion[]): VideoQuestion[] {
+  const av1 = questions.filter((question) => fourCcOf(question) === 'av01')
+  if (av1.length < questions.length) {
+    return []
+  }
+  return av1.map((question) => {
+    const contentType = question.video.contentType.replace('video/mp4', 'video/webm')
+    return { ...question, video: { ...question.video, contentType } }
+  })
 }
 
 function minimalDeclaration(hls: boolean): ClientCapabilityDeclarationInput {
