@@ -55,4 +55,16 @@ describe('networkRouteOf', () => {
   ])('shouldReportInternetWhenHostIsNotPrivate($reason)', ({ address }) => {
     expect(networkRouteOf(hostnameOf(address))).toBe('INTERNET')
   })
+
+  // location.hostname is always canonical, so these only show that other input fails safe.
+  it.each([
+    { hostname: '192.168.1.300', reason: 'an octet above 255' },
+    { hostname: '192.168.1', reason: 'three octets' },
+    { hostname: '[fd00::1::2]', reason: 'two :: in one address' },
+    { hostname: '[fd00:1:2:3:4:5:6]', reason: 'seven groups without ::' },
+    { hostname: '[fd00:1:2:3:4:5:6::7]', reason: ':: that stands for no group' },
+    { hostname: '[fd00::zzzz]', reason: 'a group that is not hex' },
+  ])('shouldReportInternetWhenHostIsNotACanonicalAddress($reason)', ({ hostname }) => {
+    expect(networkRouteOf(hostname)).toBe('INTERNET')
+  })
 })
