@@ -11,7 +11,7 @@ import type {
   SetLanguagePreferencesMutationVariables,
 } from '../graphql/generated/graphql'
 import { watchingConnection } from '../test/continueWatchingFixtures'
-import { answersThenHolds, networkFailure } from '../test/graphqlResponses'
+import { answersThenHolds, comeBackOnline, networkFailure } from '../test/graphqlResponses'
 import { meFixture } from '../test/meFixture'
 import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
@@ -70,6 +70,20 @@ function serve({
     ),
   )
   return state
+}
+
+// Settles once the server has answered the next request named `operationName`.
+function answerDelivered(operationName: string): Promise<void> {
+  return new Promise((resolve) => {
+    const delivered = async ({ request }: { request: Request }) => {
+      const body = (await request.clone().json()) as { operationName?: string }
+      if (body.operationName === operationName) {
+        server.events.removeListener('response:mocked', delivered)
+        resolve()
+      }
+    }
+    server.events.on('response:mocked', delivered)
+  })
 }
 
 async function audioLanguages(): Promise<string[]> {
@@ -276,6 +290,26 @@ describe('language settings', () => {
 
     await waitFor(() => expect(remove).toBeEnabled())
     await user.click(remove)
+    await waitFor(() => expect(state.inputs.map((input) => input.audioLanguages)).toEqual([['EN']]))
+  })
+
+  it('shouldSaveNothingWhileAReadBesideTheScreenMayStillAnswerWithOlderPreferences', async () => {
+    const state = serve()
+    const answer = { me: { __typename: 'Me', languagePreferences: preferences() } }
+    const reads = answersThenHolds(answer, answer)
+    server.use(graphql.query('LanguageSettings', reads.resolver))
+    const { user } = renderAppAt(LANGUAGES)
+    await screen.findByRole('button', { name: 'Remove Japanese' })
+    comeBackOnline()
+    await waitFor(() => expect(reads.calls).toBe(2))
+
+    await user.click(screen.getByRole('button', { name: 'Remove Japanese' }))
+    const readAnswered = answerDelivered('LanguageSettings')
+    reads.release()
+    await readAnswered
+
+    expect(state.inputs).toEqual([])
+    await user.click(screen.getByRole('button', { name: 'Remove Japanese' }))
     await waitFor(() => expect(state.inputs.map((input) => input.audioLanguages)).toEqual([['EN']]))
   })
 

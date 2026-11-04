@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@apollo/client/react'
+import { useApolloClient, useMutation, useQuery } from '@apollo/client/react'
 import { ActionIcon, Center, Input, Loader, Radio, Select } from '@mantine/core'
 import { useId, useState } from 'react'
 import {
@@ -7,6 +7,7 @@ import {
   type Language,
   type ProfileLanguagePreferencesFieldsFragment,
 } from '../graphql/generated/graphql'
+import { isReading } from '../graphql/readAgain'
 import { requestFailureMessage } from '../graphql/requestErrors'
 import { userErrorMessage } from '../graphql/userErrors'
 import { FailureRow } from '../ui/Failure'
@@ -38,6 +39,7 @@ export function LanguageSettings() {
     fetchPolicy: 'cache-and-network',
     notifyOnNetworkStatusChange: true,
   })
+  const client = useApolloClient()
   const [save, { loading: saving }] = useMutation(SetLanguagePreferencesDocument)
   // A save sends every field from the screen, so none starts while a read may still replace what
   // the screen shows with an answer older than the save.
@@ -47,7 +49,8 @@ export function LanguageSettings() {
   const data = query.data
 
   async function change(next: Preferences) {
-    if (busy) {
+    // A revalidation reads beside the query without marking it loading, so it is asked here.
+    if (saving || [...client.getObservableQueries([LanguageSettingsDocument])].some(isReading)) {
       return
     }
     setRefusal(null)
