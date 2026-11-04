@@ -18,12 +18,7 @@ import { hlsPlaybackConfig } from './hlsPlaybackConfig'
 import { type DynamicRangeChoice, hlsVideoPreference } from './hlsVideoPreference'
 import { DECLARATION_REFUSAL_TYPENAMES } from './playbackCapabilities'
 import type { QualityChoices } from './qualityChoices'
-import {
-  hlsTrackSource,
-  nativeTrackSource,
-  selectAudioTrackOnceListed,
-  type TrackSource,
-} from './trackSources'
+import { hlsTrackSource, nativeTrackSource, type TrackSource } from './trackSources'
 
 // Progress is only worth a round trip once the playhead has moved this far since the last report.
 const TIMELINE_REPORT_INTERVAL_SECONDS = 10
@@ -1256,28 +1251,32 @@ function attachSourceFile(
 ): StreamSource {
   const { startupDeadline, onFirstFrame } = options
   const detached = new AbortController()
+  const tracks = nativeTrackSource(video)
   const onVideoError = () => {
     void handleSourceFileError({ video, url, options, signal: detached.signal })
   }
+  // The element starts the file's default audio track, which can differ from the named one. It
+  // lists the file's tracks in the file's order, but only by the first frame is the list complete.
+  const selectNamedAudioTrack = () => {
+    if (audioTrackPosition === null) return
+    if (tracks.read().audio.options.length <= audioTrackPosition) return
+    tracks.selectAudio(audioTrackPosition)
+  }
   video.addEventListener('error', onVideoError)
   video.addEventListener('loadedmetadata', startupDeadline.end)
+  video.addEventListener('loadeddata', selectNamedAudioTrack, { once: true })
   video.addEventListener('loadeddata', onFirstFrame, { once: true })
   video.src = url
-  // The element starts the file's default audio track, which can differ from the named one.
-  let stopAudioSelection = () => {}
-  if (audioTrackPosition !== null) {
-    stopAudioSelection = selectAudioTrackOnceListed(video, audioTrackPosition)
-  }
   return {
     detach: () => {
       detached.abort()
-      stopAudioSelection()
       video.removeEventListener('error', onVideoError)
       video.removeEventListener('loadedmetadata', startupDeadline.end)
+      video.removeEventListener('loadeddata', selectNamedAudioTrack)
       video.removeEventListener('loadeddata', onFirstFrame)
       releaseElementSource(video)
     },
-    tracks: nativeTrackSource(video),
+    tracks,
     segmentSeconds: () => undefined,
   }
 }

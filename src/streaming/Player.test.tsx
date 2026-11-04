@@ -6965,8 +6965,8 @@ describe('Player', () => {
       expect(screen.getByRole('button', { name: 'Quality: Original' })).toBeInTheDocument()
     })
 
-    // WebKit lists a file's audio tracks only after the file's metadata has loaded.
-    it('shouldSelectTheAudioTrackTheStreamDecisionNamesWhenTheElementListsTheFilesAudioTracks', async () => {
+    // WebKit lists a file's audio tracks after the file's metadata and before its first frame.
+    it('shouldSelectTheAudioTrackTheStreamDecisionNamesWhenTheFirstFrameLoads', async () => {
       serveDirectPlay({ audioTrackPosition: 1 })
       renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const { audioTracks } = giveElementTracks(renderedVideo(), {})
@@ -6976,64 +6976,50 @@ describe('Player', () => {
         { label: '', language: 'en', enabled: true },
         { label: '', language: 'fr', enabled: false },
       ]
-
       act(() => listAudioTracks(audioTracks, audio))
+
+      loadFirstFrame(video)
 
       expect(audio.map((track) => track.enabled)).toEqual([false, true])
       expect(screen.getByRole('button', { name: 'Audio: French' })).toBeInTheDocument()
     })
 
-    it('shouldSelectTheNamedAudioTrackOnlyOnceTheElementListsItWhenItListsTheTracksOneByOne', async () => {
-      serveDirectPlay({ audioTrackPosition: 1 })
-      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
-      const { audioTracks } = giveElementTracks(renderedVideo(), {})
-      await nativeVideo(SOURCE_FILE.streamUrl)
-      const english: FakeAudioTrack = { label: '', language: 'en', enabled: true }
-      const french: FakeAudioTrack = { label: '', language: 'fr', enabled: false }
-
-      act(() => listAudioTracks(audioTracks, [english]))
-      expect(english.enabled).toBe(true)
-      act(() => listAudioTracks(audioTracks, [french]))
-
-      expect([english.enabled, french.enabled]).toEqual([false, true])
-    })
-
-    it('shouldKeepTheViewersAudioTrackWhenTheElementListsAnotherTrackAfterSelectingTheNamedOne', async () => {
+    it('shouldSelectTheNamedAudioTrackAmongEveryTrackWhenTheElementListsALaterTrackOfTheFileFirst', async () => {
       serveDirectPlay({ audioTrackPosition: 0 })
-      const { user } = renderWithProviders(
-        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
-      )
-      const { audioTracks } = giveElementTracks(renderedVideo(), {})
-      await nativeVideo(SOURCE_FILE.streamUrl)
-      const audio: FakeAudioTrack[] = [
-        { label: '', language: 'en', enabled: true },
-        { label: '', language: 'fr', enabled: false },
-      ]
-      act(() => listAudioTracks(audioTracks, audio))
-      await user.click(screen.getByRole('button', { name: 'Audio: English' }))
-      await user.click(screen.getByRole('menuitemradio', { name: 'French' }))
-
-      act(() =>
-        listAudioTracks(audioTracks, [{ label: 'Commentary', language: 'en', enabled: false }]),
-      )
-
-      expect(audio.map((track) => track.enabled)).toEqual([false, true])
-    })
-
-    it('shouldKeepTheFilesOwnAudioTrackWhenTheStreamDecisionNamesNone', async () => {
-      serveDirectPlay({ audioTrackPosition: null })
       renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const { audioTracks } = giveElementTracks(renderedVideo(), {})
-      await nativeVideo(SOURCE_FILE.streamUrl)
-      const audio: FakeAudioTrack[] = [
-        { label: '', language: 'en', enabled: false },
-        { label: '', language: 'fr', enabled: true },
-      ]
+      const video = await nativeVideo(SOURCE_FILE.streamUrl)
+      const english: FakeAudioTrack = { label: '', language: 'en', enabled: false }
+      const french: FakeAudioTrack = { label: '', language: 'fr', enabled: true }
+      act(() => listAudioTracks(audioTracks, [french]))
+      act(() => listAudioTracks(audioTracks, [english], { at: 0 }))
 
-      act(() => listAudioTracks(audioTracks, audio))
+      loadFirstFrame(video)
 
-      expect(audio.map((track) => track.enabled)).toEqual([false, true])
+      expect([english.enabled, french.enabled]).toEqual([true, false])
     })
+
+    it.each([
+      { case: 'NamesNone', audioTrackPosition: null },
+      { case: 'NamesATrackTheElementDoesNotList', audioTrackPosition: 2 },
+    ])(
+      'shouldKeepTheFilesOwnAudioTrackWhenTheStreamDecision$case',
+      async ({ audioTrackPosition }) => {
+        serveDirectPlay({ audioTrackPosition })
+        renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+        const { audioTracks } = giveElementTracks(renderedVideo(), {})
+        const video = await nativeVideo(SOURCE_FILE.streamUrl)
+        const audio: FakeAudioTrack[] = [
+          { label: '', language: 'en', enabled: false },
+          { label: '', language: 'fr', enabled: true },
+        ]
+        act(() => listAudioTracks(audioTracks, audio))
+
+        loadFirstFrame(video)
+
+        expect(audio.map((track) => track.enabled)).toEqual([false, true])
+      },
+    )
 
     it.each([
       { code: 3, reason: 'DECODE_ERROR' },
