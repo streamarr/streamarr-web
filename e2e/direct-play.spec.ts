@@ -205,18 +205,16 @@ test('the media element plays every file whose container and sample entry the en
 const TWO_AUDIO_TRACKS_FILE = 'h264-avc1-two-audio-tracks.mp4'
 const TWO_AUDIO_TRACKS_PATH = '/direct-play-fixtures/two-audio-tracks.mp4'
 
-// Of Playwright's engines, only WebKit lists a file's audio tracks on the media element; Chromium
-// and Firefox list them only behind a flag or a preference.
+// Of Playwright's engines, only WebKit lists a file's audio tracks on the media element by default.
 const SELECTS_AUDIO_TRACK: Record<string, boolean> = {
   chromium: false,
   firefox: false,
   webkit: true,
 }
 
-test('the engine declares that it selects an audio track only where it switches a file to another one', async ({
-  page,
-  browserName,
-}) => {
+// Declares, then turns on the second of a file's two audio tracks in a media element, plays it, and
+// reads which of the tracks the element lists are on.
+async function switchToTheSecondAudioTrack(page: Page) {
   await page.route('**/direct-play-fixtures', (route) =>
     route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Direct play</title>' }),
   )
@@ -224,8 +222,7 @@ test('the engine declares that it selects an audio track only where it switches 
     serveFile(route, fixturePath(TWO_AUDIO_TRACKS_FILE), 'video/mp4'),
   )
   await page.goto('/direct-play-fixtures')
-
-  const answer = await page.evaluate(
+  return page.evaluate(
     async ({ path, src }) => {
       const capabilities = (await import(/* @vite-ignore */ path)) as Capabilities
       const declaration = await capabilities.declarePlaybackCapabilities(
@@ -264,6 +261,13 @@ test('the engine declares that it selects an audio track only where it switches 
     },
     { path: CAPABILITIES_MODULE, src: TWO_AUDIO_TRACKS_PATH },
   )
+}
+
+test('the engine declares that it selects an audio track only where it switches a file to another one', async ({
+  page,
+  browserName,
+}) => {
+  const answer = await switchToTheSecondAudioTrack(page)
 
   const selects = SELECTS_AUDIO_TRACK[browserName]
   expect(answer).toEqual({
@@ -271,6 +275,26 @@ test('the engine declares that it selects an audio track only where it switches 
     played: true,
     enabled: selects ? [false, true] : [],
   })
+})
+
+test('Firefox declares that it selects no audio track where a preference lists audio tracks, since it lists only one of the two in a file', async ({
+  browserName,
+  playwright,
+  baseURL,
+}) => {
+  test.skip(browserName !== 'firefox', 'the preference belongs to Firefox')
+  const browser = await playwright.firefox.launch({
+    firefoxUserPrefs: { 'media.track.enabled': true },
+  })
+  try {
+    const page = await browser.newPage({ baseURL })
+
+    const answer = await switchToTheSecondAudioTrack(page)
+
+    expect(answer).toEqual({ declared: false, played: true, enabled: [false] })
+  } finally {
+    await browser.close()
+  }
 })
 
 const SOURCE_FILE_URL = '/api/stream/e2e/source.mp4?t=playback-token'

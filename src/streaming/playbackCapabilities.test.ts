@@ -2321,13 +2321,29 @@ describe('browserPlaybackPlatform', () => {
     expect(platform.displaysHighDynamicRange).toBe(false)
   })
 
-  it('shouldSelectAnAudioTrackInDirectPlayWhenTheElementListsTheFilesAudioTracks', () => {
+  it('shouldSelectAnAudioTrackInDirectPlayWhenWebKitListsTheFilesAudioTracks', () => {
+    vi.stubGlobal('navigator', { userAgent: SAFARI, platform: 'MacIntel' })
     const video = document.createElement('video')
     giveElementTracks(video, { audio: [{ label: 'English', language: 'en', enabled: true }] })
 
     const platform = browserPlaybackPlatform(video)
 
     expect(platform.selectsAudioTrackInDirectPlay).toBe(true)
+  })
+
+  // Firefox lists audio tracks behind media.track.enabled, but only one of a file's tracks, and
+  // Chromium lists them behind an experimental flag.
+  it.each([
+    ['Firefox', FIREFOX],
+    ['Chrome', LINUX_CHROME],
+  ])('shouldSelectNoAudioTrackInDirectPlayWhen%sListsAudioTracks', (_, userAgent) => {
+    vi.stubGlobal('navigator', { userAgent })
+    const video = document.createElement('video')
+    giveElementTracks(video, { audio: [{ label: 'English', language: 'en', enabled: true }] })
+
+    const platform = browserPlaybackPlatform(video)
+
+    expect(platform.selectsAudioTrackInDirectPlay).toBe(false)
   })
 
   it('shouldSelectNoAudioTrackInDirectPlayWhenTheElementListsNoAudioTracks', () => {

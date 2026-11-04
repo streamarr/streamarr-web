@@ -1285,9 +1285,10 @@ export function browserPlaybackPlatform(video: HTMLVideoElement): PlaybackPlatfo
     userAgent: navigator.userAgent,
     audioOutputChannels,
     displaysHighDynamicRange: displaysHighDynamicRange(),
-    // Chromium lists a file's audio tracks only behind an experimental flag, and Firefox only behind
-    // a preference, so a file there plays its default track.
-    selectsAudioTrackInDirectPlay: Reflect.get(video, 'audioTracks') !== undefined,
+    // Only WebKit lists every audio track of a file and switches among them. Chromium lists them
+    // only behind an experimental flag, and Firefox, behind media.track.enabled, lists only one.
+    selectsAudioTrackInDirectPlay:
+      isWebKit(navigator.userAgent) && Reflect.get(video, 'audioTracks') !== undefined,
   }
   // WebKit on Linux plays audio through GStreamer. On the Linux CI runner, its web process crashed
   // on the next media call after a page read maxChannelCount, so there it declares stereo. The
