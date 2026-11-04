@@ -321,3 +321,15 @@ test('the player reports a source file it cannot open and starts the HLS fallbac
     { playbackSessionId: 'playback-1', streamSessionId: 'sess-1', reason: 'UNSUPPORTED_FORMAT' },
   ])
 })
+
+test('the player shows the failure without a format attempt when the source file answers 404', async ({
+  page,
+  request,
+}) => {
+  const reports = await openDirectPlay(page, request, (route) =>
+    route.fulfill({ status: 404, contentType: 'text/plain', body: 'Not Found' }),
+  )
+
+  await expect(page.getByRole('alert')).toContainText("Playback couldn't start.")
+  expect(reports).toEqual([])
+})
