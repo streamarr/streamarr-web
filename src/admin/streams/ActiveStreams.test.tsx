@@ -159,8 +159,12 @@ async function liveChanges(state: ReturnType<typeof serve>) {
   await waitFor(() => expect(state.socket.isLive(CHANGED)).toBe(true))
 }
 
+// How long the page waits for a read of the list before it gives the read up.
+const ACTIVE_STREAMS_READ_DEADLINE_MS = 15_000
+
 describe('active streams', () => {
   afterEach(() => {
+    vi.useRealTimers()
     vi.restoreAllMocks()
   })
 
@@ -389,6 +393,26 @@ describe('active streams', () => {
     await waitFor(async () =>
       expect(factsIn(await streamRow('Everlight')).Position).toBe('12:34 · Paused'),
     )
+  })
+
+  it('shouldGiveUpOnAReadThatNeverAnswersSoTheNextGapReadsAgain', async () => {
+    const state = serve([MOVIE])
+    renderAppAt(PAGE)
+    await streamRow('Everlight')
+    await liveChanges(state)
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    state.heldOnce = new Promise(() => undefined)
+    const readsBefore = state.reads
+    comeBackOnline()
+    await vi.waitFor(() => expect(state.reads).toBeGreaterThan(readsBefore))
+
+    await act(() => vi.advanceTimersByTimeAsync(ACTIVE_STREAMS_READ_DEADLINE_MS))
+    vi.useRealTimers()
+    expect(await screen.findByRole('button', { name: 'Retry' })).toBeInTheDocument()
+    state.listed = [EPISODE]
+    comeBackOnline()
+
+    await waitFor(() => expect(rowNames()).toEqual(['Northern Line · S2 E5 · Breakage']))
   })
 
   it('shouldKeepTheRowAndReadAgainWhenAChangeArrivesWithoutItsStream', async () => {
