@@ -45,7 +45,8 @@ interface ExplainedRows {
 const NO_EXPLAINED_ROWS: ExplainedRows = { hovered: null, tapped: null, focused: null }
 
 /**
- * A menu of options above the control bar, its caret pointing down at the anchor that opened it.
+ * A menu of options above the anchor that opened it, its caret pointing down at the anchor, or
+ * below the anchor with the caret pointing up.
  * Focus starts on the chosen row, and moves there, or else to the nearest row, when the focused row
  * goes. Choosing, Escape or Shift+Tab returns focus to the anchor. A press or focus outside the
  * menu and its anchor dismisses it.
@@ -58,6 +59,7 @@ export function CaretPopover<Id>({
   selected,
   onChoose,
   onDismiss,
+  placement = 'above',
 }: Readonly<{
   id: string
   heading: string
@@ -66,6 +68,7 @@ export function CaretPopover<Id>({
   selected: Id | null
   onChoose: (id: Id) => void
   onDismiss: () => void
+  placement?: 'above' | 'below'
 }>) {
   const surfaceRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -87,19 +90,19 @@ export function CaretPopover<Id>({
   useLayoutEffect(() => {
     const place = () => {
       const surface = surfaceRef.current
-      placeAbove(surface, anchorRef.current)
+      alignToAnchor(surface, anchorRef.current)
       reservedRoom.current = placeExplanation({
         explanation: explanationRef.current,
         row: explainedIndex === null ? undefined : rowsOf(menuRef.current)[explainedIndex],
         surface,
         reservedRoom: reservedRoom.current,
       })
-      limitHeight(surface, reservedRoom.current)
+      limitHeight({ surface, roomAbove: reservedRoom.current, placement })
     }
     place()
     window.addEventListener('resize', place)
     return () => window.removeEventListener('resize', place)
-  }, [anchorRef, explainedIndex, explanation])
+  }, [anchorRef, explainedIndex, explanation, placement])
 
   useEffect(() => {
     focusCheckedOrNearestRow(menuRef.current, 0)
@@ -175,7 +178,7 @@ export function CaretPopover<Id>({
   }
 
   return (
-    <div ref={surfaceRef} className={styles.popover}>
+    <div ref={surfaceRef} className={styles.popover} data-placement={placement}>
       <div id={headingId} className={styles.heading}>
         {heading}
       </div>
@@ -298,17 +301,29 @@ function placeExplanation({
   return 0
 }
 
-// The rows scroll rather than rise closer to the top of the screen than the gap, plus the room
-// kept above them.
-function limitHeight(surface: HTMLElement | null, roomAbove: number) {
+// The rows scroll rather than come closer to the screen's edge than the gap: the top edge, plus the
+// room kept above them, for a menu above its anchor; the bottom edge for a menu below it.
+function limitHeight({
+  surface,
+  roomAbove,
+  placement,
+}: {
+  surface: HTMLElement | null
+  roomAbove: number
+  placement: 'above' | 'below'
+}) {
   if (!surface) {
     return
   }
-  const limit = surface.getBoundingClientRect().bottom - SCREEN_EDGE_GAP_PX - roomAbove
+  const box = surface.getBoundingClientRect()
+  let limit = box.bottom - SCREEN_EDGE_GAP_PX - roomAbove
+  if (placement === 'below') {
+    limit = window.innerHeight - box.top - SCREEN_EDGE_GAP_PX
+  }
   surface.style.maxHeight = `${limit}px`
 }
 
-function placeAbove(surface: HTMLElement | null, anchor: HTMLElement | null) {
+function alignToAnchor(surface: HTMLElement | null, anchor: HTMLElement | null) {
   const frame = surface?.offsetParent
   if (!surface || !anchor || !frame) {
     return

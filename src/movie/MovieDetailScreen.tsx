@@ -7,6 +7,7 @@ import { resolveAmbientColors } from '../media/ambientSource'
 import { CastCard } from '../media/CastCard'
 import { ContentShelf } from '../media/ContentShelf'
 import { DetailBackButton } from '../media/DetailBack'
+import { LanguageTabs } from '../languages/LanguageTabs'
 import { ActionProgress, detailAction, DetailHeader } from '../media/DetailHeader'
 import { MediaTitleFallback } from '../media/MediaTitleFallback'
 import { formatRuntime, formatTimeLeft, formatYear } from '../media/formatting'
@@ -56,6 +57,7 @@ export function MovieDetailScreen({ movieId }: Readonly<{ movieId: string }>) {
   return (
     <>
       <DetailHeader
+        tabs={<LanguageTabs item={{ kind: 'movie', id: movieId }} />}
         backdrop={{
           image: pickImageVariant(artwork, 'LARGE'),
           blurHash: artwork?.blurHash ?? null,

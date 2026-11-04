@@ -21,6 +21,7 @@ import {
   invalidIdResponse,
   networkFailure,
 } from '../test/graphqlResponses'
+import { languagePreferenceFixture, serveLanguageTabs } from '../test/languageFixtures'
 import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
 
@@ -147,6 +148,7 @@ function serve(data: SeasonDetailQuery, requestedIds: string[] = []) {
       return HttpResponse.json({ data })
     }),
   )
+  serveLanguageTabs()
 }
 
 async function renderSeason(data: SeasonDetailQuery = seasonData()) {
@@ -159,6 +161,22 @@ async function renderSeason(data: SeasonDetailQuery = seasonData()) {
 }
 
 describe('SeasonDetailScreen', () => {
+  it('shouldSetThisTitlesDefaultAudioFromTheTabOnTheRule', async () => {
+    serve(seasonData())
+    const tabs = serveLanguageTabs({
+      preference: languagePreferenceFixture({ audioLanguages: ['FR'] }),
+    })
+    const { user } = renderAppAt('/season/season-2')
+    await screen.findByRole('heading', { level: 1, name: 'Season 2' })
+
+    const audio = await screen.findByRole('button', { name: 'Default audio' })
+    expect(audio).toHaveAccessibleDescription('French · from Profile')
+    await user.click(audio)
+    await user.click(screen.getByRole('menuitemradio', { name: 'Japanese' }))
+
+    await waitFor(() => expect(tabs.inputs).toEqual([{ itemId: 'season-2', audioLanguage: 'JA' }]))
+  })
+
   it('shouldNotLabelAnEmptyUnwatchedSeasonAsWatched', async () => {
     const data = seasonData()
     data.season!.series.seasons.push(siblingSeason(4, 'UNWATCHED', []))

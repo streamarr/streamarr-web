@@ -18,6 +18,7 @@ import {
   invalidIdResponse,
   networkFailure,
 } from '../test/graphqlResponses'
+import { languagePreferenceFixture, serveLanguageTabs } from '../test/languageFixtures'
 import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
 
@@ -115,6 +116,7 @@ function serve(data: MovieDetailQuery, requestedIds: string[] = []) {
       return HttpResponse.json({ data })
     }),
   )
+  serveLanguageTabs()
 }
 
 function markWatchedAnswers() {
@@ -135,6 +137,22 @@ function markWatchedAnswers() {
 }
 
 describe('MovieDetailScreen', () => {
+  it('shouldSetThisTitlesDefaultAudioFromTheTabOnTheRule', async () => {
+    serve(movieData())
+    const tabs = serveLanguageTabs({
+      preference: languagePreferenceFixture({ audioLanguages: ['FR'] }),
+    })
+    const { user } = renderAppAt('/movie/m1')
+    await screen.findByRole('heading', { level: 1, name: 'Everlight' })
+
+    const audio = await screen.findByRole('button', { name: 'Default audio' })
+    expect(audio).toHaveAccessibleDescription('French · from Profile')
+    await user.click(audio)
+    await user.click(screen.getByRole('menuitemradio', { name: 'Japanese' }))
+
+    await waitFor(() => expect(tabs.inputs).toEqual([{ itemId: 'm1', audioLanguage: 'JA' }]))
+  })
+
   it('shouldPlayTheFirstAvailableFileWhenTheFileListStartsWithNull', async () => {
     serve(movieData({ files: [null, { id: 'file-1' }] }))
     renderAppAt('/movie/m1')
@@ -620,6 +638,7 @@ describe('MovieDetailScreen', () => {
   })
 
   it('shouldShowTheServersWordsWhenTheWatchedStateCannotBeSaved', async () => {
+    serveLanguageTabs()
     server.use(
       graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
       graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
