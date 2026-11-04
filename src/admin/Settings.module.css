@@ -302,6 +302,9 @@
   border: 1px solid var(--border-hairline);
   border-radius: var(--radius-xl);
 }
+.followingPanel {
+  margin-top: var(--spacing-24);
+}
 .form {
   display: flex;
   flex-direction: column;
