@@ -1886,7 +1886,7 @@ describe('declarePlaybackCapabilities', () => {
       ])
     })
 
-    it('shouldListTheDolbyVisionSampleEntryOnAnHdrEntryWhenTheBrowserPlaysDolbyVisionFromAFile', async () => {
+    it('shouldListNoDolbyVisionSampleEntryEvenWhenTheBrowserAnswersThatItPlaysDolbyVisionFromAFile', async () => {
       const declaration = await declarePlaybackCapabilities(
         hdrPlatformFixture({
           decodingInfo: hdrBrowser({ dolbyVision: ['dvh1.05', 'dvh1.08'] }),
@@ -1897,7 +1897,7 @@ describe('declarePlaybackCapabilities', () => {
 
       expect(directPlayOf(familyEntries(declaration, 'HEVC'))).toEqual([
         { codecFamily: 'HEVC', containers: ['MP4'], sampleEntries: ['HVC1'] },
-        { codecFamily: 'HEVC', containers: ['MP4'], sampleEntries: ['HVC1', 'DVH1'] },
+        { codecFamily: 'HEVC', containers: ['MP4'], sampleEntries: ['HVC1'] },
       ])
     })
 
@@ -1932,7 +1932,7 @@ describe('declarePlaybackCapabilities', () => {
 
       expect(directPlayOf(familyEntries(declaration, 'AV1'))).toEqual([
         { codecFamily: 'AV1', containers: ['MP4', 'MATROSKA'], sampleEntries: ['AV01'] },
-        { codecFamily: 'AV1', containers: ['MP4'], sampleEntries: ['AV01', 'DAV1'] },
+        { codecFamily: 'AV1', containers: ['MP4'], sampleEntries: ['AV01'] },
       ])
     })
 

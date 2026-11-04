@@ -1008,7 +1008,9 @@ function isWebKit(userAgent: string): boolean {
 
 // The sample entries that name a coding format in an MP4 file, keyed by the one each probe's codec
 // string starts with. A browser may play a format from one sample entry and not another: WebKit
-// plays hvc1 and avc1 files, never hev1 or avc3.
+// plays hvc1 and avc1 files, never hev1 or avc3. Dolby Vision's sample entries stay out until a
+// real Dolby Vision file proves that a browser applies its RPUs: one that shows profile 5 without
+// them shows wrong colours and reports no error, so no format attempt recovers.
 const SAMPLE_ENTRIES: Record<string, readonly { sampleEntry: VideoSampleEntry; fourCc: string }[]> =
   {
     avc1: [
@@ -1020,11 +1022,6 @@ const SAMPLE_ENTRIES: Record<string, readonly { sampleEntry: VideoSampleEntry; f
       { sampleEntry: 'HEV1', fourCc: 'hev1' },
     ],
     av01: [{ sampleEntry: 'AV01', fourCc: 'av01' }],
-    dvh1: [
-      { sampleEntry: 'DVH1', fourCc: 'dvh1' },
-      { sampleEntry: 'DVHE', fourCc: 'dvhe' },
-    ],
-    dav1: [{ sampleEntry: 'DAV1', fourCc: 'dav1' }],
   }
 
 const VIDEO_FAMILIES: Partial<Record<VideoCodecFamily, VideoFamily>> = { H264, HEVC, AV1 }
