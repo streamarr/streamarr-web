@@ -4,6 +4,7 @@ import type {
   AudioCodec,
   ClientCapabilityDeclarationInput,
   CreatePlaybackSessionMutation,
+  DeclaredCompatibleBase,
   VideoCapabilityEntryInput,
   VideoCodecFamily,
   VideoCodecProfile,
@@ -57,6 +58,8 @@ export interface PlaybackPlatform {
    * settles only after any AudioContext it opened has closed.
    */
   audioOutputChannels: () => Promise<number>
+  /** Whether the display, or the plane that video plays on, shows high dynamic range. */
+  displaysHighDynamicRange: boolean
 }
 
 // The declaration gates the start of playback, so every probe shares one deadline and a probe left
@@ -168,6 +171,18 @@ const AV1: VideoFamily = {
   tenBit: { bitDepth: 10, profiles: [], codec: (level) => av1Codec(level, 10) },
 }
 
+type ColorQuestion = Pick<VideoConfiguration, 'colorGamut' | 'transferFunction' | 'hdrMetadataType'>
+
+// Each base asks about a family's 10-bit codec string in BT.2020 primaries. PQ asks with the SMPTE
+// ST 2086 static metadata that an HDR10 copy carries; HLG carries none.
+const COMPATIBLE_BASE_PROBES: readonly { base: DeclaredCompatibleBase; color: ColorQuestion }[] = [
+  {
+    base: 'PQ',
+    color: { colorGamut: 'rec2020', transferFunction: 'pq', hdrMetadataType: 'smpteSt2086' },
+  },
+  { base: 'HLG', color: { colorGamut: 'rec2020', transferFunction: 'hlg' } },
+]
+
 // H.264 is probed beside these: on WebKit, its tiers answered smooth cap power-efficient HEVC.
 const VIDEO_FAMILIES_BESIDES_H264 = [HEVC, AV1]
 
@@ -204,6 +219,12 @@ interface TierAnswers {
   tier: PictureTier
   eightBit: ProbeAnswer
   tenBit: ProbeAnswer
+}
+
+// Each answer lines up with COMPATIBLE_BASE_PROBES.
+interface HdrTierAnswers {
+  tier: PictureTier
+  bases: ProbeAnswer[]
 }
 
 // maxChannels is null when the browser confirmed no channel count for the codec.
@@ -298,15 +319,45 @@ async function probeVideo({
   const [h264Answers, otherFamilies] = await Promise.all([
     probeFamily({ family: H264, askDecodingInfo }),
     Promise.all(
-      VIDEO_FAMILIES_BESIDES_H264.map(async (family) => ({
-        family,
-        answers: await probeFamily({ family, askDecodingInfo }),
-      })),
+      VIDEO_FAMILIES_BESIDES_H264.map(async (family) => {
+        const [answers, hdrAnswers] = await Promise.all([
+          probeFamily({ family, askDecodingInfo }),
+          probeHdr({ platform, family, askDecodingInfo }),
+        ])
+        return { family, answers, hdrAnswers }
+      }),
     ),
   ])
-  const probed = [{ family: H264, answers: h264Answers }, ...otherFamilies]
-  return probed.flatMap(({ family, answers }) =>
-    familyEntries({ platform, family, answers, h264Answers, hls }),
+  const probed = [{ family: H264, answers: h264Answers, hdrAnswers: [] }, ...otherFamilies]
+  return probed.flatMap(({ family, answers, hdrAnswers }) =>
+    familyEntries({ platform, family, answers, hdrAnswers, h264Answers, hls }),
+  )
+}
+
+// HDR shows only on an HDR display, so an SDR display asks no HDR question and declares SDR alone.
+function probeHdr({
+  platform,
+  family,
+  askDecodingInfo,
+}: {
+  platform: PlaybackPlatform
+  family: VideoFamily
+  askDecodingInfo: AskDecodingInfo
+}): Promise<HdrTierAnswers[]> {
+  const { tenBit } = family
+  if (!platform.displaysHighDynamicRange || !tenBit) {
+    return Promise.resolve([])
+  }
+  return Promise.all(
+    PICTURE_TIERS.map(async (tier) => {
+      const codec = tenBit.codec(tier.levels[family.codecFamily])
+      const bases = await Promise.all(
+        COMPATIBLE_BASE_PROBES.map(({ color }) =>
+          askDecodingInfo(videoConfiguration(tier, codec, color)),
+        ),
+      )
+      return { tier, bases }
+    }),
   )
 }
 
@@ -324,12 +375,14 @@ function familyEntries({
   platform,
   family,
   answers,
+  hdrAnswers,
   h264Answers,
   hls,
 }: {
   platform: PlaybackPlatform
   family: VideoFamily
   answers: readonly TierAnswers[]
+  hdrAnswers: readonly HdrTierAnswers[]
   h264Answers: readonly TierAnswers[]
   hls: boolean
 }): VideoCapabilityEntryInput[] {
@@ -341,7 +394,56 @@ function familyEntries({
   if (tiers.length === 0) {
     tiers = tiersWithoutAnswerThatKeepsUp({ platform, family, answers })
   }
-  return tiers.map((decodedTier) => videoEntry({ family, decodedTier, hls }))
+  return tiers.flatMap((decodedTier) => {
+    const sdrEntry = videoEntry({ family, decodedTier, hls })
+    return [sdrEntry, ...hdrEntry({ decodedTier, hdrAnswers, sdrEntry })]
+  })
+}
+
+// An HDR entry follows a 10-bit entry and keeps its maximums: the 10-bit answer at that tier
+// already says whether the browser keeps up, so an HDR answer only needs to be supported.
+function hdrEntry({
+  decodedTier,
+  hdrAnswers,
+  sdrEntry,
+}: {
+  decodedTier: DecodedTier
+  hdrAnswers: readonly HdrTierAnswers[]
+  sdrEntry: VideoCapabilityEntryInput
+}): VideoCapabilityEntryInput[] {
+  const { tier, bitDepth } = decodedTier
+  if (bitDepth < 10) {
+    return []
+  }
+  const accepts = (answerOf: (answers: HdrTierAnswers) => ProbeAnswer) =>
+    isAcceptedUpTo({ tier, hdrAnswers, answerOf })
+  const compatibleBases = COMPATIBLE_BASE_PROBES.filter((_, index) =>
+    accepts((answers) => answers.bases[index]),
+  ).map(({ base }) => base)
+  if (compatibleBases.length === 0) {
+    return []
+  }
+  return [{ ...sdrEntry, compatibleBases }]
+}
+
+// A maximum accepts every smaller value (ADR 0049), so an HDR answer counts at a tier only when no
+// smaller tier it holds was refused.
+function isAcceptedUpTo({
+  tier,
+  hdrAnswers,
+  answerOf,
+}: {
+  tier: PictureTier
+  hdrAnswers: readonly HdrTierAnswers[]
+  answerOf: (answers: HdrTierAnswers) => ProbeAnswer
+}): boolean {
+  const atTier = hdrAnswers.find((answers) => answers.tier === tier)
+  if (!atTier || !answerOf(atTier)?.supported) {
+    return false
+  }
+  return !hdrAnswers.some(
+    (smaller) => holdsPicture(tier, smaller.tier) && isRefusal(answerOf(smaller)),
+  )
 }
 
 async function probeTier({
@@ -515,6 +617,7 @@ function eightBitTier(family: VideoFamily, tier: PictureTier): DecodedTier {
 function videoConfiguration(
   tier: PictureTier,
   codec: string,
+  color: ColorQuestion = {},
 ): Omit<MediaDecodingConfiguration, 'type'> {
   return {
     video: {
@@ -523,6 +626,7 @@ function videoConfiguration(
       height: tier.height,
       framerate: tier.frameRate,
       bitrate: tier.bitrate,
+      ...color,
     },
   }
 }
@@ -706,6 +810,19 @@ async function audioOutputChannels(): Promise<number> {
   }
 }
 
+// The video plane can show HDR where the rest of the page cannot, as on a television.
+function displaysHighDynamicRange(): boolean {
+  // TypeScript's DOM library declares matchMedia in every browser; a test environment may lack it.
+  const scope: { matchMedia?: (query: string) => MediaQueryList } = globalThis
+  if (!scope.matchMedia) {
+    return false
+  }
+  return (
+    scope.matchMedia('(dynamic-range: high)').matches ||
+    scope.matchMedia('(video-dynamic-range: high)').matches
+  )
+}
+
 interface MediaSourceType {
   isTypeSupported: (type: string) => boolean
 }
@@ -727,6 +844,7 @@ export function browserPlaybackPlatform(video: HTMLVideoElement): PlaybackPlatfo
     canPlayType: (type) => video.canPlayType(type),
     userAgent: navigator.userAgent,
     audioOutputChannels,
+    displaysHighDynamicRange: displaysHighDynamicRange(),
   }
   // WebKit on Linux plays audio through GStreamer. On the Linux CI runner, its web process crashed
   // on the next media call after a page read maxChannelCount, so there it declares stereo. The
