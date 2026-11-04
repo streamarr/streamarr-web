@@ -59,7 +59,7 @@ function ipv6Groups(address: string): number[] | null {
   const [head, tail] = halves.map((half) => (half === '' ? [] : half.split(':')))
   const missing = 8 - head.length - (tail?.length ?? 0)
   if (tail ? missing < 1 : missing !== 0) return null
-  const groups = [...head, ...Array<string>(tail ? missing : 0).fill('0'), ...(tail ?? [])]
+  const groups = [...head, ...new Array<string>(tail ? missing : 0).fill('0'), ...(tail ?? [])]
   if (!groups.every((group) => /^[0-9a-f]{1,4}$/.test(group))) return null
   return groups.map((group) => Number.parseInt(group, 16))
 }
