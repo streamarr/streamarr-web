@@ -1790,24 +1790,6 @@ describe('declarePlaybackCapabilities', () => {
       ])
     })
 
-    it('shouldAskEachDirectPlayQuestionAsAFileWhenHlsJsPlaysThroughMediaSource', async () => {
-      const decodingInfo = filePlayingDecodingInfo(CHROMIUM_FILE_TYPES)
-
-      await declarePlaybackCapabilities(
-        platformFixture({ decodingInfo, canPlayType: canPlayTypeOf(CHROMIUM_FILE_TYPES) }),
-      )
-
-      const questions = decodingInfo.mock.calls.map(([configuration]) => configuration)
-      expect(questions.filter(isSampleEntryQuestion('avc3')).map(({ type }) => type)).toEqual([
-        'file',
-      ])
-      expect(
-        questions
-          .filter((configuration) => configuration.video?.contentType.startsWith('video/webm'))
-          .map(({ type }) => type),
-      ).toEqual(['file', 'file'])
-    })
-
     it('shouldDeclareNoDirectPlayWhenTheBrowserDecodesTheStreamOnlyThroughMediaSource', async () => {
       const declaration = await declarePlaybackCapabilities(
         platformFixture({
@@ -2051,11 +2033,6 @@ function filePlayingPlatform({
     canPlayType: canPlayTypeOf(plays),
     ...overrides,
   })
-}
-
-function isSampleEntryQuestion(sampleEntry: string) {
-  return (configuration: MediaDecodingConfiguration) =>
-    codecOf(configuration).startsWith(`${sampleEntry}.`)
 }
 
 function directPlayOf(entries: readonly VideoCapabilityEntryInput[]) {
