@@ -31,6 +31,18 @@ function serve(setting = SAVED_AUTOMATIC, me = ADMIN) {
     graphql.query('Me', () => HttpResponse.json({ data: { me } })),
     graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
     graphql.query('AdminLibraries', () => HttpResponse.json({ data: { libraries: [] } })),
+    graphql.query('IdleSegmentRetentionSetting', () =>
+      HttpResponse.json({
+        data: {
+          idleSegmentRetentionSetting: {
+            __typename: 'IdleSegmentRetentionSetting',
+            minutes: 60,
+            minimumMinutes: 5,
+            maximumMinutes: 10_080,
+          },
+        },
+      }),
+    ),
     graphql.query<EncoderPresetSettingQuery>('EncoderPresetSetting', () => {
       state.settingReads++
       return HttpResponse.json({ data: { encoderPresetSetting: state.setting } })

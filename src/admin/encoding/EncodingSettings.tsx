@@ -12,6 +12,7 @@ import { requestFailureMessage } from '../../graphql/requestErrors'
 import { userErrorMessage } from '../../graphql/userErrors'
 import { FailureRow } from '../../ui/Failure'
 import styles from '../Settings.module.css'
+import { IdleSegmentRetentionSettings } from './IdleSegmentRetentionSettings'
 
 type KnownChoice = Exclude<EncoderPresetChoice, '%future added value'>
 
@@ -99,6 +100,7 @@ export function EncodingSettings() {
         refusal={refusal}
         onChoose={(value) => void choose(value)}
       />
+      <IdleSegmentRetentionSettings />
     </>
   )
 }

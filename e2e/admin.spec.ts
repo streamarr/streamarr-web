@@ -132,6 +132,15 @@ async function fixture(page: Page, libraries = [movie, shows]) {
           : { stopLibraryRefresh: payload },
       )
     }
+    if (operationName === 'IdleSegmentRetentionSetting')
+      return reply({
+        idleSegmentRetentionSetting: {
+          __typename: 'IdleSegmentRetentionSetting',
+          minutes: 60,
+          minimumMinutes: 5,
+          maximumMinutes: 10_080,
+        },
+      })
     if (operationName === 'EncoderPresetSetting')
       return reply({ encoderPresetSetting: state.encoderPresetSetting })
     if (operationName === 'ChangeEncoderPreset') {
