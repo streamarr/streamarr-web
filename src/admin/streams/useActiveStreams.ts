@@ -26,7 +26,13 @@ export function useActiveStreams() {
     const read = reads.current
     dispatch({ kind: 'reading', read })
     try {
-      const { data } = await client.query({ query: ActiveStreamsDocument, fetchPolicy: 'no-cache' })
+      // Each read asks afresh: one that joined a read still out would answer with a list from
+      // before the changes that this read cleared.
+      const { data } = await client.query({
+        query: ActiveStreamsDocument,
+        fetchPolicy: 'no-cache',
+        context: { queryDeduplication: false },
+      })
       dispatch({ kind: 'read', read, streams: data?.activeStreams ?? [] })
     } catch (error) {
       dispatch({ kind: 'readFailed', read, failure: error as ErrorLike })
