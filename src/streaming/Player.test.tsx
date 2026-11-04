@@ -7020,6 +7020,24 @@ describe('Player', () => {
       expect(screen.getByRole('button', { name: 'Audio: French' })).toBeInTheDocument()
     })
 
+    it('shouldLeaveTheAudioTracksAloneWhenTheHlsFallbackReplacesTheSourceFileBeforeItsFirstFrame', async () => {
+      serveDirectPlay({ audioTrackPosition: 1 })
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+      const { audioTracks } = giveElementTracks(renderedVideo(), {})
+      const video = await nativeVideo(SOURCE_FILE.streamUrl)
+      const audio: FakeAudioTrack[] = [
+        { label: '', language: 'en', enabled: true },
+        { label: '', language: 'fr', enabled: false },
+      ]
+      act(() => listAudioTracks(audioTracks, audio))
+      failTheSourceFile(video, 3)
+      await attachedVideo(replacementStream(1).streamUrl)
+
+      loadFirstFrame(video)
+
+      expect(audio.map((track) => track.enabled)).toEqual([true, false])
+    })
+
     it.each([
       { case: 'NamesNone', audioTrackPosition: null },
       { case: 'NamesATrackTheElementDoesNotList', audioTrackPosition: 2 },
