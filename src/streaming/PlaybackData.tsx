@@ -55,11 +55,14 @@ export function PlaybackData({
       {stream ? (
         <>
           <Group name="Player">
-            <PlayerFacts videoRef={videoRef} stream={stream} />
+            <PlayerFacts
+              videoRef={videoRef}
+              streamStats={stream.streamStats}
+              videoRange={stream.videoRange}
+            />
           </Group>
           <Group name="Server">
             <ServerDecision
-              key={stream.streamSessionId}
               playbackSessionId={stream.playbackSessionId}
               streamSessionId={stream.streamSessionId}
             />
@@ -86,11 +89,17 @@ function Group({ name, children }: Readonly<{ name: string; children: ReactNode 
 
 type PlayerFigures = Record<string, string>
 
-function PlayerFacts({
-  videoRef,
-  stream,
-}: Readonly<{ videoRef: RefObject<HTMLVideoElement | null>; stream: PlaybackDataStream }>) {
-  const store = useMemo(() => playerFiguresStore(videoRef, stream), [videoRef, stream])
+interface FiguresSource {
+  videoRef: RefObject<HTMLVideoElement | null>
+  streamStats: () => StreamStats
+  videoRange: VideoRange
+}
+
+function PlayerFacts({ videoRef, streamStats, videoRange }: Readonly<FiguresSource>) {
+  const store = useMemo(
+    () => playerFiguresStore({ videoRef, streamStats, videoRange }),
+    [videoRef, streamStats, videoRange],
+  )
   const figures = useSyncExternalStore(store.subscribe, store.figures)
   return (
     <Facts>
@@ -102,10 +111,7 @@ function PlayerFacts({
 }
 
 // Hands React the same figures object until a figure changes, as useSyncExternalStore requires.
-function playerFiguresStore(
-  videoRef: RefObject<HTMLVideoElement | null>,
-  stream: PlaybackDataStream,
-) {
+function playerFiguresStore({ videoRef, streamStats, videoRange }: FiguresSource) {
   let shown: { key: string; figures: PlayerFigures } | null = null
   return {
     subscribe: (onChange: () => void) => {
@@ -123,7 +129,7 @@ function playerFiguresStore(
       }
     },
     figures: (): PlayerFigures => {
-      const figures = playerFigures(videoRef.current, stream)
+      const figures = playerFigures(videoRef.current, streamStats(), videoRange)
       const key = JSON.stringify(figures)
       if (shown?.key !== key) {
         shown = { key, figures }
@@ -133,8 +139,11 @@ function playerFiguresStore(
   }
 }
 
-function playerFigures(video: HTMLVideoElement | null, stream: PlaybackDataStream): PlayerFigures {
-  const stats = stream.streamStats()
+function playerFigures(
+  video: HTMLVideoElement | null,
+  stats: StreamStats,
+  videoRange: VideoRange,
+): PlayerFigures {
   return {
     Resolution:
       video && video.videoWidth > 0 ? `${video.videoWidth}×${video.videoHeight}` : NOT_KNOWN,
@@ -144,7 +153,7 @@ function playerFigures(video: HTMLVideoElement | null, stream: PlaybackDataStrea
     Buffer: `${seconds.format(video ? bufferedAhead(video) : 0)} s`,
     'Dropped frames': droppedFrames(video),
     'Video codec': stats.videoCodec ?? NOT_KNOWN,
-    'HDR mode': videoRangeText(stream.videoRange),
+    'HDR mode': videoRangeText(videoRange),
     'Audio format': audioFormat(stats),
   }
 }
@@ -176,7 +185,8 @@ function audioFormat({ audioCodec, audioChannels }: StreamStats): string {
   return audioChannels === undefined ? audioCodec : `${audioCodec} · ${channelsText(audioChannels)}`
 }
 
-// Each stream session remounts this, so a fallback or a new playback session reads afresh.
+// A fallback or a new playback session attaches its stream only after the panel waited for it, so
+// each attached stream session mounts this anew and reads the decisions afresh.
 function ServerDecision({
   playbackSessionId,
   streamSessionId,
