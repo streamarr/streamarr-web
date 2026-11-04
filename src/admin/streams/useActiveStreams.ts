@@ -8,6 +8,7 @@ import {
 } from '../../graphql/generated/graphql'
 import { isForbidden } from '../../graphql/errorRouting'
 import { responsePathHasError } from '../../graphql/responseErrors'
+import { installRevalidation } from '../../graphql/revalidation'
 import { NO_ACTIVE_STREAMS_READ, reduceActiveStreams } from './activeStreamsList'
 
 /**
@@ -20,11 +21,13 @@ export function useActiveStreams() {
   const { subscriptions } = useRouteContext({ from: '__root__' })
   const [state, dispatch] = useReducer(reduceActiveStreams, NO_ACTIVE_STREAMS_READ)
   const reads = useRef(0)
+  const readsOut = useRef(0)
 
   const readStreams = useCallback(async () => {
     reads.current += 1
     const read = reads.current
     dispatch({ kind: 'reading', read })
+    readsOut.current += 1
     try {
       // Each read asks afresh: one that joined a read still out would answer with a list from
       // before the changes that this read cleared.
@@ -36,6 +39,8 @@ export function useActiveStreams() {
       dispatch({ kind: 'read', read, streams: data?.activeStreams ?? [] })
     } catch (error) {
       dispatch({ kind: 'readFailed', read, failure: error as ErrorLike })
+    } finally {
+      readsOut.current -= 1
     }
   }, [client])
 
@@ -68,14 +73,22 @@ export function useActiveStreams() {
           if (!stopped) dispatch({ kind: 'stopped', stop: 'failed' })
         },
       })
-    const stopMissedChanges = subscriptions.onMissedChanges(() => void readStreams())
+    // The list is no watched query, so it reads again by itself on each gap that the app's
+    // queries read again on: missed changes, the network's return and the page's.
+    const stopRevalidation = installRevalidation({
+      refetchActive: readStreams,
+      isReading: () => readsOut.current > 0,
+      onMissedChanges: (listener) => subscriptions.onMissedChanges(listener),
+      window,
+      document,
+    })
     void readStreams()
     // An open socket reports nothing for a new operation on its own; the read after its subscribe
     // frame covers the changes that committed before it.
     subscriptions.reportMissedChangesOnceSubscribed()
     return () => {
       stopped = true
-      stopMissedChanges()
+      stopRevalidation()
       // A remount that subscribes before this task runs joins the same operation.
       setTimeout(() => subscription.unsubscribe())
     }

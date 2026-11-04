@@ -1,9 +1,10 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import { graphql, HttpResponse } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ActiveStreamFieldsFragment } from '../../graphql/generated/graphql'
 import { deferred } from '../../test/deferred'
 import { serveGraphqlSocket } from '../../test/graphqlSocket'
+import { comeBackOnline } from '../../test/graphqlResponses'
 import { meFixture } from '../../test/meFixture'
 import { H264_FULL_HD, playbackDecision, servedDecision } from '../../test/playbackSession'
 import { renderAppAt } from '../../test/render'
@@ -75,14 +76,17 @@ function served(stream: ActiveStreamFieldsFragment) {
 }
 
 /**
- * Serves the Me query, the live socket and the list as `listed` holds it at each read. A read
- * waits for `held` when set, then answers with the list as it is at that moment.
+ * Serves the Me query, the live socket and the list as `listed` holds it when each read arrives.
+ * Every read waits for `held` when set, and the next read alone for `heldOnce`; while `failing`,
+ * each read fails.
  */
 function serve(streams: ActiveStreamFieldsFragment[] = [MOVIE, EPISODE]) {
   const state = {
     listed: streams,
     reads: 0,
     held: null as Promise<void> | null,
+    heldOnce: null as Promise<void> | null,
+    failing: false,
     socket: serveGraphqlSocket(),
   }
   server.use(
@@ -91,8 +95,11 @@ function serve(streams: ActiveStreamFieldsFragment[] = [MOVIE, EPISODE]) {
     graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
     graphql.query('ActiveStreams', async () => {
       state.reads++
+      if (state.failing) return HttpResponse.json({ errors: [{ message: 'Internal failure' }] })
       const listed = state.listed
-      if (state.held) await state.held
+      const heldOnce = state.heldOnce
+      state.heldOnce = null
+      await Promise.all([state.held, heldOnce])
       return HttpResponse.json({ data: { activeStreams: listed.map(served) } })
     }),
   )
@@ -153,6 +160,10 @@ async function liveChanges(state: ReturnType<typeof serve>) {
 }
 
 describe('active streams', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   it('shouldListEachActiveStreamWithWhoWatchesWhatPlaysAndHowWhenAServerAdminOpensThePage', async () => {
     serve()
     renderAppAt(PAGE)
@@ -290,6 +301,7 @@ describe('active streams', () => {
 
     publishChange(state, MOVIE.playbackSessionId, null)
     publishChange(state, EPISODE.playbackSessionId, { ...EPISODE, state: 'PLAYING' })
+    state.listed = [{ ...EPISODE, state: 'PLAYING' }]
     read.resolve()
 
     const episode = await streamRow('Northern Line · S2 E5 · Breakage')
@@ -297,7 +309,7 @@ describe('active streams', () => {
     expect(rowNames()).toEqual(['Northern Line · S2 E5 · Breakage'])
   })
 
-  it('shouldNotBringBackAnEndedStreamWhenAReadAgainStartsWhileAnEarlierReadIsStillOut', async () => {
+  it('shouldReadAgainAfterTheReadStillOutWhenTheSocketSubscribesAgainMeanwhile', async () => {
     const state = serve([MOVIE, EPISODE])
     const read = deferred()
     state.held = read.promise
@@ -306,15 +318,33 @@ describe('active streams', () => {
     await waitFor(() => expect(state.reads).toBeGreaterThan(0))
     const readsBefore = state.reads
 
-    publishChange(state, MOVIE.playbackSessionId, null)
     state.listed = [EPISODE]
     state.socket.closeAll(1001, 'Going away')
     await liveChanges(state)
-    await waitFor(() => expect(state.reads).toBeGreaterThan(readsBefore))
+    state.held = null
     read.resolve()
 
-    await streamRow('Northern Line · S2 E5 · Breakage')
-    expect(rowNames()).toEqual(['Northern Line · S2 E5 · Breakage'])
+    await waitFor(() => expect(rowNames()).toEqual(['Northern Line · S2 E5 · Breakage']))
+    expect(state.reads).toBeGreaterThan(readsBefore)
+  })
+
+  it('shouldAnswerARetryWithItsOwnReadWhenAnotherReadIsStillOut', async () => {
+    const state = serve([MOVIE, EPISODE])
+    state.failing = true
+    const { user } = renderAppAt(PAGE)
+    const retry = await screen.findByRole('button', { name: 'Retry' })
+    await liveChanges(state)
+    state.failing = false
+    state.heldOnce = deferred().promise
+    const readsBefore = state.reads
+    comeBackOnline()
+    await waitFor(() => expect(state.reads).toBeGreaterThan(readsBefore))
+
+    publishChange(state, MOVIE.playbackSessionId, null)
+    state.listed = [EPISODE]
+    await user.click(retry)
+
+    await waitFor(() => expect(rowNames()).toEqual(['Northern Line · S2 E5 · Breakage']))
   })
 
   it('shouldReadTheListAgainWhenTheSocketSubscribesAgainAfterAGap', async () => {
@@ -330,6 +360,35 @@ describe('active streams', () => {
     await streamRow('Northern Line · S2 E5 · Breakage')
     expect(rowNames()).toEqual(['Northern Line · S2 E5 · Breakage'])
     expect(state.reads).toBeGreaterThan(readsBefore)
+  })
+
+  it.each([
+    {
+      event: 'the network returns',
+      returnToThePage: comeBackOnline,
+    },
+    {
+      event: 'the page returns from the background',
+      returnToThePage: () => {
+        let visibility: DocumentVisibilityState = 'hidden'
+        vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility)
+        document.dispatchEvent(new Event('visibilitychange'))
+        visibility = 'visible'
+        document.dispatchEvent(new Event('visibilitychange'))
+      },
+    },
+  ])('shouldReadTheListAgainWhen(event: $event)', async ({ returnToThePage }) => {
+    const state = serve([MOVIE])
+    renderAppAt(PAGE)
+    await streamRow('Everlight')
+    await liveChanges(state)
+    state.listed = [{ ...MOVIE, state: 'PAUSED' }]
+
+    act(returnToThePage)
+
+    await waitFor(async () =>
+      expect(factsIn(await streamRow('Everlight')).Position).toBe('12:34 · Paused'),
+    )
   })
 
   it('shouldKeepTheRowAndReadAgainWhenAChangeArrivesWithoutItsStream', async () => {
@@ -390,18 +449,11 @@ describe('active streams', () => {
 
   it('shouldReadTheListAgainWhenTheAdminRetriesAFailedRead', async () => {
     const state = serve([MOVIE])
-    let failing = true
-    server.use(
-      graphql.query('ActiveStreams', () => {
-        state.reads++
-        if (failing) return HttpResponse.json({ errors: [{ message: 'Internal failure' }] })
-        return HttpResponse.json({ data: { activeStreams: state.listed.map(served) } })
-      }),
-    )
+    state.failing = true
     const { user } = renderAppAt(PAGE)
     const retry = await screen.findByRole('button', { name: 'Retry' })
 
-    failing = false
+    state.failing = false
     await user.click(retry)
 
     expect(await streamRow('Everlight')).toBeInTheDocument()
