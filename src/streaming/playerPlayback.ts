@@ -1251,7 +1251,7 @@ function attachSourceFile(
 ): StreamSource {
   const { startupDeadline, onFirstFrame } = options
   const detached = new AbortController()
-  const tracks = nativeTrackSource(video)
+  const elementTracks = nativeTrackSource(video)
   const onVideoError = () => {
     void handleSourceFileError({ video, url, options, signal: detached.signal })
   }
@@ -1259,8 +1259,16 @@ function attachSourceFile(
   // lists the file's tracks in the file's order, but only by the first frame is the list complete.
   const selectNamedAudioTrack = () => {
     if (audioTrackPosition === null) return
-    if (tracks.read().audio.options.length <= audioTrackPosition) return
-    tracks.selectAudio(audioTrackPosition)
+    if (elementTracks.read().audio.options.length <= audioTrackPosition) return
+    elementTracks.selectAudio(audioTrackPosition)
+  }
+  // A track the viewer picks before the first frame stands.
+  const tracks: TrackSource = {
+    ...elementTracks,
+    selectAudio: (id) => {
+      video.removeEventListener('loadeddata', selectNamedAudioTrack)
+      elementTracks.selectAudio(id)
+    },
   }
   video.addEventListener('error', onVideoError)
   video.addEventListener('loadedmetadata', startupDeadline.end)

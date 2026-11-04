@@ -6999,6 +6999,27 @@ describe('Player', () => {
       expect([english.enabled, french.enabled]).toEqual([true, false])
     })
 
+    it('shouldKeepTheAudioTrackTheViewerPicksBeforeTheFirstFrameLoads', async () => {
+      serveDirectPlay({ audioTrackPosition: 0 })
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      const { audioTracks } = giveElementTracks(renderedVideo(), {})
+      const video = await nativeVideo(SOURCE_FILE.streamUrl)
+      const audio: FakeAudioTrack[] = [
+        { label: '', language: 'en', enabled: true },
+        { label: '', language: 'fr', enabled: false },
+      ]
+      act(() => listAudioTracks(audioTracks, audio))
+      await user.click(screen.getByRole('button', { name: 'Audio: English' }))
+      await user.click(screen.getByRole('menuitemradio', { name: 'French' }))
+
+      loadFirstFrame(video)
+
+      expect(audio.map((track) => track.enabled)).toEqual([false, true])
+      expect(screen.getByRole('button', { name: 'Audio: French' })).toBeInTheDocument()
+    })
+
     it.each([
       { case: 'NamesNone', audioTrackPosition: null },
       { case: 'NamesATrackTheElementDoesNotList', audioTrackPosition: 2 },
