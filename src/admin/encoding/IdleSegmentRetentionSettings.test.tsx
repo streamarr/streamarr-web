@@ -23,7 +23,7 @@ const SAVED_ONE_HOUR: IdleSegmentRetentionSettingFieldsFragment = {
 }
 
 function serve(setting = SAVED_ONE_HOUR) {
-  const state = { setting, changes: [] as number[] }
+  const state = { setting, changes: [] as number[], reads: 0 }
   server.use(
     graphql.query('Me', () =>
       HttpResponse.json({ data: { me: meFixture({ scope: 'profile', serverAdmin: true }) } }),
@@ -46,9 +46,10 @@ function serve(setting = SAVED_ONE_HOUR) {
         },
       }),
     ),
-    graphql.query<IdleSegmentRetentionSettingQuery>('IdleSegmentRetentionSetting', () =>
-      HttpResponse.json({ data: { idleSegmentRetentionSetting: state.setting } }),
-    ),
+    graphql.query<IdleSegmentRetentionSettingQuery>('IdleSegmentRetentionSetting', () => {
+      state.reads++
+      return HttpResponse.json({ data: { idleSegmentRetentionSetting: state.setting } })
+    }),
     graphql.mutation<
       ChangeIdleSegmentRetentionMutation,
       ChangeIdleSegmentRetentionMutationVariables
@@ -256,5 +257,53 @@ describe('idle segment retention settings', () => {
     expect(
       screen.queryByText("Couldn't load the latest idle segment retention."),
     ).not.toBeInTheDocument()
+  })
+
+  it('shouldIgnoreRetryWhileSaveIsInFlight', async () => {
+    const state = serve()
+    const { user } = renderAppAt(ENCODING)
+    expect(await retentionField()).toHaveValue('60')
+    server.use(
+      graphql.query(
+        'IdleSegmentRetentionSetting',
+        () => HttpResponse.json({ errors: [{ message: 'offline' }] }),
+        { once: true },
+      ),
+    )
+    await returnToEncoding(user)
+    await screen.findByText("Couldn't load the latest idle segment retention.")
+    const answer = deferred()
+    server.use(
+      graphql.mutation<
+        ChangeIdleSegmentRetentionMutation,
+        ChangeIdleSegmentRetentionMutationVariables
+      >(
+        'ChangeIdleSegmentRetention',
+        async ({ variables }) => {
+          state.changes.push(variables.input.minutes)
+          await answer.promise
+          state.setting = { ...state.setting, minutes: variables.input.minutes }
+          return HttpResponse.json({
+            data: {
+              changeIdleSegmentRetention: {
+                idleSegmentRetentionSetting: state.setting,
+                userErrors: [],
+              },
+            },
+          })
+        },
+        { once: true },
+      ),
+    )
+    const field = await retentionField()
+    await user.clear(field)
+    await user.type(field, '30')
+    await user.click(saveButton())
+    await waitFor(() => expect(state.changes).toEqual([30]))
+    const readsBeforeRetry = state.reads
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+    answer.resolve()
+    await waitFor(async () => expect(await retentionField()).toHaveValue('30'))
+    expect(state.reads).toBe(readsBeforeRetry)
   })
 })
