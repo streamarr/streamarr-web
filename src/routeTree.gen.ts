@@ -27,6 +27,7 @@ import { Route as AuthenticatedSettingsServerRouteImport } from './routes/_authe
 import { Route as AuthenticatedSettingsServerIndexRouteImport } from './routes/_authenticated/settings.server.index'
 import { Route as AuthenticatedSettingsServerEncodingRouteImport } from './routes/_authenticated/settings.server.encoding'
 import { Route as AuthenticatedSettingsServerLibrariesRouteImport } from './routes/_authenticated/settings.server.libraries'
+import { Route as AuthenticatedSettingsServerStreamsRouteImport } from './routes/_authenticated/settings.server.streams'
 import { Route as AuthenticatedSettingsServerLibrariesNewRouteImport } from './routes/_authenticated/settings.server.libraries_.new'
 
 const AuthenticatedRoute = AuthenticatedRouteImport.update({
@@ -128,6 +129,12 @@ const AuthenticatedSettingsServerLibrariesRoute =
     path: '/libraries',
     getParentRoute: () => AuthenticatedSettingsServerRoute,
   } as any)
+const AuthenticatedSettingsServerStreamsRoute =
+  AuthenticatedSettingsServerStreamsRouteImport.update({
+    id: '/streams',
+    path: '/streams',
+    getParentRoute: () => AuthenticatedSettingsServerRoute,
+  } as any)
 const AuthenticatedSettingsServerLibrariesNewRoute =
   AuthenticatedSettingsServerLibrariesNewRouteImport.update({
     id: '/libraries_/new',
@@ -152,6 +159,7 @@ export interface FileRoutesByFullPath {
   '/settings/server': typeof AuthenticatedSettingsServerRouteWithChildren
   '/settings/server/encoding': typeof AuthenticatedSettingsServerEncodingRoute
   '/settings/server/libraries': typeof AuthenticatedSettingsServerLibrariesRoute
+  '/settings/server/streams': typeof AuthenticatedSettingsServerStreamsRoute
   '/settings/server/': typeof AuthenticatedSettingsServerIndexRoute
   '/settings/server/libraries/new': typeof AuthenticatedSettingsServerLibrariesNewRoute
 }
@@ -171,6 +179,7 @@ export interface FileRoutesByTo {
   '/series/$seriesId': typeof AuthenticatedSeriesSeriesIdRoute
   '/settings/server/encoding': typeof AuthenticatedSettingsServerEncodingRoute
   '/settings/server/libraries': typeof AuthenticatedSettingsServerLibrariesRoute
+  '/settings/server/streams': typeof AuthenticatedSettingsServerStreamsRoute
   '/settings/server': typeof AuthenticatedSettingsServerIndexRoute
   '/settings/server/libraries/new': typeof AuthenticatedSettingsServerLibrariesNewRoute
 }
@@ -193,6 +202,7 @@ export interface FileRoutesById {
   '/_authenticated/settings/server': typeof AuthenticatedSettingsServerRouteWithChildren
   '/_authenticated/settings/server/encoding': typeof AuthenticatedSettingsServerEncodingRoute
   '/_authenticated/settings/server/libraries': typeof AuthenticatedSettingsServerLibrariesRoute
+  '/_authenticated/settings/server/streams': typeof AuthenticatedSettingsServerStreamsRoute
   '/_authenticated/settings/server/': typeof AuthenticatedSettingsServerIndexRoute
   '/_authenticated/settings/server/libraries_/new': typeof AuthenticatedSettingsServerLibrariesNewRoute
 }
@@ -215,6 +225,7 @@ export interface FileRouteTypes {
     | '/settings/server'
     | '/settings/server/encoding'
     | '/settings/server/libraries'
+    | '/settings/server/streams'
     | '/settings/server/'
     | '/settings/server/libraries/new'
   fileRoutesByTo: FileRoutesByTo
@@ -234,6 +245,7 @@ export interface FileRouteTypes {
     | '/series/$seriesId'
     | '/settings/server/encoding'
     | '/settings/server/libraries'
+    | '/settings/server/streams'
     | '/settings/server'
     | '/settings/server/libraries/new'
   id:
@@ -255,6 +267,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/server'
     | '/_authenticated/settings/server/encoding'
     | '/_authenticated/settings/server/libraries'
+    | '/_authenticated/settings/server/streams'
     | '/_authenticated/settings/server/'
     | '/_authenticated/settings/server/libraries_/new'
   fileRoutesById: FileRoutesById
@@ -395,6 +408,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsServerLibrariesRouteImport
       parentRoute: typeof AuthenticatedSettingsServerRoute
     }
+    '/_authenticated/settings/server/streams': {
+      id: '/_authenticated/settings/server/streams'
+      path: '/streams'
+      fullPath: '/settings/server/streams'
+      preLoaderRoute: typeof AuthenticatedSettingsServerStreamsRouteImport
+      parentRoute: typeof AuthenticatedSettingsServerRoute
+    }
     '/_authenticated/settings/server/libraries_/new': {
       id: '/_authenticated/settings/server/libraries_/new'
       path: '/libraries/new'
@@ -408,6 +428,7 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedSettingsServerRouteChildren {
   AuthenticatedSettingsServerEncodingRoute: typeof AuthenticatedSettingsServerEncodingRoute
   AuthenticatedSettingsServerLibrariesRoute: typeof AuthenticatedSettingsServerLibrariesRoute
+  AuthenticatedSettingsServerStreamsRoute: typeof AuthenticatedSettingsServerStreamsRoute
   AuthenticatedSettingsServerIndexRoute: typeof AuthenticatedSettingsServerIndexRoute
   AuthenticatedSettingsServerLibrariesNewRoute: typeof AuthenticatedSettingsServerLibrariesNewRoute
 }
@@ -418,6 +439,8 @@ const AuthenticatedSettingsServerRouteChildren: AuthenticatedSettingsServerRoute
       AuthenticatedSettingsServerEncodingRoute,
     AuthenticatedSettingsServerLibrariesRoute:
       AuthenticatedSettingsServerLibrariesRoute,
+    AuthenticatedSettingsServerStreamsRoute:
+      AuthenticatedSettingsServerStreamsRoute,
     AuthenticatedSettingsServerIndexRoute:
       AuthenticatedSettingsServerIndexRoute,
     AuthenticatedSettingsServerLibrariesNewRoute:
