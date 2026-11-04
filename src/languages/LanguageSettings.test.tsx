@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import type { UserEvent } from '@testing-library/user-event'
 import { graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
@@ -10,7 +10,8 @@ import type {
   SetLanguagePreferencesMutation,
   SetLanguagePreferencesMutationVariables,
 } from '../graphql/generated/graphql'
-import { networkFailure } from '../test/graphqlResponses'
+import { watchingConnection } from '../test/continueWatchingFixtures'
+import { answersThenHolds, networkFailure } from '../test/graphqlResponses'
 import { meFixture } from '../test/meFixture'
 import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
@@ -251,6 +252,31 @@ describe('language settings', () => {
     expect(await screen.findByText('The list names English twice.')).toBeVisible()
     expect(state.inputs).toHaveLength(1)
     expect(await audioLanguages()).toEqual(['Japanese', 'English'])
+  })
+
+  it('shouldHoldEditsWhileAReturnToTheScreenReadsThePreferencesAgain', async () => {
+    const state = serve()
+    const answer = { me: { __typename: 'Me', languagePreferences: preferences() } }
+    const reads = answersThenHolds(answer, answer)
+    server.use(
+      graphql.query('LanguageSettings', reads.resolver),
+      graphql.query('Home', () =>
+        HttpResponse.json({ data: { continueWatching: watchingConnection([]), libraries: [] } }),
+      ),
+    )
+    const { user, router } = renderAppAt(LANGUAGES)
+    await screen.findByRole('button', { name: 'Remove Japanese' })
+
+    await act(() => router.navigate({ to: '/' }))
+    await act(() => router.navigate({ to: LANGUAGES }))
+    const remove = await screen.findByRole('button', { name: 'Remove Japanese' })
+    await waitFor(() => expect(reads.calls).toBe(2))
+    expect(remove).toBeDisabled()
+    reads.release()
+
+    await waitFor(() => expect(remove).toBeEnabled())
+    await user.click(remove)
+    await waitFor(() => expect(state.inputs.map((input) => input.audioLanguages)).toEqual([['EN']]))
   })
 
   it('shouldSayTheChangeWasNotSavedWhenTheRequestFails', async () => {

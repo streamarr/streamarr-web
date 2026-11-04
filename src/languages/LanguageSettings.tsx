@@ -34,13 +34,19 @@ const LANGUAGE_OPTIONS = LANGUAGES_BY_NAME.map((language) => ({
  * what the server last confirmed: a refused or failed change leaves it as it was.
  */
 export function LanguageSettings() {
-  const query = useQuery(LanguageSettingsDocument, { fetchPolicy: 'cache-and-network' })
+  const query = useQuery(LanguageSettingsDocument, {
+    fetchPolicy: 'cache-and-network',
+    notifyOnNetworkStatusChange: true,
+  })
   const [save, { loading: saving }] = useMutation(SetLanguagePreferencesDocument)
+  // A save sends every field from the screen, so none starts while a read may still replace what
+  // the screen shows with an answer older than the save.
+  const busy = saving || query.loading
   const [refusal, setRefusal] = useState<string | null>(null)
   const data = query.data ?? query.previousData
 
   async function change(next: Preferences) {
-    if (saving) {
+    if (busy) {
       return
     }
     setRefusal(null)
@@ -79,7 +85,7 @@ export function LanguageSettings() {
         saved={data?.me.languagePreferences ?? null}
         error={data ? undefined : query.error}
         onRetry={query.refetch}
-        saving={saving}
+        busy={busy}
         refusal={refusal}
         onChange={(next) => void change(next)}
       />
@@ -92,7 +98,7 @@ function LanguageSettingsContent({
   saved,
   error,
   onRetry,
-  saving,
+  busy,
   refusal,
   onChange,
 }: Readonly<{
@@ -100,7 +106,8 @@ function LanguageSettingsContent({
   saved: ProfileLanguagePreferencesFieldsFragment | null
   error: unknown
   onRetry: () => Promise<unknown>
-  saving: boolean
+  /** While a save or a read is in flight: the controls take no change. */
+  busy: boolean
   refusal: string | null
   onChange: (next: Preferences) => void
 }>) {
@@ -134,7 +141,7 @@ function LanguageSettingsContent({
         )}
         <AudioLanguages
           languages={audioLanguages}
-          saving={saving}
+          busy={busy}
           onChange={(next) => onChange({ ...current, audioLanguages: next })}
         />
         <Select
@@ -145,7 +152,7 @@ function LanguageSettingsContent({
           allowDeselect={false}
           value={subtitleLanguage ?? NO_SUBTITLE_LANGUAGE.value}
           data={[NO_SUBTITLE_LANGUAGE, ...optionsShowing(subtitleLanguage)]}
-          readOnly={saving}
+          readOnly={busy}
           onChange={(value) =>
             onChange({ ...current, subtitleLanguage: isLanguageOption(value) ? value : null })
           }
@@ -167,7 +174,7 @@ function LanguageSettingsContent({
                 value={mode.value}
                 label={mode.label}
                 description={mode.description}
-                disabled={saving}
+                disabled={busy}
               />
             ))}
           </div>
@@ -179,11 +186,11 @@ function LanguageSettingsContent({
 
 function AudioLanguages({
   languages,
-  saving,
+  busy,
   onChange,
 }: Readonly<{
   languages: readonly Language[]
-  saving: boolean
+  busy: boolean
   onChange: (next: Language[]) => void
 }>) {
   const labelId = useId()
@@ -208,7 +215,7 @@ function AudioLanguages({
                 variant="subtle"
                 color="gray"
                 aria-label={`Move ${name} up`}
-                disabled={saving || index === 0}
+                disabled={busy || index === 0}
                 onClick={() => onChange(moved(languages, index, -1))}
               >
                 <Icon name="chevron-up" size={16} />
@@ -217,7 +224,7 @@ function AudioLanguages({
                 variant="subtle"
                 color="gray"
                 aria-label={`Move ${name} down`}
-                disabled={saving || index === languages.length - 1}
+                disabled={busy || index === languages.length - 1}
                 onClick={() => onChange(moved(languages, index, 1))}
               >
                 <Icon name="chevron-down" size={16} />
@@ -226,7 +233,7 @@ function AudioLanguages({
                 variant="subtle"
                 color="gray"
                 aria-label={`Remove ${name}`}
-                disabled={saving}
+                disabled={busy}
                 onClick={() => onChange(languages.filter((other) => other !== language))}
               >
                 <Icon name="close" size={16} />
@@ -248,7 +255,7 @@ function AudioLanguages({
           searchable
           value={null}
           data={LANGUAGE_OPTIONS.filter((option) => !languages.includes(option.value))}
-          readOnly={saving}
+          readOnly={busy}
           onChange={(value) => {
             if (isLanguageOption(value)) {
               onChange([...languages, value])
