@@ -8,7 +8,11 @@ type ReadyAttempt = Extract<
   PlaybackSessionFieldsFragment['currentFormatAttempt'],
   { __typename: 'ReadyPlaybackFormatAttempt' }
 >
-type StreamSession = Extract<ReadyAttempt['streamSession'], { __typename: 'HlsStreamSession' }>
+type HlsStreamSession = Extract<ReadyAttempt['streamSession'], { __typename: 'HlsStreamSession' }>
+type DirectPlayStreamSession = Extract<
+  ReadyAttempt['streamSession'],
+  { __typename: 'DirectPlayStreamSession' }
+>
 /** The fields that say which playback choice was asked for, which plays, and why they differ. */
 export type PlaybackChoices = Pick<
   PlaybackSessionFieldsFragment,
@@ -31,9 +35,53 @@ export function readyPlaybackSession({
   id = `playback-${streamSession.id}`,
   ...choices
 }: {
-  streamSession: Pick<StreamSession, 'id' | 'streamUrl' | 'transcodeMode'> & Partial<StreamSession>
+  streamSession: Pick<HlsStreamSession, 'id' | 'streamUrl' | 'transcodeMode'> &
+    Partial<HlsStreamSession>
   id?: string
 } & Partial<PlaybackChoices>): PlaybackSessionFieldsFragment {
+  return readyOn({
+    id,
+    choices,
+    streamSession: {
+      __typename: 'HlsStreamSession',
+      videoRange: 'SDR',
+      mediaEndSeconds: null,
+      ...streamSession,
+    },
+  })
+}
+
+/** A playback session that plays Original, as the viewer asked, by direct play of an SDR MP4 file. */
+export function readyDirectPlaySession({
+  streamSession,
+  id = `playback-${streamSession.id}`,
+  ...choices
+}: {
+  streamSession: Pick<DirectPlayStreamSession, 'id' | 'streamUrl'> &
+    Partial<DirectPlayStreamSession>
+  id?: string
+} & Partial<PlaybackChoices>): PlaybackSessionFieldsFragment {
+  return readyOn({
+    id,
+    choices: { requestedChoice: 'ORIGINAL', playbackChoice: 'ORIGINAL', ...choices },
+    streamSession: {
+      __typename: 'DirectPlayStreamSession',
+      sourceContainer: 'MP4',
+      videoRange: 'SDR',
+      ...streamSession,
+    },
+  })
+}
+
+function readyOn({
+  id,
+  choices,
+  streamSession,
+}: {
+  id: string
+  choices: Partial<PlaybackChoices>
+  streamSession: ReadyAttempt['streamSession']
+}): PlaybackSessionFieldsFragment {
   return {
     id,
     formatAttemptCount: 1,
@@ -43,15 +91,7 @@ export function readyPlaybackSession({
     formatChange: null,
     offeredChoices: OFFERED_FOR_FULL_HD,
     ...choices,
-    currentFormatAttempt: {
-      __typename: 'ReadyPlaybackFormatAttempt',
-      streamSession: {
-        __typename: 'HlsStreamSession',
-        videoRange: 'SDR',
-        mediaEndSeconds: null,
-        ...streamSession,
-      },
-    },
+    currentFormatAttempt: { __typename: 'ReadyPlaybackFormatAttempt', streamSession },
   }
 }
 

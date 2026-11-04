@@ -438,7 +438,7 @@ function startSessionPlayback({
     if (!playbackSessionId) return
     try {
       const playback = await readPlaybackSession(playbackSessionId, statusCancellation.signal)
-      const seconds = attachedStreamIn(playback)?.mediaEndSeconds
+      const seconds = mediaEndOf(attachedStreamIn(playback))
       if (!cancelled && typeof seconds === 'number') learnRealEnd(seconds)
     } catch {
       // A stall that learns nothing waits as before; the stream's own errors still surface.
@@ -521,7 +521,7 @@ function startSessionPlayback({
       void reconcilePlaybackStatus({ generation: sourceGeneration, fatal: false })
       return
     }
-    const seconds = attachedStream.mediaEndSeconds
+    const seconds = mediaEndOf(attachedStream)
     if (typeof seconds === 'number') learnRealEnd(seconds)
     if (!endedAtRealEnd) failStalledStream()
   }
@@ -607,16 +607,11 @@ function startSessionPlayback({
       showFailure(PLAYBACK_FAILURE_MESSAGE)
       return
     }
-    const stream = attempt.streamSession
-    if (stream.__typename !== 'HlsStreamSession') {
-      refuseStreamThatIsNotHls(stream.id)
-      return
-    }
     // The same stream attached again keeps the real end a status check named for it.
-    const sameStream = stream.id === sessionId
-    sessionId = stream.id
+    const sameStream = attempt.streamSession.id === sessionId
+    sessionId = attempt.streamSession.id
     attachedPlayback = playback
-    realEnd = stream.mediaEndSeconds ?? (sameStream ? realEnd : null)
+    realEnd = mediaEndOf(attempt.streamSession) ?? (sameStream ? realEnd : null)
     endedAtRealEnd = false
     sourceStopped = false
     firstFrameShown = false
@@ -629,7 +624,9 @@ function startSessionPlayback({
       playing: playback.playbackChoice,
       formatChange: playback.formatChange,
     }
-    source = attach(video, stream.streamUrl, {
+    const attachStream =
+      attempt.streamSession.__typename === 'DirectPlayStreamSession' ? attachSourceFile : attach
+    source = attachStream(video, attempt.streamSession.streamUrl, {
       startupDeadline,
       videoPreference: hlsVideoPreference(declaration, dynamicRange),
       onFirstFrame: () => {
@@ -656,16 +653,8 @@ function startSessionPlayback({
       at: 'attached',
       tracks: source.tracks,
       qualities,
-      videoRange: stream.videoRange,
+      videoRange: attempt.streamSession.videoRange,
     })
-  }
-
-  // This player opens only HLS, so the server replaces any other delivery as a refused format.
-  function refuseStreamThatIsNotHls(streamSessionId: string) {
-    sessionId = streamSessionId
-    realEnd = null
-    endedAtRealEnd = false
-    void reportFormatFailure('UNSUPPORTED_FORMAT', sourceGeneration)
   }
 
   async function reportFormatFailure(reason: PlaybackFormatFailure, generation: number) {
@@ -798,7 +787,7 @@ function startSessionPlayback({
       const playback = await readPlaybackSession(id, check.controller.signal)
       if (!current()) return
       const attachedStream = attachedStreamIn(playback)
-      const realEndOfStream = attachedStream?.mediaEndSeconds
+      const realEndOfStream = mediaEndOf(attachedStream)
       // The segments past a short copy's real end never come, and nothing replaces the stream.
       if (typeof realEndOfStream === 'number') {
         playOnToTheRealEnd(realEndOfStream, check.fatal)
@@ -825,8 +814,7 @@ function startSessionPlayback({
   function attachedStreamIn(playback: PlaybackSessionFieldsFragment | null | undefined) {
     const attempt = playback?.currentFormatAttempt
     if (attempt?.__typename !== 'ReadyPlaybackFormatAttempt') return undefined
-    const stream = attempt.streamSession
-    return stream.__typename === 'HlsStreamSession' && stream.id === sessionId ? stream : undefined
+    return attempt.streamSession.id === sessionId ? attempt.streamSession : undefined
   }
 
   function playOnToTheRealEnd(seconds: number, sourceFailed: boolean) {
@@ -1120,6 +1108,17 @@ function refusedTheStartPosition(payload: PlaybackSessionPayload | undefined): b
   )
 }
 
+type StreamSession = Extract<
+  PlaybackSessionFieldsFragment['currentFormatAttempt'],
+  { __typename: 'ReadyPlaybackFormatAttempt' }
+>['streamSession']
+
+// Only an HLS copy can run short of its advertised end; a source file ends where its media ends.
+function mediaEndOf(stream: StreamSession | undefined): number | null | undefined {
+  if (stream?.__typename !== 'HlsStreamSession') return undefined
+  return stream.mediaEndSeconds
+}
+
 function refusalMessage(payload: PlaybackSessionPayload | undefined): string {
   const refusal = payload?.userErrors[0]
   if (!refusal || DECLARATION_REFUSAL_TYPENAMES.has(refusal.__typename)) {
@@ -1227,6 +1226,58 @@ function isUnsupportedFormat(data: ErrorData): boolean {
   }
 }
 
+// MediaError's codes, which not every environment defines as constants.
+const MEDIA_ERR_DECODE = 3
+const MEDIA_ERR_SRC_NOT_SUPPORTED = 4
+
+// Direct play hands the source file to the element, which reads it with byte-range requests. The
+// element has parsed the file's header by its metadata, so startup ends there, even when the
+// browser withholds the first frame until the viewer presses play.
+function attachSourceFile(
+  video: HTMLVideoElement,
+  url: string,
+  options: StreamSourceOptions,
+): StreamSource {
+  const { startupDeadline, onFirstFrame } = options
+  const onVideoError = () => handleSourceFileError(video, options)
+  video.addEventListener('error', onVideoError)
+  video.addEventListener('loadedmetadata', startupDeadline.end)
+  video.addEventListener('loadeddata', onFirstFrame, { once: true })
+  video.src = url
+  return {
+    detach: () => {
+      video.removeEventListener('error', onVideoError)
+      video.removeEventListener('loadedmetadata', startupDeadline.end)
+      video.removeEventListener('loadeddata', onFirstFrame)
+      releaseElementSource(video)
+    },
+    tracks: nativeTrackSource(video),
+    segmentSeconds: () => undefined,
+  }
+}
+
+// A file the browser cannot decode, or whose format it cannot open, is a format error, after which
+// the server's next format attempt is HLS at original quality. An aborted or failed fetch says
+// nothing about the format.
+function handleSourceFileError(video: HTMLVideoElement, options: StreamSourceOptions) {
+  switch (video.error?.code) {
+    case MEDIA_ERR_DECODE:
+      options.onFormatFailure('DECODE_ERROR')
+      return
+    case MEDIA_ERR_SRC_NOT_SUPPORTED:
+      options.onFormatFailure('UNSUPPORTED_FORMAT')
+      return
+    default:
+      options.onFatal()
+  }
+}
+
+// The same reset hls.js performs on detach: the element stops fetching the stream.
+function releaseElementSource(video: HTMLVideoElement) {
+  video.removeAttribute('src')
+  video.load()
+}
+
 // Without MSE the element plays HLS itself and reports failure only through its error event.
 function attachNative(
   video: HTMLVideoElement,
@@ -1256,9 +1307,7 @@ function attachNative(
       video.removeEventListener('loadeddata', onFirstFrame)
       video.removeEventListener('suspend', holdWhilePaused)
       video.removeEventListener('play', startupDeadline.rearm)
-      // The same reset hls.js performs on detach: the element stops fetching the stream.
-      video.removeAttribute('src')
-      video.load()
+      releaseElementSource(video)
     },
     followsVideoPreference: false,
     tracks: nativeTrackSource(video),

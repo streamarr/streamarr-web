@@ -1,6 +1,7 @@
 import {
   OFFERED_FOR_FULL_HD,
   type PlaybackChoices,
+  readyDirectPlaySession,
   readyPlaybackSession,
   destroyedPlaybackSession,
 } from '../test/playbackSession'
@@ -2521,61 +2522,6 @@ describe('Player', () => {
     unmount()
     await waitFor(() => expect(destroyed).toBe(true))
     expect(saved).toEqual([{ sessionId: 'sess-1', state: 'STOPPED', positionSeconds: 15 }])
-  })
-
-  it('shouldReportAnUnsupportedFormatAndPlayTheReplacementWhenTheReadyStreamIsNotHls', async () => {
-    const directPlay = {
-      __typename: 'DirectPlayStreamSession',
-      id: 'sess-direct',
-      streamUrl: '/api/stream/direct/source.mp4?t=playback-token',
-    }
-    const failures: ReportPlaybackFormatFailureInput[] = []
-    server.use(
-      graphql.mutation('CreatePlaybackSession', () =>
-        HttpResponse.json({
-          data: {
-            createPlaybackSession: {
-              playbackSession: {
-                ...readyPlaybackSession({ id: 'playback-1', streamSession: SESSION }),
-                currentFormatAttempt: {
-                  __typename: 'ReadyPlaybackFormatAttempt',
-                  streamSession: directPlay,
-                },
-              },
-              userErrors: [],
-            },
-          },
-        }),
-      ),
-      graphql.mutation('ReportPlaybackFormatFailure', ({ variables }) => {
-        failures.push((variables as { input: ReportPlaybackFormatFailureInput }).input)
-        return HttpResponse.json({
-          data: {
-            reportPlaybackFormatFailure: {
-              playbackSession: readyPlaybackSession({
-                id: 'playback-1',
-                streamSession: replacementStream(1),
-              }),
-              userErrors: [],
-            },
-          },
-        })
-      }),
-    )
-    recordTimelineReports()
-
-    renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
-
-    await attachedVideo(replacementStream(1).streamUrl)
-    expect(hls.loadSource.mock.calls).toEqual([[replacementStream(1).streamUrl]])
-    expect(failures).toEqual([
-      {
-        playbackSessionId: 'playback-1',
-        streamSessionId: 'sess-direct',
-        reason: 'UNSUPPORTED_FORMAT',
-      },
-    ])
-    expect(screen.queryByRole('alert')).toBeNull()
   })
 
   it('shouldCreateSessionAndFeedTokenedUrlToHls', async () => {
@@ -6935,6 +6881,125 @@ describe('Player', () => {
       await showingVideo(replacementStream(1).streamUrl)
       expect(notice()).toBeEmptyDOMElement()
       expect(screen.getByRole('button', { name: 'Quality: Auto' })).toBeInTheDocument()
+    })
+  })
+
+  describe('direct play', () => {
+    const SOURCE_FILE = { id: 'sess-1', streamUrl: '/api/stream/abcd/source.mp4?t=playback-token' }
+
+    function serveDirectPlay(): ReportPlaybackFormatFailureInput[] {
+      const reports: ReportPlaybackFormatFailureInput[] = []
+      server.use(
+        graphql.mutation('CreatePlaybackSession', () =>
+          HttpResponse.json({
+            data: {
+              createPlaybackSession: {
+                playbackSession: readyDirectPlaySession({
+                  id: 'playback-1',
+                  streamSession: SOURCE_FILE,
+                }),
+                userErrors: [],
+              },
+            },
+          }),
+        ),
+        graphql.mutation('ReportPlaybackFormatFailure', ({ variables }) => {
+          const { input } = variables as { input: ReportPlaybackFormatFailureInput }
+          reports.push(input)
+          return HttpResponse.json({
+            data: {
+              reportPlaybackFormatFailure: {
+                playbackSession: readyPlaybackSession({
+                  id: 'playback-1',
+                  streamSession: replacementStream(1),
+                  requestedChoice: 'ORIGINAL',
+                  playbackChoice: 'ORIGINAL',
+                }),
+                userErrors: [],
+              },
+            },
+          })
+        }),
+      )
+      recordTimelineReports()
+      return reports
+    }
+
+    function failTheSourceFile(video: HTMLVideoElement, code: number) {
+      Object.defineProperty(video, 'error', { configurable: true, value: { code } })
+      fireEvent(video, new Event('error'))
+    }
+
+    it('shouldPlayTheSourceFileInTheVideoElementWithoutHlsWhenTheServerChoosesDirectPlay', async () => {
+      serveDirectPlay()
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+
+      const video = await nativeVideo(SOURCE_FILE.streamUrl)
+      loadMetadata(video)
+      loadFirstFrame(video)
+
+      expect(hls.loadSource).not.toHaveBeenCalled()
+      expect(hls.attachMedia).not.toHaveBeenCalled()
+      expect(video.paused).toBe(false)
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Quality: Original' })).toBeInTheDocument()
+    })
+
+    it.each([
+      { code: 3, reason: 'DECODE_ERROR' },
+      { code: 4, reason: 'UNSUPPORTED_FORMAT' },
+    ])(
+      'shouldReportTheFormatFailureAndResumeTheHlsFallbackWhereTheSourceFileStoppedWhenTheBrowserCannotPlayIt($reason)',
+      async ({ code, reason }) => {
+        const reports = serveDirectPlay()
+        renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+        const video = await nativeVideo(SOURCE_FILE.streamUrl)
+        loadMetadata(video)
+        loadFirstFrame(video)
+        playheadAt(video, 61.5)
+
+        failTheSourceFile(video, code)
+
+        await attachedVideo(replacementStream(1).streamUrl)
+        expect(reports).toEqual([
+          { playbackSessionId: 'playback-1', streamSessionId: SOURCE_FILE.id, reason },
+        ])
+        expect(video).not.toHaveAttribute('src')
+        loadMetadata(video)
+        expect(video.currentTime).toBe(61.5)
+        expect(video.paused).toBe(false)
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      },
+    )
+
+    it.each([1, 2])(
+      'shouldShowThePlaybackFailureWithoutReportingAFormatWhenTheSourceFileFailsWithMediaErrorCode%s',
+      async (code) => {
+        const reports = serveDirectPlay()
+        renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+        const video = await nativeVideo(SOURCE_FILE.streamUrl)
+        loadMetadata(video)
+
+        failTheSourceFile(video, code)
+
+        expect(await screen.findByRole('alert')).toHaveTextContent("Playback couldn't start.")
+        expect(reports).toEqual([])
+        expect(video).not.toHaveAttribute('src')
+      },
+    )
+
+    it('shouldKeepTheStartupDeadlineEndedWhenTheSourceFileLoadedItsMetadataButTheBrowserRefusedToStart', async () => {
+      serveDirectPlay()
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+      const video = await nativeVideo(SOURCE_FILE.streamUrl)
+      refuseToStartPlayback(video)
+
+      loadMetadata(video)
+      await act(() => vi.advanceTimersByTimeAsync(PLAYBACK_START_TIMEOUT_MS + 1))
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(video).toHaveAttribute('src', SOURCE_FILE.streamUrl)
     })
   })
 })
