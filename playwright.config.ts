@@ -9,6 +9,7 @@ const CAPABILITY_SPECS = [
   'output-channels.spec.ts',
   'hdr-declaration.spec.ts',
   'seven-one-channel-order.spec.ts',
+  'direct-play.spec.ts',
 ]
 
 export default defineConfig({
@@ -30,7 +31,8 @@ export default defineConfig({
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-    // Firefox and WebKit run only the capability specs, whose browser answers differ by engine.
+    // Firefox and WebKit run only the capability and direct-play specs, whose browser answers differ
+    // by engine.
     {
       name: 'firefox',
       testMatch: CAPABILITY_SPECS,
