@@ -1,5 +1,6 @@
 import type { ApolloClient } from '@apollo/client'
 import { useApolloClient } from '@apollo/client/react'
+import { useEffect, useRef } from 'react'
 import {
   PlayerWiderSubtitleModeDocument,
   SetLanguageOverrideDocument,
@@ -12,37 +13,59 @@ import type { PlayableMediaTitle } from './usePlayerTitle'
 
 type OverrideChange = Omit<SetLanguageOverrideInput, 'itemId'>
 
+interface StoreRequest {
+  client: ApolloClient
+  mediaTitle: PlayableMediaTitle
+  chosen: ChosenTrack
+  /** False once the store was reset or cleared for another Profile or account. */
+  isCurrent: () => boolean
+}
+
 /**
  * Stores each audio or subtitle switch in the player as the Profile's override for the episode or
  * movie playing, never for its season or series, so resuming it keeps the switch and the next
- * episode starts from the wider levels (ADR 0043). A track that names no language of the server's
- * table stores nothing.
+ * episode starts from the wider levels (ADR 0043). Switches store one at a time, in the order the
+ * viewer made them. A track that names no language of the server's table stores nothing, and so
+ * does a switch still waiting when the store resets for another Profile or account.
  */
 export function useLanguageSwitchReport(
   mediaTitle: PlayableMediaTitle | undefined,
 ): (chosen: ChosenTrack) => void {
   const client = useApolloClient()
+  const stores = useRef<Promise<void>>(Promise.resolve())
+  const generation = useRef(0)
+
+  useEffect(() => {
+    const nextGeneration = () => {
+      generation.current += 1
+      return Promise.resolve()
+    }
+    const stopOnReset = client.onResetStore(nextGeneration)
+    const stopOnClear = client.onClearStore(nextGeneration)
+    return () => {
+      stopOnReset()
+      stopOnClear()
+    }
+  }, [client])
+
   return (chosen) => {
     if (!mediaTitle) {
       return
     }
+    const started = generation.current
+    const isCurrent = () => generation.current === started
     // The switch already plays; a failure to store it only means a resume starts from the wider
     // levels, which is what playback did before the switch.
-    void storeSwitch({ client, mediaTitle, chosen }).catch(() => undefined)
+    stores.current = stores.current
+      .then(() => storeSwitch({ client, mediaTitle, chosen, isCurrent }))
+      .catch(() => undefined)
   }
 }
 
-async function storeSwitch({
-  client,
-  mediaTitle,
-  chosen,
-}: {
-  client: ApolloClient
-  mediaTitle: PlayableMediaTitle
-  chosen: ChosenTrack
-}) {
-  const change = await overrideChange({ client, mediaTitle, chosen })
-  if (!change) {
+async function storeSwitch(request: StoreRequest) {
+  const { client, mediaTitle, isCurrent } = request
+  const change = await overrideChange(request)
+  if (!change || !isCurrent()) {
     return
   }
   await client.mutate({
@@ -55,11 +78,7 @@ async function overrideChange({
   client,
   mediaTitle,
   chosen,
-}: {
-  client: ApolloClient
-  mediaTitle: PlayableMediaTitle
-  chosen: ChosenTrack
-}): Promise<OverrideChange | undefined> {
+}: StoreRequest): Promise<OverrideChange | undefined> {
   switch (chosen.kind) {
     case 'audio': {
       const language = languageOfTrack(chosen.language)
@@ -77,22 +96,18 @@ async function overrideChange({
 }
 
 // The mode the episode or movie gets without its own override: its season's, else the Profile's.
-// Unread, it counts as the default, FORCED.
+// A read that fails rejects, so the switch stores nothing rather than guess.
 async function widerSubtitleMode(
   client: ApolloClient,
   { kind, id }: PlayableMediaTitle,
 ): Promise<SubtitleMode | undefined> {
-  try {
-    const { data } = await client.query({
-      query: PlayerWiderSubtitleModeDocument,
-      variables: { id, movie: kind === 'movie' },
-      fetchPolicy: 'network-only',
-    })
-    if (kind === 'movie') {
-      return data?.me.languagePreferences?.subtitleMode
-    }
-    return data?.episode?.season.languagePreference.subtitleMode
-  } catch {
-    return undefined
+  const { data } = await client.query({
+    query: PlayerWiderSubtitleModeDocument,
+    variables: { id, movie: kind === 'movie' },
+    fetchPolicy: 'network-only',
+  })
+  if (kind === 'movie') {
+    return data?.me.languagePreferences?.subtitleMode
   }
+  return data?.episode?.season.languagePreference.subtitleMode
 }

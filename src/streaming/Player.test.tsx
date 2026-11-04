@@ -5134,10 +5134,53 @@ describe('Player', () => {
       )
     })
 
-    it('shouldStoreForcedOnlyWhenTheWiderModeCannotBeReadAsTheViewerTurnsSubtitlesOff', async () => {
+    it('shouldStoreNothingWhenTheWiderModeCannotBeReadAsTheViewerTurnsSubtitlesOff', async () => {
       serveSession()
-      const inputs = serveOverrides({ seasonMode: 'OFF' })
+      const inputs = serveOverrides()
       server.use(graphql.query('PlayerWiderSubtitleMode', () => networkFailure()))
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" mediaTitle={EPISODE} />,
+      )
+      await attachedVideo()
+      offerHlsTracks({
+        audio: [
+          { name: 'English', lang: 'en' },
+          { name: 'Deutsch', lang: 'de' },
+        ],
+        audioTrack: 0,
+        subtitles: [{ name: 'English', lang: 'en' }],
+        subtitleTrack: 0,
+      })
+
+      await pickTrack(user, /^Subtitles/, 'Off')
+      await pickTrack(user, /^Audio/, 'Deutsch')
+
+      await waitFor(() => expect(inputs).toEqual([{ itemId: 'e1', audioLanguage: 'DE' }]))
+    })
+
+    it('shouldStoreSwitchesInTheOrderTheViewerMadeThemWhenAnEarlierOneWaits', async () => {
+      serveSession()
+      const inputs = serveOverrides()
+      const wider = deferred()
+      server.use(
+        graphql.query('PlayerWiderSubtitleMode', async () => {
+          await wider.promise
+          return HttpResponse.json({
+            data: {
+              episode: {
+                __typename: 'Episode',
+                id: 'e1',
+                season: {
+                  __typename: 'Season',
+                  id: 'season-1',
+                  languagePreference: languagePreferenceFixture(),
+                },
+              },
+              me: { __typename: 'Me', languagePreferences: profileLanguagesFixture() },
+            },
+          })
+        }),
+      )
       const { user } = renderWithProviders(
         <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" mediaTitle={EPISODE} />,
       )
@@ -5145,8 +5188,68 @@ describe('Player', () => {
       offerHlsTracks({ subtitles: [{ name: 'English', lang: 'en' }], subtitleTrack: 0 })
 
       await pickTrack(user, /^Subtitles/, 'Off')
+      await pickTrack(user, /^Subtitles/, 'English')
+      wider.resolve()
 
-      await waitFor(() => expect(inputs).toEqual([{ itemId: 'e1', subtitleMode: 'FORCED' }]))
+      await waitFor(() =>
+        expect(inputs).toEqual([
+          { itemId: 'e1', subtitleMode: 'FORCED' },
+          { itemId: 'e1', subtitleLanguage: 'EN', subtitleMode: 'ALWAYS' },
+        ]),
+      )
+    })
+
+    it('shouldDropASwitchStillWaitingWhenTheStoreResetsForAnotherProfile', async () => {
+      serveSession()
+      const inputs = serveOverrides()
+      const first = deferred()
+      server.use(
+        graphql.mutation('SetLanguageOverride', async ({ variables }) => {
+          inputs.push(variables.input as SetLanguageOverrideInput)
+          if (inputs.length === 1) {
+            await first.promise
+          }
+          return HttpResponse.json({
+            data: { setLanguageOverride: { item: null, userErrors: [] } },
+          })
+        }),
+      )
+      let resetStore: (() => Promise<unknown>) | undefined
+      function ObservedPlayer() {
+        const client = useApolloClient()
+        useEffect(() => {
+          resetStore = () => client.resetStore()
+        }, [client])
+        return (
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" mediaTitle={EPISODE} />
+        )
+      }
+      const { user } = renderWithProviders(<ObservedPlayer />)
+      await attachedVideo()
+      offerHlsTracks({
+        audio: [
+          { name: 'English', lang: 'en' },
+          { name: 'Français', lang: 'fr' },
+          { name: 'Deutsch', lang: 'de' },
+        ],
+        audioTrack: 0,
+      })
+
+      await pickTrack(user, /^Audio/, 'Français')
+      await waitFor(() => expect(inputs).toHaveLength(1))
+      await pickTrack(user, /^Audio/, 'Deutsch')
+      await act(async () => {
+        await resetStore?.()
+      })
+      first.resolve()
+      await pickTrack(user, /^Audio/, 'English')
+
+      await waitFor(() =>
+        expect(inputs).toEqual([
+          { itemId: 'e1', audioLanguage: 'FR' },
+          { itemId: 'e1', audioLanguage: 'EN' },
+        ]),
+      )
     })
 
     it('shouldKeepPlayingTheSwitchedTrackWhenTheServerCannotStoreIt', async () => {
