@@ -279,6 +279,21 @@ describe('language settings', () => {
     await waitFor(() => expect(state.inputs.map((input) => input.audioLanguages)).toEqual([['EN']]))
   })
 
+  it('shouldOfferNoChangeWhenTheNextProfilesPreferencesCannotBeRead', async () => {
+    const state = serve()
+    const { apolloClient } = renderAppAt(LANGUAGES)
+    await screen.findByRole('button', { name: 'Remove Japanese' })
+    server.use(graphql.query('LanguageSettings', () => networkFailure()))
+
+    await act(async () => {
+      await apolloClient.resetStore().catch(() => undefined)
+    })
+
+    expect(await screen.findByText("Couldn't load your languages.")).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Remove Japanese' })).not.toBeInTheDocument()
+    expect(state.inputs).toEqual([])
+  })
+
   it('shouldSayTheChangeWasNotSavedWhenTheRequestFails', async () => {
     serve()
     server.use(graphql.mutation('SetLanguagePreferences', () => networkFailure()))

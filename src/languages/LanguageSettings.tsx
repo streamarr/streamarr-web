@@ -43,7 +43,8 @@ export function LanguageSettings() {
   // the screen shows with an answer older than the save.
   const busy = saving || query.loading
   const [refusal, setRefusal] = useState<string | null>(null)
-  const data = query.data ?? query.previousData
+  // Never the answer of an earlier read: after a Profile switch, it is the other Profile's.
+  const data = query.data
 
   async function change(next: Preferences) {
     if (busy) {
@@ -83,7 +84,7 @@ export function LanguageSettings() {
       <LanguageSettingsContent
         loaded={data !== undefined}
         saved={data?.me.languagePreferences ?? null}
-        error={data ? undefined : query.error}
+        error={query.error}
         onRetry={query.refetch}
         busy={busy}
         refusal={refusal}

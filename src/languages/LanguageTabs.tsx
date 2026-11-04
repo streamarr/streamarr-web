@@ -75,9 +75,10 @@ export function LanguageTabs({ item }: Readonly<{ item: LanguageTabsItem }>) {
     },
     fetchPolicy: 'cache-and-network',
   })
-  const data = query.data ?? query.previousData
+  // Never the answer of an earlier read: it may be another title's, or another Profile's.
+  const data = query.data
 
-  if (!data && query.error) {
+  if (query.error) {
     return (
       <div className={styles.failure}>
         <FailureRow onRetry={query.refetch}>

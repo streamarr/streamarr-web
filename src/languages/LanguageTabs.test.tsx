@@ -1,6 +1,8 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { useApolloClient } from '@apollo/client/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import type { UserEvent } from '@testing-library/user-event'
 import { graphql, HttpResponse } from 'msw'
+import { useEffect } from 'react'
 import { describe, expect, it } from 'vitest'
 import type {
   LanguagePreferenceFieldsFragment,
@@ -59,6 +61,28 @@ describe('LanguageTabs', () => {
 
     expect(await tab('Default audio')).toHaveAccessibleDescription('English · from Profile')
     expect(await tab('Subtitles')).toHaveAccessibleDescription('Forced only · from Profile')
+  })
+
+  it('shouldShowNoTabsWhenTheNextProfilesLanguagesCannotBeRead', async () => {
+    serveLanguageTabs()
+    let resetStore: (() => Promise<unknown>) | undefined
+    function ObservedTabs() {
+      const client = useApolloClient()
+      useEffect(() => {
+        resetStore = () => client.resetStore()
+      }, [client])
+      return <LanguageTabs item={MOVIE} />
+    }
+    renderWithProviders(<ObservedTabs />)
+    await tab('Default audio')
+    server.use(graphql.query('LanguageTabs', () => networkFailure()))
+
+    await act(async () => {
+      await resetStore?.().catch(() => undefined)
+    })
+
+    expect(await screen.findByText("Couldn't load the languages.")).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Default audio' })).not.toBeInTheDocument()
   })
 
   it('shouldSayAValueIsSetHereWhenTheTitlesOwnOverrideDecidesIt', async () => {
