@@ -195,6 +195,8 @@ function ServerDecision({
   const { data, loading } = useQuery(PlaybackDecisionsDocument, {
     variables: { id: playbackSessionId },
     fetchPolicy: 'network-only',
+    // A read still out for the stream before would answer for this one without its decision.
+    context: { queryDeduplication: false },
   })
   if (loading) {
     return <p className={styles.note}>Reading the server's decision…</p>

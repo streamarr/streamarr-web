@@ -8325,6 +8325,66 @@ describe('Player', () => {
       await waitFor(() => expect(factsIn(panel, 'Server')).toMatchObject({ Video: 'Encode' }))
     })
 
+    it('shouldReadTheDecisionAgainWhenAReplacementAttachesWhileTheFirstReadIsStillOut', async () => {
+      serveSession()
+      const replacement = replacementStream(1)
+      server.use(
+        graphql.query('PlaybackSession', () =>
+          HttpResponse.json({
+            data: {
+              playbackSession: readyPlaybackSession({
+                id: `playback-${SESSION.id}`,
+                streamSession: replacement,
+              }),
+            },
+          }),
+        ),
+      )
+      const firstRead = deferred()
+      const answers = [
+        { held: firstRead.promise, decisions: [playbackDecision({ streamSessionId: SESSION.id })] },
+        {
+          held: Promise.resolve(),
+          decisions: [
+            playbackDecision({ streamSessionId: SESSION.id }),
+            playbackDecision({
+              formatAttempt: 2,
+              streamSessionId: replacement.id,
+              video: { delivery: 'ENCODE', source: H264_FULL_HD, output: H264_FULL_HD },
+            }),
+          ],
+        },
+      ]
+      server.use(
+        graphql.query('PlaybackDecisions', async ({ variables }) => {
+          const answer = answers.shift()
+          assert(answer, 'a third read of the decisions')
+          await answer.held
+          return HttpResponse.json({
+            data: {
+              playbackSession: {
+                __typename: 'PlaybackSession',
+                id: String(variables.id),
+                decisions: answer.decisions.map(servedDecision),
+              },
+            },
+          })
+        }),
+      )
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await showingVideo(STREAM_URL)
+      const panel = await openPlaybackData(user)
+
+      answerTheNextSegmentWith503({ fatal: true })
+      await showingVideo(replacement.streamUrl)
+      firstRead.resolve()
+
+      await waitFor(() => expect(factsIn(panel, 'Server')).toMatchObject({ Video: 'Encode' }))
+      expect(answers).toEqual([])
+    })
+
     it('shouldShowTheNewPlaybackSessionsDecisionWhenTheViewerPicksAnotherQualityWhileItShows', async () => {
       servePlaybackChoices()
       const reads = serveDecisions((id) => [
