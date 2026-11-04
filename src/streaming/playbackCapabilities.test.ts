@@ -25,6 +25,10 @@ const IPHONE_CHROME =
   'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/141.0.0.0 Mobile/15E148 Safari/604.1'
 const FIREFOX =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:144.0) Gecko/20100101 Firefox/144.0'
+const LINUX_CHROME =
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36'
+const ANDROID_CHROME =
+  'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36'
 
 const AV1_PROBE = 'video/mp4; codecs="av01.0.08M.08"'
 
@@ -1383,14 +1387,22 @@ describe('browserPlaybackPlatform', () => {
     await expect(platform.audioOutputChannels()).resolves.toBe(0)
   })
 
-  it('shouldAnswerTheDefaultOutputsChannelMaximumWhenFirefoxRunsOnLinux', async () => {
-    vi.stubGlobal('navigator', { userAgent: FIREFOX, platform: 'Linux x86_64' })
-    vi.stubGlobal('AudioContext', audioContextReporting({ maxChannelCount: 6 }))
+  // Chrome's user agent names AppleWebKit too, and Android reports a Linux platform.
+  it.each([
+    ['Firefox', FIREFOX, 'Linux x86_64'],
+    ['Chrome', LINUX_CHROME, 'Linux x86_64'],
+    ['ChromeOnAndroid', ANDROID_CHROME, 'Linux armv81'],
+  ])(
+    'shouldAnswerTheDefaultOutputsChannelMaximumWhen%sRunsOnLinux',
+    async (_, userAgent, platformName) => {
+      vi.stubGlobal('navigator', { userAgent, platform: platformName })
+      vi.stubGlobal('AudioContext', audioContextReporting({ maxChannelCount: 6 }))
 
-    const platform = browserPlaybackPlatform(document.createElement('video'))
+      const platform = browserPlaybackPlatform(document.createElement('video'))
 
-    await expect(platform.audioOutputChannels()).resolves.toBe(6)
-  })
+      await expect(platform.audioOutputChannels()).resolves.toBe(6)
+    },
+  )
 
   it('shouldAnswerNoChannelsWhenTheBrowserOffersNoAudioContext', async () => {
     vi.stubGlobal('AudioContext', undefined)
