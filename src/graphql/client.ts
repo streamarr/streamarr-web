@@ -83,8 +83,6 @@ export function createApolloClient(
   const cache = new ResetCountingCache({
     possibleTypes: generatedIntrospection.possibleTypes,
     typePolicies: {
-      // The server has one upload budget setting, so a save's answer replaces the page's read.
-      UploadBudgetSetting: { keyFields: [] },
       Library: {
         fields: {
           alphabetIndex: { merge: false },

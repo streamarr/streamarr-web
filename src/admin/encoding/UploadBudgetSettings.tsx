@@ -51,6 +51,15 @@ export function UploadBudgetSettings() {
     try {
       const { data } = await change({
         variables: { input: { internetUploadMegabitsPerSecond: megabitsPerSecond } },
+        update(cache, { data: result }) {
+          // A save that answers after the admin left may be older than a save made on return.
+          const saved = result?.changeUploadBudget?.uploadBudgetSetting
+          if (saved && mounted.current)
+            cache.writeQuery({
+              query: UploadBudgetSettingDocument,
+              data: { uploadBudgetSetting: saved },
+            })
+        },
       })
       const payload = data?.changeUploadBudget
       if (payload?.userErrors.length) {

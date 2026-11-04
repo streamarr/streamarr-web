@@ -350,4 +350,45 @@ describe('upload budget settings', () => {
     answer.resolve()
     expect(await screen.findByText('Streams use up to 80%: 24 of 30 Mb/s.')).toBeInTheDocument()
   })
+
+  it('shouldKeepTheNewerSpeedWhenAnEarlierSaveAnswersAfterTheAdminReturns', async () => {
+    const state = serve()
+    const firstAnswer = deferred()
+    server.use(
+      graphql.mutation<ChangeUploadBudgetMutation, ChangeUploadBudgetMutationVariables>(
+        'ChangeUploadBudget',
+        async ({ variables }) => {
+          state.changes.push(variables.input.internetUploadMegabitsPerSecond)
+          await firstAnswer.promise
+          return HttpResponse.json({
+            data: { changeUploadBudget: { uploadBudgetSetting: on(30, 24), userErrors: [] } },
+          })
+        },
+        { once: true },
+      ),
+    )
+    const { user } = renderAppAt(ENCODING)
+    await enterSpeed(user, '30')
+    await user.click(saveButton())
+    await waitFor(() => expect(state.changes).toEqual([30]))
+    await returnToEncoding(user)
+    await enterSpeed(user, '40')
+    await waitFor(() => expect(saveButton()).toBeEnabled())
+    await user.click(saveButton())
+    expect(await screen.findByText('Streams use up to 80%: 32 of 40 Mb/s.')).toBeInTheDocument()
+    const firstAnswerDelivered = new Promise<void>((resolve) => {
+      const delivered = () => {
+        server.events.removeListener('response:mocked', delivered)
+        resolve()
+      }
+      server.events.on('response:mocked', delivered)
+    })
+
+    firstAnswer.resolve()
+    await firstAnswerDelivered
+    await new Promise((resolve) => setTimeout(resolve))
+
+    expect(await speedField()).toHaveValue('40')
+    expect(screen.getByText('Streams use up to 80%: 32 of 40 Mb/s.')).toBeInTheDocument()
+  })
 })
