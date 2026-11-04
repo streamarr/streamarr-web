@@ -7026,6 +7026,30 @@ describe('Player', () => {
       expect(reports).toEqual([])
     })
 
+    it('shouldShowThePlaybackFailureWithoutReportingAFormatWhenTheSourceFileCheckGetsNoAnswerWithinTenSeconds', async () => {
+      const reports = serveDirectPlay()
+      const checked = deferred()
+      server.use(
+        http.get('/api/stream/abcd/source.mp4', () => {
+          checked.resolve()
+          return new Promise<never>(() => undefined)
+        }),
+      )
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+      const video = await nativeVideo(SOURCE_FILE.streamUrl)
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      failTheSourceFile(video, 4)
+      await checked.promise
+      await act(async () => vi.advanceTimersByTimeAsync(9_999))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      await act(async () => vi.advanceTimersByTimeAsync(1))
+      vi.useRealTimers()
+
+      expect(await screen.findByRole('alert')).toHaveTextContent("Playback couldn't start.")
+      expect(reports).toEqual([])
+    })
+
     it('shouldKeepTheStartupDeadlineEndedWhenTheSourceFileLoadedItsMetadataButTheBrowserRefusedToStart', async () => {
       serveDirectPlay()
       vi.useFakeTimers({ shouldAdvanceTime: true })

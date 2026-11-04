@@ -1285,7 +1285,7 @@ async function handleSourceFileError({
         options.onFormatFailure('UNSUPPORTED_FORMAT')
         return
       }
-      if (!signal.aborted) options.onFatal()
+      options.onFatal()
       return
     default:
       options.onFatal()
@@ -1296,16 +1296,19 @@ async function handleSourceFileError({
 // that has gone or a 503, and a refused file says nothing about its format. Only a file whose first
 // byte arrives is one the element could not open.
 async function isSourceFileDelivered(url: string, signal: AbortSignal): Promise<boolean> {
-  const deadline = AbortSignal.timeout(SOURCE_FILE_CHECK_TIMEOUT_MS)
+  const check = new AbortController()
+  const deadline = setTimeout(() => check.abort(), SOURCE_FILE_CHECK_TIMEOUT_MS)
   try {
     const response = await fetch(new URL(url, window.location.href), {
       headers: { Range: 'bytes=0-0' },
       credentials: 'same-origin',
-      signal: AbortSignal.any([signal, deadline]),
+      signal: AbortSignal.any([signal, check.signal]),
     })
     return response.ok
   } catch {
     return false
+  } finally {
+    clearTimeout(deadline)
   }
 }
 
