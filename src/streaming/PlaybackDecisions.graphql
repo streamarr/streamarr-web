@@ -1,0 +1,8 @@
+query PlaybackDecisions($id: ID!) {
+  playbackSession(id: $id) {
+    id
+    decisions {
+      ...PlaybackDecisionFields
+    }
+  }
+}
