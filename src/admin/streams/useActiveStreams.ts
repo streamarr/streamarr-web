@@ -11,6 +11,9 @@ import { responsePathHasError } from '../../graphql/responseErrors'
 import { installRevalidation } from '../../graphql/revalidation'
 import { NO_ACTIVE_STREAMS_READ, reduceActiveStreams } from './activeStreamsList'
 
+// A read that never answers would hold every later read after a gap behind it.
+const READ_DEADLINE_MS = 15_000
+
 /**
  * The streams that play on the server now, kept current by live changes (ADR 0042): the changes
  * subscribe first, then the list reads, and it reads again whenever changes may have been missed.
@@ -28,18 +31,21 @@ export function useActiveStreams() {
     const read = reads.current
     dispatch({ kind: 'reading', read })
     readsOut.current += 1
+    const abandon = new AbortController()
+    const deadline = setTimeout(() => abandon.abort(), READ_DEADLINE_MS)
     try {
       // Each read asks afresh: one that joined a read still out would answer with a list from
       // before the changes that this read cleared.
       const { data } = await client.query({
         query: ActiveStreamsDocument,
         fetchPolicy: 'no-cache',
-        context: { queryDeduplication: false },
+        context: { queryDeduplication: false, fetchOptions: { signal: abandon.signal } },
       })
       dispatch({ kind: 'read', read, streams: data?.activeStreams ?? [] })
     } catch (error) {
       dispatch({ kind: 'readFailed', read, failure: error as ErrorLike })
     } finally {
+      clearTimeout(deadline)
       readsOut.current -= 1
     }
   }, [client])
