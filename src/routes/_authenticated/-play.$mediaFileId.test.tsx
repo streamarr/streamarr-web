@@ -201,7 +201,8 @@ describe('/play/$mediaFileId', () => {
     hls.audioTrack = 0
     act(() => hls.emit('hlsAudioTracksUpdated'))
 
-    await user.click(screen.getByRole('button', { name: 'Audio: English' }))
+    // The chip names the tracks once the player has attached the stream they belong to.
+    await user.click(await screen.findByRole('button', { name: 'Audio: English' }))
     await user.click(screen.getByRole('menuitemradio', { name: '日本語' }))
 
     await waitFor(() => expect(overrides).toEqual([{ itemId: 'e1', audioLanguage: 'JA' }]))
