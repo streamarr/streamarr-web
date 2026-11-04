@@ -410,6 +410,7 @@ function barControls(page: Page): Locator[] {
     page.getByRole('button', { name: 'Quality: Auto' }),
     page.getByRole('button', { name: 'Audio: Audio' }),
     page.getByRole('button', { name: 'Subtitles: Off' }),
+    page.getByRole('button', { name: 'Settings' }),
     page.getByRole('button', { name: 'Full screen' }),
   ]
 }
@@ -432,6 +433,7 @@ test('keyboard focus draws the theme ring on each player control', async ({ page
     page.getByRole('button', { name: 'Quality: Auto' }),
     page.getByRole('button', { name: 'Audio: Audio' }),
     page.getByRole('button', { name: 'Subtitles: Off' }),
+    page.getByRole('button', { name: 'Settings' }),
     page.getByRole('button', { name: 'Full screen' }),
   ]
   for (const control of controls) {
@@ -1284,7 +1286,7 @@ const ENCODE_DECISION = {
 }
 
 async function openPlaybackData(page: Page): Promise<Locator> {
-  await page.getByRole('button', { name: 'Player menu' }).click()
+  await page.getByRole('button', { name: 'Settings' }).click()
   await page.getByRole('menuitemradio', { name: 'Playback data' }).click()
   return page.getByRole('region', { name: 'Playback data' })
 }
