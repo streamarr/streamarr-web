@@ -9,7 +9,7 @@ import { useApolloClient } from '@apollo/client/react'
 import { deferred } from '../test/deferred'
 import { act, cleanup, configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import type { UserEvent } from '@testing-library/user-event'
-import { HttpResponse, graphql } from 'msw'
+import { HttpResponse, graphql, http } from 'msw'
 import { useEffect, useState } from 'react'
 import { afterEach, assert, beforeEach, describe, expect, it, vi } from 'vitest'
 import { type FakeHlsTrack, hls, resetFakeHls } from '../test/fakeHls'
@@ -6887,9 +6887,20 @@ describe('Player', () => {
   describe('direct play', () => {
     const SOURCE_FILE = { id: 'sess-1', streamUrl: '/api/stream/abcd/source.mp4?t=playback-token' }
 
-    function serveDirectPlay(): ReportPlaybackFormatFailureInput[] {
+    // The source file answers each request with `sourceStatus`, as the server's endpoint would.
+    function serveDirectPlay({
+      sourceStatus = 206,
+    }: { sourceStatus?: number } = {}): ReportPlaybackFormatFailureInput[] {
       const reports: ReportPlaybackFormatFailureInput[] = []
       server.use(
+        http.get(
+          '/api/stream/abcd/source.mp4',
+          () =>
+            new HttpResponse(new Uint8Array([0]), {
+              status: sourceStatus,
+              headers: { 'Content-Type': 'video/mp4', 'Content-Range': 'bytes 0-0/1' },
+            }),
+        ),
         graphql.mutation('CreatePlaybackSession', () =>
           HttpResponse.json({
             data: {
@@ -6987,6 +6998,33 @@ describe('Player', () => {
         expect(video).not.toHaveAttribute('src')
       },
     )
+
+    it.each([404, 503])(
+      'shouldShowThePlaybackFailureWithoutReportingAFormatWhenTheSourceFileAnswers%sBeforeTheBrowserCallsItUnsupported',
+      async (sourceStatus) => {
+        const reports = serveDirectPlay({ sourceStatus })
+        renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+        const video = await nativeVideo(SOURCE_FILE.streamUrl)
+
+        failTheSourceFile(video, 4)
+
+        expect(await screen.findByRole('alert')).toHaveTextContent("Playback couldn't start.")
+        expect(reports).toEqual([])
+        expect(hls.loadSource).not.toHaveBeenCalled()
+      },
+    )
+
+    it('shouldShowThePlaybackFailureWithoutReportingAFormatWhenTheSourceFileCannotBeReachedAfterTheBrowserCallsItUnsupported', async () => {
+      const reports = serveDirectPlay()
+      server.use(http.get('/api/stream/abcd/source.mp4', () => HttpResponse.error()))
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+      const video = await nativeVideo(SOURCE_FILE.streamUrl)
+
+      failTheSourceFile(video, 4)
+
+      expect(await screen.findByRole('alert')).toHaveTextContent("Playback couldn't start.")
+      expect(reports).toEqual([])
+    })
 
     it('shouldKeepTheStartupDeadlineEndedWhenTheSourceFileLoadedItsMetadataButTheBrowserRefusedToStart', async () => {
       serveDirectPlay()

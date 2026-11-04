@@ -1226,6 +1226,8 @@ function isUnsupportedFormat(data: ErrorData): boolean {
   }
 }
 
+const SOURCE_FILE_CHECK_TIMEOUT_MS = 10_000
+
 // MediaError's codes, which not every environment defines as constants.
 const MEDIA_ERR_DECODE = 3
 const MEDIA_ERR_SRC_NOT_SUPPORTED = 4
@@ -1239,13 +1241,17 @@ function attachSourceFile(
   options: StreamSourceOptions,
 ): StreamSource {
   const { startupDeadline, onFirstFrame } = options
-  const onVideoError = () => handleSourceFileError(video, options)
+  const detached = new AbortController()
+  const onVideoError = () => {
+    void handleSourceFileError({ video, url, options, signal: detached.signal })
+  }
   video.addEventListener('error', onVideoError)
   video.addEventListener('loadedmetadata', startupDeadline.end)
   video.addEventListener('loadeddata', onFirstFrame, { once: true })
   video.src = url
   return {
     detach: () => {
+      detached.abort()
       video.removeEventListener('error', onVideoError)
       video.removeEventListener('loadedmetadata', startupDeadline.end)
       video.removeEventListener('loadeddata', onFirstFrame)
@@ -1259,16 +1265,47 @@ function attachSourceFile(
 // A file the browser cannot decode, or whose format it cannot open, is a format error, after which
 // the server's next format attempt is HLS at original quality. An aborted or failed fetch says
 // nothing about the format.
-function handleSourceFileError(video: HTMLVideoElement, options: StreamSourceOptions) {
+async function handleSourceFileError({
+  video,
+  url,
+  options,
+  signal,
+}: {
+  video: HTMLVideoElement
+  url: string
+  options: StreamSourceOptions
+  signal: AbortSignal
+}) {
   switch (video.error?.code) {
     case MEDIA_ERR_DECODE:
       options.onFormatFailure('DECODE_ERROR')
       return
     case MEDIA_ERR_SRC_NOT_SUPPORTED:
-      options.onFormatFailure('UNSUPPORTED_FORMAT')
+      if (await isSourceFileDelivered(url, signal)) {
+        options.onFormatFailure('UNSUPPORTED_FORMAT')
+        return
+      }
+      if (!signal.aborted) options.onFatal()
       return
     default:
       options.onFatal()
+  }
+}
+
+// The element also calls a source unsupported when the server refused it, as with a 404 for a file
+// that has gone or a 503, and a refused file says nothing about its format. Only a file whose first
+// byte arrives is one the element could not open.
+async function isSourceFileDelivered(url: string, signal: AbortSignal): Promise<boolean> {
+  const deadline = AbortSignal.timeout(SOURCE_FILE_CHECK_TIMEOUT_MS)
+  try {
+    const response = await fetch(new URL(url, window.location.href), {
+      headers: { Range: 'bytes=0-0' },
+      credentials: 'same-origin',
+      signal: AbortSignal.any([signal, deadline]),
+    })
+    return response.ok
+  } catch {
+    return false
   }
 }
 
