@@ -1317,6 +1317,7 @@ describe('browserPlaybackPlatform', () => {
   it('shouldAnswerFromTheBrowsersDecodingInfoWhenTheBrowserOffersMediaCapabilities', async () => {
     vi.stubGlobal('navigator', {
       userAgent: SAFARI,
+      platform: 'MacIntel',
       mediaCapabilities: {
         decodingInfo: (configuration: MediaDecodingConfiguration) =>
           Promise.resolve({
@@ -1341,7 +1342,7 @@ describe('browserPlaybackPlatform', () => {
   })
 
   it('shouldReadTheUserAgentFromTheBrowserWhenBindingThePlatform', () => {
-    vi.stubGlobal('navigator', { userAgent: SAFARI })
+    vi.stubGlobal('navigator', { userAgent: SAFARI, platform: 'MacIntel' })
 
     const platform = browserPlaybackPlatform(document.createElement('video'))
 
@@ -1412,7 +1413,7 @@ describe('browserPlaybackPlatform', () => {
   })
 
   it('shouldLeaveDecodingInfoAbsentWhenTheBrowserOffersNoMediaCapabilities', () => {
-    vi.stubGlobal('navigator', { userAgent: SAFARI })
+    vi.stubGlobal('navigator', { userAgent: SAFARI, platform: 'MacIntel' })
 
     const platform = browserPlaybackPlatform(document.createElement('video'))
 
