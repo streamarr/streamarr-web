@@ -81,7 +81,15 @@ const FIXTURES: readonly Fixture[] = [
   { file: 'av1.webm', container: 'MATROSKA', codecFamily: 'AV1', audioCodec: 'OPUS' },
 ]
 
-const MEDIA_TYPES: Record<string, string> = { mp4: 'video/mp4', webm: 'video/webm' }
+// As the server sends each container. A WebM file is Matroska, served as source.mkv.
+const MEDIA_TYPES: Partial<Record<SourceContainer, string>> = {
+  MP4: 'video/mp4',
+  MATROSKA: 'video/x-matroska',
+}
+
+function servedPath(fixture: Fixture): string {
+  return `/direct-play-fixtures/${fixture.file.replace(/\.webm$/, '.mkv')}`
+}
 
 function fixturePath(file: string): string {
   return fileURLToPath(new URL(`fixtures/direct-play/${file}`, import.meta.url))
@@ -161,10 +169,9 @@ test('the media element plays every file whose container and sample entry the en
   await page.route('**/direct-play-fixtures', (route) =>
     route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Direct play</title>' }),
   )
-  for (const { file } of FIXTURES) {
-    const extension = file.split('.').pop() ?? ''
-    await page.route(`**/direct-play-fixtures/${file}`, (route) =>
-      serveFile(route, fixturePath(file), MEDIA_TYPES[extension]),
+  for (const fixture of FIXTURES) {
+    await page.route(`**${servedPath(fixture)}`, (route) =>
+      serveFile(route, fixturePath(fixture.file), MEDIA_TYPES[fixture.container] ?? ''),
     )
   }
   await page.goto('/direct-play-fixtures')
@@ -179,7 +186,7 @@ test('the media element plays every file whose container and sample entry the en
   for (const fixture of FIXTURES) {
     results[fixture.file] = {
       declared: declares(declaration, fixture),
-      played: await playsInTheMediaElement(page, `/direct-play-fixtures/${fixture.file}`),
+      played: await playsInTheMediaElement(page, servedPath(fixture)),
     }
   }
 
