@@ -194,8 +194,9 @@ function ServerDecision({
 }: Readonly<{ playbackSessionId: string; streamSessionId: string }>) {
   const { data, loading } = useQuery(PlaybackDecisionsDocument, {
     variables: { id: playbackSessionId },
-    fetchPolicy: 'network-only',
-    // A read still out for the stream before would answer for this one without its decision.
+    // Each stream session's read stands alone: a read still out for the stream before would answer
+    // for this one, and its late answer would overwrite this one's decisions in a shared cache.
+    fetchPolicy: 'no-cache',
     context: { queryDeduplication: false },
   })
   if (loading) {
