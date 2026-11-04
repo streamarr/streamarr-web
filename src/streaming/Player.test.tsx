@@ -5313,6 +5313,63 @@ describe('Player', () => {
       expect(inputs).toEqual([{ itemId: 'e1', audioLanguage: 'FR' }])
     })
 
+    it('shouldStoreSwitchesInOrderAcrossAPlayerThatClosesAndOpensAgain', async () => {
+      serveSession()
+      const inputs = serveOverrides()
+      const first = deferred()
+      server.use(
+        graphql.mutation('SetLanguageOverride', async ({ variables }) => {
+          inputs.push(variables.input as SetLanguageOverrideInput)
+          if (inputs.length === 1) {
+            await first.promise
+          }
+          return HttpResponse.json({
+            data: { setLanguageOverride: { item: null, userErrors: [] } },
+          })
+        }),
+      )
+      let setOpen: ((open: boolean) => void) | undefined
+      function Playing() {
+        const [open, setPlaying] = useState(true)
+        useEffect(() => {
+          setOpen = setPlaying
+        }, [])
+        return open ? (
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" mediaTitle={EPISODE} />
+        ) : null
+      }
+      const tracks = {
+        audio: [
+          { name: 'English', lang: 'en' },
+          { name: 'Français', lang: 'fr' },
+          { name: 'Deutsch', lang: 'de' },
+          { name: 'Español', lang: 'es' },
+        ],
+        audioTrack: 0,
+      }
+      const { user } = renderWithProviders(<Playing />)
+      await attachedVideo()
+      offerHlsTracks(tracks)
+      await pickTrack(user, /^Audio/, 'Français')
+      await waitFor(() => expect(inputs).toHaveLength(1))
+      await pickTrack(user, /^Audio/, 'Deutsch')
+
+      act(() => setOpen?.(false))
+      act(() => setOpen?.(true))
+      await attachedVideo()
+      offerHlsTracks(tracks)
+      await pickTrack(user, /^Audio/, 'Español')
+      first.resolve()
+
+      await waitFor(() =>
+        expect(inputs).toEqual([
+          { itemId: 'e1', audioLanguage: 'FR' },
+          { itemId: 'e1', audioLanguage: 'DE' },
+          { itemId: 'e1', audioLanguage: 'ES' },
+        ]),
+      )
+    })
+
     it('shouldKeepPlayingTheSwitchedTrackWhenTheServerCannotStoreIt', async () => {
       serveSession()
       serveOverrides()

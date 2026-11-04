@@ -1,6 +1,5 @@
 import type { ApolloClient } from '@apollo/client'
 import { useApolloClient } from '@apollo/client/react'
-import { useRef } from 'react'
 import {
   PlayerWiderSubtitleModeDocument,
   SetLanguageOverrideDocument,
@@ -32,7 +31,6 @@ export function useLanguageSwitchReport(
   mediaTitle: PlayableMediaTitle | undefined,
 ): (chosen: ChosenTrack) => void {
   const client = useApolloClient()
-  const stores = useRef<Promise<void>>(Promise.resolve())
 
   return (chosen) => {
     if (!mediaTitle) {
@@ -42,12 +40,17 @@ export function useLanguageSwitchReport(
     const fence = resetFence(client)
     // The switch already plays; a failure to store it only means a resume starts from the wider
     // levels, which is what playback did before the switch.
-    stores.current = stores.current
+    const stored = (storesByClient.get(client) ?? Promise.resolve())
       .then(() => storeSwitch({ client, mediaTitle, chosen, isCurrent: fence.isCurrent }))
       .catch(() => undefined)
       .finally(fence.stop)
+    storesByClient.set(client, stored)
   }
 }
+
+// One queue per client rather than per player, so a player opened again stores after the switches
+// that the one before it still had waiting.
+const storesByClient = new WeakMap<ApolloClient, Promise<void>>()
 
 // Whether the store has been reset or cleared, as a Profile or account switch does, since now.
 function resetFence(client: ApolloClient): { isCurrent: () => boolean; stop: () => void } {
