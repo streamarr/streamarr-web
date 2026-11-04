@@ -1173,14 +1173,13 @@ function entryQuestions({
   if (!entry.compatibleBases.includes('SDR') && hdr) {
     return hdrQuestions({ family, hdr, tier, entry })
   }
-  const profiles = entry.codecProfiles.map(({ profile }) => profile)
+  const profiles = new Set(entry.codecProfiles.map(({ profile }) => profile))
   return [family.eightBit, family.tenBit]
     .filter((probe) => probe !== undefined)
     .filter(
       (probe) =>
         probe.bitDepth <= entry.maxBitDepth &&
-        (probe.profiles.length === 0 ||
-          probe.profiles.some((profile) => profiles.includes(profile))),
+        (probe.profiles.length === 0 || probe.profiles.some((profile) => profiles.has(profile))),
     )
     .map((probe) => videoConfiguration(tier, probe.codec(level)))
 }
