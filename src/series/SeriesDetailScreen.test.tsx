@@ -172,7 +172,7 @@ async function renderSeries(data: SeriesDetailQuery) {
 }
 
 describe('SeriesDetailScreen', () => {
-  it('shouldSetThisTitlesDefaultAudioFromTheTabOnTheRule', async () => {
+  it('shouldSetThisTitlesOwnAudioOverrideFromItsDefaultAudioTab', async () => {
     serve(seriesData())
     const tabs = serveLanguageTabs({
       preference: languagePreferenceFixture({ audioLanguages: ['FR'] }),

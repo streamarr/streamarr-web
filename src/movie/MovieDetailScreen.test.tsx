@@ -137,7 +137,7 @@ function markWatchedAnswers() {
 }
 
 describe('MovieDetailScreen', () => {
-  it('shouldSetThisTitlesDefaultAudioFromTheTabOnTheRule', async () => {
+  it('shouldSetThisTitlesOwnAudioOverrideFromItsDefaultAudioTab', async () => {
     serve(movieData())
     const tabs = serveLanguageTabs({
       preference: languagePreferenceFixture({ audioLanguages: ['FR'] }),

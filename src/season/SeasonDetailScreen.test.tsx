@@ -161,7 +161,7 @@ async function renderSeason(data: SeasonDetailQuery = seasonData()) {
 }
 
 describe('SeasonDetailScreen', () => {
-  it('shouldSetThisTitlesDefaultAudioFromTheTabOnTheRule', async () => {
+  it('shouldSetThisTitlesOwnAudioOverrideFromItsDefaultAudioTab', async () => {
     serve(seasonData())
     const tabs = serveLanguageTabs({
       preference: languagePreferenceFixture({ audioLanguages: ['FR'] }),

@@ -3,6 +3,7 @@ import type { UserEvent } from '@testing-library/user-event'
 import { graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type {
+  Language,
   LanguageSettingsQuery,
   ProfileLanguagePreferencesFieldsFragment,
   SetLanguagePreferencesInput,
@@ -184,6 +185,21 @@ describe('language settings', () => {
     expect(await audioLanguages()).toHaveLength(5)
     expect(screen.queryByRole('combobox', { name: 'Add an audio language' })).toBeNull()
     expect(screen.getByText('A Profile keeps up to five audio languages.')).toBeVisible()
+  })
+
+  it('shouldKeepShowingASubtitleLanguageNewerThanThisClientWhenItIsSaved', async () => {
+    serve({ saved: preferences({ subtitleLanguage: 'FR_CA' as Language }) })
+    const { user } = renderAppAt(LANGUAGES)
+
+    const field = await screen.findByRole('combobox', { name: 'Subtitle language' })
+    expect(field).toHaveValue('Canadian French')
+    await user.click(field)
+    expect(
+      within(optionsOf('Subtitle language')).getByRole('option', {
+        name: 'Canadian French',
+        hidden: true,
+      }),
+    ).toHaveAttribute('aria-disabled', 'true')
   })
 
   it('shouldSaveTheSubtitleModeWhenTheViewerChoosesOne', async () => {

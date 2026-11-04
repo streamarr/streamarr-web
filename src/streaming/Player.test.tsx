@@ -35,6 +35,7 @@ import {
   playbackPlatformFixture,
   smoothUpToFullHd,
 } from '../test/playbackCapabilities'
+import { networkFailure } from '../test/graphqlResponses'
 import { languagePreferenceFixture, profileLanguagesFixture } from '../test/languageFixtures'
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
@@ -5131,6 +5132,51 @@ describe('Player', () => {
       await waitFor(() =>
         expect(inputs).toEqual([{ itemId: 'e1', subtitleLanguage: 'EN', subtitleMode: 'ALWAYS' }]),
       )
+    })
+
+    it('shouldStoreForcedOnlyWhenTheWiderModeCannotBeReadAsTheViewerTurnsSubtitlesOff', async () => {
+      serveSession()
+      const inputs = serveOverrides({ seasonMode: 'OFF' })
+      server.use(graphql.query('PlayerWiderSubtitleMode', () => networkFailure()))
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" mediaTitle={EPISODE} />,
+      )
+      await attachedVideo()
+      offerHlsTracks({ subtitles: [{ name: 'English', lang: 'en' }], subtitleTrack: 0 })
+
+      await pickTrack(user, /^Subtitles/, 'Off')
+
+      await waitFor(() => expect(inputs).toEqual([{ itemId: 'e1', subtitleMode: 'FORCED' }]))
+    })
+
+    it('shouldKeepPlayingTheSwitchedTrackWhenTheServerCannotStoreIt', async () => {
+      serveSession()
+      serveOverrides()
+      let attempts = 0
+      server.use(
+        graphql.mutation('SetLanguageOverride', () => {
+          attempts++
+          return networkFailure()
+        }),
+      )
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" mediaTitle={EPISODE} />,
+      )
+      await attachedVideo()
+      offerHlsTracks({
+        audio: [
+          { name: 'English', lang: 'en' },
+          { name: 'Français', lang: 'fr' },
+        ],
+        audioTrack: 0,
+      })
+
+      await pickTrack(user, /^Audio/, 'Français')
+
+      await waitFor(() => expect(attempts).toBe(1))
+      expect(hls.audioTrack).toBe(1)
+      expect(screen.getByRole('button', { name: 'Audio: Français' })).toBeInTheDocument()
+      expect(screen.queryByRole('alert')).toBeNull()
     })
 
     it.each([

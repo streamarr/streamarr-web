@@ -88,6 +88,18 @@ describe('LanguageTabs', () => {
     expect(rowNames()[0]).toBe('From Profile · File default')
   })
 
+  it('shouldNameASubtitleModeAndSourceNewerThanThisClientInGeneralWords', async () => {
+    serveLanguageTabs({
+      preference: languagePreferenceFixture({
+        subtitleMode: '%future added value',
+        subtitleSource: '%future added value',
+      }),
+    })
+    renderWithProviders(<LanguageTabs item={MOVIE} />)
+
+    expect(await tab('Subtitles')).toHaveAccessibleDescription('Other · from elsewhere')
+  })
+
   it('shouldOfferTheWiderChoiceThenTheProfilesLanguagesThenEveryOtherWhenAudioOpens', async () => {
     serveLanguageTabs({ profile: profileLanguagesFixture({ audioLanguages: ['EN', 'FR'] }) })
     const { user } = renderWithProviders(<LanguageTabs item={MOVIE} />)
