@@ -1,0 +1,33 @@
+.facts {
+  display: grid;
+  gap: var(--spacing-6);
+  margin: 0;
+}
+
+.fact {
+  display: grid;
+  grid-template-columns: 11em minmax(0, 1fr);
+  gap: var(--spacing-12);
+}
+
+.name {
+  color: var(--text-secondary);
+}
+
+.value {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+.reasons {
+  display: grid;
+  gap: var(--spacing-4);
+  margin: var(--spacing-10) 0 0;
+  padding-inline-start: var(--spacing-16);
+}
+
+.note {
+  margin: var(--spacing-10) 0 0;
+  color: var(--text-secondary);
+}

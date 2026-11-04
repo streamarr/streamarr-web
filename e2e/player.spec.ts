@@ -1241,3 +1241,109 @@ for (const viewport of [
     expect(popover.caretX).toBeCloseTo(chipBox.x + chipBox.width / 2, 0)
   })
 }
+
+const H264_HD = {
+  __typename: 'VideoFormat',
+  codec: 'h264',
+  width: 1280,
+  height: 720,
+  frameRate: 25,
+  bitrate: 1_800_000,
+  videoRange: 'SDR',
+  dolbyVision: false,
+}
+
+// The server encodes the HEVC source because the browser declares no HEVC, and copies its audio.
+const ENCODE_DECISION = {
+  PlaybackDecisions: {
+    playbackSession: {
+      __typename: 'PlaybackSession',
+      id: 'playback-1',
+      decisions: [
+        {
+          __typename: 'PlaybackDecision',
+          formatAttempt: 1,
+          streamSessionId: 'sess-1',
+          video: {
+            __typename: 'VideoDelivery',
+            delivery: 'ENCODE',
+            source: { ...H264_HD, codec: 'hevc', bitrate: 6_000_000 },
+            output: H264_HD,
+          },
+          audio: {
+            __typename: 'AudioDelivery',
+            delivery: 'COPY',
+            source: { __typename: 'AudioFormat', codec: 'aac', channels: 2, bitrate: 128_000 },
+            output: { __typename: 'AudioFormat', codec: 'aac', channels: 2, bitrate: 128_000 },
+          },
+          reasons: ['VIDEO_CODEC_NOT_DECLARED'],
+        },
+      ],
+    },
+  },
+}
+
+async function openPlaybackData(page: Page): Promise<Locator> {
+  await page.getByRole('button', { name: 'Player menu' }).click()
+  await page.getByRole('menuitemradio', { name: 'Playback data' }).click()
+  return page.getByRole('region', { name: 'Playback data' })
+}
+
+function factIn(panel: Locator, group: string, name: string): Locator {
+  return panel
+    .getByRole('region', { name: group })
+    .getByRole('term')
+    .filter({ hasText: new RegExp(`^${name}$`) })
+    .locator('xpath=following-sibling::dd')
+}
+
+test('playback data shows what hls.js reports of the playing variant and why the server encodes', async ({
+  page,
+  request,
+}) => {
+  await routePlayer(page, request, {
+    operations: { MovieDetail: MOVIE_DETAIL, ...ENCODE_DECISION },
+  })
+  await serveTheFirstMediaSegment(page)
+  await page.goto('/movie/m1')
+  await page.getByRole('link', { name: 'Play' }).click()
+  await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible()
+
+  const panel = await openPlaybackData(page)
+
+  await expect(factIn(panel, 'Player', 'Resolution')).toHaveText('1280×720')
+  await expect(factIn(panel, 'Player', 'Bitrate')).toHaveText('2 Mb/s')
+  await expect(factIn(panel, 'Player', 'Video codec')).toHaveText('avc1.64001f')
+  await expect(factIn(panel, 'Player', 'Audio format')).toHaveText('mp4a.40.2 · 2 channels')
+  await expect(factIn(panel, 'Player', 'HDR mode')).toHaveText('SDR')
+  await expect(factIn(panel, 'Server', 'Video')).toHaveText('Encode')
+  await expect(factIn(panel, 'Server', 'Video source')).toHaveText(
+    'HEVC · 1280×720 · 25 fps · SDR · 6 Mb/s',
+  )
+  await expect(panel.getByRole('list', { name: 'Reasons' })).toHaveText(
+    'This device does not declare the video codec.',
+  )
+
+  await panel.getByRole('button', { name: 'Close playback data' }).click()
+
+  await expect(panel).toBeHidden()
+  await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible()
+})
+
+test('on a phone held upright playback data stays on screen below Back', async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize({ width: 375, height: 667 })
+  await openPlayer(page, request, { operations: ENCODE_DECISION })
+
+  const panel = await openPlaybackData(page)
+
+  await expect(factIn(panel, 'Server', 'Video')).toHaveText('Encode')
+  const box = await panel.boundingBox()
+  const back = await page.getByRole('button', { name: 'Back', exact: true }).boundingBox()
+  expect(box && back).not.toBeNull()
+  expect(box!.x).toBeGreaterThanOrEqual(16)
+  expect(box!.x + box!.width).toBeLessThanOrEqual(375 - 16)
+  expect(box!.y).toBeGreaterThanOrEqual(back!.y + back!.height)
+})

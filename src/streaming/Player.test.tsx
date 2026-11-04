@@ -1,7 +1,10 @@
 import {
   type DirectPlayAudioTrack,
+  H264_FULL_HD,
   OFFERED_FOR_FULL_HD,
   type PlaybackChoices,
+  playbackDecision,
+  servedDecision,
   readyDirectPlaySession,
   readyPlaybackSession,
   destroyedPlaybackSession,
@@ -40,6 +43,8 @@ import { server } from '../test/server'
 import type {
   ClientCapabilityDeclarationInput,
   CreatePlaybackSessionInput,
+  DecisionReason,
+  PlaybackDecisionFieldsFragment,
   PlaybackFormatChange,
   ReportPlaybackFormatFailureInput,
   SwitchPlaybackAudioTrackInput,
@@ -8078,6 +8083,422 @@ describe('Player', () => {
 
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
       expect(video).toHaveAttribute('src', SOURCE_FILE.streamUrl)
+    })
+  })
+
+  describe('playback data', () => {
+    const HEVC_UHD_DOLBY_VISION = {
+      codec: 'hevc',
+      width: 3840,
+      height: 2160,
+      frameRate: 23.976,
+      bitrate: 45_000_000,
+      videoRange: 'PQ',
+      dolbyVision: true,
+    } as const
+    const EAC3_SURROUND = { codec: 'eac3', channels: 6, bitrate: 640_000 } as const
+
+    // Answers each read of a playback session's decisions with what `decisionsOf` holds for it then.
+    function serveDecisions(
+      decisionsOf: (playbackSessionId: string) => PlaybackDecisionFieldsFragment[] | null,
+    ): string[] {
+      const reads: string[] = []
+      server.use(
+        graphql.query('PlaybackDecisions', ({ variables }) => {
+          const id = String(variables.id)
+          reads.push(id)
+          const decisions = decisionsOf(id)
+          return HttpResponse.json({
+            data: {
+              playbackSession: decisions && {
+                __typename: 'PlaybackSession',
+                id,
+                decisions: decisions.map(servedDecision),
+              },
+            },
+          })
+        }),
+      )
+      return reads
+    }
+
+    async function openPlaybackData(user: UserEvent): Promise<HTMLElement> {
+      const menu = await openPicker(user, screen.getByRole('button', { name: 'Player menu' }))
+      await user.click(within(menu).getByRole('menuitemradio', { name: 'Playback data' }))
+      return screen.getByRole('region', { name: 'Playback data' })
+    }
+
+    // Each fact a group of the panel shows, by its name.
+    function factsIn(panel: HTMLElement, group: string): Record<string, string> {
+      const section = within(panel).getByRole('region', { name: group })
+      return Object.fromEntries(
+        within(section)
+          .getAllByRole('term')
+          .map((term) => [term.textContent, term.nextElementSibling?.textContent ?? '']),
+      )
+    }
+
+    function reasonsIn(panel: HTMLElement): string[] {
+      return within(within(panel).getByRole('list', { name: 'Reasons' }))
+        .getAllByRole('listitem')
+        .map((reason) => reason.textContent ?? '')
+    }
+
+    // What the browser reports of the element's picture, its buffer and its decoded frames.
+    function reportPlayback(
+      video: HTMLVideoElement,
+      {
+        width,
+        height,
+        bufferedTo,
+        frames,
+      }: {
+        width: number
+        height: number
+        bufferedTo: number
+        frames: { dropped: number; total: number }
+      },
+    ) {
+      Object.defineProperty(video, 'videoWidth', { value: width, configurable: true })
+      Object.defineProperty(video, 'videoHeight', { value: height, configurable: true })
+      Object.defineProperty(video, 'buffered', {
+        configurable: true,
+        value: { length: 1, start: () => 0, end: () => bufferedTo },
+      })
+      Object.defineProperty(video, 'getVideoPlaybackQuality', {
+        configurable: true,
+        value: () => ({ droppedVideoFrames: frames.dropped, totalVideoFrames: frames.total }),
+      })
+    }
+
+    it('shouldShowHowTheServerDeliversEachTrackAndWhyWhenTheViewerOpensPlaybackData', async () => {
+      serveSession()
+      serveDecisions(() => [
+        playbackDecision({
+          streamSessionId: SESSION.id,
+          video: { delivery: 'ENCODE', source: HEVC_UHD_DOLBY_VISION, output: H264_FULL_HD },
+          audio: { delivery: 'COPY', source: EAC3_SURROUND, output: EAC3_SURROUND },
+          reasons: ['VIDEO_CODEC_NOT_DECLARED', 'DYNAMIC_RANGE_NOT_DECLARED'],
+        }),
+      ])
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await showingVideo(STREAM_URL)
+
+      const panel = await openPlaybackData(user)
+
+      expect(await within(panel).findByText('Encode')).toBeInTheDocument()
+      expect(factsIn(panel, 'Server')).toEqual({
+        Video: 'Encode',
+        'Video source': 'HEVC · 3840×2160 · 23.976 fps · PQ · Dolby Vision · 45 Mb/s',
+        'Video output': 'H.264 · 1920×1080 · 23.976 fps · SDR · 8 Mb/s',
+        Audio: 'Copy',
+        'Audio source': 'E-AC-3 · 6 channels · 640 kb/s',
+        'Audio output': 'E-AC-3 · 6 channels · 640 kb/s',
+      })
+      expect(reasonsIn(panel)).toEqual([
+        'This device does not declare the video codec.',
+        "This device does not declare the video's HDR format.",
+      ])
+    })
+
+    it('shouldSayEveryTrackPlaysAsTheFileHoldsItWhenTheDecisionNamesNoReason', async () => {
+      serveSession()
+      serveDecisions(() => [
+        playbackDecision({
+          streamSessionId: SESSION.id,
+          video: {
+            delivery: 'DIRECT_PLAY',
+            source: { ...H264_FULL_HD, frameRate: null, bitrate: null },
+            output: { ...H264_FULL_HD, frameRate: null, bitrate: null },
+          },
+          audio: null,
+        }),
+      ])
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await showingVideo(STREAM_URL)
+
+      const panel = await openPlaybackData(user)
+
+      expect(
+        await within(panel).findByText('Every track plays as the file holds it.'),
+      ).toBeInTheDocument()
+      expect(factsIn(panel, 'Server')).toEqual({
+        Video: 'Direct play',
+        'Video source': 'H.264 · 1920×1080 · SDR',
+        'Video output': 'H.264 · 1920×1080 · SDR',
+        Audio: 'No audio',
+      })
+    })
+
+    it('shouldNameAReasonThisAppDoesNotKnowWhenTheServerAddsOne', async () => {
+      serveSession()
+      serveDecisions(() => [
+        playbackDecision({
+          streamSessionId: SESSION.id,
+          reasons: ['AUDIO_CODEC_NOT_DECLARED', 'A_REASON_ADDED_LATER' as DecisionReason],
+        }),
+      ])
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await showingVideo(STREAM_URL)
+
+      const panel = await openPlaybackData(user)
+
+      await waitFor(() =>
+        expect(reasonsIn(panel)).toEqual([
+          'This device does not declare the audio codec.',
+          'The server named a reason that this app does not know yet.',
+        ]),
+      )
+    })
+
+    it('shouldShowTheReplacingStreamsDecisionWhenAFallbackReplacesTheStreamWhileItShows', async () => {
+      serveSession()
+      const replacement = replacementStream(1)
+      replaceTheRefusedStream({ formatChange: 'COPY_FAILED' }, replacement)
+      const copy = playbackDecision({ streamSessionId: SESSION.id })
+      const encode = playbackDecision({
+        formatAttempt: 2,
+        streamSessionId: replacement.id,
+        video: { delivery: 'ENCODE', source: H264_FULL_HD, output: H264_FULL_HD },
+        reasons: ['COPY_FAILED'],
+      })
+      let decisions = [copy]
+      const reads = serveDecisions(() => decisions)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await showingVideo(STREAM_URL)
+      const panel = await openPlaybackData(user)
+      await waitFor(() => expect(factsIn(panel, 'Server')).toMatchObject({ Video: 'Copy' }))
+
+      decisions = [copy, encode]
+      refuseTheStreamsFormat()
+      await showingVideo(replacement.streamUrl)
+
+      await waitFor(() => expect(factsIn(panel, 'Server')).toMatchObject({ Video: 'Encode' }))
+      expect(reasonsIn(panel)).toEqual(["The copy didn't play, so the video is converted."])
+      expect(reads).toEqual([`playback-${SESSION.id}`, `playback-${SESSION.id}`])
+    })
+
+    it('shouldShowTheNewPlaybackSessionsDecisionWhenTheViewerPicksAnotherQualityWhileItShows', async () => {
+      servePlaybackChoices()
+      const reads = serveDecisions((id) => [
+        playbackDecision({
+          streamSessionId: id.replace('playback', 'sess'),
+          video: {
+            delivery: id === 'playback-1' ? 'COPY' : 'ENCODE',
+            source: H264_FULL_HD,
+            output: H264_FULL_HD,
+          },
+        }),
+      ])
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await showingVideo(choiceStreamUrl(1))
+      const panel = await openPlaybackData(user)
+      await waitFor(() => expect(factsIn(panel, 'Server')).toMatchObject({ Video: 'Copy' }))
+
+      await pickQuality(user, '720p')
+      await showingVideo(choiceStreamUrl(2))
+
+      await waitFor(() => expect(factsIn(panel, 'Server')).toMatchObject({ Video: 'Encode' }))
+      expect(reads).toEqual(['playback-1', 'playback-2'])
+    })
+
+    it.each([
+      {
+        answer: 'no playback session',
+        serve: () => serveDecisions(() => null),
+      },
+      {
+        answer: 'no decision yet',
+        serve: () => serveDecisions(() => []),
+      },
+      {
+        answer: 'an error',
+        serve: () =>
+          server.use(
+            graphql.query('PlaybackDecisions', () =>
+              HttpResponse.json({ errors: [{ message: 'Internal failure' }] }),
+            ),
+          ),
+      },
+    ])(
+      'shouldSayTheServersDecisionIsUnavailableWhenTheServerAnswersWith(answer: $answer)',
+      async ({ serve }) => {
+        serveSession()
+        serve()
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        await showingVideo(STREAM_URL)
+
+        const panel = await openPlaybackData(user)
+
+        expect(
+          await within(panel).findByText("The server's decision for this stream isn't available."),
+        ).toBeInTheDocument()
+      },
+    )
+
+    it('shouldShowWhatThePlayerReportsWhenTheStreamPlays', async () => {
+      server.use(
+        graphql.mutation('CreatePlaybackSession', () =>
+          HttpResponse.json({
+            data: {
+              createPlaybackSession: {
+                playbackSession: readyPlaybackSession({
+                  streamSession: { ...SESSION, videoRange: 'PQ' },
+                }),
+                userErrors: [],
+              },
+            },
+          }),
+        ),
+      )
+      recordTimelineReports()
+      serveDecisions(() => [playbackDecision({ streamSessionId: SESSION.id })])
+      hls.levels = [
+        { bitrate: 2_000_000, videoCodec: 'avc1.64001f', audioCodec: 'mp4a.40.2' },
+        { bitrate: 8_200_000, videoCodec: 'hvc1.2.4.L150.B0', audioCodec: 'mp4a.40.2' },
+      ]
+      hls.currentLevel = 1
+      hls.bandwidthEstimate = 24_500_000
+      hls.audioTracks = [{ name: 'English', audioCodec: 'ec-3', channels: '6' }]
+      hls.audioTrack = 0
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      const video = await showingVideo(STREAM_URL)
+      video.currentTime = 30
+      reportPlayback(video, {
+        width: 3840,
+        height: 2160,
+        bufferedTo: 42.5,
+        frames: { dropped: 3, total: 1_200 },
+      })
+
+      const panel = await openPlaybackData(user)
+
+      expect(factsIn(panel, 'Player')).toEqual({
+        Resolution: '3840×2160',
+        Bitrate: '8.2 Mb/s',
+        'Connection estimate': '24.5 Mb/s',
+        Buffer: '12.5 s',
+        'Dropped frames': '3 of 1,200',
+        'Video codec': 'hvc1.2.4.L150.B0',
+        'HDR mode': 'PQ',
+        'Audio format': 'ec-3 · 6 channels',
+      })
+    })
+
+    it('shouldUpdateWhatThePlayerReportsWhenTheVideoAdvances', async () => {
+      serveSession()
+      serveDecisions(() => [playbackDecision({ streamSessionId: SESSION.id })])
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      const video = await showingVideo(STREAM_URL)
+      const playback = { width: 1280, height: 720, bufferedTo: 10 }
+      reportPlayback(video, { ...playback, frames: { dropped: 0, total: 100 } })
+      const panel = await openPlaybackData(user)
+      expect(factsIn(panel, 'Player')['Dropped frames']).toBe('0 of 100')
+
+      reportPlayback(video, { ...playback, frames: { dropped: 5, total: 1_300 } })
+      fireEvent(video, new Event('timeupdate'))
+
+      expect(factsIn(panel, 'Player')['Dropped frames']).toBe('5 of 1,300')
+    })
+
+    it('shouldSayWhatThePlayerDoesNotReportWhenTheBrowserGivesNoFigure', async () => {
+      server.use(
+        http.get(
+          '/api/stream/abcd/source.mp4',
+          () => new HttpResponse(new Uint8Array([0]), { status: 206 }),
+        ),
+        graphql.mutation('CreatePlaybackSession', () =>
+          HttpResponse.json({
+            data: {
+              createPlaybackSession: {
+                playbackSession: readyDirectPlaySession({
+                  streamSession: { id: 'sess-1', streamUrl: '/api/stream/abcd/source.mp4' },
+                }),
+                userErrors: [],
+              },
+            },
+          }),
+        ),
+      )
+      recordTimelineReports()
+      serveDecisions(() => [playbackDecision({ streamSessionId: 'sess-1' })])
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await nativeVideo('/api/stream/abcd/source.mp4')
+
+      const panel = await openPlaybackData(user)
+
+      expect(factsIn(panel, 'Player')).toEqual({
+        Resolution: 'Not known',
+        Bitrate: 'Not known',
+        'Connection estimate': 'Not known',
+        Buffer: '0 s',
+        'Dropped frames': 'Not known',
+        'Video codec': 'Not known',
+        'HDR mode': 'SDR',
+        'Audio format': 'Not known',
+      })
+    })
+
+    it('shouldKeepPlayingWhenTheViewerClosesPlaybackData', async () => {
+      serveSession()
+      serveDecisions(() => [playbackDecision({ streamSessionId: SESSION.id })])
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      const video = await showingVideo(STREAM_URL)
+      pressPlay(video)
+      const panel = await openPlaybackData(user)
+
+      await user.click(within(panel).getByRole('button', { name: 'Close playback data' }))
+
+      expect(screen.queryByRole('region', { name: 'Playback data' })).not.toBeInTheDocument()
+      expect(video.paused).toBe(false)
+    })
+
+    it('shouldShowPlaybackDataAsChosenInThePlayerMenuWhileItShows', async () => {
+      serveSession()
+      serveDecisions(() => [playbackDecision({ streamSessionId: SESSION.id })])
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await showingVideo(STREAM_URL)
+      await openPlaybackData(user)
+
+      const menu = await openPicker(user, screen.getByRole('button', { name: 'Player menu' }))
+      const row = within(menu).getByRole('menuitemradio', { name: 'Playback data' })
+      expect(row).toHaveAttribute('aria-checked', 'true')
+      await user.click(row)
+
+      expect(screen.queryByRole('region', { name: 'Playback data' })).not.toBeInTheDocument()
+    })
+
+    it('shouldWaitForTheStreamWhenTheViewerOpensPlaybackDataBeforeOneAttaches', async () => {
+      server.use(graphql.mutation('CreatePlaybackSession', () => new Promise(() => undefined)))
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+
+      const panel = await openPlaybackData(user)
+
+      expect(within(panel).getByText('Waiting for the stream to start.')).toBeInTheDocument()
     })
   })
 })

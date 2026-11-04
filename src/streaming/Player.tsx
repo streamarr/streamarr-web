@@ -5,6 +5,7 @@ import { CreatePlaybackSessionDocument, type VideoQuality } from '../graphql/gen
 import { DetailBackButton } from '../media/DetailBack'
 import focusStyles from '../styles/focus.module.css'
 import { BufferingRing } from './BufferingRing'
+import { PlaybackData, type PlaybackDataStream } from './PlaybackData'
 import { PlaybackNotice } from './PlaybackNotice'
 import { declarePlaybackCapabilities, type PlaybackPlatform } from './playbackCapabilities'
 import styles from './Player.module.css'
@@ -77,6 +78,7 @@ export function Player({
   }
   const { notice, marks, followPlaybackSession, announce } = usePlaybackFallbacks(choice.start)
   const [picker, setPicker] = useState<PickerKind | null>(null)
+  const [playbackDataShown, setPlaybackDataShown] = useState(false)
   const tracks = sourcePhase.at === 'attached' ? sourcePhase.tracks : null
   const qualities = sourcePhase.at === 'attached' ? sourcePhase.qualities : null
   const quality = {
@@ -150,6 +152,16 @@ export function Player({
     playbackRef.current?.seek(seconds)
   }
 
+  const describedStream: PlaybackDataStream | null =
+    sourcePhase.at === 'attached'
+      ? {
+          playbackSessionId: sourcePhase.playbackSessionId,
+          streamSessionId: sourcePhase.streamSessionId,
+          videoRange: sourcePhase.videoRange,
+          streamStats: sourcePhase.streamStats,
+        }
+      : null
+
   // The pick's resume point is long past by now, so Retry starts where playback first started.
   function retry() {
     setChoice({ start: choice.start, quality: choice.quality })
@@ -178,6 +190,13 @@ export function Player({
         </div>
         <PlaybackNotice notice={notice} />
       </div>
+      {playbackDataShown && (
+        <PlaybackData
+          videoRef={videoRef}
+          stream={describedStream}
+          onClose={() => setPlaybackDataShown(false)}
+        />
+      )}
       <PlayerControls
         ref={controlsRef}
         className={styles.chrome}
@@ -190,6 +209,8 @@ export function Player({
         onChooseQuality={chooseQuality}
         openPicker={openPicker}
         onOpenPicker={setPicker}
+        playbackDataShown={playbackDataShown}
+        onTogglePlaybackData={() => setPlaybackDataShown((shown) => !shown)}
         title={title}
       />
     </section>

@@ -1,5 +1,10 @@
 import type { ApolloClient, ObservableQuery } from '@apollo/client'
-import Hls, { type ErrorData, type VideoSelectionOption } from 'hls.js'
+import Hls, {
+  type ErrorData,
+  type Level,
+  type MediaPlaylist,
+  type VideoSelectionOption,
+} from 'hls.js'
 import {
   type ClientCapabilityDeclarationInput,
   type CreatePlaybackSessionMutation,
@@ -50,8 +55,29 @@ type PlaybackSessionPayload = CreatePlaybackSessionMutation['createPlaybackSessi
 
 export type SourcePhase =
   | { at: 'starting' }
-  | { at: 'attached'; tracks: TrackSource; qualities: QualityChoices; videoRange: VideoRange }
+  | {
+      at: 'attached'
+      tracks: TrackSource
+      qualities: QualityChoices
+      videoRange: VideoRange
+      playbackSessionId: string
+      streamSessionId: string
+      /** Reads what the player library reports of the attached stream now. */
+      streamStats: () => StreamStats
+    }
   | { at: 'failed'; message: string }
+
+/** What the player library reports of the stream that plays. A figure it does not report is absent. */
+export interface StreamStats {
+  /** The playing variant's bitrate, in bits per second. */
+  bitrate?: number
+  /** The player library's estimate of the connection's bandwidth, in bits per second. */
+  bandwidthEstimate?: number
+  /** The playing variant's video codec string, such as avc1.64001f. */
+  videoCodec?: string
+  audioCodec?: string
+  audioChannels?: number
+}
 
 /** Where playback picks up on a new stream: the playhead, and whether it plays on from there. */
 export interface ResumePoint {
@@ -709,6 +735,9 @@ function startSessionPlayback({
       tracks: source.tracks,
       qualities,
       videoRange: attempt.streamSession.videoRange,
+      playbackSessionId: playback.id,
+      streamSessionId: attempt.streamSession.id,
+      streamStats: source.streamStats,
     })
   }
 
@@ -1325,6 +1354,7 @@ interface StreamSource {
   tracks: TrackSource
   /** The playlist's target segment duration, when the player can read it. */
   segmentSeconds: () => number | undefined
+  streamStats: () => StreamStats
 }
 
 interface StreamSourceOptions {
@@ -1381,7 +1411,27 @@ function attach(video: HTMLVideoElement, url: string, options: StreamSourceOptio
     followsVideoPreference: true,
     tracks: hlsTrackSource(hls),
     segmentSeconds: () => hls.latestLevelDetails?.targetduration,
+    streamStats: () => hlsStreamStats(hls),
   }
+}
+
+function hlsStreamStats(hls: Hls): StreamStats {
+  const level: Level | undefined = hls.levels[hls.currentLevel]
+  const audio: MediaPlaylist | undefined = hls.audioTracks[hls.audioTrack]
+  // CHANNELS leads with the channel count, as in "6" or "16/JOC".
+  const channels = Number.parseInt(audio?.channels ?? '', 10)
+  return {
+    bitrate: level?.bitrate,
+    bandwidthEstimate: Number.isFinite(hls.bandwidthEstimate) ? hls.bandwidthEstimate : undefined,
+    videoCodec: level?.videoCodec,
+    audioCodec: audio?.audioCodec ?? level?.audioCodec,
+    audioChannels: Number.isNaN(channels) ? undefined : channels,
+  }
+}
+
+// The element reports its own figures; nothing else reads a native or source file stream.
+function noStreamStats(): StreamStats {
+  return {}
 }
 
 function handleVideoError(video: HTMLVideoElement, options: StreamSourceOptions) {
@@ -1487,6 +1537,7 @@ function attachSourceFile(
     followsVideoPreference: false,
     tracks,
     segmentSeconds: () => undefined,
+    streamStats: noStreamStats,
   }
 }
 
@@ -1612,5 +1663,6 @@ function attachNative(
     followsVideoPreference: false,
     tracks: nativeTrackSource(video),
     segmentSeconds: () => undefined,
+    streamStats: noStreamStats,
   }
 }
