@@ -21,7 +21,7 @@ import {
   invalidIdResponse,
   networkFailure,
 } from '../test/graphqlResponses'
-import { languagePreferenceFixture, serveLanguageTabs } from '../test/languageFixtures'
+import { languagePreferenceFixture, pickMenuRow, serveLanguageTabs } from '../test/languageFixtures'
 import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
 
@@ -172,9 +172,7 @@ describe('SeasonDetailScreen', () => {
     const audio = await screen.findByRole('button', { name: 'Default audio' })
     expect(audio).toHaveAccessibleDescription('French · from Profile')
     await user.click(audio)
-    await user.click(
-      within(screen.getByRole('menu')).getByRole('menuitemradio', { name: 'Japanese' }),
-    )
+    await pickMenuRow(user, 'Japanese')
 
     await waitFor(() => expect(tabs.inputs).toEqual([{ itemId: 'season-2', audioLanguage: 'JA' }]))
   })

@@ -9,6 +9,7 @@ import type {
 import { heldAnswer, networkFailure } from '../test/graphqlResponses'
 import {
   languagePreferenceFixture,
+  pickMenuRow,
   profileLanguagesFixture,
   serveLanguageTabs,
 } from '../test/languageFixtures'
@@ -34,7 +35,7 @@ async function tab(name: 'Default audio' | 'Subtitles') {
 
 async function pick(user: UserEvent, tabName: 'Default audio' | 'Subtitles', option: string) {
   await user.click(await tab(tabName))
-  await user.click(within(screen.getByRole('menu')).getByRole('menuitemradio', { name: option }))
+  await pickMenuRow(user, option)
 }
 
 function rowNames(): string[] {
@@ -142,7 +143,7 @@ describe('LanguageTabs', () => {
 
     await user.click(await tab('Default audio'))
     expect(checkedRow()).toBe('Japanese')
-    await user.click(screen.getByRole('menuitemradio', { name: 'From Profile · English' }))
+    await pickMenuRow(user, 'From Profile · English')
 
     await waitFor(() => expect(state.inputs).toEqual([{ itemId: 'm1', audioLanguage: null }]))
     await waitFor(async () =>
@@ -187,7 +188,7 @@ describe('LanguageTabs', () => {
     await user.click(await tab('Subtitles'))
     expect(rowNames().slice(0, 3)).toEqual(['From Profile · Forced only', 'Off', 'Forced only'])
     expect(checkedRow()).toBe('Off')
-    await user.click(screen.getByRole('menuitemradio', { name: 'From Profile · Forced only' }))
+    await pickMenuRow(user, 'From Profile · Forced only')
 
     await waitFor(() =>
       expect(state.inputs).toEqual([{ itemId: 'm1', subtitleLanguage: null, subtitleMode: null }]),
@@ -202,7 +203,7 @@ describe('LanguageTabs', () => {
 
     await user.click(await tab('Default audio'))
     expect(rowNames()[0]).toBe('From Profile · German')
-    await user.click(screen.getByRole('menuitemradio', { name: 'Japanese' }))
+    await pickMenuRow(user, 'Japanese')
 
     await waitFor(() => expect(state.inputs).toEqual([{ itemId: 's1', audioLanguage: 'JA' }]))
   })
@@ -216,7 +217,7 @@ describe('LanguageTabs', () => {
     await user.click(await tab('Default audio'))
     expect(rowNames()[0]).toBe('From series · Japanese')
     expect(checkedRow()).toBe('From series · Japanese')
-    await user.click(screen.getByRole('menuitemradio', { name: 'English' }))
+    await pickMenuRow(user, 'English')
 
     await waitFor(() => expect(state.inputs).toEqual([{ itemId: 'season-2', audioLanguage: 'EN' }]))
   })

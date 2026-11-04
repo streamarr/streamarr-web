@@ -1,3 +1,5 @@
+import { screen, within } from '@testing-library/react'
+import type { UserEvent } from '@testing-library/user-event'
 import { graphql, HttpResponse } from 'msw'
 import type {
   LanguagePreferenceFieldsFragment,
@@ -96,4 +98,12 @@ export function serveLanguageTabs({
     ),
   )
   return state
+}
+
+/**
+ * Picks a row of the open language picker by its text. A role query would name each of its nearly
+ * two hundred rows, which is slow enough to time a test out on a busy machine.
+ */
+export async function pickMenuRow(user: UserEvent, row: string) {
+  await user.click(within(screen.getByRole('menu')).getByText(row, { exact: true }))
 }
