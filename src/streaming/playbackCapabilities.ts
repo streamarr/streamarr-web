@@ -384,12 +384,12 @@ async function probeDeclaration({
   hls: boolean
   outputChannels: number
 }): Promise<ClientCapabilityDeclarationInput> {
-  const { askDecodingInfo, askFileDecodingInfo } = askers
+  const { askDecodingInfo } = askers
   // A host without an audio device reports 0 channels, and every output plays stereo.
   const channels = Math.min(Math.max(outputChannels, STEREO), SURROUND_MAXIMUM)
   const [video, audio] = await Promise.all([
     probeVideo({ platform, askDecodingInfo, hls }).then((entries) =>
-      withVideoDirectPlay({ platform, askFileDecodingInfo, entries }),
+      withVideoDirectPlay({ platform, askers, entries }),
     ),
     Promise.all(
       AUDIO_CODECS.map(({ codec, mimeCodec }) =>
@@ -927,11 +927,12 @@ interface AudioFileType {
   mimeType: string
 }
 
-// The browser plays Matroska only as WebM, whose audio is Opus or Vorbis.
+// Matroska counts only as WebM, whose audio among the declared codecs is Opus. The server sends a
+// Matroska file as video/x-matroska, so the question names the Matroska type.
 function audioFileTypes(codec: AudioCodec): AudioFileType[] {
   const mp4: AudioFileType = { container: 'MP4', mimeType: 'audio/mp4' }
   if (codec === 'OPUS') {
-    return [mp4, { container: 'MATROSKA', mimeType: 'audio/webm' }]
+    return [mp4, { container: 'MATROSKA', mimeType: 'audio/x-matroska' }]
   }
   return [mp4]
 }
@@ -1008,9 +1009,7 @@ function isWebKit(userAgent: string): boolean {
 
 // The sample entries that name a coding format in an MP4 file, keyed by the one each probe's codec
 // string starts with. A browser may play a format from one sample entry and not another: WebKit
-// plays hvc1 and avc1 files, never hev1 or avc3. Dolby Vision's sample entries stay out until a
-// real Dolby Vision file proves that a browser applies its RPUs: one that shows profile 5 without
-// them shows wrong colours and reports no error, so no format attempt recovers.
+// plays hvc1 and avc1 files, never hev1 or avc3.
 const SAMPLE_ENTRIES: Record<string, readonly { sampleEntry: VideoSampleEntry; fourCc: string }[]> =
   {
     avc1: [
@@ -1029,42 +1028,55 @@ const VIDEO_FAMILIES: Partial<Record<VideoCodecFamily, VideoFamily>> = { H264, H
 // Direct play reuses each entry's limits, so the media element must play a file at the entry's
 // widest picture for every stream the entry accepts. A sample entry counts only when the element
 // plays every such stream from it, and MP4 counts only beside a sample entry, as the server
-// requires. Matroska counts only as WebM.
+// requires. Matroska counts only as WebM, whose video among the declared families is AV1.
+// Direct play never carries Dolby Vision until a real Dolby Vision file proves that a browser
+// applies its RPUs: one that shows them without RPUs shows wrong colours and reports no error, so
+// no format attempt recovers. An HDR entry that lists Dolby Vision profiles stays for HLS, and a
+// separate entry without them applies to direct play.
 async function withVideoDirectPlay({
   platform,
-  askFileDecodingInfo,
+  askers,
   entries,
 }: {
   platform: PlaybackPlatform
-  askFileDecodingInfo: AskDecodingInfo
+  askers: Askers
   entries: VideoCapabilityEntryInput[]
 }): Promise<VideoCapabilityEntryInput[]> {
-  return Promise.all(
-    entries.map(async (entry) => {
+  const declared = await Promise.all(
+    entries.map(async (entry): Promise<VideoCapabilityEntryInput[]> => {
       const family = VIDEO_FAMILIES[entry.codecFamily]
-      if (!family) {
-        return entry
+      if (!family || entry.compatibleBases.length === 0) {
+        return [entry]
       }
-      const questions = entryQuestions({ family, entry })
+      const directPlay = { ...entry, dolbyVisionProfiles: [] }
+      const questions = entryQuestions({ family, entry: directPlay })
       const playsAll = (asked: readonly VideoQuestion[]) =>
-        playsEveryFile({ platform, family, askFileDecodingInfo, questions: asked })
-      const [sampleEntries, webm] = await Promise.all([
+        playsEveryFile({ platform, family, askers, questions: asked })
+      const [sampleEntries, matroska] = await Promise.all([
         mp4SampleEntries({ questions, playsAll }),
-        playsAll(webmQuestions(questions)),
+        family === AV1 ? playsAll(questions.map((question) => inMatroska(question))) : false,
       ])
       const containers: SourceContainer[] = []
       if (sampleEntries.length > 0) {
         containers.push('MP4')
       }
-      if (webm) {
+      if (matroska) {
         containers.push('MATROSKA')
       }
       if (containers.length === 0) {
-        return entry
+        return [entry]
       }
-      return { ...withContainers(entry, containers), directPlaySampleEntries: sampleEntries }
+      const directPlayFields = {
+        directPlayContainers: containers,
+        directPlaySampleEntries: sampleEntries,
+      }
+      if (entry.dolbyVisionProfiles.length > 0) {
+        return [entry, { ...directPlay, hls: false, ...directPlayFields }]
+      }
+      return [{ ...entry, ...directPlayFields }]
     }),
   )
+  return declared.flat()
 }
 
 async function mp4SampleEntries({
@@ -1093,12 +1105,12 @@ async function mp4SampleEntries({
 async function playsEveryFile({
   platform,
   family,
-  askFileDecodingInfo,
+  askers,
   questions,
 }: {
   platform: PlaybackPlatform
   family: VideoFamily
-  askFileDecodingInfo: AskDecodingInfo
+  askers: Askers
   questions: readonly VideoQuestion[]
 }): Promise<boolean> {
   if (
@@ -1107,29 +1119,41 @@ async function playsEveryFile({
   ) {
     return false
   }
-  const answers = await Promise.all(questions.map((question) => askFileDecodingInfo(question)))
-  return answers.every((answer) => keepsUpFromFile({ platform, family, answer }))
+  const answers = await Promise.all(
+    questions.map(async (question) => {
+      const [file, hls] = await Promise.all([
+        askers.askFileDecodingInfo(question),
+        askers.askDecodingInfo(question),
+      ])
+      return { file, hls }
+    }),
+  )
+  return answers.every((answer) => keepsUpFromFile({ platform, family, ...answer }))
 }
 
-// As for HLS, power efficiency stands in for smoothness only for HEVC on WebKit, whose entries
-// already hold at most the H.264 cap.
+// A file answer keeps up when it is smooth. Power efficiency stands in for smoothness only for
+// HEVC on WebKit, and only where the HLS answer at the same picture was not smooth either: the
+// entry then holds the H.264 cap, which a file decoder that drops frames below the HLS one's
+// smooth ceiling would not.
 function keepsUpFromFile({
   platform,
   family,
-  answer,
+  file,
+  hls,
 }: {
   platform: PlaybackPlatform
   family: VideoFamily
-  answer: ProbeAnswer
+  file: ProbeAnswer
+  hls: ProbeAnswer
 }): boolean {
-  if (isSmooth(answer)) {
+  if (isSmooth(file)) {
     return true
   }
-  return family === HEVC && isWebKit(platform.userAgent) && isPowerEfficient(answer)
+  return family === HEVC && isWebKit(platform.userAgent) && isPowerEfficient(file) && !isSmooth(hls)
 }
 
 // The questions whose answers made the entry: one per bit depth of its SDR profiles, or one per
-// compatible base and Dolby Vision codec string of an HDR entry, at its widest picture.
+// compatible base of an HDR entry, at its widest picture.
 function entryQuestions({
   family,
   entry,
@@ -1173,16 +1197,10 @@ function hdrQuestions({
   entry: VideoCapabilityEntryInput
 }): VideoQuestion[] {
   const level = tier.levels[family.codecFamily]
-  const listed = entry.dolbyVisionProfiles.map(({ profile }) => profile)
-  const bases = COMPATIBLE_BASE_PROBES.filter(({ base }) =>
-    entry.compatibleBases.includes(base),
-  ).map(({ transferCharacteristics, color }) =>
-    videoConfiguration(tier, hdr.codec(level, transferCharacteristics), color),
+  return COMPATIBLE_BASE_PROBES.filter(({ base }) => entry.compatibleBases.includes(base)).map(
+    ({ transferCharacteristics, color }) =>
+      videoConfiguration(tier, hdr.codec(level, transferCharacteristics), color),
   )
-  const dolbyVision = hdr.dolbyVision
-    .filter(({ profiles }) => profiles.some((profile) => listed.includes(profile)))
-    .map((probe) => videoConfiguration(tier, probe.codec(tier.dolbyVisionLevel)))
-  return [...bases, ...dolbyVision]
 }
 
 const CODECS_PARAMETER = /codecs="(\w{4})/
@@ -1196,16 +1214,10 @@ function withFourCc(question: VideoQuestion, fourCc: string): VideoQuestion {
   return { ...question, video: { ...question.video, contentType } }
 }
 
-// WebM carries AV1 but not Dolby Vision, H.264 or HEVC.
-function webmQuestions(questions: readonly VideoQuestion[]): VideoQuestion[] {
-  const av1 = questions.filter((question) => fourCcOf(question) === 'av01')
-  if (av1.length < questions.length) {
-    return []
-  }
-  return av1.map((question) => {
-    const contentType = question.video.contentType.replace('video/mp4', 'video/webm')
-    return { ...question, video: { ...question.video, contentType } }
-  })
+// The server sends a Matroska file, WebM included, as video/x-matroska.
+function inMatroska(question: VideoQuestion): VideoQuestion {
+  const contentType = question.video.contentType.replace('video/mp4', 'video/x-matroska')
+  return { ...question, video: { ...question.video, contentType } }
 }
 
 function minimalDeclaration(hls: boolean): ClientCapabilityDeclarationInput {

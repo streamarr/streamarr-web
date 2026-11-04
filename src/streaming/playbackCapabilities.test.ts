@@ -1748,7 +1748,7 @@ describe('declarePlaybackCapabilities', () => {
   })
 
   describe('direct play', () => {
-    it('shouldDeclareMp4AndWebmDirectPlayWithEachSampleEntryWhenTheVideoElementPlaysThemLikeChromium', async () => {
+    it('shouldDeclareMp4AndMatroskaDirectPlayWithEachSampleEntryWhenTheVideoElementPlaysThemLikeChromium', async () => {
       const declaration = await declarePlaybackCapabilities(
         filePlayingPlatform({ plays: CHROMIUM_FILE_TYPES }),
       )
@@ -1868,7 +1868,7 @@ describe('declarePlaybackCapabilities', () => {
       ])
     })
 
-    it('shouldListNoDolbyVisionSampleEntryEvenWhenTheBrowserAnswersThatItPlaysDolbyVisionFromAFile', async () => {
+    it('shouldDeclareHdrDirectPlayInASeparateEntryWithoutDolbyVisionWhenTheHlsEntryListsDolbyVisionProfiles', async () => {
       const declaration = await declarePlaybackCapabilities(
         hdrPlatformFixture({
           decodingInfo: hdrBrowser({ dolbyVision: ['dvh1.05', 'dvh1.08'] }),
@@ -1877,9 +1877,37 @@ describe('declarePlaybackCapabilities', () => {
         }),
       )
 
-      expect(directPlayOf(familyEntries(declaration, 'HEVC'))).toEqual([
-        { codecFamily: 'HEVC', containers: ['MP4'], sampleEntries: ['HVC1'] },
-        { codecFamily: 'HEVC', containers: ['MP4'], sampleEntries: ['HVC1'] },
+      expect(familyEntries(declaration, 'HEVC')).toEqual([
+        {
+          ...UHD_AT_60_HEVC_ENTRY,
+          directPlayContainers: ['MP4'],
+          directPlaySampleEntries: ['HVC1'],
+        },
+        hdrVideoEntry({
+          dolbyVisionProfiles: [
+            { profile: 'PROFILE_5', maxLevel: 9 },
+            { profile: 'PROFILE_8_1', maxLevel: 9 },
+            { profile: 'PROFILE_8_4', maxLevel: 9 },
+          ],
+        }),
+        hdrVideoEntry({
+          hls: false,
+          directPlayContainers: ['MP4'],
+          directPlaySampleEntries: ['HVC1'],
+        }),
+      ])
+    })
+
+    it('shouldDeclareNoDirectPlayForAnHdrEntryWhoseOnlyFormatIsDolbyVisionProfileFive', async () => {
+      const declaration = await declarePlaybackCapabilities(
+        hdrPlatformFixture({
+          decodingInfo: hdrBrowser({ bases: [], dolbyVision: ['dvh1.05'] }),
+          canPlayType: () => 'probably',
+        }),
+      )
+
+      expect(directPlayOf(familyEntries(declaration, 'HEVC').slice(1))).toEqual([
+        { codecFamily: 'HEVC', containers: [], sampleEntries: [] },
       ])
     })
 
@@ -1904,17 +1932,40 @@ describe('declarePlaybackCapabilities', () => {
       ])
     })
 
-    it('shouldDeclareNoWebmForAnAv1HdrEntryWhoseDolbyVisionWebmCannotCarry', async () => {
+    it('shouldDeclareNoMatroskaWhenTheBrowserPlaysWebmButNotTheMatroskaTypeTheServerSends', async () => {
       const declaration = await declarePlaybackCapabilities(
-        hdrPlatformFixture({
-          decodingInfo: hdrBrowser({ bases: ['PQ'], dolbyVision: ['dav1.10'] }),
-          canPlayType: () => 'probably',
+        filePlayingPlatform({
+          plays: (type) =>
+            (CHROMIUM_FILE_TYPES(type) && !type.includes('/x-matroska')) ||
+            type.startsWith('video/webm; codecs="av01.') ||
+            type === 'audio/webm; codecs="opus"',
         }),
       )
 
-      expect(directPlayOf(familyEntries(declaration, 'AV1'))).toEqual([
-        { codecFamily: 'AV1', containers: ['MP4', 'MATROSKA'], sampleEntries: ['AV01'] },
-        { codecFamily: 'AV1', containers: ['MP4'], sampleEntries: ['AV01'] },
+      expect(
+        [...declaration.video, ...declaration.audio].filter((entry) =>
+          entry.directPlayContainers?.includes('MATROSKA'),
+        ),
+      ).toEqual([])
+    })
+
+    it('shouldDeclareNoHevcDirectPlayOnWebKitWhenTheFileAnswerIsOnlyPowerEfficientWhereMediaSourceKeepsUp', async () => {
+      const declaration = await declarePlaybackCapabilities(
+        platformFixture({
+          decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) =>
+            Promise.resolve(
+              configuration.type === 'file' && codecOf(configuration).startsWith('hvc1')
+                ? IPHONE_SAFARI_HEVC_ANSWER
+                : answer(true),
+            ),
+          ),
+          canPlayType: canPlayTypeOf(WEBKIT_FILE_TYPES),
+          userAgent: SAFARI,
+        }),
+      )
+
+      expect(directPlayOf(familyEntries(declaration, 'HEVC'))).toEqual([
+        { codecFamily: 'HEVC', containers: [], sampleEntries: [] },
       ])
     })
 
@@ -1979,23 +2030,23 @@ describe('declarePlaybackCapabilities', () => {
 })
 
 // The content types that Chromium's video element plays as files, as Playwright's Chromium 156
-// answered canPlayType and decodingInfo: H.264 as avc1 and avc3, AV1 in MP4 and WebM, and AAC,
-// Opus and FLAC audio. It has no HEVC.
+// answered canPlayType and decodingInfo: H.264 as avc1 and avc3, AV1 in MP4 and Matroska, and AAC,
+// Opus and FLAC audio. It has no HEVC. The server sends a Matroska file as video/x-matroska.
 function CHROMIUM_FILE_TYPES(type: string): boolean {
   return [
     'video/mp4; codecs="avc1.',
     'video/mp4; codecs="avc3.',
     'video/mp4; codecs="av01.',
-    'video/webm; codecs="av01.',
+    'video/x-matroska; codecs="av01.',
     'audio/mp4; codecs="mp4a.40.2"',
     'audio/mp4; codecs="opus"',
     'audio/mp4; codecs="flac"',
-    'audio/webm; codecs="opus"',
+    'audio/x-matroska; codecs="opus"',
   ].some((prefix) => type.startsWith(prefix))
 }
 
 // As Playwright's WebKit 27.2 on a Mac answered: avc1, hvc1, dvh1 and Opus in WebM, never avc3,
-// hev1, dvhe or AV1.
+// hev1, dvhe, AV1 or Matroska.
 function WEBKIT_FILE_TYPES(type: string): boolean {
   return [
     'video/mp4; codecs="avc1.',
