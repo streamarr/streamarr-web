@@ -1365,19 +1365,16 @@ describe('browserPlaybackPlatform', () => {
     vi.stubGlobal('navigator', { userAgent: SAFARI, platform: 'MacIntel' })
     vi.stubGlobal('AudioContext', audioContextReporting({ maxChannelCount: 6, closed }))
     const platform = browserPlaybackPlatform(document.createElement('video'))
-    let answered = false
+    const settled: string[] = []
+    void closed.then(() => settled.push('closed'))
 
     const reading = platform.audioOutputChannels().then((channels) => {
-      answered = true
-      return channels
+      settled.push(`answered ${channels}`)
     })
-    // A macrotask runs only after every pending microtask has settled.
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    const answeredBeforeClose = answered
     finishClosing()
+    await reading
 
-    expect(answeredBeforeClose).toBe(false)
-    await expect(reading).resolves.toBe(6)
+    expect(settled).toEqual(['closed', 'answered 6'])
   })
 
   it('shouldAnswerNoChannelsWhenWebKitRunsOnLinuxEvenWhenItsOutputPlaysSurround', async () => {
