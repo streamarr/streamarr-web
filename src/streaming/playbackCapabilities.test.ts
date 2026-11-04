@@ -893,7 +893,9 @@ describe('declarePlaybackCapabilities', () => {
   })
 
   it('shouldDeclareSixChannelsForEveryAudioCodecWhenTheOutputPlaysEightChannels', async () => {
-    const declaration = await declarePlaybackCapabilities(platformFixture())
+    const declaration = await declarePlaybackCapabilities(
+      platformFixture({ audioOutputChannels: () => Promise.resolve(8) }),
+    )
 
     expect(declaration.audio).toEqual(DECLARATION_OF_EVERY_TIER.audio)
   })
