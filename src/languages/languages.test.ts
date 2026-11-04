@@ -35,6 +35,24 @@ describe('languageOfTrack', () => {
     expect(['de', 'ger', 'deu'].map(languageOfTrack)).toEqual(['DE', 'DE', 'DE'])
   })
 
+  it('shouldReadTagalogAndTwiByTheirOwnCodesWhereUnicodeRenamesThem', () => {
+    expect(['tl', 'tgl'].map(languageOfTrack)).toEqual(['TL', 'TL'])
+    expect(['tw', 'twi'].map(languageOfTrack)).toEqual(['TW', 'TW'])
+  })
+
+  it('shouldReadAWithdrawnCodeAsTheLanguageThatReplacedIt', () => {
+    expect(['iw', 'in', 'ji'].map(languageOfTrack)).toEqual(['HE', 'ID', 'YI'])
+  })
+
+  it('shouldReadACodeWrittenWithAnUnderscoreSpacesOrCapitalsAsTheServerDoes', () => {
+    expect(['pt_br', ' en ', 'ZH_hant', 'FRE'].map(languageOfTrack)).toEqual([
+      'PT_BR',
+      'EN',
+      'ZH_HANT',
+      'FR',
+    ])
+  })
+
   it('shouldReadTheVariantWhenTheTableHasOne', () => {
     expect(languageOfTrack('pt-BR')).toBe('PT_BR')
     expect(languageOfTrack('pt-br')).toBe('PT_BR')

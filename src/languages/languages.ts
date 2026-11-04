@@ -1,7 +1,5 @@
 import { Language } from '../graphql/generated/enumValues'
 
-const KNOWN: ReadonlySet<string> = new Set(Object.values(Language))
-
 // The interface is in English, so the languages it names are too.
 const names = new Intl.DisplayNames(['en'], { type: 'language', fallback: 'none' })
 
@@ -87,30 +85,42 @@ export const LANGUAGES_BY_NAME: readonly Language[] = Object.values(Language)
   .sort((a, b) => a.name.localeCompare(b.name, 'en'))
   .map(({ language }) => language)
 
+// Each value by its tag in lower case, as the server's table matches a file's code.
+const BY_TAG = new Map<string, Language>(
+  Object.values(Language).map((language) => [tagOf(language).toLowerCase(), language]),
+)
+
+// Unicode's aliases rename these two codes to Filipino and Akan; the server's table, like the files
+// that use them, reads them as Tagalog and Twi.
+const CODES_UNICODE_RENAMES = new Map<string, Language>([
+  ['tgl', 'TL'],
+  ['twi', 'TW'],
+])
+
 /**
- * The Language of a track's language code, such as `fre`, `fr-CA` or `pt-BR`: the variant when
- * the table lists one, else the base language. None when the code names no language of the table.
+ * The Language of a track's language code, read by the server's rule: a code such as `fre` or
+ * `pt_BR` names a value of the table, and a region or script the table has no value for reads as
+ * its base language. None when the code names no language of the table.
  */
 export function languageOfTrack(code: string | undefined): Language | undefined {
-  const locale = localeOf(code)
-  if (!locale) {
+  const normalized = code?.trim().replaceAll('_', '-').toLowerCase()
+  if (!normalized) {
     return undefined
   }
-  const [base, ...subtags] = locale.baseName.toUpperCase().split('-')
-  return [[base, ...subtags].join('_'), base].find(isLanguage)
+  const [base = normalized] = normalized.split('-')
+  return languageOfCode(normalized) ?? languageOfCode(base)
 }
 
-function localeOf(code: string | undefined): Intl.Locale | undefined {
-  if (!code) {
-    return undefined
-  }
+// A code the table lists as it is, else the two-letter code Unicode gives a three-letter or
+// withdrawn one, such as fr for fre and he for iw.
+function languageOfCode(code: string): Language | undefined {
+  return BY_TAG.get(code) ?? CODES_UNICODE_RENAMES.get(code) ?? BY_TAG.get(canonical(code))
+}
+
+function canonical(code: string): string {
   try {
-    return new Intl.Locale(code)
+    return Intl.getCanonicalLocales(code)[0]?.toLowerCase() ?? ''
   } catch {
-    return undefined
+    return ''
   }
-}
-
-function isLanguage(value: string): value is Language {
-  return KNOWN.has(value)
 }
