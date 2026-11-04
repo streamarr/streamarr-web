@@ -83,6 +83,8 @@ export function createApolloClient(
   const cache = new ResetCountingCache({
     possibleTypes: generatedIntrospection.possibleTypes,
     typePolicies: {
+      // One Me per session, which screens read in parts: each part adds to it, never replaces it.
+      Me: { merge: true },
       Library: {
         fields: {
           alphabetIndex: { merge: false },

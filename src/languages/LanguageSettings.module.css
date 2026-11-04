@@ -1,0 +1,63 @@
+.page {
+  max-width: 720px;
+  margin: 26px auto 0;
+  padding: 0 var(--spacing-page) var(--spacing-24);
+}
+
+.audio {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-10);
+}
+
+.label {
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
+  margin-bottom: var(--spacing-6);
+}
+
+.description {
+  color: var(--text-secondary);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-prose);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-6);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  padding: var(--spacing-8) var(--spacing-12);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+}
+
+.rank {
+  width: 1.5em;
+  font-family: var(--font-family-system);
+  color: var(--text-secondary);
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
+}
+
+.modes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-12);
+  margin-top: var(--spacing-8);
+}
+
+.refusal {
+  color: var(--semantic-error-text);
+}

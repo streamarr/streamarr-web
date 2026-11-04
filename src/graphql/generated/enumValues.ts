@@ -50,6 +50,15 @@ export const AudioCodec = {
 } as const;
 
 export type AudioCodec = typeof AudioCodec[keyof typeof AudioCodec];
+/** The delivery for which the server checked a capability entry. */
+export const CapabilityEntryDelivery = {
+  /** Direct play of the source file from its source container. */
+  DirectPlay: 'DIRECT_PLAY',
+  /** A stream copy over HLS. */
+  Hls: 'HLS'
+} as const;
+
+export type CapabilityEntryDelivery = typeof CapabilityEntryDelivery[keyof typeof CapabilityEntryDelivery];
 export const ChapterStatus = {
   /** The probe listed the container's chapters. The list is empty when the container defines no chapters. */
   Known: 'KNOWN',
@@ -147,6 +156,11 @@ export const DecisionReason = {
   ForcedImageSubtitleInAudioLanguage: 'FORCED_IMAGE_SUBTITLE_IN_AUDIO_LANGUAGE',
   /** The source is H.264 at another bit depth or chroma subsampling than 8-bit 4:2:0. */
   H264Not_8Bit_4_2_0: 'H264_NOT_8_BIT_4_2_0',
+  /**
+   * The hardware encoder of the format attempt before this one failed, so this one encodes the same codec family with
+   * the software encoder. That format attempt does not count against maximumFormatAttempts (ADR 0044).
+   */
+  HardwareEncoderFailed: 'HARDWARE_ENCODER_FAILED',
   /** The closest entry does not declare HDR10+. */
   Hdr10PlusNotDeclared: 'HDR10_PLUS_NOT_DECLARED',
   /** A copy that keeps Dolby Vision strips the source's HDR10+ information, whatever the client declares. */
@@ -194,7 +208,9 @@ export const DecisionReason = {
   /** The source's HDR base was probed before the probe described its codec profile. */
   VideoPropertiesNotProbed: 'VIDEO_PROPERTIES_NOT_PROBED',
   /** The probe stored no video facts for a copy. */
-  VideoSourceNotCopyable: 'VIDEO_SOURCE_NOT_COPYABLE'
+  VideoSourceNotCopyable: 'VIDEO_SOURCE_NOT_COPYABLE',
+  /** The viewer chose SDR in a fixed quality, and a copy would keep the source's HDR range, so the server encodes SDR. */
+  ViewerChoseSdr: 'VIEWER_CHOSE_SDR'
 } as const;
 
 export type DecisionReason = typeof DecisionReason[keyof typeof DecisionReason];
@@ -226,6 +242,15 @@ export const DolbyVisionProfile = {
 } as const;
 
 export type DolbyVisionProfile = typeof DolbyVisionProfile[keyof typeof DolbyVisionProfile];
+/** The viewer's HDR choice in a fixed quality. */
+export const DynamicRangeChoice = {
+  /** Keep the source's HDR range when the client declares it. */
+  Hdr: 'HDR',
+  /** Play an HDR source as an SDR encode. */
+  Sdr: 'SDR'
+} as const;
+
+export type DynamicRangeChoice = typeof DynamicRangeChoice[keyof typeof DynamicRangeChoice];
 /** A preset on the scale that every software encoder uses, from fastest to slowest. */
 export const EncoderPreset = {
   Fast: 'FAST',

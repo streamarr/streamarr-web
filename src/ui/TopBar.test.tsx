@@ -3,7 +3,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import { graphql, http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { deferred } from '../test/deferred'
-import { meFixture } from '../test/meFixture'
+import { meFixture, profileFixture } from '../test/meFixture'
 import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
 import { signIn } from '../test/signIn'
@@ -201,5 +201,35 @@ describe('TopBar', () => {
 
     expect(await within(banner).findByRole('button', { name: /profile menu/i })).toBeInTheDocument()
     expect(within(banner).queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument()
+  })
+
+  it('shouldOpenTheLanguagesScreenFromTheProfileMenu', async () => {
+    const selected = meFixture({ scope: 'profile', profiles: [profileFixture({ selected: true })] })
+    serveSignIn()
+    server.use(
+      graphql.query('Me', () => HttpResponse.json({ data: { me: selected } })),
+      graphql.query('LanguageSettings', () =>
+        HttpResponse.json({
+          data: {
+            me: {
+              __typename: 'Me',
+              languagePreferences: {
+                __typename: 'ProfileLanguagePreferences',
+                audioLanguages: ['EN'],
+                subtitleLanguage: null,
+                subtitleMode: 'FORCED',
+              },
+            },
+          },
+        }),
+      ),
+    )
+    const { user, router } = renderAppAt('/')
+
+    await user.click(await screen.findByRole('button', { name: /^Profile menu/ }))
+    await user.click(screen.getByRole('button', { name: 'Languages' }))
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Languages' })).toBeVisible()
+    expect(router.state.location.pathname).toBe('/settings/languages')
   })
 })
