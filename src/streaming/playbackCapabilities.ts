@@ -5,6 +5,7 @@ import type {
   ClientCapabilityDeclarationInput,
   CreatePlaybackSessionMutation,
   DeclaredCompatibleBase,
+  DolbyVisionProfile,
   VideoCapabilityEntryInput,
   VideoCodecFamily,
   VideoCodecProfile,
@@ -74,6 +75,8 @@ interface PictureTier {
   frameRate: number
   bitrate: number
   levels: FamilyLevels
+  // The lowest level of Dolby's profiles and levels specification that holds the picture.
+  dolbyVisionLevel: number
 }
 
 // Each level is the lowest that holds the tier's picture size and frame rate, and each bitrate
@@ -85,6 +88,7 @@ const UHD_AT_60: PictureTier = {
   frameRate: 60,
   bitrate: 40_000_000,
   levels: { H264: 52, HEVC: 51, AV1: 51 },
+  dolbyVisionLevel: 9,
 }
 const UHD_AT_30: PictureTier = {
   width: 3840,
@@ -92,6 +96,7 @@ const UHD_AT_30: PictureTier = {
   frameRate: 30,
   bitrate: 20_000_000,
   levels: { H264: 51, HEVC: 50, AV1: 50 },
+  dolbyVisionLevel: 7,
 }
 const FULL_HD_AT_60: PictureTier = {
   width: 1920,
@@ -99,6 +104,7 @@ const FULL_HD_AT_60: PictureTier = {
   frameRate: 60,
   bitrate: 10_000_000,
   levels: { H264: 42, HEVC: 41, AV1: 41 },
+  dolbyVisionLevel: 5,
 }
 const FULL_HD_AT_30: PictureTier = {
   width: 1920,
@@ -106,6 +112,7 @@ const FULL_HD_AT_30: PictureTier = {
   frameRate: 30,
   bitrate: 10_000_000,
   levels: { H264: 40, HEVC: 40, AV1: 40 },
+  dolbyVisionLevel: 4,
 }
 const HD_AT_30: PictureTier = {
   width: 1280,
@@ -113,6 +120,7 @@ const HD_AT_30: PictureTier = {
   frameRate: 30,
   bitrate: 5_000_000,
   levels: { H264: 31, HEVC: 31, AV1: 31 },
+  dolbyVisionLevel: 2,
 }
 // Sorted widest first: a tier that holds another has the higher pixel rate, so widestTiers meets it
 // before the tiers it holds, and the last tier is the lowest.
@@ -134,11 +142,18 @@ interface BitDepthProbe {
   codec: (level: number) => string
 }
 
+// One Dolby Vision codec string, and the profiles a player that applies its RPUs accepts.
+interface DolbyVisionProbe {
+  profiles: readonly DolbyVisionProfile[]
+  codec: (dolbyVisionLevel: number) => string
+}
+
 interface VideoFamily {
   codecFamily: keyof FamilyLevels & VideoCodecFamily
   maxTier?: VideoCodecTier
   eightBit: BitDepthProbe
   tenBit?: BitDepthProbe
+  dolbyVision?: readonly DolbyVisionProbe[]
 }
 
 // A High decoder also decodes Main and Constrained Baseline streams, not Baseline's extra tools.
@@ -160,6 +175,13 @@ const HEVC: VideoFamily = {
     profiles: ['HEVC_MAIN_10'],
     codec: (level) => `hvc1.2.4.L${level * 3}.B0`,
   },
+  dolbyVision: [
+    { profiles: ['PROFILE_5'], codec: (level) => dolbyVisionCodec('dvh1.05', level) },
+    {
+      profiles: ['PROFILE_8_1', 'PROFILE_8_4'],
+      codec: (level) => dolbyVisionCodec('dvh1.08', level),
+    },
+  ],
 }
 
 // AV1 Main covers both bit depths, so a 10-bit maximum also accepts 8-bit (ADR 0049): the 10-bit
@@ -169,6 +191,16 @@ const AV1: VideoFamily = {
   maxTier: 'MAIN',
   eightBit: { bitDepth: 8, profiles: ['AV1_MAIN'], codec: (level) => av1Codec(level, 8) },
   tenBit: { bitDepth: 10, profiles: [], codec: (level) => av1Codec(level, 10) },
+  dolbyVision: [
+    {
+      profiles: ['PROFILE_10_0', 'PROFILE_10_1', 'PROFILE_10_4'],
+      codec: (level) => dolbyVisionCodec('dav1.10', level),
+    },
+  ],
+}
+
+function dolbyVisionCodec(codecAndProfile: string, level: number): string {
+  return `${codecAndProfile}.${level.toString().padStart(2, '0')}`
 }
 
 type ColorQuestion = Pick<VideoConfiguration, 'colorGamut' | 'transferFunction' | 'hdrMetadataType'>
@@ -182,6 +214,13 @@ const COMPATIBLE_BASE_PROBES: readonly { base: DeclaredCompatibleBase; color: Co
   },
   { base: 'HLG', color: { colorGamut: 'rec2020', transferFunction: 'hlg' } },
 ]
+
+// Dolby Vision profiles 5 and 10.0 have no compatible base, so an entry may list them without one
+// (ADR 0049).
+const BASELESS_DOLBY_VISION_PROFILES: ReadonlySet<DolbyVisionProfile> = new Set([
+  'PROFILE_5',
+  'PROFILE_10_0',
+])
 
 // H.264 is probed beside these: on WebKit, its tiers answered smooth cap power-efficient HEVC.
 const VIDEO_FAMILIES_BESIDES_H264 = [HEVC, AV1]
@@ -221,10 +260,11 @@ interface TierAnswers {
   tenBit: ProbeAnswer
 }
 
-// Each answer lines up with COMPATIBLE_BASE_PROBES.
+// Each answer lines up with COMPATIBLE_BASE_PROBES and the family's Dolby Vision probes.
 interface HdrTierAnswers {
   tier: PictureTier
   bases: ProbeAnswer[]
+  dolbyVision: ProbeAnswer[]
 }
 
 // maxChannels is null when the browser confirmed no channel count for the codec.
@@ -344,19 +384,26 @@ function probeHdr({
   family: VideoFamily
   askDecodingInfo: AskDecodingInfo
 }): Promise<HdrTierAnswers[]> {
-  const { tenBit } = family
+  const { tenBit, dolbyVision = [] } = family
   if (!platform.displaysHighDynamicRange || !tenBit) {
     return Promise.resolve([])
   }
   return Promise.all(
     PICTURE_TIERS.map(async (tier) => {
       const codec = tenBit.codec(tier.levels[family.codecFamily])
-      const bases = await Promise.all(
-        COMPATIBLE_BASE_PROBES.map(({ color }) =>
-          askDecodingInfo(videoConfiguration(tier, codec, color)),
+      const [bases, dolbyVisionAnswers] = await Promise.all([
+        Promise.all(
+          COMPATIBLE_BASE_PROBES.map(({ color }) =>
+            askDecodingInfo(videoConfiguration(tier, codec, color)),
+          ),
         ),
-      )
-      return { tier, bases }
+        Promise.all(
+          dolbyVision.map((probe) =>
+            askDecodingInfo(videoConfiguration(tier, probe.codec(tier.dolbyVisionLevel))),
+          ),
+        ),
+      ])
+      return { tier, bases, dolbyVision: dolbyVisionAnswers }
     }),
   )
 }
@@ -396,17 +443,19 @@ function familyEntries({
   }
   return tiers.flatMap((decodedTier) => {
     const sdrEntry = videoEntry({ family, decodedTier, hls })
-    return [sdrEntry, ...hdrEntry({ decodedTier, hdrAnswers, sdrEntry })]
+    return [sdrEntry, ...hdrEntry({ family, decodedTier, hdrAnswers, sdrEntry })]
   })
 }
 
 // An HDR entry follows a 10-bit entry and keeps its maximums: the 10-bit answer at that tier
 // already says whether the browser keeps up, so an HDR answer only needs to be supported.
 function hdrEntry({
+  family,
   decodedTier,
   hdrAnswers,
   sdrEntry,
 }: {
+  family: VideoFamily
   decodedTier: DecodedTier
   hdrAnswers: readonly HdrTierAnswers[]
   sdrEntry: VideoCapabilityEntryInput
@@ -420,10 +469,18 @@ function hdrEntry({
   const compatibleBases = COMPATIBLE_BASE_PROBES.filter((_, index) =>
     accepts((answers) => answers.bases[index]),
   ).map(({ base }) => base)
-  if (compatibleBases.length === 0) {
+  const dolbyVisionProfiles = (family.dolbyVision ?? [])
+    .filter((_, index) => accepts((answers) => answers.dolbyVision[index]))
+    .flatMap(({ profiles }) =>
+      profiles.map((profile) => ({ profile, maxLevel: tier.dolbyVisionLevel })),
+    )
+  const listsBaselessProfile = dolbyVisionProfiles.some(({ profile }) =>
+    BASELESS_DOLBY_VISION_PROFILES.has(profile),
+  )
+  if (compatibleBases.length === 0 && !listsBaselessProfile) {
     return []
   }
-  return [{ ...sdrEntry, compatibleBases }]
+  return [{ ...sdrEntry, compatibleBases, dolbyVisionProfiles }]
 }
 
 // A maximum accepts every smaller value (ADR 0049), so an HDR answer counts at a tier only when no
