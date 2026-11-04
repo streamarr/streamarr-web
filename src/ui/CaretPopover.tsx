@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from 'react'
-import { Icon } from '../ui/Icon'
+import { Icon } from './Icon'
 import styles from './CaretPopover.module.css'
 
 // The surface scrolls its rows rather than rise closer than this to the top of the screen.

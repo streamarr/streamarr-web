@@ -3,7 +3,7 @@ import { type Ref, type RefObject, useEffect, useId, useRef, useState } from 're
 import type { VideoQuality } from '../graphql/generated/graphql'
 import { formatTimecode } from '../media/formatting'
 import { Icon, type IconName } from '../ui/Icon'
-import { CaretPopover, type PopoverOption } from './CaretPopover'
+import { CaretPopover, type PopoverOption } from '../ui/CaretPopover'
 import styles from './PlayerControls.module.css'
 import { qualityChipValue, qualityLabel } from './qualityChoices'
 import type { QualityMarks } from './usePlaybackFallbacks'
