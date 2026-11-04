@@ -1,4 +1,5 @@
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
+import type { UserEvent } from '@testing-library/user-event'
 import { graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type {
@@ -8,6 +9,7 @@ import type {
   IdleSegmentRetentionSettingFieldsFragment,
   IdleSegmentRetentionSettingQuery,
 } from '../../graphql/generated/graphql'
+import { deferred } from '../../test/deferred'
 import { meFixture } from '../../test/meFixture'
 import { renderAppAt } from '../../test/render'
 import { server } from '../../test/server'
@@ -26,6 +28,8 @@ function serve(setting = SAVED_ONE_HOUR) {
     graphql.query('Me', () =>
       HttpResponse.json({ data: { me: meFixture({ scope: 'profile', serverAdmin: true }) } }),
     ),
+    graphql.query('AdminLibraries', () => HttpResponse.json({ data: { libraries: [] } })),
+    graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
     graphql.query<EncoderPresetSettingQuery>('EncoderPresetSetting', () =>
       HttpResponse.json({
         data: {
@@ -66,6 +70,14 @@ function serve(setting = SAVED_ONE_HOUR) {
 
 async function retentionField() {
   return screen.findByRole('textbox', { name: 'Keep idle segments for' })
+}
+
+// Leaves for Libraries and comes back, so the page starts from the cached setting and reads again.
+async function returnToEncoding(user: UserEvent) {
+  const rail = screen.getByRole('navigation', { name: 'Server settings' })
+  await user.click(within(rail).getByRole('link', { name: 'Libraries' }))
+  await screen.findByRole('region', { name: 'Library administration' })
+  await user.click(within(rail).getByRole('link', { name: 'Encoding' }))
 }
 
 function saveButton() {
@@ -191,5 +203,58 @@ describe('idle segment retention settings', () => {
     expect(await screen.findByText("Couldn't load the idle segment retention.")).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Retry' }))
     expect(await retentionField()).toHaveValue('60')
+  })
+
+  it('shouldKeepSaveDisabledAndKeepDraftWhileRereadIsPendingOnReturn', async () => {
+    const state = serve()
+    const { user } = renderAppAt(ENCODING)
+    expect(await retentionField()).toHaveValue('60')
+    const reread = deferred()
+    server.use(
+      graphql.query<IdleSegmentRetentionSettingQuery>(
+        'IdleSegmentRetentionSetting',
+        async () => {
+          await reread.promise
+          return HttpResponse.json({
+            data: { idleSegmentRetentionSetting: { ...state.setting, minutes: 120 } },
+          })
+        },
+        { once: true },
+      ),
+    )
+    await returnToEncoding(user)
+    const field = await retentionField()
+    await user.clear(field)
+    await user.type(field, '30')
+    expect(saveButton()).toBeDisabled()
+    reread.resolve()
+    await waitFor(() => expect(saveButton()).toBeEnabled())
+    expect(await retentionField()).toHaveValue('30')
+    await user.click(saveButton())
+    await waitFor(() => expect(state.changes).toEqual([30]))
+  })
+
+  it('shouldShowRereadFailureBesideCachedRetentionWhenRereadFailsOnReturn', async () => {
+    const state = serve()
+    const { user } = renderAppAt(ENCODING)
+    expect(await retentionField()).toHaveValue('60')
+    server.use(
+      graphql.query(
+        'IdleSegmentRetentionSetting',
+        () => HttpResponse.json({ errors: [{ message: 'offline' }] }),
+        { once: true },
+      ),
+    )
+    await returnToEncoding(user)
+    expect(
+      await screen.findByText("Couldn't load the latest idle segment retention."),
+    ).toBeInTheDocument()
+    expect(await retentionField()).toHaveValue('60')
+    state.setting = { ...state.setting, minutes: 90 }
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+    await waitFor(async () => expect(await retentionField()).toHaveValue('90'))
+    expect(
+      screen.queryByText("Couldn't load the latest idle segment retention."),
+    ).not.toBeInTheDocument()
   })
 })

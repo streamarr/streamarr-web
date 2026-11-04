@@ -24,35 +24,16 @@ const UNITS = [
 ] as const
 
 /**
- * How long the server keeps idle segments. The field starts from the setting the server last
- * confirmed; a refused or unconfirmed save keeps the entered value and shows why beside it.
+ * How long the server keeps idle segments. The field shows the setting the server last confirmed
+ * until the admin edits it; a refused or unconfirmed save keeps the edit and shows why beside it.
  */
 export function IdleSegmentRetentionSettings() {
-  const query = useQuery(IdleSegmentRetentionSettingDocument, { fetchPolicy: 'cache-and-network' })
-  const setting = (query.data ?? query.previousData)?.idleSegmentRetentionSetting
-
-  if (!setting && query.error)
-    return (
-      <FailureRow onRetry={query.refetch}>
-        {requestFailureMessage(query.error, "Couldn't load the idle segment retention.")}
-      </FailureRow>
-    )
-  if (!setting)
-    return (
-      <Center h={120}>
-        <Loader role="status" aria-label="Loading the idle segment retention" />
-      </Center>
-    )
-
-  // A newly confirmed value starts a fresh form, so the field never shows a stale draft.
-  return <RetentionForm key={setting.minutes} setting={setting} />
-}
-
-function RetentionForm({
-  setting,
-}: Readonly<{ setting: IdleSegmentRetentionSettingFieldsFragment }>) {
+  const query = useQuery(IdleSegmentRetentionSettingDocument, {
+    fetchPolicy: 'cache-and-network',
+    notifyOnNetworkStatusChange: true,
+  })
   const [change, { loading: saving }] = useMutation(ChangeIdleSegmentRetentionDocument)
-  const [draft, setDraft] = useState<string | number>(setting.minutes)
+  const [draft, setDraft] = useState<string | number | null>(null)
   const [refusal, setRefusal] = useState<string | null>(null)
   const mounted = useRef(true)
   useEffect(() => {
@@ -61,12 +42,16 @@ function RetentionForm({
       mounted.current = false
     }
   }, [])
-  const minutes = typeof draft === 'number' ? draft : null
-  const changed = minutes !== null && minutes !== setting.minutes
+  const setting = (query.data ?? query.previousData)?.idleSegmentRetentionSetting
 
-  async function save(event: FormEvent) {
-    event.preventDefault()
-    if (minutes === null || !changed || saving) return
+  // A read that answers after a save could put the older value back, so reads and saves never
+  // overlap: Save waits for a read in flight, and Retry waits for a save in flight.
+  function retry() {
+    if (saving) return
+    void query.refetch()
+  }
+
+  async function save(minutes: number) {
     setRefusal(null)
     try {
       const { data } = await change({
@@ -86,20 +71,83 @@ function RetentionForm({
         setRefusal(payload.userErrors.map(userErrorMessage).join(' '))
         return
       }
-      if (!payload?.idleSegmentRetentionSetting) setRefusal(UNCONFIRMED)
+      if (!payload?.idleSegmentRetentionSetting) {
+        setRefusal(UNCONFIRMED)
+        return
+      }
+      if (mounted.current) setDraft(null)
     } catch {
       setRefusal(UNCONFIRMED)
     }
   }
 
+  if (!setting && query.error)
+    return (
+      <FailureRow onRetry={retry}>
+        {requestFailureMessage(query.error, "Couldn't load the idle segment retention.")}
+      </FailureRow>
+    )
+  if (!setting)
+    return (
+      <Center h={120}>
+        <Loader role="status" aria-label="Loading the idle segment retention" />
+      </Center>
+    )
+
+  return (
+    <>
+      {query.error && (
+        <FailureRow className={styles.failureRow} onRetry={retry}>
+          {requestFailureMessage(query.error, "Couldn't load the latest idle segment retention.")}
+        </FailureRow>
+      )}
+      <RetentionForm
+        setting={setting}
+        value={draft ?? setting.minutes}
+        onEdit={setDraft}
+        busy={saving || query.loading}
+        saving={saving}
+        refusal={refusal}
+        onSave={(minutes) => void save(minutes)}
+      />
+    </>
+  )
+}
+
+function RetentionForm({
+  setting,
+  value,
+  onEdit,
+  busy,
+  saving,
+  refusal,
+  onSave,
+}: Readonly<{
+  setting: IdleSegmentRetentionSettingFieldsFragment
+  value: string | number
+  onEdit: (value: string | number) => void
+  busy: boolean
+  saving: boolean
+  refusal: string | null
+  onSave: (minutes: number) => void
+}>) {
+  const minutes = typeof value === 'number' ? value : null
+  const changed = minutes !== null && minutes !== setting.minutes
+
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    if (minutes === null || !changed || busy) return
+    onSave(minutes)
+  }
+
   return (
     <div className={styles.formPanel}>
-      <form className={styles.form} onSubmit={(event) => void save(event)}>
+      <form className={styles.form} onSubmit={submit}>
         <NumberInput
           label="Keep idle segments for"
           description={DESCRIPTION}
-          value={draft}
-          onChange={setDraft}
+          value={value}
+          onChange={onEdit}
           min={setting.minimumMinutes}
           max={setting.maximumMinutes}
           clampBehavior="none"
@@ -118,7 +166,7 @@ function RetentionForm({
           <Button
             type="submit"
             loading={saving}
-            disabled={!changed}
+            disabled={!changed || busy}
             aria-label="Save idle segment retention"
           >
             Save
