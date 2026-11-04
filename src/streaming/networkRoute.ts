@@ -4,7 +4,8 @@ import type { NetworkRoute } from '../graphql/generated/graphql'
  * How the page reached the server, from the hostname in its address bar as `location.hostname`
  * gives it. A private IPv4 address (RFC 1918 or link-local), an IPv6 unique local (fd00::/8) or
  * link-local address, and a `.local` name are the local network; every other host is the
- * internet. Loopback counts as the internet because a tunnel can forward a loopback port.
+ * internet. Loopback counts as the internet because a tunnel can forward a loopback port, and so
+ * does Tailscale's unique local prefix.
  */
 export function networkRouteOf(hostname: string): NetworkRoute {
   const host = hostname.toLowerCase().replace(/\.$/, '')
@@ -38,11 +39,18 @@ function isLocalIpv4([first, second]: readonly number[]): boolean {
 function isLocalIpv6(address: string): boolean {
   const groups = ipv6Groups(address)
   if (!groups) return false
+  if (isTailscale(groups)) return false
   const [first] = groups
   if ((first & 0xff00) === 0xfd00 || (first & 0xffc0) === 0xfe80) return true
   const mapped = groups.slice(0, 5).every((group) => group === 0) && groups[5] === 0xffff
   if (!mapped) return false
   return isLocalIpv4([groups[6] >> 8, groups[6] & 0xff])
+}
+
+// Tailscale gives its devices unique local addresses in fd7a:115c:a1e0::/48, which reach the server
+// over the internet like its 100.64.0.0/10 addresses.
+function isTailscale([first, second, third]: readonly number[]): boolean {
+  return first === 0xfd7a && second === 0x115c && third === 0xa1e0
 }
 
 function ipv6Groups(address: string): number[] | null {
