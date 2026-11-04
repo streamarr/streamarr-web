@@ -87,6 +87,8 @@ function serve(streams: ActiveStreamFieldsFragment[] = [MOVIE, EPISODE]) {
   }
   server.use(
     graphql.query('Me', () => HttpResponse.json({ data: { me: ADMIN } })),
+    // A socket that subscribes again reads every active query again, the top bar's among them.
+    graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
     graphql.query('ActiveStreams', async () => {
       state.reads++
       const listed = state.listed
@@ -292,6 +294,26 @@ describe('active streams', () => {
 
     const episode = await streamRow('Northern Line · S2 E5 · Breakage')
     expect(factsIn(episode).Position).toBe('1:02:05 · Playing')
+    expect(rowNames()).toEqual(['Northern Line · S2 E5 · Breakage'])
+  })
+
+  it('shouldNotBringBackAnEndedStreamWhenAReadAgainStartsWhileAnEarlierReadIsStillOut', async () => {
+    const state = serve([MOVIE, EPISODE])
+    const read = deferred()
+    state.held = read.promise
+    renderAppAt(PAGE)
+    await liveChanges(state)
+    await waitFor(() => expect(state.reads).toBeGreaterThan(0))
+    const readsBefore = state.reads
+
+    publishChange(state, MOVIE.playbackSessionId, null)
+    state.listed = [EPISODE]
+    state.socket.closeAll(1001, 'Going away')
+    await liveChanges(state)
+    await waitFor(() => expect(state.reads).toBeGreaterThan(readsBefore))
+    read.resolve()
+
+    await streamRow('Northern Line · S2 E5 · Breakage')
     expect(rowNames()).toEqual(['Northern Line · S2 E5 · Breakage'])
   })
 
