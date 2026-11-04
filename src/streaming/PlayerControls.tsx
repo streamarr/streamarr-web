@@ -278,7 +278,7 @@ export function PlayerControls({
             onChoose={(id) => tracks?.selectSubtitles(id)}
           />
           <ChoicePicker
-            name="Player menu"
+            name="Settings"
             icon="settings"
             options={PLAYER_MENU}
             selected={playbackDataShown ? PLAYBACK_DATA : null}

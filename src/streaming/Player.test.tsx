@@ -8118,7 +8118,7 @@ describe('Player', () => {
     }
 
     async function openPlaybackData(user: UserEvent): Promise<HTMLElement> {
-      const menu = await openPicker(user, screen.getByRole('button', { name: 'Player menu' }))
+      const menu = await openPicker(user, screen.getByRole('button', { name: 'Settings' }))
       await user.click(within(menu).getByRole('menuitemradio', { name: 'Playback data' }))
       return screen.getByRole('region', { name: 'Playback data' })
     }
@@ -8576,7 +8576,7 @@ describe('Player', () => {
       await showingVideo(STREAM_URL)
       await openPlaybackData(user)
 
-      const menu = await openPicker(user, screen.getByRole('button', { name: 'Player menu' }))
+      const menu = await openPicker(user, screen.getByRole('button', { name: 'Settings' }))
       const row = within(menu).getByRole('menuitemradio', { name: 'Playback data' })
       expect(row).toHaveAttribute('aria-checked', 'true')
       await user.click(row)
