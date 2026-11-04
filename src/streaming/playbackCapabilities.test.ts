@@ -1536,6 +1536,75 @@ describe('declarePlaybackCapabilities', () => {
     ])
   })
 
+  it('shouldDeclareNoPqWhenTheBrowserDecodesPqOnlyWithDroppedFramesForASmallerPicture', async () => {
+    const browser = hdrBrowser()
+    const declaration = await declarePlaybackCapabilities(
+      hdrPlatformFixture({
+        decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) => {
+          if (
+            configuration.video?.transferFunction === 'pq' &&
+            configuration.video.height === 720
+          ) {
+            return Promise.resolve(UNSMOOTH_SOFTWARE_ANSWER)
+          }
+          return browser(configuration)
+        }),
+      }),
+    )
+
+    expect(declaration.video).toEqual([
+      DECLARATION_OF_EVERY_TIER.video[0],
+      UHD_AT_60_HEVC_ENTRY,
+      hdrVideoEntry({ compatibleBases: ['HLG'] }),
+      UHD_AT_60_AV1_ENTRY,
+      { ...UHD_AT_60_AV1_HDR_ENTRY, compatibleBases: ['HLG'] },
+    ])
+  })
+
+  it('shouldKeepHlgWhenTheBrowserLeavesHlgUnansweredOnlyForASmallerPicture', async () => {
+    vi.useFakeTimers()
+    const browser = hdrBrowser()
+    const declaration = declarePlaybackCapabilities(
+      hdrPlatformFixture({
+        decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) => {
+          if (
+            configuration.video?.transferFunction === 'hlg' &&
+            configuration.video.height === 720
+          ) {
+            return NEVER_ANSWERED
+          }
+          return browser(configuration)
+        }),
+      }),
+    )
+
+    await vi.advanceTimersByTimeAsync(3_000)
+
+    expect(familyEntries(await declaration, 'HEVC')).toEqual([
+      UHD_AT_60_HEVC_ENTRY,
+      UHD_AT_60_HEVC_HDR_ENTRY,
+    ])
+  })
+
+  it('shouldDeclareNoDolbyVisionProfileWhenTheBrowserDecodesItOnlyWithDroppedFramesForASmallerPicture', async () => {
+    const browser = hdrBrowser({ dolbyVision: ['dvh1.08'] })
+    const declaration = await declarePlaybackCapabilities(
+      hdrPlatformFixture({
+        decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) => {
+          if (codecOf(configuration).startsWith('dvh1') && configuration.video?.height === 720) {
+            return Promise.resolve(UNSMOOTH_SOFTWARE_ANSWER)
+          }
+          return browser(configuration)
+        }),
+      }),
+    )
+
+    expect(familyEntries(declaration, 'HEVC')).toEqual([
+      UHD_AT_60_HEVC_ENTRY,
+      UHD_AT_60_HEVC_HDR_ENTRY,
+    ])
+  })
+
   it.each([
     ['Rejects', () => Promise.reject(new TypeError('unsupported dictionary member'))],
     [

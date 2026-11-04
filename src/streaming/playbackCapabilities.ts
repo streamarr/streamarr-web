@@ -506,7 +506,7 @@ function hdrEntries({
   if (!hdr) {
     return []
   }
-  const keepsUp = keepsUpWithoutSmallerRefusal({
+  const keepsUp = keepsUpAtEveryAnsweredSmallerTier({
     answers: hdrAnswers,
     keepsUp: keepsUpOn({ platform, family, answers: hdrAnswers, h264Answers }),
   })
@@ -526,6 +526,26 @@ function hdrEntries({
     compatibleBases,
     dolbyVisionProfiles,
   }))
+}
+
+// A maximum accepts every smaller value (ADR 0049), so an HDR format counts at a tier only when
+// every smaller tier it holds keeps up too or went unanswered. A smaller tier that decodes only
+// with dropped frames would stutter without a playback error, so no format attempt recovers.
+function keepsUpAtEveryAnsweredSmallerTier<T extends { tier: PictureTier }>({
+  answers,
+  keepsUp,
+}: {
+  answers: readonly T[]
+  keepsUp: KeepsUp<T>
+}): KeepsUp<T> {
+  return (answer, answerOf) =>
+    keepsUp(answer, answerOf) &&
+    answers.every(
+      (smaller) =>
+        !holdsPicture(answer.tier, smaller.tier) ||
+        answerOf(smaller) === null ||
+        keepsUp(smaller, answerOf),
+    )
 }
 
 function hdrTier({
