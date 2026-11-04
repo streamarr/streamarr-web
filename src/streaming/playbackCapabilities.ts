@@ -577,11 +577,11 @@ function hdrTier({
 
 // A wider tier's Dolby Vision level is at least the narrower tier's, since it holds the picture.
 function isHdrTierCoveredBy(candidate: HdrTier, wider: HdrTier): boolean {
-  const widerProfiles = wider.dolbyVisionProfiles.map(({ profile }) => profile)
+  const widerProfiles = new Set(wider.dolbyVisionProfiles.map(({ profile }) => profile))
   return (
     holdsPicture(wider.tier, candidate.tier) &&
     candidate.compatibleBases.every((base) => wider.compatibleBases.includes(base)) &&
-    candidate.dolbyVisionProfiles.every(({ profile }) => widerProfiles.includes(profile))
+    candidate.dolbyVisionProfiles.every(({ profile }) => widerProfiles.has(profile))
   )
 }
 
