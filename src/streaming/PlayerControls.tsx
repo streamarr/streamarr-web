@@ -76,6 +76,7 @@ export function PlayerControls({
   playerRef,
   videoRef,
   videoState,
+  onSeek,
   tracks,
   quality,
   onChooseQuality,
@@ -89,6 +90,8 @@ export function PlayerControls({
   playerRef: RefObject<HTMLElement | null>
   videoRef: RefObject<HTMLVideoElement | null>
   videoState: VideoState
+  /** Moves the playhead. The controls never seek the element themselves. */
+  onSeek: (seconds: number) => void
   /** The attached stream's tracks; null while no stream is attached. */
   tracks: TrackSource | null
   quality: QualityMenu
@@ -127,7 +130,7 @@ export function PlayerControls({
     if (!element) {
       return
     }
-    element.currentTime = Math.min(Math.max(element.currentTime + seconds, 0), element.duration)
+    onSeek(Math.min(Math.max(element.currentTime + seconds, 0), element.duration))
   }
 
   // Only a pointer drag pauses: the keyboard seeks in steps, and each step lands at once. The
@@ -163,7 +166,7 @@ export function PlayerControls({
     if (!element || !attached || scrub?.at === 'abandoned') {
       return
     }
-    element.currentTime = seconds
+    onSeek(seconds)
     if (scrub?.resume) {
       void element.play().catch(ignoreInterruptedPlay)
     }

@@ -55,6 +55,11 @@ export interface PlayerPlayback {
   stop: () => void
   /** Where a playback session started in this one's place should resume. */
   resumePoint: () => ResumePoint
+  /**
+   * Moves the playhead for the viewer. A running stall limit starts again at once, and the
+   * element's seeking event starts the seek's own limit.
+   */
+  seek: (seconds: number) => void
 }
 
 // A stall's limit, and the status read once the stall outlasts it.
@@ -117,6 +122,7 @@ export function startPlayerPlayback(options: PlayerPlaybackOptions): PlayerPlayb
       playback.stop()
     },
     resumePoint: () => playback.resumePoint(),
+    seek: (seconds) => playback.seek(seconds),
   }
 }
 
@@ -155,7 +161,8 @@ function startSessionPlayback({
   let seekUnresumed = false
   // The position of the seek whose seeking event has fired and whose seeked event has not. The
   // element keeps such a seek running for as long as no media comes, so its stall limit fails it
-  // like any stall. A seek to another position replaced it, and that seek's event is still to come.
+  // like any stall. hls.js and the browser's own controls seek without the player, so for their
+  // seeks the element's events are the only signal.
   let seekUnderwayTo: number | null = null
   // hls.js stops loading after a fatal error, so a failure that ended playback leaves the stream
   // to attach again before it can play.
@@ -424,6 +431,17 @@ function startSessionPlayback({
     stall = started
   }
 
+  // The element fires the seeking event from a queued task, which then starts the seek's own
+  // limit. An earlier stall's status read can answer before that task runs, so a running limit
+  // starts again here, as the viewer seeks. A browser that ignores the seek fires no event, and
+  // the stall keeps a limit.
+  function seek(seconds: number) {
+    video.currentTime = seconds
+    if (!stall) return
+    clearStallLimit()
+    startStallLimit()
+  }
+
   // Also abandons the status read of a stall that outlasted the limit.
   function clearStallLimit() {
     if (!stall) return
@@ -445,7 +463,8 @@ function startSessionPlayback({
     if (stall !== ended) return
     stall = undefined
     // The media element can resume, pause or seek before it fires the event that stops the limit.
-    // A seek whose event has not fired yet starts its own limit when the event fires.
+    // A seek that hls.js or the browser started, whose event has not fired yet, starts its own
+    // limit when the event fires.
     if (
       video.paused ||
       (video.seeking && video.currentTime !== seekUnderwayTo) ||
@@ -887,6 +906,7 @@ function startSessionPlayback({
       requestCleanup()
     },
     resumePoint,
+    seek,
     leavePage,
   }
 }

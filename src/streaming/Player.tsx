@@ -139,6 +139,10 @@ export function Player({
     setChoice({ start: choice.start, quality: picked, resumeFrom: playback.resumePoint() })
   }
 
+  function seek(seconds: number) {
+    playbackRef.current?.seek(seconds)
+  }
+
   // The pick's resume point is long past by now, so Retry starts where playback first started.
   function retry() {
     setChoice({ start: choice.start, quality: choice.quality })
@@ -173,6 +177,7 @@ export function Player({
         playerRef={playerRef}
         videoRef={videoRef}
         videoState={videoState}
+        onSeek={seek}
         tracks={tracks}
         quality={quality}
         onChooseQuality={chooseQuality}
