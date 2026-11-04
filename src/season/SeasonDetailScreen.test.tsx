@@ -172,7 +172,9 @@ describe('SeasonDetailScreen', () => {
     const audio = await screen.findByRole('button', { name: 'Default audio' })
     expect(audio).toHaveAccessibleDescription('French · from Profile')
     await user.click(audio)
-    await user.click(screen.getByRole('menuitemradio', { name: 'Japanese' }))
+    await user.click(
+      within(screen.getByRole('menu')).getByRole('menuitemradio', { name: 'Japanese' }),
+    )
 
     await waitFor(() => expect(tabs.inputs).toEqual([{ itemId: 'season-2', audioLanguage: 'JA' }]))
   })

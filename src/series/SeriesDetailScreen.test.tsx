@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { selectedProfileState } from '../test/selectedProfileStateFixture'
@@ -183,7 +183,9 @@ describe('SeriesDetailScreen', () => {
     const audio = await screen.findByRole('button', { name: 'Default audio' })
     expect(audio).toHaveAccessibleDescription('French · from Profile')
     await user.click(audio)
-    await user.click(screen.getByRole('menuitemradio', { name: 'Japanese' }))
+    await user.click(
+      within(screen.getByRole('menu')).getByRole('menuitemradio', { name: 'Japanese' }),
+    )
 
     await waitFor(() => expect(tabs.inputs).toEqual([{ itemId: 'series-1', audioLanguage: 'JA' }]))
   })
