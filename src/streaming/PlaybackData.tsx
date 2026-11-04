@@ -63,6 +63,7 @@ export function PlaybackData({
           </Group>
           <Group name="Server">
             <ServerDecision
+              key={stream.streamSessionId}
               playbackSessionId={stream.playbackSessionId}
               streamSessionId={stream.streamSessionId}
             />
@@ -185,8 +186,8 @@ function audioFormat({ audioCodec, audioChannels }: StreamStats): string {
   return audioChannels === undefined ? audioCodec : `${audioCodec} · ${channelsText(audioChannels)}`
 }
 
-// A fallback or a new playback session attaches its stream only after the panel waited for it, so
-// each attached stream session mounts this anew and reads the decisions afresh.
+// Keyed by the stream session: a replacement that a status read finds already ready attaches in
+// the same render as the handover, so only the key mounts this anew to read the decisions again.
 function ServerDecision({
   playbackSessionId,
   streamSessionId,

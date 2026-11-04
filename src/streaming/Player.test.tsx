@@ -8286,6 +8286,45 @@ describe('Player', () => {
       expect(reads).toEqual([`playback-${SESSION.id}`, `playback-${SESSION.id}`])
     })
 
+    it('shouldShowTheReplacingStreamsDecisionWhenAStatusReadFindsTheReplacementAlreadyReady', async () => {
+      serveSession()
+      const replacement = replacementStream(1)
+      server.use(
+        graphql.query('PlaybackSession', () =>
+          HttpResponse.json({
+            data: {
+              playbackSession: readyPlaybackSession({
+                id: `playback-${SESSION.id}`,
+                streamSession: replacement,
+                formatChange: 'COPY_FAILED',
+              }),
+            },
+          }),
+        ),
+      )
+      const copy = playbackDecision({ streamSessionId: SESSION.id })
+      const encode = playbackDecision({
+        formatAttempt: 2,
+        streamSessionId: replacement.id,
+        video: { delivery: 'ENCODE', source: H264_FULL_HD, output: H264_FULL_HD },
+        reasons: ['COPY_FAILED'],
+      })
+      let decisions = [copy]
+      serveDecisions(() => decisions)
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await showingVideo(STREAM_URL)
+      const panel = await openPlaybackData(user)
+      await waitFor(() => expect(factsIn(panel, 'Server')).toMatchObject({ Video: 'Copy' }))
+
+      decisions = [copy, encode]
+      answerTheNextSegmentWith503({ fatal: true })
+      await showingVideo(replacement.streamUrl)
+
+      await waitFor(() => expect(factsIn(panel, 'Server')).toMatchObject({ Video: 'Encode' }))
+    })
+
     it('shouldShowTheNewPlaybackSessionsDecisionWhenTheViewerPicksAnotherQualityWhileItShows', async () => {
       servePlaybackChoices()
       const reads = serveDecisions((id) => [
