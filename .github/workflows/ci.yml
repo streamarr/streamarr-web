@@ -70,7 +70,7 @@ jobs:
       # The cache holds only the browser; the OS packages it needs are not cached.
       - if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: node_modules/.bin/playwright install-deps chromium
-      - run: npm run test:e2e
+      - run: npm run test:e2e -- --project=chromium
       - name: Upload browser test output
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -94,3 +94,40 @@ jobs:
             exit 0
           fi
           npm run tokens:check
+
+  # Firefox and WebKit run only the capability specs. A separate job keeps their installs off the
+  # build job's clock.
+  decoding-info:
+    name: Run the capability specs in Firefox and WebKit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Read the Playwright version
+        id: playwright
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-firefox-webkit
+      - if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: node_modules/.bin/playwright install --with-deps firefox webkit
+      - if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: node_modules/.bin/playwright install-deps firefox webkit
+      - run: npm run test:e2e -- --project=firefox --project=webkit
+      - name: Upload the decodingInfo answers
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: decoding-info-results
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7

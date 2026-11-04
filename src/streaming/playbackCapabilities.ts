@@ -4,6 +4,9 @@ import type {
   AudioCodec,
   ClientCapabilityDeclarationInput,
   CreatePlaybackSessionMutation,
+  DeclaredCompatibleBase,
+  DolbyVisionProfile,
+  DolbyVisionProfileCapabilityInput,
   VideoCapabilityEntryInput,
   VideoCodecFamily,
   VideoCodecProfile,
@@ -52,6 +55,13 @@ export interface PlaybackPlatform {
   /** `canPlayType` of the media element. */
   canPlayType: (type: string) => CanPlayTypeResult
   userAgent: string
+  /**
+   * The most channels the default audio output plays. Resolves 0 where the browser reports none, and
+   * settles only after any AudioContext it opened has closed.
+   */
+  audioOutputChannels: () => Promise<number>
+  /** Whether the display, or the plane that video plays on, shows high dynamic range. */
+  displaysHighDynamicRange: boolean
 }
 
 // The declaration gates the start of playback, so every probe shares one deadline and a probe left
@@ -66,6 +76,8 @@ interface PictureTier {
   frameRate: number
   bitrate: number
   levels: FamilyLevels
+  // The lowest level of Dolby's profiles and levels specification that holds the picture.
+  dolbyVisionLevel: number
 }
 
 // Each level is the lowest that holds the tier's picture size and frame rate, and each bitrate
@@ -77,6 +89,7 @@ const UHD_AT_60: PictureTier = {
   frameRate: 60,
   bitrate: 40_000_000,
   levels: { H264: 52, HEVC: 51, AV1: 51 },
+  dolbyVisionLevel: 9,
 }
 const UHD_AT_30: PictureTier = {
   width: 3840,
@@ -84,6 +97,7 @@ const UHD_AT_30: PictureTier = {
   frameRate: 30,
   bitrate: 20_000_000,
   levels: { H264: 51, HEVC: 50, AV1: 50 },
+  dolbyVisionLevel: 7,
 }
 const FULL_HD_AT_60: PictureTier = {
   width: 1920,
@@ -91,6 +105,7 @@ const FULL_HD_AT_60: PictureTier = {
   frameRate: 60,
   bitrate: 10_000_000,
   levels: { H264: 42, HEVC: 41, AV1: 41 },
+  dolbyVisionLevel: 5,
 }
 const FULL_HD_AT_30: PictureTier = {
   width: 1920,
@@ -98,6 +113,7 @@ const FULL_HD_AT_30: PictureTier = {
   frameRate: 30,
   bitrate: 10_000_000,
   levels: { H264: 40, HEVC: 40, AV1: 40 },
+  dolbyVisionLevel: 4,
 }
 const HD_AT_30: PictureTier = {
   width: 1280,
@@ -105,6 +121,7 @@ const HD_AT_30: PictureTier = {
   frameRate: 30,
   bitrate: 5_000_000,
   levels: { H264: 31, HEVC: 31, AV1: 31 },
+  dolbyVisionLevel: 2,
 }
 // Sorted widest first: a tier that holds another has the higher pixel rate, so widestTiers meets it
 // before the tiers it holds, and the last tier is the lowest.
@@ -126,11 +143,26 @@ interface BitDepthProbe {
   codec: (level: number) => string
 }
 
+// One Dolby Vision codec string, and the profiles a player that applies its RPUs accepts.
+interface DolbyVisionProbe {
+  profiles: readonly DolbyVisionProfile[]
+  codec: (dolbyVisionLevel: number) => string
+}
+
 interface VideoFamily {
   codecFamily: keyof FamilyLevels & VideoCodecFamily
   maxTier?: VideoCodecTier
   eightBit: BitDepthProbe
   tenBit?: BitDepthProbe
+  hdr?: HdrProbe
+}
+
+interface HdrProbe {
+  // The codec profiles of a 10-bit HDR stream, which every HDR entry of the family lists.
+  profiles: readonly VideoCodecProfile[]
+  // The 10-bit codec string an HDR question asks about, given the stream's transfer characteristics.
+  codec: (level: number, transferCharacteristics: number) => string
+  dolbyVision: readonly DolbyVisionProbe[]
 }
 
 // A High decoder also decodes Main and Constrained Baseline streams, not Baseline's extra tools.
@@ -152,6 +184,17 @@ const HEVC: VideoFamily = {
     profiles: ['HEVC_MAIN_10'],
     codec: (level) => `hvc1.2.4.L${level * 3}.B0`,
   },
+  hdr: {
+    profiles: ['HEVC_MAIN_10'],
+    codec: (level) => `hvc1.2.4.L${level * 3}.B0`,
+    dolbyVision: [
+      { profiles: ['PROFILE_5'], codec: (level) => dolbyVisionCodec('dvh1.05', level) },
+      {
+        profiles: ['PROFILE_8_1', 'PROFILE_8_4'],
+        codec: (level) => dolbyVisionCodec('dvh1.08', level),
+      },
+    ],
+  },
 }
 
 // AV1 Main covers both bit depths, so a 10-bit maximum also accepts 8-bit (ADR 0049): the 10-bit
@@ -161,7 +204,54 @@ const AV1: VideoFamily = {
   maxTier: 'MAIN',
   eightBit: { bitDepth: 8, profiles: ['AV1_MAIN'], codec: (level) => av1Codec(level, 8) },
   tenBit: { bitDepth: 10, profiles: [], codec: (level) => av1Codec(level, 10) },
+  hdr: {
+    profiles: ['AV1_MAIN'],
+    // Omitted colour fields mean BT.709, and Chromium refuses a question whose codec string and
+    // colour disagree, so an HDR question names 4:2:0 chroma, BT.2020 primaries, the stream's
+    // transfer, the BT.2020 non-constant-luminance matrix and limited range.
+    codec: (level, transferCharacteristics) =>
+      `${av1Codec(level, 10)}.0.110.09.${transferCharacteristics}.09.0`,
+    dolbyVision: [
+      {
+        profiles: ['PROFILE_10_0', 'PROFILE_10_1', 'PROFILE_10_4'],
+        codec: (level) => dolbyVisionCodec('dav1.10', level),
+      },
+    ],
+  },
 }
+
+function dolbyVisionCodec(codecAndProfile: string, level: number): string {
+  return `${codecAndProfile}.${level.toString().padStart(2, '0')}`
+}
+
+type ColorQuestion = Pick<VideoConfiguration, 'colorGamut' | 'transferFunction' | 'hdrMetadataType'>
+
+// Each base asks about a family's 10-bit codec string in BT.2020 primaries. PQ asks with the SMPTE
+// ST 2086 static metadata that an HDR10 copy carries; HLG carries none.
+// The transfer characteristics are the H.273 code points: 16 is PQ and 18 is HLG.
+const COMPATIBLE_BASE_PROBES: readonly {
+  base: DeclaredCompatibleBase
+  transferCharacteristics: number
+  color: ColorQuestion
+}[] = [
+  {
+    base: 'PQ',
+    transferCharacteristics: 16,
+    color: { colorGamut: 'rec2020', transferFunction: 'pq', hdrMetadataType: 'smpteSt2086' },
+  },
+  {
+    base: 'HLG',
+    transferCharacteristics: 18,
+    color: { colorGamut: 'rec2020', transferFunction: 'hlg' },
+  },
+]
+
+// Dolby Vision profiles 5 and 10.0 have no compatible base, so an entry may list them without one
+// (ADR 0049).
+const BASELESS_DOLBY_VISION_PROFILES: ReadonlySet<DolbyVisionProfile> = new Set([
+  'PROFILE_5',
+  'PROFILE_10_0',
+])
 
 // H.264 is probed beside these: on WebKit, its tiers answered smooth cap power-efficient HEVC.
 const VIDEO_FAMILIES_BESIDES_H264 = [HEVC, AV1]
@@ -181,9 +271,9 @@ const AUDIO_CODECS: readonly { codec: AudioCodec; mimeCodec: string }[] = [
   { codec: 'ALAC', mimeCodec: 'alac' },
 ]
 
-// The ladder stops at 5.1: Firefox stays at 6 channels until a 7.1 channel-order test passes, and
-// nobody has measured whether decodingInfo honors channel counts (streamarr-web#29).
-const CHANNEL_LADDER = [6, 2]
+// No entry declares more than 5.1 until a browser passes a 7.1 channel-order test
+// (streamarr-web#29): Firefox hands 7.1 AAC over in the wrong order.
+const SURROUND_MAXIMUM = 6
 const STEREO = 2
 
 interface DecodedTier {
@@ -199,6 +289,13 @@ interface TierAnswers {
   tier: PictureTier
   eightBit: ProbeAnswer
   tenBit: ProbeAnswer
+}
+
+// Each answer lines up with COMPATIBLE_BASE_PROBES and the family's Dolby Vision probes.
+interface HdrTierAnswers {
+  tier: PictureTier
+  bases: ProbeAnswer[]
+  dolbyVision: ProbeAnswer[]
 }
 
 // maxChannels is null when the browser confirmed no channel count for the codec.
@@ -239,7 +336,16 @@ export async function declarePlaybackCapabilities(
     return Promise.race([answer.catch(() => null), deadline])
   }
   try {
-    return await probeDeclaration({ platform, askDecodingInfo, hls })
+    // The audio probes ask at the channel count the entries declare, so the output comes first.
+    // A probe started after the deadline could not count, so an unanswered read starts none.
+    const outputChannels = await Promise.race([
+      platform.audioOutputChannels().catch(() => 0),
+      deadline,
+    ])
+    if (outputChannels === null) {
+      return minimalDeclaration(hls)
+    }
+    return await probeDeclaration({ platform, askDecodingInfo, hls, outputChannels })
   } finally {
     clearTimeout(timer)
   }
@@ -249,15 +355,21 @@ async function probeDeclaration({
   platform,
   askDecodingInfo,
   hls,
+  outputChannels,
 }: {
   platform: PlaybackPlatform
   askDecodingInfo: AskDecodingInfo
   hls: boolean
+  outputChannels: number
 }): Promise<ClientCapabilityDeclarationInput> {
+  // A host without an audio device reports 0 channels, and every output plays stereo.
+  const channels = Math.min(Math.max(outputChannels, STEREO), SURROUND_MAXIMUM)
   const [video, audio] = await Promise.all([
     probeVideo({ platform, askDecodingInfo, hls }),
     Promise.all(
-      AUDIO_CODECS.map(({ codec, mimeCodec }) => probeAudio({ codec, mimeCodec, askDecodingInfo })),
+      AUDIO_CODECS.map(({ codec, mimeCodec }) =>
+        probeAudio({ codec, mimeCodec, channels, askDecodingInfo }),
+      ),
     ),
   ])
   return {
@@ -278,15 +390,54 @@ async function probeVideo({
   const [h264Answers, otherFamilies] = await Promise.all([
     probeFamily({ family: H264, askDecodingInfo }),
     Promise.all(
-      VIDEO_FAMILIES_BESIDES_H264.map(async (family) => ({
-        family,
-        answers: await probeFamily({ family, askDecodingInfo }),
-      })),
+      VIDEO_FAMILIES_BESIDES_H264.map(async (family) => {
+        const [answers, hdrAnswers] = await Promise.all([
+          probeFamily({ family, askDecodingInfo }),
+          probeHdr({ platform, family, askDecodingInfo }),
+        ])
+        return { family, answers, hdrAnswers }
+      }),
     ),
   ])
-  const probed = [{ family: H264, answers: h264Answers }, ...otherFamilies]
-  return probed.flatMap(({ family, answers }) =>
-    familyEntries({ platform, family, answers, h264Answers, hls }),
+  const probed = [{ family: H264, answers: h264Answers, hdrAnswers: [] }, ...otherFamilies]
+  return probed.flatMap(({ family, answers, hdrAnswers }) =>
+    familyEntries({ platform, family, answers, hdrAnswers, h264Answers, hls }),
+  )
+}
+
+// HDR shows only on an HDR display, so an SDR display asks no HDR question and declares SDR alone.
+function probeHdr({
+  platform,
+  family,
+  askDecodingInfo,
+}: {
+  platform: PlaybackPlatform
+  family: VideoFamily
+  askDecodingInfo: AskDecodingInfo
+}): Promise<HdrTierAnswers[]> {
+  const { hdr } = family
+  if (!platform.displaysHighDynamicRange || !hdr) {
+    return Promise.resolve([])
+  }
+  return Promise.all(
+    PICTURE_TIERS.map(async (tier) => {
+      const level = tier.levels[family.codecFamily]
+      const [bases, dolbyVisionAnswers] = await Promise.all([
+        Promise.all(
+          COMPATIBLE_BASE_PROBES.map(({ transferCharacteristics, color }) =>
+            askDecodingInfo(
+              videoConfiguration(tier, hdr.codec(level, transferCharacteristics), color),
+            ),
+          ),
+        ),
+        Promise.all(
+          hdr.dolbyVision.map((probe) =>
+            askDecodingInfo(videoConfiguration(tier, probe.codec(tier.dolbyVisionLevel))),
+          ),
+        ),
+      ])
+      return { tier, bases, dolbyVision: dolbyVisionAnswers }
+    }),
   )
 }
 
@@ -304,12 +455,14 @@ function familyEntries({
   platform,
   family,
   answers,
+  hdrAnswers,
   h264Answers,
   hls,
 }: {
   platform: PlaybackPlatform
   family: VideoFamily
   answers: readonly TierAnswers[]
+  hdrAnswers: readonly HdrTierAnswers[]
   h264Answers: readonly TierAnswers[]
   hls: boolean
 }): VideoCapabilityEntryInput[] {
@@ -321,7 +474,115 @@ function familyEntries({
   if (tiers.length === 0) {
     tiers = tiersWithoutAnswerThatKeepsUp({ platform, family, answers })
   }
-  return tiers.map((decodedTier) => videoEntry({ family, decodedTier, hls }))
+  return [
+    ...tiers.map((decodedTier) => videoEntry({ family, decodedTier, hls })),
+    ...hdrEntries({ platform, family, hdrAnswers, h264Answers, hls }),
+  ]
+}
+
+interface HdrTier {
+  tier: PictureTier
+  compatibleBases: DeclaredCompatibleBase[]
+  dolbyVisionProfiles: DolbyVisionProfileCapabilityInput[]
+}
+
+// Each HDR format counts at a tier on its own answer, under the same keeps-up rules as SDR: a 10-bit
+// SDR answer that keeps up says nothing about tone mapping or a decoder's lower HDR level. HDR
+// tiers fold as SDR tiers do, so a tier stays when no wider tier accepts every format it does.
+function hdrEntries({
+  platform,
+  family,
+  hdrAnswers,
+  h264Answers,
+  hls,
+}: {
+  platform: PlaybackPlatform
+  family: VideoFamily
+  hdrAnswers: readonly HdrTierAnswers[]
+  h264Answers: readonly TierAnswers[]
+  hls: boolean
+}): VideoCapabilityEntryInput[] {
+  const { hdr } = family
+  if (!hdr) {
+    return []
+  }
+  const keepsUp = keepsUpAtEveryAnsweredSmallerTier({
+    answers: hdrAnswers,
+    keepsUp: keepsUpOn({ platform, family, answers: hdrAnswers, h264Answers }),
+  })
+  const kept: HdrTier[] = []
+  for (const answers of hdrAnswers) {
+    const candidate = hdrTier({ hdr, answers, keepsUp })
+    if (candidate && !kept.some((wider) => isHdrTierCoveredBy(candidate, wider))) {
+      kept.push(candidate)
+    }
+  }
+  return kept.map(({ tier, compatibleBases, dolbyVisionProfiles }) => ({
+    ...videoEntry({
+      family,
+      decodedTier: { tier, bitDepth: 10, profiles: [...hdr.profiles] },
+      hls,
+    }),
+    compatibleBases,
+    dolbyVisionProfiles,
+  }))
+}
+
+// A maximum accepts every smaller value (ADR 0049), so an HDR format counts at a tier only when
+// every smaller tier it holds keeps up too or went unanswered. A smaller tier that decodes only
+// with dropped frames would stutter without a playback error, so no format attempt recovers.
+function keepsUpAtEveryAnsweredSmallerTier<T extends { tier: PictureTier }>({
+  answers,
+  keepsUp,
+}: {
+  answers: readonly T[]
+  keepsUp: KeepsUp<T>
+}): KeepsUp<T> {
+  return (answer, answerOf) =>
+    keepsUp(answer, answerOf) &&
+    answers.every(
+      (smaller) =>
+        !holdsPicture(answer.tier, smaller.tier) ||
+        answerOf(smaller) === null ||
+        keepsUp(smaller, answerOf),
+    )
+}
+
+function hdrTier({
+  hdr,
+  answers,
+  keepsUp,
+}: {
+  hdr: HdrProbe
+  answers: HdrTierAnswers
+  keepsUp: KeepsUp<HdrTierAnswers>
+}): HdrTier | null {
+  const { tier } = answers
+  const compatibleBases = COMPATIBLE_BASE_PROBES.filter((_, index) =>
+    keepsUp(answers, (tierAnswers) => tierAnswers.bases[index]),
+  ).map(({ base }) => base)
+  const dolbyVisionProfiles = hdr.dolbyVision
+    .filter((_, index) => keepsUp(answers, (tierAnswers) => tierAnswers.dolbyVision[index]))
+    .flatMap(({ profiles }) =>
+      profiles.map((profile) => ({ profile, maxLevel: tier.dolbyVisionLevel })),
+    )
+  const listsBaselessProfile = dolbyVisionProfiles.some(({ profile }) =>
+    BASELESS_DOLBY_VISION_PROFILES.has(profile),
+  )
+  if (compatibleBases.length === 0 && !listsBaselessProfile) {
+    return null
+  }
+  return { tier, compatibleBases, dolbyVisionProfiles }
+}
+
+// A wider tier's Dolby Vision level is at least the narrower tier's, since it holds the picture.
+function isHdrTierCoveredBy(candidate: HdrTier, wider: HdrTier): boolean {
+  const widerProfiles = new Set(wider.dolbyVisionProfiles.map(({ profile }) => profile))
+  return (
+    holdsPicture(wider.tier, candidate.tier) &&
+    candidate.compatibleBases.every((base) => wider.compatibleBases.includes(base)) &&
+    candidate.dolbyVisionProfiles.every(({ profile }) => widerProfiles.has(profile))
+  )
 }
 
 async function probeTier({
@@ -353,13 +614,13 @@ function tierThatKeepsUp({
 }: {
   family: VideoFamily
   answer: TierAnswers
-  keepsUp: KeepsUp
+  keepsUp: KeepsUp<TierAnswers>
 }): DecodedTier[] {
   const keptUp: BitDepthProbe[] = []
-  if (keepsUp(answer, 'eightBit')) {
+  if (keepsUp(answer, (answers) => answers.eightBit)) {
     keptUp.push(family.eightBit)
   }
-  if (family.tenBit && keepsUp(answer, 'tenBit')) {
+  if (family.tenBit && keepsUp(answer, (answers) => answers.tenBit)) {
     keptUp.push(family.tenBit)
   }
   const profiles = keptUp.flatMap((probe) => probe.profiles)
@@ -370,9 +631,10 @@ function tierThatKeepsUp({
   return [{ tier: answer.tier, bitDepth, profiles }]
 }
 
-type BitDepthKey = 'eightBit' | 'tenBit'
+// One probe's answer at a tier, such as the 10-bit answer of a family's tier.
+type AnswerOf<T> = (answers: T) => ProbeAnswer
 
-type KeepsUp = (answer: TierAnswers, bitDepth: BitDepthKey) => boolean
+type KeepsUp<T> = (answers: T, answerOf: AnswerOf<T>) => boolean
 
 // Safari on iOS 27.2, on a phone that decodes HEVC in hardware, answers HEVC Main and Main 10
 // supported and power-efficient but never smooth, at every tier from 720p30 to 2160p60. On WebKit a
@@ -386,7 +648,7 @@ type KeepsUp = (answer: TierAnswers, bitDepth: BitDepthKey) => boolean
 // dropped and the server encodes instead. WebKit answers HEVC smooth up to the decoder's maximum
 // playback level, so once a profile answers smooth at any tier, its smooth answers are its ceiling
 // and power efficiency no longer stands in for them. Elsewhere only a smooth answer keeps up.
-function keepsUpOn({
+function keepsUpOn<T extends { tier: PictureTier }>({
   platform,
   family,
   answers,
@@ -394,40 +656,40 @@ function keepsUpOn({
 }: {
   platform: PlaybackPlatform
   family: VideoFamily
-  answers: readonly TierAnswers[]
+  answers: readonly T[]
   h264Answers: readonly TierAnswers[]
-}): KeepsUp {
+}): KeepsUp<T> {
   if (family !== HEVC || !isWebKit(platform.userAgent)) {
-    return (answer, bitDepth) => isSmooth(answer[bitDepth])
+    return (answer, answerOf) => isSmooth(answerOf(answer))
   }
   const budget = h264Answers.filter((answer) => isSmooth(answer.eightBit))
-  return (answer, bitDepth) => {
-    if (isSmooth(answer[bitDepth])) {
+  return (answer, answerOf) => {
+    if (isSmooth(answerOf(answer))) {
       return true
     }
-    if (answers.some((other) => isSmooth(other[bitDepth]))) {
+    if (answers.some((other) => isSmooth(answerOf(other)))) {
       return false
     }
     return (
-      isPowerEfficient(answer[bitDepth]) &&
+      isPowerEfficient(answerOf(answer)) &&
       budget.some((h264) => holdsPicture(h264.tier, answer.tier))
     )
   }
 }
 
 // A maximum accepts every smaller value (ADR 0049), so no tier counts over a smaller tier it holds
-// that the browser refused at the same bit depth.
-function keepsUpWithoutSmallerRefusal({
+// that the browser refused for the same probe.
+function keepsUpWithoutSmallerRefusal<T extends { tier: PictureTier }>({
   answers,
   keepsUp,
 }: {
-  answers: readonly TierAnswers[]
-  keepsUp: KeepsUp
-}): KeepsUp {
-  return (answer, bitDepth) =>
-    keepsUp(answer, bitDepth) &&
+  answers: readonly T[]
+  keepsUp: KeepsUp<T>
+}): KeepsUp<T> {
+  return (answer, answerOf) =>
+    keepsUp(answer, answerOf) &&
     !answers.some(
-      (smaller) => holdsPicture(answer.tier, smaller.tier) && isRefusal(smaller[bitDepth]),
+      (smaller) => holdsPicture(answer.tier, smaller.tier) && isRefusal(answerOf(smaller)),
     )
 }
 
@@ -495,6 +757,7 @@ function eightBitTier(family: VideoFamily, tier: PictureTier): DecodedTier {
 function videoConfiguration(
   tier: PictureTier,
   codec: string,
+  color: ColorQuestion = {},
 ): Omit<MediaDecodingConfiguration, 'type'> {
   return {
     video: {
@@ -503,6 +766,7 @@ function videoConfiguration(
       height: tier.height,
       framerate: tier.frameRate,
       bitrate: tier.bitrate,
+      ...color,
     },
   }
 }
@@ -587,36 +851,31 @@ function codecProfile({
   return capability
 }
 
+// No engine's decodingInfo answer depends on the channel count (e2e/decoding-info-channels.spec.ts),
+// so one probe per codec asks at the count its entry would declare.
 async function probeAudio({
   codec,
   mimeCodec,
+  channels,
   askDecodingInfo,
 }: {
   codec: AudioCodec
   mimeCodec: string
+  channels: number
   askDecodingInfo: AskDecodingInfo
 }): Promise<AudioAnswer> {
-  // Every rung starts at once: a rung asked only after a slow one would race an expired deadline.
-  const answers = await Promise.all(
-    CHANNEL_LADDER.map((channels) =>
-      askDecodingInfo({
-        audio: {
-          contentType: `audio/mp4; codecs="${mimeCodec}"`,
-          channels: String(channels),
-          bitrate: 384_000,
-          samplerate: 48_000,
-        },
-      }),
-    ),
-  )
-  // A channel maximum accepts every smaller count, so it never stands over a refused smaller rung.
-  const widest = CHANNEL_LADDER.findIndex(
-    (_, index) => answers[index]?.supported && !answers.slice(index + 1).some(isRefusal),
-  )
-  if (widest === -1) {
+  const answer = await askDecodingInfo({
+    audio: {
+      contentType: `audio/mp4; codecs="${mimeCodec}"`,
+      channels: String(channels),
+      bitrate: 384_000,
+      samplerate: 48_000,
+    },
+  })
+  if (!answer?.supported) {
     return { codec, maxChannels: null }
   }
-  return { codec, maxChannels: CHANNEL_LADDER[widest] }
+  return { codec, maxChannels: channels }
 }
 
 function audioEntries({
@@ -677,6 +936,33 @@ function minimalDeclaration(hls: boolean): ClientCapabilityDeclarationInput {
   }
 }
 
+async function audioOutputChannels(): Promise<number> {
+  // TypeScript's DOM library declares AudioContext in every browser; older browsers lack it.
+  const scope: { AudioContext?: typeof AudioContext } = globalThis
+  if (!scope.AudioContext) {
+    return 0
+  }
+  const context = new scope.AudioContext()
+  try {
+    return context.destination.maxChannelCount
+  } finally {
+    await context.close()
+  }
+}
+
+// The video plane can show HDR where the rest of the page cannot, as on a television.
+function displaysHighDynamicRange(): boolean {
+  // TypeScript's DOM library declares matchMedia in every browser; a test environment may lack it.
+  const scope: { matchMedia?: (query: string) => MediaQueryList } = globalThis
+  if (!scope.matchMedia) {
+    return false
+  }
+  return (
+    scope.matchMedia('(dynamic-range: high)').matches ||
+    scope.matchMedia('(video-dynamic-range: high)').matches
+  )
+}
+
 interface MediaSourceType {
   isTypeSupported: (type: string) => boolean
 }
@@ -697,6 +983,14 @@ export function browserPlaybackPlatform(video: HTMLVideoElement): PlaybackPlatfo
     mediaSourceTypeSupported: (type) => mediaSource?.isTypeSupported(type) ?? false,
     canPlayType: (type) => video.canPlayType(type),
     userAgent: navigator.userAgent,
+    audioOutputChannels,
+    displaysHighDynamicRange: displaysHighDynamicRange(),
+  }
+  // WebKit on Linux plays audio through GStreamer. On the Linux CI runner, its web process crashed
+  // on the next media call after a page read maxChannelCount, so there it declares stereo. The
+  // platform names the operating system even where a quirk or a test sets a Mac user agent.
+  if (isWebKit(navigator.userAgent) && navigator.platform.startsWith('Linux')) {
+    platform.audioOutputChannels = () => Promise.resolve(0)
   }
   if ('mediaCapabilities' in navigator) {
     platform.decodingInfo = (configuration) =>

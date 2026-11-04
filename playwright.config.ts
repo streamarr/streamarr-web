@@ -4,6 +4,12 @@ import { APP_PORT, STUB_PORT, STUB_URL } from './e2e/ports'
 // Runs against vite dev on purpose: service-worker scope and proxy wiring differ from the build.
 const baseURL = `http://localhost:${APP_PORT}`
 
+const CAPABILITY_SPECS = [
+  'decoding-info-channels.spec.ts',
+  'output-channels.spec.ts',
+  'hdr-declaration.spec.ts',
+]
+
 export default defineConfig({
   testDir: './e2e',
   forbidOnly: !!process.env.CI,
@@ -19,7 +25,20 @@ export default defineConfig({
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    // Firefox and WebKit run only the capability specs, whose browser answers differ by engine.
+    {
+      name: 'firefox',
+      testMatch: CAPABILITY_SPECS,
+      use: { ...devices['Desktop Firefox'] },
+    },
+    {
+      name: 'webkit',
+      testMatch: CAPABILITY_SPECS,
+      use: { ...devices['Desktop Safari'] },
+    },
+  ],
   webServer: [
     {
       name: 'stub-api',

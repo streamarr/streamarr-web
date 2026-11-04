@@ -25,6 +25,10 @@ const IPHONE_CHROME =
   'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/141.0.0.0 Mobile/15E148 Safari/604.1'
 const FIREFOX =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:144.0) Gecko/20100101 Firefox/144.0'
+const LINUX_CHROME =
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36'
+const ANDROID_CHROME =
+  'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36'
 
 const AV1_PROBE = 'video/mp4; codecs="av01.0.08M.08"'
 
@@ -133,11 +137,6 @@ function audioEntry(
 
 function decodesOnly(codecs: string[]): Decodes {
   return (configuration) => codecs.includes(codecOf(configuration))
-}
-
-function decodesAudioUpTo(channels: number): Decodes {
-  return (configuration) =>
-    configuration.audio === undefined || Number(configuration.audio.channels) <= channels
 }
 
 function answer(supported: boolean): DecodingAnswer {
@@ -256,6 +255,136 @@ const DECLARATION_OF_EVERY_TIER: ClientCapabilityDeclarationInput = {
     { codec: 'FLAC', maxChannels: 6, hls: true },
     { codec: 'ALAC', maxChannels: 6, hls: true },
   ],
+}
+
+type CompatibleBase = 'PQ' | 'HLG'
+
+const HEVC_PROFILES_AT_LEVEL_51 = [
+  { profile: 'HEVC_MAIN' as const, maxLevel: 51, maxTier: 'MAIN' as const },
+  { profile: 'HEVC_MAIN_10' as const, maxLevel: 51, maxTier: 'MAIN' as const },
+]
+
+const UHD_AT_60_HEVC_ENTRY = sdrVideoEntry({
+  codecFamily: 'HEVC',
+  codecProfiles: HEVC_PROFILES_AT_LEVEL_51,
+  maxBitDepth: 10,
+  maxWidth: 3840,
+  maxHeight: 2160,
+  maxFrameRate: 60,
+})
+
+const UHD_AT_60_AV1_ENTRY = sdrVideoEntry({
+  codecFamily: 'AV1',
+  codecProfiles: [{ profile: 'AV1_MAIN', maxLevel: 51, maxTier: 'MAIN' }],
+  maxBitDepth: 10,
+  maxWidth: 3840,
+  maxHeight: 2160,
+  maxFrameRate: 60,
+})
+
+// HDR10, HLG and Dolby Vision profiles 5 and 8 are 10-bit HEVC Main 10 streams. AV1 Main covers
+// 10-bit too.
+function hevcMainTen(maxLevel: number) {
+  return [{ profile: 'HEVC_MAIN_10' as const, maxLevel, maxTier: 'MAIN' as const }]
+}
+
+/** An HEVC HDR entry with PQ and HLG at 2160p60, unless the caller names other values. */
+function hdrVideoEntry(entry: Partial<VideoCapabilityEntryInput>): VideoCapabilityEntryInput {
+  return sdrVideoEntry({
+    codecFamily: 'HEVC',
+    codecProfiles: hevcMainTen(51),
+    maxBitDepth: 10,
+    maxWidth: 3840,
+    maxHeight: 2160,
+    maxFrameRate: 60,
+    compatibleBases: ['PQ', 'HLG'],
+    ...entry,
+  })
+}
+
+const UHD_AT_60_HEVC_HDR_ENTRY = hdrVideoEntry({})
+
+const UHD_AT_60_AV1_HDR_ENTRY = hdrVideoEntry({
+  codecFamily: 'AV1',
+  codecProfiles: [{ profile: 'AV1_MAIN', maxLevel: 51, maxTier: 'MAIN' }],
+})
+
+// An HDR10 stream is 10-bit PQ in BT.2020 primaries with SMPTE ST 2086 static metadata, and an HLG
+// stream is 10-bit HLG in BT.2020 primaries with no static metadata. An AV1 codecs parameter also
+// names the colour (AV1 Codec ISO Media File Format Binding): 4:2:0 chroma, BT.2020 primaries (9),
+// PQ (16) or HLG (18) transfer, the BT.2020 non-constant-luminance matrix (9) and limited range.
+// Omitted, those fields mean BT.709, and Chromium refuses a question whose codec string and colour
+// disagree.
+const AV1_TRANSFER_CHARACTERISTICS: Record<CompatibleBase, string> = { PQ: '16', HLG: '18' }
+
+function asksAbout(configuration: MediaDecodingConfiguration, base: CompatibleBase): boolean {
+  const { video } = configuration
+  const codec = codecOf(configuration)
+  const av1Colour = `0.110.09.${AV1_TRANSFER_CHARACTERISTICS[base]}.09.0`
+  const isTenBit =
+    codec.startsWith('hvc1.2.') ||
+    new RegExp(`^av01\\.0\\.\\d{2}M\\.10\\.${av1Colour}$`).test(codec)
+  if (!video || !isTenBit || video.colorGamut !== 'rec2020') {
+    return false
+  }
+  if (base === 'PQ') {
+    return video.transferFunction === 'pq' && video.hdrMetadataType === 'smpteSt2086'
+  }
+  return video.transferFunction === 'hlg' && video.hdrMetadataType === undefined
+}
+
+// The Dolby Vision level that each picture tier needs, from Dolby's profiles and levels
+// specification: level 2 is 1280x720 at 30 fps, 4 is 1920x1080 at 30, 5 is 1920x1080 at 60, 7 is
+// 3840x2160 at 30 and 9 is 3840x2160 at 60.
+const DOLBY_VISION_LEVEL_BY_PICTURE: Record<string, number> = {
+  '720p30': 2,
+  '1080p30': 4,
+  '1080p60': 5,
+  '2160p30': 7,
+  '2160p60': 9,
+}
+
+function asksAboutDolbyVision(
+  configuration: MediaDecodingConfiguration,
+  codecPrefixes: readonly string[],
+): boolean {
+  const match = /^(dvh1\.05|dvh1\.08|dav1\.10)\.(\d{2})$/.exec(codecOf(configuration))
+  const video = configuration.video
+  if (!match || !video || !codecPrefixes.includes(match[1])) {
+    return false
+  }
+  const needed = DOLBY_VISION_LEVEL_BY_PICTURE[`${video.height}p${video.framerate}`]
+  return Number(match[2]) >= needed
+}
+
+/**
+ * A browser on an HDR display that decodes every SDR configuration smoothly, shows the given
+ * compatible bases, and applies the RPUs of the given Dolby Vision codec strings.
+ */
+function hdrBrowser({
+  bases = ['PQ', 'HLG'],
+  dolbyVision = [],
+}: {
+  bases?: readonly CompatibleBase[]
+  dolbyVision?: readonly string[]
+} = {}) {
+  return vi.fn((configuration: MediaDecodingConfiguration) => {
+    if (configuration.video?.transferFunction !== undefined) {
+      return Promise.resolve(answer(bases.some((base) => asksAbout(configuration, base))))
+    }
+    if (/^(dvh1|dav1)/.test(codecOf(configuration))) {
+      return Promise.resolve(answer(asksAboutDolbyVision(configuration, dolbyVision)))
+    }
+    return Promise.resolve(answer(true))
+  })
+}
+
+function hdrPlatformFixture(overrides: Partial<PlaybackPlatform> = {}): PlaybackPlatform {
+  return platformFixture({
+    decodingInfo: hdrBrowser(),
+    displaysHighDynamicRange: true,
+    ...overrides,
+  })
 }
 
 describe('declarePlaybackCapabilities', () => {
@@ -893,66 +1022,75 @@ describe('declarePlaybackCapabilities', () => {
     expect(declaration.audio).toEqual([{ codec: 'AAC', maxChannels: 2, hls: true }])
   })
 
-  it('shouldDeclareEveryAudioCodecThatDecodesWhenTheBrowserConfirmsSurround', async () => {
-    const declaration = await declarePlaybackCapabilities(platformFixture())
+  it('shouldDeclareSixChannelsForEveryAudioCodecWhenTheOutputPlaysEightChannels', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      platformFixture({ audioOutputChannels: () => Promise.resolve(8) }),
+    )
 
     expect(declaration.audio).toEqual(DECLARATION_OF_EVERY_TIER.audio)
   })
 
-  it('shouldDeclareStereoWhenTheBrowserConfirmsOnlyStereo', async () => {
+  it.each([
+    [6, 6],
+    [4, 4],
+    [2, 2],
+    [1, 2],
+    [0, 2],
+  ])(
+    'shouldCapEveryAudioCodecWhenTheOutputPlays%iChannels',
+    async (outputChannels, declaredChannels) => {
+      const declaration = await declarePlaybackCapabilities(
+        platformFixture({ audioOutputChannels: () => Promise.resolve(outputChannels) }),
+      )
+
+      expect(declaration.audio.map((entry) => entry.maxChannels)).toEqual(
+        Array(6).fill(declaredChannels),
+      )
+    },
+  )
+
+  it('shouldDeclareEveryAudioCodecInStereoWhenReadingTheOutputFails', async () => {
     const declaration = await declarePlaybackCapabilities(
       platformFixture({
-        decodingInfo: decodingInfoAnswering(decodesAudioUpTo(2)),
+        audioOutputChannels: () =>
+          Promise.reject(new DOMException('No device', 'NotSupportedError')),
       }),
     )
 
     expect(declaration.audio.map((entry) => entry.maxChannels)).toEqual([2, 2, 2, 2, 2, 2])
   })
 
-  it('shouldDeclareStereoWhenTheBrowserLeavesEverySurroundProbeUnanswered', async () => {
+  it('shouldAskDecodingInfoAtTheOutputsChannelCountWhenTheOutputPlaysFourChannels', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: decodingInfoAnswering(
+          (configuration) =>
+            configuration.audio === undefined || configuration.audio.channels === '4',
+        ),
+        audioOutputChannels: () => Promise.resolve(4),
+      }),
+    )
+
+    expect(declaration.audio.map((entry) => entry.maxChannels)).toEqual([4, 4, 4, 4, 4, 4])
+  })
+
+  it('shouldAskNoDecodingInfoQuestionWhenTheOutputLeavesItsChannelCountUnansweredAtTheDeadline', async () => {
     vi.useFakeTimers()
+    const asked: MediaDecodingConfiguration[] = []
     const declaration = declarePlaybackCapabilities(
       platformFixture({
-        decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) => {
-          if (configuration.audio?.channels === '6') {
-            return NEVER_ANSWERED
-          }
+        decodingInfo: (configuration) => {
+          asked.push(configuration)
           return Promise.resolve(answer(true))
-        }),
+        },
+        audioOutputChannels: () => new Promise<number>(() => {}),
       }),
     )
 
     await vi.advanceTimersByTimeAsync(3_000)
 
-    expect((await declaration).audio).toEqual([
-      { codec: 'AAC', maxChannels: 2, hls: true },
-      { codec: 'AC3', maxChannels: 2, hls: true },
-      { codec: 'EAC3', maxChannels: 2, hls: true },
-      { codec: 'OPUS', maxChannels: 2, hls: true },
-      { codec: 'FLAC', maxChannels: 2, hls: true },
-      { codec: 'ALAC', maxChannels: 2, hls: true },
-    ])
-  })
-
-  it('shouldDeclareNoChannelMaximumWhenTheBrowserRefusesStereoBelowSurround', async () => {
-    const declaration = await declarePlaybackCapabilities(
-      platformFixture({
-        decodingInfo: decodingInfoAnswering(
-          (configuration) =>
-            configuration.audio === undefined || configuration.audio.channels !== '2',
-        ),
-      }),
-    )
-
-    expect(declaration.audio).toEqual([{ codec: 'AAC', maxChannels: 2, hls: true }])
-  })
-
-  it('shouldDeclareAtMostSixChannelsWhenTheBrowserConfirmsMore', async () => {
-    const declaration = await declarePlaybackCapabilities(
-      platformFixture({ decodingInfo: decodingInfoAnswering(decodesAudioUpTo(8)) }),
-    )
-
-    expect(Math.max(...declaration.audio.map((entry) => entry.maxChannels))).toBe(6)
+    await expect(declaration).resolves.toEqual(MINIMAL_DECLARATION)
+    expect(asked).toEqual([])
   })
 
   it.each([
@@ -1219,7 +1357,411 @@ describe('declarePlaybackCapabilities', () => {
 
     await expect(declaration).resolves.toEqual(MINIMAL_DECLARATION)
   })
+
+  it('shouldAddAnHevcAndAnAv1HdrEntryWithPqAndHlgWhenTheDisplayShowsBoth', async () => {
+    const declaration = await declarePlaybackCapabilities(hdrPlatformFixture())
+
+    expect(declaration.video).toEqual([
+      DECLARATION_OF_EVERY_TIER.video[0],
+      UHD_AT_60_HEVC_ENTRY,
+      UHD_AT_60_HEVC_HDR_ENTRY,
+      UHD_AT_60_AV1_ENTRY,
+      UHD_AT_60_AV1_HDR_ENTRY,
+    ])
+  })
+
+  it('shouldDeclareOnlySdrWhenTheDisplayShowsNoHdrAlthoughTheBrowserDecodesEveryHdrFormat', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      hdrPlatformFixture({
+        decodingInfo: hdrBrowser({ dolbyVision: ['dvh1.05', 'dvh1.08', 'dav1.10'] }),
+        displaysHighDynamicRange: false,
+      }),
+    )
+
+    expect(declaration.video).toEqual(DECLARATION_OF_EVERY_TIER.video)
+  })
+
+  it.each([['PQ'], ['HLG']] as const)(
+    'shouldDeclareOnly%sWhenTheBrowserShowsOnlyThatCompatibleBase',
+    async (base) => {
+      const declaration = await declarePlaybackCapabilities(
+        hdrPlatformFixture({ decodingInfo: hdrBrowser({ bases: [base] }) }),
+      )
+
+      expect(familyEntries(declaration, 'HEVC')).toEqual([
+        UHD_AT_60_HEVC_ENTRY,
+        hdrVideoEntry({ compatibleBases: [base] }),
+      ])
+    },
+  )
+
+  it('shouldAddNoHdrEntryWhenTheBrowserShowsNeitherPqNorHlgNorDolbyVision', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      hdrPlatformFixture({ decodingInfo: hdrBrowser({ bases: [] }) }),
+    )
+
+    expect(declaration.video).toEqual(DECLARATION_OF_EVERY_TIER.video)
+  })
+
+  it('shouldAddNoHdrEntryWhenHdrDecodesOnlyWithDroppedFramesAlthoughSdrKeepsUp', async () => {
+    const browser = hdrBrowser({ dolbyVision: ['dvh1.05', 'dvh1.08', 'dav1.10'] })
+    const declaration = await declarePlaybackCapabilities(
+      hdrPlatformFixture({
+        decodingInfo: vi.fn(async (configuration: MediaDecodingConfiguration) => {
+          const answered = await browser(configuration)
+          const isHdrQuestion =
+            configuration.video?.transferFunction !== undefined ||
+            /^(dvh1|dav1)/.test(codecOf(configuration))
+          if (isHdrQuestion && answered.supported) {
+            return { supported: true, smooth: false, powerEfficient: true }
+          }
+          return answered
+        }),
+      }),
+    )
+
+    expect(declaration.video).toEqual(DECLARATION_OF_EVERY_TIER.video)
+  })
+
+  it('shouldDeclareEachHdrPairingWhenFourKDecodesOnlyAtThirtyFrames', async () => {
+    const browser = hdrBrowser({ dolbyVision: ['dvh1.08'] })
+    const declaration = await declarePlaybackCapabilities(
+      hdrPlatformFixture({
+        decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) => {
+          if (configuration.video?.width === 3840 && configuration.video.framerate === 60) {
+            return Promise.resolve(answer(false))
+          }
+          return browser(configuration)
+        }),
+      }),
+    )
+    const profileEight = (maxLevel: number) => [
+      { profile: 'PROFILE_8_1' as const, maxLevel },
+      { profile: 'PROFILE_8_4' as const, maxLevel },
+    ]
+
+    expect(
+      familyEntries(declaration, 'HEVC').filter((entry) => entry.compatibleBases[0] !== 'SDR'),
+    ).toEqual([
+      hdrVideoEntry({
+        codecProfiles: hevcMainTen(50),
+        maxFrameRate: 30,
+        dolbyVisionProfiles: profileEight(7),
+      }),
+      hdrVideoEntry({
+        codecProfiles: hevcMainTen(41),
+        maxWidth: 1920,
+        maxHeight: 1080,
+        dolbyVisionProfiles: profileEight(5),
+      }),
+    ])
+  })
+
+  it('shouldDeclarePqUpToTheLargestPictureItShowsWhenTheBrowserRefusesPqOnlyAtFourK', async () => {
+    const browser = hdrBrowser()
+    const declaration = await declarePlaybackCapabilities(
+      hdrPlatformFixture({
+        decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) => {
+          if (
+            configuration.video?.transferFunction === 'pq' &&
+            configuration.video.width === 3840
+          ) {
+            return Promise.resolve(answer(false))
+          }
+          return browser(configuration)
+        }),
+      }),
+    )
+
+    expect(familyEntries(declaration, 'HEVC')).toEqual([
+      UHD_AT_60_HEVC_ENTRY,
+      hdrVideoEntry({ compatibleBases: ['HLG'] }),
+      hdrVideoEntry({ codecProfiles: hevcMainTen(41), maxWidth: 1920, maxHeight: 1080 }),
+    ])
+  })
+
+  it('shouldDeclareProfileFiveAtThirtyFramesBesidePqAtSixtyWhenTheBrowserDecodesDolbyVisionOnlyUpToFourKAtThirty', async () => {
+    const browser = hdrBrowser({ dolbyVision: ['dvh1.05'] })
+    const declaration = await declarePlaybackCapabilities(
+      hdrPlatformFixture({
+        decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) => {
+          if (
+            codecOf(configuration).startsWith('dvh1') &&
+            configuration.video?.framerate === 60 &&
+            configuration.video.width === 3840
+          ) {
+            return Promise.resolve(answer(false))
+          }
+          return browser(configuration)
+        }),
+      }),
+    )
+
+    expect(familyEntries(declaration, 'HEVC')).toEqual([
+      UHD_AT_60_HEVC_ENTRY,
+      UHD_AT_60_HEVC_HDR_ENTRY,
+      hdrVideoEntry({
+        codecProfiles: hevcMainTen(50),
+        maxFrameRate: 30,
+        dolbyVisionProfiles: [{ profile: 'PROFILE_5', maxLevel: 7 }],
+      }),
+      hdrVideoEntry({
+        codecProfiles: hevcMainTen(41),
+        maxWidth: 1920,
+        maxHeight: 1080,
+        dolbyVisionProfiles: [{ profile: 'PROFILE_5', maxLevel: 5 }],
+      }),
+    ])
+  })
+
+  it('shouldDeclareNoPqWhenTheBrowserRefusesPqForASmallerPictureTheEntryHolds', async () => {
+    const browser = hdrBrowser()
+    const declaration = await declarePlaybackCapabilities(
+      hdrPlatformFixture({
+        decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) => {
+          if (
+            configuration.video?.transferFunction === 'pq' &&
+            configuration.video.height === 720
+          ) {
+            return Promise.resolve(answer(false))
+          }
+          return browser(configuration)
+        }),
+      }),
+    )
+
+    expect(familyEntries(declaration, 'HEVC')).toEqual([
+      UHD_AT_60_HEVC_ENTRY,
+      hdrVideoEntry({ compatibleBases: ['HLG'] }),
+    ])
+  })
+
+  it('shouldDeclareNoPqWhenTheBrowserDecodesPqOnlyWithDroppedFramesForASmallerPicture', async () => {
+    const browser = hdrBrowser()
+    const declaration = await declarePlaybackCapabilities(
+      hdrPlatformFixture({
+        decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) => {
+          if (
+            configuration.video?.transferFunction === 'pq' &&
+            configuration.video.height === 720
+          ) {
+            return Promise.resolve(UNSMOOTH_SOFTWARE_ANSWER)
+          }
+          return browser(configuration)
+        }),
+      }),
+    )
+
+    expect(declaration.video).toEqual([
+      DECLARATION_OF_EVERY_TIER.video[0],
+      UHD_AT_60_HEVC_ENTRY,
+      hdrVideoEntry({ compatibleBases: ['HLG'] }),
+      UHD_AT_60_AV1_ENTRY,
+      { ...UHD_AT_60_AV1_HDR_ENTRY, compatibleBases: ['HLG'] },
+    ])
+  })
+
+  it('shouldKeepHlgWhenTheBrowserLeavesHlgUnansweredOnlyForASmallerPicture', async () => {
+    vi.useFakeTimers()
+    const browser = hdrBrowser()
+    const declaration = declarePlaybackCapabilities(
+      hdrPlatformFixture({
+        decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) => {
+          if (
+            configuration.video?.transferFunction === 'hlg' &&
+            configuration.video.height === 720
+          ) {
+            return NEVER_ANSWERED
+          }
+          return browser(configuration)
+        }),
+      }),
+    )
+
+    await vi.advanceTimersByTimeAsync(3_000)
+
+    expect(familyEntries(await declaration, 'HEVC')).toEqual([
+      UHD_AT_60_HEVC_ENTRY,
+      UHD_AT_60_HEVC_HDR_ENTRY,
+    ])
+  })
+
+  it('shouldDeclareNoDolbyVisionProfileWhenTheBrowserDecodesItOnlyWithDroppedFramesForASmallerPicture', async () => {
+    const browser = hdrBrowser({ dolbyVision: ['dvh1.08'] })
+    const declaration = await declarePlaybackCapabilities(
+      hdrPlatformFixture({
+        decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) => {
+          if (codecOf(configuration).startsWith('dvh1') && configuration.video?.height === 720) {
+            return Promise.resolve(UNSMOOTH_SOFTWARE_ANSWER)
+          }
+          return browser(configuration)
+        }),
+      }),
+    )
+
+    expect(familyEntries(declaration, 'HEVC')).toEqual([
+      UHD_AT_60_HEVC_ENTRY,
+      UHD_AT_60_HEVC_HDR_ENTRY,
+    ])
+  })
+
+  it.each([
+    ['Rejects', () => Promise.reject(new TypeError('unsupported dictionary member'))],
+    [
+      'Throws',
+      () => {
+        throw new TypeError('unsupported dictionary member')
+      },
+    ],
+    ['NeverAnswers', () => NEVER_ANSWERED],
+  ])(
+    'shouldDeclareOnlyHlgAndKeepEverySdrEntryWhenTheBrowser%sForThePqQuestion',
+    async (_, pqAnswer: () => Promise<DecodingAnswer>) => {
+      vi.useFakeTimers()
+      const browser = hdrBrowser()
+      const declaration = declarePlaybackCapabilities(
+        hdrPlatformFixture({
+          decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) => {
+            if (configuration.video?.transferFunction === 'pq') {
+              return pqAnswer()
+            }
+            return browser(configuration)
+          }),
+        }),
+      )
+
+      await vi.advanceTimersByTimeAsync(3_000)
+
+      expect((await declaration).video).toEqual([
+        DECLARATION_OF_EVERY_TIER.video[0],
+        UHD_AT_60_HEVC_ENTRY,
+        hdrVideoEntry({ compatibleBases: ['HLG'] }),
+        UHD_AT_60_AV1_ENTRY,
+        { ...UHD_AT_60_AV1_HDR_ENTRY, compatibleBases: ['HLG'] },
+      ])
+    },
+  )
+
+  it('shouldDeclareHevcHdrWhenIphoneSafariAnswersItPowerEfficientButNotSmooth', async () => {
+    const browser = hdrBrowser()
+    const declaration = await declarePlaybackCapabilities(
+      hdrPlatformFixture({
+        decodingInfo: vi.fn(async (configuration: MediaDecodingConfiguration) => {
+          const answered = await browser(configuration)
+          if (answered.supported && codecOf(configuration).startsWith('hvc1')) {
+            return IPHONE_SAFARI_HEVC_ANSWER
+          }
+          return answered
+        }),
+        userAgent: IPHONE_SAFARI_USER_AGENT,
+      }),
+    )
+
+    expect(familyEntries(declaration, 'HEVC')).toEqual([
+      UHD_AT_60_HEVC_ENTRY,
+      UHD_AT_60_HEVC_HDR_ENTRY,
+    ])
+  })
+
+  it('shouldListHevcDolbyVisionProfilesAtTheEntrysLevelWhenTheBrowserDecodesDvh1', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      hdrPlatformFixture({ decodingInfo: hdrBrowser({ dolbyVision: ['dvh1.05', 'dvh1.08'] }) }),
+    )
+
+    expect(declaration.video).toEqual([
+      DECLARATION_OF_EVERY_TIER.video[0],
+      UHD_AT_60_HEVC_ENTRY,
+      hdrVideoEntry({
+        dolbyVisionProfiles: [
+          { profile: 'PROFILE_5', maxLevel: 9 },
+          { profile: 'PROFILE_8_1', maxLevel: 9 },
+          { profile: 'PROFILE_8_4', maxLevel: 9 },
+        ],
+      }),
+      UHD_AT_60_AV1_ENTRY,
+      UHD_AT_60_AV1_HDR_ENTRY,
+    ])
+  })
+
+  it('shouldListAv1DolbyVisionProfilesAtTheEntrysLevelWhenTheBrowserDecodesDav1', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      hdrPlatformFixture({ decodingInfo: hdrBrowser({ dolbyVision: ['dav1.10'] }) }),
+    )
+
+    expect(declaration.video).toEqual([
+      DECLARATION_OF_EVERY_TIER.video[0],
+      UHD_AT_60_HEVC_ENTRY,
+      UHD_AT_60_HEVC_HDR_ENTRY,
+      UHD_AT_60_AV1_ENTRY,
+      {
+        ...UHD_AT_60_AV1_HDR_ENTRY,
+        dolbyVisionProfiles: [
+          { profile: 'PROFILE_10_0', maxLevel: 9 },
+          { profile: 'PROFILE_10_1', maxLevel: 9 },
+          { profile: 'PROFILE_10_4', maxLevel: 9 },
+        ],
+      },
+    ])
+  })
+
+  it('shouldDeclareNoDolbyVisionProfileWhenTheBrowserRefusesItForASmallerPictureTheEntryHolds', async () => {
+    const browser = hdrBrowser({ dolbyVision: ['dvh1.08'] })
+    const declaration = await declarePlaybackCapabilities(
+      hdrPlatformFixture({
+        decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) => {
+          if (codecOf(configuration).startsWith('dvh1') && configuration.video?.height === 720) {
+            return Promise.resolve(answer(false))
+          }
+          return browser(configuration)
+        }),
+      }),
+    )
+
+    expect(familyEntries(declaration, 'HEVC')).toEqual([
+      UHD_AT_60_HEVC_ENTRY,
+      UHD_AT_60_HEVC_HDR_ENTRY,
+    ])
+  })
+
+  it('shouldKeepAnHdrEntryWithoutACompatibleBaseWhenItListsDolbyVisionProfileFive', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      hdrPlatformFixture({ decodingInfo: hdrBrowser({ bases: [], dolbyVision: ['dvh1.05'] }) }),
+    )
+
+    expect(familyEntries(declaration, 'HEVC')).toEqual([
+      UHD_AT_60_HEVC_ENTRY,
+      hdrVideoEntry({
+        compatibleBases: [],
+        dolbyVisionProfiles: [{ profile: 'PROFILE_5', maxLevel: 9 }],
+      }),
+    ])
+  })
+
+  it('shouldAddNoHdrEntryWhenItWouldListOnlyProfileEightWithoutACompatibleBase', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      hdrPlatformFixture({ decodingInfo: hdrBrowser({ bases: [], dolbyVision: ['dvh1.08'] }) }),
+    )
+
+    expect(familyEntries(declaration, 'HEVC')).toEqual([UHD_AT_60_HEVC_ENTRY])
+  })
 })
+
+// An AudioContext whose default output plays maxChannelCount channels, and whose close() settles
+// when closed does.
+function audioContextReporting({
+  maxChannelCount,
+  closed = Promise.resolve(),
+}: {
+  maxChannelCount: number
+  closed?: Promise<void>
+}) {
+  return class {
+    readonly destination = { maxChannelCount }
+    close(): Promise<void> {
+      return closed
+    }
+  }
+}
 
 describe('browserPlaybackPlatform', () => {
   afterEach(() => {
@@ -1292,6 +1834,7 @@ describe('browserPlaybackPlatform', () => {
   it('shouldAnswerFromTheBrowsersDecodingInfoWhenTheBrowserOffersMediaCapabilities', async () => {
     vi.stubGlobal('navigator', {
       userAgent: SAFARI,
+      platform: 'MacIntel',
       mediaCapabilities: {
         decodingInfo: (configuration: MediaDecodingConfiguration) =>
           Promise.resolve({
@@ -1316,15 +1859,101 @@ describe('browserPlaybackPlatform', () => {
   })
 
   it('shouldReadTheUserAgentFromTheBrowserWhenBindingThePlatform', () => {
-    vi.stubGlobal('navigator', { userAgent: SAFARI })
+    vi.stubGlobal('navigator', { userAgent: SAFARI, platform: 'MacIntel' })
 
     const platform = browserPlaybackPlatform(document.createElement('video'))
 
     expect(platform.userAgent).toBe(SAFARI)
   })
 
+  it('shouldAnswerTheDefaultOutputsChannelMaximumWhenTheBrowserOffersAudioContext', async () => {
+    vi.stubGlobal('navigator', { userAgent: SAFARI, platform: 'MacIntel' })
+    vi.stubGlobal('AudioContext', audioContextReporting({ maxChannelCount: 6 }))
+
+    const platform = browserPlaybackPlatform(document.createElement('video'))
+
+    await expect(platform.audioOutputChannels()).resolves.toBe(6)
+  })
+
+  it('shouldAnswerOnlyAfterTheAudioContextClosesWhenReadingTheOutput', async () => {
+    let finishClosing = () => {}
+    const closed = new Promise<void>((resolve) => {
+      finishClosing = resolve
+    })
+    vi.stubGlobal('navigator', { userAgent: SAFARI, platform: 'MacIntel' })
+    vi.stubGlobal('AudioContext', audioContextReporting({ maxChannelCount: 6, closed }))
+    const platform = browserPlaybackPlatform(document.createElement('video'))
+    const settled: string[] = []
+    void closed.then(() => settled.push('closed'))
+
+    const reading = platform.audioOutputChannels().then((channels) => {
+      settled.push(`answered ${channels}`)
+    })
+    finishClosing()
+    await reading
+
+    expect(settled).toEqual(['closed', 'answered 6'])
+  })
+
+  it('shouldAnswerNoChannelsWhenWebKitRunsOnLinuxEvenWhenItsOutputPlaysSurround', async () => {
+    vi.stubGlobal('navigator', { userAgent: SAFARI, platform: 'Linux x86_64' })
+    vi.stubGlobal('AudioContext', audioContextReporting({ maxChannelCount: 6 }))
+
+    const platform = browserPlaybackPlatform(document.createElement('video'))
+
+    await expect(platform.audioOutputChannels()).resolves.toBe(0)
+  })
+
+  // Chrome's user agent names AppleWebKit too, and Android reports a Linux platform.
+  it.each([
+    ['Firefox', FIREFOX, 'Linux x86_64'],
+    ['Chrome', LINUX_CHROME, 'Linux x86_64'],
+    ['ChromeOnAndroid', ANDROID_CHROME, 'Linux armv81'],
+  ])(
+    'shouldAnswerTheDefaultOutputsChannelMaximumWhen%sRunsOnLinux',
+    async (_, userAgent, platformName) => {
+      vi.stubGlobal('navigator', { userAgent, platform: platformName })
+      vi.stubGlobal('AudioContext', audioContextReporting({ maxChannelCount: 6 }))
+
+      const platform = browserPlaybackPlatform(document.createElement('video'))
+
+      await expect(platform.audioOutputChannels()).resolves.toBe(6)
+    },
+  )
+
+  it('shouldAnswerNoChannelsWhenTheBrowserOffersNoAudioContext', async () => {
+    vi.stubGlobal('AudioContext', undefined)
+
+    const platform = browserPlaybackPlatform(document.createElement('video'))
+
+    await expect(platform.audioOutputChannels()).resolves.toBe(0)
+  })
+
+  it.each([
+    ['TheDisplayIsHdr', '(dynamic-range: high)', true],
+    ['OnlyTheVideoPlaneIsHdr', '(video-dynamic-range: high)', true],
+    ['NeitherTheDisplayNorTheVideoPlaneIsHdr', '(prefers-reduced-motion: reduce)', false],
+  ])(
+    'shouldAnswerFromTheMediaQueriesWhetherTheDisplayShowsHdrWhen%s',
+    (_, highQuery, displaysHighDynamicRange) => {
+      vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === highQuery }))
+
+      const platform = browserPlaybackPlatform(document.createElement('video'))
+
+      expect(platform.displaysHighDynamicRange).toBe(displaysHighDynamicRange)
+    },
+  )
+
+  it('shouldAnswerThatTheDisplayShowsNoHdrWhenTheBrowserOffersNoMatchMedia', () => {
+    vi.stubGlobal('matchMedia', undefined)
+
+    const platform = browserPlaybackPlatform(document.createElement('video'))
+
+    expect(platform.displaysHighDynamicRange).toBe(false)
+  })
+
   it('shouldLeaveDecodingInfoAbsentWhenTheBrowserOffersNoMediaCapabilities', () => {
-    vi.stubGlobal('navigator', { userAgent: SAFARI })
+    vi.stubGlobal('navigator', { userAgent: SAFARI, platform: 'MacIntel' })
 
     const platform = browserPlaybackPlatform(document.createElement('video'))
 
