@@ -1,4 +1,5 @@
 import { createFileRoute, type SearchSchemaInput } from '@tanstack/react-router'
+import { networkRouteOf } from '../../streaming/networkRoute'
 import { browserPlaybackPlatform } from '../../streaming/playbackCapabilities'
 import { Player } from '../../streaming/Player'
 import {
@@ -28,6 +29,7 @@ function Play() {
       startPositionSeconds={position}
       title={title}
       playbackPlatform={browserPlaybackPlatform}
+      networkRoute={networkRouteOf(window.location.hostname)}
     />
   )
 }

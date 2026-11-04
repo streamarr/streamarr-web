@@ -1,7 +1,11 @@
 import { useApolloClient, useMutation } from '@apollo/client/react'
 import { Alert, Button } from '@mantine/core'
 import { useEffect, useRef, useState } from 'react'
-import { CreatePlaybackSessionDocument, type VideoQuality } from '../graphql/generated/graphql'
+import {
+  CreatePlaybackSessionDocument,
+  type NetworkRoute,
+  type VideoQuality,
+} from '../graphql/generated/graphql'
 import { DetailBackButton } from '../media/DetailBack'
 import focusStyles from '../styles/focus.module.css'
 import { BufferingRing } from './BufferingRing'
@@ -50,12 +54,15 @@ export function Player({
   startPositionSeconds,
   title,
   playbackPlatform,
+  networkRoute,
 }: Readonly<{
   mediaFileId: string
   startPositionSeconds?: number
   title?: PlayerTitle
   /** Binds the browser facts the capability declaration is built from to the playing element. */
   playbackPlatform: (video: HTMLVideoElement) => PlaybackPlatform
+  /** How the page reached the server, which every playback session it starts attests. */
+  networkRoute: NetworkRoute
 }>) {
   const playerRef = useRef<HTMLElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -115,7 +122,7 @@ export function Player({
               mediaFileId,
               capabilities,
               options: { quality: choice.quality },
-              networkRoute: 'INTERNET',
+              networkRoute,
             },
           },
         }),
@@ -132,6 +139,7 @@ export function Player({
     createPlaybackSession,
     client,
     playbackPlatform,
+    networkRoute,
     choice,
     followPlaybackSession,
   ])
