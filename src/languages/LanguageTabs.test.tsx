@@ -6,7 +6,7 @@ import type {
   LanguagePreferenceFieldsFragment,
   SetLanguageOverrideInput,
 } from '../graphql/generated/graphql'
-import { networkFailure } from '../test/graphqlResponses'
+import { heldAnswer, networkFailure } from '../test/graphqlResponses'
 import {
   languagePreferenceFixture,
   profileLanguagesFixture,
@@ -207,6 +207,27 @@ describe('LanguageTabs', () => {
     await user.click(screen.getByRole('menuitemradio', { name: 'English' }))
 
     await waitFor(() => expect(state.inputs).toEqual([{ itemId: 'season-2', audioLanguage: 'EN' }]))
+  })
+
+  it('shouldHoldBothTabsUntilTheServerAnswersAnOverride', async () => {
+    serveLanguageTabs()
+    const answer = heldAnswer({
+      setLanguageOverride: movieBecomes(
+        languagePreferenceFixture({ audioLanguages: ['JA', 'EN'], audioSource: 'TITLE' }),
+      )(),
+    })
+    server.use(graphql.mutation('SetLanguageOverride', answer.answer))
+    const { user } = renderWithProviders(<LanguageTabs item={MOVIE} />)
+
+    await pick(user, 'Default audio', 'Japanese')
+
+    expect(await tab('Default audio')).toHaveFocus()
+    expect(await tab('Default audio')).toHaveAttribute('aria-disabled', 'true')
+    await user.click(await tab('Subtitles'))
+    expect(screen.queryByRole('menu')).toBeNull()
+    answer.release()
+    await waitFor(async () => expect(await tab('Subtitles')).not.toHaveAttribute('aria-disabled'))
+    expect(await tab('Default audio')).toHaveAccessibleDescription('Japanese · set here')
   })
 
   it('shouldShowTheServersWordsWhenItRefusesTheOverride', async () => {

@@ -151,9 +151,6 @@ function Tabs({
 
   async function save(change: OverrideChange) {
     setOpen(null)
-    if (saving) {
-      return
-    }
     setRefusal(null)
     try {
       const { data } = await setOverride({ variables: { input: { itemId: item.id, ...change } } })
@@ -182,6 +179,7 @@ function Tabs({
           kind="audio"
           name="Default audio"
           anchorRef={audioRef}
+          disabled={saving}
           caption={`${audioName(preference.audioLanguages[0])} · ${sourcePhrase(preference.audioSource, level)}`}
           open={open}
           onOpen={setOpen}
@@ -196,6 +194,7 @@ function Tabs({
           kind="subtitles"
           name="Subtitles"
           anchorRef={subtitlesRef}
+          disabled={saving}
           caption={`${subtitlesName(preference)} · ${sourcePhrase(preference.subtitleSource, level)}`}
           open={open}
           onOpen={setOpen}
@@ -219,6 +218,7 @@ function Tab({
   kind,
   name,
   anchorRef,
+  disabled,
   caption,
   open,
   onOpen,
@@ -229,6 +229,8 @@ function Tab({
   kind: TabKind
   name: string
   anchorRef: RefObject<HTMLButtonElement | null>
+  /** While an override saves, so that a second pick cannot overtake it. Focus stays on the tab. */
+  disabled: boolean
   caption: string
   open: TabKind | null
   onOpen: (kind: TabKind | null) => void
@@ -246,12 +248,17 @@ function Tab({
         ref={anchorRef}
         type="button"
         className={styles.tab}
+        aria-disabled={disabled || undefined}
         aria-labelledby={nameId}
         aria-describedby={captionId}
         aria-haspopup="menu"
         aria-expanded={opened}
         aria-controls={opened ? menuId : undefined}
-        onClick={() => onOpen(opened ? null : kind)}
+        onClick={() => {
+          if (!disabled) {
+            onOpen(opened ? null : kind)
+          }
+        }}
       >
         <span id={nameId} className={styles.tabName}>
           {name}
