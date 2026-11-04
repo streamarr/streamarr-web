@@ -277,23 +277,34 @@ test('the engine declares that it selects an audio track only where it switches 
   })
 })
 
-test('Firefox declares that it selects no audio track where a preference lists audio tracks, since it lists only one of the two in a file', async ({
+// Firefox lists audio tracks behind media.track.enabled, but only one of a file's two. The other
+// engines ignore the preference.
+const TRACKS_ENABLED_WITH_FIREFOX_TRACK_PREFERENCE: Record<string, boolean[]> = {
+  chromium: [],
+  firefox: [false],
+  webkit: [false, true],
+}
+
+test('the engine declares that it selects an audio track only where it switches a file to another one, with Firefox listing audio tracks', async ({
   browserName,
-  playwright,
+  browser,
   baseURL,
 }) => {
-  test.skip(browserName !== 'firefox', 'the preference belongs to Firefox')
-  const browser = await playwright.firefox.launch({
+  const preferring = await browser.browserType().launch({
     firefoxUserPrefs: { 'media.track.enabled': true },
   })
   try {
-    const page = await browser.newPage({ baseURL })
+    const page = await preferring.newPage({ baseURL })
 
     const answer = await switchToTheSecondAudioTrack(page)
 
-    expect(answer).toEqual({ declared: false, played: true, enabled: [false] })
+    expect(answer).toEqual({
+      declared: SELECTS_AUDIO_TRACK[browserName],
+      played: true,
+      enabled: TRACKS_ENABLED_WITH_FIREFOX_TRACK_PREFERENCE[browserName],
+    })
   } finally {
-    await browser.close()
+    await preferring.close()
   }
 })
 
@@ -476,17 +487,30 @@ test('the player shows the failure without a format attempt when the source file
   expect(reports).toEqual([])
 })
 
-test('the player plays a file with two audio tracks over HLS where the engine selects no audio track', async ({
+// What the player has done with a file of two audio tracks so far.
+async function twoAudioTrackPlayback(page: Page, requested: readonly string[]) {
+  const enabled = await page
+    .locator('video')
+    .evaluate((element: HTMLVideoElement) =>
+      Array.from(
+        (Reflect.get(element, 'audioTracks') as ArrayLike<{ enabled: boolean }> | undefined) ?? [],
+      ).map((track) => track.enabled),
+    )
+  return {
+    playlistRequested: requested.some((url) => url.includes(MULTIVARIANT_URL)),
+    sourceFileRequested: requested.some((url) => url.includes('/api/stream/e2e/source.mp4')),
+    enabled,
+    frenchShown: await page.getByRole('button', { name: 'Audio: French' }).isVisible(),
+  }
+}
+
+test('the player plays a file with two audio tracks on the named track where the engine selects one, and over HLS elsewhere', async ({
   page,
   request,
   browserName,
 }) => {
-  test.skip(SELECTS_AUDIO_TRACK[browserName], 'this engine selects an audio track')
-  const sourceRequests: string[] = []
-  page.on('request', (sent) => {
-    if (sent.url().includes('/api/stream/e2e/source.mp4')) sourceRequests.push(sent.url())
-  })
-  const hlsRequested = page.waitForRequest((sent) => sent.url().includes(MULTIVARIANT_URL))
+  const requested: string[] = []
+  page.on('request', (sent) => requested.push(sent.url()))
   await page.route('**/api/stream/e2e-fallback/**', (route) => route.abort())
 
   await openDirectPlay(page, request, {
@@ -494,36 +518,19 @@ test('the player plays a file with two audio tracks over HLS where the engine se
     playbackSessionFor: twoAudioTrackFileSession,
   })
 
-  await hlsRequested
-  expect(sourceRequests).toEqual([])
-})
-
-test('the player direct-plays a file with two audio tracks on the track the stream decision names where the engine selects one', async ({
-  page,
-  request,
-  browserName,
-}) => {
-  test.skip(!SELECTS_AUDIO_TRACK[browserName], 'this engine selects no audio track')
-  const playlistRequests: string[] = []
-  page.on('request', (sent) => {
-    if (sent.url().includes('.m3u8')) playlistRequests.push(sent.url())
-  })
-
-  await openDirectPlay(page, request, {
-    serveSource: (route) => serveFile(route, fixturePath(TWO_AUDIO_TRACKS_FILE), 'video/mp4'),
-    playbackSessionFor: twoAudioTrackFileSession,
-  })
-
-  const video = page.locator('video')
+  const directPlay = {
+    playlistRequested: false,
+    sourceFileRequested: true,
+    enabled: [false, true],
+    frenchShown: true,
+  }
+  const hls = {
+    playlistRequested: true,
+    sourceFileRequested: false,
+    enabled: [],
+    frenchShown: false,
+  }
   await expect
-    .poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime))
-    .toBeGreaterThan(0)
-  const enabled = await video.evaluate((element: HTMLVideoElement) =>
-    Array.from(Reflect.get(element, 'audioTracks') as ArrayLike<{ enabled: boolean }>).map(
-      (track) => track.enabled,
-    ),
-  )
-  expect(enabled).toEqual([false, true])
-  await expect(page.getByRole('button', { name: 'Audio: French' })).toBeVisible()
-  expect(playlistRequests).toEqual([])
+    .poll(() => twoAudioTrackPlayback(page, requested))
+    .toEqual(SELECTS_AUDIO_TRACK[browserName] ? directPlay : hls)
 })
