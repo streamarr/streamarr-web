@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from '@apollo/client/react'
-import { ActionIcon, Center, Loader, Radio, Select } from '@mantine/core'
-import { useState } from 'react'
+import { ActionIcon, Center, Input, Loader, Radio, Select } from '@mantine/core'
+import { useId, useState } from 'react'
 import {
   LanguageSettingsDocument,
   SetLanguagePreferencesDocument,
@@ -186,18 +186,16 @@ function AudioLanguages({
   saving: boolean
   onChange: (next: Language[]) => void
 }>) {
-  const id = 'audio-languages'
+  const labelId = useId()
   return (
-    <div className={styles.audio}>
-      <div>
-        <div id={id} className={styles.label}>
-          Audio languages
-        </div>
-        <p className={styles.description}>
-          A stream plays the first of these languages that the file holds.
-        </p>
-      </div>
-      <ol aria-labelledby={id} className={styles.list}>
+    <Input.Wrapper
+      className={styles.audio}
+      label="Audio languages"
+      labelElement="div"
+      labelProps={{ id: labelId }}
+      description="A stream plays the first of these languages that the file holds."
+    >
+      <ol aria-labelledby={labelId} className={styles.list}>
         {languages.map((language, index) => {
           const name = languageName(language)
           return (
@@ -260,7 +258,7 @@ function AudioLanguages({
       ) : (
         <p className={styles.description}>A Profile keeps up to five audio languages.</p>
       )}
-    </div>
+    </Input.Wrapper>
   )
 }
 
