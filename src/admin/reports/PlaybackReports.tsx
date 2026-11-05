@@ -26,6 +26,8 @@ export function PlaybackReports() {
     {
       variables: { first: REPORT_PAGE_SIZE },
       fetchPolicy: 'cache-and-network',
+      // Loading must cover a retried read of the newest reports too, which holds paging back.
+      notifyOnNetworkStatusChange: true,
     },
   )
   const [older, setOlder] = useState<'idle' | 'loading' | 'failed'>('idle')

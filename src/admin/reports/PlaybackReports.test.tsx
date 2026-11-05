@@ -291,6 +291,40 @@ describe('shared reports', () => {
     ).toEqual(['Viewer 1', 'Viewer 2', 'Viewer 3', 'Viewer 4'])
   })
 
+  it('shouldHoldOlderReportsBackWhileARetriedReadOfTheNewestIsOut', async () => {
+    const reports = Array.from({ length: 5 }, (_, index) =>
+      reportFixture({ id: `report-${index + 1}`, profileName: `Viewer ${index + 1}` }),
+    )
+    serveReports({ reports, pageSize: 2 })
+    const held = deferred()
+    let newestReads = 0
+    server.use(
+      graphql.query('PlaybackReports', async ({ variables }) => {
+        if (variables.after) return undefined
+        newestReads++
+        // The read on return to the list fails, and its retry is held.
+        if (newestReads === 2) return HttpResponse.json({ errors: [{ message: 'offline' }] })
+        if (newestReads === 3) await held.promise
+        return undefined
+      }),
+    )
+    const { user } = renderAppAt(REPORTS)
+    await user.click(await screen.findByRole('button', { name: 'Show older reports' }))
+    await waitFor(() =>
+      expect(within(screen.getByRole('list')).getAllByRole('link')).toHaveLength(4),
+    )
+    await user.click(within(screen.getByRole('list')).getAllByRole('link')[0])
+    await user.click(await screen.findByRole('link', { name: 'Back to shared reports' }))
+
+    await user.click(await screen.findByRole('button', { name: /retry/i }))
+
+    expect(screen.getByRole('button', { name: 'Show older reports' })).toBeDisabled()
+    await act(async () => {
+      held.resolve()
+      await held.promise
+    })
+  })
+
   it('shouldSayThatNoReportIsSharedWhenTheServerHoldsNone', async () => {
     serveReports({ reports: [] })
     renderAppAt(REPORTS)
