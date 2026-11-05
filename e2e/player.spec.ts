@@ -1458,7 +1458,7 @@ for (const viewport of [
     await back.click({ trial: true })
     const head = [
       panel.getByRole('heading', { name: 'Playback data' }),
-      panel.getByRole('group', { name: 'Summary' }),
+      panel.getByRole('region', { name: 'Summary' }),
       panel.getByRole('button', { name: 'Close playback data' }),
     ]
     const headBoxes = await Promise.all(head.map((part) => part.boundingBox()))
@@ -1470,7 +1470,7 @@ for (const viewport of [
       }
     }
     for (const chip of await panel
-      .getByRole('group', { name: 'Summary' })
+      .getByRole('region', { name: 'Summary' })
       .locator('dl > div')
       .all()) {
       const chipBox = await chip.boundingBox()

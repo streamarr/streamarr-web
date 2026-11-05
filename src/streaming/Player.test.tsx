@@ -8271,7 +8271,7 @@ describe('Player', () => {
       expect(streamReasonsIn(panel)).toEqual([
         'The copy failed, so the server encodes the video instead.',
       ])
-      expect(factsIn(within(panel).getByRole('group', { name: 'Summary' }))).toEqual({
+      expect(factsIn(within(panel).getByRole('region', { name: 'Summary' }))).toEqual({
         Quality: 'Auto',
         Delivery: 'HLS',
       })
@@ -8312,7 +8312,7 @@ describe('Player', () => {
       expect(
         within(groupIn(panel, 'Server')).queryByRole('region', { name: 'Audio' }),
       ).not.toBeInTheDocument()
-      expect(factsIn(within(panel).getByRole('group', { name: 'Summary' }))).toEqual({
+      expect(factsIn(within(panel).getByRole('region', { name: 'Summary' }))).toEqual({
         Quality: 'Original',
         Delivery: 'MP4 → direct play',
       })
@@ -8552,7 +8552,7 @@ describe('Player', () => {
           reasons: ['You chose 720p, so the server scales this 1920×1080 video down to 720p.'],
         }),
       )
-      expect(factsIn(within(panel).getByRole('group', { name: 'Summary' }))).toMatchObject({
+      expect(factsIn(within(panel).getByRole('region', { name: 'Summary' }))).toMatchObject({
         Quality: '720p',
       })
       expect(reads).toEqual(['playback-1', 'playback-2'])
@@ -9031,7 +9031,7 @@ describe('Player', () => {
 
       const panel = await openPlaybackData(user)
 
-      expect(factsIn(within(panel).getByRole('group', { name: 'Summary' }))).toEqual({
+      expect(factsIn(within(panel).getByRole('region', { name: 'Summary' }))).toEqual({
         Quality: 'Auto',
         Delivery: 'HLS',
       })

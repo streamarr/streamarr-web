@@ -141,7 +141,7 @@ export function PlaybackData({
           Playback data
         </h2>
         {stream && (
-          <div role="group" aria-label="Summary" className={styles.summary}>
+          <section aria-label="Summary" className={styles.summary}>
             <dl className={styles.chips}>
               <Chip
                 name="Quality"
@@ -149,7 +149,7 @@ export function PlaybackData({
               />
               <Chip name="Delivery" value={deliveryChipText(stream.sourceContainer)} />
             </dl>
-          </div>
+          </section>
         )}
         <button
           ref={closeButtonRef}
