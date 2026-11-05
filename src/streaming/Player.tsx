@@ -21,6 +21,7 @@ import {
   startPlayerPlayback,
   type SourcePhase,
 } from './playerPlayback'
+import { useControlsReach } from './useControlsReach'
 import { useIdle } from './useIdle'
 import { usePlaybackFallbacks } from './usePlaybackFallbacks'
 import { useStreamTracks } from './useStreamTracks'
@@ -97,8 +98,18 @@ export function Player({
     setPicker(null)
   }
   const videoState = useVideoState(videoRef)
-  const controlsHeld = videoState.paused || sourcePhase.at === 'failed' || openPicker !== null
+  // Playback data sits above the controls and takes taps, so the controls stay while it shows.
+  const controlsHeld =
+    videoState.paused ||
+    sourcePhase.at === 'failed' ||
+    openPicker !== null ||
+    playbackDataScreen !== null
   const idle = useIdle(controlsHeld, [controlsRef, backRef])
+  const controlsReach = useControlsReach({
+    playerRef,
+    controlsRef,
+    watching: playbackDataScreen !== null,
+  })
 
   useEffect(() => {
     const video = videoRef.current
@@ -208,6 +219,7 @@ export function Player({
           videoRef={videoRef}
           stream={describedStream}
           screen={playbackDataScreen}
+          controlsReach={controlsReach}
           onClose={() => setPlaybackDataScreen(null)}
         />
       )}

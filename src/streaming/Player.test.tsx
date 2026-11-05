@@ -8743,6 +8743,27 @@ describe('Player', () => {
       expect(video.paused).toBe(false)
     })
 
+    it('shouldKeepTheControlsWhilePlaybackDataShows', async () => {
+      serveSession()
+      serveDecisions(() => [playbackDecision({ streamSessionId: SESSION.id })])
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      const video = await showingVideo(STREAM_URL)
+      const player = screen.getByRole('region', { name: 'Player' })
+      const panel = await openPlaybackData(user)
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      moveMouse(video, panel)
+      await act(() => video.play())
+
+      await act(async () => vi.advanceTimersByTimeAsync(10_000))
+      expect(player).not.toHaveAttribute('data-idle')
+
+      fireEvent.click(within(panel).getByRole('button', { name: 'Close playback data' }))
+      await act(async () => vi.advanceTimersByTimeAsync(3_000))
+      expect(player).toHaveAttribute('data-idle')
+    })
+
     it('shouldShowPlaybackDataAsChosenInThePlayerMenuWhileItShows', async () => {
       serveSession()
       serveDecisions(() => [playbackDecision({ streamSessionId: SESSION.id })])

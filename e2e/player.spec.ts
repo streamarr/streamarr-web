@@ -1337,8 +1337,20 @@ test('playback data shows what hls.js reports of the playing variant and why the
   await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible()
 })
 
+// One audio rendition whose name wraps the control bar onto another row on a phone.
+const MULTIVARIANT_WITH_A_LONG_AUDIO_NAME = MULTIVARIANT.replace(
+  'NAME="Audio"',
+  'NAME="English, with the director and cast commentary"',
+)
+
 for (const viewport of [
   { name: 'a phone held upright', width: 375, height: 667 },
+  {
+    name: 'a phone held upright with a long audio track name',
+    width: 375,
+    height: 667,
+    multivariant: MULTIVARIANT_WITH_A_LONG_AUDIO_NAME,
+  },
   { name: 'a phone held sideways', width: 667, height: 375 },
   { name: 'a tablet held upright', width: 768, height: 1024 },
   { name: 'a small laptop window', width: 800, height: 600 },
@@ -1350,7 +1362,10 @@ for (const viewport of [
     request,
   }) => {
     await page.setViewportSize({ width: viewport.width, height: viewport.height })
-    await openPlayer(page, request, { operations: ENCODE_DECISION })
+    await openPlayer(page, request, {
+      operations: ENCODE_DECISION,
+      multivariant: viewport.multivariant,
+    })
 
     const panel = await openPlaybackData(page)
 
