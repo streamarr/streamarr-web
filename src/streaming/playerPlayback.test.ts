@@ -8,7 +8,11 @@ import type {
 import { createApolloClient } from '../graphql/client'
 import { hls, resetFakeHls } from '../test/fakeHls'
 import { MINIMAL_DECLARATION } from '../test/playbackCapabilities'
-import { destroyedPlaybackSession, readyPlaybackSession } from '../test/playbackSession'
+import {
+  destroyedPlaybackSession,
+  readyDirectPlaySession,
+  readyPlaybackSession,
+} from '../test/playbackSession'
 import { server } from '../test/server'
 import { type PlayerPlayback, startPlayerPlayback } from './playerPlayback'
 
@@ -139,6 +143,7 @@ describe('startPlayerPlayback', () => {
       },
       onSourcePhase: vi.fn(),
       onOutputShown: vi.fn(),
+      onNotice: vi.fn(),
     })
     return playback
   }
@@ -254,6 +259,29 @@ describe('startPlayerPlayback', () => {
       playing.chooseDynamicRange('SDR')
 
       expect(video.getAttribute('src')).toBe(STREAM_URL)
+      expect(video.currentTime).toBe(120)
+    })
+
+    it('shouldLeaveADirectPlayedFileToTheElementWhenTheViewerChoosesSdr', async () => {
+      const fileUrl = '/api/stream/file/source.mp4?t=playback-token'
+      const video = fakeMedia()
+      const playing = startPlaying({
+        video,
+        session: Promise.resolve(
+          created(
+            readyDirectPlaySession({
+              streamSession: { id: 'sess-file', streamUrl: fileUrl, videoRange: 'PQ' },
+            }),
+          ),
+        ),
+      })
+      await vi.waitFor(() => expect(video.getAttribute('src')).toBe(fileUrl))
+      loadMetadata(video)
+      playheadAt(video, 120)
+
+      playing.chooseDynamicRange('SDR')
+
+      expect(video.getAttribute('src')).toBe(fileUrl)
       expect(video.currentTime).toBe(120)
     })
 

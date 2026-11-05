@@ -190,8 +190,6 @@ function startSessionPlayback({
   }
   let dynamicRange = initialDynamicRange
   let cancelled = false
-  // The declaration's word on direct play, which the server's stream decision followed.
-  let selectsAudioTrackInDirectPlay = false
   let pendingSwitch: PendingAudioTrackSwitch | null = null
   let sessionId: string | null = null
   let playbackSessionId: string | null = null
@@ -594,7 +592,6 @@ function startSessionPlayback({
         return
       }
       declaration = capabilities
-      selectsAudioTrackInDirectPlay = capabilities.selectsAudioTrackInDirectPlay
       // The server requires a video entry, so a browser that decodes no video cannot play here.
       if (capabilities.video.length === 0) {
         showFailure(PLAYBACK_FAILURE_MESSAGE)
@@ -698,7 +695,7 @@ function startSessionPlayback({
       streamSession.__typename === 'DirectPlayStreamSession'
         ? attachSourceFile(video, streamSession, {
             ...options,
-            selectsAudioTrack: selectsAudioTrackInDirectPlay,
+            selectsAudioTrack: declaration.selectsAudioTrackInDirectPlay,
             onChooseAudio: (position) => void switchAudioTrack(position, generation),
           })
         : attach(video, streamSession.streamUrl, options)
@@ -1478,6 +1475,8 @@ function attachSourceFile(
       video.removeEventListener('loadeddata', onFirstFrame)
       releaseElementSource(video)
     },
+    // The element plays the file itself, so no video preference picks its range.
+    followsVideoPreference: false,
     tracks,
     segmentSeconds: () => undefined,
   }
