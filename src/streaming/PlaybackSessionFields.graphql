@@ -21,6 +21,10 @@ fragment PlaybackSessionFields on PlaybackSession {
           videoRange
           mediaEndSeconds
         }
+        ... on DirectPlayStreamSession {
+          sourceContainer
+          videoRange
+        }
       }
     }
     ... on FailedPlaybackFormatAttempt {
