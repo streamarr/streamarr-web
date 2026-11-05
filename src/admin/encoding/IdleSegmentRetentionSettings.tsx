@@ -134,7 +134,7 @@ function RetentionForm({
       <form className={styles.form} onSubmit={submit}>
         <NumberInput
           label="Keep idle segments for"
-          description={DESCRIPTION}
+          description={`${DESCRIPTION} ${allowedRange(setting)}`}
           value={value}
           onChange={onEdit}
           min={setting.minimumMinutes}
@@ -148,9 +148,6 @@ function RetentionForm({
           readOnly={saving}
           error={refusal}
         />
-        <p className={styles.fieldNote}>
-          From {duration(setting.minimumMinutes)} to {duration(setting.maximumMinutes)}.
-        </p>
         <div className={styles.formActions}>
           <Button
             type="submit"
@@ -164,6 +161,10 @@ function RetentionForm({
       </form>
     </div>
   )
+}
+
+function allowedRange(setting: IdleSegmentRetentionSettingFieldsFragment): string {
+  return `Choose from ${duration(setting.minimumMinutes)} to ${duration(setting.maximumMinutes)}.`
 }
 
 // Names a whole number of minutes in the largest unit that divides it evenly.

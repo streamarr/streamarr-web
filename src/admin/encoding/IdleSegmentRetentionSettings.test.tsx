@@ -87,31 +87,28 @@ function saveButton() {
 }
 
 describe('idle segment retention settings', () => {
-  it('shouldShowSavedRetentionAndAllowedRangeWhenAdminOpensEncoding', async () => {
+  it('shouldShowSavedRetentionAndDescribeAllowedRangeWhenAdminOpensEncoding', async () => {
     serve()
     renderAppAt(ENCODING)
-    expect(await retentionField()).toHaveValue('60')
+    const field = await retentionField()
+    expect(field).toHaveValue('60')
     expect(screen.getByText('minutes')).toBeInTheDocument()
-    expect(screen.getByText('From 5 minutes to 7 days.')).toBeInTheDocument()
-    expect(
-      screen.getByText(
-        "How long the server keeps a stream's segments after the last request for them. When the segment folder's disk has less than a tenth free, the server deletes the oldest idle segments sooner.",
-      ),
-    ).toBeInTheDocument()
+    expect(field).toHaveAccessibleDescription(
+      "How long the server keeps a stream's segments after the last request for them. When the segment folder's disk has less than a tenth free, the server deletes the oldest idle segments sooner. Choose from 5 minutes to 7 days.",
+    )
     expect(saveButton()).toBeDisabled()
   })
 
   it.each([
-    { minimumMinutes: 1, maximumMinutes: 120, range: 'From 1 minute to 2 hours.' },
-    { minimumMinutes: 60, maximumMinutes: 1_440, range: 'From 1 hour to 1 day.' },
-    { minimumMinutes: 90, maximumMinutes: 2_880, range: 'From 90 minutes to 2 days.' },
+    { minimumMinutes: 1, maximumMinutes: 120, range: 'Choose from 1 minute to 2 hours.' },
+    { minimumMinutes: 60, maximumMinutes: 1_440, range: 'Choose from 1 hour to 1 day.' },
+    { minimumMinutes: 90, maximumMinutes: 2_880, range: 'Choose from 90 minutes to 2 days.' },
   ] as const)(
     'shouldNameAllowedRangeInLargestWholeUnitWhenServerSendsBounds($range)',
     async ({ minimumMinutes, maximumMinutes, range }) => {
       serve({ ...SAVED_ONE_HOUR, minimumMinutes, maximumMinutes })
       renderAppAt(ENCODING)
-      await retentionField()
-      expect(screen.getByText(range)).toBeInTheDocument()
+      expect(await retentionField()).toHaveAccessibleDescription(expect.stringContaining(range))
     },
   )
 
