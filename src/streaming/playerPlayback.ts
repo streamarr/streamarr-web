@@ -693,9 +693,10 @@ function startSessionPlayback({
 
   function currentResumePoint(): ResumePoint {
     const playing = !playRequested || !video.paused
-    // No playback session starts at the end of the media, and as the element does after its own
-    // end, playing where playback ended starts from the top.
-    if (video.ended) {
+    // No playback session starts at the end of the media, and a short copy holds nothing past its
+    // real end. As the element does after its own end, playing where playback ended starts from
+    // the top.
+    if (video.ended || (endedAtRealEnd && video.currentTime === endedPosition)) {
       return { position: 0, playing }
     }
     return {

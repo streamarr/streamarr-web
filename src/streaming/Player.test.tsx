@@ -5918,6 +5918,25 @@ describe('Player', () => {
       expect(video.paused).toBe(false)
     })
 
+    it.each([
+      { sought: 'nowhere', seekTo: null, startPosition: undefined },
+      { sought: 'back', seekTo: 600, startPosition: 600 },
+    ])(
+      'shouldStartTheReturningPageAtItsPlayheadOnlyWhenTheViewerSoughtAfterTheRealEnd(sought $sought)',
+      async ({ seekTo, startPosition }) => {
+        const { video } = await playTheShortCopy()
+        stallAt(video, REAL_END_SECONDS - 2)
+        if (seekTo !== null) playheadAt(video, seekTo)
+        const created = recordCreatedSessions()
+
+        hideThePage({ persisted: true })
+        restoreThePage()
+
+        await waitFor(() => expect(created).toHaveLength(1))
+        expect(created[0]?.startPositionSeconds).toBe(startPosition)
+      },
+    )
+
     it('shouldPlayOnFromTheViewersSeekWhenTheViewerSeeksBackAfterTheRealEnd', async () => {
       const { video } = await playTheShortCopy()
       stallAt(video, REAL_END_SECONDS - 2)
