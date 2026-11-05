@@ -1,9 +1,9 @@
 import { useQuery } from '@apollo/client/react'
 import {
   type CSSProperties,
-  type KeyboardEvent,
   type ReactNode,
   type RefObject,
+  useCallback,
   useEffect,
   useId,
   useMemo,
@@ -81,13 +81,15 @@ const pixelRatios = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 })
  * The playback-data panel over the video: how the server delivers the stream and why, what the
  * player reports of it, and what the browser reports of the screen. `stream` is null while no
  * stream is attached. It takes focus on Close as it opens, and Close or Escape hands focus back to
- * the control that had it.
+ * the control that had it. Escape closes it wherever focus is, unless `closesOnEscape` is false
+ * because a menu that Escape closes first is open.
  */
 export function PlaybackData({
   videoRef,
   stream,
   screen,
   controlsReach,
+  closesOnEscape,
   onClose,
 }: Readonly<{
   videoRef: RefObject<HTMLVideoElement | null>
@@ -95,40 +97,42 @@ export function PlaybackData({
   screen: PlaybackDataScreen
   /** How far the player's controls reach up from its bottom, in pixels; null before it is measured. */
   controlsReach: number | null
+  closesOnEscape: boolean
   onClose: () => void
 }>) {
   const headingId = useId()
-  const closeRef = useRef<HTMLButtonElement>(null)
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
   const openerRef = useRef<Element | null>(null)
   useEffect(() => {
     openerRef.current = document.activeElement
-    closeRef.current?.focus()
+    closeButtonRef.current?.focus()
   }, [])
   const reach =
     controlsReach === null
       ? undefined
       : ({ '--controls-reach': `${controlsReach}px` } as CSSProperties)
 
-  function close() {
+  const close = useCallback(() => {
     if (openerRef.current instanceof HTMLElement) {
       openerRef.current.focus()
     }
     onClose()
-  }
-
-  function closeOnEscape(event: KeyboardEvent) {
-    if (event.key === 'Escape') {
-      close()
+  }, [onClose])
+  useEffect(() => {
+    if (!closesOnEscape) {
+      return undefined
     }
-  }
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        close()
+      }
+    }
+    document.addEventListener('keydown', closeOnEscape)
+    return () => document.removeEventListener('keydown', closeOnEscape)
+  }, [closesOnEscape, close])
 
   return (
-    <section
-      className={styles.panel}
-      style={reach}
-      aria-labelledby={headingId}
-      onKeyDown={closeOnEscape}
-    >
+    <section className={styles.panel} style={reach} aria-labelledby={headingId}>
       <div className={styles.header}>
         <h2 id={headingId} className={styles.heading}>
           Playback data
@@ -145,7 +149,7 @@ export function PlaybackData({
           </div>
         )}
         <button
-          ref={closeRef}
+          ref={closeButtonRef}
           type="button"
           className={styles.close}
           aria-label="Close playback data"

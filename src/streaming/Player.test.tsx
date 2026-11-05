@@ -8838,6 +8838,38 @@ describe('Player', () => {
       expect(video.paused).toBe(false)
     })
 
+    it('shouldCloseOnEscapeAndHandFocusToSettingsWhenFocusHasMovedToAnotherPlayerControl', async () => {
+      serveSession()
+      serveDecisions(() => [playbackDecision({ streamSessionId: SESSION.id })])
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await showingVideo(STREAM_URL)
+      await openPlaybackData(user)
+      act(() => screen.getByRole('slider', { name: 'Seek' }).focus())
+
+      await user.keyboard('{Escape}')
+
+      expect(screen.queryByRole('region', { name: 'Playback data' })).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Settings' })).toHaveFocus()
+    })
+
+    it('shouldCloseOnlyTheOpenMenuWhenTheViewerPressesEscapeWhilePlaybackDataShows', async () => {
+      serveSession()
+      serveDecisions(() => [playbackDecision({ streamSessionId: SESSION.id })])
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await showingVideo(STREAM_URL)
+      await openPlaybackData(user)
+      const menu = await openPicker(user, screen.getByRole('button', { name: 'Settings' }))
+
+      await user.keyboard('{Escape}')
+
+      expect(menu).not.toBeInTheDocument()
+      expect(screen.getByRole('region', { name: 'Playback data' })).toBeInTheDocument()
+    })
+
     it('shouldKeepTheControlsWhilePlaybackDataShows', async () => {
       serveSession()
       serveDecisions(() => [playbackDecision({ streamSessionId: SESSION.id })])

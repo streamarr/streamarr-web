@@ -1,6 +1,6 @@
 import { useApolloClient, useMutation } from '@apollo/client/react'
 import { Alert, Button } from '@mantine/core'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { CreatePlaybackSessionDocument, type VideoQuality } from '../graphql/generated/graphql'
 import { DetailBackButton } from '../media/DetailBack'
 import focusStyles from '../styles/focus.module.css'
@@ -176,6 +176,8 @@ export function Player({
         }
       : null
 
+  const closePlaybackData = useCallback(() => setPlaybackDataScreen(null), [])
+
   function togglePlaybackData() {
     const video = videoRef.current
     if (playbackDataScreen || !video) {
@@ -220,7 +222,8 @@ export function Player({
           stream={describedStream}
           screen={playbackDataScreen}
           controlsReach={controlsReach}
-          onClose={() => setPlaybackDataScreen(null)}
+          closesOnEscape={openPicker === null}
+          onClose={closePlaybackData}
         />
       )}
       <PlayerControls
