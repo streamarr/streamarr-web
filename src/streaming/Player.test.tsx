@@ -7485,6 +7485,62 @@ describe('Player', () => {
         expect(screen.queryByRole('alert')).not.toBeInTheDocument()
       })
 
+      it('shouldAttachTheStreamTheStatusNamesWhenTheSwitchedStreamFailsWhileAStallsStatusCheckIsStillOut', async () => {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        const answered = deferred()
+        serveAudioTrackSwitch({
+          answered: answered.promise,
+          answer: () => ({
+            playbackSession: readyPlaybackSession({
+              id: 'playback-1',
+              streamSession: replacementStream(1),
+            }),
+            userErrors: [],
+          }),
+        })
+        const checkAsked = deferred()
+        const checkAnswered = deferred()
+        let statusReads = 0
+        let switchedStreamFailed = false
+        const playbackOn = (replacement: number) =>
+          readyPlaybackSession({ id: 'playback-1', streamSession: replacementStream(replacement) })
+        server.use(
+          // The waiting element asks for a real end, then the stall's own read starts the status
+          // check, whose read stays out. Once the switched stream fails, the status names the stream
+          // that replaces it.
+          graphql.query('PlaybackSession', async () => {
+            statusReads += 1
+            if (!switchedStreamFailed && statusReads > 2) {
+              checkAsked.resolve()
+              await checkAnswered.promise
+            }
+            let playbackSession = playbackOn(switchedStreamFailed ? 2 : 1)
+            if (statusReads === 1) playbackSession = directPlayStill()
+            return HttpResponse.json({ data: { playbackSession } })
+          }),
+        )
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        const video = await directPlayAt(42)
+        vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout'] })
+        stallAt(video, 42)
+        await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 10_000))
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+        await act(async () => vi.advanceTimersByTimeAsync(10_000))
+        vi.useRealTimers()
+        await checkAsked.promise
+        answered.resolve()
+        await attachedVideo(replacementStream(1).streamUrl)
+
+        switchedStreamFailed = true
+        answerTheNextSegmentWith503({ fatal: true })
+
+        await attachedVideo(replacementStream(2).streamUrl)
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+        checkAnswered.resolve()
+      })
+
       it('shouldShowThePlaybackFailureWhenTheSourceFileFailsAndTheStatusStillNamesItAfterALostSwitch', async () => {
         serveDirectPlay({ audioTracks: TWO_TRACKS })
         const statusAsked = deferred()

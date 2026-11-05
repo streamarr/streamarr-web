@@ -892,7 +892,8 @@ function startSessionPlayback({
     previous?.controller.abort()
   }
 
-  // A caller that joins a running check waits for that check to settle.
+  // A caller that joins a running check waits for that check to settle. A check begun for a stream
+  // that has since been detached discards what it reads, so a new check replaces it.
   function reconcilePlaybackStatus({
     generation,
     fatal,
@@ -908,10 +909,11 @@ function startSessionPlayback({
       endedAtRealEnd
     )
       return Promise.resolve()
-    if (statusCheck) {
+    if (statusCheck?.generation === generation) {
       statusCheck.fatal ||= fatal
       return statusCheck.settled
     }
+    stopStatusCheck()
     const check: PlaybackStatusCheck = {
       controller: new AbortController(),
       generation,
