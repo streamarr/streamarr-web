@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { server } from '../test/server'
 import { deferred } from '../test/deferred'
 import { createApolloClient } from './client'
-import { MarkWatchedDocument, MeDocument } from './generated/graphql'
+import { MarkWatchedDocument, MeDocument, PlaybackReportsDocument } from './generated/graphql'
 import { meFixture } from '../test/meFixture'
 
 const ME = meFixture({ scope: 'profile' })
@@ -319,5 +319,71 @@ describe('apollo client', () => {
         languagePreference: { audioLanguages: ['JA'], subtitleMode: 'FORCED' },
       },
     })
+  })
+})
+
+describe('shared playback report pages', () => {
+  // A page of reports `from` to `to` as the server answers it, each cursor its report's position.
+  function reportsPage(from: number, to: number, hasNextPage: boolean) {
+    const positions = Array.from({ length: to - from + 1 }, (_, index) => from + index)
+    return {
+      playbackReports: {
+        __typename: 'PlaybackReportConnection' as const,
+        edges: positions.map((position) => ({
+          __typename: 'PlaybackReportEdge' as const,
+          cursor: String(position),
+          node: {
+            __typename: 'PlaybackReport' as const,
+            id: `report-${position}`,
+            sharedAt: '2026-11-04T18:30:00Z',
+            readAt: null,
+            profileName: `Viewer ${position}`,
+            note: null,
+          },
+        })),
+        pageInfo: { __typename: 'PageInfo' as const, hasNextPage, endCursor: String(to) },
+      },
+    }
+  }
+
+  function listedIds(client: ReturnType<typeof createApolloClient>): string[] {
+    const list = client.cache.readQuery({
+      query: PlaybackReportsDocument,
+      variables: { first: 2 },
+    })
+    return list?.playbackReports.edges.map((edge) => edge.node.id) ?? []
+  }
+
+  it('shouldDropAnOlderPageWhenItAnswersAfterARefreshReplacedTheReportItFollows', () => {
+    const client = createApolloClient(vi.fn())
+    const write = (after: string | undefined, data: ReturnType<typeof reportsPage>) =>
+      client.cache.writeQuery({
+        query: PlaybackReportsDocument,
+        variables: { first: 2, after },
+        data,
+      })
+    write(undefined, reportsPage(1, 2, true))
+    write('2', reportsPage(3, 4, true))
+
+    // A refresh of the newest reports answers first; the page after report 4 answers last.
+    write(undefined, reportsPage(1, 2, true))
+    write('4', reportsPage(5, 6, true))
+
+    expect(listedIds(client)).toEqual(['report-1', 'report-2'])
+  })
+
+  it('shouldAppendAnOlderPageWhenItFollowsTheLastLoadedReport', () => {
+    const client = createApolloClient(vi.fn())
+    const write = (after: string | undefined, data: ReturnType<typeof reportsPage>) =>
+      client.cache.writeQuery({
+        query: PlaybackReportsDocument,
+        variables: { first: 2, after },
+        data,
+      })
+    write(undefined, reportsPage(1, 2, true))
+
+    write('2', reportsPage(3, 4, false))
+
+    expect(listedIds(client)).toEqual(['report-1', 'report-2', 'report-3', 'report-4'])
   })
 })

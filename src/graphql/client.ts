@@ -1,12 +1,12 @@
 import { ApolloClient, ApolloLink, HttpLink, InMemoryCache } from '@apollo/client'
 import { SetContextLink } from '@apollo/client/link/context'
 import { ErrorLink } from '@apollo/client/link/error'
-import { relayStylePagination } from '@apollo/client/utilities'
 import { OperationTypeNode } from 'graphql'
 import { map } from 'rxjs'
 import { csrfHeaders, isCsrfRejection } from '../auth/csrf'
 import generatedIntrospection from './generated/possibleTypes.json'
 import { decideAuthRoute, extractAuthContext } from './errorRouting'
+import { contiguousRelayPagination } from './pagination'
 
 export type AuthRoute = '/login' | '/select-profile'
 
@@ -87,7 +87,7 @@ export function createApolloClient(
       Query: {
         fields: {
           // Older shared playback reports load after the ones already loaded.
-          playbackReports: relayStylePagination(),
+          playbackReports: contiguousRelayPagination(),
         },
       },
       PlaybackReport: {
