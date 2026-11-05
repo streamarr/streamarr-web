@@ -37,8 +37,10 @@ export interface PlaybackDataStream {
   playbackSessionId: string
   streamSessionId: string
   videoRange: VideoRange
-  /** The playback choice that the viewer asked for. */
+  /** The playback choice that the viewer asked for, which the reasons name. */
   requestedChoice: VideoQuality
+  /** The playback choice that plays now, which differs once Original has changed to Auto. */
+  playingChoice: VideoQuality
   /** The container of a directly played file; null for HLS. */
   sourceContainer: SourceContainer | null
   streamStats: () => StreamStats
@@ -142,7 +144,7 @@ export function PlaybackData({
             <dl className={styles.chips}>
               <Chip
                 name="Quality"
-                value={qualityLabel(stream.requestedChoice) ?? stream.requestedChoice}
+                value={qualityLabel(stream.playingChoice) ?? stream.playingChoice}
               />
               <Chip name="Delivery" value={deliveryChipText(stream.sourceContainer)} />
             </dl>
