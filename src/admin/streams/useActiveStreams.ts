@@ -9,7 +9,11 @@ import {
 import { isForbidden } from '../../graphql/errorRouting'
 import { responsePathHasError } from '../../graphql/responseErrors'
 import { installRevalidation } from '../../graphql/revalidation'
-import { NO_ACTIVE_STREAMS_READ, reduceActiveStreams } from './activeStreamsList'
+import {
+  type LiveStreamsStop,
+  NO_ACTIVE_STREAMS_READ,
+  reduceActiveStreams,
+} from './activeStreamsList'
 
 // A read that never answers would hold every later read after a gap behind it.
 const READ_DEADLINE_MS = 15_000
@@ -52,6 +56,9 @@ export function useActiveStreams() {
 
   useEffect(() => {
     let stopped = false
+    // A result that carries no change ends live changes only when the operation completes after
+    // it; while the operation runs, its failed field is a missed change that the transport reports.
+    let ending: LiveStreamsStop = 'failed'
     const subscription = client
       .subscribe({
         query: ActiveStreamsChangedDocument,
@@ -72,11 +79,10 @@ export function useActiveStreams() {
             })
             return
           }
-          if (error)
-            dispatch({ kind: 'stopped', stop: isForbidden(error) ? 'forbidden' : 'failed' })
+          if (error) ending = isForbidden(error) ? 'forbidden' : 'failed'
         },
         complete: () => {
-          if (!stopped) dispatch({ kind: 'stopped', stop: 'failed' })
+          if (!stopped) dispatch({ kind: 'stopped', stop: ending })
         },
       })
     // The list is no watched query, so it reads again by itself on each gap that the app's

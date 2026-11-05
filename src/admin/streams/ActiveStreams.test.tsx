@@ -444,6 +444,26 @@ describe('active streams', () => {
     )
   })
 
+  it('shouldKeepLiveUpdatesAndReadAgainWhenAChangeFailsWhileTheSubscriptionRuns', async () => {
+    const state = serve([MOVIE])
+    renderAppAt(PAGE)
+    await streamRow('Everlight')
+    await liveChanges(state)
+    const readsBefore = state.reads
+
+    state.socket.publish(CHANGED, {
+      data: { activeStreamsChanged: null },
+      errors: [{ message: 'Internal failure', path: ['activeStreamsChanged'] }],
+    })
+    await waitFor(() => expect(state.reads).toBeGreaterThan(readsBefore))
+    publishChange(state, MOVIE.playbackSessionId, { ...MOVIE, state: 'PAUSED' })
+
+    await waitFor(async () =>
+      expect(factsIn(await streamRow('Everlight')).Position).toBe('12:34 · Paused'),
+    )
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
   it.each([
     {
       stop: 'a refusal',
