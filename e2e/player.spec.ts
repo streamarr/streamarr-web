@@ -1337,20 +1337,31 @@ test('playback data shows what hls.js reports of the playing variant and why the
   await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible()
 })
 
-test('on a phone held upright playback data stays on screen below Back', async ({
-  page,
-  request,
-}) => {
-  await page.setViewportSize({ width: 375, height: 667 })
-  await openPlayer(page, request, { operations: ENCODE_DECISION })
+for (const viewport of [
+  { name: 'a phone held upright', width: 375, height: 667 },
+  { name: 'a tablet held upright', width: 768, height: 1024 },
+  { name: 'a small laptop window', width: 800, height: 600 },
+  { name: 'a laptop', width: 1280, height: 800 },
+]) {
+  test(`on ${viewport.name} playback data stays on screen and leaves Back clickable`, async ({
+    page,
+    request,
+  }) => {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height })
+    await openPlayer(page, request, { operations: ENCODE_DECISION })
 
-  const panel = await openPlaybackData(page)
+    const panel = await openPlaybackData(page)
 
-  await expect(trackIn(panel, 'Video').getByRole('heading')).toHaveText('Video Encode')
-  const box = await panel.boundingBox()
-  const back = await page.getByRole('button', { name: 'Back', exact: true }).boundingBox()
-  expect(box && back).not.toBeNull()
-  expect(box!.x).toBeGreaterThanOrEqual(16)
-  expect(box!.x + box!.width).toBeLessThanOrEqual(375 - 16)
-  expect(box!.y).toBeGreaterThanOrEqual(back!.y + back!.height)
-})
+    await expect(trackIn(panel, 'Video').getByRole('heading')).toHaveText('Video Encode')
+    const back = page.getByRole('button', { name: 'Back', exact: true })
+    const panelBox = await panel.boundingBox()
+    const backBox = await back.boundingBox()
+    expect(panelBox && backBox).not.toBeNull()
+    expect(panelBox!.x).toBeGreaterThanOrEqual(16)
+    expect(panelBox!.x + panelBox!.width).toBeLessThanOrEqual(viewport.width - 16)
+    const besideBack = panelBox!.x >= backBox!.x + backBox!.width
+    const belowBack = panelBox!.y >= backBox!.y + backBox!.height
+    expect(besideBack || belowBack).toBe(true)
+    await back.click({ trial: true })
+  })
+}
