@@ -49,7 +49,10 @@ class OperationOfEarlierIdentityError extends Error {
 
 /** One Household or Profile switch, from its request until its answer. */
 export interface IdentitySwitch {
-  /** The server switched the identity; the store reset that follows opens the gate again. */
+  /**
+   * The server switched the identity, or may have: operations of the earlier identity are refused
+   * from now on, and the store reset that follows opens the gate to the new one.
+   */
   succeeded: () => void
   /** The identity did not change, so the operations held since the switch began go out now. */
   failed: () => void
@@ -60,17 +63,26 @@ interface HeldOperation {
   refuse: () => void
 }
 
+const IDENTITY_GENERATION = 'identityGeneration'
+
 // The browser installs the new identity's cookie when a switch's response arrives, before the
 // client reads it, so an operation the earlier identity sends from the switch's start until the
-// store reset could act as the new identity. The gate holds those operations until the answer: a
-// failed switch sends them, and a successful one refuses them and every later one until the reset.
+// store reset could act as the new identity. Each operation keeps the identity generation it began
+// under, and the gate admits it before every send, a CSRF retry included. While a switch is
+// underway it holds operations until the answer: a failed switch sends them, and a successful one
+// refuses them, and every later one until the reset.
 class IdentitySwitchGate {
+  private generation = 0
   private switchesUnderway = 0
   private awaitingReset = false
   private readonly held = new Set<HeldOperation>()
 
   readonly link = new ApolloLink((operation, forward) => {
-    if (this.awaitingReset) {
+    const began = operation.getContext()[IDENTITY_GENERATION] as number | undefined
+    if (began === undefined) {
+      operation.setContext({ [IDENTITY_GENERATION]: this.generation })
+    }
+    if (this.awaitingReset || (began !== undefined && began !== this.generation)) {
       return throwError(() => new OperationOfEarlierIdentityError())
     }
     if (this.switchesUnderway === 0) {
@@ -106,6 +118,7 @@ class IdentitySwitchGate {
     }
     return {
       succeeded: () => {
+        this.generation += 1
         this.awaitingReset = true
         settle((entry) => entry.refuse())
       },
@@ -192,11 +205,13 @@ export function createApolloClient(
   // Error link next: forward() on a CSRF rejection re-enters the CSRF link, which re-reads the
   // re-minted cookie before the HTTP link sends.
   const gate = new IdentitySwitchGate()
+  // The gate comes first and again before the HTTP link, which a CSRF retry re-enters.
   const httpChain = ApolloLink.from([
     gate.link,
     discardResponsesSentBeforeStoreReset(cache),
     errorLink,
     csrfLink,
+    gate.link,
     httpLink,
   ])
   const link = subscriptionLink

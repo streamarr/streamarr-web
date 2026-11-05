@@ -14,6 +14,7 @@ import {
 } from '../graphql/generated/graphql'
 import { meFixture } from '../test/meFixture'
 import { AuthProvider, useAuth } from './AuthProvider'
+import { CSRF_REJECTION_CODE } from './csrf'
 import { createSessionStore, type SessionStore } from './session'
 
 const TOKENS = {
@@ -330,4 +331,107 @@ describe('AuthProvider operations during an identity switch', () => {
       expect(storedUnder).toEqual(['profile-2'])
     },
   )
+})
+
+describe('AuthProvider identity fence beyond the first send', () => {
+  function renderSwitchable() {
+    const client = createApolloClient(() => {})
+    client.writeQuery({ query: MeDocument, data: { me: meFixture({ scope: 'profile' }) } })
+    render(
+      <ApolloProvider client={client}>
+        <AuthProvider
+          sessionStore={createSessionStore(async () => 'authenticated')}
+          renewal={{ adoptExpiry: vi.fn(), stop: vi.fn() }}
+          subscriptions={subscriptionsFake()}
+        >
+          <SwitchHarness />
+          <PinHarness />
+        </AuthProvider>
+      </ApolloProvider>,
+    )
+    return client
+  }
+
+  function storeOverride(client: ApolloClient): Promise<'stored' | Error> {
+    return client
+      .mutate({
+        mutation: SetLanguageOverrideDocument,
+        variables: { input: { itemId: 'episode-1', audioLanguage: 'JA' } },
+      })
+      .then(
+        () => 'stored' as const,
+        (error: unknown) => (error instanceof Error ? error : new Error(String(error))),
+      )
+  }
+
+  it('shouldSendNoCsrfRetryUnderTheNewIdentityWhenTheRejectionArrivesAfterTheSwitch', async () => {
+    const cookie = { profile: 'profile-1' }
+    const sentUnder: string[] = []
+    let releaseRejection: () => void = () => {}
+    const rejectionHeld = new Promise<void>((resolve) => {
+      releaseRejection = resolve
+    })
+    server.use(
+      // A CSRF rejection is the server's REST error body, not a GraphQL response.
+      http.post('/graphql', async ({ request }) => {
+        const { operationName } = (await request.clone().json()) as { operationName?: string }
+        if (operationName !== 'SetLanguageOverride') return undefined
+        sentUnder.push(cookie.profile)
+        if (sentUnder.length === 1) {
+          await rejectionHeld
+          return HttpResponse.json({ code: CSRF_REJECTION_CODE }, { status: 403 })
+        }
+        return HttpResponse.json({
+          data: { setLanguageOverride: { item: null, userErrors: [] } },
+        })
+      }),
+      http.post('/api/auth/select-profile', () => {
+        cookie.profile = 'profile-2'
+        return HttpResponse.json(TOKENS)
+      }),
+    )
+    const client = renderSwitchable()
+    const store = storeOverride(client)
+    await waitFor(() => expect(sentUnder).toEqual(['profile-1']))
+
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Switch profile' }))
+    await waitFor(() => expect(client.readQuery({ query: MeDocument })).toBeNull())
+    releaseRejection()
+
+    expect(await store).toBeInstanceOf(Error)
+    expect(sentUnder).toEqual(['profile-1'])
+  })
+
+  it('shouldRefuseHeldOperationsAndResetTheStoreWhenTheSwitchAnswerCannotBeRead', async () => {
+    const cookie = { profile: 'profile-1' }
+    const sentUnder: string[] = []
+    let heldStore: Promise<'stored' | Error> | undefined
+    const client = renderSwitchable()
+    server.use(
+      graphql.mutation<SetLanguageOverrideMutation, SetLanguageOverrideMutationVariables>(
+        'SetLanguageOverride',
+        () => {
+          sentUnder.push(cookie.profile)
+          return HttpResponse.json({
+            data: { setLanguageOverride: { item: null, userErrors: [] } },
+          })
+        },
+      ),
+      http.post('/api/auth/select-profile', () => {
+        cookie.profile = 'profile-2'
+        heldStore = storeOverride(client)
+        return new HttpResponse('{"accessTokenExpiresAt":', {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }),
+    )
+
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Enter PIN' }))
+
+    await waitFor(() => expect(heldStore).toBeDefined())
+    expect(await heldStore).toBeInstanceOf(Error)
+    expect(sentUnder).toEqual([])
+    await waitFor(() => expect(client.readQuery({ query: MeDocument })).toBeNull())
+  })
 })

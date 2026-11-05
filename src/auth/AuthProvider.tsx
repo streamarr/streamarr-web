@@ -2,6 +2,7 @@ import { useApolloClient } from '@apollo/client/react'
 import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from 'react'
 import {
   type AcceptInvitationInput,
+  AuthApiError,
   acceptInvitation as apiAcceptInvitation,
   type AuthTokens,
   login as apiLogin,
@@ -87,9 +88,13 @@ export function AuthProvider({
   )
   // A different Household or Profile is a different identity: nothing cached survives the switch.
   // The new identity's cookie lands with the response, before the store resets, so the client
-  // holds every operation from the request on (beginIdentitySwitch). The socket keeps the
-  // authority it opened with, so it goes first; otherwise its next frame could land in the cache
-  // the refetch is rebuilding.
+  // holds every operation from the request on (beginIdentitySwitch), and only a refusal from the
+  // server proves the identity unchanged. The socket keeps the authority it opened with, so it goes
+  // first; otherwise its next frame could land in the cache the refetch is rebuilding.
+  const forgetEarlierIdentity = useCallback(async () => {
+    subscriptions.replaceSocket()
+    await apollo.resetStore()
+  }, [apollo, subscriptions])
   const switchIdentity = useCallback(
     async (request: () => Promise<AuthTokens>): Promise<AuthTokens> => {
       const identitySwitch = beginIdentitySwitch(apollo)
@@ -97,16 +102,21 @@ export function AuthProvider({
       try {
         tokens = await request()
       } catch (error) {
-        identitySwitch.failed()
+        if (error instanceof AuthApiError) {
+          identitySwitch.failed()
+          throw error
+        }
+        // An answer that could not be read may still have installed the new identity's cookie.
+        identitySwitch.succeeded()
+        await forgetEarlierIdentity().catch(() => undefined)
         throw error
       }
       identitySwitch.succeeded()
       adopt(tokens)
-      subscriptions.replaceSocket()
-      await apollo.resetStore()
+      await forgetEarlierIdentity()
       return tokens
     },
-    [adopt, apollo, subscriptions],
+    [adopt, apollo, forgetEarlierIdentity],
   )
   const selectHousehold = useCallback(
     (id: string) => switchIdentity(() => apiSelectHousehold(id)),
