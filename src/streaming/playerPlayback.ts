@@ -78,11 +78,12 @@ export interface PlayerPlayback {
 }
 
 // An audio track switch the server has not answered yet, and the failures of the source it
-// replaces that wait for the answer.
+// replaces that wait for the answer. A stall that outlasted its limit counts only while it lasts.
 interface PendingAudioTrackSwitch {
   generation: number
   formatFailure: PlaybackFormatFailure | null
   failed: boolean
+  stalled: boolean
 }
 
 type AudioTrackSwitchAnswer =
@@ -509,8 +510,11 @@ function startSessionPlayback({
     startStallLimit()
   }
 
-  // Also abandons the status read of a stall that outlasted the limit.
+  // Also abandons the status read of a stall that outlasted the limit, and forgets that it did
+  // while a switch waits: the element played, paused or seeked since.
   function clearStallLimit() {
+    const pending = switchPendingFor(sourceGeneration)
+    if (pending) pending.stalled = false
     if (!stall) return
     clearTimeout(stall.timer)
     stall.controller.abort()
@@ -558,7 +562,7 @@ function startSessionPlayback({
   function failStalledStream() {
     const pending = switchPendingFor(sourceGeneration)
     if (pending) {
-      pending.failed = true
+      pending.stalled = true
       return
     }
     stopStatusCheck()
@@ -762,7 +766,12 @@ function startSessionPlayback({
       !sessionId
     )
       return
-    const pending: PendingAudioTrackSwitch = { generation, formatFailure: null, failed: false }
+    const pending: PendingAudioTrackSwitch = {
+      generation,
+      formatFailure: null,
+      failed: false,
+      stalled: false,
+    }
     pendingSwitch = pending
     const answer = await requestAudioTrackSwitch({
       playbackSessionId,
@@ -798,7 +807,7 @@ function startSessionPlayback({
   // while the status is on its way, so the file's failures keep waiting until the status answers.
   async function recoverLostSwitch(pending: PendingAudioTrackSwitch) {
     pendingSwitch = pending
-    await reconcilePlaybackStatus({ generation: pending.generation, fatal: pending.failed })
+    await reconcilePlaybackStatus({ generation: pending.generation, fatal: sourceFailed(pending) })
     if (pendingSwitch !== pending) return
     pendingSwitch = null
     if (cancelled || pending.generation !== sourceGeneration) return
@@ -838,9 +847,13 @@ function startSessionPlayback({
     return pendingSwitch?.generation === generation ? pendingSwitch : undefined
   }
 
+  function sourceFailed(pending: PendingAudioTrackSwitch): boolean {
+    return pending.failed || pending.stalled
+  }
+
   // Direct play goes on after a switch the server did not make, unless the file failed meanwhile.
   function failAfterTheSwitch(pending: PendingAudioTrackSwitch) {
-    if (pending.failed) {
+    if (sourceFailed(pending)) {
       stopStatusCheck()
       failSource()
       return
