@@ -411,6 +411,35 @@ describe('shared reports', () => {
     )
   })
 
+  it('shouldKeepAReportReadWhenAListReadFromBeforeTheMarkAnswersAfterIt', async () => {
+    const state = serveReports({ reports: [reportFixture(), OLDER] })
+    const before = state.reports.map(summaryOf)
+    server.use(
+      graphql.query('PlaybackReports', () =>
+        HttpResponse.json({
+          data: {
+            playbackReports: {
+              __typename: 'PlaybackReportConnection',
+              edges: before.map((node, index) => ({
+                __typename: 'PlaybackReportEdge',
+                cursor: String(index + 1),
+                node,
+              })),
+              pageInfo: { __typename: 'PageInfo', hasNextPage: false, endCursor: '2' },
+            },
+          },
+        }),
+      ),
+    )
+    const { user } = renderAppAt(`${REPORTS}/report-1`)
+    await waitFor(() => expect(state.marked).toEqual(['report-1']))
+
+    await user.click(await screen.findByRole('link', { name: 'Back to shared reports' }))
+
+    const list = await reportList()
+    expect(within(list).queryByText('Unread')).not.toBeInTheDocument()
+  })
+
   it('shouldLeaveAReadReportAsItIsWhenTheServerAdminOpensIt', async () => {
     const state = serveReports({ reports: [OLDER] })
     renderAppAt(`${REPORTS}/report-2`)

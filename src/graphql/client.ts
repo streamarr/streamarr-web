@@ -90,6 +90,12 @@ export function createApolloClient(
           playbackReports: relayStylePagination(),
         },
       },
+      PlaybackReport: {
+        fields: {
+          // A report stays read: a read sent before it was marked read may answer after.
+          readAt: { merge: (existing: unknown, incoming: unknown) => incoming ?? existing ?? null },
+        },
+      },
       Library: {
         fields: {
           alphabetIndex: { merge: false },
