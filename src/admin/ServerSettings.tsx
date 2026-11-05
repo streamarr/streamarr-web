@@ -1,11 +1,12 @@
 import { useQuery } from '@apollo/client/react'
 import { Alert, Center, Loader } from '@mantine/core'
 import { Link, Outlet, useMatchRoute } from '@tanstack/react-router'
-import { MeDocument, UnreadPlaybackReportCountDocument } from '../graphql/generated/graphql'
+import { MeDocument } from '../graphql/generated/graphql'
 import { requestFailureMessage } from '../graphql/requestErrors'
 import { FailurePanel } from '../ui/Failure'
 import { Icon, type IconName } from '../ui/Icon'
 import { canManageServer } from './access'
+import { useUnreadReportCount } from './reports/unreadReportCount'
 import styles from './Settings.module.css'
 
 const REPORTS = '/settings/server/reports'
@@ -63,7 +64,7 @@ export function ServerSettings() {
 function SettingsRail() {
   const matchRoute = useMatchRoute()
   const current = SECTIONS.find((section) => matchRoute({ to: section.to, fuzzy: true }))
-  const unreadReports = useUnreadReportCount()
+  const unreadReports = useUnreadReportCount() ?? 0
   return (
     <div className={`${styles.settings} ${styles.railLayout}`}>
       <nav className={styles.settingsRail} aria-label="Server settings">
@@ -93,12 +94,4 @@ function SettingsRail() {
       </section>
     </div>
   )
-}
-
-// How many shared playback reports no ServerAdmin has read; zero until the server says.
-function useUnreadReportCount(): number {
-  const { data } = useQuery(UnreadPlaybackReportCountDocument, {
-    fetchPolicy: 'cache-and-network',
-  })
-  return data?.unreadPlaybackReportCount ?? 0
 }

@@ -5,13 +5,13 @@ import { useState } from 'react'
 import {
   PlaybackReportsDocument,
   type PlaybackReportSummaryFieldsFragment,
-  UnreadPlaybackReportCountDocument,
 } from '../../graphql/generated/graphql'
 import { requestFailureMessage } from '../../graphql/requestErrors'
 import { FailureRow } from '../../ui/Failure'
 import styles from '../Settings.module.css'
 import reportStyles from './PlaybackReports.module.css'
 import { instantText } from './reportText'
+import { useUnreadReportCount } from './unreadReportCount'
 
 /** How many reports one read of the list asks for. */
 export const REPORT_PAGE_SIZE = 20
@@ -78,13 +78,11 @@ export function PlaybackReports() {
 }
 
 function UnreadCount() {
-  const { data } = useQuery(UnreadPlaybackReportCountDocument, {
-    fetchPolicy: 'cache-and-network',
-  })
-  if (data === undefined) {
+  const unread = useUnreadReportCount()
+  if (unread === null) {
     return null
   }
-  return <p className={reportStyles.unread}>{data.unreadPlaybackReportCount} unread</p>
+  return <p className={reportStyles.unread}>{unread} unread</p>
 }
 
 function ReportList({

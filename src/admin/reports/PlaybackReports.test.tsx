@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import { graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type {
@@ -6,6 +6,7 @@ import type {
   PlaybackReportQuery,
   PlaybackReportsQueryVariables,
 } from '../../graphql/generated/graphql'
+import { deferred } from '../../test/deferred'
 import { meFixture } from '../../test/meFixture'
 import { H264_FULL_HD, playbackDecision, servedDecision } from '../../test/playbackSession'
 import { renderAppAt } from '../../test/render'
@@ -302,6 +303,35 @@ describe('shared reports', () => {
           name: 'Shared reports',
         }),
       ).toBeInTheDocument(),
+    )
+  })
+
+  it('shouldDropTheUnreadCountWhenAnOlderCountAnswersAfterTheReportIsMarkedRead', async () => {
+    const state = serveReports({ reports: [reportFixture()] })
+    const held = deferred()
+    const countReads: number[] = []
+    server.use(
+      graphql.query('UnreadPlaybackReportCount', async () => {
+        const unread = state.reports.filter((report) => !report.readAt).length
+        countReads.push(unread)
+        if (countReads.length === 1) {
+          await held.promise
+        }
+        return HttpResponse.json({ data: { unreadPlaybackReportCount: unread } })
+      }),
+    )
+    renderAppAt(`${REPORTS}/report-1`)
+    const rail = await screen.findByRole('navigation', { name: 'Server settings' })
+
+    await waitFor(() => expect(countReads).toEqual([1, 0]))
+    await act(async () => {
+      held.resolve()
+      await held.promise
+    })
+
+    expect(state.marked).toEqual(['report-1'])
+    await waitFor(() =>
+      expect(within(rail).getByRole('link', { name: 'Shared reports' })).toBeInTheDocument(),
     )
   })
 

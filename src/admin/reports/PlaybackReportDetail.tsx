@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@apollo/client/react'
+import { useApolloClient, useMutation, useQuery } from '@apollo/client/react'
 import { Center, Loader } from '@mantine/core'
 import { Link } from '@tanstack/react-router'
 import { type ReactNode, useEffect, useId, useRef } from 'react'
@@ -6,7 +6,6 @@ import {
   MarkPlaybackReportReadDocument,
   PlaybackReportDocument,
   type PlaybackReportQuery,
-  UnreadPlaybackReportCountDocument,
   type VideoQuality,
 } from '../../graphql/generated/graphql'
 import { requestFailureMessage } from '../../graphql/requestErrors'
@@ -25,6 +24,7 @@ import {
   instantText,
   videoEntryText,
 } from './reportText'
+import { readUnreadReportCountAgain } from './unreadReportCount'
 
 type Report = NonNullable<PlaybackReportQuery['playbackReport']>
 
@@ -80,11 +80,10 @@ function ReportContent({
 }
 
 // Marks the report read once, the first time it is shown unread; the server keeps the first read
-// time, and the unread count reads again.
+// time. The unread count reads again once the server answers.
 function useMarkReadOnOpen(report: Report | null | undefined) {
-  const [markRead] = useMutation(MarkPlaybackReportReadDocument, {
-    refetchQueries: [UnreadPlaybackReportCountDocument],
-  })
+  const client = useApolloClient()
+  const [markRead] = useMutation(MarkPlaybackReportReadDocument)
   const marked = useRef<string | null>(null)
   const unreadId = report && report.readAt === null ? report.id : null
   useEffect(() => {
@@ -92,9 +91,11 @@ function useMarkReadOnOpen(report: Report | null | undefined) {
       return
     }
     marked.current = unreadId
-    // A report left unread stays in the unread count, which shows the outcome.
-    markRead({ variables: { input: { playbackReportId: unreadId } } }).catch(() => undefined)
-  }, [unreadId, markRead])
+    markRead({ variables: { input: { playbackReportId: unreadId } } })
+      .then(() => readUnreadReportCountAgain(client))
+      // A report left unread stays in the unread count, which shows the outcome.
+      .catch(() => undefined)
+  }, [unreadId, markRead, client])
 }
 
 function ReportSnapshot({ report }: Readonly<{ report: Report }>) {
