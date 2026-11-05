@@ -216,6 +216,7 @@ const DECLARATION_OF_THE_720P_ONLY_BROWSER_WITHOUT_OPUS: ClientCapabilityDeclara
     { codec: 'FLAC', maxChannels: 6, hls: true },
     { codec: 'ALAC', maxChannels: 6, hls: true },
   ],
+  selectsAudioTrackInDirectPlay: false,
 }
 
 const DECLARATION_OF_EVERY_TIER: ClientCapabilityDeclarationInput = {
@@ -255,6 +256,7 @@ const DECLARATION_OF_EVERY_TIER: ClientCapabilityDeclarationInput = {
     { codec: 'FLAC', maxChannels: 6, hls: true },
     { codec: 'ALAC', maxChannels: 6, hls: true },
   ],
+  selectsAudioTrackInDirectPlay: false,
 }
 
 type CompatibleBase = 'PQ' | 'HLG'

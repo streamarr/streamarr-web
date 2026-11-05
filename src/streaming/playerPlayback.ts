@@ -81,12 +81,18 @@ interface PlaybackStatusCheck {
   fatal: boolean
 }
 
+/** What the player asks of a new playback session; no start position starts at the beginning. */
+interface PlaybackSessionRequest {
+  capabilities: ClientCapabilityDeclarationInput
+  startPositionSeconds?: number
+}
+
 interface PlayerPlaybackOptions {
   video: HTMLVideoElement
   client: ApolloClient
   declareCapabilities: () => Promise<ClientCapabilityDeclarationInput>
   createPlaybackSession: (
-    capabilities: ClientCapabilityDeclarationInput,
+    request: PlaybackSessionRequest,
   ) => Promise<{ data?: CreatePlaybackSessionMutation | null }>
   startPositionSeconds?: number
   /** Takes the place of the start position when this playback replaces one the viewer was watching. */
@@ -150,7 +156,11 @@ function startSessionPlayback({
   dynamicRange: initialDynamicRange,
 }: PlayerPlaybackOptions & { dynamicRange: DynamicRangeChoice }): SessionPlayback {
   let source: StreamSource | null = null
-  let declaration: ClientCapabilityDeclarationInput = { video: [], audio: [] }
+  let declaration: ClientCapabilityDeclarationInput = {
+    video: [],
+    audio: [],
+    selectsAudioTrackInDirectPlay: false,
+  }
   let dynamicRange = initialDynamicRange
   let cancelled = false
   let sessionId: string | null = null
@@ -158,7 +168,7 @@ function startSessionPlayback({
   let sourceGeneration = 0
   let reportingFormat = false
   let statusCheck: PlaybackStatusCheck | undefined
-  const startAt = resumeFrom?.position ?? startPositionSeconds
+  let startAt = resumeFrom?.position ?? startPositionSeconds
   let resume: ResumePoint | undefined = resumeFrom && { ...resumeFrom }
   let lastReportedPosition = startAt ?? 0
   let lastKnownPosition: number | null = null
@@ -550,7 +560,15 @@ function startSessionPlayback({
         return
       }
       // The UI deadline must not discard a late session ID that still needs destruction.
-      const result = await createPlaybackSession(capabilities)
+      let result = await createPlaybackSession({
+        capabilities,
+        startPositionSeconds: startAt === 0 ? undefined : startAt,
+      })
+      // Watch progress belongs to the title, so a longer cut's progress can pass this file's end.
+      if (!cancelled && refusedTheStartPosition(result.data?.createPlaybackSession)) {
+        startFromTheBeginning()
+        result = await createPlaybackSession({ capabilities })
+      }
       const payload = result.data?.createPlaybackSession
       const initialPlayback = payload?.playbackSession
       playbackSessionId = initialPlayback?.id ?? null
@@ -572,6 +590,12 @@ function startSessionPlayback({
         showFailure(PLAYBACK_FAILURE_MESSAGE)
       }
     })
+
+  function startFromTheBeginning() {
+    startAt = undefined
+    lastReportedPosition = 0
+    if (resume) resume.position = 0
+  }
 
   function adoptPlayback(playback: PlaybackSessionFieldsFragment | null | undefined) {
     const attempt = playback?.currentFormatAttempt
@@ -683,12 +707,23 @@ function startSessionPlayback({
   }
 
   function currentResumePoint(): ResumePoint {
+    const playing = !playRequested || !video.paused
+    // No playback session starts at the end of the media, and a short copy holds nothing past its
+    // real end. As the element does after its own end, playing where playback ended starts from
+    // the top.
+    if (
+      video.ended ||
+      (realEnd !== null && video.currentTime >= realEnd) ||
+      (endedAtRealEnd && video.currentTime === endedPosition)
+    ) {
+      return { position: 0, playing }
+    }
     return {
       position:
         video.readyState >= HTMLMediaElement.HAVE_METADATA
           ? video.currentTime
           : (startAt ?? video.currentTime),
-      playing: !playRequested || !video.paused,
+      playing,
     }
   }
 
@@ -1076,6 +1111,13 @@ function createStartupDeadline(onExpired: () => void): StartupDeadline {
       phase = arm()
     },
   }
+}
+
+function refusedTheStartPosition(payload: PlaybackSessionPayload | undefined): boolean {
+  return (
+    payload?.userErrors.some((refusal) => refusal.__typename === 'StartPositionOutOfRangeError') ??
+    false
+  )
 }
 
 function refusalMessage(payload: PlaybackSessionPayload | undefined): string {

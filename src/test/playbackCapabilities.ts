@@ -41,6 +41,7 @@ export const MINIMAL_DECLARATION: ClientCapabilityDeclarationInput = {
     },
   ],
   audio: [{ codec: 'AAC', maxChannels: 2, hls: true }],
+  selectsAudioTrackInDirectPlay: false,
 }
 
 /**

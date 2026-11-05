@@ -144,7 +144,7 @@ function serveSessionRecordingDeclarations(): ClientCapabilityDeclarationInput[]
 
 // Each creation answers a new playback session that names the choice asked for, Auto when none
 // was, or the one `playing` says the server plays instead, with the format change `formatChange`
-// names. Every creation and destruction joins the log.
+// names. Every creation, with the start position it names, and every destruction joins the log.
 function servePlaybackChoices({
   playing = (requested) => requested,
   formatChange = () => null,
@@ -157,8 +157,10 @@ function servePlaybackChoices({
   const log: string[] = []
   server.use(
     graphql.mutation('CreatePlaybackSession', ({ variables }) => {
-      const { options } = (variables as { input: CreatePlaybackSessionInput }).input
-      log.push(`create ${options?.quality ?? 'without a choice'}`)
+      const { options, startPositionSeconds } = (variables as { input: CreatePlaybackSessionInput })
+        .input
+      const startsAt = startPositionSeconds == null ? '' : ` at ${startPositionSeconds}`
+      log.push(`create ${options?.quality ?? 'without a choice'}${startsAt}`)
       const requested = options?.quality ?? 'AUTO'
       const number = log.filter((entry) => entry.startsWith('create')).length
       return HttpResponse.json({
@@ -432,11 +434,11 @@ function recordTimelineReports(): TimelineReport[] {
   return reports
 }
 
-function countCreatedSessions(): { count: number } {
-  const created = { count: 0 }
+function recordCreatedSessions(): CreatePlaybackSessionInput[] {
+  const created: CreatePlaybackSessionInput[] = []
   server.use(
-    graphql.mutation('CreatePlaybackSession', () => {
-      created.count += 1
+    graphql.mutation('CreatePlaybackSession', ({ variables }) => {
+      created.push((variables as { input: CreatePlaybackSessionInput }).input)
       return HttpResponse.json({
         data: {
           createPlaybackSession: {
@@ -589,13 +591,14 @@ async function videoWhen(
   return fakeMedia(video)
 }
 
-// jsdom's media element has no timeline and cannot load or play. Own currentTime, readyState and
-// paused let tests observe the seek, move the playhead, load the stream and press play; load()
-// resets the element as a browser does, firing emptied but no pause, and play() and pause() flip
-// paused.
+// jsdom's media element has no timeline and cannot load or play. Own currentTime, readyState,
+// paused and ended let tests observe the seek, move the playhead, load the stream, press play and
+// reach the end; load() resets the element as a browser does, firing emptied but no pause, and
+// play() and pause() flip paused.
 function fakeMedia(video: HTMLVideoElement): HTMLVideoElement {
   Object.defineProperty(video, 'currentTime', { writable: true, value: 0, configurable: true })
   Object.defineProperty(video, 'paused', { writable: true, value: true, configurable: true })
+  setEnded(video, false)
   setDuration(video, Number.NaN)
   setReadyState(video, HTMLMediaElement.HAVE_NOTHING)
   Object.defineProperty(video, 'play', {
@@ -620,6 +623,7 @@ function fakeMedia(video: HTMLVideoElement): HTMLVideoElement {
     value: () => {
       const rewound = video.currentTime !== 0
       Object.defineProperty(video, 'paused', { writable: true, value: true, configurable: true })
+      setEnded(video, false)
       setReadyState(video, HTMLMediaElement.HAVE_NOTHING)
       setDuration(video, Number.NaN)
       video.currentTime = 0
@@ -634,6 +638,10 @@ function fakeMedia(video: HTMLVideoElement): HTMLVideoElement {
 
 function setReadyState(video: HTMLVideoElement, readyState: number) {
   Object.defineProperty(video, 'readyState', { value: readyState, configurable: true })
+}
+
+function setEnded(video: HTMLVideoElement, ended: boolean) {
+  Object.defineProperty(video, 'ended', { value: ended, configurable: true })
 }
 
 function setDuration(video: HTMLVideoElement, seconds: number) {
@@ -852,7 +860,8 @@ const NATIVE_WAITING_POINTS = [
 // A browser that reaches the end fires timeupdate, then pause, then ended.
 function playedToTheEnd(video: HTMLVideoElement, durationSeconds: number) {
   playheadAt(video, durationSeconds)
-  fireEvent(video, new Event('pause'))
+  pressPause(video)
+  setEnded(video, true)
   fireEvent(video, new Event('ended'))
 }
 
@@ -3065,6 +3074,76 @@ describe('Player', () => {
     expect(video.currentTime).toBe(0)
   })
 
+  it('shouldAskTheServerToStartThePlaybackSessionAtTheStartPosition', async () => {
+    const created = recordCreatedSessions()
+    renderWithProviders(
+      <Player
+        playbackPlatform={withoutDecodingInfo}
+        mediaFileId="abcd"
+        startPositionSeconds={143.5}
+      />,
+    )
+
+    await attachedVideo()
+
+    expect(created.map((input) => input.startPositionSeconds)).toEqual([143.5])
+  })
+
+  it('shouldStartFromTheBeginningWhenTheServerRefusesTheStartPositionAsPastTheEnd', async () => {
+    const created: CreatePlaybackSessionInput[] = []
+    server.use(
+      graphql.mutation('CreatePlaybackSession', ({ variables }) => {
+        const { input } = variables as { input: CreatePlaybackSessionInput }
+        created.push(input)
+        const refused = input.startPositionSeconds != null
+        return HttpResponse.json({
+          data: {
+            createPlaybackSession: {
+              playbackSession: refused ? null : readyPlaybackSession({ streamSession: SESSION }),
+              userErrors: refused
+                ? [
+                    {
+                      __typename: 'StartPositionOutOfRangeError',
+                      message:
+                        'The start position lies before 0, or at or past the end of the media.',
+                      inputPath: ['input', 'startPositionSeconds'],
+                    },
+                  ]
+                : [],
+            },
+          },
+        })
+      }),
+    )
+    recordTimelineReports()
+    // Watch progress belongs to the title, so a longer cut's progress can pass this file's end.
+    renderWithProviders(
+      <Player
+        playbackPlatform={withoutDecodingInfo}
+        mediaFileId="abcd"
+        startPositionSeconds={9000}
+      />,
+    )
+
+    const video = await attachedVideo()
+    loadMetadata(video)
+
+    expect(created.map((input) => input.startPositionSeconds)).toEqual([9000, undefined])
+    expect(video.currentTime).toBe(0)
+    expect(video.paused).toBe(false)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('shouldNameNoStartPositionToTheServerWhenPlaybackStartsAtTheBeginning', async () => {
+    const created = recordCreatedSessions()
+    renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+
+    await attachedVideo()
+
+    expect(created).toHaveLength(1)
+    expect(created[0]).not.toHaveProperty('startPositionSeconds')
+  })
+
   it.each(STREAM_PATHS)(
     'shouldStartPlaybackOnceTheStreamLoadsOnThe%s',
     async (_path, { supported, streamingVideo }) => {
@@ -3469,7 +3548,7 @@ describe('Player', () => {
     })
 
     it('shouldStartANewPlaybackSessionWhereTheViewerLeftWhenThePageReturnsFromTheBackForwardCache', async () => {
-      const created = countCreatedSessions()
+      const created = recordCreatedSessions()
       const closed = recordClosedSessions()
       renderWithProviders(
         <Player
@@ -3487,14 +3566,14 @@ describe('Player', () => {
 
       await waitFor(() => expect(hls.loadSource).toHaveBeenCalledTimes(2))
       loadMetadata(video)
-      expect(created.count).toBe(2)
+      expect(created.map((input) => input.startPositionSeconds)).toEqual([10, 42])
       expect(closed).toEqual([{ playbackSessionId: 'playback-sess-1', keepalive: true }])
       expect(video.currentTime).toBe(42)
       expect(video.paused).toBe(false)
     })
 
     it('shouldKeepAPausedVideoPausedWhenThePageReturnsFromTheBackForwardCache', async () => {
-      countCreatedSessions()
+      recordCreatedSessions()
       renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await attachedVideo()
       loadMetadata(video)
@@ -3511,7 +3590,7 @@ describe('Player', () => {
     })
 
     it('shouldKeepAPausedVideoPausedWhenThePageReturnsFromTheBackForwardCacheASecondTime', async () => {
-      countCreatedSessions()
+      recordCreatedSessions()
       renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await attachedVideo()
       loadMetadata(video)
@@ -3627,7 +3706,7 @@ describe('Player', () => {
     })
 
     it('shouldStartTheRestoredSessionWithoutWaitingForATimelineReportHeldWhenThePageWasHidden', async () => {
-      const created = countCreatedSessions()
+      const created = recordCreatedSessions()
       const reportStarted = deferred()
       const reportHeld = deferred()
       server.use(
@@ -3646,13 +3725,13 @@ describe('Player', () => {
       restoreThePage()
 
       await waitFor(() => expect(hls.loadSource).toHaveBeenCalledTimes(2))
-      expect(created.count).toBe(2)
+      expect(created).toHaveLength(2)
       reportHeld.resolve()
     })
 
     it('shouldResumeWhereTheViewerLeftWhenThePageIsHiddenWhileAnotherFormatStarts', async () => {
       hls.supported = false
-      countCreatedSessions()
+      recordCreatedSessions()
       const formatReported = deferred()
       server.use(
         graphql.mutation('ReportPlaybackFormatFailure', async () => {
@@ -3743,7 +3822,7 @@ describe('Player', () => {
     })
 
     it('shouldOfferRetryRatherThanStartAgainWhenThePageReturnsAfterStartupTimedOut', async () => {
-      const created = countCreatedSessions()
+      const created = recordCreatedSessions()
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
       renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       await attachedVideo()
@@ -3755,25 +3834,25 @@ describe('Player', () => {
       restoreThePage()
 
       expect(screen.getByRole('alert')).toHaveTextContent('Playback is taking too long to start.')
-      expect(created.count).toBe(1)
+      expect(created).toHaveLength(1)
       expect(hls.loadSource).toHaveBeenCalledOnce()
     })
 
     it('shouldKeepPlayingWhenThePageIsShownWithoutHavingBeenHidden', async () => {
-      const created = countCreatedSessions()
+      const created = recordCreatedSessions()
       const closed = recordClosedSessions()
       renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       await attachedVideo()
 
       restoreThePage()
 
-      expect(created.count).toBe(1)
+      expect(created).toHaveLength(1)
       expect(closed).toEqual([])
       expect(hls.destroy).not.toHaveBeenCalled()
     })
 
     it('shouldStopWatchingThePageWhenThePlayerUnmounts', async () => {
-      const created = countCreatedSessions()
+      const created = recordCreatedSessions()
       const closed = recordClosedSessions()
       const { unmount } = renderWithProviders(
         <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
@@ -3788,7 +3867,7 @@ describe('Player', () => {
       restoreThePage()
 
       expect(closed).toHaveLength(1)
-      expect(created.count).toBe(1)
+      expect(created).toHaveLength(1)
     })
   })
 
@@ -5032,7 +5111,7 @@ describe('Player', () => {
     it.each([true, false])(
       'shouldResumeAtThePlayheadWhenTheViewerPicksAnotherQuality(playing: %s)',
       async (playing) => {
-        servePlaybackChoices()
+        const log = servePlaybackChoices()
         const { user } = renderWithProviders(
           <Player
             playbackPlatform={withoutDecodingInfo}
@@ -5050,10 +5129,38 @@ describe('Player', () => {
 
         await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(choiceStreamUrl(2)))
         loadMetadata(video)
+        expect(log).toEqual([
+          'create AUTO at 12',
+          'destroy playback-1',
+          'create HIGH_720P at 73.25',
+        ])
         expect(video.currentTime).toBe(73.25)
         expect(video.paused).toBe(!playing)
       },
     )
+
+    it('shouldStartThePickedQualityFromTheBeginningWhenPlaybackHasEnded', async () => {
+      const log = servePlaybackChoices()
+      const { user } = renderWithProviders(
+        <Player
+          playbackPlatform={withoutDecodingInfo}
+          mediaFileId="abcd"
+          startPositionSeconds={12}
+        />,
+      )
+      const video = await attachedVideo(choiceStreamUrl(1))
+      loadMetadata(video)
+      playedToTheEnd(video, 2824)
+      hls.destroy.mockImplementationOnce(() => video.load())
+
+      await pickQuality(user, '720p')
+
+      await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(choiceStreamUrl(2)))
+      loadMetadata(video)
+      expect(log).toEqual(['create AUTO at 12', 'destroy playback-1', 'create HIGH_720P'])
+      expect(video.currentTime).toBe(0)
+      expect(video.paused).toBe(true)
+    })
 
     it('shouldStayPausedWhenTheViewerPicksAgainAfterPickingWhilePaused', async () => {
       servePlaybackChoices()
@@ -5102,8 +5209,8 @@ describe('Player', () => {
         loadMetadata(video)
         expect(log.filter((entry) => entry.startsWith('create'))).toEqual([
           'create AUTO',
-          'create HIGH_720P',
-          'create HIGH_720P',
+          'create HIGH_720P at 73.25',
+          'create HIGH_720P at 80',
         ])
         expect(closed).toContainEqual({ playbackSessionId: 'playback-2', keepalive: true })
         expect(video.currentTime).toBe(80)
@@ -5173,9 +5280,9 @@ describe('Player', () => {
       await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(choiceStreamUrl(3)))
       loadMetadata(video)
       expect(log.filter((entry) => entry.startsWith('create'))).toEqual([
-        'create AUTO',
-        'create HIGH_720P',
-        'create HIGH_720P',
+        'create AUTO at 12',
+        'create HIGH_720P at 73.25',
+        'create HIGH_720P at 12',
       ])
       expect(video.currentTime).toBe(12)
       expect(video.paused).toBe(false)
@@ -5197,9 +5304,9 @@ describe('Player', () => {
       loadMetadata(video)
       expect(video.currentTime).toBe(120)
       expect(log.filter((entry) => entry.startsWith('create'))).toEqual([
-        'create AUTO',
-        'create HIGH_720P',
-        'create AUTO',
+        'create AUTO at 12',
+        'create HIGH_720P at 73.25',
+        'create AUTO at 120',
       ])
     })
 
@@ -5220,7 +5327,7 @@ describe('Player', () => {
       expect(video.currentTime).toBe(0)
       expect(log.filter((entry) => entry.startsWith('create'))).toEqual([
         'create AUTO',
-        'create HIGH_720P',
+        'create HIGH_720P at 73.25',
         'create AUTO',
       ])
       expect(screen.getByRole('button', { name: 'Quality: Auto' })).toBeInTheDocument()
@@ -5855,6 +5962,26 @@ describe('Player', () => {
       expect(video.currentTime).toBe(0)
       expect(video.paused).toBe(false)
     })
+
+    it.each([
+      { sought: 'nowhere', seekTo: null, startPosition: undefined },
+      { sought: 'back', seekTo: 600, startPosition: 600 },
+      { sought: 'past the real end', seekTo: REAL_END_SECONDS + 5, startPosition: undefined },
+    ])(
+      'shouldStartTheReturningPageAtItsPlayheadOnlyWhenTheViewerSoughtAfterTheRealEnd(sought $sought)',
+      async ({ seekTo, startPosition }) => {
+        const { video } = await playTheShortCopy()
+        stallAt(video, REAL_END_SECONDS - 2)
+        if (seekTo !== null) playheadAt(video, seekTo)
+        const created = recordCreatedSessions()
+
+        hideThePage({ persisted: true })
+        restoreThePage()
+
+        await waitFor(() => expect(created).toHaveLength(1))
+        expect(created[0]?.startPositionSeconds).toBe(startPosition)
+      },
+    )
 
     it('shouldPlayOnFromTheViewersSeekWhenTheViewerSeeksBackAfterTheRealEnd', async () => {
       const { video } = await playTheShortCopy()

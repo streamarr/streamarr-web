@@ -22,8 +22,10 @@
       "LibraryPathNotDirectoryError",
       "LibraryPathNotFoundError",
       "LibraryPathNotReadableError",
+      "LibraryPathOutsideMediaRootError",
       "LibraryPathOverlapError",
-      "LibraryPathRequiredError"
+      "LibraryPathRequiredError",
+      "LibraryPathThroughSoftLinkError"
     ],
     "AdministrativelyDeleteAccountError": [
       "AccountNotFoundError",
@@ -116,6 +118,10 @@
       "RestrictedAccountCannotAdministerError",
       "RestrictedProfileRequiresHouseholdAdminError"
     ],
+    "ClearLanguageOverrideError": [
+      "InvalidIdError",
+      "ItemNotFoundError"
+    ],
     "ContinueWatchingMedia": [
       "Episode",
       "Movie"
@@ -124,6 +130,7 @@
       "HouseholdNameRequiredError"
     ],
     "CreatePlaybackSessionError": [
+      "AudioMinBlockSizeInvalidError",
       "CapabilityListTooLongError",
       "CapabilityMaximumInvalidError",
       "CapabilityProfileMismatchError",
@@ -137,6 +144,7 @@
       "MediaFileProbeNotReadyError",
       "NoEligibleVideoFormatError",
       "PlaybackSessionClosedError",
+      "StartPositionOutOfRangeError",
       "TranscodeCapacityUnavailableError",
       "VideoCodecTierInvalidError"
     ],
@@ -227,6 +235,8 @@
     "InputMutationError": [
       "AccountNotFoundError",
       "AlreadyManagerError",
+      "AudioMinBlockSizeInvalidError",
+      "AudioTrackNotInFileError",
       "CapabilityListTooLongError",
       "CapabilityMaximumInvalidError",
       "CapabilityProfileMismatchError",
@@ -256,8 +266,10 @@
       "LibraryPathNotDirectoryError",
       "LibraryPathNotFoundError",
       "LibraryPathNotReadableError",
+      "LibraryPathOutsideMediaRootError",
       "LibraryPathOverlapError",
       "LibraryPathRequiredError",
+      "LibraryPathThroughSoftLinkError",
       "LinkProfileNotFoundError",
       "ManagerInvitationNotFoundError",
       "MaximumAllowedRatingAgeInvalidError",
@@ -275,6 +287,7 @@
       "RegistrationNotFoundError",
       "ReofferHouseholdNotFoundError",
       "ReofferHouseholdNotSharedError",
+      "RepeatedAudioLanguageError",
       "ReplacementManagerRequiredError",
       "RestrictedAccountCannotAdministerError",
       "RestrictedHouseholdAdminError",
@@ -282,6 +295,8 @@
       "ShareNotActiveError",
       "ShareNotFoundError",
       "ShareNotPendingError",
+      "StartPositionOutOfRangeError",
+      "TooManyAudioLanguagesError",
       "UnknownEncoderPresetError",
       "VideoCodecTierInvalidError"
     ],
@@ -321,6 +336,12 @@
       "ReasonRequiredError",
       "ReauthenticationRequiredError"
     ],
+    "LanguagePreferenceItem": [
+      "Episode",
+      "Movie",
+      "Season",
+      "Series"
+    ],
     "MarkUnwatchedError": [
       "InvalidIdError",
       "ItemNotFoundError"
@@ -337,6 +358,8 @@
       "AccountNotFoundError",
       "AccountsRemainError",
       "AlreadyManagerError",
+      "AudioMinBlockSizeInvalidError",
+      "AudioTrackNotInFileError",
       "CapabilityListTooLongError",
       "CapabilityMaximumInvalidError",
       "CapabilityProfileMismatchError",
@@ -372,8 +395,10 @@
       "LibraryPathNotDirectoryError",
       "LibraryPathNotFoundError",
       "LibraryPathNotReadableError",
+      "LibraryPathOutsideMediaRootError",
       "LibraryPathOverlapError",
       "LibraryPathRequiredError",
+      "LibraryPathThroughSoftLinkError",
       "LibraryRefreshNotInProgressError",
       "LibraryScanNotInProgressError",
       "LinkProfileNotFoundError",
@@ -410,6 +435,7 @@
       "RegistrationNotFoundError",
       "ReofferHouseholdNotFoundError",
       "ReofferHouseholdNotSharedError",
+      "RepeatedAudioLanguageError",
       "ReplacementManagerRequiredError",
       "RestrictedAccountCannotAdministerError",
       "RestrictedFirstAccountError",
@@ -420,6 +446,8 @@
       "ShareNotActiveError",
       "ShareNotFoundError",
       "ShareNotPendingError",
+      "StartPositionOutOfRangeError",
+      "TooManyAudioLanguagesError",
       "TranscodeCapacityUnavailableError",
       "UnknownEncoderPresetError",
       "VideoCodecTierInvalidError"
@@ -450,6 +478,7 @@
       "PlaybackInvalidSpecificationError",
       "PlaybackOutputMismatchError",
       "PlaybackStartupFailedError",
+      "StartPositionOutOfRangeError",
       "TranscodeCapacityUnavailableError"
     ],
     "RejectProfileShareError": [
@@ -518,6 +547,14 @@
       "ReasonRequiredError",
       "ReauthenticationRequiredError"
     ],
+    "SetLanguageOverrideError": [
+      "InvalidIdError",
+      "ItemNotFoundError"
+    ],
+    "SetLanguagePreferencesError": [
+      "RepeatedAudioLanguageError",
+      "TooManyAudioLanguagesError"
+    ],
     "SetProfileMaximumAllowedRatingAgeError": [
       "MaximumAllowedRatingAgeInvalidError",
       "ProfileNotFoundError",
@@ -556,6 +593,21 @@
     "StreamSession": [
       "DirectPlayStreamSession",
       "HlsStreamSession"
+    ],
+    "SwitchPlaybackAudioTrackError": [
+      "AudioTrackNotInFileError",
+      "InvalidIdError",
+      "InvalidMediaFileError",
+      "MediaFileFrameRateUnknownError",
+      "MediaFileHasNoVideoError",
+      "MediaFileNotFoundError",
+      "MediaFileProbeNotReadyError",
+      "NoEligibleVideoFormatError",
+      "PlaybackFormatAttemptsExhaustedError",
+      "PlaybackSessionClosedError",
+      "PlaybackStartupFailedError",
+      "StartPositionOutOfRangeError",
+      "TranscodeCapacityUnavailableError"
     ],
     "TransferAccountError": [
       "AccountNotFoundError",
