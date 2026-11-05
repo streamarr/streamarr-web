@@ -31,7 +31,10 @@ const video = document.querySelector('video')!
 const start = document.querySelector('button')!
 // Every hls.js and media error since the page loaded, to explain a stream that did not play.
 const errors: string[] = []
-const hls: Hls = new Hls(hlsPlaybackConfig(() => hls))
+// The test streams are SDR, so the page asks for SDR as a client that declares no HDR range does.
+const hls: Hls = new Hls(
+  hlsPlaybackConfig(() => hls, { preferHDR: false, allowedVideoRanges: ['SDR'] }),
+)
 hls.on(Hls.Events.ERROR, (_, data) => {
   errors.push(
     `hls.js ${data.fatal ? 'fatal' : 'non-fatal'} ${data.details}: ${data.error?.message}`,
