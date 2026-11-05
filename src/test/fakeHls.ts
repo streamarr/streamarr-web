@@ -13,6 +13,7 @@ export interface FakeHlsTrack {
 
 /** A variant as hls.js parses it from the multivariant playlist. */
 export interface FakeHlsLevel {
+  height: number
   bitrate: number
   videoCodec?: string
   audioCodec?: string

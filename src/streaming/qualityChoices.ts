@@ -29,10 +29,15 @@ export function qualityLabel(choice: VideoQuality): string | undefined {
   return QUALITY_LABELS.get(choice)
 }
 
+/** Whether a playback choice's name says how large the picture is, as 1080p does and Auto does not. */
+export function namesPictureSize(choice: VideoQuality): boolean {
+  return !SIZELESS_CHOICES.has(choice)
+}
+
 /** What the quality chip shows for a playback choice playing at `videoHeight` pixels, 0 if unknown. */
 export function qualityChipValue(choice: VideoQuality, videoHeight: number): string | undefined {
   const label = qualityLabel(choice)
-  if (!label || videoHeight <= 0 || !SIZELESS_CHOICES.has(choice)) {
+  if (!label || videoHeight <= 0 || namesPictureSize(choice)) {
     return label
   }
   return `${label} · ${videoHeight}p`

@@ -5,7 +5,7 @@
   top: var(--spacing-24);
   right: var(--spacing-page);
   box-sizing: border-box;
-  width: min(420px, calc(100% - 2 * var(--spacing-16)));
+  width: min(760px, calc(100% - 2 * var(--spacing-16)));
   max-height: calc(100% - 2 * var(--spacing-24) - 120px);
   padding: var(--spacing-12) var(--spacing-16) var(--spacing-16);
   overflow-y: auto;
@@ -16,6 +16,7 @@
   font-size: var(--font-size-caption);
   line-height: var(--line-height-prose);
   color: var(--text-primary);
+  container-type: inline-size;
 
   @media (max-width: 48em) {
     top: var(--spacing-16);
@@ -75,4 +76,42 @@
 .note {
   margin: var(--spacing-10) 0 0;
   color: var(--text-secondary);
+}
+
+.streamReason {
+  margin: var(--spacing-4) 0 0;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-6);
+  margin: var(--spacing-10) 0 0;
+}
+
+.chip {
+  display: flex;
+  gap: var(--spacing-6);
+  padding: var(--spacing-4) var(--spacing-10);
+  border-radius: var(--radius-md);
+  background: var(--color-alpha-10);
+}
+
+.chipName {
+  color: var(--text-secondary);
+}
+
+.chipValue {
+  margin: 0;
+  font-weight: var(--font-weight-medium);
+}
+
+/* Server beside Player and This screen once the panel is wide enough for both tables. */
+.columns {
+  display: grid;
+  gap: 0 var(--spacing-20);
+
+  @container (min-width: 600px) {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  }
 }

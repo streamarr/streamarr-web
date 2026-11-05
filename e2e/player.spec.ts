@@ -1299,6 +1299,10 @@ function factIn(panel: Locator, group: string, name: string): Locator {
     .locator('xpath=following-sibling::dd')
 }
 
+function trackIn(panel: Locator, name: string): Locator {
+  return panel.getByRole('region', { name: 'Server' }).getByRole('region', { name })
+}
+
 test('playback data shows what hls.js reports of the playing variant and why the server encodes', async ({
   page,
   request,
@@ -1313,17 +1317,18 @@ test('playback data shows what hls.js reports of the playing variant and why the
 
   const panel = await openPlaybackData(page)
 
+  await expect(factIn(panel, 'Player', 'Quality step')).toHaveText('720p · 2 Mb/s (1 of 1)')
   await expect(factIn(panel, 'Player', 'Resolution')).toHaveText('1280×720')
-  await expect(factIn(panel, 'Player', 'Bitrate')).toHaveText('2 Mb/s')
   await expect(factIn(panel, 'Player', 'Video codec')).toHaveText('avc1.64001f')
-  await expect(factIn(panel, 'Player', 'Audio format')).toHaveText('mp4a.40.2 · 2 channels')
+  await expect(factIn(panel, 'Player', 'Audio')).toHaveText('mp4a.40.2 · Stereo')
   await expect(factIn(panel, 'Player', 'HDR mode')).toHaveText('SDR')
-  await expect(factIn(panel, 'Server', 'Video')).toHaveText('Encode')
-  await expect(factIn(panel, 'Server', 'Video source')).toHaveText(
-    'HEVC · 1280×720 · 25 fps · SDR · 6 Mb/s',
-  )
-  await expect(panel.getByRole('list', { name: 'Reasons' })).toHaveText(
-    'This device does not declare the video codec.',
+  await expect(factIn(panel, 'This screen', 'Display')).toHaveText(/^\d+×\d+ at [\d.]+×$/)
+  await expect(factIn(panel, 'This screen', 'Browser')).toHaveText(/^Chrome \d+$/)
+  const video = trackIn(panel, 'Video')
+  await expect(video.getByRole('heading')).toHaveText('Video Encode')
+  await expect(video.getByRole('row', { name: /^Codec \(changed\)/ })).toHaveText(/HEVC\s*H\.264/)
+  await expect(video.getByRole('list', { name: 'Video reasons' })).toHaveText(
+    "This device can't play the video's codec (HEVC).",
   )
 
   await panel.getByRole('button', { name: 'Close playback data' }).click()
@@ -1341,7 +1346,7 @@ test('on a phone held upright playback data stays on screen below Back', async (
 
   const panel = await openPlaybackData(page)
 
-  await expect(factIn(panel, 'Server', 'Video')).toHaveText('Encode')
+  await expect(trackIn(panel, 'Video').getByRole('heading')).toHaveText('Video Encode')
   const box = await panel.boundingBox()
   const back = await page.getByRole('button', { name: 'Back', exact: true }).boundingBox()
   expect(box && back).not.toBeNull()

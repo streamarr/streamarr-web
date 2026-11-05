@@ -5,7 +5,7 @@ import { CreatePlaybackSessionDocument, type VideoQuality } from '../graphql/gen
 import { DetailBackButton } from '../media/DetailBack'
 import focusStyles from '../styles/focus.module.css'
 import { BufferingRing } from './BufferingRing'
-import { PlaybackData, type PlaybackDataStream } from './PlaybackData'
+import { PlaybackData, type PlaybackDataScreen, type PlaybackDataStream } from './PlaybackData'
 import { PlaybackNotice } from './PlaybackNotice'
 import { declarePlaybackCapabilities, type PlaybackPlatform } from './playbackCapabilities'
 import styles from './Player.module.css'
@@ -78,7 +78,8 @@ export function Player({
   }
   const { notice, marks, followPlaybackSession, announce } = usePlaybackFallbacks(choice.start)
   const [picker, setPicker] = useState<PickerKind | null>(null)
-  const [playbackDataShown, setPlaybackDataShown] = useState(false)
+  // The screen as the browser reported it when the viewer opened playback data; null while closed.
+  const [playbackDataScreen, setPlaybackDataScreen] = useState<PlaybackDataScreen | null>(null)
   const tracks = sourcePhase.at === 'attached' ? sourcePhase.tracks : null
   const qualities = sourcePhase.at === 'attached' ? sourcePhase.qualities : null
   const quality = {
@@ -158,9 +159,21 @@ export function Player({
           playbackSessionId: sourcePhase.playbackSessionId,
           streamSessionId: sourcePhase.streamSessionId,
           videoRange: sourcePhase.videoRange,
+          requestedChoice: sourcePhase.qualities.requested,
+          sourceContainer: sourcePhase.sourceContainer,
           streamStats: sourcePhase.streamStats,
         }
       : null
+
+  function togglePlaybackData() {
+    const video = videoRef.current
+    if (playbackDataScreen || !video) {
+      setPlaybackDataScreen(null)
+      return
+    }
+    const { screen, displaysHighDynamicRange, userAgent } = playbackPlatform(video)
+    setPlaybackDataScreen({ screen, displaysHighDynamicRange, userAgent })
+  }
 
   // The pick's resume point is long past by now, so Retry starts where playback first started.
   function retry() {
@@ -190,11 +203,12 @@ export function Player({
         </div>
         <PlaybackNotice notice={notice} />
       </div>
-      {playbackDataShown && (
+      {playbackDataScreen && (
         <PlaybackData
           videoRef={videoRef}
           stream={describedStream}
-          onClose={() => setPlaybackDataShown(false)}
+          screen={playbackDataScreen}
+          onClose={() => setPlaybackDataScreen(null)}
         />
       )}
       <PlayerControls
@@ -209,8 +223,8 @@ export function Player({
         onChooseQuality={chooseQuality}
         openPicker={openPicker}
         onOpenPicker={setPicker}
-        playbackDataShown={playbackDataShown}
-        onTogglePlaybackData={() => setPlaybackDataShown((shown) => !shown)}
+        playbackDataShown={playbackDataScreen !== null}
+        onTogglePlaybackData={togglePlaybackData}
         title={title}
       />
     </section>
