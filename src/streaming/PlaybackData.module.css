@@ -1,11 +1,14 @@
-/* The panel holds the top right over the video, beside Back, and scrolls when the player is short. */
+/*
+ * The panel holds the top right over the video, beside Back, and scrolls when the player is short.
+ * Once the player is too narrow for both side by side, it sits below Back.
+ */
 .panel {
   position: absolute;
   z-index: 1;
   top: var(--spacing-24);
   right: var(--spacing-page);
   box-sizing: border-box;
-  width: min(760px, calc(100% - 2 * var(--spacing-16)));
+  width: min(760px, calc(100% - 2 * var(--spacing-page)));
   max-height: calc(100% - 2 * var(--spacing-24) - 120px);
   padding: var(--spacing-12) var(--spacing-16) var(--spacing-16);
   overflow-y: auto;
@@ -18,14 +21,15 @@
   color: var(--text-primary);
   container-type: inline-size;
 
-  @media (max-width: 48em) {
-    top: var(--spacing-16);
-    right: var(--spacing-16);
+  @media (max-width: 1000px) {
+    top: calc(var(--spacing-24) + 56px);
+    max-height: calc(100% - var(--spacing-24) - 56px - 120px);
   }
 
-  /* Below the corner's Back button on a narrow player. */
-  @media (max-width: 600px) {
+  @media (max-width: 48em) {
     top: calc(var(--spacing-16) + 56px);
+    right: var(--spacing-16);
+    width: calc(100% - 2 * var(--spacing-16));
     max-height: calc(100% - var(--spacing-16) - 56px - 120px);
   }
 }
