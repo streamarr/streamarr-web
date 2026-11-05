@@ -21,12 +21,21 @@ function describeRefusal(status: number, code: string | null) {
   return code ? `${status}: ${code}` : String(status)
 }
 
-export async function postJson<T>(url: string, body: unknown): Promise<T> {
-  const response = await request(url, {
-    method: 'POST',
-    body: JSON.stringify(body),
-    headers: { 'Content-Type': 'application/json' },
-  })
+export interface RequestOptions {
+  /** False once a CSRF retry would act for another identity than the first attempt's. */
+  mayResend?: () => boolean
+}
+
+export async function postJson<T>(
+  url: string,
+  body: unknown,
+  options: RequestOptions = {},
+): Promise<T> {
+  const response = await request(
+    url,
+    { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } },
+    options,
+  )
   return (await parse(response)) as T
 }
 
@@ -35,13 +44,17 @@ export async function getJson<T>(url: string): Promise<T> {
   return (await parse(response)) as T
 }
 
-export async function request(url: string, init: RequestInit): Promise<Response> {
+export async function request(
+  url: string,
+  init: RequestInit,
+  { mayResend = () => true }: RequestOptions = {},
+): Promise<Response> {
   const unsafe = !SAFE_METHODS.has(init.method?.toUpperCase() ?? 'GET')
   const send = () =>
     fetch(url, { ...init, headers: requestHeaders(init, unsafe), credentials: 'same-origin' })
 
   const response = await send()
-  if (!unsafe || !(await isCsrfRejected(response))) {
+  if (!unsafe || !(await isCsrfRejected(response)) || !mayResend()) {
     return checked(response)
   }
   // Callers must supply a replayable body; postJson's serialized string is safe to reuse.

@@ -56,6 +56,8 @@ export interface IdentitySwitch {
   succeeded: () => void
   /** The identity did not change, so the operations held since the switch began go out now. */
   failed: () => void
+  /** False once a sign-in or sign-out has outdated the switch. */
+  isCurrent: () => boolean
 }
 
 interface HeldOperation {
@@ -126,6 +128,7 @@ class IdentitySwitchGate {
         settle((entry) => entry.refuse())
       },
       failed: () => settle((entry) => (this.awaitingReset ? entry.refuse() : entry.send())),
+      isCurrent: () => epoch === this.epoch,
     }
   }
 

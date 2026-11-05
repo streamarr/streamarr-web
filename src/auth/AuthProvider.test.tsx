@@ -1,6 +1,7 @@
 import type { ApolloClient } from '@apollo/client'
 import { ApolloProvider } from '@apollo/client/react'
 import { render, screen, waitFor } from '@testing-library/react'
+import { useState } from 'react'
 import userEvent from '@testing-library/user-event'
 import { graphql, HttpResponse, http } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
@@ -54,6 +55,26 @@ function PinHarness() {
     <button onClick={() => void auth.selectProfile('profile-2', '0000').catch(() => {})}>
       Enter PIN
     </button>
+  )
+}
+
+function SwitchOutcomeHarness() {
+  const auth = useAuth()
+  const [outcome, setOutcome] = useState('')
+  return (
+    <>
+      <button
+        onClick={() =>
+          void auth.selectProfile('profile-3', '1111').then(
+            () => setOutcome('Switched'),
+            () => setOutcome('Switch refused'),
+          )
+        }
+      >
+        Select with PIN
+      </button>
+      <p>{outcome}</p>
+    </>
   )
 }
 
@@ -349,6 +370,7 @@ describe('AuthProvider identity fence beyond the first send', () => {
           <PinHarness />
           <LoginHarness />
           <LogoutHarness />
+          <SwitchOutcomeHarness />
         </AuthProvider>
       </ApolloProvider>,
     )
@@ -475,5 +497,37 @@ describe('AuthProvider identity fence beyond the first send', () => {
     answerSwitch(HttpResponse.json({ status: 403, title: 'Forbidden' }, { status: 403 }))
     expect(await earlier).toBeInstanceOf(Error)
     expect(sentUnder).toEqual(['account-2'])
+  })
+
+  it('shouldNotSendTheSwitchAgainWhenItsCsrfRejectionArrivesAfterASignOutAndSignIn', async () => {
+    let selections = 0
+    let releaseRejection: () => void = () => {}
+    const rejectionHeld = new Promise<void>((resolve) => {
+      releaseRejection = resolve
+    })
+    server.use(
+      http.post('/api/auth/select-profile', async () => {
+        selections += 1
+        if (selections === 1) {
+          await rejectionHeld
+          return HttpResponse.json({ code: CSRF_REJECTION_CODE }, { status: 403 })
+        }
+        return HttpResponse.json(TOKENS)
+      }),
+      http.post('/api/auth/refresh/revoke', () => new HttpResponse(null, { status: 204 })),
+      http.post('/api/auth/login', () => HttpResponse.json(TOKENS)),
+    )
+    const { renewal } = renderSwitchable()
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'Select with PIN' }))
+    await waitFor(() => expect(selections).toBe(1))
+
+    await user.click(screen.getByRole('button', { name: 'Sign out' }))
+    await user.click(screen.getByRole('button', { name: 'Sign in' }))
+    await waitFor(() => expect(renewal.adoptExpiry).toHaveBeenCalled())
+    releaseRejection()
+
+    expect(await screen.findByText('Switch refused')).toBeInTheDocument()
+    expect(selections).toBe(1)
   })
 })

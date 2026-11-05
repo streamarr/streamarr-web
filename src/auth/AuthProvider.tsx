@@ -96,11 +96,13 @@ export function AuthProvider({
     await apollo.resetStore()
   }, [apollo, subscriptions])
   const switchIdentity = useCallback(
-    async (request: () => Promise<AuthTokens>): Promise<AuthTokens> => {
+    async (
+      request: (options: { mayResend: () => boolean }) => Promise<AuthTokens>,
+    ): Promise<AuthTokens> => {
       const identitySwitch = beginIdentitySwitch(apollo)
       let tokens: AuthTokens
       try {
-        tokens = await request()
+        tokens = await request({ mayResend: identitySwitch.isCurrent })
       } catch (error) {
         if (error instanceof AuthApiError) {
           identitySwitch.failed()
@@ -119,11 +121,11 @@ export function AuthProvider({
     [adopt, apollo, forgetEarlierIdentity],
   )
   const selectHousehold = useCallback(
-    (id: string) => switchIdentity(() => apiSelectHousehold(id)),
+    (id: string) => switchIdentity((options) => apiSelectHousehold(id, options)),
     [switchIdentity],
   )
   const selectProfile = useCallback(
-    (id: string, pin?: string) => switchIdentity(() => apiSelectProfile(id, pin)),
+    (id: string, pin?: string) => switchIdentity((options) => apiSelectProfile(id, pin, options)),
     [switchIdentity],
   )
   const logout = useCallback(async () => {
