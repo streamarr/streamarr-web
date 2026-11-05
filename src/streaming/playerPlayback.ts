@@ -785,13 +785,23 @@ function startSessionPlayback({
         failAfterTheSwitch(pending)
         return
       case 'lost':
-        // Only the playback status can say whether the server switched.
         if (pending.formatFailure) {
           void reportFormatFailure(pending.formatFailure, generation)
           return
         }
-        void reconcilePlaybackStatus({ generation, fatal: pending.failed })
+        await recoverLostSwitch(pending)
     }
+  }
+
+  // Only the playback status can say whether the server switched. The server may end direct play
+  // while the status is on its way, so the file's failures keep waiting until the status answers.
+  async function recoverLostSwitch(pending: PendingAudioTrackSwitch) {
+    pendingSwitch = pending
+    await reconcilePlaybackStatus({ generation: pending.generation, fatal: pending.failed })
+    if (pendingSwitch !== pending) return
+    pendingSwitch = null
+    if (cancelled || pending.generation !== sourceGeneration) return
+    failAfterTheSwitch(pending)
   }
 
   async function requestAudioTrackSwitch(
