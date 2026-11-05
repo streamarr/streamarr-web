@@ -425,8 +425,9 @@ function startSessionPlayback({
         if (element.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) return
         if (realEnd === null) void askForRealEnd()
         if (!seekingBeforeRealEnd() && tryEndAtRealEnd()) return
-        // A seek waits under its own stall limit already, and the first frame's wait is no stall.
-        if (firstFrameShown && !stall) stalls++
+        // Neither the first frame's wait nor a seek's wait is a stall, even a seek made while
+        // paused that waits only once playback resumes.
+        if (firstFrameShown && !stall && !seekUnresumed) stalls++
         startStallLimit()
         if (sourceStopped) restartStoppedSource()
       },

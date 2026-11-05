@@ -30,14 +30,15 @@ export interface TrackRow {
 /** What a reason sentence names: the decision's tracks, and the playback choice the viewer asked for. */
 interface ReasonFacts {
   video: VideoDelivery
-  audio: AudioDelivery
   choice: VideoQuality
 }
+
+type AudioReasonFacts = ReasonFacts & { audio: AudioDelivery }
 
 type Reason =
   | { place: 'stream'; text: string }
   | { place: 'video'; text: (facts: ReasonFacts) => string }
-  | { place: 'audio'; text: (facts: ReasonFacts) => string }
+  | { place: 'audio'; text: (facts: AudioReasonFacts) => string }
 
 export const UNKNOWN = 'Unknown'
 
@@ -175,7 +176,7 @@ function video(text: (facts: ReasonFacts) => string): Reason {
   return { place: 'video', text }
 }
 
-function audio(text: (facts: ReasonFacts) => string): Reason {
+function audio(text: (facts: AudioReasonFacts) => string): Reason {
   return { place: 'audio', text }
 }
 
@@ -222,13 +223,15 @@ export function placedReasons({
       placed.stream.push(reason.text)
       continue
     }
-    // The server names an audio reason only for a source with audio.
-    if (!decision.audio) {
+    const facts = { video: decision.video, choice: requestedChoice }
+    if (reason.place === 'video') {
+      placed.video.push(reason.text(facts))
       continue
     }
-    placed[reason.place].push(
-      reason.text({ video: decision.video, audio: decision.audio, choice: requestedChoice }),
-    )
+    // The server names an audio reason only for a source with audio.
+    if (decision.audio) {
+      placed.audio.push(reason.text({ ...facts, audio: decision.audio }))
+    }
   }
   return placed
 }
