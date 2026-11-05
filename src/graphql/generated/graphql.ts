@@ -101,6 +101,16 @@ export type CreatePlaybackSessionInput = {
   capabilities: ClientCapabilityDeclarationInput;
   mediaFileId: string | number;
   options?: StreamingOptionsInput | null | undefined;
+  /**
+   * Where playback starts, in seconds from the start of the media, such as the viewer's resume position.
+   * It must be 0 or more and less than the media's duration. The server refuses any other value with
+   * StartPositionOutOfRangeError. An HLS stream session starts its first job attempt at the segment that
+   * holds this position, and its multivariant playlist marks the position with EXT-X-START. A direct-play
+   * stream session returns the position, and the client seeks the file there. A later format attempt
+   * starts at this position too, until the client reports a playback position in another second. Null
+   * starts playback at the beginning of the media.
+   */
+  startPositionSeconds?: number | null | undefined;
 };
 
 /** A standard picture format that a player displays without a stream's advanced HDR information. */
@@ -535,8 +545,10 @@ export type AddLibraryMutation = { addLibrary: { library: { __typename: 'Library
       | { __typename: 'LibraryPathNotDirectoryError', message: string, inputPath: Array<string> }
       | { __typename: 'LibraryPathNotFoundError', message: string, inputPath: Array<string> }
       | { __typename: 'LibraryPathNotReadableError', message: string, inputPath: Array<string> }
+      | { __typename: 'LibraryPathOutsideMediaRootError', message: string, inputPath: Array<string> }
       | { __typename: 'LibraryPathOverlapError', message: string, inputPath: Array<string> }
       | { __typename: 'LibraryPathRequiredError', message: string, inputPath: Array<string> }
+      | { __typename: 'LibraryPathThroughSoftLinkError', message: string, inputPath: Array<string> }
     > } | null };
 
 export type StartLibraryScanMutationVariables = Exact<{
@@ -930,6 +942,7 @@ export type CreatePlaybackSessionMutation = { createPlaybackSession: { playbackS
             | { __typename: 'PlaybackInvalidSpecificationError', message: string }
             | { __typename: 'PlaybackOutputMismatchError', message: string }
             | { __typename: 'PlaybackStartupFailedError', message: string }
+            | { __typename: 'StartPositionOutOfRangeError', message: string }
             | { __typename: 'TranscodeCapacityUnavailableError', message: string }
            }
         | { __typename: 'PendingPlaybackFormatAttempt', streamSessionId: string }
@@ -951,6 +964,7 @@ export type CreatePlaybackSessionMutation = { createPlaybackSession: { playbackS
       | { __typename: 'MediaFileProbeNotReadyError', message: string }
       | { __typename: 'NoEligibleVideoFormatError', message: string }
       | { __typename: 'PlaybackSessionClosedError', message: string }
+      | { __typename: 'StartPositionOutOfRangeError', message: string }
       | { __typename: 'TranscodeCapacityUnavailableError', message: string }
       | { __typename: 'VideoCodecTierInvalidError', message: string }
     > } | null };
@@ -980,6 +994,7 @@ export type PlaybackSessionQuery = { playbackSession: { id: string, formatAttemp
           | { __typename: 'PlaybackInvalidSpecificationError', message: string }
           | { __typename: 'PlaybackOutputMismatchError', message: string }
           | { __typename: 'PlaybackStartupFailedError', message: string }
+          | { __typename: 'StartPositionOutOfRangeError', message: string }
           | { __typename: 'TranscodeCapacityUnavailableError', message: string }
          }
       | { __typename: 'PendingPlaybackFormatAttempt', streamSessionId: string }
@@ -1002,6 +1017,7 @@ export type PlaybackSessionFieldsFragment = { id: string, formatAttemptCount: nu
         | { __typename: 'PlaybackInvalidSpecificationError', message: string }
         | { __typename: 'PlaybackOutputMismatchError', message: string }
         | { __typename: 'PlaybackStartupFailedError', message: string }
+        | { __typename: 'StartPositionOutOfRangeError', message: string }
         | { __typename: 'TranscodeCapacityUnavailableError', message: string }
        }
     | { __typename: 'PendingPlaybackFormatAttempt', streamSessionId: string }
@@ -1037,6 +1053,7 @@ export type ReportPlaybackFormatFailureMutation = { reportPlaybackFormatFailure:
             | { __typename: 'PlaybackInvalidSpecificationError', message: string }
             | { __typename: 'PlaybackOutputMismatchError', message: string }
             | { __typename: 'PlaybackStartupFailedError', message: string }
+            | { __typename: 'StartPositionOutOfRangeError', message: string }
             | { __typename: 'TranscodeCapacityUnavailableError', message: string }
            }
         | { __typename: 'PendingPlaybackFormatAttempt', streamSessionId: string }

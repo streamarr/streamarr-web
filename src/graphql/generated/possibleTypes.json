@@ -22,8 +22,10 @@
       "LibraryPathNotDirectoryError",
       "LibraryPathNotFoundError",
       "LibraryPathNotReadableError",
+      "LibraryPathOutsideMediaRootError",
       "LibraryPathOverlapError",
-      "LibraryPathRequiredError"
+      "LibraryPathRequiredError",
+      "LibraryPathThroughSoftLinkError"
     ],
     "AdministrativelyDeleteAccountError": [
       "AccountNotFoundError",
@@ -137,6 +139,7 @@
       "MediaFileProbeNotReadyError",
       "NoEligibleVideoFormatError",
       "PlaybackSessionClosedError",
+      "StartPositionOutOfRangeError",
       "TranscodeCapacityUnavailableError",
       "VideoCodecTierInvalidError"
     ],
@@ -256,8 +259,10 @@
       "LibraryPathNotDirectoryError",
       "LibraryPathNotFoundError",
       "LibraryPathNotReadableError",
+      "LibraryPathOutsideMediaRootError",
       "LibraryPathOverlapError",
       "LibraryPathRequiredError",
+      "LibraryPathThroughSoftLinkError",
       "LinkProfileNotFoundError",
       "ManagerInvitationNotFoundError",
       "MaximumAllowedRatingAgeInvalidError",
@@ -282,6 +287,7 @@
       "ShareNotActiveError",
       "ShareNotFoundError",
       "ShareNotPendingError",
+      "StartPositionOutOfRangeError",
       "UnknownEncoderPresetError",
       "VideoCodecTierInvalidError"
     ],
@@ -372,8 +378,10 @@
       "LibraryPathNotDirectoryError",
       "LibraryPathNotFoundError",
       "LibraryPathNotReadableError",
+      "LibraryPathOutsideMediaRootError",
       "LibraryPathOverlapError",
       "LibraryPathRequiredError",
+      "LibraryPathThroughSoftLinkError",
       "LibraryRefreshNotInProgressError",
       "LibraryScanNotInProgressError",
       "LinkProfileNotFoundError",
@@ -420,6 +428,7 @@
       "ShareNotActiveError",
       "ShareNotFoundError",
       "ShareNotPendingError",
+      "StartPositionOutOfRangeError",
       "TranscodeCapacityUnavailableError",
       "UnknownEncoderPresetError",
       "VideoCodecTierInvalidError"
@@ -450,6 +459,7 @@
       "PlaybackInvalidSpecificationError",
       "PlaybackOutputMismatchError",
       "PlaybackStartupFailedError",
+      "StartPositionOutOfRangeError",
       "TranscodeCapacityUnavailableError"
     ],
     "RejectProfileShareError": [
