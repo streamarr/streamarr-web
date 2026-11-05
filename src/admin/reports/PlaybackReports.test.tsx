@@ -520,6 +520,26 @@ describe('shared reports', () => {
     expect(await screen.findByText('1 unread', undefined, { timeout: 3_000 })).toBeInTheDocument()
   })
 
+  it('shouldOfferToMarkTheReportReadAgainWhenMarkingItFails', async () => {
+    const state = serveReports({ reports: [reportFixture()] })
+    let attempts = 0
+    server.use(
+      graphql.mutation('MarkPlaybackReportRead', () => {
+        attempts++
+        return attempts === 1 ? HttpResponse.error() : undefined
+      }),
+    )
+    const { user } = renderAppAt(`${REPORTS}/report-1`)
+
+    const failure = await screen.findByRole('alert')
+    expect(failure).toHaveTextContent("Couldn't mark the report read.")
+    await user.click(screen.getByRole('button', { name: /retry/i }))
+
+    expect(await screen.findByText('First read')).toBeInTheDocument()
+    expect(state.marked).toEqual(['report-1'])
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
   it('shouldLeaveAReadReportAsItIsWhenTheServerAdminOpensIt', async () => {
     const state = serveReports({ reports: [OLDER] })
     renderAppAt(`${REPORTS}/report-2`)

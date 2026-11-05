@@ -1,7 +1,7 @@
 import { useApolloClient, useMutation, useQuery } from '@apollo/client/react'
 import { Center, Loader } from '@mantine/core'
 import { Link } from '@tanstack/react-router'
-import { type ReactNode, useEffect, useId, useRef } from 'react'
+import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from 'react'
 import {
   MarkPlaybackReportReadDocument,
   PlaybackReportDocument,
@@ -9,6 +9,7 @@ import {
   type VideoQuality,
 } from '../../graphql/generated/graphql'
 import { requestFailureMessage } from '../../graphql/requestErrors'
+import { userErrorMessage } from '../../graphql/userErrors'
 import { FactList, PlaybackDecisionTracks } from '../../streaming/PlaybackDecisionFacts'
 import { placedReasons } from '../../streaming/playbackDecisionText'
 import { playerFigureFacts, screenFigureFacts } from '../../streaming/playerFigures'
@@ -40,7 +41,7 @@ export function PlaybackReportDetail({ reportId }: Readonly<{ reportId: string }
     refetchWritePolicy: 'merge',
   })
   const report = data?.playbackReport
-  useMarkReadOnOpen(report)
+  const marking = useMarkReadOnOpen(report)
   return (
     <>
       <Link to="/settings/server/reports" className={reportStyles.back}>
@@ -52,6 +53,7 @@ export function PlaybackReportDetail({ reportId }: Readonly<{ reportId: string }
           {requestFailureMessage(error, "Couldn't load the report.")}
         </FailureRow>
       )}
+      {marking.failure && <FailureRow onRetry={marking.retry}>{marking.failure}</FailureRow>}
       <ReportContent report={report} loading={!data && !error} />
     </>
   )
@@ -81,23 +83,40 @@ function ReportContent({
   return <ReportSnapshot report={report} />
 }
 
+const NOT_MARKED = "Couldn't mark the report read."
+
 // Marks the report read once, the first time it is shown unread; the server keeps the first read
-// time. The unread count reads again once the server answers.
+// time. The unread count reads again once the server answers. A failed mark offers Retry.
 function useMarkReadOnOpen(report: Report | null | undefined) {
   const client = useApolloClient()
   const [markRead] = useMutation(MarkPlaybackReportReadDocument)
+  const [failure, setFailure] = useState<string | null>(null)
   const marked = useRef<string | null>(null)
   const unreadId = report && report.readAt === null ? report.id : null
+  const mark = useCallback(
+    async (playbackReportId: string) => {
+      try {
+        const { data } = await markRead({ variables: { input: { playbackReportId } } })
+        const refusals = data?.markPlaybackReportRead?.userErrors ?? []
+        setFailure(refusals.length ? refusals.map(userErrorMessage).join(' ') : null)
+        readUnreadReportCountAgain(client)
+      } catch {
+        setFailure(NOT_MARKED)
+      }
+    },
+    [markRead, client],
+  )
   useEffect(() => {
     if (unreadId === null || marked.current === unreadId) {
       return
     }
     marked.current = unreadId
-    markRead({ variables: { input: { playbackReportId: unreadId } } })
-      .then(() => readUnreadReportCountAgain(client))
-      // A report left unread stays in the unread count, which shows the outcome.
-      .catch(() => undefined)
-  }, [unreadId, markRead, client])
+    void mark(unreadId)
+  }, [unreadId, mark])
+  return {
+    failure,
+    retry: () => (unreadId === null ? undefined : mark(unreadId)),
+  }
 }
 
 function ReportSnapshot({ report }: Readonly<{ report: Report }>) {
