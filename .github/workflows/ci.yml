@@ -70,6 +70,8 @@ jobs:
       # The cache holds only the browser; the OS packages it needs are not cached.
       - if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: node_modules/.bin/playwright install-deps chromium
+      - name: Install FFmpeg, which writes the 7.1 channel-order streams
+        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends ffmpeg
       - run: npm run test:e2e -- --project=chromium
       - name: Upload browser test output
         if: ${{ !cancelled() }}
@@ -95,10 +97,10 @@ jobs:
           fi
           npm run tokens:check
 
-  # Firefox and WebKit run only the capability specs. A separate job keeps their installs off the
-  # build job's clock.
+  # Firefox and WebKit run only the capability specs, and the runner's Google Chrome only the 7.1
+  # channel-order spec. A separate job keeps their installs off the build job's clock.
   decoding-info:
-    name: Run the capability specs in Firefox and WebKit
+    name: Run the capability specs in Firefox, WebKit and Chrome
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -121,7 +123,9 @@ jobs:
         run: node_modules/.bin/playwright install --with-deps firefox webkit
       - if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: node_modules/.bin/playwright install-deps firefox webkit
-      - run: npm run test:e2e -- --project=firefox --project=webkit
+      - name: Install FFmpeg, which writes the 7.1 channel-order streams
+        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends ffmpeg
+      - run: npm run test:e2e -- --project=firefox --project=webkit --project=chrome
       - name: Upload the decodingInfo answers
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

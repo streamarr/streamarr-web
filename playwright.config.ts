@@ -8,6 +8,7 @@ const CAPABILITY_SPECS = [
   'decoding-info-channels.spec.ts',
   'output-channels.spec.ts',
   'hdr-declaration.spec.ts',
+  'seven-one-channel-order.spec.ts',
 ]
 
 export default defineConfig({
@@ -37,6 +38,12 @@ export default defineConfig({
       name: 'webkit',
       testMatch: CAPABILITY_SPECS,
       use: { ...devices['Desktop Safari'] },
+    },
+    // Branded Chrome is a separate build from Playwright's Chromium, with its own codecs.
+    {
+      name: 'chrome',
+      testMatch: 'seven-one-channel-order.spec.ts',
+      use: { ...devices['Desktop Chrome'], channel: 'chrome' },
     },
   ],
   webServer: [
