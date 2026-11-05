@@ -7680,11 +7680,7 @@ describe('Player', () => {
         ])
       })
 
-      it('shouldStoreTheChosenTracksLanguageForThatEpisodeWhenTheViewerSwitchesAudio', async () => {
-        serveDirectPlay({ audioTracks: TWO_TRACKS })
-        serveAudioTrackSwitch({
-          answer: () => ({ playbackSession: directPlayStill(), userErrors: [] }),
-        })
+      function serveOverrideStores(): SetLanguageOverrideInput[] {
         const overrides: SetLanguageOverrideInput[] = []
         server.use(
           graphql.mutation<SetLanguageOverrideMutation, SetLanguageOverrideMutationVariables>(
@@ -7697,17 +7693,84 @@ describe('Player', () => {
             },
           ),
         )
-        const { user } = renderWithProviders(
+        return overrides
+      }
+
+      const movedToHls = () => ({
+        playbackSession: readyPlaybackSession({
+          id: 'playback-1',
+          streamSession: replacementStream(1),
+          requestedChoice: 'ORIGINAL',
+          playbackChoice: 'ORIGINAL',
+        }),
+        userErrors: [],
+      })
+
+      function renderEpisode() {
+        return renderWithProviders(
           <Player
             playbackPlatform={withoutDecodingInfo}
             mediaFileId="abcd"
             mediaTitle={{ kind: 'episode', id: 'e1' }}
           />,
         )
+      }
+
+      it('shouldStoreTheChosenTracksLanguageForThatEpisodeOnceTheServerMovesToIt', async () => {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        serveAudioTrackSwitch({ answer: movedToHls })
+        const overrides = serveOverrideStores()
+        const { user } = renderEpisode()
         await directPlayAt(0)
 
         await chooseAudioTrack(user, { from: 'English', to: 'French' })
 
+        await attachedVideo(replacementStream(1).streamUrl)
+        await waitFor(() => expect(overrides).toEqual([{ itemId: 'e1', audioLanguage: 'FR' }]))
+      })
+
+      it('shouldStoreNoLanguageForASwitchTheServerRefuses', async () => {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        const answers = [
+          () => ({
+            playbackSession: directPlayStill(),
+            userErrors: [
+              {
+                __typename: 'TranscodeCapacityUnavailableError' as const,
+                message: SWITCH_REFUSAL,
+              },
+            ],
+          }),
+          movedToHls,
+        ]
+        serveAudioTrackSwitch({ answer: () => (answers.shift() ?? movedToHls)() })
+        const overrides = serveOverrideStores()
+        const { user } = renderEpisode()
+        await directPlayAt(0)
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+        await waitFor(() => expect(notice()).toHaveTextContent(SWITCH_REFUSAL))
+
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+
+        await attachedVideo(replacementStream(1).streamUrl)
+        await waitFor(() => expect(overrides).toEqual([{ itemId: 'e1', audioLanguage: 'FR' }]))
+      })
+
+      it('shouldStoreOnlyTheTrackTheServerMovesToWhenTheViewerPicksAnotherBeforeItAnswers', async () => {
+        serveDirectPlay({
+          audioTracks: [...TWO_TRACKS, { position: 2, language: 'ger', title: null }],
+        })
+        const answered = deferred()
+        serveAudioTrackSwitch({ answered: answered.promise, answer: movedToHls })
+        const overrides = serveOverrideStores()
+        const { user } = renderEpisode()
+        await directPlayAt(0)
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+
+        await chooseAudioTrack(user, { from: 'English', to: 'German' })
+        answered.resolve()
+
+        await attachedVideo(replacementStream(1).streamUrl)
         await waitFor(() => expect(overrides).toEqual([{ itemId: 'e1', audioLanguage: 'FR' }]))
       })
 

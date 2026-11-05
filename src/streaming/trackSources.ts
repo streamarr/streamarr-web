@@ -23,7 +23,8 @@ export interface TrackSource {
   /** Returns the same object until the tracks, or the choice among them, change. */
   read: () => StreamTracks
   subscribe: (onChange: () => void) => () => void
-  selectAudio: (id: number) => void
+  /** Resolves whether the stream moved to that audio track; false when it plays it already. */
+  selectAudio: (id: number) => Promise<boolean>
   /** Null turns subtitles off. */
   selectSubtitles: (id: number | null) => void
 }
@@ -76,8 +77,10 @@ export function hlsTrackSource(hls: HlsTracks): TrackSource {
         }
       }
     },
-    selectAudio: (id) => {
+    selectAudio: async (id) => {
+      const moves = hls.audioTrack !== id
       hls.audioTrack = id
+      return moves
     },
     selectSubtitles: (id) => {
       hls.subtitleTrack = id ?? HLS_SUBTITLES_OFF
@@ -106,7 +109,8 @@ export function listedAudioTrackSource(
   }: {
     audioTracks: readonly ListedAudioTrack[]
     playing: number | null
-    onChooseAudio: (position: number) => void
+    /** Resolves whether playback moved to the track. */
+    onChooseAudio: (position: number) => Promise<boolean>
   },
 ): TrackSource {
   const audio = choice(
@@ -123,9 +127,7 @@ export function listedAudioTrackSource(
   return {
     read: unchangedUntilDifferent(() => ({ audio, subtitles: elementTracks.read().subtitles })),
     subscribe: elementTracks.subscribe,
-    selectAudio: (id) => {
-      if (id !== playing) onChooseAudio(id)
-    },
+    selectAudio: async (id) => id !== playing && onChooseAudio(id),
     selectSubtitles: elementTracks.selectSubtitles,
   }
 }
@@ -164,10 +166,13 @@ export function nativeTrackSource(video: HTMLVideoElement): TrackSource {
       )
       return () => stops.forEach((stop) => stop())
     },
-    selectAudio: (id) => {
-      audioTracksOf(video).forEach((track, index) => {
+    selectAudio: async (id) => {
+      const tracks = audioTracksOf(video)
+      const moves = tracks[id]?.enabled === false
+      tracks.forEach((track, index) => {
         track.enabled = index === id
       })
+      return moves
     },
     selectSubtitles: (id) => {
       subtitleTracksOf(video).forEach((track, index) => {

@@ -25,7 +25,8 @@ interface StoreRequest {
  * movie playing, never for its season or series, so resuming it keeps the switch and the next
  * episode starts from the wider levels (ADR 0043). Switches store one at a time, in the order the
  * viewer made them. A track that names no language of the server's table stores nothing, and so
- * does a switch still waiting when the store resets for another Profile or account.
+ * do an audio switch that playback never moved to and a switch still waiting when the store resets
+ * for another Profile or account.
  */
 export function useLanguageSwitchReport(
   mediaTitle: PlayableMediaTitle | undefined,
@@ -88,7 +89,10 @@ function resetFence(client: ApolloClient): { isCurrent: () => boolean; stop: () 
 }
 
 async function storeSwitch(request: StoreRequest) {
-  const { client, mediaTitle, isCurrent } = request
+  const { client, mediaTitle, chosen, isCurrent } = request
+  if (chosen.kind === 'audio' && !(await chosen.moved)) {
+    return
+  }
   const change = await overrideChange(request)
   if (!change || !isCurrent()) {
     return

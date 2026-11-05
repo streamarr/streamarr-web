@@ -43,7 +43,12 @@ const SUBTITLES_OFF: PopoverOption<null> = { id: null, label: 'Off' }
 
 /** A track the viewer chose in a picker, by the language code the stream tags it with. */
 export type ChosenTrack =
-  | { kind: 'audio'; language?: string }
+  | {
+      kind: 'audio'
+      language?: string
+      /** Resolves whether playback moved to the track, which a server may refuse. */
+      moved: Promise<boolean>
+    }
   | { kind: 'subtitles'; language?: string }
   | { kind: 'subtitles-off' }
 
@@ -105,7 +110,7 @@ export function PlayerControls({
   onChooseQuality: (choice: VideoQuality) => void
   openPicker: PickerKind | null
   onOpenPicker: (kind: PickerKind | null) => void
-  /** Hears each audio or subtitle track the viewer switches to, after the stream switched. */
+  /** Hears each audio or subtitle track the viewer switches to, as the stream switches. */
   onTrackChosen?: (chosen: ChosenTrack) => void
   title?: PlayerTitle
 }>) {
@@ -266,9 +271,9 @@ export function PlayerControls({
                 return
               }
               // A pick of the track in use still reaches the source, which lets it stand.
-              tracks.selectAudio(id)
+              const moved = tracks.selectAudio(id)
               if (id !== audio.selected) {
-                onTrackChosen?.({ kind: 'audio', language: languageOf(audio.options, id) })
+                onTrackChosen?.({ kind: 'audio', language: languageOf(audio.options, id), moved })
               }
             }}
           />
