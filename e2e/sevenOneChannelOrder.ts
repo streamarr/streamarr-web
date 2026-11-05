@@ -120,7 +120,8 @@ const LEVEL_FLOOR_DB = -160
 const RUN_EDGE_SHARE = 0.25
 // Each tone lasts 1 s, and WebKit on Linux drops about half a second of the Opus stream. A run
 // heard for less than a quarter of a tone, such as a tone leaking late into another output, is no
-// tone. Only readings at most 0.1 s apart count towards how long a run was heard.
+// tone. Only the time between neighbouring readings that hear the same output, at most 0.1 s
+// apart, counts towards how long a run was heard.
 const MIN_TONE_SECONDS = 0.25
 const MAX_READING_GAP_SECONDS = 0.1
 
@@ -164,25 +165,34 @@ function loudestOutput(levels: number[]): number {
 
 // Readings below the tone floor end no run: a run picks up again on the same output after them.
 function runsOfLoudestOutput(readings: LevelReading[]): LevelReading[][] {
+  const outputs = readings.map(({ rms }) =>
+    decibels(Math.max(...rms) ** 2) >= TONE_FLOOR_DB ? loudestOutput(rms) : undefined,
+  )
   const runs = mergeNeighbours(
-    readings
-      .filter(({ rms }) => decibels(Math.max(...rms) ** 2) >= TONE_FLOOR_DB)
-      .map((reading) => ({ output: loudestOutput(reading.rms), readings: [reading] })),
-  ).filter(({ readings: run }) => heardSeconds(run) >= MIN_TONE_SECONDS)
+    readings.flatMap((reading, index) => {
+      const output = outputs[index]
+      if (output === undefined) {
+        return []
+      }
+      return [{ output, readings: [reading], heardSeconds: heardSincePrevious(index) }]
+    }),
+  ).filter(({ heardSeconds }) => heardSeconds >= MIN_TONE_SECONDS)
   return mergeNeighbours(runs).map((run) => run.readings)
-}
 
-function heardSeconds(run: LevelReading[]): number {
-  return run
-    .slice(1)
-    .map((reading, index) => reading.readAt - run[index].readAt)
-    .filter((gap) => gap <= MAX_READING_GAP_SECONDS)
-    .reduce((sum, gap) => sum + gap, 0)
+  // A reading adds the time since the one before it only when that one heard the same output.
+  function heardSincePrevious(index: number): number {
+    if (index === 0 || outputs[index - 1] !== outputs[index]) {
+      return 0
+    }
+    const gap = readings[index].readAt - readings[index - 1].readAt
+    return gap <= MAX_READING_GAP_SECONDS ? gap : 0
+  }
 }
 
 interface Run {
   output: number
   readings: LevelReading[]
+  heardSeconds: number
 }
 
 function mergeNeighbours(runs: Run[]): Run[] {
@@ -191,8 +201,9 @@ function mergeNeighbours(runs: Run[]): Run[] {
     const previous = merged.at(-1)
     if (previous?.output === run.output) {
       previous.readings.push(...run.readings)
+      previous.heardSeconds += run.heardSeconds
     } else {
-      merged.push({ output: run.output, readings: [...run.readings] })
+      merged.push({ ...run, readings: [...run.readings] })
     }
   }
   return merged

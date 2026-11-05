@@ -168,6 +168,24 @@ test('a browser fails when a tone leaking in bursts into a silent output stands 
   ])
 })
 
+test('a browser fails when leakage in pairs of readings, each pair after a silent one, stands in for a tone', () => {
+  // The front right channel is lost, and output 2 hears the front left tone 22.5 dB down in pairs
+  // of readings with a silent reading between pairs: 0.2 s heard across 0.55 s.
+  const readings = readingsOf(inOrder()).map((reading, index) => {
+    const frontRight = Math.floor(index / READINGS_PER_TONE) === 2
+    if (!frontRight) return reading
+    const leaking = [0, 1, 3, 4, 6, 7, 9, 10].includes(index % READINGS_PER_TONE)
+    return { ...reading, rms: toneOnOutput(leaking ? 1 : -1).map((rms) => rms * amplitude(-22.5)) }
+  })
+
+  const verdict = judgeChannelOrder({ readings, playbackError: null })
+
+  expect(verdict.result).toBe('failed')
+  expect(verdict.findings).toEqual([
+    'The tones reached outputs 1, 3, 4, 5, 6, 7, 8 in turn, not 1 to 8.',
+  ])
+})
+
 test('a browser passes when the graph drops most of a tone but hears 0.3 s of it', () => {
   // WebKit on Linux drops about half a second of the 7.1 Opus stream.
   const readings = readingsOf(inOrder()).filter((_, index) => {
