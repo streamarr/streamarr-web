@@ -4,6 +4,7 @@ import Hls, {
   Fragment,
   type HlsConfig,
   type LoaderStats,
+  type VideoSelectionOption,
   PlaylistLevelType,
   XhrLoader,
 } from 'hls.js'
@@ -27,6 +28,9 @@ interface ForwardBuffers {
   audioForwardBufferInfo: BufferInfo | null
 }
 
+// What the player gives hls.js for an SDR-only declaration.
+const SDR_ONLY: VideoSelectionOption = { preferHDR: false, allowedVideoRanges: ['SDR'] }
+
 // hls.js's time-to-first-byte estimate before it has sampled a segment.
 const DEFAULT_TIME_TO_FIRST_BYTE_ESTIMATE_MS = 100
 
@@ -36,7 +40,7 @@ function playerWith(buffers: ForwardBuffers) {
 
 function loadSegment(buffers: ForwardBuffers) {
   const network = fakeNetworkLoader()
-  const config = hlsConfigWith(hlsPlaybackConfig(playerWith(buffers)), network)
+  const config = hlsConfigWith(hlsPlaybackConfig(playerWith(buffers), SDR_ONLY), network)
   const SegmentLoader = config.fLoader
   assert(SegmentLoader)
   const loader = new SegmentLoader(config)
@@ -86,7 +90,9 @@ function playingVideo(bufferedSeconds: number) {
 
 // Loads a media segment as hls.js's fragment loader does, over hls.js's own network loader.
 function loadSegmentOverNetwork(buffers: ForwardBuffers) {
-  const config = hlsConfigWith(hlsPlaybackConfig(playerWith(buffers)), { Loader: XhrLoader })
+  const config = hlsConfigWith(hlsPlaybackConfig(playerWith(buffers), SDR_ONLY), {
+    Loader: XhrLoader,
+  })
   const SegmentLoader = config.fLoader
   assert(SegmentLoader)
   const loader = new SegmentLoader(config)
@@ -154,11 +160,14 @@ async function estimatesAfterSegment({
 
 // What the player gives hls.js, with 30 s buffered: hls.js has no media to buffer in a test.
 function playbackConfigWith30SecondsBuffered(player: () => Hls): Partial<HlsConfig> {
-  return hlsPlaybackConfig(() => ({
-    mainForwardBufferInfo: forwardBuffer(30),
-    audioForwardBufferInfo: null,
-    ttfbEstimate: player().ttfbEstimate,
-  }))
+  return hlsPlaybackConfig(
+    () => ({
+      mainForwardBufferInfo: forwardBuffer(30),
+      audioForwardBufferInfo: null,
+      ttfbEstimate: player().ttfbEstimate,
+    }),
+    SDR_ONLY,
+  )
 }
 
 describe('hlsPlaybackConfig', () => {
@@ -225,7 +234,7 @@ describe('hlsPlaybackConfig', () => {
   it('shouldReadTheForwardBufferWhenEachSegmentStartsLoading', () => {
     const buffers: ForwardBuffers = { mainForwardBufferInfo: null, audioForwardBufferInfo: null }
     const network = fakeNetworkLoader()
-    const config = hlsConfigWith(hlsPlaybackConfig(playerWith(buffers)), network)
+    const config = hlsConfigWith(hlsPlaybackConfig(playerWith(buffers), SDR_ONLY), network)
     const SegmentLoader = config.fLoader
     assert(SegmentLoader)
     const loader = new SegmentLoader(config)
@@ -268,6 +277,7 @@ describe('hlsPlaybackConfig', () => {
   it('shouldLetHlsChooseAFailedVariantAgainWhenAMinuteHasPassed', () => {
     const config = hlsPlaybackConfig(
       playerWith({ mainForwardBufferInfo: null, audioForwardBufferInfo: null }),
+      SDR_ONLY,
     )
 
     expect(config.errorPenaltyExpireMs).toBe(60_000)
