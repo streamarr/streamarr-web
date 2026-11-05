@@ -81,12 +81,18 @@ interface PlaybackStatusCheck {
   fatal: boolean
 }
 
+/** What the player asks of a new playback session; no start position starts at the beginning. */
+interface PlaybackSessionRequest {
+  capabilities: ClientCapabilityDeclarationInput
+  startPositionSeconds?: number
+}
+
 interface PlayerPlaybackOptions {
   video: HTMLVideoElement
   client: ApolloClient
   declareCapabilities: () => Promise<ClientCapabilityDeclarationInput>
   createPlaybackSession: (
-    capabilities: ClientCapabilityDeclarationInput,
+    request: PlaybackSessionRequest,
   ) => Promise<{ data?: CreatePlaybackSessionMutation | null }>
   startPositionSeconds?: number
   /** Takes the place of the start position when this playback replaces one the viewer was watching. */
@@ -550,7 +556,10 @@ function startSessionPlayback({
         return
       }
       // The UI deadline must not discard a late session ID that still needs destruction.
-      const result = await createPlaybackSession(capabilities)
+      const result = await createPlaybackSession({
+        capabilities,
+        startPositionSeconds: startAt === 0 ? undefined : startAt,
+      })
       const payload = result.data?.createPlaybackSession
       const initialPlayback = payload?.playbackSession
       playbackSessionId = initialPlayback?.id ?? null
@@ -683,12 +692,18 @@ function startSessionPlayback({
   }
 
   function currentResumePoint(): ResumePoint {
+    const playing = !playRequested || !video.paused
+    // No playback session starts at the end of the media, and as the element does after its own
+    // end, playing where playback ended starts from the top.
+    if (video.ended) {
+      return { position: 0, playing }
+    }
     return {
       position:
         video.readyState >= HTMLMediaElement.HAVE_METADATA
           ? video.currentTime
           : (startAt ?? video.currentTime),
-      playing: !playRequested || !video.paused,
+      playing,
     }
   }
 

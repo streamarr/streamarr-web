@@ -52,6 +52,41 @@ function levelPlaylist(durationSeconds: number): string {
   ].join('\n')
 }
 
+// As the server writes it for a stream session with a start position: EXT-X-START marks the
+// position before the renditions and variants.
+function multivariantStartingAt(startPositionSeconds: number | undefined): string {
+  if (startPositionSeconds === undefined) return MULTIVARIANT
+  return MULTIVARIANT.replace(
+    '#EXTM3U\n',
+    `#EXTM3U\n#EXT-X-START:TIME-OFFSET=${startPositionSeconds},PRECISE=YES\n`,
+  )
+}
+
+// Six-second segments, as the server's default target duration cuts them.
+function segmentedLevelPlaylist(durationSeconds: number): string {
+  const segments = Array.from({ length: Math.ceil(durationSeconds / 6) }, (_, index) => [
+    `#EXTINF:${Math.min(6, durationSeconds - index * 6)}.0,`,
+    `segment${index}.m4s`,
+  ])
+  return [
+    '#EXTM3U',
+    '#EXT-X-VERSION:7',
+    '#EXT-X-TARGETDURATION:6',
+    '#EXT-X-PLAYLIST-TYPE:VOD',
+    '#EXT-X-MAP:URI="init.mp4"',
+    ...segments.flat(),
+    '#EXT-X-ENDLIST',
+    '',
+  ].join('\n')
+}
+
+function createdStartPosition(call: Request): number | undefined {
+  const body = call.postDataJSON() as {
+    variables?: { input?: { startPositionSeconds?: number } }
+  } | null
+  return body?.variables?.input?.startPositionSeconds
+}
+
 interface PlayerRoutes {
   operations?: Record<string, unknown>
   multivariant?: string
@@ -514,6 +549,53 @@ test('the player opened from a Play link starts playing without a press on Play'
   await openPlayerFromThePlayLink(page, request)
 
   await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible()
+})
+
+test('a resumed title asks first for the segment that holds the resume position, and never for the first segment', async ({
+  page,
+  request,
+}) => {
+  await routePlayer(page, request)
+  let startPositionSeconds: number | undefined
+  await page.route('**/graphql', (route) => {
+    if (operationName(route.request()) === 'CreatePlaybackSession') {
+      startPositionSeconds = createdStartPosition(route.request())
+    }
+    return route.fallback()
+  })
+  await page.route('**/api/stream/**/multivariant.m3u8*', (route) =>
+    route.fulfill({
+      contentType: 'application/vnd.apple.mpegurl',
+      body: multivariantStartingAt(startPositionSeconds),
+    }),
+  )
+  await page.route('**/api/stream/**/stream.m3u8*', (route) =>
+    route.fulfill({
+      contentType: 'application/vnd.apple.mpegurl',
+      body: segmentedLevelPlaylist(2820),
+    }),
+  )
+  // hls.js asks for a media segment only once it holds the initialization segment.
+  const initialization = fileURLToPath(
+    new URL('fixtures/initialization-segment.mp4', import.meta.url),
+  )
+  await page.route('**/api/stream/**/init.mp4*', (route) =>
+    route.fulfill({ contentType: 'video/mp4', path: initialization }),
+  )
+  const segments: string[] = []
+  page.on('request', (call) => {
+    const name = new URL(call.url()).pathname.split('/').at(-1) ?? ''
+    if (name.endsWith('.m4s')) segments.push(name)
+  })
+
+  await page.goto('/play/file-1?episode=e1&position=603')
+
+  await expect.poll(() => segments).not.toHaveLength(0)
+  // A settle long enough for hls.js to ask for any other segment, which it would ask for at once.
+  await page.waitForTimeout(1000)
+  expect(segments[0]).toBe('segment100.m4s')
+  expect(segments).not.toContain('segment0.m4s')
+  expect(startPositionSeconds).toBe(603)
 })
 
 test('the player keeps a Pause the viewer pressed before the stream loaded', async ({

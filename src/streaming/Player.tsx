@@ -108,10 +108,15 @@ export function Player({
       video,
       client,
       declareCapabilities: () => declarePlaybackCapabilities(playbackPlatform(video)),
-      createPlaybackSession: (capabilities) =>
+      createPlaybackSession: ({ capabilities, startPositionSeconds }) =>
         createPlaybackSession({
           variables: {
-            input: { mediaFileId, capabilities, options: { quality: choice.quality } },
+            input: {
+              mediaFileId,
+              capabilities,
+              startPositionSeconds,
+              options: { quality: choice.quality },
+            },
           },
         }),
       startPositionSeconds,
