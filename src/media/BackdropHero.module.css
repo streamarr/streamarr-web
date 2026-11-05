@@ -63,11 +63,12 @@
   gap: var(--spacing-12);
 }
 
-/* Parts Back from the end time beside it. */
+/* Parts Back from the end time beside it, drawn like the page's other rules. It sits on the scrim,
+   which is the title's base, so it takes the text color the server holds in contrast with that base. */
 .rule {
-  width: 1px;
+  width: 2px;
   height: 18px;
-  background: rgba(255, 255, 255, 0.28);
+  background: color-mix(in srgb, var(--ambient-text-primary, var(--color-white)) 22%, transparent);
 }
 
 .metadata {
