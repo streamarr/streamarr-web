@@ -650,6 +650,44 @@ describe('shared reports', () => {
     expect(within(report).queryByRole('region', { name: 'This screen' })).not.toBeInTheDocument()
   })
 
+  it('shouldLeaveOutWhatTheTvDidNotNameWhenItSharedWhileSwitchingModes', async () => {
+    const { player } = reportFixture()
+    serveReports({
+      reports: [
+        reportFixture({
+          player: {
+            ...player,
+            hdrMode: 'HDR',
+            audio: { __typename: 'PlayerAudio', codec: 'ec-3', channels: 6, dolbyAtmos: null },
+            screen: null,
+            browser: null,
+            display: {
+              __typename: 'PlayerDisplay',
+              width: null,
+              height: null,
+              hdrMode: 'HDR',
+              refreshRate: null,
+              dynamicRangeMatched: true,
+              frameRateMatched: null,
+            },
+            audioOutput: null,
+          },
+        }),
+      ],
+    })
+    renderAppAt(`${REPORTS}/report-1`)
+
+    const report = await screen.findByRole('article', { name: 'Report from Robin' })
+
+    expect(factsIn(within(report).getByRole('region', { name: 'Player' }))).toMatchObject({
+      'HDR mode': 'HDR',
+      Audio: 'ec-3 5.1',
+    })
+    expect(factsIn(within(report).getByRole('region', { name: 'This TV' }))).toEqual({
+      Display: 'HDR (dynamic range matched)',
+    })
+  })
+
   it('shouldSayTheReportIsGoneWhenTheServerHoldsNoReportWithTheId', async () => {
     serveReports({ reports: [] })
     renderAppAt(`${REPORTS}/report-9`)

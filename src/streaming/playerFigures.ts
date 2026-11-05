@@ -25,7 +25,7 @@ export interface PlayerFigureValues {
   resolution?: Maybe<{ width: number; height: number }>
   videoCodec?: Maybe<string>
   hdrMode?: Maybe<string>
-  audio?: Maybe<{ codec: string; channels?: Maybe<number>; dolbyAtmos?: boolean }>
+  audio?: Maybe<{ codec: string; channels?: Maybe<number>; dolbyAtmos?: Maybe<boolean> }>
 }
 
 /** What the browser reports of the screen that shows the player, and of itself. */
@@ -36,6 +36,7 @@ export interface ScreenFigureValues {
 
 const HDR_MODES: Readonly<Record<PlayerHdrMode, string>> = {
   SDR: 'SDR',
+  HDR: 'HDR',
   HDR10: 'HDR10',
   HDR10_PLUS: 'HDR10+',
   HLG: 'HLG',

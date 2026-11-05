@@ -1,5 +1,5 @@
 import type { PlaybackReportQuery, SourceContainer } from '../../graphql/generated/graphql'
-import { channelsText, containerText } from '../../streaming/playbackDecisionText'
+import { channelsText, containerText, UNKNOWN } from '../../streaming/playbackDecisionText'
 import { hdrModeText } from '../../streaming/playerFigures'
 
 type Report = NonNullable<PlaybackReportQuery['playbackReport']>
@@ -66,7 +66,10 @@ export function audioEntryText(entry: AudioEntry): string {
     .join(' · ')
 }
 
-/** The display mode that a TV switched to, and whether it matched the content. */
+/**
+ * The display mode that a TV switched to, and whether it matched the content, leaving out each
+ * figure that the TV did not report.
+ */
 export function displayText({
   width,
   height,
@@ -75,9 +78,12 @@ export function displayText({
   dynamicRangeMatched,
   frameRateMatched,
 }: Display): string {
-  return `${width}×${height} ${hdrModeText(hdrMode)} · ${decimals.format(refreshRate)} Hz (${matchText(
-    { frameRateMatched, dynamicRangeMatched },
-  )})`
+  const size = width === null || height === null ? null : `${width}×${height}`
+  const mode = [size, hdrMode && hdrModeText(hdrMode)].filter(Boolean).join(' ')
+  const refresh = refreshRate === null ? null : `${decimals.format(refreshRate)} Hz`
+  const shown = [mode, refresh].filter(Boolean).join(' · ') || UNKNOWN
+  const match = matchText({ frameRateMatched, dynamicRangeMatched })
+  return match ? `${shown} (${match})` : shown
 }
 
 /** Where a TV sends its audio, and how many channels that output accepts. */
@@ -88,7 +94,10 @@ export function audioOutputText({ route, channels }: AudioOutput): string {
 function matchText({
   frameRateMatched,
   dynamicRangeMatched,
-}: Pick<Display, 'frameRateMatched' | 'dynamicRangeMatched'>): string {
+}: Pick<Display, 'frameRateMatched' | 'dynamicRangeMatched'>): string | null {
+  if (frameRateMatched === null || dynamicRangeMatched === null) {
+    return onlyMatchText({ frameRateMatched, dynamicRangeMatched })
+  }
   if (frameRateMatched && dynamicRangeMatched) {
     return 'matched'
   }
@@ -98,6 +107,20 @@ function matchText({
   return frameRateMatched
     ? 'frame rate matched, dynamic range not matched'
     : 'dynamic range matched, frame rate not matched'
+}
+
+// What a TV reported of its match when it did not report both figures.
+function onlyMatchText({
+  frameRateMatched,
+  dynamicRangeMatched,
+}: Pick<Display, 'frameRateMatched' | 'dynamicRangeMatched'>): string | null {
+  if (frameRateMatched !== null) {
+    return frameRateMatched ? 'frame rate matched' : 'frame rate not matched'
+  }
+  if (dynamicRangeMatched !== null) {
+    return dynamicRangeMatched ? 'dynamic range matched' : 'dynamic range not matched'
+  }
+  return null
 }
 
 function codecProfileText({ profile, maxLevel, maxTier }: VideoEntry['codecProfiles'][number]) {

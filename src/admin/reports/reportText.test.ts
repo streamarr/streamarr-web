@@ -41,6 +41,30 @@ describe('reportText', () => {
     },
   )
 
+  it.each([
+    [
+      { width: null, height: null, refreshRate: 59.94, dynamicRangeMatched: null },
+      'HDR10+ · 59.94 Hz (frame rate matched)',
+    ],
+    [
+      { hdrMode: null, frameRateMatched: null, dynamicRangeMatched: false },
+      '3840×2160 · 59.94 Hz (dynamic range not matched)',
+    ],
+    [
+      {
+        width: null,
+        height: null,
+        hdrMode: null,
+        refreshRate: null,
+        frameRateMatched: null,
+        dynamicRangeMatched: false,
+      },
+      'Unknown (dynamic range not matched)',
+    ],
+  ])('shouldLeaveOutEachFigureTheTvDidNotReportWhenItReports(%o)', (unknown, text) => {
+    expect(displayText({ ...UHD_DISPLAY, ...unknown })).toBe(text)
+  })
+
   it('shouldNameTheTierLevelAndDirectPlayOfAnEntryWithoutHlsOrABase', () => {
     expect(videoEntryText(AV1_ENTRY)).toBe(
       'AV1 · Main to level 6 (High tier) · up to 7680×4320 at 23.976 fps, 10-bit · Dolby Vision 10.0 to level 9 · HDR10+ · direct play from MKV, MP4',

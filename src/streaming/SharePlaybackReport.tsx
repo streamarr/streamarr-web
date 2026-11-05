@@ -15,15 +15,21 @@ const NOT_SHARED = "Couldn't share the report. Try again."
 
 type Report = Omit<SharePlaybackReportInput, 'note'>
 
+/** The figures and stream session that a press of Share takes. */
+export type CapturedReport = Omit<Report, 'submissionId'>
+
 type ShareStep =
   { at: 'offered'; shared: boolean } | { at: 'noting'; report: Report; refusal: string | null }
 
 /**
  * Shares the panel with the Server Admin. Pressing Share takes the panel's figures at once, then
- * offers an optional note; Send shares the figures from the press with the note. `capture` is null
- * while no stream is attached, and Share waits for one.
+ * offers an optional note; Send shares the figures from the press with the note. Each press has its
+ * own submission id, which a resend after a lost answer sends again, so the server keeps one report
+ * for the press. `capture` is null while no stream is attached, and Share waits for one.
  */
-export function SharePlaybackReport({ capture }: Readonly<{ capture: (() => Report) | null }>) {
+export function SharePlaybackReport({
+  capture,
+}: Readonly<{ capture: (() => CapturedReport) | null }>) {
   const [step, setStep] = useState<ShareStep>({ at: 'offered', shared: false })
   const [note, setNote] = useState('')
   const [share, { loading: sending }] = useMutation(SharePlaybackReportDocument)
@@ -44,7 +50,11 @@ export function SharePlaybackReport({ capture }: Readonly<{ capture: (() => Repo
             capture
               ? () => {
                   setNote('')
-                  setStep({ at: 'noting', report: capture(), refusal: null })
+                  setStep({
+                    at: 'noting',
+                    report: { ...capture(), submissionId: randomUuid() },
+                    refusal: null,
+                  })
                 }
               : undefined
           }
@@ -110,4 +120,14 @@ export function SharePlaybackReport({ capture }: Readonly<{ capture: (() => Repo
       </Group>
     </form>
   )
+}
+
+// A version 4 UUID. crypto.randomUUID exists only in a secure context, and a server on the local
+// network may serve this app over plain HTTP; getRandomValues works in both.
+function randomUuid(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16))
+  bytes[6] = (bytes[6] & 0x0f) | 0x40
+  bytes[8] = (bytes[8] & 0x3f) | 0x80
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }

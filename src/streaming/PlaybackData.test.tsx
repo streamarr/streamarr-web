@@ -1,4 +1,4 @@
-import { act, screen, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import { graphql, HttpResponse } from 'msw'
 import { useState } from 'react'
 import { describe, expect, it } from 'vitest'
@@ -12,6 +12,7 @@ import { PlaybackData, type PlaybackDataStream } from './PlaybackData'
 import type { StreamStats } from './playerPlayback'
 
 const PLAYBACK_SESSION_ID = 'playback-1'
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const STREAM_SESSION_ID = 'sess-2'
 const SCREEN = {
   screen: { width: 2560, height: 1440, pixelRatio: 2 },
@@ -150,6 +151,7 @@ describe('PlaybackData', () => {
         {
           playbackSessionId: PLAYBACK_SESSION_ID,
           streamSessionId: STREAM_SESSION_ID,
+          submissionId: expect.stringMatching(UUID) as unknown,
           player: {
             qualityStep: { number: 2, count: 3, height: 720, bitrate: 3_000_000 },
             observedBitrate: 12_500_000,
@@ -326,6 +328,28 @@ describe('PlaybackData', () => {
       expect(note).toHaveValue('Green picture')
       expect(within(panel).queryByText('Shared with your Server Admin.')).not.toBeInTheDocument()
       expect(shared).toHaveLength(1)
+    })
+
+    it('shouldResendThePressesSubmissionIdAfterALostAnswerAndMakeANewOneForTheNextPress', async () => {
+      serveDecision()
+      const answers: ShareAnswer[] = [() => HttpResponse.error(), SHARED, SHARED]
+      const shared = serveShare((input) => answers.shift()!(input))
+      const { user, panel } = renderPanel()
+
+      await user.click(within(panel).getByRole('button', { name: 'Share with Server Admin' }))
+      await user.click(within(panel).getByRole('button', { name: 'Send' }))
+      await within(panel).findByRole('alert')
+      await user.click(within(panel).getByRole('button', { name: 'Send' }))
+      await within(panel).findByText('Shared with your Server Admin.')
+      await user.click(within(panel).getByRole('button', { name: 'Share with Server Admin' }))
+      await user.click(within(panel).getByRole('button', { name: 'Send' }))
+      await waitFor(() => expect(shared).toHaveLength(3))
+
+      const [lost, resent, next] = shared.map(({ submissionId }) => submissionId)
+      expect(lost).toMatch(UUID)
+      expect(resent).toBe(lost)
+      expect(next).toMatch(UUID)
+      expect(next).not.toBe(lost)
     })
 
     it('shouldSayTheReportWasNotSharedAndKeepTheFormWhenTheRequestFails', async () => {
