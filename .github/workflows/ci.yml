@@ -131,9 +131,12 @@ jobs:
       - name: Start PulseAudio
         if: ${{ !cancelled() }}
         run: pulseaudio --start --exit-idle-time=-1
-      # A separate output directory keeps the first run's results for the upload.
+      # Separate output and report directories keep the first run's results and report for the
+      # upload: the HTML reporter clears its directory before it writes.
       - if: ${{ !cancelled() }}
         run: npm run test:e2e -- --project=firefox --output=test-results/firefox
+        env:
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/firefox
       - name: Upload the decodingInfo answers
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
