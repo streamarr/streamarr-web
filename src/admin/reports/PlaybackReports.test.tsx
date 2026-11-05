@@ -481,6 +481,17 @@ describe('shared reports', () => {
     expect(await screen.findByText('First read')).toBeInTheDocument()
   })
 
+  it('shouldReadTheUnreadCountAgainWhenTheNetworkReturns', async () => {
+    const state = serveReports({ reports: [] })
+    renderAppAt(REPORTS)
+    await screen.findByText('0 unread')
+
+    state.reports = [reportFixture()]
+    window.dispatchEvent(new Event('online'))
+
+    expect(await screen.findByText('1 unread')).toBeInTheDocument()
+  })
+
   it('shouldLeaveAReadReportAsItIsWhenTheServerAdminOpensIt', async () => {
     const state = serveReports({ reports: [OLDER] })
     renderAppAt(`${REPORTS}/report-2`)
