@@ -118,12 +118,15 @@ const SILENCE_DB = -90
 const LEVEL_FLOOR_DB = -160
 // A reading near either end of a run may also hear the neighbouring tone.
 const RUN_EDGE_SHARE = 0.25
-// Each tone lasts 1 s. A shorter run, such as a tone leaking late into another output, is no tone.
-const MIN_TONE_SECONDS = 0.5
+// Each tone lasts 1 s, and WebKit on Linux drops about half a second of the Opus stream. A run
+// heard for less than a quarter of a tone, such as a tone leaking late into another output, is no
+// tone. Only readings at most 0.1 s apart count towards how long a run was heard.
+const MIN_TONE_SECONDS = 0.25
+const MAX_READING_GAP_SECONDS = 0.1
 
 /**
  * Judges whether the tones reached outputs 1 to 8 in turn, each at least 20 dB above every other
- * output. A tone is a run of readings, at least half a second long, with one loudest output. The
+ * output. A tone is a run of readings with one loudest output, heard for at least 0.25 s. The
  * order the tones arrive in identifies each one, so a graph that runs behind the element is judged
  * the same as one that keeps up.
  */
@@ -165,8 +168,16 @@ function runsOfLoudestOutput(readings: LevelReading[]): LevelReading[][] {
     readings
       .filter(({ rms }) => decibels(Math.max(...rms) ** 2) >= TONE_FLOOR_DB)
       .map((reading) => ({ output: loudestOutput(reading.rms), readings: [reading] })),
-  ).filter(({ readings: run }) => run.at(-1)!.readAt - run[0].readAt >= MIN_TONE_SECONDS)
+  ).filter(({ readings: run }) => heardSeconds(run) >= MIN_TONE_SECONDS)
   return mergeNeighbours(runs).map((run) => run.readings)
+}
+
+function heardSeconds(run: LevelReading[]): number {
+  return run
+    .slice(1)
+    .map((reading, index) => reading.readAt - run[index].readAt)
+    .filter((gap) => gap <= MAX_READING_GAP_SECONDS)
+    .reduce((sum, gap) => sum + gap, 0)
 }
 
 interface Run {

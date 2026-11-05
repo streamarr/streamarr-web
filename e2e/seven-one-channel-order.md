@@ -9,8 +9,8 @@ tone is 50 Hz; the others are 1 kHz. The spec writes the stream with FFmpeg when
 768 kb/s, FLAC, and Opus at 768 kb/s with `-mapping_family 1`.
 
 The tones must reach outputs 1 to 8 in turn, each at least 20 dB above every other output. A tone is
-a run of readings, at least 0.5 s long, in which one output is the loudest and reads at least
--40 dBFS. The spec identifies each tone by the order it arrives in, not by the element's time:
+a run of readings in which one output is the loudest and reads at least -40 dBFS, heard for at least
+0.25 s. The spec identifies each tone by the order it arrives in, not by the element's time:
 WebKit on Linux runs its audio graph up to a second behind the element.
 
 | Result | Meaning |
@@ -61,4 +61,4 @@ while PulseAudio ran.
 | firefox | 157.0 | Linux | OPUS | passed | |
 | webkit | 27.2 | Linux | AAC | passed | |
 | webkit | 27.2 | Linux | FLAC | passed | |
-| webkit | 27.2 | Linux | OPUS | passed | |
+| webkit | 27.2 | Linux | OPUS | passed | The audio graph hears about 0.5 s of the side left tone: WebKit drops part of the stream. |
