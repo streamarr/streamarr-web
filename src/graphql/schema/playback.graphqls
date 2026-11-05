@@ -83,13 +83,15 @@ budget. A false claim keeps a stream session out of the budget and grants no acc
 """
 enum NetworkRoute {
     """
-    The client reached the server through a private address (RFC 1918, IPv6 unique local fd00::/8 or
-    link-local), a .local name, or local discovery. The stream sessions never count against the upload budget.
+    The client reached the server through a private address (RFC 1918, IPv4 or IPv6 link-local, or IPv6 unique
+    local fd00::/8 outside Tailscale's fd7a:115c:a1e0::/48), a .local or .home.arpa name (RFC 8375), or local
+    discovery. The stream sessions never count against the upload budget.
     """
     LOCAL_NETWORK
     """
-    Every other route, including a public hostname, a tunnel, carrier-grade NAT (100.64.0.0/10, which includes
-    Tailscale), and hairpin NAT through a public name. The stream sessions count against the upload budget.
+    Every other route, including loopback (a tunnel can forward a loopback port), a public hostname, a tunnel,
+    carrier-grade NAT (100.64.0.0/10, which includes Tailscale), Tailscale's IPv6 prefix fd7a:115c:a1e0::/48,
+    and hairpin NAT through a public name. The stream sessions count against the upload budget.
     """
     INTERNET
 }
