@@ -8713,6 +8713,20 @@ describe('Player', () => {
         shown: 'Unknown',
       },
       {
+        variant: 'no variant playing yet of an HLG stream',
+        videoRange: 'HLG' as const,
+        levels: [],
+        currentLevel: -1,
+        shown: 'Unknown',
+      },
+      {
+        variant: 'an HLG variant without Dolby Vision',
+        videoRange: 'HLG' as const,
+        levels: [{ height: 2160, bitrate: 20_000_000, videoCodec: 'hvc1.2.4.L153.B0' }],
+        currentLevel: 0,
+        shown: 'HLG',
+      },
+      {
         variant: 'no variant playing yet of an SDR stream',
         videoRange: 'SDR' as const,
         levels: [],
