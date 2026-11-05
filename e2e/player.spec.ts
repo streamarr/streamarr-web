@@ -1339,11 +1339,13 @@ test('playback data shows what hls.js reports of the playing variant and why the
 
 for (const viewport of [
   { name: 'a phone held upright', width: 375, height: 667 },
+  { name: 'a phone held sideways', width: 667, height: 375 },
   { name: 'a tablet held upright', width: 768, height: 1024 },
   { name: 'a small laptop window', width: 800, height: 600 },
   { name: 'a laptop', width: 1280, height: 800 },
+  { name: 'a short laptop window', width: 1280, height: 600 },
 ]) {
-  test(`on ${viewport.name} playback data stays on screen and leaves Back clickable`, async ({
+  test(`on ${viewport.name} playback data stays on screen and leaves Back and Seek usable`, async ({
     page,
     request,
   }) => {
@@ -1363,5 +1365,9 @@ for (const viewport of [
     const belowBack = panelBox!.y >= backBox!.y + backBox!.height
     expect(besideBack || belowBack).toBe(true)
     await back.click({ trial: true })
+    const seek = page.getByRole('slider', { name: 'Seek' })
+    const seekBox = await seek.boundingBox()
+    expect(panelBox!.y + panelBox!.height).toBeLessThanOrEqual(seekBox!.y)
+    await seek.click({ trial: true })
   })
 }
