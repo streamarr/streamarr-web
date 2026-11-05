@@ -71,7 +71,7 @@ function serve(setting = SAVED_ONE_HOUR) {
 }
 
 async function retentionField() {
-  return screen.findByRole('textbox', { name: 'Keep idle segments for' })
+  return screen.findByRole('textbox', { name: 'Idle segment retention' })
 }
 
 // Leaves for Libraries and comes back, so the page starts from the cached setting and reads again.
@@ -94,15 +94,27 @@ describe('idle segment retention settings', () => {
     expect(field).toHaveValue('60')
     expect(screen.getByText('minutes')).toBeInTheDocument()
     expect(field).toHaveAccessibleDescription(
-      "How long the server keeps a stream's segments after the last request for them. When the segment folder's disk has less than a tenth free, the server deletes the oldest idle segments sooner. Choose from 5 minutes to 7 days.",
+      "How long the server keeps a stream's segments. Valid durations are from 5 minutes to 7 days.",
     )
     expect(saveButton()).toBeDisabled()
   })
 
   it.each([
-    { minimumMinutes: 1, maximumMinutes: 120, range: 'Choose from 1 minute to 2 hours.' },
-    { minimumMinutes: 60, maximumMinutes: 1_440, range: 'Choose from 1 hour to 1 day.' },
-    { minimumMinutes: 90, maximumMinutes: 2_880, range: 'Choose from 90 minutes to 2 days.' },
+    {
+      minimumMinutes: 1,
+      maximumMinutes: 120,
+      range: 'Valid durations are from 1 minute to 2 hours.',
+    },
+    {
+      minimumMinutes: 60,
+      maximumMinutes: 1_440,
+      range: 'Valid durations are from 1 hour to 1 day.',
+    },
+    {
+      minimumMinutes: 90,
+      maximumMinutes: 2_880,
+      range: 'Valid durations are from 90 minutes to 2 days.',
+    },
   ] as const)(
     'shouldNameAllowedRangeInLargestWholeUnitWhenServerSendsBounds($range)',
     async ({ minimumMinutes, maximumMinutes, range }) => {

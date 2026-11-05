@@ -144,7 +144,7 @@ function EncodingContent({
       <Select
         classNames={{ dropdown: styles.popover, option: styles.popoverOption }}
         label="Encoder preset"
-        description="Faster presets start playback sooner and fit more encodes on a worker. Slower presets give a better picture at the same bitrate. A change reaches only quality levels that start afterwards. A quality level that has already started keeps its preset, even after a seek."
+        description="The quality profile the transcoder uses. Faster presets give lower-quality video but use fewer resources. Slower presets give higher-quality video but use more resources."
         value={setting.preset}
         data={choicesShowing(setting.preset)}
         allowDeselect={false}

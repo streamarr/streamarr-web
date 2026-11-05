@@ -11,8 +11,7 @@ import { userErrorMessage } from '../../graphql/userErrors'
 import { FailureRow } from '../../ui/Failure'
 import styles from '../Settings.module.css'
 
-const DESCRIPTION =
-  "How long the server keeps a stream's segments after the last request for them. When the segment folder's disk has less than a tenth free, the server deletes the oldest idle segments sooner."
+const DESCRIPTION = "How long the server keeps a stream's segments."
 
 const UNCONFIRMED =
   "Couldn't confirm the change. Refresh the page to check the saved retention before trying again."
@@ -145,7 +144,7 @@ function RetentionForm({
   return (
     <form className={styles.form} onSubmit={submit}>
       <NumberInput
-        label="Keep idle segments for"
+        label="Idle segment retention"
         description={`${DESCRIPTION} ${allowedRange(setting)}`}
         value={value}
         onChange={onEdit}
@@ -186,7 +185,7 @@ function rangeRefusal(
 }
 
 function allowedRange(setting: IdleSegmentRetentionSettingFieldsFragment): string {
-  return `Choose from ${duration(setting.minimumMinutes)} to ${duration(setting.maximumMinutes)}.`
+  return `Valid durations are from ${duration(setting.minimumMinutes)} to ${duration(setting.maximumMinutes)}.`
 }
 
 // Names a whole number of minutes in the largest unit that divides it evenly.
