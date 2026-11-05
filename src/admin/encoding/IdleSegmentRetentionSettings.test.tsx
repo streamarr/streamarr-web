@@ -197,7 +197,20 @@ describe('idle segment retention settings', () => {
       expect.stringContaining('Choose from 5 to 10080 minutes.'),
     )
     expect(state.changes).toEqual([4])
-    expect(state.setting.minutes).toBe(60)
+    const reread = deferred()
+    server.use(
+      graphql.query<IdleSegmentRetentionSettingQuery>(
+        'IdleSegmentRetentionSetting',
+        async () => {
+          await reread.promise
+          return HttpResponse.json({ data: { idleSegmentRetentionSetting: state.setting } })
+        },
+        { once: true },
+      ),
+    )
+    await returnToEncoding(user)
+    expect(await retentionField()).toHaveValue('60')
+    reread.resolve()
   })
 
   it('shouldShowFailureWhenChangeCannotBeConfirmed', async () => {
