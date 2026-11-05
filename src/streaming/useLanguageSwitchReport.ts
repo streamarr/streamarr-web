@@ -40,17 +40,34 @@ export function useLanguageSwitchReport(
     const fence = resetFence(client)
     // The switch already plays; a failure to store it only means a resume starts from the wider
     // levels, which is what playback did before the switch.
-    const stored = (storesByClient.get(client) ?? Promise.resolve())
+    const queue = queueOf(client)
+    queue.last = queue.last
       .then(() => storeSwitch({ client, mediaTitle, chosen, isCurrent: fence.isCurrent }))
       .catch(() => undefined)
       .finally(fence.stop)
-    storesByClient.set(client, stored)
   }
 }
 
 // One queue per client rather than per player, so a player opened again stores after the switches
-// that the one before it still had waiting.
-const storesByClient = new WeakMap<ApolloClient, Promise<void>>()
+// that the one before it still had waiting. A reset or clear starts a new queue for the next
+// identity, so a store of the earlier one that never answers holds back none of its switches.
+const queuesByClient = new WeakMap<ApolloClient, { last: Promise<void> }>()
+
+function queueOf(client: ApolloClient): { last: Promise<void> } {
+  const existing = queuesByClient.get(client)
+  if (existing) {
+    return existing
+  }
+  const queue = { last: Promise.resolve() }
+  const restart = () => {
+    queue.last = Promise.resolve()
+    return Promise.resolve()
+  }
+  client.onResetStore(restart)
+  client.onClearStore(restart)
+  queuesByClient.set(client, queue)
+  return queue
+}
 
 // Whether the store has been reset or cleared, as a Profile or account switch does, since now.
 function resetFence(client: ApolloClient): { isCurrent: () => boolean; stop: () => void } {

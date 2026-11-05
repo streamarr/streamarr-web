@@ -5313,6 +5313,58 @@ describe('Player', () => {
       expect(inputs).toEqual([{ itemId: 'e1', audioLanguage: 'FR' }])
     })
 
+    it('shouldStoreTheNextProfilesSwitchWhenTheEarlierProfilesStoreStillWaits', async () => {
+      serveSession()
+      const inputs = serveOverrides()
+      const first = deferred()
+      server.use(
+        graphql.mutation('SetLanguageOverride', async ({ variables }) => {
+          inputs.push(variables.input as SetLanguageOverrideInput)
+          if (inputs.length === 1) {
+            await first.promise
+          }
+          return HttpResponse.json({
+            data: { setLanguageOverride: { item: null, userErrors: [] } },
+          })
+        }),
+      )
+      let resetStore: (() => Promise<unknown>) | undefined
+      function Playing() {
+        const client = useApolloClient()
+        useEffect(() => {
+          resetStore = () => client.resetStore()
+        }, [client])
+        return (
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" mediaTitle={EPISODE} />
+        )
+      }
+      const { user } = renderWithProviders(<Playing />)
+      await attachedVideo()
+      offerHlsTracks({
+        audio: [
+          { name: 'English', lang: 'en' },
+          { name: 'Français', lang: 'fr' },
+          { name: 'Deutsch', lang: 'de' },
+        ],
+        audioTrack: 0,
+      })
+
+      await pickTrack(user, /^Audio/, 'Français')
+      await waitFor(() => expect(inputs).toHaveLength(1))
+      await act(async () => {
+        await resetStore?.()
+      })
+      await pickTrack(user, /^Audio/, 'Deutsch')
+
+      await waitFor(() =>
+        expect(inputs).toEqual([
+          { itemId: 'e1', audioLanguage: 'FR' },
+          { itemId: 'e1', audioLanguage: 'DE' },
+        ]),
+      )
+      first.resolve()
+    })
+
     it('shouldStoreSwitchesInOrderAcrossAPlayerThatClosesAndOpensAgain', async () => {
       serveSession()
       const inputs = serveOverrides()
