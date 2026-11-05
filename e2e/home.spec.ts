@@ -1,6 +1,7 @@
 import { watchingConnection } from '../src/test/continueWatchingFixtures'
 import { expect, test, type Page } from '@playwright/test'
 import type { HomeQuery } from '../src/graphql/generated/graphql'
+import { actionButtonRadius, cornerRadii } from './actionButton'
 import { STUB_URL } from './ports'
 
 test.use({ viewport: { width: 375, height: 667 }, serviceWorkers: 'block' })
@@ -136,6 +137,13 @@ test('the billboard tagline sits upright under the title', async ({ page }) => {
   const title = await hero.getByRole('heading', { level: 1, name: FEATURED_TITLE }).boundingBox()
   const taglineBox = await tagline.boundingBox()
   expect(taglineBox!.y).toBeGreaterThanOrEqual(title!.y + title!.height)
+})
+
+test('the billboard action rounds its corners like every action button', async ({ page }) => {
+  const action = page
+    .getByTestId('billboard-hero')
+    .getByRole('link', { name: 'Resume', exact: true })
+  expect(await cornerRadii([action])).toEqual([await actionButtonRadius(page)])
 })
 
 test('continue-watching cards fit the shelf and grow with the available width', async ({

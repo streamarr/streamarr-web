@@ -76,7 +76,7 @@
   align-self: flex-start;
   margin-top: var(--spacing-8);
   padding: 12px 28px;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   font-weight: 600;
   text-decoration: none;
   color: var(--color-white);
