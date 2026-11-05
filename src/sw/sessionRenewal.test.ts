@@ -377,6 +377,32 @@ describe('session renewal', () => {
     await expect(response.json()).resolves.toEqual({ code: 'EXPIRED_TOKEN' })
   })
 
+  it('shouldKeepTheServersAnswerWhenAnotherIdentityIsAdoptedWhileTheRequestWaits', async () => {
+    // adoptExpiry while the request is on the wire is a Profile switch landing (generation guard).
+    const paths: string[] = []
+    const renewal = createSessionRenewal({
+      fetch: async (input) => {
+        const path = new URL(input instanceof Request ? input.url : input).pathname
+        paths.push(path)
+        if (path === '/api/auth/refresh') {
+          return Response.json({ accessTokenExpiresAt: NEXT_EXPIRY })
+        }
+        renewal.adoptExpiry(new Date(NOW + 600_000).toISOString())
+        return Response.json({ code: 'EXPIRED_TOKEN' }, { status: 401 })
+      },
+      now: () => NOW,
+      onRenewed: vi.fn(),
+    })
+
+    const response = await renewal.fetch(
+      new Request('https://streamarr.test/graphql', { method: 'POST', body: '{}' }),
+    )
+
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toEqual({ code: 'EXPIRED_TOKEN' })
+    expect(paths).toEqual(['/graphql'])
+  })
+
   it('shouldReportSessionEndedWhenTheReplayStillFindsAnExpiredToken', async () => {
     const paths: string[] = []
     const fetcher: typeof fetch = async (input) => {

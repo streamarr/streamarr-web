@@ -135,9 +135,15 @@ export function createSessionRenewal({
   const fetchWithRenewal = async (request: Request): Promise<Response> => {
     rememberCsrfToken(request.headers.get(CSRF_HEADER))
     const replayable = request.clone()
+    const requestGeneration = generation
     const preflightResult = nearExpiry() ? await refresh() : undefined
     const response = await fetcher(request)
     if (!(await isRecoverableAccessFailure(response))) {
+      return response
+    }
+    // A sign-in or a Household or Profile switch landed meanwhile: replaying the request would send
+    // the earlier identity's request under the new one, so the caller keeps the server's answer.
+    if (requestGeneration !== generation) {
       return response
     }
     if (refreshRejected) {
