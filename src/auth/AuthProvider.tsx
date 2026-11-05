@@ -12,6 +12,7 @@ import {
   type LoginInput,
   type SetupInput,
 } from './api'
+import { beginIdentitySwitch } from '../graphql/client'
 import type { SubscriptionTransport } from '../graphql/subscriptionTransport'
 import { postCsrfTokenToServiceWorker } from './csrf'
 import type { RenewalBridge } from './renewalBridge'
@@ -85,23 +86,35 @@ export function AuthProvider({
     [adoptNewIdentity],
   )
   // A different Household or Profile is a different identity: nothing cached survives the switch.
-  // The socket keeps the authority it opened with, so it goes first; otherwise its next frame could
-  // land in the cache the refetch is rebuilding.
+  // The new identity's cookie lands with the response, before the store resets, so the client
+  // holds every operation from the request on (beginIdentitySwitch). The socket keeps the
+  // authority it opened with, so it goes first; otherwise its next frame could land in the cache
+  // the refetch is rebuilding.
   const switchIdentity = useCallback(
-    async (tokens: AuthTokens): Promise<AuthTokens> => {
+    async (request: () => Promise<AuthTokens>): Promise<AuthTokens> => {
+      const identitySwitch = beginIdentitySwitch(apollo)
+      let tokens: AuthTokens
+      try {
+        tokens = await request()
+      } catch (error) {
+        identitySwitch.failed()
+        throw error
+      }
+      identitySwitch.succeeded()
+      adopt(tokens)
       subscriptions.replaceSocket()
       await apollo.resetStore()
       return tokens
     },
-    [apollo, subscriptions],
+    [adopt, apollo, subscriptions],
   )
   const selectHousehold = useCallback(
-    (id: string) => apiSelectHousehold(id).then(adopt).then(switchIdentity),
-    [adopt, switchIdentity],
+    (id: string) => switchIdentity(() => apiSelectHousehold(id)),
+    [switchIdentity],
   )
   const selectProfile = useCallback(
-    (id: string, pin?: string) => apiSelectProfile(id, pin).then(adopt).then(switchIdentity),
-    [adopt, switchIdentity],
+    (id: string, pin?: string) => switchIdentity(() => apiSelectProfile(id, pin)),
+    [switchIdentity],
   )
   const logout = useCallback(async () => {
     sessionStore.markAnonymous()
