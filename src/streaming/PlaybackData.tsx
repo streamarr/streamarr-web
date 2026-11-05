@@ -19,7 +19,7 @@ import {
 } from '../graphql/generated/graphql'
 import { Icon } from '../ui/Icon'
 import styles from './PlaybackData.module.css'
-import { Fact, Facts, PlaybackDecisionTracks } from './PlaybackDecisionFacts'
+import { FactList, PlaybackDecisionTracks } from './PlaybackDecisionFacts'
 import { containerText, placedReasons } from './playbackDecisionText'
 import type { PlaybackPlatform } from './playbackCapabilities'
 import {
@@ -309,16 +309,6 @@ function PlayerFacts({ videoRef, streamStats, videoRange, playsHls }: Readonly<F
   )
   const figures = useSyncExternalStore(store.subscribe, store.figures)
   return <FactList facts={figures} />
-}
-
-function FactList({ facts }: Readonly<{ facts: Record<string, string> }>) {
-  return (
-    <Facts>
-      {Object.entries(facts).map(([name, value]) => (
-        <Fact key={name} name={name} value={value} />
-      ))}
-    </Facts>
-  )
 }
 
 // Hands React the same figures object until a figure changes, as useSyncExternalStore requires.
