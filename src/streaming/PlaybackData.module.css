@@ -43,19 +43,32 @@
   }
 }
 
-/* The head row: the title, the summary chips beside it, and Close at the right end. */
+/*
+ * The head row: the title, the summary chips beside it, and Close at the right end. A panel too
+ * narrow for the chips beside the title moves them to a row of their own under it.
+ */
 .header {
-  display: flex;
+  display: grid;
+  grid-template-areas: 'heading summary close';
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: var(--spacing-12);
+  gap: var(--spacing-8) var(--spacing-12);
+
+  @container (max-width: 420px) {
+    grid-template-areas:
+      'heading close'
+      'summary summary';
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
 }
 
 .summary {
-  flex: 1;
+  grid-area: summary;
   min-width: 0;
 }
 
 .heading {
+  grid-area: heading;
   margin: 0;
   font-size: var(--font-size-subtitle);
   font-weight: var(--font-weight-semibold);
@@ -72,7 +85,7 @@
   border-radius: var(--radius-md);
   background: none;
   color: var(--text-secondary);
-  margin-left: auto;
+  grid-area: close;
   cursor: pointer;
 
   &:hover {
