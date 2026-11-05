@@ -533,16 +533,7 @@ function startSessionPlayback({
     clearTimeout(deadline)
     if (stall !== ended) return
     stall = undefined
-    // The media element can resume, pause or seek before it fires the event that stops the limit.
-    // A seek that hls.js or the browser started, whose event has not fired yet, starts its own
-    // limit when the event fires.
-    if (
-      video.paused ||
-      (video.seeking && video.currentTime !== seekUnderwayTo) ||
-      video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA
-    ) {
-      return
-    }
+    if (!stallStillLasts()) return
     if (!status.read) {
       failStalledStream()
       return
@@ -557,6 +548,17 @@ function startSessionPlayback({
     const seconds = mediaEndOf(attachedStream)
     if (typeof seconds === 'number') learnRealEnd(seconds)
     if (!endedAtRealEnd) failStalledStream()
+  }
+
+  // The media element can resume, pause or seek before it fires the event that stops the limit.
+  // A seek that hls.js or the browser started, whose event has not fired yet, starts its own
+  // limit when the event fires.
+  function stallStillLasts(): boolean {
+    return !(
+      video.paused ||
+      (video.seeking && video.currentTime !== seekUnderwayTo) ||
+      video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA
+    )
   }
 
   function failStalledStream() {
