@@ -50,7 +50,6 @@
     color: var(--semantic-error-text);
   }
 }
-.railTitle,
 .typeField legend,
 .metadata dt {
   font-family: var(--font-family-system);
@@ -108,7 +107,10 @@
   align-self: start;
 }
 .railTitle {
-  padding: 0 var(--spacing-12) var(--spacing-24);
+  padding: 0 var(--spacing-12) var(--spacing-14);
+  font-size: var(--font-size-emphasis);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
 }
 .section {
   display: flex;
