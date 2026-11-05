@@ -7,6 +7,7 @@ import type {
   LoaderCallbacks,
   LoaderConfiguration,
   LoaderStats,
+  VideoSelectionOption,
 } from 'hls.js'
 
 // The server answers a request for a starting variant's first segment once that whole segment is
@@ -27,12 +28,17 @@ type LoadingPlayer = ForwardBuffers & Pick<Hls, 'ttfbEstimate'>
 
 /**
  * The hls.js settings the player plays with. `player` returns the hls.js instance they are given
- * to; it is read only while that instance loads segments.
+ * to; it is read only while that instance loads segments. `videoPreference` names the ranges
+ * hls.js may start on, which it keeps for as long as it plays.
  */
-export function hlsPlaybackConfig(player: () => LoadingPlayer): Partial<HlsConfig> {
+export function hlsPlaybackConfig(
+  player: () => LoadingPlayer,
+  videoPreference: VideoSelectionOption,
+): Partial<HlsConfig> {
   return {
     fLoader: segmentLoaderWithinForwardBuffer(player),
     errorPenaltyExpireMs: FAILED_VARIANT_PENALTY_MS,
+    videoPreference,
   }
 }
 

@@ -1,5 +1,5 @@
 import type { ApolloClient, ObservableQuery } from '@apollo/client'
-import Hls, { type ErrorData } from 'hls.js'
+import Hls, { type ErrorData, type VideoSelectionOption } from 'hls.js'
 import {
   type ClientCapabilityDeclarationInput,
   type CreatePlaybackSessionMutation,
@@ -15,6 +15,7 @@ import {
 import { userErrorMessage, userErrorMessageOr } from '../graphql/userErrors'
 import { discardWatchedState } from '../media/watchedState'
 import { hlsPlaybackConfig } from './hlsPlaybackConfig'
+import { type DynamicRangeChoice, hlsVideoPreference } from './hlsVideoPreference'
 import { DECLARATION_REFUSAL_TYPENAMES } from './playbackCapabilities'
 import type { QualityChoices } from './qualityChoices'
 import { hlsTrackSource, nativeTrackSource, type TrackSource } from './trackSources'
@@ -60,6 +61,12 @@ export interface PlayerPlayback {
    * element's seeking event starts the seek's own limit.
    */
   seek: (seconds: number) => void
+  /**
+   * Asks hls.js for the viewer's HDR choice, which starts as HDR. hls.js keeps the range it
+   * started on, so a changed choice attaches the stream again at the playhead. A stream with no SDR
+   * variant still plays HDR after an SDR choice, until the server can be asked for SDR.
+   */
+  chooseDynamicRange: (choice: DynamicRangeChoice) => void
 }
 
 // A stall's limit, and the status read once the stall outlasts it.
@@ -98,7 +105,8 @@ const pendingCleanups = new WeakMap<ApolloClient, () => Promise<void>>()
 // React never unmounts a page the browser unloads or keeps in its back-forward cache, so the page
 // lifecycle, not the Player effect, has to end the session when the viewer leaves the page.
 export function startPlayerPlayback(options: PlayerPlaybackOptions): PlayerPlayback {
-  let playback = startSessionPlayback(options)
+  let dynamicRange: DynamicRangeChoice = 'HDR'
+  let playback = startSessionPlayback({ ...options, dynamicRange })
   let left: ResumePoint | undefined
   const onPageHide = () => {
     left = playback.leavePage()
@@ -111,7 +119,7 @@ export function startPlayerPlayback(options: PlayerPlaybackOptions): PlayerPlayb
     const resumeFrom = left
     left = undefined
     options.onSourcePhase({ at: 'starting' })
-    playback = startSessionPlayback({ ...options, resumeFrom })
+    playback = startSessionPlayback({ ...options, resumeFrom, dynamicRange })
   }
   window.addEventListener('pagehide', onPageHide)
   window.addEventListener('pageshow', onPageShow)
@@ -123,6 +131,10 @@ export function startPlayerPlayback(options: PlayerPlaybackOptions): PlayerPlayb
     },
     resumePoint: () => playback.resumePoint(),
     seek: (seconds) => playback.seek(seconds),
+    chooseDynamicRange: (choice) => {
+      dynamicRange = choice
+      playback.chooseDynamicRange(choice)
+    },
   }
 }
 
@@ -135,8 +147,11 @@ function startSessionPlayback({
   onSourcePhase,
   onOutputShown,
   resumeFrom,
-}: PlayerPlaybackOptions): SessionPlayback {
+  dynamicRange: initialDynamicRange,
+}: PlayerPlaybackOptions & { dynamicRange: DynamicRangeChoice }): SessionPlayback {
   let source: StreamSource | null = null
+  let declaration: ClientCapabilityDeclarationInput = { video: [], audio: [] }
+  let dynamicRange = initialDynamicRange
   let cancelled = false
   let sessionId: string | null = null
   let playbackSessionId: string | null = null
@@ -368,6 +383,19 @@ function startSessionPlayback({
     reportEnd(realEnd)
   }
 
+  // Playback that ended at the real end attaches the stream again when the viewer plays on.
+  function chooseDynamicRange(choice: DynamicRangeChoice) {
+    if (choice === dynamicRange) return
+    dynamicRange = choice
+    if (!source?.followsVideoPreference || endedAtRealEnd) return
+    resume = resumePoint()
+    stopStatusCheck()
+    detachSource()
+    startupDeadline.end()
+    startupDeadline = createStartupDeadline(expireStartup)
+    adoptPlayback(attachedPlayback)
+  }
+
   function restartStoppedSource() {
     resume = { position: video.currentTime, playing: !video.paused }
     detachSource()
@@ -515,6 +543,7 @@ function startSessionPlayback({
       if (cancelled || !capabilities) {
         return
       }
+      declaration = capabilities
       // The server requires a video entry, so a browser that decodes no video cannot play here.
       if (capabilities.video.length === 0) {
         showFailure(PLAYBACK_FAILURE_MESSAGE)
@@ -578,6 +607,7 @@ function startSessionPlayback({
     }
     source = attach(video, stream.streamUrl, {
       startupDeadline,
+      videoPreference: hlsVideoPreference(declaration, dynamicRange),
       onFirstFrame: () => {
         firstFrameShown = true
         onOutputShown(qualities)
@@ -922,6 +952,7 @@ function startSessionPlayback({
     resumePoint,
     seek,
     leavePage,
+    chooseDynamicRange,
   }
 }
 
@@ -1067,6 +1098,8 @@ function ignoreTimelineReportFailure() {
 
 interface StreamSource {
   detach: () => void
+  /** Whether attaching the stream again with another video preference can change its range. */
+  followsVideoPreference: boolean
   tracks: TrackSource
   /** The playlist's target segment duration, when the player can read it. */
   segmentSeconds: () => number | undefined
@@ -1078,6 +1111,7 @@ interface StreamSourceOptions {
   onFormatFailure: (reason: PlaybackFormatFailure) => void
   onStatusRequired: (fatal: boolean) => void
   startupDeadline: StartupDeadline
+  videoPreference: VideoSelectionOption
 }
 
 // The stream URL carries the playback ?t= token; relative segment requests inherit it.
@@ -1085,7 +1119,7 @@ function attach(video: HTMLVideoElement, url: string, options: StreamSourceOptio
   if (!Hls.isSupported()) {
     return attachNative(video, url, options)
   }
-  const hls: Hls = new Hls(hlsPlaybackConfig(() => hls))
+  const hls: Hls = new Hls(hlsPlaybackConfig(() => hls, options.videoPreference))
   hls.on(Hls.Events.ERROR, (_event, data) => {
     if (data.type === Hls.ErrorTypes.NETWORK_ERROR && data.response?.code === 503) {
       options.onStatusRequired(data.fatal)
@@ -1119,6 +1153,7 @@ function attach(video: HTMLVideoElement, url: string, options: StreamSourceOptio
       video.removeEventListener('error', onVideoError)
       hls.destroy()
     },
+    followsVideoPreference: true,
     tracks: hlsTrackSource(hls),
     segmentSeconds: () => hls.latestLevelDetails?.targetduration,
   }
@@ -1183,6 +1218,7 @@ function attachNative(
       video.removeAttribute('src')
       video.load()
     },
+    followsVideoPreference: false,
     tracks: nativeTrackSource(video),
     segmentSeconds: () => undefined,
   }
