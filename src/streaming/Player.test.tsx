@@ -61,6 +61,9 @@ const CHANGED_TO_AUTO_NOTICE =
 const CONVERTED_NOTICE =
   "This video couldn't play in its original form, so a converted version is playing. " +
   'To choose another quality, open the Quality menu.'
+const AUDIO_TRACK_SWITCHED_NOTICE =
+  'The audio track you chose plays in a converted version. Quality is now set to Auto. ' +
+  'To choose another quality, open the Quality menu.'
 const DOLBY_VISION_NOTICE =
   "This video couldn't play in Dolby Vision, so the HDR version is playing."
 const ORIGINAL_EXPLANATION =
@@ -7297,6 +7300,32 @@ describe('Player', () => {
           expect(screen.getByRole('button', { name: 'Audio: English' })).toBeEnabled(),
         )
         expect(switches.map((input) => input.audioTrackPosition)).toEqual([1])
+      })
+
+      it('shouldNameTheAudioTrackSwitchWhenTheSwitchPlaysAnEncodeInAuto', async () => {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        serveAudioTrackSwitch({
+          answer: () => ({
+            playbackSession: readyPlaybackSession({
+              id: 'playback-1',
+              streamSession: { ...replacementStream(1), transcodeMode: 'AUDIO_TRANSCODE' },
+              requestedChoice: 'ORIGINAL',
+              playbackChoice: 'AUTO',
+              formatChange: 'AUDIO_TRACK_SWITCHED',
+            }),
+            userErrors: [],
+          }),
+        })
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        const video = await directPlayAt(42)
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+        await attachedVideo(replacementStream(1).streamUrl)
+
+        loadFirstFrame(video)
+
+        expect(notice()).toHaveTextContent(AUDIO_TRACK_SWITCHED_NOTICE)
       })
     })
 

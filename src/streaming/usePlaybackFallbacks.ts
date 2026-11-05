@@ -8,13 +8,14 @@ const CONVERTED =
   "This video couldn't play in its original form, so a converted version is playing."
 const OPEN_THE_QUALITY_MENU = 'To choose another quality, open the Quality menu.'
 
-type Fallback = 'changed-to-auto' | 'converted' | 'dolby-vision-stripped'
+type Fallback = 'changed-to-auto' | 'converted' | 'dolby-vision-stripped' | 'audio-track-switched'
 
 const NOTICES: Record<Fallback, string> = {
   'changed-to-auto': `${CONVERTED} Quality is now set to Auto. ${OPEN_THE_QUALITY_MENU}`,
   converted: `${CONVERTED} ${OPEN_THE_QUALITY_MENU}`,
   'dolby-vision-stripped':
     "This video couldn't play in Dolby Vision, so the HDR version is playing.",
+  'audio-track-switched': `The audio track you chose plays in a converted version. Quality is now set to Auto. ${OPEN_THE_QUALITY_MENU}`,
 }
 
 const EXPLANATIONS: Record<Fallback, string> = {
@@ -22,6 +23,8 @@ const EXPLANATIONS: Record<Fallback, string> = {
   converted:
     "This video couldn't play in its original form at this quality, so a converted version is playing.",
   'dolby-vision-stripped': NOTICES['dolby-vision-stripped'],
+  'audio-track-switched':
+    'The audio track you chose plays in a converted version, so Quality changed to Auto.',
 }
 
 /** The explanation beside each playback choice whose output fell back during the viewing. */
@@ -53,6 +56,9 @@ function fallbackOf({ requested, playing, formatChange }: QualityChoices): Fallb
   }
   if (formatChange === 'DOLBY_VISION_STRIPPED') {
     return 'dolby-vision-stripped'
+  }
+  if (formatChange === 'AUDIO_TRACK_SWITCHED') {
+    return 'audio-track-switched'
   }
   return playing === requested ? 'converted' : 'changed-to-auto'
 }
