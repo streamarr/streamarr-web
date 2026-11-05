@@ -8240,7 +8240,7 @@ describe('Player', () => {
         ],
         reasons: [
           "This device can't play the video's codec (HEVC).",
-          "This device can't play the video's Dolby Vision profile, so the server sends SDR.",
+          "This device can't play this video's Dolby Vision profile or level, so the server sends SDR.",
         ],
       })
       expect(trackIn(panel, 'Audio')).toMatchObject({
@@ -8248,7 +8248,7 @@ describe('Player', () => {
         rows: [
           ['', 'Original', 'Playing'],
           ['Codec', 'E-AC-3', 'E-AC-3'],
-          ['Channels', '5.1', '5.1'],
+          ['Channels', '6', '6'],
           ['Bitrate', '640 kb/s', '640 kb/s'],
         ],
         reasons: [],

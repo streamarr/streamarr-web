@@ -7,7 +7,7 @@ import type {
   VideoQuality,
   VideoRange,
 } from '../graphql/generated/graphql'
-import { namesPictureSize, qualityLabel } from './qualityChoices'
+import { qualityLabel } from './qualityChoices'
 
 type Known<Value extends string> = Exclude<Value, '%future added value'>
 
@@ -50,52 +50,64 @@ const DELIVERIES: Record<Known<PlaybackDelivery>, string> = {
 
 const VIDEO_RANGES: Record<Known<VideoRange>, string> = { SDR: 'SDR', PQ: 'HDR10', HLG: 'HLG' }
 
+// The layouts that a channel count usually carries; the server sends only the count.
 const CHANNEL_LAYOUTS = new Map([
-  [1, 'Mono'],
-  [2, 'Stereo'],
+  [1, 'mono'],
+  [2, 'stereo'],
   [6, '5.1'],
   [8, '7.1'],
 ])
 
+/*
+ * Each reason's sentence from streamarr/streamarr-ux#21. A reason about a value that the schema does
+ * not send, such as a codec profile, bit depth or channel layout, names the property instead.
+ */
 const REASONS: Record<Known<DecisionReason>, Reason> = {
   VIDEO_CODEC_NOT_DECLARED: video(
     ({ video }) => `This device can't play the video's codec (${codecText(video.source.codec)}).`,
   ),
   VIDEO_CODEC_PROFILE_NOT_DECLARED: video(
     ({ video }) =>
-      `This device plays ${codecText(video.source.codec)}, but not the video's profile.`,
+      `This device plays ${codecText(video.source.codec)}, but not this video's profile.`,
   ),
   VIDEO_CODEC_LEVEL_NOT_DECLARED: video(
-    ({ video }) => `This device plays ${codecText(video.source.codec)}, but not the video's level.`,
+    ({ video }) =>
+      `This device plays ${codecText(video.source.codec)}, but not this video's level or tier.`,
   ),
-  VIDEO_BIT_DEPTH_NOT_DECLARED: video(() => "This device can't play the video's bit depth."),
-  VIDEO_PICTURE_SIZE_NOT_DECLARED: video(
-    ({ video }) => `This device can't play ${pictureSizeText(video.source)} video.`,
+  VIDEO_BIT_DEPTH_NOT_DECLARED: video(() => "This device can't play this video's bit depth."),
+  VIDEO_BIT_DEPTH_UNKNOWN: video(
+    () => "The server couldn't read this video's bit depth, so it encodes it.",
   ),
+  VIDEO_PICTURE_SIZE_NOT_DECLARED: video(() => "This device can't play this video's picture size."),
   VIDEO_FRAME_RATE_NOT_DECLARED: video(({ video }) =>
     video.source.frameRate === null
-      ? "This device can't play the video's frame rate."
+      ? "This device can't play this video's frame rate."
       : `This device can't play ${frameRateText(video.source.frameRate)} fps video.`,
   ),
   DYNAMIC_RANGE_NOT_DECLARED: video(
     ({ video }) =>
       `This device can't show ${videoRangeText(video.source.videoRange)}, so the server converts it.`,
   ),
-  DOLBY_VISION_NOT_DECLARED: video(({ video }) => {
-    const sent = video.output.dolbyVision
-      ? 'another Dolby Vision profile'
-      : videoRangeText(video.output.videoRange)
-    return `This device can't play the video's Dolby Vision profile, so the server sends ${sent}.`
-  }),
+  DOLBY_VISION_NOT_DECLARED: video(
+    ({ video }) =>
+      `This device can't play this video's Dolby Vision profile or level, so the server sends ${sentHdrText(video)}.`,
+  ),
+  DOLBY_VISION_PROFILE_OR_LEVEL_UNKNOWN: video(
+    ({ video }) =>
+      `The server couldn't read this video's Dolby Vision profile or level, so it sends ${sentHdrText(video)}.`,
+  ),
   HDR10_PLUS_NOT_DECLARED: video(() => "This device can't play HDR10+."),
-  PICTURE_ABOVE_VIEWER_LIMIT: video(({ video, choice }) => {
-    const target = namesPictureSize(choice) ? choiceText(choice) : pictureSizeText(video.output)
-    return `You chose ${choiceText(choice)}, so the server scales this ${pictureSizeText(video.source)} video down to ${target}.`
-  }),
+  HDR10_PLUS_STRIPPED_BESIDE_DOLBY_VISION: video(
+    () => 'The server keeps Dolby Vision in the stream, so it leaves out HDR10+.',
+  ),
+  PICTURE_ABOVE_VIEWER_LIMIT: video(
+    ({ video, choice }) =>
+      `You chose ${choiceText(choice)}, so the server scales this ${pictureSizeText(video.source)} video down to ${video.output.height}p.`,
+  ),
   BITRATE_ABOVE_VIEWER_LIMIT: video(({ video, choice }) => {
     const { bitrate } = video.source
     const source = bitrate === null ? 'this video' : `this ${bitrateText(bitrate)} video`
-    return `You chose ${choiceText(choice)}, so the server re-encodes ${source} to fit.`
+    return `You chose ${choiceText(choice)}, so the server re-encodes ${source} to fit your choice.`
   }),
   SOURCE_INTERLACED: video(() => 'The video is interlaced, and streaming needs progressive video.'),
   DOLBY_VISION_WITHOUT_COMPATIBLE_BASE: video(
@@ -109,42 +121,80 @@ const REASONS: Record<Known<DecisionReason>, Reason> = {
     () => "The video's Dolby Vision data disagrees with its HDR format.",
   ),
   DOLBY_VISION_RPU_STARTS_SAMPLE: video(
-    () => "The video stores its Dolby Vision data in a way that can't be copied.",
+    () => "The video stores its Dolby Vision data in a way that can't be copied into the stream.",
   ),
   H264_NOT_8_BIT_4_2_0: video(
-    () => "The video is H.264 in a bit depth or color format that this device can't play.",
+    () =>
+      "The server can't copy H.264 in this video's bit depth or color format into the stream, so it encodes the video.",
+  ),
+  VIDEO_CHROMA_SUBSAMPLING_UNKNOWN: video(
+    () => "The server couldn't read this video's color format, so it encodes it.",
   ),
   SAMPLE_ENTRY_NOT_COPYABLE: video(
     ({ video }) =>
-      `The file packages its ${codecText(video.source.codec)} video in a way that can't be copied for this player, so the server re-encodes it.`,
+      `The file packages its ${codecText(video.source.codec)} video in a sample entry that can't be copied into the stream, so the server re-encodes it.`,
+  ),
+  VIDEO_CODEC_STRING_UNKNOWN: video(
+    () =>
+      "The server couldn't read the codec details it needs to copy this video, so it encodes it.",
   ),
   VIDEO_CODEC_PROFILE_UNKNOWN: video(() => "The server couldn't name the video's codec profile."),
+  VIDEO_CODEC_UNKNOWN: video(
+    () => "The server couldn't name this video's codec, so it encodes it.",
+  ),
   VIDEO_SOURCE_NOT_COPYABLE: video(
     () => "The server couldn't read this video's picture details, so it encodes it.",
   ),
   KEYFRAMES_UNKNOWN: video(
-    () => "The server hasn't finished finding this video's keyframes, so it encodes it for now.",
+    () => "The server doesn't know where this video's keyframes are, so it encodes it.",
   ),
-  KEYFRAMES_TOO_SPARSE: video(() => "The video's keyframes are too far apart to copy."),
-  KEYFRAME_TIMESTAMPS_INVALID: video(() => "The video's keyframe times are out of order."),
+  KEYFRAMES_TOO_SPARSE: video(
+    () => 'The keyframes are too far apart to copy this video into the stream.',
+  ),
+  KEYFRAME_TIMESTAMPS_INVALID: video(
+    () => "The video's keyframe times are out of order or out of range.",
+  ),
   NO_WORKER_DELIVERS_COPY: video(
     () => 'No connected transcoder can rewrite this video for copying, so the server encodes it.',
+  ),
+  DIRECT_PLAY_SAMPLE_ENTRY_NOT_DECLARED: video(
+    () =>
+      "The server couldn't confirm that this device can play this video's sample entry directly.",
+  ),
+  DIRECT_PLAY_VIDEO_NOT_DECLARED: video(
+    () => "The server couldn't confirm that this device can play this file's video directly.",
   ),
   AUDIO_CODEC_NOT_DECLARED: audio(
     ({ audio }) => `This device can't play ${codecText(audio.source.codec)} audio.`,
   ),
-  AUDIO_CHANNELS_NOT_DECLARED: audio(
-    ({ audio }) => `This device can't play ${channelsText(audio.source.channels)} audio.`,
-  ),
-  AUDIO_SOURCE_NOT_COPYABLE: audio(
+  AUDIO_CHANNELS_NOT_DECLARED: audio(() => "This device can't play this audio's channel layout."),
+  AUDIO_CHANNELS_UNKNOWN: audio(
     ({ audio }) =>
-      `The audio is ${codecText(audio.source.codec)} in a profile that can't be copied.`,
+      `The server couldn't read this audio's channel count, and this device plays ${codecText(audio.source.codec)} only in mono.`,
+  ),
+  AUDIO_SOURCE_NOT_COPYABLE: audio(() => "This audio's format can't be copied into the stream."),
+  AUDIO_CODEC_STRING_UNKNOWN: audio(
+    () =>
+      "The server couldn't read the codec details it needs to copy this audio, so it encodes it.",
   ),
   AUDIO_LOWERED_FOR_BITRATE_LIMIT: audio(({ audio, choice }) => {
     const { bitrate } = audio.output
     const lowered = bitrate === null ? 'the audio' : `the audio to ${bitrateText(bitrate)}`
-    return `You chose ${choiceText(choice)}, so the server lowers ${lowered} to fit.`
+    return `You chose ${choiceText(choice)}, so the server lowers ${lowered} to fit your choice.`
   }),
+  SOURCE_CONTAINER_UNKNOWN: stream(
+    "The server couldn't name this file's container, so it streams the video.",
+  ),
+  DIRECT_PLAY_CONTAINER_NOT_DECLARED: stream(
+    "This device can't play this file directly in its container, so the server streams the video.",
+  ),
+  // It concerns every audio track of the file, so it shows even when the decision has no audio.
+  DIRECT_PLAY_AUDIO_NOT_DECLARED: stream(
+    "The server couldn't confirm that this device can play every audio track in this file directly.",
+  ),
+  FORCED_IMAGE_SUBTITLE_IN_AUDIO_LANGUAGE: stream(
+    "This file has forced image subtitles in an audio track's language, so the server streams the video.",
+  ),
   DIRECT_PLAY_FAILED: stream('Direct play failed, so the server streams the video instead.'),
   COPY_FAILED: stream('The copy failed, so the server encodes the video instead.'),
   ENCODE_FAILED: stream('The encode failed, so the server encodes the video in another codec.'),
@@ -164,6 +214,8 @@ const CODECS = new Map([
   ['mp3', 'MP3'],
   ['truehd', 'TrueHD'],
   ['dts', 'DTS'],
+  // The server sends unknown for a source whose probe named no codec.
+  ['unknown', UNKNOWN],
 ])
 
 const UNKNOWN_DELIVERY = 'Another delivery'
@@ -251,7 +303,9 @@ export function videoRows({ source, output }: VideoDelivery): TrackRow[] {
 export function audioRows({ source, output }: AudioDelivery): TrackRow[] {
   return [
     row('Codec', source, output, (format) => codecText(format.codec)),
-    row('Channels', source, output, (format) => channelsText(format.channels)),
+    row('Channels', source, output, ({ channels }) =>
+      channels === null ? UNKNOWN : String(channels),
+    ),
     row('Bitrate', source, output, optionalBitrateText),
   ]
 }
@@ -275,9 +329,15 @@ export function bitrateText(bitsPerSecond: number): string {
   return `${Math.round(bitsPerSecond / 1_000)} kb/s`
 }
 
-/** A channel count by its usual layout name, such as Stereo or 5.1. */
+/** A channel count by its usual layout name, such as stereo or 5.1. */
 export function channelsText(channels: number): string {
   return CHANNEL_LAYOUTS.get(channels) ?? `${channels} channels`
+}
+
+// The output's HDR as a reason about Dolby Vision names it: a copy that keeps Dolby Vision under
+// another profile sends that profile, not the base.
+function sentHdrText({ output }: VideoDelivery): string {
+  return output.dolbyVision ? 'another Dolby Vision profile' : videoRangeText(output.videoRange)
 }
 
 function optionalBitrateText({ bitrate }: { bitrate: number | null }): string {

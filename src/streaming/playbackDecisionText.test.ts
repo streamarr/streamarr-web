@@ -55,20 +55,30 @@ function reasonsOf(
 }
 
 describe('playbackDecisionText', () => {
+  // Every DecisionReason in the schema's order, each with its sentence from streamarr/streamarr-ux#21.
   it.each<[DecisionReason, 'video' | 'audio' | 'stream', string]>([
     ['VIDEO_CODEC_NOT_DECLARED', 'video', "This device can't play the video's codec (HEVC)."],
     [
       'VIDEO_CODEC_PROFILE_NOT_DECLARED',
       'video',
-      "This device plays HEVC, but not the video's profile.",
+      "This device plays HEVC, but not this video's profile.",
     ],
     [
       'VIDEO_CODEC_LEVEL_NOT_DECLARED',
       'video',
-      "This device plays HEVC, but not the video's level.",
+      "This device plays HEVC, but not this video's level or tier.",
     ],
-    ['VIDEO_BIT_DEPTH_NOT_DECLARED', 'video', "This device can't play the video's bit depth."],
-    ['VIDEO_PICTURE_SIZE_NOT_DECLARED', 'video', "This device can't play 3840×2160 video."],
+    ['VIDEO_BIT_DEPTH_NOT_DECLARED', 'video', "This device can't play this video's bit depth."],
+    [
+      'VIDEO_BIT_DEPTH_UNKNOWN',
+      'video',
+      "The server couldn't read this video's bit depth, so it encodes it.",
+    ],
+    [
+      'VIDEO_PICTURE_SIZE_NOT_DECLARED',
+      'video',
+      "This device can't play this video's picture size.",
+    ],
     ['VIDEO_FRAME_RATE_NOT_DECLARED', 'video', "This device can't play 23.976 fps video."],
     [
       'DYNAMIC_RANGE_NOT_DECLARED',
@@ -78,9 +88,19 @@ describe('playbackDecisionText', () => {
     [
       'DOLBY_VISION_NOT_DECLARED',
       'video',
-      "This device can't play the video's Dolby Vision profile, so the server sends HDR10.",
+      "This device can't play this video's Dolby Vision profile or level, so the server sends HDR10.",
+    ],
+    [
+      'DOLBY_VISION_PROFILE_OR_LEVEL_UNKNOWN',
+      'video',
+      "The server couldn't read this video's Dolby Vision profile or level, so it sends HDR10.",
     ],
     ['HDR10_PLUS_NOT_DECLARED', 'video', "This device can't play HDR10+."],
+    [
+      'HDR10_PLUS_STRIPPED_BESIDE_DOLBY_VISION',
+      'video',
+      'The server keeps Dolby Vision in the stream, so it leaves out HDR10+.',
+    ],
     [
       'PICTURE_ABOVE_VIEWER_LIMIT',
       'video',
@@ -89,7 +109,7 @@ describe('playbackDecisionText', () => {
     [
       'BITRATE_ABOVE_VIEWER_LIMIT',
       'video',
-      'You chose 1080p, so the server re-encodes this 61.2 Mb/s video to fit.',
+      'You chose 1080p, so the server re-encodes this 61.2 Mb/s video to fit your choice.',
     ],
     [
       'SOURCE_INTERLACED',
@@ -114,19 +134,34 @@ describe('playbackDecisionText', () => {
     [
       'DOLBY_VISION_RPU_STARTS_SAMPLE',
       'video',
-      "The video stores its Dolby Vision data in a way that can't be copied.",
+      "The video stores its Dolby Vision data in a way that can't be copied into the stream.",
     ],
     [
       'H264_NOT_8_BIT_4_2_0',
       'video',
-      "The video is H.264 in a bit depth or color format that this device can't play.",
+      "The server can't copy H.264 in this video's bit depth or color format into the stream, so it encodes the video.",
+    ],
+    [
+      'VIDEO_CHROMA_SUBSAMPLING_UNKNOWN',
+      'video',
+      "The server couldn't read this video's color format, so it encodes it.",
     ],
     [
       'SAMPLE_ENTRY_NOT_COPYABLE',
       'video',
-      "The file packages its HEVC video in a way that can't be copied for this player, so the server re-encodes it.",
+      "The file packages its HEVC video in a sample entry that can't be copied into the stream, so the server re-encodes it.",
+    ],
+    [
+      'VIDEO_CODEC_STRING_UNKNOWN',
+      'video',
+      "The server couldn't read the codec details it needs to copy this video, so it encodes it.",
     ],
     ['VIDEO_CODEC_PROFILE_UNKNOWN', 'video', "The server couldn't name the video's codec profile."],
+    [
+      'VIDEO_CODEC_UNKNOWN',
+      'video',
+      "The server couldn't name this video's codec, so it encodes it.",
+    ],
     [
       'VIDEO_SOURCE_NOT_COPYABLE',
       'video',
@@ -135,26 +170,70 @@ describe('playbackDecisionText', () => {
     [
       'KEYFRAMES_UNKNOWN',
       'video',
-      "The server hasn't finished finding this video's keyframes, so it encodes it for now.",
+      "The server doesn't know where this video's keyframes are, so it encodes it.",
     ],
-    ['KEYFRAMES_TOO_SPARSE', 'video', "The video's keyframes are too far apart to copy."],
-    ['KEYFRAME_TIMESTAMPS_INVALID', 'video', "The video's keyframe times are out of order."],
+    [
+      'KEYFRAMES_TOO_SPARSE',
+      'video',
+      'The keyframes are too far apart to copy this video into the stream.',
+    ],
+    [
+      'KEYFRAME_TIMESTAMPS_INVALID',
+      'video',
+      "The video's keyframe times are out of order or out of range.",
+    ],
     [
       'NO_WORKER_DELIVERS_COPY',
       'video',
       'No connected transcoder can rewrite this video for copying, so the server encodes it.',
     ],
     ['AUDIO_CODEC_NOT_DECLARED', 'audio', "This device can't play TrueHD audio."],
-    ['AUDIO_CHANNELS_NOT_DECLARED', 'audio', "This device can't play 7.1 audio."],
+    ['AUDIO_CHANNELS_NOT_DECLARED', 'audio', "This device can't play this audio's channel layout."],
     [
-      'AUDIO_SOURCE_NOT_COPYABLE',
+      'AUDIO_CHANNELS_UNKNOWN',
       'audio',
-      "The audio is TrueHD in a profile that can't be copied.",
+      "The server couldn't read this audio's channel count, and this device plays TrueHD only in mono.",
+    ],
+    ['AUDIO_SOURCE_NOT_COPYABLE', 'audio', "This audio's format can't be copied into the stream."],
+    [
+      'AUDIO_CODEC_STRING_UNKNOWN',
+      'audio',
+      "The server couldn't read the codec details it needs to copy this audio, so it encodes it.",
     ],
     [
       'AUDIO_LOWERED_FOR_BITRATE_LIMIT',
       'audio',
-      'You chose 1080p, so the server lowers the audio to 640 kb/s to fit.',
+      'You chose 1080p, so the server lowers the audio to 640 kb/s to fit your choice.',
+    ],
+    [
+      'SOURCE_CONTAINER_UNKNOWN',
+      'stream',
+      "The server couldn't name this file's container, so it streams the video.",
+    ],
+    [
+      'DIRECT_PLAY_CONTAINER_NOT_DECLARED',
+      'stream',
+      "This device can't play this file directly in its container, so the server streams the video.",
+    ],
+    [
+      'DIRECT_PLAY_SAMPLE_ENTRY_NOT_DECLARED',
+      'video',
+      "The server couldn't confirm that this device can play this video's sample entry directly.",
+    ],
+    [
+      'DIRECT_PLAY_VIDEO_NOT_DECLARED',
+      'video',
+      "The server couldn't confirm that this device can play this file's video directly.",
+    ],
+    [
+      'DIRECT_PLAY_AUDIO_NOT_DECLARED',
+      'stream',
+      "The server couldn't confirm that this device can play every audio track in this file directly.",
+    ],
+    [
+      'FORCED_IMAGE_SUBTITLE_IN_AUDIO_LANGUAGE',
+      'stream',
+      "This file has forced image subtitles in an audio track's language, so the server streams the video.",
     ],
     [
       'DIRECT_PLAY_FAILED',
@@ -173,7 +252,7 @@ describe('playbackDecisionText', () => {
 
   it('shouldNameTheChosenSizeFromTheOutputWhenTheChoiceNamesNoSize', () => {
     expect(reasonsOf(['PICTURE_ABOVE_VIEWER_LIMIT'], { requestedChoice: 'AUTO' }).video).toEqual([
-      'You chose Auto, so the server scales this 3840×2160 video down to 1920×1080.',
+      'You chose Auto, so the server scales this 3840×2160 video down to 1080p.',
     ])
   })
 
@@ -197,10 +276,10 @@ describe('playbackDecisionText', () => {
     ).toEqual({
       stream: [],
       video: [
-        "This device can't play the video's frame rate.",
-        'You chose 1080p, so the server re-encodes this video to fit.',
+        "This device can't play this video's frame rate.",
+        'You chose 1080p, so the server re-encodes this video to fit your choice.',
       ],
-      audio: ['You chose 1080p, so the server lowers the audio to fit.'],
+      audio: ['You chose 1080p, so the server lowers the audio to fit your choice.'],
     })
   })
 
@@ -211,15 +290,53 @@ describe('playbackDecisionText', () => {
       video: { ...video, output: { ...video.output, dolbyVision: true } },
     }
 
-    expect(reasonsOf(['DOLBY_VISION_NOT_DECLARED'], { decision }).video).toEqual([
-      "This device can't play the video's Dolby Vision profile, so the server sends another Dolby Vision profile.",
+    expect(
+      reasonsOf(['DOLBY_VISION_NOT_DECLARED', 'DOLBY_VISION_PROFILE_OR_LEVEL_UNKNOWN'], {
+        decision,
+      }).video,
+    ).toEqual([
+      "This device can't play this video's Dolby Vision profile or level, so the server sends another Dolby Vision profile.",
+      "The server couldn't read this video's Dolby Vision profile or level, so it sends another Dolby Vision profile.",
+    ])
+  })
+
+  it('shouldNameTheSourceBaseAloneWhenTheDeviceCannotShowItsRange', () => {
+    const { video } = ENCODED_FOR_1080P
+    const decision = {
+      ...ENCODED_FOR_1080P,
+      video: { ...video, source: { ...video.source, videoRange: 'SDR' as const } },
+    }
+
+    expect(reasonsOf(['DYNAMIC_RANGE_NOT_DECLARED'], { decision }).video).toEqual([
+      "This device can't show SDR, so the server converts it.",
+    ])
+  })
+
+  it('shouldPutEachReasonAboutTheWholeFileOnTheStreamLineWhenTheServerNamesSeveral', () => {
+    expect(
+      reasonsOf([
+        'DIRECT_PLAY_CONTAINER_NOT_DECLARED',
+        'VIDEO_CODEC_NOT_DECLARED',
+        'DIRECT_PLAY_AUDIO_NOT_DECLARED',
+      ]).stream,
+    ).toEqual([
+      "This device can't play this file directly in its container, so the server streams the video.",
+      "The server couldn't confirm that this device can play every audio track in this file directly.",
+    ])
+  })
+
+  it('shouldKeepTheReasonAboutEveryAudioTrackWhenTheDecisionHasNoAudio', () => {
+    const decision = { ...ENCODED_FOR_1080P, audio: null }
+
+    expect(reasonsOf(['DIRECT_PLAY_AUDIO_NOT_DECLARED'], { decision }).stream).toEqual([
+      "The server couldn't confirm that this device can play every audio track in this file directly.",
     ])
   })
 
   it('shouldNameOnlyTheProfileWhenTheBitDepthBelongsToIt', () => {
     expect(
       reasonsOf(['VIDEO_CODEC_PROFILE_NOT_DECLARED', 'VIDEO_BIT_DEPTH_NOT_DECLARED']).video,
-    ).toEqual(["This device plays HEVC, but not the video's profile."])
+    ).toEqual(["This device plays HEVC, but not this video's profile."])
   })
 
   it('shouldNameAReasonThisAppDoesNotKnowOnTheStreamLineWhenTheServerAddsOne', () => {
@@ -276,26 +393,42 @@ describe('playbackDecisionText', () => {
     ])
   })
 
-  it.each<[number, string]>([
-    [1, 'Mono'],
-    [2, 'Stereo'],
-    [6, '5.1'],
-    [8, '7.1'],
-    [3, '3 channels'],
-  ])('shouldNameTheChannelsWhenTheAudioHas(%i)', (channels, named) => {
+  it.each<[number | null, string]>([
+    [2, '2'],
+    [6, '6'],
+    [null, 'Unknown'],
+  ])('shouldShowTheChannelCountTheServerSendsWhenTheAudioHas(%s)', (channels, shown) => {
     const format = { codec: 'flac', channels, bitrate: null }
 
     expect(audioRows({ delivery: 'COPY', source: format, output: format })).toEqual([
       { name: 'Codec', original: 'FLAC', playing: 'FLAC', changed: false },
-      { name: 'Channels', original: named, playing: named, changed: false },
+      { name: 'Channels', original: shown, playing: shown, changed: false },
       { name: 'Bitrate', original: 'Unknown', playing: 'Unknown', changed: false },
     ])
+  })
+
+  it('shouldSayUnknownForACodecTheProbeDidNotNameWhenItBuildsTheTables', () => {
+    const video = { ...ENCODED_FOR_1080P.video.source, codec: 'unknown' }
+    const audio = { codec: 'unknown', channels: null, bitrate: null }
+
+    expect(videoRows({ delivery: 'ENCODE', source: video, output: video })[0]).toEqual({
+      name: 'Codec',
+      original: 'Unknown',
+      playing: 'Unknown',
+      changed: false,
+    })
+    expect(audioRows({ delivery: 'ENCODE', source: audio, output: audio })[0]).toEqual({
+      name: 'Codec',
+      original: 'Unknown',
+      playing: 'Unknown',
+      changed: false,
+    })
   })
 
   it('shouldMarkTheRowsAnEncodeChangesWhenItBuildsTheAudioTable', () => {
     expect(audioRows(TRUEHD_AS_EAC3)).toEqual([
       { name: 'Codec', original: 'TrueHD', playing: 'E-AC-3', changed: true },
-      { name: 'Channels', original: '7.1', playing: '5.1', changed: true },
+      { name: 'Channels', original: '8', playing: '6', changed: true },
       { name: 'Bitrate', original: '4.6 Mb/s', playing: '640 kb/s', changed: true },
     ])
   })
