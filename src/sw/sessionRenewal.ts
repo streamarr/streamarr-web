@@ -137,6 +137,9 @@ export function createSessionRenewal({
     const replayable = request.clone()
     const requestGeneration = generation
     const preflightResult = nearExpiry() ? await refresh() : undefined
+    if (requestGeneration !== generation) {
+      return identityChangedResponse()
+    }
     const response = await fetcher(request)
     if (!(await isRecoverableAccessFailure(response))) {
       return response
@@ -170,6 +173,17 @@ function parseFutureExpiry(
     return null
   }
   return { expiresAt: value, expiresAtMs }
+}
+
+// The page has moved to another identity, so it neither routes nor retries this answer.
+function identityChangedResponse(): Response {
+  return Response.json(
+    {
+      code: 'IDENTITY_CHANGED',
+      message: 'You signed in or switched Profiles before this request was sent.',
+    },
+    { status: 409, headers: { 'Cache-Control': 'no-store' } },
+  )
 }
 
 function refreshUnavailableResponse(): Response {
