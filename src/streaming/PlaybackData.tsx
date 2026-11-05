@@ -98,12 +98,24 @@ export function PlaybackData({
     controlsReach === null
       ? undefined
       : ({ '--controls-reach': `${controlsReach}px` } as CSSProperties)
+
   return (
     <section className={styles.panel} style={reach} aria-labelledby={headingId}>
       <div className={styles.header}>
         <h2 id={headingId} className={styles.heading}>
           Playback data
         </h2>
+        {stream && (
+          <div role="group" aria-label="Summary" className={styles.summary}>
+            <dl className={styles.chips}>
+              <Chip
+                name="Quality"
+                value={qualityLabel(stream.requestedChoice) ?? stream.requestedChoice}
+              />
+              <Chip name="Delivery" value={deliveryChipText(stream.sourceContainer)} />
+            </dl>
+          </div>
+        )}
         <button
           type="button"
           className={styles.close}
@@ -147,24 +159,24 @@ function StreamData({
   return (
     <>
       {reasons && reasons.stream.length > 0 && (
-        <p className={styles.streamReason}>{reasons.stream.join(' ')}</p>
+        <ul className={styles.streamReasons} aria-label="Stream reasons">
+          {reasons.stream.map((reason) => (
+            <li key={reason}>{reason}</li>
+          ))}
+        </ul>
       )}
-      <div role="group" aria-label="Summary">
-        <dl className={styles.chips}>
-          <Chip
-            name="Quality"
-            value={qualityLabel(stream.requestedChoice) ?? stream.requestedChoice}
-          />
-          <Chip name="Delivery" value={deliveryChipText(stream.sourceContainer)} />
-        </dl>
-      </div>
       <div className={styles.columns}>
         <Group name="Server">
           {decision.at === 'reading' && (
             <p className={styles.note}>Asking the server how it delivers this video…</p>
           )}
           {decision.at === 'missing' && (
-            <p className={styles.note}>The server couldn't say how it delivers this video.</p>
+            <div className={styles.failure}>
+              <p className={styles.note}>The server couldn't say how it delivers this video.</p>
+              <button type="button" className={styles.retry} onClick={decision.retry}>
+                Retry
+              </button>
+            </div>
           )}
           {decision.at === 'read' && reasons && (
             <PlaybackDecisionTracks decision={decision.decision} reasons={reasons} />
@@ -180,7 +192,7 @@ function StreamData({
           </Group>
           <Group name="This screen">
             <Facts>
-              <Fact name="Display" value={displayText(screen.screen)} />
+              <Fact name="Screen" value={screenText(screen.screen)} />
               <Fact name="HDR display" value={screen.displaysHighDynamicRange ? 'Yes' : 'No'} />
               <Fact name="Browser" value={browserText(screen.userAgent)} />
             </Facts>
@@ -192,13 +204,15 @@ function StreamData({
 }
 
 type DecisionRead =
-  { at: 'reading' } | { at: 'missing' } | { at: 'read'; decision: PlaybackDecisionFieldsFragment }
+  | { at: 'reading' }
+  | { at: 'missing'; retry: () => void }
+  | { at: 'read'; decision: PlaybackDecisionFieldsFragment }
 
 function usePlaybackDecision({
   playbackSessionId,
   streamSessionId,
 }: Pick<PlaybackDataStream, 'playbackSessionId' | 'streamSessionId'>): DecisionRead {
-  const { data, loading } = useQuery(PlaybackDecisionsDocument, {
+  const { data, loading, refetch } = useQuery(PlaybackDecisionsDocument, {
     variables: { id: playbackSessionId },
     // Each stream session's read stands alone: a read still out for the stream before would answer
     // for this one, and its late answer would overwrite this one's decisions in a shared cache.
@@ -211,7 +225,11 @@ function usePlaybackDecision({
   const decision = data?.playbackSession?.decisions.find(
     (candidate) => candidate.streamSessionId === streamSessionId,
   )
-  return decision ? { at: 'read', decision } : { at: 'missing' }
+  if (decision) {
+    return { at: 'read', decision }
+  }
+  // A failed read rejects its refetch too; the next render shows the failure again.
+  return { at: 'missing', retry: () => void refetch().catch(() => undefined) }
 }
 
 function Chip({ name, value }: Readonly<{ name: string; value: string }>) {
@@ -242,10 +260,10 @@ function deliveryChipText(container: SourceContainer | null): string {
   const named = Object.hasOwn(CONTAINERS, container)
     ? CONTAINERS[container as Known<SourceContainer>]
     : container
-  return `${named} → File`
+  return `${named} → direct play`
 }
 
-function displayText({ width, height, pixelRatio }: PlaybackDataScreen['screen']): string {
+function screenText({ width, height, pixelRatio }: PlaybackDataScreen['screen']): string {
   return `${width}×${height} at ${pixelRatios.format(pixelRatio)}×`
 }
 
@@ -353,5 +371,5 @@ function audioFormat({ audioCodec, audioChannels }: StreamStats): string {
   if (!audioCodec) {
     return UNKNOWN
   }
-  return audioChannels === undefined ? audioCodec : `${audioCodec} · ${channelsText(audioChannels)}`
+  return audioChannels === undefined ? audioCodec : `${audioCodec} ${channelsText(audioChannels)}`
 }

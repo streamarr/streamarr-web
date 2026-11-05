@@ -8179,6 +8179,16 @@ describe('Player', () => {
       }
     }
 
+    // The reasons about the whole format attempt, one per line under the head row.
+    function streamReasonsIn(panel: HTMLElement): string[] {
+      const reasons = within(panel).queryByRole('list', { name: 'Stream reasons' })
+      return reasons
+        ? within(reasons)
+            .getAllByRole('listitem')
+            .map((reason) => reason.textContent)
+        : []
+    }
+
     async function shownTrack(panel: HTMLElement, name: string) {
       await within(groupIn(panel, 'Server')).findByRole('region', { name })
       return trackIn(panel, name)
@@ -8231,7 +8241,7 @@ describe('Player', () => {
       expect(await shownTrack(panel, 'Video')).toMatchObject({
         heading: 'Video Encode',
         rows: [
-          ['', 'Original', 'Playing'],
+          ['Property', 'Original', 'Playing'],
           ['Codec (changed)', 'HEVC', 'H.264'],
           ['HDR (changed)', 'Dolby Vision', 'SDR'],
           ['Resolution (changed)', '3840×2160', '1920×1080'],
@@ -8246,16 +8256,16 @@ describe('Player', () => {
       expect(trackIn(panel, 'Audio')).toMatchObject({
         heading: 'Audio Copy',
         rows: [
-          ['', 'Original', 'Playing'],
+          ['Property', 'Original', 'Playing'],
           ['Codec', 'E-AC-3', 'E-AC-3'],
           ['Channels', '6', '6'],
           ['Bitrate', '640 kb/s', '640 kb/s'],
         ],
         reasons: [],
       })
-      expect(
-        within(panel).getByText('The copy failed, so the server encodes the video instead.'),
-      ).toBeInTheDocument()
+      expect(streamReasonsIn(panel)).toEqual([
+        'The copy failed, so the server encodes the video instead.',
+      ])
       expect(factsIn(within(panel).getByRole('group', { name: 'Summary' }))).toEqual({
         Quality: 'Auto',
         Delivery: 'HLS',
@@ -8285,7 +8295,7 @@ describe('Player', () => {
       expect(await shownTrack(panel, 'Video')).toMatchObject({
         heading: 'Video Direct play',
         rows: [
-          ['', 'Original', 'Playing'],
+          ['Property', 'Original', 'Playing'],
           ['Codec', 'H.264', 'H.264'],
           ['HDR', 'SDR', 'SDR'],
           ['Resolution', '1920×1080', '1920×1080'],
@@ -8294,13 +8304,12 @@ describe('Player', () => {
         ],
         reasons: [],
       })
-      expect(trackIn(panel, 'Audio')).toMatchObject({
-        heading: 'Audio ',
-        text: 'Audio This video has no audio.',
-      })
+      expect(
+        within(groupIn(panel, 'Server')).queryByRole('region', { name: 'Audio' }),
+      ).not.toBeInTheDocument()
       expect(factsIn(within(panel).getByRole('group', { name: 'Summary' }))).toEqual({
         Quality: 'Original',
-        Delivery: 'MP4 → File',
+        Delivery: 'MP4 → direct play',
       })
     })
 
@@ -8345,6 +8354,37 @@ describe('Player', () => {
         await within(panel).findByText("The server gave a reason that's new to this app."),
       ).toBeInTheDocument()
       expect(trackIn(panel, 'Audio').reasons).toEqual(["This device can't play AAC audio."])
+    })
+
+    it('shouldPutEachReasonAboutTheWholeFileOnItsOwnLineUnderTheHeadRowWhenTheFileDoesNotPlayDirectly', async () => {
+      serveSession()
+      serveDecisions(() => [
+        playbackDecision({
+          streamSessionId: SESSION.id,
+          audio: {
+            delivery: 'COPY',
+            source: { codec: 'eac3', channels: null, bitrate: null },
+            output: { codec: 'eac3', channels: null, bitrate: null },
+          },
+          reasons: ['DIRECT_PLAY_CONTAINER_NOT_DECLARED', 'DIRECT_PLAY_AUDIO_NOT_DECLARED'],
+        }),
+      ])
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await showingVideo(STREAM_URL)
+
+      const panel = await openPlaybackData(user)
+
+      expect((await shownTrack(panel, 'Audio')).rows).toContainEqual([
+        'Channels',
+        'Unknown',
+        'Unknown',
+      ])
+      expect(streamReasonsIn(panel)).toEqual([
+        "This device can't play this file directly in its container, so the server streams the video.",
+        "The server couldn't confirm that this device can play every audio track in this file directly.",
+      ])
     })
 
     it('shouldShowTheReplacingStreamsDecisionWhenAFallbackReplacesTheStreamWhileItShows', async () => {
@@ -8551,6 +8591,43 @@ describe('Player', () => {
       },
     )
 
+    it('shouldReadTheDecisionAgainWhenTheViewerPressesRetryAfterTheServerCouldNotSay', async () => {
+      serveSession()
+      let answers = 0
+      server.use(
+        graphql.query('PlaybackDecisions', ({ variables }) => {
+          answers += 1
+          if (answers === 1) {
+            return HttpResponse.json({ errors: [{ message: 'Internal failure' }] })
+          }
+          return HttpResponse.json({
+            data: {
+              playbackSession: {
+                __typename: 'PlaybackSession',
+                id: String(variables.id),
+                decisions: [servedDecision(playbackDecision({ streamSessionId: SESSION.id }))],
+              },
+            },
+          })
+        }),
+      )
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await showingVideo(STREAM_URL)
+      const panel = await openPlaybackData(user)
+      const failure = await within(groupIn(panel, 'Server')).findByText(
+        "The server couldn't say how it delivers this video.",
+      )
+      const retry = within(groupIn(panel, 'Server')).getByRole('button', { name: 'Retry' })
+      expect(failure.compareDocumentPosition(retry)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+
+      await user.click(retry)
+
+      expect((await shownTrack(panel, 'Video')).heading).toBe('Video Copy')
+      expect(answers).toBe(2)
+    })
+
     it('shouldShowWhatThePlayerReportsWhenTheStreamPlays', async () => {
       server.use(
         graphql.mutation('CreatePlaybackSession', () =>
@@ -8605,7 +8682,7 @@ describe('Player', () => {
         Resolution: '1920×1080',
         'Video codec': 'avc1.640028',
         'HDR mode': 'HDR10',
-        Audio: 'ec-3 · 5.1',
+        Audio: 'ec-3 5.1',
       })
     })
 
@@ -8700,7 +8777,7 @@ describe('Player', () => {
       {
         browser: 'desktop Chrome on an SDR display',
         platform: {},
-        shown: { Display: '2560×1440 at 2×', 'HDR display': 'No', Browser: 'Chrome 141' },
+        shown: { Screen: '2560×1440 at 2×', 'HDR display': 'No', Browser: 'Chrome 141' },
       },
       {
         browser: 'iPhone Safari on an HDR display',
@@ -8709,7 +8786,7 @@ describe('Player', () => {
           displaysHighDynamicRange: true,
           screen: { width: 402, height: 874, pixelRatio: 3 },
         },
-        shown: { Display: '402×874 at 3×', 'HDR display': 'Yes', Browser: 'Safari 27.2' },
+        shown: { Screen: '402×874 at 3×', 'HDR display': 'Yes', Browser: 'Safari 27.2' },
       },
     ])(
       'shouldDescribeTheScreenWhenTheViewerOpensPlaybackDataIn(browser: $browser)',

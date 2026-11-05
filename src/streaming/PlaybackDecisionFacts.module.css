@@ -21,7 +21,7 @@
 }
 
 .track + .track {
-  margin-top: var(--spacing-12);
+  margin-top: var(--spacing-20);
 }
 
 .trackHeading {
@@ -33,13 +33,14 @@
   font-weight: var(--font-weight-semibold);
 }
 
+/* A neutral rounded rectangle, never a pill. */
 .delivery {
   padding: 0 var(--spacing-6);
   border-radius: var(--radius-sm);
-  background: var(--color-alpha-12);
+  background: var(--surface-panel-strong);
   font-size: var(--font-size-micro);
   font-weight: var(--font-weight-medium);
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 
 .table {
@@ -63,13 +64,18 @@
   & tbody th {
     width: 30%;
   }
+
+  & tbody .changed th {
+    color: var(--text-primary);
+  }
 }
 
+/* A changed row: filled, its label in text.primary for contrast on the fill, its Playing value semibold. */
 .changed {
-  background: var(--color-alpha-10);
+  background: var(--surface-panel);
 
   & td:last-child {
-    font-weight: var(--font-weight-medium);
+    font-weight: var(--font-weight-semibold);
   }
 }
 
@@ -79,9 +85,4 @@
   margin: var(--spacing-6) 0 0;
   padding: 0;
   list-style: none;
-}
-
-.note {
-  margin: var(--spacing-4) 0 0;
-  color: var(--text-secondary);
 }
