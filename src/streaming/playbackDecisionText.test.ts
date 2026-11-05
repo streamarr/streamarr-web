@@ -49,7 +49,7 @@ function reasonsOf(
   {
     decision = ENCODED_FOR_1080P,
     requestedChoice = 'FULL_HD_1080P',
-  }: { decision?: PlaybackDecisionFieldsFragment; requestedChoice?: VideoQuality } = {},
+  }: { decision?: PlaybackDecisionFieldsFragment; requestedChoice?: VideoQuality | null } = {},
 ) {
   return placedReasons({ decision: { ...decision, reasons }, requestedChoice })
 }
@@ -280,6 +280,28 @@ describe('playbackDecisionText', () => {
     expect(reasonsOf(['PICTURE_ABOVE_VIEWER_LIMIT'], { requestedChoice: 'AUTO' }).video).toEqual([
       'You chose Auto, so the server scales this 3840×2160 video down to 1080p.',
     ])
+  })
+
+  it('shouldNameTheViewerInPlaceOfTheChoiceWhenTheReaderDoesNotKnowTheChoice', () => {
+    expect(
+      reasonsOf(
+        [
+          'PICTURE_ABOVE_VIEWER_LIMIT',
+          'BITRATE_ABOVE_VIEWER_LIMIT',
+          'AUDIO_LOWERED_FOR_BITRATE_LIMIT',
+        ],
+        { requestedChoice: null },
+      ),
+    ).toEqual({
+      stream: [],
+      video: [
+        'The viewer chose a lower quality, so the server scales this 3840×2160 video down to 1080p.',
+        'The viewer chose a lower quality, so the server re-encodes this 61.2 Mb/s video to fit their choice.',
+      ],
+      audio: [
+        'The viewer chose a lower quality, so the server lowers the audio to 640 kb/s to fit their choice.',
+      ],
+    })
   })
 
   it('shouldLeaveOutAFigureTheProbeDidNotFindWhenAReasonNamesIt', () => {
