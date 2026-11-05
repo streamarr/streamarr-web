@@ -1,13 +1,17 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import { graphql, HttpResponse } from 'msw'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ActiveStreamFieldsFragment } from '../../graphql/generated/graphql'
+import type {
+  ActiveStreamFieldsFragment,
+  ActiveStreamPosterFieldsFragment,
+} from '../../graphql/generated/graphql'
 import { deferred } from '../../test/deferred'
 import { serveGraphqlSocket } from '../../test/graphqlSocket'
 import { comeBackOnline } from '../../test/graphqlResponses'
 import { meFixture } from '../../test/meFixture'
 import { H264_FULL_HD, playbackDecision, servedDecision } from '../../test/playbackSession'
 import { renderAppAt } from '../../test/render'
+import type { UserEvent } from '@testing-library/user-event'
 import { server } from '../../test/server'
 
 const ADMIN = meFixture({ scope: 'profile', serverAdmin: true })
@@ -29,10 +33,13 @@ const MOVIE: ActiveStreamFieldsFragment = {
   profile: { id: 'profile-ada', name: 'Ada' },
   deviceName: 'Safari on Mac',
   mediaFileId: 'file-movie',
-  title: 'Everlight',
-  seriesTitle: null,
-  seasonNumber: null,
-  episodeNumber: null,
+  media: {
+    __typename: 'Movie',
+    id: 'movie-everlight',
+    title: 'Everlight',
+    runtime: 118,
+    images: [],
+  },
   positionSeconds: 754,
   state: 'PLAYING',
   decision: playbackDecision({
@@ -48,6 +55,21 @@ const MOVIE: ActiveStreamFieldsFragment = {
   workers: ['worker-session-1'],
 }
 
+type EpisodeMedia = Extract<ActiveStreamFieldsFragment['media'], { __typename: 'Episode' }>
+
+const BREAKAGE: EpisodeMedia = {
+  __typename: 'Episode',
+  id: 'episode-breakage',
+  title: 'Breakage',
+  episodeNumber: 5,
+  runtime: 52,
+  season: {
+    id: 'season-northern-line-2',
+    seasonNumber: 2,
+    series: { id: 'series-northern-line', title: 'Northern Line', images: [] },
+  },
+}
+
 // An episode that plays from a copy, paused.
 const EPISODE: ActiveStreamFieldsFragment = {
   ...MOVIE,
@@ -55,10 +77,7 @@ const EPISODE: ActiveStreamFieldsFragment = {
   profile: { id: 'profile-ben', name: 'Ben' },
   deviceName: 'Apple TV',
   mediaFileId: 'file-episode',
-  title: 'Breakage',
-  seriesTitle: 'Northern Line',
-  seasonNumber: 2,
-  episodeNumber: 5,
+  media: BREAKAGE,
   positionSeconds: 3_725,
   state: 'PAUSED',
   decision: playbackDecision({ streamSessionId: 'sess-episode' }),
@@ -71,8 +90,32 @@ function served(stream: ActiveStreamFieldsFragment) {
     __typename: 'ActiveStream',
     ...stream,
     profile: { __typename: 'ActiveStreamProfile', ...stream.profile },
+    media: servedMedia(stream.media),
     decision: stream.decision && servedDecision(stream.decision),
   }
+}
+
+// Fragment spreads on Image only match in the cache when each image carries its __typename.
+function servedMedia(media: ActiveStreamFieldsFragment['media']) {
+  if (!media) return media
+  if (media.__typename === 'Movie') return { ...media, images: servedImages(media.images) }
+  const { season } = media
+  return {
+    ...media,
+    season: {
+      __typename: 'Season',
+      ...season,
+      series: {
+        __typename: 'Series',
+        ...season.series,
+        images: servedImages(season.series.images),
+      },
+    },
+  }
+}
+
+function servedImages(images: readonly (ActiveStreamPosterFieldsFragment | null)[]) {
+  return images.map((image) => image && { __typename: 'Image', ...image })
 }
 
 /**
@@ -122,37 +165,52 @@ function publishChange(
   })
 }
 
-async function streamRow(name: string): Promise<HTMLElement> {
-  return screen.findByRole('article', { name })
+const MOVIE_CARD = 'Everlight, Ada. Playing, Encode.'
+const EPISODE_CARD = 'Northern Line, S2 E5 · Breakage, Ben. Paused, Copy.'
+const ZOE_MOVIE_CARD = 'Everlight, Zoe. Playing, Encode.'
+
+async function streamCard(name: string): Promise<HTMLElement> {
+  return screen.findByRole('button', { name })
 }
 
-function factsIn(row: HTMLElement): Record<string, string> {
+// The cards in the order they show; the details' close button is the grid's other button.
+function cardNames(): string[] {
+  const grid = screen.queryByTestId('stream-grid')
+  if (!grid) return []
+  return within(grid)
+    .getAllByRole('button')
+    .filter((button) => button.hasAttribute('aria-expanded'))
+    .map((card) => card.getAttribute('aria-label') ?? '')
+}
+
+async function openDetails(user: UserEvent, card: string, title: string): Promise<HTMLElement> {
+  await user.click(await streamCard(card))
+  return screen.findByRole('region', { name: title })
+}
+
+function factsIn(details: HTMLElement): Record<string, string> {
   return Object.fromEntries(
-    within(row)
+    within(details)
       .getAllByRole('term')
       .map((term) => [term.textContent, term.nextElementSibling?.textContent ?? '']),
   )
 }
 
-function reasonsIn(row: HTMLElement, list: string): string[] {
-  return within(within(row).getByRole('list', { name: list }))
+function reasonsIn(details: HTMLElement, list: string): string[] {
+  return within(within(details).getByRole('list', { name: list }))
     .getAllByRole('listitem')
     .map((reason) => reason.textContent ?? '')
 }
 
 // A track of the stream's decision: its heading, and each table row as its cells read.
-function trackIn(row: HTMLElement, name: string) {
-  const track = within(row).getByRole('region', { name })
+function trackIn(details: HTMLElement, name: string) {
+  const track = within(details).getByRole('region', { name })
   return {
     heading: within(track).getByRole('heading').textContent,
     rows: within(within(track).getByRole('table'))
       .getAllByRole('row')
       .map((tableRow) => Array.from(tableRow.children, (cell) => cell.textContent)),
   }
-}
-
-function rowNames(): string[] {
-  return screen.queryAllByRole('article').map((row) => row.getAttribute('aria-label') ?? '')
 }
 
 async function liveChanges(state: ReturnType<typeof serve>) {
@@ -168,13 +226,44 @@ describe('active streams', () => {
     vi.restoreAllMocks()
   })
 
-  it('shouldListEachActiveStreamWithWhoWatchesWhatPlaysAndHowWhenAServerAdminOpensThePage', async () => {
+  it('shouldShowEachActiveStreamAsAPosterWithWhoWatchesWhenAServerAdminOpensThePage', async () => {
     serve()
     renderAppAt(PAGE)
 
-    const movie = await streamRow('Everlight')
-    const episode = await streamRow('Northern Line · S2 E5 · Breakage')
+    await streamCard(MOVIE_CARD)
 
+    expect(cardNames()).toEqual([MOVIE_CARD, EPISODE_CARD])
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Active streams2')
+    expect(screen.getByText('16.4 Mb/s sent · 1 copy, 1 encode')).toBeInTheDocument()
+  })
+
+  it('shouldShowTheSeriesPosterOnAnEpisodesCard', async () => {
+    const poster: ActiveStreamPosterFieldsFragment = {
+      aspectRatio: 0.67,
+      blurHash: null,
+      variants: [
+        { id: 'poster-medium', size: 'MEDIUM', width: 342, height: 513, url: 'poster.jpg' },
+      ],
+    }
+    const series = { ...BREAKAGE.season.series, images: [poster] }
+    serve([{ ...EPISODE, media: { ...BREAKAGE, season: { ...BREAKAGE.season, series } } }])
+    renderAppAt(PAGE)
+
+    const card = await streamCard(EPISODE_CARD)
+
+    expect(within(card).getByRole('img', { name: 'Northern Line' })).toHaveAttribute(
+      'src',
+      'poster.jpg',
+    )
+  })
+
+  it('shouldShowWhoWatchesWhatPlaysAndHowWhenTheAdminOpensAStreamsDetails', async () => {
+    serve()
+    const { user } = renderAppAt(PAGE)
+
+    const movie = await openDetails(user, MOVIE_CARD, 'Everlight')
+
+    expect(await streamCard(MOVIE_CARD)).toHaveAttribute('aria-expanded', 'true')
     expect(factsIn(movie)).toEqual({
       Viewer: 'Ada',
       Device: 'Safari on Mac',
@@ -210,6 +299,11 @@ describe('active streams', () => {
       "This device can't show HDR10, so the server converts it.",
       'The viewer chose a lower quality, so the server scales this 3840×2160 video down to 1080p.',
     ])
+
+    const episode = await openDetails(user, EPISODE_CARD, 'Northern Line')
+
+    expect(screen.queryByRole('region', { name: 'Everlight' })).not.toBeInTheDocument()
+    expect(within(episode).getByText('S2 E5 · Breakage')).toBeInTheDocument()
     expect(factsIn(episode)).toEqual({
       Viewer: 'Ben',
       Device: 'Apple TV',
@@ -220,30 +314,144 @@ describe('active streams', () => {
     expect(trackIn(episode, 'Video').heading).toBe('Video Copy')
   })
 
-  it('shouldNameWhatTheServerCannotWhenAStreamPreparesForAnUnmatchedFileOfADeletedProfile', async () => {
+  it.each([
+    { close: 'presses Escape', act: (user: UserEvent) => user.keyboard('{Escape}') },
+    {
+      close: 'presses Close details',
+      act: (user: UserEvent) => user.click(screen.getByRole('button', { name: 'Close details' })),
+    },
+  ])(
+    'shouldCloseTheDetailsAndReturnToTheCardWhenTheAdmin(close: $close)',
+    async ({ act: close }) => {
+      serve()
+      const { user } = renderAppAt(PAGE)
+      const details = await openDetails(user, MOVIE_CARD, 'Everlight')
+      within(details).getByRole('button', { name: 'Close details' }).focus()
+
+      await close(user)
+
+      expect(screen.queryByRole('region', { name: 'Everlight' })).not.toBeInTheDocument()
+      expect(await streamCard(MOVIE_CARD)).toHaveFocus()
+      expect(await streamCard(MOVIE_CARD)).toHaveAttribute('aria-expanded', 'false')
+    },
+  )
+
+  it('shouldCloseTheDetailsWhenTheAdminPressesTheOpenCardAgain', async () => {
+    serve()
+    const { user } = renderAppAt(PAGE)
+    await openDetails(user, MOVIE_CARD, 'Everlight')
+
+    await user.click(await streamCard(MOVIE_CARD))
+
+    expect(screen.queryByRole('region', { name: 'Everlight' })).not.toBeInTheDocument()
+  })
+
+  it('shouldSayWhatTheServerCannotWhenAStreamPreparesForAnUnmatchedFileOfADeletedProfile', async () => {
     serve([
       {
         ...MOVIE,
         profile: { id: 'profile-gone', name: null },
         deviceName: null,
-        title: null,
+        media: null,
         positionSeconds: null,
         state: null,
         decision: null,
         workers: [],
       },
     ])
-    renderAppAt(PAGE)
+    const { user } = renderAppAt(PAGE)
 
-    const row = await streamRow('A file without a matched title')
+    const details = await openDetails(
+      user,
+      'A file without a matched title, A deleted Profile. Preparing.',
+      'A file without a matched title',
+    )
 
-    expect(factsIn(row)).toEqual({
+    expect(factsIn(details)).toEqual({
       Viewer: 'A deleted Profile',
       Device: 'Not named',
       Position: 'Preparing',
       'Output bitrate': 'Not known',
       Workers: 'None',
     })
+    expect(
+      within(details).getByText('The tracks appear once the stream starts.'),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Active streams1')
+    expect(screen.getByText('0 kb/s sent')).toBeInTheDocument()
+  })
+
+  it('shouldShowOnlyTheStreamsOfADeliveryWhenTheAdminPicksItsChip', async () => {
+    serve()
+    const { user } = renderAppAt(PAGE)
+    await streamCard(MOVIE_CARD)
+    const chips = () =>
+      screen.getAllByRole('button').filter((button) => button.hasAttribute('aria-pressed'))
+
+    expect(chips().map((chip) => chip.textContent)).toEqual(['All 2', 'Copy', 'Encode'])
+
+    await user.click(screen.getByRole('button', { name: 'Encode' }))
+
+    expect(screen.getByRole('button', { name: 'Encode' })).toHaveAttribute('aria-pressed', 'true')
+    expect(cardNames()).toEqual([MOVIE_CARD])
+
+    await user.click(screen.getByRole('button', { name: 'All 2' }))
+
+    expect(cardNames()).toEqual([MOVIE_CARD, EPISODE_CARD])
+  })
+
+  it('shouldShowOnlyTheStreamsAWorkerServesWhenTheAdminPicksTheWorker', async () => {
+    serve()
+    const { user } = renderAppAt(PAGE)
+    await streamCard(MOVIE_CARD)
+
+    await user.click(screen.getByRole('button', { name: 'Any worker' }))
+    await user.click(
+      within(screen.getByRole('menu', { name: 'Worker' })).getByRole('menuitemradio', {
+        name: 'worker-session-2',
+      }),
+    )
+
+    expect(cardNames()).toEqual([EPISODE_CARD])
+    expect(screen.queryByRole('menu', { name: 'Worker' })).not.toBeInTheDocument()
+  })
+
+  it('shouldFindTheStreamsWhoseViewerTitleOrDeviceMatchesTheSearch', async () => {
+    serve()
+    const { user } = renderAppAt(PAGE)
+    await streamCard(MOVIE_CARD)
+    const search = screen.getByRole('searchbox', { name: 'Search viewers, titles and devices' })
+
+    await user.type(search, 'apple TV')
+
+    expect(cardNames()).toEqual([EPISODE_CARD])
+
+    await user.clear(search)
+    await user.type(search, 'breakage')
+
+    expect(cardNames()).toEqual([EPISODE_CARD])
+
+    await user.type(search, ' extended')
+
+    expect(cardNames()).toEqual([])
+    expect(screen.getByText('No stream matches.')).toBeInTheDocument()
+  })
+
+  it.each([
+    { sort: 'Title', shown: [ZOE_MOVIE_CARD, EPISODE_CARD] },
+    { sort: 'Time left', shown: [EPISODE_CARD, ZOE_MOVIE_CARD] },
+  ])('shouldOrderTheStreamsByTheSortTheAdminPicks(sort: $sort)', async ({ sort, shown }) => {
+    // Zoe sorts after Ben, so the viewer order differs from the first pick's.
+    serve([{ ...MOVIE, profile: { id: 'profile-zoe', name: 'Zoe' } }, EPISODE])
+    const { user } = renderAppAt(PAGE)
+    await streamCard(ZOE_MOVIE_CARD)
+
+    expect(cardNames()).toEqual([EPISODE_CARD, ZOE_MOVIE_CARD])
+
+    await user.click(screen.getByRole('button', { name: 'Sort: Viewer' }))
+    await user.click(screen.getByRole('menuitemradio', { name: sort }))
+
+    expect(cardNames()).toEqual(shown)
   })
 
   it('shouldSayNothingPlaysWhenNoStreamIsActive', async () => {
@@ -256,19 +464,19 @@ describe('active streams', () => {
   it('shouldAddAStreamThatStartsWhileThePageShows', async () => {
     const state = serve([MOVIE])
     renderAppAt(PAGE)
-    await streamRow('Everlight')
+    await streamCard(MOVIE_CARD)
     await liveChanges(state)
 
     publishChange(state, EPISODE.playbackSessionId, EPISODE)
 
-    await streamRow('Northern Line · S2 E5 · Breakage')
-    expect(rowNames()).toEqual(['Everlight', 'Northern Line · S2 E5 · Breakage'])
+    await streamCard(EPISODE_CARD)
+    expect(cardNames()).toEqual([MOVIE_CARD, EPISODE_CARD])
   })
 
-  it('shouldShowAStreamsNewPositionAndStateWhenItChanges', async () => {
+  it('shouldShowAStreamsNewPositionAndStateInItsOpenDetailsWhenItChanges', async () => {
     const state = serve([MOVIE])
-    renderAppAt(PAGE)
-    await streamRow('Everlight')
+    const { user } = renderAppAt(PAGE)
+    const details = await openDetails(user, MOVIE_CARD, 'Everlight')
     await liveChanges(state)
 
     publishChange(state, MOVIE.playbackSessionId, {
@@ -277,19 +485,18 @@ describe('active streams', () => {
       state: 'PAUSED',
     })
 
-    await waitFor(async () =>
-      expect(factsIn(await streamRow('Everlight')).Position).toBe('13:20 · Paused'),
-    )
+    await waitFor(() => expect(factsIn(details).Position).toBe('13:20 · Paused'))
+    expect(cardNames()).toEqual(['Everlight, Ada. Paused, Encode.'])
   })
 
   it('shouldDropAStreamThatEndsAndSayNothingPlaysOnceTheLastEnds', async () => {
     const state = serve([MOVIE, EPISODE])
     renderAppAt(PAGE)
-    await streamRow('Everlight')
+    await streamCard(MOVIE_CARD)
     await liveChanges(state)
 
     publishChange(state, MOVIE.playbackSessionId, null)
-    await waitFor(() => expect(rowNames()).toEqual(['Northern Line · S2 E5 · Breakage']))
+    await waitFor(() => expect(cardNames()).toEqual([EPISODE_CARD]))
     publishChange(state, EPISODE.playbackSessionId, null)
 
     expect(await screen.findByText('Nothing is playing right now.')).toBeInTheDocument()
@@ -308,9 +515,8 @@ describe('active streams', () => {
     state.listed = [{ ...EPISODE, state: 'PLAYING' }]
     read.resolve()
 
-    const episode = await streamRow('Northern Line · S2 E5 · Breakage')
-    expect(factsIn(episode).Position).toBe('1:02:05 · Playing')
-    expect(rowNames()).toEqual(['Northern Line · S2 E5 · Breakage'])
+    await streamCard('Northern Line, S2 E5 · Breakage, Ben. Playing, Copy.')
+    expect(cardNames()).toEqual(['Northern Line, S2 E5 · Breakage, Ben. Playing, Copy.'])
   })
 
   it('shouldReadAgainAfterTheReadStillOutWhenTheSocketSubscribesAgainMeanwhile', async () => {
@@ -328,7 +534,7 @@ describe('active streams', () => {
     state.held = null
     read.resolve()
 
-    await waitFor(() => expect(rowNames()).toEqual(['Northern Line · S2 E5 · Breakage']))
+    await waitFor(() => expect(cardNames()).toEqual([EPISODE_CARD]))
     expect(state.reads).toBeGreaterThan(readsBefore)
   })
 
@@ -348,21 +554,21 @@ describe('active streams', () => {
     state.listed = [EPISODE]
     await user.click(retry)
 
-    await waitFor(() => expect(rowNames()).toEqual(['Northern Line · S2 E5 · Breakage']))
+    await waitFor(() => expect(cardNames()).toEqual([EPISODE_CARD]))
   })
 
   it('shouldReadTheListAgainWhenTheSocketSubscribesAgainAfterAGap', async () => {
     const state = serve([MOVIE])
     renderAppAt(PAGE)
-    await streamRow('Everlight')
+    await streamCard(MOVIE_CARD)
     await liveChanges(state)
     const readsBefore = state.reads
 
     state.listed = [EPISODE]
     state.socket.closeAll(1001, 'Going away')
 
-    await streamRow('Northern Line · S2 E5 · Breakage')
-    expect(rowNames()).toEqual(['Northern Line · S2 E5 · Breakage'])
+    await streamCard(EPISODE_CARD)
+    expect(cardNames()).toEqual([EPISODE_CARD])
     expect(state.reads).toBeGreaterThan(readsBefore)
   })
 
@@ -384,21 +590,19 @@ describe('active streams', () => {
   ])('shouldReadTheListAgainWhen(event: $event)', async ({ returnToThePage }) => {
     const state = serve([MOVIE])
     renderAppAt(PAGE)
-    await streamRow('Everlight')
+    await streamCard(MOVIE_CARD)
     await liveChanges(state)
     state.listed = [{ ...MOVIE, state: 'PAUSED' }]
 
     act(returnToThePage)
 
-    await waitFor(async () =>
-      expect(factsIn(await streamRow('Everlight')).Position).toBe('12:34 · Paused'),
-    )
+    expect(await streamCard('Everlight, Ada. Paused, Encode.')).toBeInTheDocument()
   })
 
   it('shouldGiveUpOnAReadThatNeverAnswersSoTheNextGapReadsAgain', async () => {
     const state = serve([MOVIE])
     renderAppAt(PAGE)
-    await streamRow('Everlight')
+    await streamCard(MOVIE_CARD)
     await liveChanges(state)
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     state.heldOnce = new Promise(() => undefined)
@@ -412,13 +616,13 @@ describe('active streams', () => {
     state.listed = [EPISODE]
     comeBackOnline()
 
-    await waitFor(() => expect(rowNames()).toEqual(['Northern Line · S2 E5 · Breakage']))
+    await waitFor(() => expect(cardNames()).toEqual([EPISODE_CARD]))
   })
 
-  it('shouldKeepTheRowAndReadAgainWhenAChangeArrivesWithoutItsStream', async () => {
+  it('shouldKeepTheCardAndReadAgainWhenAChangeArrivesWithoutItsStream', async () => {
     const state = serve([MOVIE])
     renderAppAt(PAGE)
-    await streamRow('Everlight')
+    await streamCard(MOVIE_CARD)
     await liveChanges(state)
     const readsBefore = state.reads
     const reread = deferred()
@@ -437,17 +641,15 @@ describe('active streams', () => {
     })
     await waitFor(() => expect(state.reads).toBeGreaterThan(readsBefore))
 
-    expect(factsIn(await streamRow('Everlight')).Position).toBe('12:34 · Playing')
+    expect(cardNames()).toEqual([MOVIE_CARD])
     reread.resolve()
-    await waitFor(async () =>
-      expect(factsIn(await streamRow('Everlight')).Position).toBe('12:34 · Paused'),
-    )
+    expect(await streamCard('Everlight, Ada. Paused, Encode.')).toBeInTheDocument()
   })
 
   it('shouldKeepLiveUpdatesAndReadAgainWhenAChangeFailsWhileTheSubscriptionRuns', async () => {
     const state = serve([MOVIE])
     renderAppAt(PAGE)
-    await streamRow('Everlight')
+    await streamCard(MOVIE_CARD)
     await liveChanges(state)
     const readsBefore = state.reads
 
@@ -458,9 +660,7 @@ describe('active streams', () => {
     await waitFor(() => expect(state.reads).toBeGreaterThan(readsBefore))
     publishChange(state, MOVIE.playbackSessionId, { ...MOVIE, state: 'PAUSED' })
 
-    await waitFor(async () =>
-      expect(factsIn(await streamRow('Everlight')).Position).toBe('12:34 · Paused'),
-    )
+    expect(await streamCard('Everlight, Ada. Paused, Encode.')).toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
@@ -480,14 +680,14 @@ describe('active streams', () => {
     async ({ errors, shown }) => {
       const state = serve([MOVIE])
       renderAppAt(PAGE)
-      await streamRow('Everlight')
+      await streamCard(MOVIE_CARD)
       await liveChanges(state)
 
       state.socket.publish(CHANGED, { errors })
       state.socket.complete(CHANGED)
 
       expect(await screen.findByRole('alert')).toHaveTextContent(shown)
-      expect(await streamRow('Everlight')).toBeInTheDocument()
+      expect(await streamCard(MOVIE_CARD)).toBeInTheDocument()
     },
   )
 
@@ -500,7 +700,7 @@ describe('active streams', () => {
     state.failing = false
     await user.click(retry)
 
-    expect(await streamRow('Everlight')).toBeInTheDocument()
+    expect(await streamCard(MOVIE_CARD)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
   })
 
@@ -537,7 +737,7 @@ describe('active streams', () => {
 
     await user.click(within(rail).getByRole('link', { name: 'Active streams' }))
 
-    expect(await streamRow('Everlight')).toBeInTheDocument()
+    expect(await streamCard(MOVIE_CARD)).toBeInTheDocument()
     expect(within(rail).getByRole('link', { name: 'Active streams' })).toHaveAttribute(
       'aria-current',
       'page',

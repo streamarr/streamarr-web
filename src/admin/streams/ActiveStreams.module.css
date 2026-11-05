@@ -1,37 +1,329 @@
-.list {
-  display: grid;
-  gap: var(--spacing-16);
+/* The heading keeps the settings page's height but stacks the summary under the title. */
+.pageHeading {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: var(--spacing-8);
+  margin-bottom: var(--spacing-20);
 }
 
-.row {
-  padding: var(--spacing-16) var(--spacing-20);
-  border: var(--border-width-hairline) solid var(--border-hairline);
-  border-radius: var(--radius-xl);
+.summary {
+  margin: 0;
+  font-size: var(--font-size-body);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.toolbar {
+  align-items: center;
+  margin-bottom: var(--spacing-24);
+}
+
+.divider {
+  width: 1px;
+  height: 22px;
+  margin: 0 var(--spacing-6);
+  background: var(--color-alpha-16);
+}
+
+/* The filters take the row; search and sort move to their own line before the chips fold. */
+.filters {
+  flex: 1 1 20rem;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-8);
+}
+
+.kindChips {
+  position: relative;
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  gap: var(--spacing-8);
+}
+
+.measure {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  gap: var(--spacing-8);
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.tools {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  margin-left: auto;
+}
+
+.chipMenuText {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-6);
+}
+
+.menuStart {
+  right: auto;
+  left: 0;
+}
+
+.search {
+  width: 220px;
+  max-width: 100%;
+  padding: 7px 14px;
+  border: none;
+  border-radius: var(--radius-sm);
   background: var(--surface-panel);
-  font-size: var(--font-size-caption);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--font-size-body);
+}
+
+.search::placeholder {
+  color: var(--text-secondary);
+}
+
+.search:focus-visible {
+  outline: 2px solid var(--indicator-active-track);
+  outline-offset: 2px;
+}
+
+/* The library grid's columns, without its virtual rows: a server has tens of streams, not thousands. */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, clamp(7rem, 18vw, 12rem)), 1fr));
+  gap: var(--spacing-24) var(--spacing-20);
+}
+
+.card {
+  min-width: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-md);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.card:focus-visible {
+  outline: 2px solid var(--indicator-active-track);
+  outline-offset: 4px;
+}
+
+.badges {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--spacing-6);
+}
+
+/* Over artwork the badges take the player's floating chrome, so they read on bright and busy
+   posters alike; the dark neutral roles hold in both appearances (principle 1.4). */
+.badge,
+.glyph {
+  background: var(--surface-chrome);
+  backdrop-filter: blur(12px) brightness(0.6);
+  color: var(--color-alpha-92);
+}
+
+.badge {
+  padding: 3px 9px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+}
+
+/* A glyph container is the one place a circle is allowed (principle 3.4). */
+/* As tall as the badge beside it, so the 14px glyph sits with room around it. */
+.glyph {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+}
+
+/* A play triangle's weight sits left of its box; nudge it to look centred. */
+.glyph[data-state='PLAYING'] svg {
+  translate: 1px 0;
+}
+
+/* InlineDetailRow (mock 02d): the details open under the card's row, spanning every column, and
+   grow open over 180ms like the settings' inline rows (none under reduced motion). */
+.detail {
+  position: relative;
+  grid-column: 1 / -1;
+  margin-top: 2px;
+  display: grid;
+  grid-template-rows: 1fr;
+  animation: detailOpen 180ms ease-out;
+}
+
+@keyframes detailOpen {
+  from {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+}
+
+.detailClip {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.caret {
+  position: absolute;
+  z-index: 1;
+  top: -7px;
+  left: var(--caret-left, 50%);
+  width: 14px;
+  height: 14px;
+  translate: -50% 0;
+  rotate: 45deg;
+  background: var(--surface-raised);
+  border-left: var(--border-width-hairline) solid var(--color-alpha-16);
+  border-top: var(--border-width-hairline) solid var(--color-alpha-16);
+}
+
+.detailPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 22px 26px;
+  border: var(--border-width-hairline) solid var(--color-alpha-16);
+  border-radius: var(--radius-xl);
+  background: var(--surface-raised);
+  font-size: var(--font-size-body);
   line-height: var(--line-height-prose);
 }
 
-/* A row's title reads at the settings' h3 size: a page holds many rows. */
-.row .heading {
-  margin-bottom: var(--spacing-10);
-  font-size: var(--font-size-title);
+.detailHead {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-12);
 }
 
-.decision {
-  margin-top: var(--spacing-12);
-  padding-top: var(--spacing-12);
-  border-top: var(--border-width-hairline) solid var(--border-hairline);
+.detailTitles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  min-width: 0;
+}
+
+.detailTitle {
+  margin: 0;
+  font-size: 18px;
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.25;
+}
+
+.detailSub {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.close {
+  flex: none;
+  margin-left: auto;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--surface-panel);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.close:hover {
+  background: var(--surface-panel-strong);
+  color: var(--text-primary);
+}
+
+.close:focus-visible {
+  outline: 2px solid var(--indicator-active-track);
+  outline-offset: 2px;
+}
+
+.detailBody {
+  display: flex;
+  gap: 32px;
+}
+
+.detailFacts {
+  flex: 1;
+  min-width: 0;
+}
+
+.detailFacts dl {
+  gap: 10px;
+}
+
+.rule {
+  width: 1px;
+  background: var(--border-hairline);
+}
+
+.tracks {
+  flex: 1.2;
+  min-width: 0;
+  display: grid;
+  gap: 20px;
+  align-content: start;
+  font-size: var(--font-size-caption);
+}
+
+.waiting {
+  margin: 0;
+  color: var(--text-secondary);
 }
 
 .streamReasons {
   display: grid;
   gap: var(--spacing-4);
-  margin: 0 0 var(--spacing-12);
+  margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .empty {
   color: var(--text-secondary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .detail {
+    animation: none;
+  }
+}
+
+@media (max-width: 48em) {
+  .detailBody {
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .rule {
+    display: none;
+  }
+
+  .detailPanel {
+    padding: 18px;
+  }
+
+  .search {
+    width: 100%;
+  }
 }
