@@ -51,6 +51,13 @@ export function IdleSegmentRetentionSettings() {
     void query.refetch()
   }
 
+  // A correction should not sit under the refusal it answers. An unconfirmed save stays unresolved
+  // until the admin checks it, so its message stays.
+  function edit(value: string | number) {
+    setDraft(value)
+    setRefusal((current) => (current === UNCONFIRMED ? current : null))
+  }
+
   async function save(minutes: number, bounds: IdleSegmentRetentionSettingFieldsFragment) {
     // A value too large for GraphQL's Int fails the whole request, which would read as unconfirmed.
     const outside = rangeRefusal(minutes, bounds)
@@ -96,7 +103,7 @@ export function IdleSegmentRetentionSettings() {
       <RetentionForm
         setting={setting}
         value={draft ?? setting.minutes}
-        onEdit={setDraft}
+        onEdit={edit}
         busy={saving || query.loading}
         saving={saving}
         refusal={refusal}

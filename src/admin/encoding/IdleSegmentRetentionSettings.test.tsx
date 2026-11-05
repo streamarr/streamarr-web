@@ -250,6 +250,41 @@ describe('idle segment retention settings', () => {
     ).toBeInTheDocument()
   })
 
+  it('shouldKeepUnconfirmedMessageWhenAdminEditsAfterUnconfirmedSave', async () => {
+    serve()
+    server.use(
+      graphql.mutation('ChangeIdleSegmentRetention', () =>
+        HttpResponse.json({ errors: [{ message: 'offline' }] }),
+      ),
+    )
+    const { user } = renderAppAt(ENCODING)
+    const field = await retentionField()
+    await user.clear(field)
+    await user.type(field, '120')
+    await user.click(saveButton())
+    const unconfirmed =
+      "Couldn't confirm the change. Refresh the page to check the saved retention before trying again."
+    expect(await screen.findByText(unconfirmed)).toBeInTheDocument()
+    await user.type(field, '0')
+    expect(field).toHaveValue('1200')
+    expect(screen.getByText(unconfirmed)).toBeInTheDocument()
+  })
+
+  it('shouldClearRefusalWhenAdminEditsRefusedRetention', async () => {
+    serve()
+    const { user } = renderAppAt(ENCODING)
+    const field = await retentionField()
+    await user.clear(field)
+    await user.type(field, '4')
+    await user.click(saveButton())
+    expect(await screen.findByText('The shortest retention is 5 minutes.')).toBeInTheDocument()
+    await user.clear(field)
+    await user.type(field, '60')
+    expect(screen.queryByText('The shortest retention is 5 minutes.')).not.toBeInTheDocument()
+    expect(field).toBeValid()
+    expect(saveButton()).toBeDisabled()
+  })
+
   it('shouldOfferRetryWhenRetentionCannotBeLoaded', async () => {
     const state = serve()
     let reads = 0
