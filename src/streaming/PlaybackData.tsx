@@ -1,39 +1,86 @@
 import { useQuery } from '@apollo/client/react'
 import { type ReactNode, type RefObject, useId, useMemo, useSyncExternalStore } from 'react'
-import { PlaybackDecisionsDocument, type VideoRange } from '../graphql/generated/graphql'
+import {
+  type PlaybackDecisionFieldsFragment,
+  PlaybackDecisionsDocument,
+  type SourceContainer,
+  type VideoQuality,
+  type VideoRange,
+} from '../graphql/generated/graphql'
 import { Icon } from '../ui/Icon'
+import { browserText } from './browserText'
 import styles from './PlaybackData.module.css'
-import { Fact, Facts, PlaybackDecisionFacts } from './PlaybackDecisionFacts'
-import { bitrateText, channelsText, videoRangeText } from './playbackDecisionText'
+import { Fact, Facts, PlaybackDecisionTracks } from './PlaybackDecisionFacts'
+import {
+  bitrateText,
+  channelsText,
+  placedReasons,
+  UNKNOWN,
+  videoRangeText,
+} from './playbackDecisionText'
+import type { PlaybackPlatform } from './playbackCapabilities'
 import type { StreamStats } from './playerPlayback'
+import { qualityLabel } from './qualityChoices'
 
 /** The attached stream that the panel describes. */
 export interface PlaybackDataStream {
   playbackSessionId: string
   streamSessionId: string
   videoRange: VideoRange
+  /** The playback choice that the viewer asked for. */
+  requestedChoice: VideoQuality
+  /** The container of a directly played file; null for HLS. */
+  sourceContainer: SourceContainer | null
   streamStats: () => StreamStats
 }
 
-const NOT_KNOWN = 'Not known'
+/** What the browser reports of the screen it shows the player on. */
+export type PlaybackDataScreen = Pick<
+  PlaybackPlatform,
+  'screen' | 'displaysHighDynamicRange' | 'userAgent'
+>
 
-// The figures change as the element plays, buffers, resizes or loads another stream.
-const VIDEO_EVENTS = ['timeupdate', 'progress', 'resize', 'loadedmetadata', 'emptied'] as const
+type Known<Value extends string> = Exclude<Value, '%future added value'>
+
+const CONTAINERS: Record<Known<SourceContainer>, string> = {
+  MP4: 'MP4',
+  MOV: 'MOV',
+  MATROSKA: 'MKV',
+  MPEG_TS: 'MPEG-TS',
+  MPEG_PS: 'MPEG-PS',
+  AVI: 'AVI',
+  ASF: 'ASF',
+  FLV: 'FLV',
+}
+
+// The figures change as the element plays, stalls, buffers, resizes or loads another stream.
+const VIDEO_EVENTS = [
+  'timeupdate',
+  'waiting',
+  'progress',
+  'resize',
+  'loadedmetadata',
+  'emptied',
+] as const
 
 const seconds = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 })
 const counts = new Intl.NumberFormat('en-US')
+const pixelRatios = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 })
 
 /**
- * The playback-data panel over the video: what the player reports of the stream it plays, and how
- * the server delivers it and why. `stream` is null while no stream is attached.
+ * The playback-data panel over the video: how the server delivers the stream and why, what the
+ * player reports of it, and what the browser reports of the screen. `stream` is null while no
+ * stream is attached.
  */
 export function PlaybackData({
   videoRef,
   stream,
+  screen,
   onClose,
 }: Readonly<{
   videoRef: RefObject<HTMLVideoElement | null>
   stream: PlaybackDataStream | null
+  screen: PlaybackDataScreen
   onClose: () => void
 }>) {
   const headingId = useId()
@@ -53,7 +100,63 @@ export function PlaybackData({
         </button>
       </div>
       {stream ? (
-        <>
+        // Keyed by the stream session: a replacement that a status read finds already ready
+        // attaches in the same render as the handover, so only the key mounts this anew to read
+        // the decisions again.
+        <StreamData
+          key={stream.streamSessionId}
+          videoRef={videoRef}
+          stream={stream}
+          screen={screen}
+        />
+      ) : (
+        <p className={styles.note}>Waiting for the stream to start.</p>
+      )}
+    </section>
+  )
+}
+
+function StreamData({
+  videoRef,
+  stream,
+  screen,
+}: Readonly<{
+  videoRef: RefObject<HTMLVideoElement | null>
+  stream: PlaybackDataStream
+  screen: PlaybackDataScreen
+}>) {
+  const decision = usePlaybackDecision(stream)
+  const reasons =
+    decision.at === 'read'
+      ? placedReasons({ decision: decision.decision, requestedChoice: stream.requestedChoice })
+      : null
+  return (
+    <>
+      {reasons && reasons.stream.length > 0 && (
+        <p className={styles.streamReason}>{reasons.stream.join(' ')}</p>
+      )}
+      <div role="group" aria-label="Summary">
+        <dl className={styles.chips}>
+          <Chip
+            name="Quality"
+            value={qualityLabel(stream.requestedChoice) ?? stream.requestedChoice}
+          />
+          <Chip name="Delivery" value={deliveryChipText(stream.sourceContainer)} />
+        </dl>
+      </div>
+      <div className={styles.columns}>
+        <Group name="Server">
+          {decision.at === 'reading' && (
+            <p className={styles.note}>Asking the server how it delivers this video…</p>
+          )}
+          {decision.at === 'missing' && (
+            <p className={styles.note}>The server couldn't say how it delivers this video.</p>
+          )}
+          {decision.at === 'read' && reasons && (
+            <PlaybackDecisionTracks decision={decision.decision} reasons={reasons} />
+          )}
+        </Group>
+        <div>
           <Group name="Player">
             <PlayerFacts
               videoRef={videoRef}
@@ -61,18 +164,48 @@ export function PlaybackData({
               videoRange={stream.videoRange}
             />
           </Group>
-          <Group name="Server">
-            <ServerDecision
-              key={stream.streamSessionId}
-              playbackSessionId={stream.playbackSessionId}
-              streamSessionId={stream.streamSessionId}
-            />
+          <Group name="This screen">
+            <Facts>
+              <Fact name="Display" value={displayText(screen.screen)} />
+              <Fact name="HDR display" value={screen.displaysHighDynamicRange ? 'Yes' : 'No'} />
+              <Fact name="Browser" value={browserText(screen.userAgent)} />
+            </Facts>
           </Group>
-        </>
-      ) : (
-        <p className={styles.note}>Waiting for the stream to start.</p>
-      )}
-    </section>
+        </div>
+      </div>
+    </>
+  )
+}
+
+type DecisionRead =
+  { at: 'reading' } | { at: 'missing' } | { at: 'read'; decision: PlaybackDecisionFieldsFragment }
+
+function usePlaybackDecision({
+  playbackSessionId,
+  streamSessionId,
+}: Pick<PlaybackDataStream, 'playbackSessionId' | 'streamSessionId'>): DecisionRead {
+  const { data, loading } = useQuery(PlaybackDecisionsDocument, {
+    variables: { id: playbackSessionId },
+    // Each stream session's read stands alone: a read still out for the stream before would answer
+    // for this one, and its late answer would overwrite this one's decisions in a shared cache.
+    fetchPolicy: 'no-cache',
+    context: { queryDeduplication: false },
+  })
+  if (loading) {
+    return { at: 'reading' }
+  }
+  const decision = data?.playbackSession?.decisions.find(
+    (candidate) => candidate.streamSessionId === streamSessionId,
+  )
+  return decision ? { at: 'read', decision } : { at: 'missing' }
+}
+
+function Chip({ name, value }: Readonly<{ name: string; value: string }>) {
+  return (
+    <div className={styles.chip}>
+      <dt className={styles.chipName}>{name}</dt>
+      <dd className={styles.chipValue}>{value}</dd>
+    </div>
   )
 }
 
@@ -86,6 +219,20 @@ function Group({ name, children }: Readonly<{ name: string; children: ReactNode 
       {children}
     </section>
   )
+}
+
+function deliveryChipText(container: SourceContainer | null): string {
+  if (container === null) {
+    return 'HLS'
+  }
+  const named = Object.hasOwn(CONTAINERS, container)
+    ? CONTAINERS[container as Known<SourceContainer>]
+    : container
+  return `${named} → File`
+}
+
+function displayText({ width, height, pixelRatio }: PlaybackDataScreen['screen']): string {
+  return `${width}×${height} at ${pixelRatios.format(pixelRatio)}×`
 }
 
 type PlayerFigures = Record<string, string>
@@ -146,17 +293,26 @@ function playerFigures(
   videoRange: VideoRange,
 ): PlayerFigures {
   return {
-    Resolution:
-      video && video.videoWidth > 0 ? `${video.videoWidth}×${video.videoHeight}` : NOT_KNOWN,
-    Bitrate: stats.bitrate === undefined ? NOT_KNOWN : bitrateText(stats.bitrate),
-    'Connection estimate':
-      stats.bandwidthEstimate === undefined ? NOT_KNOWN : bitrateText(stats.bandwidthEstimate),
+    'Quality step': qualityStep(stats),
+    'Observed bitrate':
+      stats.bandwidthEstimate === undefined ? UNKNOWN : bitrateText(stats.bandwidthEstimate),
     Buffer: `${seconds.format(video ? bufferedAhead(video) : 0)} s`,
     'Dropped frames': droppedFrames(video),
-    'Video codec': stats.videoCodec ?? NOT_KNOWN,
+    Stalls: counts.format(stats.stalls),
+    Resolution:
+      video && video.videoWidth > 0 ? `${video.videoWidth}×${video.videoHeight}` : UNKNOWN,
+    'Video codec': stats.videoCodec ?? UNKNOWN,
     'HDR mode': videoRangeText(videoRange),
-    'Audio format': audioFormat(stats),
+    Audio: audioFormat(stats),
   }
+}
+
+function qualityStep({ variant }: StreamStats): string {
+  if (!variant) {
+    return UNKNOWN
+  }
+  const { height, bitrate, step, steps } = variant
+  return `${height}p · ${bitrateText(bitrate)} (${step} of ${steps})`
 }
 
 // The seconds the element holds past the playhead, in the buffered range that holds the playhead.
@@ -174,39 +330,14 @@ function droppedFrames(video: HTMLVideoElement | null): string {
   // Not every browser reports decoded frames; TypeScript's DOM library declares that it does.
   const quality = (video as Partial<HTMLVideoElement> | null)?.getVideoPlaybackQuality?.()
   if (!quality) {
-    return NOT_KNOWN
+    return UNKNOWN
   }
-  return `${counts.format(quality.droppedVideoFrames)} of ${counts.format(quality.totalVideoFrames)}`
+  return counts.format(quality.droppedVideoFrames)
 }
 
 function audioFormat({ audioCodec, audioChannels }: StreamStats): string {
   if (!audioCodec) {
-    return NOT_KNOWN
+    return UNKNOWN
   }
   return audioChannels === undefined ? audioCodec : `${audioCodec} · ${channelsText(audioChannels)}`
-}
-
-// Keyed by the stream session: a replacement that a status read finds already ready attaches in
-// the same render as the handover, so only the key mounts this anew to read the decisions again.
-function ServerDecision({
-  playbackSessionId,
-  streamSessionId,
-}: Readonly<{ playbackSessionId: string; streamSessionId: string }>) {
-  const { data, loading } = useQuery(PlaybackDecisionsDocument, {
-    variables: { id: playbackSessionId },
-    // Each stream session's read stands alone: a read still out for the stream before would answer
-    // for this one, and its late answer would overwrite this one's decisions in a shared cache.
-    fetchPolicy: 'no-cache',
-    context: { queryDeduplication: false },
-  })
-  if (loading) {
-    return <p className={styles.note}>Reading the server's decision…</p>
-  }
-  const decision = data?.playbackSession?.decisions.find(
-    (candidate) => candidate.streamSessionId === streamSessionId,
-  )
-  if (!decision) {
-    return <p className={styles.note}>The server's decision for this stream isn't available.</p>
-  }
-  return <PlaybackDecisionFacts decision={decision} />
 }

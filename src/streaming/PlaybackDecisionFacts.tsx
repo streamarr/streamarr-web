@@ -1,37 +1,95 @@
-import type { ReactNode } from 'react'
-import type { PlaybackDecisionFieldsFragment } from '../graphql/generated/graphql'
+import { VisuallyHidden } from '@mantine/core'
+import { type ReactNode, useId } from 'react'
+import type { PlaybackDecisionFieldsFragment, PlaybackDelivery } from '../graphql/generated/graphql'
 import styles from './PlaybackDecisionFacts.module.css'
-import { audioFormatText, deliveryText, reasonText, videoFormatText } from './playbackDecisionText'
+import {
+  audioRows,
+  deliveryText,
+  type PlacedReasons,
+  type TrackRow,
+  videoRows,
+} from './playbackDecisionText'
 
-/** How one format attempt delivers each track, from what source to what output, and why. */
-export function PlaybackDecisionFacts({
+/**
+ * How one format attempt delivers each track: its source and output side by side, each row the
+ * output changes marked, and the reasons for the change under the track.
+ */
+export function PlaybackDecisionTracks({
   decision,
-}: Readonly<{ decision: PlaybackDecisionFieldsFragment }>) {
-  const { video, audio, reasons } = decision
+  reasons,
+}: Readonly<{ decision: PlaybackDecisionFieldsFragment; reasons: PlacedReasons }>) {
+  const { video, audio } = decision
   return (
     <>
-      <Facts>
-        <Fact name="Video" value={deliveryText(video.delivery)} />
-        <Fact name="Video source" value={videoFormatText(video.source)} />
-        <Fact name="Video output" value={videoFormatText(video.output)} />
-        <Fact name="Audio" value={audio ? deliveryText(audio.delivery) : 'No audio'} />
-        {audio && (
-          <>
-            <Fact name="Audio source" value={audioFormatText(audio.source)} />
-            <Fact name="Audio output" value={audioFormatText(audio.output)} />
-          </>
-        )}
-      </Facts>
-      {reasons.length === 0 ? (
-        <p className={styles.note}>Every track plays as the file holds it.</p>
+      <Track name="Video" delivery={video.delivery} reasons={reasons.video}>
+        <TrackTable rows={videoRows(video)} />
+      </Track>
+      {audio ? (
+        <Track name="Audio" delivery={audio.delivery} reasons={reasons.audio}>
+          <TrackTable rows={audioRows(audio)} />
+        </Track>
       ) : (
-        <ul className={styles.reasons} aria-label="Reasons">
-          {reasons.map((reason, index) => (
-            <li key={`${index}-${reason}`}>{reasonText(reason)}</li>
+        <Track name="Audio" reasons={[]}>
+          <p className={styles.note}>This video has no audio.</p>
+        </Track>
+      )}
+    </>
+  )
+}
+
+function Track({
+  name,
+  delivery,
+  reasons,
+  children,
+}: Readonly<{
+  name: string
+  delivery?: PlaybackDelivery
+  reasons: string[]
+  children: ReactNode
+}>) {
+  const nameId = useId()
+  return (
+    <section className={styles.track} aria-labelledby={nameId}>
+      <h4 className={styles.trackHeading}>
+        <span id={nameId}>{name}</span>{' '}
+        {delivery && <span className={styles.delivery}>{deliveryText(delivery)}</span>}
+      </h4>
+      {children}
+      {reasons.length > 0 && (
+        <ul className={styles.reasons} aria-label={`${name} reasons`}>
+          {reasons.map((reason) => (
+            <li key={reason}>{reason}</li>
           ))}
         </ul>
       )}
-    </>
+    </section>
+  )
+}
+
+function TrackTable({ rows }: Readonly<{ rows: TrackRow[] }>) {
+  return (
+    <table className={styles.table}>
+      <thead>
+        <tr>
+          <td />
+          <th scope="col">Original</th>
+          <th scope="col">Playing</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map(({ name, original, playing, changed }) => (
+          <tr key={name} className={changed ? styles.changed : undefined}>
+            <th scope="row">
+              {name}
+              {changed && <VisuallyHidden> (changed)</VisuallyHidden>}
+            </th>
+            <td>{original}</td>
+            <td>{playing}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   )
 }
 

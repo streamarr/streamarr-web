@@ -45,8 +45,8 @@ export const MINIMAL_DECLARATION: ClientCapabilityDeclarationInput = {
 }
 
 /**
- * Desktop Chrome playing through hls.js to a 7.1 output and an SDR display, without decodingInfo
- * unless the overrides supply it.
+ * Desktop Chrome playing through hls.js to a 7.1 output and a 2560×1440 SDR display at 2×,
+ * without decodingInfo unless the overrides supply it.
  */
 export function playbackPlatformFixture(
   overrides: Partial<PlaybackPlatform> = {},
@@ -59,6 +59,7 @@ export function playbackPlatformFixture(
     userAgent: CHROME_USER_AGENT,
     audioOutputChannels: () => Promise.resolve(8),
     displaysHighDynamicRange: false,
+    screen: { width: 2560, height: 1440, pixelRatio: 2 },
     selectsAudioTrackInDirectPlay: false,
     ...overrides,
   }

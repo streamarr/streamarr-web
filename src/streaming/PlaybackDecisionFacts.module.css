@@ -6,7 +6,7 @@
 
 .fact {
   display: grid;
-  grid-template-columns: 11em minmax(0, 1fr);
+  grid-template-columns: 9em minmax(0, 1fr);
   gap: var(--spacing-12);
 }
 
@@ -20,14 +20,68 @@
   font-variant-numeric: tabular-nums;
 }
 
+.track + .track {
+  margin-top: var(--spacing-12);
+}
+
+.trackHeading {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  margin: 0 0 var(--spacing-4);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-semibold);
+}
+
+.delivery {
+  padding: 0 var(--spacing-6);
+  border-radius: var(--radius-sm);
+  background: var(--color-alpha-12);
+  font-size: var(--font-size-micro);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-secondary);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+
+  & th,
+  & td {
+    padding: var(--spacing-4) var(--spacing-6);
+    text-align: start;
+    font-weight: var(--font-weight-regular);
+    overflow-wrap: anywhere;
+  }
+
+  & thead th,
+  & tbody th {
+    color: var(--text-secondary);
+  }
+
+  & tbody th {
+    width: 30%;
+  }
+}
+
+.changed {
+  background: var(--color-alpha-10);
+
+  & td:last-child {
+    font-weight: var(--font-weight-medium);
+  }
+}
+
 .reasons {
   display: grid;
   gap: var(--spacing-4);
-  margin: var(--spacing-10) 0 0;
-  padding-inline-start: var(--spacing-16);
+  margin: var(--spacing-6) 0 0;
+  padding: 0;
+  list-style: none;
 }
 
 .note {
-  margin: var(--spacing-10) 0 0;
+  margin: var(--spacing-4) 0 0;
   color: var(--text-secondary);
 }
