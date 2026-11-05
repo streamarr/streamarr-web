@@ -73,6 +73,8 @@ const IDENTITY_GENERATION = 'identityGeneration'
 // refuses them, and every later one until the reset.
 class IdentitySwitchGate {
   private generation = 0
+  // A sign-in or sign-out outdates every switch begun before it.
+  private epoch = 0
   private switchesUnderway = 0
   private awaitingReset = false
   private readonly held = new Set<HeldOperation>()
@@ -106,9 +108,10 @@ class IdentitySwitchGate {
 
   begin(): IdentitySwitch {
     this.switchesUnderway += 1
+    const epoch = this.epoch
     let settled = false
     const settle = (settleHeld: (entry: HeldOperation) => void) => {
-      if (settled) return
+      if (settled || epoch !== this.epoch) return
       settled = true
       this.switchesUnderway -= 1
       if (this.switchesUnderway > 0 && !this.awaitingReset) return
@@ -128,6 +131,17 @@ class IdentitySwitchGate {
 
   storeReset() {
     this.awaitingReset = false
+  }
+
+  // A sign-in or sign-out clears the store for another identity, whatever switch was underway.
+  storeCleared() {
+    this.epoch += 1
+    this.generation += 1
+    this.switchesUnderway = 0
+    this.awaitingReset = false
+    const entries = [...this.held]
+    this.held.clear()
+    entries.forEach((entry) => entry.refuse())
   }
 }
 
@@ -230,12 +244,14 @@ export function createApolloClient(
     defaultOptions: { watchQuery: { notifyOnNetworkStatusChange: false } },
   })
   // Reset callbacks run after the store empties and before the refetches go out.
-  const openGate = () => {
+  client.onResetStore(() => {
     gate.storeReset()
     return Promise.resolve()
-  }
-  client.onResetStore(openGate)
-  client.onClearStore(openGate)
+  })
+  client.onClearStore(() => {
+    gate.storeCleared()
+    return Promise.resolve()
+  })
   gates.set(client, gate)
   return client
 }

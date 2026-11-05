@@ -336,20 +336,23 @@ describe('AuthProvider operations during an identity switch', () => {
 describe('AuthProvider identity fence beyond the first send', () => {
   function renderSwitchable() {
     const client = createApolloClient(() => {})
+    const renewal = { adoptExpiry: vi.fn(), stop: vi.fn() }
     client.writeQuery({ query: MeDocument, data: { me: meFixture({ scope: 'profile' }) } })
     render(
       <ApolloProvider client={client}>
         <AuthProvider
           sessionStore={createSessionStore(async () => 'authenticated')}
-          renewal={{ adoptExpiry: vi.fn(), stop: vi.fn() }}
+          renewal={renewal}
           subscriptions={subscriptionsFake()}
         >
           <SwitchHarness />
           <PinHarness />
+          <LoginHarness />
+          <LogoutHarness />
         </AuthProvider>
       </ApolloProvider>,
     )
-    return client
+    return { client, renewal }
   }
 
   function storeOverride(client: ApolloClient): Promise<'stored' | Error> {
@@ -390,7 +393,7 @@ describe('AuthProvider identity fence beyond the first send', () => {
         return HttpResponse.json(TOKENS)
       }),
     )
-    const client = renderSwitchable()
+    const { client } = renderSwitchable()
     const store = storeOverride(client)
     await waitFor(() => expect(sentUnder).toEqual(['profile-1']))
 
@@ -406,7 +409,7 @@ describe('AuthProvider identity fence beyond the first send', () => {
     const cookie = { profile: 'profile-1' }
     const sentUnder: string[] = []
     let heldStore: Promise<'stored' | Error> | undefined
-    const client = renderSwitchable()
+    const { client } = renderSwitchable()
     server.use(
       graphql.mutation<SetLanguageOverrideMutation, SetLanguageOverrideMutationVariables>(
         'SetLanguageOverride',
@@ -433,5 +436,44 @@ describe('AuthProvider identity fence beyond the first send', () => {
     expect(await heldStore).toBeInstanceOf(Error)
     expect(sentUnder).toEqual([])
     await waitFor(() => expect(client.readQuery({ query: MeDocument })).toBeNull())
+  })
+
+  it('shouldLetTheNextAccountSendWhenASignOutAndSignInFollowASwitchThatHasNotAnswered', async () => {
+    const cookie = { profile: 'profile-1' }
+    const sentUnder: string[] = []
+    let answerSwitch: (answer: Response) => void = () => {}
+    const switchAnswer = new Promise<Response>((resolve) => {
+      answerSwitch = resolve
+    })
+    server.use(
+      graphql.mutation<SetLanguageOverrideMutation, SetLanguageOverrideMutationVariables>(
+        'SetLanguageOverride',
+        () => {
+          sentUnder.push(cookie.profile)
+          return HttpResponse.json({
+            data: { setLanguageOverride: { item: null, userErrors: [] } },
+          })
+        },
+      ),
+      http.post('/api/auth/select-profile', () => switchAnswer),
+      http.post('/api/auth/refresh/revoke', () => new HttpResponse(null, { status: 204 })),
+      http.post('/api/auth/login', () => {
+        cookie.profile = 'account-2'
+        return HttpResponse.json(TOKENS)
+      }),
+    )
+    const { client, renewal } = renderSwitchable()
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'Enter PIN' }))
+    const earlier = storeOverride(client)
+
+    await user.click(screen.getByRole('button', { name: 'Sign out' }))
+    await user.click(screen.getByRole('button', { name: 'Sign in' }))
+    await waitFor(() => expect(renewal.adoptExpiry).toHaveBeenCalled())
+
+    expect(await storeOverride(client)).toBe('stored')
+    answerSwitch(HttpResponse.json({ status: 403, title: 'Forbidden' }, { status: 403 }))
+    expect(await earlier).toBeInstanceOf(Error)
+    expect(sentUnder).toEqual(['account-2'])
   })
 })
