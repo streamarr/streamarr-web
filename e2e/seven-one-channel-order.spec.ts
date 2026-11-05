@@ -8,6 +8,7 @@ import {
   judgeChannelOrder,
   writeSevenOneStream,
   type ChannelOrderCodec,
+  type ChannelOrderMeasurement,
   type ChannelOrderResult,
 } from './sevenOneChannelOrder'
 
@@ -24,6 +25,7 @@ const PLATFORMS: Partial<Record<NodeJS.Platform, string>> = { darwin: 'macOS', l
 // the app's origin.
 const PAGE_PATH = '/seven-one-channel-order'
 const STREAM_PATH = '/seven-one-channel-order/stream'
+const STREAM_FILE = /^\/seven-one-channel-order\/stream\/(stream\.m3u8|init\.mp4|segment\d+\.m4s)$/
 
 let streams: string
 
@@ -39,7 +41,12 @@ test.afterAll(async () => {
   await rm(streams, { recursive: true, force: true })
 })
 
-async function serveStream(page: Page, codec: ChannelOrderCodec): Promise<void> {
+// `codecs` is the multivariant playlist's CODECS attribute.
+async function serveStream(
+  page: Page,
+  codec: ChannelOrderCodec,
+  codecs = CODEC_FIXTURES[codec].codecs,
+): Promise<void> {
   await page.route(
     (url) => url.pathname === PAGE_PATH,
     (route) =>
@@ -59,18 +66,25 @@ async function serveStream(page: Page, codec: ChannelOrderCodec): Promise<void> 
         contentType: 'application/vnd.apple.mpegurl',
         body: [
           '#EXTM3U',
-          `#EXT-X-STREAM-INF:BANDWIDTH=4000000,CODECS="${CODEC_FIXTURES[codec].codecs}"`,
+          `#EXT-X-STREAM-INF:BANDWIDTH=4000000,CODECS="${codecs}"`,
           'stream.m3u8',
           '',
         ].join('\n'),
       }),
   )
-  for (const file of ['stream.m3u8', 'init.mp4', 'segment0.m4s']) {
-    await page.route(
-      (url) => url.pathname === `${STREAM_PATH}/${file}`,
-      (route) => route.fulfill({ path: join(streams, codec, file) }),
-    )
-  }
+  await page.route(
+    (url) => STREAM_FILE.test(url.pathname),
+    (route) => {
+      const [, file] = STREAM_FILE.exec(new URL(route.request().url()).pathname)!
+      return route.fulfill({ path: join(streams, codec, file) })
+    },
+  )
+}
+
+async function measure(page: Page): Promise<ChannelOrderMeasurement> {
+  await page.goto(`${PAGE_PATH}?stream=${STREAM_PATH}/multivariant.m3u8`)
+  await page.getByRole('button', { name: 'Start' }).click()
+  return page.evaluate(() => window.channelOrder!)
 }
 
 // The last row for a browser, platform and codec holds the result this spec expects.
@@ -97,10 +111,8 @@ for (const codec of CODECS) {
     browser,
   }, testInfo) => {
     await serveStream(page, codec)
-    await page.goto(`${PAGE_PATH}?stream=${STREAM_PATH}/multivariant.m3u8`)
 
-    await page.getByRole('button', { name: 'Start' }).click()
-    const measurement = await page.evaluate(() => window.channelOrder!)
+    const measurement = await measure(page)
 
     const verdict = judgeChannelOrder(measurement)
     const row = {
@@ -111,7 +123,7 @@ for (const codec of CODECS) {
       result: verdict.result satisfies ChannelOrderResult,
     }
     const recording = testInfo.outputPath(`seven-one-channel-order-${codec}.json`)
-    await writeFile(recording, JSON.stringify({ ...row, ...verdict }, null, 2))
+    await writeFile(recording, JSON.stringify({ ...row, ...verdict, measurement }, null, 2))
     await testInfo.attach(`seven-one-channel-order-${codec}.json`, {
       path: recording,
       contentType: 'application/json',
@@ -123,3 +135,13 @@ for (const codec of CODECS) {
     ).toBe(await recordedResult(row.browser, row.platform, codec))
   })
 }
+
+test('a stream that hls.js cannot play is judged as not played', async ({ page }) => {
+  // hls.js stops with a fatal error on a playlist no browser decodes, while play() still waits.
+  await serveStream(page, 'AAC', 'ac-4.02.01.01')
+
+  const verdict = judgeChannelOrder(await measure(page))
+
+  expect(verdict.result).toBe('did not play')
+  expect(verdict.findings.join(' ')).toContain('manifestIncompatibleCodecsError')
+})

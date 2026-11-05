@@ -123,9 +123,17 @@ jobs:
         run: node_modules/.bin/playwright install --with-deps firefox webkit
       - if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: node_modules/.bin/playwright install-deps firefox webkit
-      - name: Install FFmpeg, which writes the 7.1 channel-order streams
-        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends ffmpeg
-      - run: npm run test:e2e -- --project=firefox --project=webkit --project=chrome
+      - name: Install FFmpeg, which writes the 7.1 channel-order streams, and PulseAudio
+        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends ffmpeg pulseaudio
+      # WebKit stalls Opus streams when PulseAudio runs, so it runs before the audio server starts.
+      - run: npm run test:e2e -- --project=webkit --project=chrome
+      # Firefox runs no audio graph without an audio server; PulseAudio gives it a null sink.
+      - name: Start PulseAudio
+        if: ${{ !cancelled() }}
+        run: pulseaudio --start --exit-idle-time=-1
+      # A separate output directory keeps the first run's results for the upload.
+      - if: ${{ !cancelled() }}
+        run: npm run test:e2e -- --project=firefox --output=test-results/firefox
       - name: Upload the decodingInfo answers
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

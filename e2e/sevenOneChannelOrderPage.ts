@@ -16,6 +16,14 @@ declare global {
 const OUTPUTS = 8
 const READ_INTERVAL_MS = 20
 const ANALYSER_SAMPLES = 2048
+// The stream lasts 11 s.
+const PLAYBACK_DEADLINE_MS = 30_000
+
+const PLAYBACK_ERRORS = {
+  refused: 'play() was refused',
+  stopped: 'Playback stopped before the end',
+  'timed out': `Playback did not reach the end within ${PLAYBACK_DEADLINE_MS / 1000} s`,
+}
 
 const video = document.querySelector('video')!
 const start = document.querySelector('button')!
@@ -30,6 +38,16 @@ hls.on(Hls.Events.ERROR, (_, data) => {
 video.addEventListener('error', () => {
   errors.push(`media error ${video.error?.code}: ${video.error?.message}`)
 })
+// hls.js can stop on a fatal error before the click, and play() then never settles.
+const finished = new Promise<'ended' | 'stopped'>((resolve) => {
+  video.addEventListener('ended', () => resolve('ended'), { once: true })
+  video.addEventListener('error', () => resolve('stopped'), { once: true })
+  hls.on(Hls.Events.ERROR, (_, data) => {
+    if (data.fatal) {
+      resolve('stopped')
+    }
+  })
+})
 hls.attachMedia(video)
 hls.loadSource(new URLSearchParams(location.search).get('stream') ?? '')
 
@@ -42,7 +60,6 @@ start.addEventListener(
 )
 
 async function measure(): Promise<ChannelOrderMeasurement> {
-  const ended = playedToEnd()
   const context = new AudioContext()
   const splitter = context.createChannelSplitter(OUTPUTS)
   context.createMediaElementSource(video).connect(splitter)
@@ -69,33 +86,28 @@ async function measure(): Promise<ChannelOrderMeasurement> {
     })
     readings.push({ mediaTime: video.currentTime, rms })
   }, READ_INTERVAL_MS)
-  const resumed = context.resume()
-  const refused = await video.play().then(
-    () => false,
-    () => true,
-  )
-  await resumed
-  let playbackError: string | null = null
-  if (refused) {
-    playbackError = ['play() was refused', ...errors].join('; ')
-  } else if (!(await ended)) {
-    playbackError = ['Playback stopped before the end', ...errors].join('; ')
+  let deadline: ReturnType<typeof setTimeout> | undefined
+  try {
+    // Firefox on Linux without an audio server never resumes; its outputs then read silence.
+    void context.resume()
+    const outcome = await Promise.race([
+      finished,
+      video.play().then(
+        () => finished,
+        () => 'refused' as const,
+      ),
+      new Promise<'timed out'>((resolve) => {
+        deadline = setTimeout(() => resolve('timed out'), PLAYBACK_DEADLINE_MS)
+      }),
+    ])
+    if (outcome === 'ended') {
+      return { readings, playbackError: null }
+    }
+    return { readings, playbackError: [PLAYBACK_ERRORS[outcome], ...errors].join('; ') }
+  } finally {
+    clearTimeout(deadline)
+    clearInterval(reading)
+    hls.destroy()
+    await context.close()
   }
-  clearInterval(reading)
-  hls.destroy()
-  await context.close()
-  return { readings, playbackError }
-}
-
-/** Whether the element plays to its end before a media error or a fatal hls.js error. */
-function playedToEnd(): Promise<boolean> {
-  return new Promise((resolve) => {
-    video.addEventListener('ended', () => resolve(true), { once: true })
-    video.addEventListener('error', () => resolve(false), { once: true })
-    hls.on(Hls.Events.ERROR, (_, data) => {
-      if (data.fatal) {
-        resolve(false)
-      }
-    })
-  })
 }
