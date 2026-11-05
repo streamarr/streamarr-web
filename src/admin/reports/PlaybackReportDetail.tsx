@@ -231,7 +231,13 @@ function StreamReasons({ reasons }: Readonly<{ reasons: string[] }>) {
   if (reasons.length === 0) {
     return null
   }
-  return <p className={reportStyles.streamReason}>{reasons.join(' ')}</p>
+  return (
+    <ul className={reportStyles.streamReasons} aria-label="Stream reasons">
+      {reasons.map((reason) => (
+        <li key={reason}>{reason}</li>
+      ))}
+    </ul>
+  )
 }
 
 function Section({ name, children }: Readonly<{ name: string; children: ReactNode }>) {

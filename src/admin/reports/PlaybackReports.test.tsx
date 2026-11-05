@@ -610,6 +610,40 @@ describe('shared reports', () => {
     expect(within(report).getByText('Playback choice: Original, played as Original')).toBeVisible()
   })
 
+  it('shouldListEachReasonAboutTheWholeFormatAttemptOnALineOfItsOwn', async () => {
+    serveReports({
+      reports: [
+        reportFixture({
+          decisions: [
+            servedDecision(
+              playbackDecision({
+                streamSessionId: 'sess-1',
+                video: { delivery: 'ENCODE', source: HEVC_UHD, output: H264_FULL_HD },
+                reasons: ['DIRECT_PLAY_FAILED', 'COPY_FAILED'],
+              }),
+            ),
+          ],
+        }),
+      ],
+    })
+    renderAppAt(`${REPORTS}/report-1`)
+
+    const report = await screen.findByRole('article', { name: 'Report from Robin' })
+    const reasons = within(within(report).getByRole('region', { name: 'Server' })).getByRole(
+      'list',
+      { name: 'Stream reasons' },
+    )
+
+    expect(
+      within(reasons)
+        .getAllByRole('listitem')
+        .map((reason) => reason.textContent),
+    ).toEqual([
+      'Direct play failed, so the server streams the video instead.',
+      'The copy failed, so the server encodes the video instead.',
+    ])
+  })
+
   it('shouldShowTheTvsDisplayAndAudioOutputWhenATvClientSharedTheReport', async () => {
     const { player } = reportFixture()
     serveReports({

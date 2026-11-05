@@ -166,8 +166,12 @@
   font-size: var(--font-size-body);
 }
 
-.report .streamReason {
+.streamReasons {
+  display: grid;
+  gap: var(--spacing-4);
   margin: 0 0 var(--spacing-6);
+  padding: 0;
+  list-style: none;
 }
 
 .capabilities {
