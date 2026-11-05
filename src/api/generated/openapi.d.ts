@@ -324,6 +324,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/stream/{sessionId}/source.{extension}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getSource"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head: operations["getSourceHeaders"];
+        patch?: never;
+        trace?: never;
+    };
     "/api/stream/{sessionId}/stream.m3u8": {
         parameters: {
             query?: never;
@@ -1213,6 +1229,106 @@ export interface operations {
                 content: {
                     "*/*": string;
                 };
+            };
+            /** @description Stream resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refusal: route on `code`, `message` is displayable */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getSource: {
+        parameters: {
+            query: {
+                /** @description Playback token bound to this stream session */
+                t: string;
+            };
+            header?: {
+                Range?: string;
+            };
+            path: {
+                sessionId: string;
+                extension: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "video/*": string;
+                };
+            };
+            /** @description The requested byte range */
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "video/*": string;
+                };
+            };
+            /** @description Stream resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The requested range lies outside the file */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refusal: route on `code`, `message` is displayable */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getSourceHeaders: {
+        parameters: {
+            query: {
+                /** @description Playback token bound to this stream session */
+                t: string;
+            };
+            header?: never;
+            path: {
+                sessionId: string;
+                extension: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Stream resource not found */
             404: {

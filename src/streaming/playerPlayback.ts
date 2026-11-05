@@ -554,11 +554,16 @@ function startSessionPlayback({
       showFailure(PLAYBACK_FAILURE_MESSAGE)
       return
     }
+    const stream = attempt.streamSession
+    if (stream.__typename !== 'HlsStreamSession') {
+      refuseStreamThatIsNotHls(stream.id)
+      return
+    }
     // The same stream attached again keeps the real end a status check named for it.
-    const sameStream = attempt.streamSession.id === sessionId
-    sessionId = attempt.streamSession.id
+    const sameStream = stream.id === sessionId
+    sessionId = stream.id
     attachedPlayback = playback
-    realEnd = attempt.streamSession.mediaEndSeconds ?? (sameStream ? realEnd : null)
+    realEnd = stream.mediaEndSeconds ?? (sameStream ? realEnd : null)
     endedAtRealEnd = false
     sourceStopped = false
     firstFrameShown = false
@@ -571,7 +576,7 @@ function startSessionPlayback({
       playing: playback.playbackChoice,
       formatChange: playback.formatChange,
     }
-    source = attach(video, attempt.streamSession.streamUrl, {
+    source = attach(video, stream.streamUrl, {
       startupDeadline,
       onFirstFrame: () => {
         firstFrameShown = true
@@ -597,8 +602,16 @@ function startSessionPlayback({
       at: 'attached',
       tracks: source.tracks,
       qualities,
-      videoRange: attempt.streamSession.videoRange,
+      videoRange: stream.videoRange,
     })
+  }
+
+  // This player opens only HLS, so the server replaces any other delivery as a refused format.
+  function refuseStreamThatIsNotHls(streamSessionId: string) {
+    sessionId = streamSessionId
+    realEnd = null
+    endedAtRealEnd = false
+    void reportFormatFailure('UNSUPPORTED_FORMAT', sourceGeneration)
   }
 
   async function reportFormatFailure(reason: PlaybackFormatFailure, generation: number) {
@@ -747,7 +760,8 @@ function startSessionPlayback({
   function attachedStreamIn(playback: PlaybackSessionFieldsFragment | null | undefined) {
     const attempt = playback?.currentFormatAttempt
     if (attempt?.__typename !== 'ReadyPlaybackFormatAttempt') return undefined
-    return attempt.streamSession.id === sessionId ? attempt.streamSession : undefined
+    const stream = attempt.streamSession
+    return stream.__typename === 'HlsStreamSession' && stream.id === sessionId ? stream : undefined
   }
 
   function playOnToTheRealEnd(seconds: number, sourceFailed: boolean) {

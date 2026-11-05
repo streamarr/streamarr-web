@@ -105,6 +105,9 @@
     "ChangeEncoderPresetError": [
       "UnknownEncoderPresetError"
     ],
+    "ChangeIdleSegmentRetentionError": [
+      "IdleSegmentRetentionOutOfRangeError"
+    ],
     "ChangeProfileKindError": [
       "MaximumAllowedRatingAgeInvalidError",
       "ProfileNotFoundError",
@@ -242,6 +245,7 @@
       "HlsAacCapabilityRequiredError",
       "HouseholdNameRequiredError",
       "HouseholdNotFoundError",
+      "IdleSegmentRetentionOutOfRangeError",
       "InvalidIdError",
       "InvalidProfilePinError",
       "InvitationNotPendingError",
@@ -351,6 +355,7 @@
       "HlsAacCapabilityRequiredError",
       "HouseholdNameRequiredError",
       "HouseholdNotFoundError",
+      "IdleSegmentRetentionOutOfRangeError",
       "InvalidIdError",
       "InvalidMediaFileError",
       "InvalidProfilePinError",
@@ -547,6 +552,10 @@
       "InvalidIdError",
       "LibraryNotFoundError",
       "LibraryScanNotInProgressError"
+    ],
+    "StreamSession": [
+      "DirectPlayStreamSession",
+      "HlsStreamSession"
     ],
     "TransferAccountError": [
       "AccountNotFoundError",
