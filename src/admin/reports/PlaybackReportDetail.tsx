@@ -36,6 +36,8 @@ export function PlaybackReportDetail({ reportId }: Readonly<{ reportId: string }
   const { data, error, refetch } = useQuery(PlaybackReportDocument, {
     variables: { id: reportId },
     fetchPolicy: 'cache-and-network',
+    // A retry merges into the cached report, whose first read time it may not undo.
+    refetchWritePolicy: 'merge',
   })
   const report = data?.playbackReport
   useMarkReadOnOpen(report)

@@ -28,6 +28,8 @@ export function PlaybackReports() {
       fetchPolicy: 'cache-and-network',
       // Loading must cover a retried read of the newest reports too, which holds paging back.
       notifyOnNetworkStatusChange: true,
+      // A retry merges into the cached reports, whose first read times it may not undo.
+      refetchWritePolicy: 'merge',
     },
   )
   const [older, setOlder] = useState<'idle' | 'loading' | 'failed'>('idle')

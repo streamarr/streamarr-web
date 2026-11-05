@@ -440,6 +440,47 @@ describe('shared reports', () => {
     expect(within(list).queryByText('Unread')).not.toBeInTheDocument()
   })
 
+  it('shouldKeepAReportReadWhenARetriedReadFromBeforeTheMarkAnswersAfterIt', async () => {
+    const state = serveReports({ reports: [reportFixture()] })
+    const marks = deferred()
+    const retried = deferred()
+    let reportReads = 0
+    server.use(
+      graphql.mutation('MarkPlaybackReportRead', async () => {
+        await marks.promise
+        return undefined
+      }),
+      graphql.query('PlaybackReport', async () => {
+        reportReads++
+        // The read on return to the report fails, and its retry answers after the mark.
+        if (reportReads === 2) return HttpResponse.json({ errors: [{ message: 'offline' }] })
+        if (reportReads === 3) {
+          const stale = state.reports[0]
+          await retried.promise
+          return HttpResponse.json({ data: { playbackReport: stale } })
+        }
+        return undefined
+      }),
+    )
+    const { user } = renderAppAt(`${REPORTS}/report-1`)
+    await screen.findByRole('article', { name: 'Report from Robin' })
+    await user.click(screen.getByRole('link', { name: 'Back to shared reports' }))
+    await user.click(within(await reportList()).getAllByRole('link')[0])
+    await user.click(await screen.findByRole('button', { name: /retry/i }))
+
+    await act(async () => {
+      marks.resolve()
+      await marks.promise
+    })
+    await waitFor(() => expect(state.marked).not.toHaveLength(0))
+    await act(async () => {
+      retried.resolve()
+      await retried.promise
+    })
+
+    expect(await screen.findByText('First read')).toBeInTheDocument()
+  })
+
   it('shouldLeaveAReadReportAsItIsWhenTheServerAdminOpensIt', async () => {
     const state = serveReports({ reports: [OLDER] })
     renderAppAt(`${REPORTS}/report-2`)
