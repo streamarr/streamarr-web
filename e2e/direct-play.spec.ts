@@ -326,15 +326,18 @@ function readyPlaybackSession(streamSession: Record<string, unknown>) {
   }
 }
 
-const DIRECT_PLAY_SESSION = readyPlaybackSession({
+const DIRECT_PLAY_STREAM = {
   __typename: 'DirectPlayStreamSession',
   id: 'sess-1',
   streamUrl: SOURCE_FILE_URL,
   sourceContainer: 'MP4',
   videoRange: 'SDR',
+  startPositionSeconds: null,
   audioTrackPosition: 0,
   audioTracks: [{ position: 0, language: null, title: null }],
-})
+}
+
+const DIRECT_PLAY_SESSION = readyPlaybackSession(DIRECT_PLAY_STREAM)
 
 // The two-track fixture's audio tracks as the server lists them: English, the default, then French.
 const TWO_AUDIO_TRACKS = [
@@ -349,6 +352,7 @@ function twoAudioTrackDirectPlaySession(audioTrackPosition: number) {
     streamUrl: SOURCE_FILE_URL,
     sourceContainer: 'MP4',
     videoRange: 'SDR',
+    startPositionSeconds: null,
     audioTrackPosition,
     audioTracks: TWO_AUDIO_TRACKS,
   })
@@ -415,10 +419,12 @@ async function openDirectPlay(
     serveSource,
     playbackSessionFor = () => DIRECT_PLAY_SESSION,
     switches = [],
+    resumePosition,
   }: {
     serveSource: (route: Route) => Promise<void>
     playbackSessionFor?: (capabilities: ClientCapabilityDeclarationInput) => unknown
     switches?: SwitchPlaybackAudioTrackInput[]
+    resumePosition?: number
   },
 ): Promise<ReportPlaybackFormatFailureInput[]> {
   const reports: ReportPlaybackFormatFailureInput[] = []
@@ -451,7 +457,8 @@ async function openDirectPlay(
     return data ? route.fulfill({ json: { data } }) : route.continue()
   })
   await page.route('**/api/stream/e2e/source.mp4*', serveSource)
-  await page.goto('/play/file-1?movie=file-1')
+  const position = resumePosition === undefined ? '' : `&position=${resumePosition}`
+  await page.goto(`/play/file-1?movie=file-1${position}`)
   return reports
 }
 
@@ -476,6 +483,27 @@ test('the player plays a direct-play session from its source file without HLS', 
   )
   expect(playlistRequests).toEqual([])
   await expect(page.getByRole('alert')).toHaveCount(0)
+})
+
+test('the player plays the source file of a resumed title from the start position its stream session names', async ({
+  page,
+  request,
+}) => {
+  await openDirectPlay(page, request, {
+    serveSource: (route) => serveFile(route, fixturePath('h264-avc1.mp4'), 'video/mp4'),
+    playbackSessionFor: () =>
+      readyPlaybackSession({ ...DIRECT_PLAY_STREAM, startPositionSeconds: 0.5 }),
+    resumePosition: 0.5,
+  })
+
+  const video = page.locator('video')
+  await expect
+    .poll(() =>
+      video.evaluate((element: HTMLVideoElement) =>
+        element.played.length > 0 ? element.played.start(0) : null,
+      ),
+    )
+    .toBe(0.5)
 })
 
 test('the player reports a source file it cannot open and starts the HLS fallback', async ({

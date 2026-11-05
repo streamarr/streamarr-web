@@ -663,6 +663,11 @@ function startSessionPlayback({
       formatChange: playback.formatChange,
     }
     const { streamSession } = attempt
+    // A source file holds no start position of its own, as a playlist's EXT-X-START does, so the
+    // element seeks where the stream session says playback starts.
+    if (streamSession.__typename === 'DirectPlayStreamSession') {
+      startAt = streamSession.startPositionSeconds ?? undefined
+    }
     const options: StreamSourceOptions = {
       startupDeadline,
       videoPreference: hlsVideoPreference(declaration, dynamicRange),

@@ -6903,10 +6903,12 @@ describe('Player', () => {
     // The source file answers each request with `sourceStatus`, as the server's endpoint would.
     function serveDirectPlay({
       sourceStatus = 206,
+      startPositionSeconds = null,
       audioTrackPosition = 0,
       audioTracks = [],
     }: {
       sourceStatus?: number
+      startPositionSeconds?: number | null
       audioTrackPosition?: number | null
       audioTracks?: DirectPlayAudioTrack[]
     } = {}): ReportPlaybackFormatFailureInput[] {
@@ -6926,7 +6928,12 @@ describe('Player', () => {
               createPlaybackSession: {
                 playbackSession: readyDirectPlaySession({
                   id: 'playback-1',
-                  streamSession: { ...SOURCE_FILE, audioTrackPosition, audioTracks },
+                  streamSession: {
+                    ...SOURCE_FILE,
+                    startPositionSeconds,
+                    audioTrackPosition,
+                    audioTracks,
+                  },
                 }),
                 userErrors: [],
               },
@@ -6974,6 +6981,29 @@ describe('Player', () => {
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Quality: Original' })).toBeInTheDocument()
     })
+
+    // The stream session, not the player's request, says where direct play of the file starts.
+    it.each([
+      { case: 'NamesAStartPosition', startPositionSeconds: 90, seeksTo: 90 },
+      { case: 'StartsAtTheBeginning', startPositionSeconds: null, seeksTo: 0 },
+    ])(
+      'shouldSeekTheSourceFileWhereItsStreamSessionStartsWhenTheStreamSession$case',
+      async ({ startPositionSeconds, seeksTo }) => {
+        serveDirectPlay({ startPositionSeconds })
+        renderWithProviders(
+          <Player
+            playbackPlatform={withoutDecodingInfo}
+            mediaFileId="abcd"
+            startPositionSeconds={120}
+          />,
+        )
+        const video = await nativeVideo(SOURCE_FILE.streamUrl)
+
+        loadMetadata(video)
+
+        expect(video.currentTime).toBe(seeksTo)
+      },
+    )
 
     // WebKit lists a file's audio tracks after the file's metadata and before its first frame.
     it('shouldSelectTheAudioTrackTheStreamDecisionNamesWhenTheFirstFrameLoads', async () => {

@@ -73,6 +73,7 @@ export function readyDirectPlaySession({
       __typename: 'DirectPlayStreamSession',
       sourceContainer: 'MP4',
       videoRange: 'SDR',
+      startPositionSeconds: null,
       audioTrackPosition: 0,
       audioTracks: [],
       ...streamSession,
