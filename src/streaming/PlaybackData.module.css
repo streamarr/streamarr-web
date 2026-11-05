@@ -20,7 +20,8 @@
   border: var(--border-width-hairline) solid var(--border-hairline);
   border-radius: var(--radius-2xl);
   background: var(--surface-chrome);
-  backdrop-filter: blur(24px);
+  /* Half the brightness behind it keeps text.secondary at 4.5:1 over a white frame. */
+  backdrop-filter: blur(24px) brightness(0.5);
   font-size: var(--font-size-caption);
   line-height: var(--line-height-prose);
   color: var(--text-primary);

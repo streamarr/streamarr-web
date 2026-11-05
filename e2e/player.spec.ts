@@ -1349,6 +1349,69 @@ test('playback data shows what hls.js reports of the playing variant and why the
   await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible()
 })
 
+test('playback data keeps its secondary labels readable over a white frame', async ({
+  page,
+  request,
+}) => {
+  await openPlayer(page, request, { operations: ENCODE_DECISION })
+  const panel = await openPlaybackData(page)
+  await expect(trackIn(panel, 'Video').getByRole('heading')).toHaveText('Video Encode')
+  // A white frame behind the panel: the brightest picture the video can show.
+  await page.evaluate(() => {
+    const video = document.querySelector('video')!
+    video.style.visibility = 'hidden'
+    video.parentElement!.style.background = '#fff'
+  })
+  const box = (await panel.boundingBox())!
+
+  const fill = await averageColor(page, {
+    x: box.x + 4,
+    y: box.y + box.height / 2,
+    width: 8,
+    height: 8,
+  })
+
+  // text.secondary is white at 50% over the panel's fill.
+  const label = fill.map((channel) => channel / 2 + 255 / 2)
+  expect(contrast(label, fill)).toBeGreaterThanOrEqual(4.5)
+})
+
+// The mean color of a region of the page as it renders, read back from a screenshot.
+async function averageColor(page: Page, clip: Box): Promise<number[]> {
+  const png = (await page.screenshot({ clip })).toString('base64')
+  return page.evaluate(async (data) => {
+    const image = new Image()
+    image.src = `data:image/png;base64,${data}`
+    await image.decode()
+    const canvas = document.createElement('canvas')
+    canvas.width = image.width
+    canvas.height = image.height
+    const context = canvas.getContext('2d')!
+    context.drawImage(image, 0, 0)
+    const { data: pixels } = context.getImageData(0, 0, image.width, image.height)
+    const sums = [0, 0, 0]
+    for (let index = 0; index < pixels.length; index += 4) {
+      for (let channel = 0; channel < 3; channel++) {
+        sums[channel] += pixels[index + channel]
+      }
+    }
+    return sums.map((sum) => sum / (pixels.length / 4))
+  }, png)
+}
+
+// WCAG 2 contrast ratio between two sRGB colors with channels from 0 to 255.
+function contrast(one: number[], other: number[]): number {
+  const luminance = (color: number[]) => {
+    const [red, green, blue] = color.map((channel) => {
+      const value = channel / 255
+      return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
+    })
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue
+  }
+  const [lighter, darker] = [luminance(one), luminance(other)].sort((a, b) => b - a)
+  return (lighter + 0.05) / (darker + 0.05)
+}
+
 // One audio rendition whose name wraps the control bar onto another row on a phone.
 const MULTIVARIANT_WITH_A_LONG_AUDIO_NAME = MULTIVARIANT.replace(
   'NAME="Audio"',
