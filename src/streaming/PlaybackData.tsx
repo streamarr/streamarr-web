@@ -1,5 +1,12 @@
 import { useQuery } from '@apollo/client/react'
-import { type ReactNode, type RefObject, useId, useMemo, useSyncExternalStore } from 'react'
+import {
+  type CSSProperties,
+  type ReactNode,
+  type RefObject,
+  useId,
+  useMemo,
+  useSyncExternalStore,
+} from 'react'
 import {
   type PlaybackDecisionFieldsFragment,
   PlaybackDecisionsDocument,
@@ -76,16 +83,23 @@ export function PlaybackData({
   videoRef,
   stream,
   screen,
+  controlsReach,
   onClose,
 }: Readonly<{
   videoRef: RefObject<HTMLVideoElement | null>
   stream: PlaybackDataStream | null
   screen: PlaybackDataScreen
+  /** How far the player's controls reach up from its bottom, in pixels; null before it is measured. */
+  controlsReach: number | null
   onClose: () => void
 }>) {
   const headingId = useId()
+  const reach =
+    controlsReach === null
+      ? undefined
+      : ({ '--controls-reach': `${controlsReach}px` } as CSSProperties)
   return (
-    <section className={styles.panel} aria-labelledby={headingId}>
+    <section className={styles.panel} style={reach} aria-labelledby={headingId}>
       <div className={styles.header}>
         <h2 id={headingId} className={styles.heading}>
           Playback data

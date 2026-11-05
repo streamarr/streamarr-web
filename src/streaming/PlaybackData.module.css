@@ -1,7 +1,8 @@
 /*
  * The panel holds the top right over the video, beside Back, and scrolls when the player is short.
  * Once the player is too narrow for both side by side, it sits below Back. It ends above the control
- * bar and the seek track's hit area, which reach --controls-reach up from the player's bottom.
+ * bar and the seek track's hit area, which reach --controls-reach up from the player's bottom: the
+ * player measures it, and these values hold until it does.
  */
 .panel {
   --panel-top: var(--spacing-24);
