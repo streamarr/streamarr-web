@@ -381,14 +381,15 @@ function playerFigures(
 }
 
 /*
- * PQ covers both HDR10 and the base of Dolby Vision, so over HLS only the playing variant's codecs
- * tell them apart. This client declares no Dolby Vision for direct play, so a file plays its base.
+ * Dolby Vision rides on a PQ or HLG base, so over HLS only the playing variant's codecs tell an
+ * HDR stream from Dolby Vision. This client declares no Dolby Vision for direct play, so a file
+ * plays its base.
  */
 function hdrMode({ dolbyVision }: StreamStats, { videoRange, playsHls }: StreamKind): string {
   if (dolbyVision) {
     return 'Dolby Vision'
   }
-  if (playsHls && videoRange === 'PQ' && dolbyVision === undefined) {
+  if (playsHls && videoRange !== 'SDR' && dolbyVision === undefined) {
     return UNKNOWN
   }
   return videoRangeText(videoRange)
