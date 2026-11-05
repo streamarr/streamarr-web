@@ -3,22 +3,22 @@
   margin-top: 28px;
 }
 
+/* Empty, the rail is the header's rule exactly (2px, square ends, 22%); the fill is that line in
+   the accent (principle 4.2). */
 .track {
   position: relative;
-  height: 4px;
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--ambient-text-primary, var(--color-white)) 16%, transparent);
+  height: 2px;
+  background: color-mix(in srgb, var(--ambient-text-primary, var(--color-white)) 22%, transparent);
 }
 
 .fill {
   height: 100%;
-  border-radius: 2px;
   background: var(--ambient-accent);
 }
 
 .marker {
   position: absolute;
-  top: -11px;
+  top: -12px;
   padding: 4px 12px;
   border-radius: var(--radius-sm);
   background: var(--ambient-accent);
