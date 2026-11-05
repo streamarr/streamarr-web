@@ -12,7 +12,8 @@ import {
 
 /**
  * How one format attempt delivers each track: its source and output side by side, each row the
- * output changes marked, and the reasons for the change under the track.
+ * output changes marked, and the reasons for the change under the track. A source without audio
+ * has no Audio track.
  */
 export function PlaybackDecisionTracks({
   decision,
@@ -24,13 +25,9 @@ export function PlaybackDecisionTracks({
       <Track name="Video" delivery={video.delivery} reasons={reasons.video}>
         <TrackTable rows={videoRows(video)} />
       </Track>
-      {audio ? (
+      {audio && (
         <Track name="Audio" delivery={audio.delivery} reasons={reasons.audio}>
           <TrackTable rows={audioRows(audio)} />
-        </Track>
-      ) : (
-        <Track name="Audio" reasons={[]}>
-          <p className={styles.note}>This video has no audio.</p>
         </Track>
       )}
     </>
@@ -44,7 +41,7 @@ function Track({
   children,
 }: Readonly<{
   name: string
-  delivery?: PlaybackDelivery
+  delivery: PlaybackDelivery
   reasons: string[]
   children: ReactNode
 }>) {
@@ -53,7 +50,7 @@ function Track({
     <section className={styles.track} aria-labelledby={nameId}>
       <h4 className={styles.trackHeading}>
         <span id={nameId}>{name}</span>{' '}
-        {delivery && <span className={styles.delivery}>{deliveryText(delivery)}</span>}
+        <span className={styles.delivery}>{deliveryText(delivery)}</span>
       </h4>
       {children}
       {reasons.length > 0 && (
@@ -72,7 +69,9 @@ function TrackTable({ rows }: Readonly<{ rows: TrackRow[] }>) {
     <table className={styles.table}>
       <thead>
         <tr>
-          <td />
+          <th scope="col">
+            <VisuallyHidden>Property</VisuallyHidden>
+          </th>
           <th scope="col">Original</th>
           <th scope="col">Playing</th>
         </tr>
