@@ -8820,6 +8820,24 @@ describe('Player', () => {
       expect(video.paused).toBe(false)
     })
 
+    it('shouldMoveFocusToCloseAndBackToSettingsWhenTheViewerOpensPlaybackDataAndPressesEscape', async () => {
+      serveSession()
+      serveDecisions(() => [playbackDecision({ streamSessionId: SESSION.id })])
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      const video = await showingVideo(STREAM_URL)
+      pressPlay(video)
+      const panel = await openPlaybackData(user)
+      expect(within(panel).getByRole('button', { name: 'Close playback data' })).toHaveFocus()
+
+      await user.keyboard('{Escape}')
+
+      expect(screen.queryByRole('region', { name: 'Playback data' })).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Settings' })).toHaveFocus()
+      expect(video.paused).toBe(false)
+    })
+
     it('shouldKeepTheControlsWhilePlaybackDataShows', async () => {
       serveSession()
       serveDecisions(() => [playbackDecision({ streamSessionId: SESSION.id })])
