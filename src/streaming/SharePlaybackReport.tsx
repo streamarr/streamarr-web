@@ -18,8 +18,11 @@ type Report = Omit<SharePlaybackReportInput, 'note'>
 /** The figures and stream session that a press of Share takes. */
 export type CapturedReport = Omit<Report, 'submissionId'>
 
+// `sent` holds the note after a send whose answer was lost: the server may hold the report with
+// that note already, and a resend under the same submission id returns it unchanged.
 type ShareStep =
-  { at: 'offered'; shared: boolean } | { at: 'noting'; report: Report; refusal: string | null }
+  | { at: 'offered'; shared: boolean }
+  | { at: 'noting'; report: Report; refusal: string | null; sent: boolean }
 
 /**
  * Shares the panel with the Server Admin. Pressing Share takes the panel's figures at once, then
@@ -54,6 +57,7 @@ export function SharePlaybackReport({
                     at: 'noting',
                     report: { ...capture(), submissionId: randomUuid() },
                     refusal: null,
+                    sent: false,
                   })
                 }
               : undefined
@@ -65,10 +69,11 @@ export function SharePlaybackReport({
     )
   }
 
-  const { report } = step
+  const { report, sent } = step
   async function send(event: FormEvent) {
     event.preventDefault()
-    const refused = (refusal: string) => setStep({ at: 'noting', report, refusal })
+    const refused = (refusal: string) => setStep({ at: 'noting', report, refusal, sent: false })
+    const lost = () => setStep({ at: 'noting', report, refusal: NOT_SHARED, sent: true })
     try {
       const { data } = await share({
         variables: { input: { ...report, note: note.trim() ? note : undefined } },
@@ -79,12 +84,12 @@ export function SharePlaybackReport({
         return
       }
       if (!payload?.playbackReportId) {
-        refused(NOT_SHARED)
+        lost()
         return
       }
       setStep({ at: 'offered', shared: true })
     } catch {
-      refused(NOT_SHARED)
+      lost()
     }
   }
 
@@ -97,7 +102,7 @@ export function SharePlaybackReport({
         maxLength={NOTE_LIMIT}
         rows={3}
         // The note goes as it stood at Send; a later edit would be lost when the confirmation shows.
-        readOnly={sending}
+        readOnly={sending || sent}
         onChange={(event) => setNote(event.currentTarget.value)}
       />
       {step.refusal && (

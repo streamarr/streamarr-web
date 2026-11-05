@@ -328,6 +328,9 @@ describe('PlaybackData', () => {
       expect(note).toHaveValue('Green picture')
       expect(within(panel).queryByText('Shared with your Server Admin.')).not.toBeInTheDocument()
       expect(shared).toHaveLength(1)
+      // A refused report was not stored, so the viewer may still correct the note.
+      await user.type(note, ' after a seek')
+      expect(note).toHaveValue('Green picture after a seek')
     })
 
     it('shouldResendThePressesSubmissionIdAfterALostAnswerAndMakeANewOneForTheNextPress', async () => {
@@ -350,6 +353,27 @@ describe('PlaybackData', () => {
       expect(resent).toBe(lost)
       expect(next).toMatch(UUID)
       expect(next).not.toBe(lost)
+    })
+
+    it('shouldResendTheNoteAsFirstSentWhenTheViewerTriesToEditItAfterALostAnswer', async () => {
+      serveDecision()
+      const answers: ShareAnswer[] = [() => HttpResponse.error(), SHARED]
+      const shared = serveShare((input) => answers.shift()!(input))
+      const { user, panel } = renderPanel()
+      await user.click(within(panel).getByRole('button', { name: 'Share with Server Admin' }))
+      const note = within(panel).getByRole('textbox', { name: 'Add a note (optional)' })
+      await user.type(note, 'Stutters')
+      await user.click(within(panel).getByRole('button', { name: 'Send' }))
+      await within(panel).findByRole('alert')
+
+      await user.type(note, ' after every seek')
+      await user.click(within(panel).getByRole('button', { name: 'Send' }))
+
+      await within(panel).findByText('Shared with your Server Admin.')
+      expect(shared.map(({ submissionId, note }) => ({ submissionId, note }))).toEqual([
+        { submissionId: shared[0].submissionId, note: 'Stutters' },
+        { submissionId: shared[0].submissionId, note: 'Stutters' },
+      ])
     })
 
     it('shouldSayTheReportWasNotSharedAndKeepTheFormWhenTheRequestFails', async () => {
