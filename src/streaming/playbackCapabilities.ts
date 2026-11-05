@@ -68,6 +68,10 @@ export interface PlaybackPlatform {
 // unanswered at it counts as unconfirmed rather than holding back a player that never starts.
 const DECODING_INFO_TIMEOUT_MS = 3_000
 
+// No capability entry lists a direct-play container yet, so the declaration answers as Chromium's
+// player does: it plays a file's first audio track only.
+const SELECTS_AUDIO_TRACK_IN_DIRECT_PLAY = false
+
 type FamilyLevels = Record<'H264' | 'HEVC' | 'AV1', number>
 
 interface PictureTier {
@@ -375,6 +379,7 @@ async function probeDeclaration({
   return {
     video,
     audio: audioEntries({ answers: audio, userAgent: platform.userAgent, hls }),
+    selectsAudioTrackInDirectPlay: SELECTS_AUDIO_TRACK_IN_DIRECT_PLAY,
   }
 }
 
@@ -933,6 +938,7 @@ function minimalDeclaration(hls: boolean): ClientCapabilityDeclarationInput {
       }),
     ],
     audio: [{ codec: 'AAC', maxChannels: STEREO, hls: true }],
+    selectsAudioTrackInDirectPlay: SELECTS_AUDIO_TRACK_IN_DIRECT_PLAY,
   }
 }
 

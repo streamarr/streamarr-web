@@ -156,7 +156,11 @@ function startSessionPlayback({
   dynamicRange: initialDynamicRange,
 }: PlayerPlaybackOptions & { dynamicRange: DynamicRangeChoice }): SessionPlayback {
   let source: StreamSource | null = null
-  let declaration: ClientCapabilityDeclarationInput = { video: [], audio: [] }
+  let declaration: ClientCapabilityDeclarationInput = {
+    video: [],
+    audio: [],
+    selectsAudioTrackInDirectPlay: false,
+  }
   let dynamicRange = initialDynamicRange
   let cancelled = false
   let sessionId: string | null = null

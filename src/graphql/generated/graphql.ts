@@ -56,6 +56,13 @@ export type AudioCapabilityEntryInput = {
   hls: boolean;
   /** The most channels that the player accepts for this codec. */
   maxChannels: number;
+  /**
+   * The smallest STREAMINFO minimum block size, in samples, of a FLAC track that the player plays, from
+   * 16 to 65,535. Only a FLAC entry gives one. The entry then accepts a FLAC track only when the track's
+   * minimum block size is known and at least this size, so a track with smaller or unknown blocks plays
+   * as an encode. Without it, the entry accepts every block size.
+   */
+  minBlockSize?: number | null | undefined;
 };
 
 /** An audio codec that a client can declare. */
@@ -92,6 +99,14 @@ export type ChangeIdleSegmentRetentionInput = {
 export type ClientCapabilityDeclarationInput = {
   /** The audio capability entries. The declaration needs at least one, including an AAC entry that applies to HLS. */
   audio: Array<AudioCapabilityEntryInput>;
+  /**
+   * Whether the player selects an audio track inside a file that it direct-plays, as AVPlayer and Safari's
+   * player do (ADR 0045). A player that cannot, such as Chromium's, starts on the file's default audio track,
+   * or on its first audio track when none is marked default. It direct-plays a file only when the stream
+   * session's audio track is the file's first audio track and the player starts on it, and otherwise plays
+   * over HLS from the start.
+   */
+  selectsAudioTrackInDirectPlay: boolean;
   /** The video capability entries. The declaration needs at least one. */
   video: Array<VideoCapabilityEntryInput>;
 };
@@ -258,6 +273,8 @@ export type OrderMediaBy =
 
 /** Why the output differs from the output that the requested playback choice asked for (ADR 0052). */
 export type PlaybackFormatChange =
+  /** The viewer switched audio tracks during direct play and the server rules out the HLS copy. An encode plays. */
+  | 'AUDIO_TRACK_SWITCHED'
   /** An HLS copy failed: the player refused it, the worker could not make it, or it ran short while a source stream still had media. An encode plays. */
   | 'COPY_FAILED'
   /** Direct play failed and the server rules out the HLS copy. An encode plays. */
@@ -951,6 +968,7 @@ export type CreatePlaybackSessionMutation = { createPlaybackSession: { playbackS
             | { __typename: 'HlsStreamSession', transcodeMode: TranscodeMode, videoRange: VideoRange, mediaEndSeconds: number | null, id: string, streamUrl: string }
            }
        } | null, userErrors: Array<
+      | { __typename: 'AudioMinBlockSizeInvalidError', message: string }
       | { __typename: 'CapabilityListTooLongError', message: string }
       | { __typename: 'CapabilityMaximumInvalidError', message: string }
       | { __typename: 'CapabilityProfileMismatchError', message: string }
