@@ -805,9 +805,10 @@ function startSessionPlayback({
 
   // Only the playback status can say whether the server switched. The server may end direct play
   // while the status is on its way, so the file's failures keep waiting until the status answers.
+  // A stall can still end meanwhile, so only a failure of the file makes the check fatal.
   async function recoverLostSwitch(pending: PendingAudioTrackSwitch) {
     pendingSwitch = pending
-    await reconcilePlaybackStatus({ generation: pending.generation, fatal: sourceFailed(pending) })
+    await reconcilePlaybackStatus({ generation: pending.generation, fatal: pending.failed })
     if (pendingSwitch !== pending) return
     pendingSwitch = null
     if (cancelled || pending.generation !== sourceGeneration) return
@@ -847,13 +848,9 @@ function startSessionPlayback({
     return pendingSwitch?.generation === generation ? pendingSwitch : undefined
   }
 
-  function sourceFailed(pending: PendingAudioTrackSwitch): boolean {
-    return pending.failed || pending.stalled
-  }
-
   // Direct play goes on after a switch the server did not make, unless the file failed meanwhile.
   function failAfterTheSwitch(pending: PendingAudioTrackSwitch) {
-    if (sourceFailed(pending)) {
+    if (pending.failed || pending.stalled) {
       stopStatusCheck()
       failSource()
       return

@@ -7568,6 +7568,48 @@ describe('Player', () => {
         expect(await screen.findByRole('alert')).toHaveTextContent("Playback couldn't start.")
       })
 
+      it('shouldKeepDirectPlayingWhenAStallThatOutlastedItsLimitEndsWhileTheStatusAnswersALostSwitch', async () => {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        const switchAsked = deferred()
+        const switchLost = deferred()
+        let statusReads = 0
+        server.use(
+          graphql.mutation('SwitchPlaybackAudioTrack', async () => {
+            switchAsked.resolve()
+            await switchLost.promise
+            return HttpResponse.error()
+          }),
+          graphql.query('PlaybackSession', () => {
+            statusReads += 1
+            return HttpResponse.json({ data: { playbackSession: directPlayStill() } })
+          }),
+        )
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        const video = await directPlayAt(42)
+        vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout'] })
+        stallAt(video, 42)
+        await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 10_000))
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+        await switchAsked.promise
+        await act(async () => vi.advanceTimersByTimeAsync(10_000))
+        // The waiting element asked for a real end; the second read is the stall's own, and the
+        // third is the lost switch's status check.
+        await vi.waitFor(() => expect(statusReads).toBe(2))
+        await act(async () => vi.advanceTimersByTimeAsync(100))
+        switchLost.resolve()
+        await vi.waitFor(() => expect(statusReads).toBe(3))
+
+        resumeAfterTheStall(video)
+        await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_START_TIMEOUT_MS))
+        vi.useRealTimers()
+
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+        expect(video).toHaveAttribute('src', SOURCE_FILE.streamUrl)
+        expect(video.currentTime).toBe(43)
+      })
+
       it('shouldMoveToHlsWhenAStallOutlastsItsLimitWhileTheSwitchIsPending', async () => {
         serveDirectPlay({ audioTracks: TWO_TRACKS })
         server.use(
