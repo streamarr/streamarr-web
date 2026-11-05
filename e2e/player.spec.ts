@@ -591,8 +591,8 @@ test('a resumed title asks first for the segment that holds the resume position,
   await page.goto('/play/file-1?episode=e1&position=603')
 
   await expect.poll(() => segments).not.toHaveLength(0)
-  // A settle long enough for hls.js to ask for any other segment, which it would ask for at once.
-  await page.waitForTimeout(1000)
+  // hls.js would ask for any other segment at once.
+  await page.waitForTimeout(1000) // NOSONAR: proving an absence needs a bounded settle, not a condition
   expect(segments[0]).toBe('segment100.m4s')
   expect(segments).not.toContain('segment0.m4s')
   expect(startPositionSeconds).toBe(603)
