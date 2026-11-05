@@ -1,6 +1,7 @@
 import { ApolloClient, ApolloLink, HttpLink, InMemoryCache } from '@apollo/client'
 import { SetContextLink } from '@apollo/client/link/context'
 import { ErrorLink } from '@apollo/client/link/error'
+import { relayStylePagination } from '@apollo/client/utilities'
 import { OperationTypeNode } from 'graphql'
 import { map } from 'rxjs'
 import { csrfHeaders, isCsrfRejection } from '../auth/csrf'
@@ -83,6 +84,12 @@ export function createApolloClient(
   const cache = new ResetCountingCache({
     possibleTypes: generatedIntrospection.possibleTypes,
     typePolicies: {
+      Query: {
+        fields: {
+          // Older shared playback reports load after the ones already loaded.
+          playbackReports: relayStylePagination(),
+        },
+      },
       Library: {
         fields: {
           alphabetIndex: { merge: false },

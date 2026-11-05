@@ -1,12 +1,14 @@
 import { useQuery } from '@apollo/client/react'
 import { Alert, Center, Loader } from '@mantine/core'
 import { Link, Outlet, useMatchRoute } from '@tanstack/react-router'
-import { MeDocument } from '../graphql/generated/graphql'
+import { MeDocument, UnreadPlaybackReportCountDocument } from '../graphql/generated/graphql'
 import { requestFailureMessage } from '../graphql/requestErrors'
 import { FailurePanel } from '../ui/Failure'
 import { Icon, type IconName } from '../ui/Icon'
 import { canManageServer } from './access'
 import styles from './Settings.module.css'
+
+const REPORTS = '/settings/server/reports'
 
 const SECTIONS = [
   {
@@ -16,6 +18,12 @@ const SECTIONS = [
     region: 'Library administration',
   },
   { to: '/settings/server/encoding', icon: 'encoding', label: 'Encoding', region: 'Encoding' },
+  {
+    to: REPORTS,
+    icon: 'alert',
+    label: 'Shared reports',
+    region: 'Shared reports',
+  },
 ] as const satisfies readonly {
   to: string
   icon: IconName
@@ -55,6 +63,7 @@ export function ServerSettings() {
 function SettingsRail() {
   const matchRoute = useMatchRoute()
   const current = SECTIONS.find((section) => matchRoute({ to: section.to, fuzzy: true }))
+  const unreadReports = useUnreadReportCount()
   return (
     <div className={`${styles.settings} ${styles.railLayout}`}>
       <nav className={styles.settingsRail} aria-label="Server settings">
@@ -65,9 +74,17 @@ function SettingsRail() {
             to={section.to}
             className={styles.section}
             aria-current={section === current ? 'page' : undefined}
+            aria-label={
+              section.to === REPORTS && unreadReports > 0
+                ? `${section.label} ${unreadReports} unread`
+                : undefined
+            }
           >
             <Icon name={section.icon} />
             {section.label}
+            {section.to === REPORTS && unreadReports > 0 && (
+              <span className={styles.unreadCount}>{unreadReports}</span>
+            )}
           </Link>
         ))}
       </nav>
@@ -76,4 +93,12 @@ function SettingsRail() {
       </section>
     </div>
   )
+}
+
+// How many shared playback reports no ServerAdmin has read; zero until the server says.
+function useUnreadReportCount(): number {
+  const { data } = useQuery(UnreadPlaybackReportCountDocument, {
+    fetchPolicy: 'cache-and-network',
+  })
+  return data?.unreadPlaybackReportCount ?? 0
 }

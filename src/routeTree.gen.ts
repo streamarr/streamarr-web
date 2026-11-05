@@ -27,7 +27,9 @@ import { Route as AuthenticatedSettingsServerRouteImport } from './routes/_authe
 import { Route as AuthenticatedSettingsServerIndexRouteImport } from './routes/_authenticated/settings.server.index'
 import { Route as AuthenticatedSettingsServerEncodingRouteImport } from './routes/_authenticated/settings.server.encoding'
 import { Route as AuthenticatedSettingsServerLibrariesRouteImport } from './routes/_authenticated/settings.server.libraries'
+import { Route as AuthenticatedSettingsServerReportsRouteImport } from './routes/_authenticated/settings.server.reports'
 import { Route as AuthenticatedSettingsServerLibrariesNewRouteImport } from './routes/_authenticated/settings.server.libraries_.new'
+import { Route as AuthenticatedSettingsServerReportsReportIdRouteImport } from './routes/_authenticated/settings.server.reports_.$reportId'
 
 const AuthenticatedRoute = AuthenticatedRouteImport.update({
   id: '/_authenticated',
@@ -128,10 +130,22 @@ const AuthenticatedSettingsServerLibrariesRoute =
     path: '/libraries',
     getParentRoute: () => AuthenticatedSettingsServerRoute,
   } as any)
+const AuthenticatedSettingsServerReportsRoute =
+  AuthenticatedSettingsServerReportsRouteImport.update({
+    id: '/reports',
+    path: '/reports',
+    getParentRoute: () => AuthenticatedSettingsServerRoute,
+  } as any)
 const AuthenticatedSettingsServerLibrariesNewRoute =
   AuthenticatedSettingsServerLibrariesNewRouteImport.update({
     id: '/libraries_/new',
     path: '/libraries/new',
+    getParentRoute: () => AuthenticatedSettingsServerRoute,
+  } as any)
+const AuthenticatedSettingsServerReportsReportIdRoute =
+  AuthenticatedSettingsServerReportsReportIdRouteImport.update({
+    id: '/reports_/$reportId',
+    path: '/reports/$reportId',
     getParentRoute: () => AuthenticatedSettingsServerRoute,
   } as any)
 
@@ -152,8 +166,10 @@ export interface FileRoutesByFullPath {
   '/settings/server': typeof AuthenticatedSettingsServerRouteWithChildren
   '/settings/server/encoding': typeof AuthenticatedSettingsServerEncodingRoute
   '/settings/server/libraries': typeof AuthenticatedSettingsServerLibrariesRoute
+  '/settings/server/reports': typeof AuthenticatedSettingsServerReportsRoute
   '/settings/server/': typeof AuthenticatedSettingsServerIndexRoute
   '/settings/server/libraries/new': typeof AuthenticatedSettingsServerLibrariesNewRoute
+  '/settings/server/reports/$reportId': typeof AuthenticatedSettingsServerReportsReportIdRoute
 }
 export interface FileRoutesByTo {
   '/invite': typeof InviteRoute
@@ -171,8 +187,10 @@ export interface FileRoutesByTo {
   '/series/$seriesId': typeof AuthenticatedSeriesSeriesIdRoute
   '/settings/server/encoding': typeof AuthenticatedSettingsServerEncodingRoute
   '/settings/server/libraries': typeof AuthenticatedSettingsServerLibrariesRoute
+  '/settings/server/reports': typeof AuthenticatedSettingsServerReportsRoute
   '/settings/server': typeof AuthenticatedSettingsServerIndexRoute
   '/settings/server/libraries/new': typeof AuthenticatedSettingsServerLibrariesNewRoute
+  '/settings/server/reports/$reportId': typeof AuthenticatedSettingsServerReportsReportIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -193,8 +211,10 @@ export interface FileRoutesById {
   '/_authenticated/settings/server': typeof AuthenticatedSettingsServerRouteWithChildren
   '/_authenticated/settings/server/encoding': typeof AuthenticatedSettingsServerEncodingRoute
   '/_authenticated/settings/server/libraries': typeof AuthenticatedSettingsServerLibrariesRoute
+  '/_authenticated/settings/server/reports': typeof AuthenticatedSettingsServerReportsRoute
   '/_authenticated/settings/server/': typeof AuthenticatedSettingsServerIndexRoute
   '/_authenticated/settings/server/libraries_/new': typeof AuthenticatedSettingsServerLibrariesNewRoute
+  '/_authenticated/settings/server/reports_/$reportId': typeof AuthenticatedSettingsServerReportsReportIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -215,8 +235,10 @@ export interface FileRouteTypes {
     | '/settings/server'
     | '/settings/server/encoding'
     | '/settings/server/libraries'
+    | '/settings/server/reports'
     | '/settings/server/'
     | '/settings/server/libraries/new'
+    | '/settings/server/reports/$reportId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/invite'
@@ -234,8 +256,10 @@ export interface FileRouteTypes {
     | '/series/$seriesId'
     | '/settings/server/encoding'
     | '/settings/server/libraries'
+    | '/settings/server/reports'
     | '/settings/server'
     | '/settings/server/libraries/new'
+    | '/settings/server/reports/$reportId'
   id:
     | '__root__'
     | '/_authenticated'
@@ -255,8 +279,10 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/server'
     | '/_authenticated/settings/server/encoding'
     | '/_authenticated/settings/server/libraries'
+    | '/_authenticated/settings/server/reports'
     | '/_authenticated/settings/server/'
     | '/_authenticated/settings/server/libraries_/new'
+    | '/_authenticated/settings/server/reports_/$reportId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -395,11 +421,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsServerLibrariesRouteImport
       parentRoute: typeof AuthenticatedSettingsServerRoute
     }
+    '/_authenticated/settings/server/reports': {
+      id: '/_authenticated/settings/server/reports'
+      path: '/reports'
+      fullPath: '/settings/server/reports'
+      preLoaderRoute: typeof AuthenticatedSettingsServerReportsRouteImport
+      parentRoute: typeof AuthenticatedSettingsServerRoute
+    }
     '/_authenticated/settings/server/libraries_/new': {
       id: '/_authenticated/settings/server/libraries_/new'
       path: '/libraries/new'
       fullPath: '/settings/server/libraries/new'
       preLoaderRoute: typeof AuthenticatedSettingsServerLibrariesNewRouteImport
+      parentRoute: typeof AuthenticatedSettingsServerRoute
+    }
+    '/_authenticated/settings/server/reports_/$reportId': {
+      id: '/_authenticated/settings/server/reports_/$reportId'
+      path: '/reports/$reportId'
+      fullPath: '/settings/server/reports/$reportId'
+      preLoaderRoute: typeof AuthenticatedSettingsServerReportsReportIdRouteImport
       parentRoute: typeof AuthenticatedSettingsServerRoute
     }
   }
@@ -408,8 +448,10 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedSettingsServerRouteChildren {
   AuthenticatedSettingsServerEncodingRoute: typeof AuthenticatedSettingsServerEncodingRoute
   AuthenticatedSettingsServerLibrariesRoute: typeof AuthenticatedSettingsServerLibrariesRoute
+  AuthenticatedSettingsServerReportsRoute: typeof AuthenticatedSettingsServerReportsRoute
   AuthenticatedSettingsServerIndexRoute: typeof AuthenticatedSettingsServerIndexRoute
   AuthenticatedSettingsServerLibrariesNewRoute: typeof AuthenticatedSettingsServerLibrariesNewRoute
+  AuthenticatedSettingsServerReportsReportIdRoute: typeof AuthenticatedSettingsServerReportsReportIdRoute
 }
 
 const AuthenticatedSettingsServerRouteChildren: AuthenticatedSettingsServerRouteChildren =
@@ -418,10 +460,14 @@ const AuthenticatedSettingsServerRouteChildren: AuthenticatedSettingsServerRoute
       AuthenticatedSettingsServerEncodingRoute,
     AuthenticatedSettingsServerLibrariesRoute:
       AuthenticatedSettingsServerLibrariesRoute,
+    AuthenticatedSettingsServerReportsRoute:
+      AuthenticatedSettingsServerReportsRoute,
     AuthenticatedSettingsServerIndexRoute:
       AuthenticatedSettingsServerIndexRoute,
     AuthenticatedSettingsServerLibrariesNewRoute:
       AuthenticatedSettingsServerLibrariesNewRoute,
+    AuthenticatedSettingsServerReportsReportIdRoute:
+      AuthenticatedSettingsServerReportsReportIdRoute,
   }
 
 const AuthenticatedSettingsServerRouteWithChildren =

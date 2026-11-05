@@ -594,3 +594,188 @@ test('the Encoding select keeps focus after a keyboard choice saves', async ({ p
   expect(state.encoderPresetSetting.preset).toBe('SUPERFAST')
   await expect(preset).toBeFocused()
 })
+
+// Shared playback reports, newest first: the newest is unread, the rest read.
+function sharedReports(count: number) {
+  return Array.from({ length: count }, (_, index) => ({
+    __typename: 'PlaybackReport',
+    id: `report-${index + 1}`,
+    sharedAt: new Date(Date.UTC(2026, 10, 4, 18, 30) - index * 3_600_000).toISOString(),
+    readAt: index === 0 ? null : '2026-11-04T20:00:00.000Z',
+    profileName: index === 0 ? 'Robin' : `Viewer ${index + 1}`,
+    note: index === 0 ? 'Stutters after every seek' : null,
+  }))
+}
+
+const REPORT_DETAIL = {
+  playbackSessionId: 'playback-1',
+  streamSessionId: 'sess-1',
+  mediaFileId: 'file-1',
+  requestedChoice: 'AUTO',
+  playbackChoice: 'AUTO',
+  decisions: [
+    {
+      __typename: 'PlaybackDecision',
+      formatAttempt: 1,
+      streamSessionId: 'sess-1',
+      reasons: ['VIDEO_CODEC_NOT_DECLARED'],
+      video: {
+        __typename: 'VideoDelivery',
+        delivery: 'ENCODE',
+        source: {
+          __typename: 'VideoFormat',
+          codec: 'hevc',
+          width: 1280,
+          height: 720,
+          frameRate: 25,
+          bitrate: 6_000_000,
+          videoRange: 'SDR',
+          dolbyVision: false,
+        },
+        output: {
+          __typename: 'VideoFormat',
+          codec: 'h264',
+          width: 1280,
+          height: 720,
+          frameRate: 25,
+          bitrate: 1_800_000,
+          videoRange: 'SDR',
+          dolbyVision: false,
+        },
+      },
+      audio: null,
+    },
+  ],
+  player: {
+    __typename: 'PlayerFigures',
+    qualityStep: { number: 1, count: 1, height: 720, bitrate: 1_800_000 },
+    observedBitrate: 12_500_000,
+    bufferSeconds: 8,
+    droppedFrames: 0,
+    stalls: 2,
+    resolution: { width: 1280, height: 720 },
+    videoCodec: 'avc1.64001f',
+    hdrMode: 'SDR',
+    audio: null,
+    display: null,
+    audioOutput: null,
+    screen: { width: 1512, height: 982, pixelRatio: 2, hdr: false },
+    browser: { name: 'Chrome', version: '142' },
+  },
+  capabilityDeclaration: {
+    __typename: 'ClientCapabilityDeclaration',
+    video: [
+      {
+        codecFamily: 'H264',
+        codecProfiles: [{ profile: 'H264_HIGH', maxLevel: 51, maxTier: null }],
+        maxBitDepth: 8,
+        maxWidth: 1920,
+        maxHeight: 1080,
+        maxFrameRate: 60,
+        compatibleBases: ['SDR'],
+        dolbyVisionProfiles: [],
+        hdr10Plus: false,
+        hls: true,
+        directPlayContainers: [],
+        directPlaySampleEntries: [],
+      },
+    ],
+    audio: [{ codec: 'AAC', maxChannels: 2, hls: true, directPlayContainers: [] }],
+  },
+}
+
+// Answers the shared report operations from `reports`; each report read marks it read.
+async function routeSharedReports(page: Page, reports: ReturnType<typeof sharedReports>) {
+  const state = { reports, marked: [] as string[], pageAfters: [] as (string | null)[] }
+  await page.route('**/graphql', async (route) => {
+    const { operationName, variables } = route.request().postDataJSON() as {
+      operationName: string
+      variables: Record<string, unknown>
+    }
+    const reply = (data: unknown) => route.fulfill({ json: { data } })
+    if (operationName === 'UnreadPlaybackReportCount')
+      return reply({
+        unreadPlaybackReportCount: state.reports.filter((report) => !report.readAt).length,
+      })
+    if (operationName === 'PlaybackReports') {
+      const after = (variables.after as string | null | undefined) ?? null
+      state.pageAfters.push(after)
+      const start = after ? Number(after) : 0
+      const first = variables.first as number
+      const page = state.reports.slice(start, start + first)
+      return reply({
+        playbackReports: {
+          edges: page.map((node, index) => ({ cursor: String(start + index + 1), node })),
+          pageInfo: {
+            hasNextPage: start + first < state.reports.length,
+            endCursor: String(start + page.length),
+          },
+        },
+      })
+    }
+    if (operationName === 'PlaybackReport') {
+      const report = state.reports.find((candidate) => candidate.id === variables.id)
+      return reply({ playbackReport: report ? { ...report, ...REPORT_DETAIL } : null })
+    }
+    if (operationName === 'MarkPlaybackReportRead') {
+      const { playbackReportId } = variables.input as { playbackReportId: string }
+      state.marked.push(playbackReportId)
+      const readAt = '2026-11-04T21:00:00.000Z'
+      state.reports = state.reports.map((report) =>
+        report.id === playbackReportId ? { ...report, readAt: report.readAt ?? readAt } : report,
+      )
+      return reply({
+        markPlaybackReportRead: {
+          playbackReport: { __typename: 'PlaybackReport', id: playbackReportId, readAt },
+          userErrors: [],
+        },
+      })
+    }
+    return route.fallback()
+  })
+  return state
+}
+
+test('a ServerAdmin pages through shared reports newest first, and opening one marks it read', async ({
+  page,
+}) => {
+  await fixture(page)
+  const state = await routeSharedReports(page, sharedReports(21))
+  await page.goto('/settings/server/encoding')
+  const rail = page.getByRole('navigation', { name: 'Server settings' })
+
+  await rail.getByRole('link', { name: 'Shared reports 1 unread' }).click()
+
+  const list = page.getByRole('list', { name: 'Shared reports' })
+  await expect(list.getByRole('link')).toHaveCount(20)
+  await expect(list.getByRole('link').first()).toContainText('Stutters after every seek')
+  await page.getByRole('button', { name: 'Show older reports' }).click()
+  await expect(list.getByRole('link')).toHaveCount(21)
+  await expect(list.getByRole('link').last()).toContainText('Viewer 21')
+  expect(state.pageAfters).toEqual([null, '20'])
+
+  await list.getByRole('link').first().click()
+
+  const report = page.getByRole('article', { name: 'Report from Robin' })
+  await expect(report.getByRole('blockquote')).toHaveText('Stutters after every seek')
+  await expect(report.getByRole('region', { name: 'Video' })).toContainText(
+    "This device can't play the video's codec (HEVC).",
+  )
+  await expect(report.getByRole('region', { name: 'Player' })).toContainText('Stalls2')
+  await expect(rail.getByRole('link', { name: 'Shared reports', exact: true })).toBeVisible()
+  expect(state.marked).toEqual(['report-1'])
+})
+
+test('a shared report fits a phone without scrolling sideways', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 667 })
+  await fixture(page)
+  await routeSharedReports(page, sharedReports(1))
+
+  await page.goto('/settings/server/reports/report-1')
+
+  await expect(page.getByRole('article', { name: 'Report from Robin' })).toBeVisible()
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  )
+  expect(overflow).toBeLessThanOrEqual(0)
+})
