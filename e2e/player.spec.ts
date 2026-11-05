@@ -1356,6 +1356,7 @@ const MULTIVARIANT_WITH_A_LONG_AUDIO_NAME = MULTIVARIANT.replace(
 )
 
 for (const viewport of [
+  { name: 'a narrow phone held upright', width: 320, height: 568 },
   { name: 'a phone held upright', width: 375, height: 667 },
   {
     name: 'a phone held upright with a long audio track name',
@@ -1392,6 +1393,27 @@ for (const viewport of [
     const belowBack = panelBox!.y >= backBox!.y + backBox!.height
     expect(besideBack || belowBack).toBe(true)
     await back.click({ trial: true })
+    const head = [
+      panel.getByRole('heading', { name: 'Playback data' }),
+      panel.getByRole('group', { name: 'Summary' }),
+      panel.getByRole('button', { name: 'Close playback data' }),
+    ]
+    const headBoxes = await Promise.all(head.map((part) => part.boundingBox()))
+    for (const [index, box] of headBoxes.entries()) {
+      expect(box).not.toBeNull()
+      expect(box!.x + box!.width).toBeLessThanOrEqual(panelBox!.x + panelBox!.width)
+      for (const other of headBoxes.slice(index + 1)) {
+        expect(overlap(box!, other!)).toBe(false)
+      }
+    }
+    for (const chip of await panel
+      .getByRole('group', { name: 'Summary' })
+      .locator('dl > div')
+      .all()) {
+      const chipBox = await chip.boundingBox()
+      expect(overlap(chipBox!, headBoxes[2]!)).toBe(false)
+      expect(chipBox!.x + chipBox!.width).toBeLessThanOrEqual(panelBox!.x + panelBox!.width)
+    }
     const seek = page.getByRole('slider', { name: 'Seek' })
     const seekBox = await seek.boundingBox()
     expect(panelBox!.y + panelBox!.height).toBeLessThanOrEqual(seekBox!.y)
