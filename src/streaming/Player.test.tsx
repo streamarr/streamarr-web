@@ -3089,6 +3089,51 @@ describe('Player', () => {
     expect(created.map((input) => input.startPositionSeconds)).toEqual([143.5])
   })
 
+  it('shouldStartFromTheBeginningWhenTheServerRefusesTheStartPositionAsPastTheEnd', async () => {
+    const created: CreatePlaybackSessionInput[] = []
+    server.use(
+      graphql.mutation('CreatePlaybackSession', ({ variables }) => {
+        const { input } = variables as { input: CreatePlaybackSessionInput }
+        created.push(input)
+        const refused = input.startPositionSeconds != null
+        return HttpResponse.json({
+          data: {
+            createPlaybackSession: {
+              playbackSession: refused ? null : readyPlaybackSession({ streamSession: SESSION }),
+              userErrors: refused
+                ? [
+                    {
+                      __typename: 'StartPositionOutOfRangeError',
+                      message:
+                        'The start position lies before 0, or at or past the end of the media.',
+                      inputPath: ['input', 'startPositionSeconds'],
+                    },
+                  ]
+                : [],
+            },
+          },
+        })
+      }),
+    )
+    recordTimelineReports()
+    // Watch progress belongs to the title, so a longer cut's progress can pass this file's end.
+    renderWithProviders(
+      <Player
+        playbackPlatform={withoutDecodingInfo}
+        mediaFileId="abcd"
+        startPositionSeconds={9000}
+      />,
+    )
+
+    const video = await attachedVideo()
+    loadMetadata(video)
+
+    expect(created.map((input) => input.startPositionSeconds)).toEqual([9000, undefined])
+    expect(video.currentTime).toBe(0)
+    expect(video.paused).toBe(false)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
   it('shouldNameNoStartPositionToTheServerWhenPlaybackStartsAtTheBeginning', async () => {
     const created = recordCreatedSessions()
     renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
@@ -5921,6 +5966,7 @@ describe('Player', () => {
     it.each([
       { sought: 'nowhere', seekTo: null, startPosition: undefined },
       { sought: 'back', seekTo: 600, startPosition: 600 },
+      { sought: 'past the real end', seekTo: REAL_END_SECONDS + 5, startPosition: undefined },
     ])(
       'shouldStartTheReturningPageAtItsPlayheadOnlyWhenTheViewerSoughtAfterTheRealEnd(sought $sought)',
       async ({ seekTo, startPosition }) => {

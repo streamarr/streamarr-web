@@ -164,7 +164,7 @@ function startSessionPlayback({
   let sourceGeneration = 0
   let reportingFormat = false
   let statusCheck: PlaybackStatusCheck | undefined
-  const startAt = resumeFrom?.position ?? startPositionSeconds
+  let startAt = resumeFrom?.position ?? startPositionSeconds
   let resume: ResumePoint | undefined = resumeFrom && { ...resumeFrom }
   let lastReportedPosition = startAt ?? 0
   let lastKnownPosition: number | null = null
@@ -556,10 +556,15 @@ function startSessionPlayback({
         return
       }
       // The UI deadline must not discard a late session ID that still needs destruction.
-      const result = await createPlaybackSession({
+      let result = await createPlaybackSession({
         capabilities,
         startPositionSeconds: startAt === 0 ? undefined : startAt,
       })
+      // Watch progress belongs to the title, so a longer cut's progress can pass this file's end.
+      if (!cancelled && refusedTheStartPosition(result.data?.createPlaybackSession)) {
+        startFromTheBeginning()
+        result = await createPlaybackSession({ capabilities })
+      }
       const payload = result.data?.createPlaybackSession
       const initialPlayback = payload?.playbackSession
       playbackSessionId = initialPlayback?.id ?? null
@@ -581,6 +586,12 @@ function startSessionPlayback({
         showFailure(PLAYBACK_FAILURE_MESSAGE)
       }
     })
+
+  function startFromTheBeginning() {
+    startAt = undefined
+    lastReportedPosition = 0
+    if (resume) resume.position = 0
+  }
 
   function adoptPlayback(playback: PlaybackSessionFieldsFragment | null | undefined) {
     const attempt = playback?.currentFormatAttempt
@@ -696,7 +707,11 @@ function startSessionPlayback({
     // No playback session starts at the end of the media, and a short copy holds nothing past its
     // real end. As the element does after its own end, playing where playback ended starts from
     // the top.
-    if (video.ended || (endedAtRealEnd && video.currentTime === endedPosition)) {
+    if (
+      video.ended ||
+      (realEnd !== null && video.currentTime >= realEnd) ||
+      (endedAtRealEnd && video.currentTime === endedPosition)
+    ) {
       return { position: 0, playing }
     }
     return {
@@ -1092,6 +1107,13 @@ function createStartupDeadline(onExpired: () => void): StartupDeadline {
       phase = arm()
     },
   }
+}
+
+function refusedTheStartPosition(payload: PlaybackSessionPayload | undefined): boolean {
+  return (
+    payload?.userErrors.some((refusal) => refusal.__typename === 'StartPositionOutOfRangeError') ??
+    false
+  )
 }
 
 function refusalMessage(payload: PlaybackSessionPayload | undefined): string {
