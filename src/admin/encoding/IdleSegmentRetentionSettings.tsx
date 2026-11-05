@@ -143,36 +143,34 @@ function RetentionForm({
   }
 
   return (
-    <div className={styles.formPanel}>
-      <form className={styles.form} onSubmit={submit}>
-        <NumberInput
-          label="Keep idle segments for"
-          description={`${DESCRIPTION} ${allowedRange(setting)}`}
-          value={value}
-          onChange={onEdit}
-          min={setting.minimumMinutes}
-          max={setting.maximumMinutes}
-          clampBehavior="none"
-          allowDecimal={false}
-          allowNegative={false}
-          hideControls
-          rightSection={<span className={styles.fieldNote}>minutes</span>}
-          rightSectionWidth={80}
-          readOnly={saving}
-          error={refusal}
-        />
-        <div className={styles.formActions}>
-          <Button
-            type="submit"
-            loading={saving}
-            disabled={!changed || busy}
-            aria-label="Save idle segment retention"
-          >
-            Save
-          </Button>
-        </div>
-      </form>
-    </div>
+    <form className={styles.form} onSubmit={submit}>
+      <NumberInput
+        label="Keep idle segments for"
+        description={`${DESCRIPTION} ${allowedRange(setting)}`}
+        value={value}
+        onChange={onEdit}
+        min={setting.minimumMinutes}
+        max={setting.maximumMinutes}
+        clampBehavior="none"
+        allowDecimal={false}
+        allowNegative={false}
+        hideControls
+        rightSection={<span className={styles.fieldNote}>minutes</span>}
+        rightSectionWidth={80}
+        readOnly={saving}
+        error={refusal}
+      />
+      <div className={styles.formActions}>
+        <Button
+          type="submit"
+          loading={saving}
+          disabled={!changed || busy}
+          aria-label="Save idle segment retention"
+        >
+          Save
+        </Button>
+      </div>
+    </form>
   )
 }
 

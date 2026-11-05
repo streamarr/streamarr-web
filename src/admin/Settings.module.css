@@ -302,6 +302,12 @@
   border: 1px solid var(--border-hairline);
   border-radius: var(--radius-xl);
 }
+/* Settings that share a panel are rows divided by a hairline inside the panel's padding. */
+.settingRow + .settingRow {
+  margin-top: var(--spacing-24);
+  padding-top: var(--spacing-24);
+  border-top: var(--border-width-hairline) solid var(--border-hairline);
+}
 .form {
   display: flex;
   flex-direction: column;
