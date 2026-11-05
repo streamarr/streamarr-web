@@ -11,6 +11,7 @@ import {
   ReportStreamSessionTimelineDocument,
   type ReportStreamSessionTimelineMutationVariables,
   SwitchPlaybackAudioTrackDocument,
+  type SwitchPlaybackAudioTrackInput,
   type VideoRange,
 } from '../graphql/generated/graphql'
 import { userErrorMessage, userErrorMessageOr } from '../graphql/userErrors'
@@ -75,6 +76,20 @@ export interface PlayerPlayback {
    */
   chooseDynamicRange: (choice: DynamicRangeChoice) => void
 }
+
+// An audio track switch the server has not answered yet, and the failures of the source it
+// replaces that wait for the answer.
+interface PendingAudioTrackSwitch {
+  generation: number
+  formatFailure: PlaybackFormatFailure | null
+  failed: boolean
+}
+
+type AudioTrackSwitchAnswer =
+  | { kind: 'started'; playback: PlaybackSessionFieldsFragment }
+  | { kind: 'kept' }
+  | { kind: 'refused'; message: string }
+  | { kind: 'lost' }
 
 // A stall's limit, and the status read once the stall outlasts it.
 interface Stall {
@@ -175,9 +190,7 @@ function startSessionPlayback({
   let cancelled = false
   // The declaration's word on direct play, which the server's stream decision followed.
   let selectsAudioTrackInDirectPlay = false
-  let switchingAudioTrack = false
-  // A direct-play failure during an audio track switch waits for the switch's answer.
-  let failureDuringSwitch: PlaybackFormatFailure | null = null
+  let pendingSwitch: PendingAudioTrackSwitch | null = null
   let sessionId: string | null = null
   let playbackSessionId: string | null = null
   let sourceGeneration = 0
@@ -542,6 +555,11 @@ function startSessionPlayback({
   }
 
   function failStalledStream() {
+    const pending = switchPendingFor(sourceGeneration)
+    if (pending) {
+      pending.failed = true
+      return
+    }
     stopStatusCheck()
     detachSource()
     showFailure(FAILED_ATTEMPT_FALLBACK_MESSAGE)
@@ -659,6 +677,11 @@ function startSessionPlayback({
       onFatal: () => {
         if (cancelled || generation !== sourceGeneration) return
         if (tryEndAtRealEnd()) return
+        const pending = switchPendingFor(generation)
+        if (pending) {
+          pending.failed = true
+          return
+        }
         stopStatusCheck()
         detachSource()
         showFailure(PLAYBACK_FAILURE_MESSAGE)
@@ -691,8 +714,9 @@ function startSessionPlayback({
     )
       return
     // The server lets a failure wait for a switch rather than start a second HLS attempt.
-    if (switchingAudioTrack) {
-      failureDuringSwitch ??= reason
+    const pending = switchPendingFor(generation)
+    if (pending) {
+      pending.formatFailure ??= reason
       return
     }
     reportingFormat = true
@@ -725,50 +749,92 @@ function startSessionPlayback({
 
   // A player that cannot switch the file's audio track moves to HLS for the chosen one. Direct play
   // goes on until the server has started that stream session, and goes on for good when it refuses.
+  // The server ends direct play as it answers, so a failure of the file meanwhile waits for the
+  // answer, and belongs to the source it came from.
   async function switchAudioTrack(audioTrackPosition: number, generation: number) {
     if (
       cancelled ||
       generation !== sourceGeneration ||
       reportingFormat ||
-      switchingAudioTrack ||
+      switchPendingFor(generation) ||
       !playbackSessionId ||
       !sessionId
     )
       return
-    switchingAudioTrack = true
-    const streamSessionId = sessionId
+    const pending: PendingAudioTrackSwitch = { generation, formatFailure: null, failed: false }
+    pendingSwitch = pending
+    const answer = await requestAudioTrackSwitch({
+      playbackSessionId,
+      streamSessionId: sessionId,
+      audioTrackPosition,
+    })
+    if (pendingSwitch === pending) pendingSwitch = null
+    if (cancelled || generation !== sourceGeneration) return
+    switch (answer.kind) {
+      case 'started': {
+        beginHandover()
+        const playback = await awaitReadyPlayback(answer.playback)
+        if (!cancelled) adoptPlayback(playback)
+        return
+      }
+      case 'refused':
+        onNotice(answer.message)
+        failAfterTheSwitch(pending)
+        return
+      case 'kept':
+        failAfterTheSwitch(pending)
+        return
+      case 'lost':
+        // Only the playback status can say whether the server switched.
+        if (pending.formatFailure) {
+          void reportFormatFailure(pending.formatFailure, generation)
+          return
+        }
+        void reconcilePlaybackStatus({ generation, fatal: pending.failed })
+    }
+  }
+
+  async function requestAudioTrackSwitch(
+    input: SwitchPlaybackAudioTrackInput,
+  ): Promise<AudioTrackSwitchAnswer> {
+    const deadline = new AbortController()
+    const timer = setTimeout(() => deadline.abort(), PLAYBACK_START_TIMEOUT_MS)
     try {
       const result = await client.mutate({
         mutation: SwitchPlaybackAudioTrackDocument,
-        variables: { input: { playbackSessionId, streamSessionId, audioTrackPosition } },
+        variables: { input },
         fetchPolicy: 'no-cache',
-        context: { fetchOptions: { signal: statusCancellation.signal } },
+        context: {
+          fetchOptions: { signal: AbortSignal.any([statusCancellation.signal, deadline.signal]) },
+        },
       })
-      if (cancelled || generation !== sourceGeneration) return
       const payload = result.data?.switchPlaybackAudioTrack
       const refusal = payload?.userErrors[0]
-      if (refusal) {
-        onNotice(userErrorMessage(refusal))
-        return
-      }
+      if (refusal) return { kind: 'refused', message: userErrorMessage(refusal) }
       // The server keeps a session that already plays the chosen track, or that moved on.
-      if (!payload?.playbackSession || attachedStreamIn(payload.playbackSession)) return
-      switchingAudioTrack = false
-      beginHandover()
-      const playback = await awaitReadyPlayback(payload.playbackSession)
-      if (cancelled) return
-      adoptPlayback(playback)
-    } catch {
-      // The answer is lost, so only the playback status can say whether the switch happened.
-      if (!cancelled && generation === sourceGeneration) {
-        void reconcilePlaybackStatus({ generation, fatal: false })
+      if (!payload?.playbackSession || attachedStreamIn(payload.playbackSession)) {
+        return { kind: 'kept' }
       }
+      return { kind: 'started', playback: payload.playbackSession }
+    } catch {
+      return { kind: 'lost' }
     } finally {
-      switchingAudioTrack = false
-      const failure = failureDuringSwitch
-      failureDuringSwitch = null
-      if (failure) void reportFormatFailure(failure, generation)
+      clearTimeout(timer)
     }
+  }
+
+  function switchPendingFor(generation: number): PendingAudioTrackSwitch | undefined {
+    return pendingSwitch?.generation === generation ? pendingSwitch : undefined
+  }
+
+  // Direct play goes on after a switch the server did not make, unless the file failed meanwhile.
+  function failAfterTheSwitch(pending: PendingAudioTrackSwitch) {
+    if (pending.failed) {
+      stopStatusCheck()
+      failSource()
+      return
+    }
+    if (pending.formatFailure) void reportFormatFailure(pending.formatFailure, pending.generation)
   }
 
   function currentResumePoint(): ResumePoint {

@@ -7302,6 +7302,181 @@ describe('Player', () => {
         expect(switches.map((input) => input.audioTrackPosition)).toEqual([1])
       })
 
+      // The server ends the direct-play stream session as it answers, so a range request can fail.
+      it('shouldMoveToHlsWhereDirectPlayWasWhenTheSourceFileFailsBeforeTheSwitchIsAnswered', async () => {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        const answered = deferred()
+        const switches = serveAudioTrackSwitch({
+          answered: answered.promise,
+          answer: () => ({
+            playbackSession: readyPlaybackSession({
+              id: 'playback-1',
+              streamSession: replacementStream(1),
+            }),
+            userErrors: [],
+          }),
+        })
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        const video = await directPlayAt(42)
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+        await waitFor(() => expect(switches).toHaveLength(1))
+
+        failTheSourceFile(video, 2)
+        answered.resolve()
+
+        await attachedVideo(replacementStream(1).streamUrl)
+        loadMetadata(video)
+        expect(video.currentTime).toBe(42)
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      })
+
+      it('shouldShowThePlaybackFailureWhenTheSourceFileFailsAndTheServerRefusesTheSwitch', async () => {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        const answered = deferred()
+        serveAudioTrackSwitch({
+          answered: answered.promise,
+          answer: () => ({
+            playbackSession: directPlayStill(),
+            userErrors: [
+              { __typename: 'PlaybackFormatAttemptsExhaustedError', message: SWITCH_REFUSAL },
+            ],
+          }),
+        })
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        const video = await directPlayAt(42)
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+
+        failTheSourceFile(video, 2)
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+        answered.resolve()
+
+        expect(await screen.findByRole('alert')).toHaveTextContent("Playback couldn't start.")
+      })
+
+      it('shouldReportTheReplacementsOwnFailureWhenTheStatusAttachesItDuringALaterSwitch', async () => {
+        const reports = serveDirectPlay({ audioTracks: TWO_TRACKS })
+        let switched = false
+        const secondAnswer = deferred()
+        let switchCount = 0
+        server.use(
+          graphql.mutation('SwitchPlaybackAudioTrack', async () => {
+            switchCount += 1
+            if (switchCount === 1) return HttpResponse.error()
+            await secondAnswer.promise
+            return HttpResponse.json({
+              data: {
+                switchPlaybackAudioTrack: { playbackSession: directPlayStill(), userErrors: [] },
+              },
+            })
+          }),
+          graphql.query('PlaybackSession', () =>
+            HttpResponse.json({
+              data: {
+                playbackSession: switched
+                  ? readyPlaybackSession({ id: 'playback-1', streamSession: replacementStream(1) })
+                  : directPlayStill(),
+              },
+            }),
+          ),
+        )
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        await directPlayAt(42)
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+        await waitFor(() => expect(switchCount).toBe(1))
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+        await waitFor(() => expect(switchCount).toBe(2))
+
+        switched = true
+        await attachedVideo(replacementStream(1).streamUrl)
+        refuseTheStreamsFormat()
+
+        await waitFor(() =>
+          expect(reports).toEqual([
+            {
+              playbackSessionId: 'playback-1',
+              streamSessionId: replacementStream(1).id,
+              reason: 'UNSUPPORTED_FORMAT',
+            },
+          ]),
+        )
+        secondAnswer.resolve()
+      })
+
+      it('shouldMoveToHlsWhenAStallOutlastsItsLimitWhileTheSwitchIsPending', async () => {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        server.use(
+          graphql.query('PlaybackSession', () =>
+            HttpResponse.json({ data: { playbackSession: directPlayStill() } }),
+          ),
+        )
+        const answered = deferred()
+        const switches = serveAudioTrackSwitch({
+          answered: answered.promise,
+          answer: () => ({
+            playbackSession: readyPlaybackSession({
+              id: 'playback-1',
+              streamSession: replacementStream(1),
+            }),
+            userErrors: [],
+          }),
+        })
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        const video = await directPlayAt(42)
+        vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout'] })
+        stallAt(video, 42)
+        await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 10_000))
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+        await vi.waitFor(() => expect(switches).toHaveLength(1))
+
+        await act(async () => vi.advanceTimersByTimeAsync(10_000))
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+        vi.useRealTimers()
+        answered.resolve()
+
+        await attachedVideo(replacementStream(1).streamUrl)
+        loadMetadata(video)
+        expect(video.currentTime).toBe(42)
+      })
+
+      it('shouldReportTheDirectPlayFailureWhenTheSwitchGetsNoAnswerWithinItsDeadline', async () => {
+        const reports = serveDirectPlay({ audioTracks: TWO_TRACKS })
+        const switches = serveAudioTrackSwitch({
+          answered: new Promise<void>(() => undefined),
+          answer: () => ({ playbackSession: directPlayStill(), userErrors: [] }),
+        })
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        const video = await directPlayAt(42)
+        vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout'] })
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+        await vi.waitFor(() => expect(switches).toHaveLength(1))
+
+        failTheSourceFile(video, 3)
+        await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_START_TIMEOUT_MS - 1_000))
+        expect(reports).toEqual([])
+        await act(async () => vi.advanceTimersByTimeAsync(1_000))
+        vi.useRealTimers()
+
+        await waitFor(() =>
+          expect(reports).toEqual([
+            {
+              playbackSessionId: 'playback-1',
+              streamSessionId: SOURCE_FILE.id,
+              reason: 'DECODE_ERROR',
+            },
+          ]),
+        )
+      })
+
       it('shouldNameTheAudioTrackSwitchWhenTheSwitchPlaysAnEncodeInAuto', async () => {
         serveDirectPlay({ audioTracks: TWO_TRACKS })
         serveAudioTrackSwitch({
