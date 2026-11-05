@@ -77,10 +77,10 @@ export function hlsTrackSource(hls: HlsTracks): TrackSource {
         }
       }
     },
-    selectAudio: async (id) => {
+    selectAudio: (id) => {
       const moves = hls.audioTrack !== id
       hls.audioTrack = id
-      return moves
+      return Promise.resolve(moves)
     },
     selectSubtitles: (id) => {
       hls.subtitleTrack = id ?? HLS_SUBTITLES_OFF
@@ -127,7 +127,7 @@ export function listedAudioTrackSource(
   return {
     read: unchangedUntilDifferent(() => ({ audio, subtitles: elementTracks.read().subtitles })),
     subscribe: elementTracks.subscribe,
-    selectAudio: async (id) => id !== playing && onChooseAudio(id),
+    selectAudio: (id) => (id === playing ? Promise.resolve(false) : onChooseAudio(id)),
     selectSubtitles: elementTracks.selectSubtitles,
   }
 }
@@ -166,13 +166,13 @@ export function nativeTrackSource(video: HTMLVideoElement): TrackSource {
       )
       return () => stops.forEach((stop) => stop())
     },
-    selectAudio: async (id) => {
+    selectAudio: (id) => {
       const tracks = audioTracksOf(video)
       const moves = tracks[id]?.enabled === false
       tracks.forEach((track, index) => {
         track.enabled = index === id
       })
-      return moves
+      return Promise.resolve(moves)
     },
     selectSubtitles: (id) => {
       subtitleTracksOf(video).forEach((track, index) => {
