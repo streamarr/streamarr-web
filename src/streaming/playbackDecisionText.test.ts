@@ -228,12 +228,14 @@ describe('playbackDecisionText', () => {
     ])
   })
 
-  it('shouldLeaveOutAnAudioReasonWhenTheDecisionHasNoAudio', () => {
+  it('shouldPlaceTheVideoReasonsAndLeaveOutAnAudioReasonWhenTheDecisionHasNoAudio', () => {
     const decision = { ...ENCODED_FOR_1080P, audio: null }
 
-    expect(reasonsOf(['AUDIO_CODEC_NOT_DECLARED'], { decision })).toEqual({
+    expect(
+      reasonsOf(['VIDEO_CODEC_NOT_DECLARED', 'AUDIO_CODEC_NOT_DECLARED'], { decision }),
+    ).toEqual({
       stream: [],
-      video: [],
+      video: ["This device can't play the video's codec (HEVC)."],
       audio: [],
     })
   })

@@ -8304,6 +8304,28 @@ describe('Player', () => {
       })
     })
 
+    it('shouldExplainTheVideosEncodeWhenTheVideoHasNoAudio', async () => {
+      serveSession()
+      serveDecisions(() => [
+        playbackDecision({
+          streamSessionId: SESSION.id,
+          video: { delivery: 'ENCODE', source: HEVC_UHD_DOLBY_VISION, output: H264_FULL_HD },
+          audio: null,
+          reasons: ['VIDEO_CODEC_NOT_DECLARED'],
+        }),
+      ])
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await showingVideo(STREAM_URL)
+
+      const panel = await openPlaybackData(user)
+
+      expect((await shownTrack(panel, 'Video')).reasons).toEqual([
+        "This device can't play the video's codec (HEVC).",
+      ])
+    })
+
     it('shouldNameAReasonThisAppDoesNotKnowUnderTheTitleWhenTheServerAddsOne', async () => {
       serveSession()
       serveDecisions(() => [
@@ -8629,6 +8651,26 @@ describe('Player', () => {
       stallAt(video, 700)
 
       expect(factsIn(groupIn(panel, 'Player')).Stalls).toBe('2')
+    })
+
+    it('shouldNotCountAStallWhenTheViewerPlaysOnFromASeekMadeWhilePaused', async () => {
+      serveSession()
+      serveAStatusWithoutARealEnd()
+      serveDecisions(() => [playbackDecision({ streamSessionId: SESSION.id })])
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      const video = await showingVideo(STREAM_URL)
+      const panel = await openPlaybackData(user)
+
+      pressPause(video)
+      playheadAt(video, 600)
+      fireEvent(video, new Event('seeking'))
+      fireEvent(video, new Event('seeked'))
+      pressPlay(video)
+      stallAt(video, 600)
+
+      expect(factsIn(groupIn(panel, 'Player')).Stalls).toBe('0')
     })
 
     it('shouldSayWhatThePlayerDoesNotReportWhenTheBrowserGivesNoFigure', async () => {
