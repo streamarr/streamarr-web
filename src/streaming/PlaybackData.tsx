@@ -26,10 +26,12 @@ import {
   capturePlayerFigures,
   captureScreenFigures,
   playerFigureFacts,
+  playerFiguresInput,
   screenFigureFacts,
 } from './playerFigures'
 import type { StreamStats } from './playerPlayback'
 import { qualityLabel } from './qualityChoices'
+import { SharePlaybackReport } from './SharePlaybackReport'
 
 /** The attached stream that the panel describes. */
 export interface PlaybackDataStream {
@@ -227,6 +229,21 @@ function StreamData({
           </Group>
         </div>
       </div>
+      <SharePlaybackReport
+        capture={() => ({
+          playbackSessionId: stream.playbackSessionId,
+          streamSessionId: stream.streamSessionId,
+          player: playerFiguresInput(
+            capturePlayerFigures({
+              video: videoRef.current,
+              stats: stream.streamStats(),
+              videoRange: stream.videoRange,
+              playsHls: stream.sourceContainer === null,
+            }),
+            captureScreenFigures(screen),
+          ),
+        })}
+      />
     </>
   )
 }

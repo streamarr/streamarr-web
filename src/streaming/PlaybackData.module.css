@@ -181,3 +181,24 @@
     grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
   }
 }
+
+/* Share sits at the panel's foot, after the figures it sends. */
+.share {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--spacing-10);
+  margin-top: var(--spacing-16);
+}
+
+.shared {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.shareForm {
+  display: grid;
+  gap: var(--spacing-10);
+  margin-top: var(--spacing-16);
+}

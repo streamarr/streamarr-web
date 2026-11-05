@@ -8,6 +8,7 @@ import {
   type Request,
 } from '@playwright/test'
 import { fileURLToPath } from 'node:url'
+import type { SharePlaybackReportInput } from '../src/graphql/generated/graphql'
 import { selectedProfileState } from '../src/test/selectedProfileStateFixture'
 import { RING, ringOnActiveElement } from './focusRing'
 import { STUB_URL } from './ports'
@@ -1411,6 +1412,52 @@ function contrast(one: number[], other: number[]): number {
   const [lighter, darker] = [luminance(one), luminance(other)].sort((a, b) => b - a)
   return (lighter + 0.05) / (darker + 0.05)
 }
+
+test('a viewer shares playback data with a note, and the Server Admin gets the figures from the press', async ({
+  page,
+  request,
+}) => {
+  await routePlayer(page, request, {
+    operations: {
+      MovieDetail: MOVIE_DETAIL,
+      ...ENCODE_DECISION,
+      SharePlaybackReport: {
+        sharePlaybackReport: { playbackReportId: 'report-1', userErrors: [] },
+      },
+    },
+  })
+  await serveTheFirstMediaSegment(page)
+  await page.goto('/movie/m1')
+  await page.getByRole('link', { name: 'Play' }).click()
+  await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible()
+  const panel = await openPlaybackData(page)
+  await expect(factIn(panel, 'Player', 'Quality step')).toHaveText('720p · 2 Mb/s (1 of 1)')
+
+  await panel.getByRole('button', { name: 'Share with Server Admin' }).click()
+  await panel.getByRole('textbox', { name: 'Add a note (optional)' }).fill('Stutters after a seek')
+  const shared = page.waitForRequest(
+    (call) => call.url().endsWith('/graphql') && operationName(call) === 'SharePlaybackReport',
+  )
+  await panel.getByRole('button', { name: 'Send' }).click()
+
+  await expect(panel.getByRole('status')).toHaveText('Shared with your Server Admin.')
+  const { variables } = (await shared).postDataJSON() as {
+    variables: { input: SharePlaybackReportInput }
+  }
+  expect(variables.input).toMatchObject({
+    playbackSessionId: 'playback-1',
+    streamSessionId: 'sess-1',
+    note: 'Stutters after a seek',
+    player: {
+      qualityStep: { number: 1, count: 1, height: 720 },
+      resolution: { width: 1280, height: 720 },
+      hdrMode: 'SDR',
+      browser: { name: 'Chrome' },
+      screen: { hdr: false },
+    },
+  })
+  await expect(panel.getByRole('button', { name: 'Share with Server Admin' })).toBeVisible()
+})
 
 // One audio rendition whose name wraps the control bar onto another row on a phone.
 const MULTIVARIANT_WITH_A_LONG_AUDIO_NAME = MULTIVARIANT.replace(

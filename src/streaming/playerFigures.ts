@@ -1,4 +1,8 @@
-import type { VideoRange } from '../graphql/generated/graphql'
+import type {
+  PlayerFiguresInput,
+  PlayerHdrMode as ServerHdrMode,
+  VideoRange,
+} from '../graphql/generated/graphql'
 import { browserOf, browserVersionText, type BrowserVersion } from './browserText'
 import { bitrateText, channelsText, UNKNOWN } from './playbackDecisionText'
 import type { StreamStats } from './playerPlayback'
@@ -6,7 +10,7 @@ import type { StreamStats } from './playerPlayback'
 type Maybe<Value> = Value | null | undefined
 
 /** The dynamic range that a player or display reports for what it shows. */
-export type PlayerHdrMode = 'SDR' | 'HDR10' | 'HDR10_PLUS' | 'HLG' | 'DOLBY_VISION'
+export type PlayerHdrMode = Exclude<ServerHdrMode, '%future added value'>
 
 /**
  * The figures of the Playback data panel, as values. A figure that the player does not know is
@@ -21,7 +25,7 @@ export interface PlayerFigureValues {
   resolution?: Maybe<{ width: number; height: number }>
   videoCodec?: Maybe<string>
   hdrMode?: Maybe<string>
-  audio?: Maybe<{ codec: string; channels?: Maybe<number>; dolbyAtmos?: Maybe<boolean> }>
+  audio?: Maybe<{ codec: string; channels?: Maybe<number>; dolbyAtmos?: boolean }>
 }
 
 /** What the browser reports of the screen that shows the player, and of itself. */
@@ -114,6 +118,31 @@ export function captureScreenFigures({
     screen: { ...screen, hdr: displaysHighDynamicRange },
     browser: browserOf(userAgent) ?? undefined,
   }
+}
+
+/**
+ * The figures as a shared playback report carries them. A figure that the player does not know,
+ * and a dynamic range that the server would not know, are left out.
+ */
+export function playerFiguresInput(
+  player: PlayerFigureValues,
+  { screen, browser }: ScreenFigureValues,
+): PlayerFiguresInput {
+  const { hdrMode, audio, ...figures } = player
+  return withoutAbsent({
+    ...figures,
+    hdrMode: hdrMode && isPlayerHdrMode(hdrMode) ? hdrMode : undefined,
+    audio: audio && withoutAbsent(audio),
+    screen,
+    browser,
+  })
+}
+
+// Leaves out each absent figure, so that a report names only what the player knew.
+function withoutAbsent<Figures extends object>(figures: Figures): Figures {
+  return Object.fromEntries(
+    Object.entries(figures).filter(([, value]) => value !== null && value !== undefined),
+  ) as Figures
 }
 
 /** The player's figures by the names that the panel shows them under. */
