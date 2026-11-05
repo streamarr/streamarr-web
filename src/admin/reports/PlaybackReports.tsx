@@ -21,10 +21,13 @@ export const REPORT_PAGE_SIZE = 20
  * Older reports load after the loaded ones on request.
  */
 export function PlaybackReports() {
-  const { data, previousData, error, refetch, fetchMore } = useQuery(PlaybackReportsDocument, {
-    variables: { first: REPORT_PAGE_SIZE },
-    fetchPolicy: 'cache-and-network',
-  })
+  const { data, previousData, error, loading, refetch, fetchMore } = useQuery(
+    PlaybackReportsDocument,
+    {
+      variables: { first: REPORT_PAGE_SIZE },
+      fetchPolicy: 'cache-and-network',
+    },
+  )
   const [older, setOlder] = useState<'idle' | 'loading' | 'failed'>('idle')
   const connection = (data ?? previousData)?.playbackReports
 
@@ -65,6 +68,9 @@ export function PlaybackReports() {
           reports={connection.edges.map((edge) => edge.node)}
           hasOlder={connection.pageInfo.hasNextPage}
           loadingOlder={older === 'loading'}
+          // A read of the newest reports replaces the loaded ones, so the cursor of the last loaded
+          // report is good only once it answers.
+          readingNewest={loading && older !== 'loading'}
           onShowOlder={() => void showOlder(connection.pageInfo.endCursor)}
         />
       )}
@@ -89,11 +95,13 @@ function ReportList({
   reports,
   hasOlder,
   loadingOlder,
+  readingNewest,
   onShowOlder,
 }: Readonly<{
   reports: readonly PlaybackReportSummaryFieldsFragment[]
   hasOlder: boolean
   loadingOlder: boolean
+  readingNewest: boolean
   onShowOlder: () => void
 }>) {
   if (reports.length === 0) {
@@ -113,7 +121,13 @@ function ReportList({
         ))}
       </ul>
       {hasOlder && (
-        <Button variant="default" mt="md" loading={loadingOlder} onClick={onShowOlder}>
+        <Button
+          variant="default"
+          mt="md"
+          loading={loadingOlder}
+          disabled={readingNewest}
+          onClick={onShowOlder}
+        >
           Show older reports
         </Button>
       )}

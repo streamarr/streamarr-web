@@ -249,6 +249,48 @@ describe('shared reports', () => {
     expect(screen.queryByRole('button', { name: 'Show older reports' })).not.toBeInTheDocument()
   })
 
+  it('shouldHoldOlderReportsBackWhileTheNewestReadAgainOnReturnToTheList', async () => {
+    const reports = Array.from({ length: 5 }, (_, index) =>
+      reportFixture({ id: `report-${index + 1}`, profileName: `Viewer ${index + 1}` }),
+    )
+    const state = serveReports({ reports, pageSize: 2 })
+    const held = deferred()
+    server.use(
+      graphql.query('PlaybackReports', async ({ variables }) => {
+        // The read of the newest reports on return to the list.
+        if (!variables.after && state.pageReads.length === 2) {
+          await held.promise
+        }
+        return undefined
+      }),
+    )
+    const { user } = renderAppAt(REPORTS)
+    await user.click(await screen.findByRole('button', { name: 'Show older reports' }))
+    await waitFor(() =>
+      expect(within(screen.getByRole('list')).getAllByRole('link')).toHaveLength(4),
+    )
+    await user.click(within(screen.getByRole('list')).getAllByRole('link')[0])
+    await user.click(await screen.findByRole('link', { name: 'Back to shared reports' }))
+
+    const showOlder = await screen.findByRole('button', { name: 'Show older reports' })
+
+    expect(showOlder).toBeDisabled()
+    await act(async () => {
+      held.resolve()
+      await held.promise
+    })
+    await waitFor(() => expect(showOlder).toBeEnabled())
+    await user.click(showOlder)
+    await waitFor(() =>
+      expect(listedReports(screen.getByRole('list', { name: 'Shared reports' }))).toHaveLength(4),
+    )
+    expect(
+      within(screen.getByRole('list', { name: 'Shared reports' }))
+        .getAllByRole('link')
+        .map((link) => /Viewer \d/.exec(link.textContent)?.[0]),
+    ).toEqual(['Viewer 1', 'Viewer 2', 'Viewer 3', 'Viewer 4'])
+  })
+
   it('shouldSayThatNoReportIsSharedWhenTheServerHoldsNone', async () => {
     serveReports({ reports: [] })
     renderAppAt(REPORTS)
