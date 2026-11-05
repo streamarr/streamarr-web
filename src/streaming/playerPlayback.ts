@@ -1468,10 +1468,10 @@ function hlsSourceStats(hls: Hls): SourceStats {
 }
 
 // The sample entries under which a codec string names Dolby Vision, such as dvh1.08.06.
-const DOLBY_VISION_ENTRIES = ['dvh1', 'dvhe', 'dav1', 'dvav', 'dva1']
+const DOLBY_VISION_ENTRIES = new Set(['dvh1', 'dvhe', 'dav1', 'dvav', 'dva1'])
 
 function namesDolbyVision(codecs: readonly (string | undefined)[]): boolean {
-  return codecs.some((codec) => DOLBY_VISION_ENTRIES.includes(codec?.split('.')[0] ?? ''))
+  return codecs.some((codec) => DOLBY_VISION_ENTRIES.has(codec?.split('.')[0] ?? ''))
 }
 
 // The element reports its own figures; nothing else reads a native or source file stream.

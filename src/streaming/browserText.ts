@@ -6,7 +6,8 @@ const BROWSERS: readonly { name: string; pattern: RegExp }[] = [
   { name: 'Opera', pattern: /OPR\/(\d+)/ },
   { name: 'Firefox', pattern: /(?:Firefox|FxiOS)\/(\d+)/ },
   { name: 'Chrome', pattern: /(?:Chrome|CriOS)\/(\d+)/ },
-  { name: 'Safari', pattern: /Version\/(\d+(?:\.\d+)?).*Safari\// },
+  // Desktop Safari ends "Version/27.2 Safari/…", and iOS puts its Mobile token between.
+  { name: 'Safari', pattern: /Version\/(\d+(?:\.\d+)?) (?:Mobile\/\S+ )?Safari\// },
 ]
 
 /** The browser's name and version from its user agent, such as Chrome 141 or Safari 27.2. */

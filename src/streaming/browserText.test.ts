@@ -36,6 +36,11 @@ describe('browserText', () => {
       'Firefox 146',
     ],
     ['Safari', IPHONE_SAFARI_USER_AGENT, 'Safari 27.2'],
+    [
+      'desktop Safari',
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.1 Safari/605.1.15',
+      'Safari 26.1',
+    ],
     ['an unknown browser', 'SomeTV/1.0', 'Unknown'],
   ])('shouldNameTheBrowserAndItsVersionWhenTheUserAgentIs(%s)', (_, userAgent, named) => {
     expect(browserText(userAgent)).toBe(named)
