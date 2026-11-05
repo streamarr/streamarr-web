@@ -20,7 +20,7 @@ import {
 import { Icon } from '../ui/Icon'
 import styles from './PlaybackData.module.css'
 import { Fact, Facts, PlaybackDecisionTracks } from './PlaybackDecisionFacts'
-import { placedReasons } from './playbackDecisionText'
+import { containerText, placedReasons } from './playbackDecisionText'
 import type { PlaybackPlatform } from './playbackCapabilities'
 import {
   capturePlayerFigures,
@@ -52,19 +52,6 @@ export type PlaybackDataScreen = Pick<
   PlaybackPlatform,
   'screen' | 'displaysHighDynamicRange' | 'userAgent'
 >
-
-type Known<Value extends string> = Exclude<Value, '%future added value'>
-
-const CONTAINERS: Record<Known<SourceContainer>, string> = {
-  MP4: 'MP4',
-  MOV: 'MOV',
-  MATROSKA: 'MKV',
-  MPEG_TS: 'MPEG-TS',
-  MPEG_PS: 'MPEG-PS',
-  AVI: 'AVI',
-  ASF: 'ASF',
-  FLV: 'FLV',
-}
 
 // The figures change as the element plays, stalls, buffers, resizes or loads another stream.
 const VIDEO_EVENTS = [
@@ -302,10 +289,7 @@ function deliveryChipText(container: SourceContainer | null): string {
   if (container === null) {
     return 'HLS'
   }
-  const named = Object.hasOwn(CONTAINERS, container)
-    ? CONTAINERS[container as Known<SourceContainer>]
-    : container
-  return `${named} → direct play`
+  return `${containerText(container)} → direct play`
 }
 
 type PlayerFigures = Record<string, string>

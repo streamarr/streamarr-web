@@ -3,6 +3,7 @@ import type {
   DecisionReason,
   PlaybackDecisionFieldsFragment,
   PlaybackDelivery,
+  SourceContainer,
   VideoFormatFieldsFragment,
   VideoQuality,
   VideoRange,
@@ -262,6 +263,22 @@ function isKnown<Value extends string, Entry>(
   value: Value,
 ): value is Known<Value> {
   return Object.hasOwn(table, value)
+}
+
+const CONTAINERS: Record<Known<SourceContainer>, string> = {
+  MP4: 'MP4',
+  MOV: 'MOV',
+  MATROSKA: 'MKV',
+  MPEG_TS: 'MPEG-TS',
+  MPEG_PS: 'MPEG-PS',
+  AVI: 'AVI',
+  ASF: 'ASF',
+  FLV: 'FLV',
+}
+
+/** A source container as viewers know it, such as MKV; one this app does not know reads as named. */
+export function containerText(container: SourceContainer): string {
+  return isKnown(CONTAINERS, container) ? CONTAINERS[container] : container
 }
 
 export function deliveryText(delivery: PlaybackDelivery): string {
