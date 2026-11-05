@@ -25,15 +25,7 @@ query Home($continueWatchingFirst: Int!) {
               id
             }
             backdropImages: images(type: BACKDROP) {
-              aspectRatio
-              blurHash
-              variants {
-                id
-                size
-                width
-                height
-                url
-              }
+              ...ImageWithAmbientFields
             }
           }
           ... on Series {
@@ -45,15 +37,7 @@ query Home($continueWatchingFirst: Int!) {
               name
             }
             backdropImages: images(type: BACKDROP) {
-              aspectRatio
-              blurHash
-              variants {
-                id
-                size
-                width
-                height
-                url
-              }
+              ...ImageWithAmbientFields
             }
           }
         }
@@ -76,15 +60,7 @@ fragment ContinueWatchingItemFields on ContinueWatchingMedia {
       name
     }
     images(type: BACKDROP) {
-      aspectRatio
-      blurHash
-      variants {
-        id
-        size
-        width
-        height
-        url
-      }
+      ...ImageWithAmbientFields
     }
     watchProgress {
       positionSeconds
@@ -137,15 +113,7 @@ fragment ContinueWatchingItemFields on ContinueWatchingMedia {
           id
         }
         images(type: BACKDROP) {
-          aspectRatio
-          blurHash
-          variants {
-            id
-            size
-            width
-            height
-            url
-          }
+          ...ImageWithAmbientFields
         }
       }
     }

@@ -1,4 +1,6 @@
 import type { HomeQuery } from '../graphql/generated/graphql'
+import { resolveAmbientColors } from '../media/ambientSource'
+import type { AmbientTheme } from '../media/ambientTheme'
 import { formatRelativeTime, formatRuntime } from '../media/formatting'
 import { pickImageVariant, type PickedImage } from '../media/images'
 import type { MediaTitleSearch } from '../streaming/usePlayerTitle'
@@ -14,6 +16,8 @@ export interface BillboardContent {
   synopsis: string | null
   backdrop: PickedImage | null
   blurHash: string | null
+  // The featured title's theme, so the billboard's action can take its accent (principle 10.3).
+  ambientTheme: AmbientTheme | null
   metadata: BillboardMetadataEntry[]
   ctaLabel: string
   ctaFileId: string | null
@@ -51,6 +55,7 @@ function movieBillboard(movie: ContinueWatchingMovie): BillboardContent {
     synopsis: movie.summary,
     backdrop: pickImageVariant(backdrop, 'LARGE'),
     blurHash: backdrop?.blurHash ?? null,
+    ambientTheme: resolveAmbientColors(movie.images)?.theme ?? null,
     metadata: [
       { label: 'Runtime', value: movie.runtime != null ? formatRuntime(movie.runtime) : '—' },
       { label: 'Genre', value: genreLabel(movie.genres) },
@@ -73,6 +78,7 @@ function episodeBillboard(episode: ContinueWatchingEpisode): BillboardContent {
     synopsis: episode.overview ?? series.summary,
     backdrop: pickImageVariant(backdrop, 'LARGE'),
     blurHash: backdrop?.blurHash ?? null,
+    ambientTheme: resolveAmbientColors(series.images)?.theme ?? null,
     metadata: [
       { label: 'Seasons', value: String(series.seasons.length) },
       { label: 'Genre', value: genreLabel(series.genres) },
@@ -94,6 +100,7 @@ function recentMovieBillboard(movie: RecentlyAddedMovie): BillboardContent {
     synopsis: movie.summary,
     backdrop: pickImageVariant(backdrop, 'LARGE'),
     blurHash: backdrop?.blurHash ?? null,
+    ambientTheme: resolveAmbientColors(movie.backdropImages)?.theme ?? null,
     metadata: [
       { label: 'Runtime', value: movie.runtime != null ? formatRuntime(movie.runtime) : '—' },
       { label: 'Genre', value: genreLabel(movie.genres) },
@@ -114,6 +121,7 @@ function recentSeriesBillboard(series: RecentlyAddedSeries): BillboardContent {
     synopsis: series.summary,
     backdrop: pickImageVariant(backdrop, 'LARGE'),
     blurHash: backdrop?.blurHash ?? null,
+    ambientTheme: resolveAmbientColors(series.backdropImages)?.theme ?? null,
     metadata: [
       { label: 'Seasons', value: String(series.seasons.length) },
       { label: 'Genre', value: genreLabel(series.genres) },

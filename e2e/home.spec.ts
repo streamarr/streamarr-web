@@ -66,9 +66,12 @@ test.beforeEach(async ({ page, request }) => {
   await expect(page.getByRole('heading', { name: FEATURED_TITLE })).toBeVisible()
 })
 
+// Fragment spreads on Image only match in the cache when the object carries its __typename.
 const WHITE_BACKDROP = {
+  __typename: 'Image' as const,
   aspectRatio: 1.78,
   blurHash: null,
+  ambientColors: null,
   variants: [{ id: 'white', size: 'LARGE', width: 1920, height: 1080, url: '/white-backdrop.svg' }],
 }
 
@@ -145,6 +148,83 @@ test('the billboard action rounds its corners like every action button', async (
     .getByRole('link', { name: 'Resume', exact: true })
   expect(await cornerRadii([action])).toEqual([await actionButtonRadius(page)])
 })
+
+test('the billboard action takes the selection color when the title has no ambient colors', async ({
+  page,
+}) => {
+  const action = page
+    .getByTestId('billboard-hero')
+    .getByRole('link', { name: 'Resume', exact: true })
+  await expect(action).toHaveCSS('background-image', 'none')
+  await expect(action).toHaveCSS(
+    'background-color',
+    await resolvedColor(page, '--selection-active'),
+  )
+  await expect(action).toHaveCSS('color', await resolvedColor(page, '--color-white'))
+})
+
+test("the billboard action takes the featured title's accent", async ({ page }) => {
+  const featured = {
+    ...movie(0),
+    images: [
+      {
+        // Fragment spreads on Image only match in the cache when the object carries its __typename.
+        __typename: 'Image' as const,
+        aspectRatio: 1.78,
+        blurHash: null,
+        ambientColors: {
+          topLeft: '#071f1b',
+          topRight: '#071f1b',
+          bottomRight: '#071f1b',
+          bottomLeft: '#071f1b',
+          primary: '#0d322c',
+          theme: {
+            base: '#071f1b',
+            panel: '#0e3b34',
+            selected: '#123f38',
+            accent: '#6fe0bf',
+            onAccent: '#06231c',
+            textPrimary: '#ffffff',
+            textSecondary: '#b9d6cf',
+          },
+        },
+        variants: [],
+      },
+    ],
+  }
+  const tinted: HomeQuery = {
+    ...home,
+    continueWatching: watchingConnection([
+      featured,
+      ...Array.from({ length: 4 }, (_, i) => movie(i + 1)),
+    ]),
+  }
+  await page.route('**/graphql', async (route) => {
+    const { operationName } = route.request().postDataJSON() as { operationName?: string }
+    if (operationName === 'Home') return route.fulfill({ json: { data: tinted } })
+    return route.fallback()
+  })
+  await page.reload()
+
+  const action = page
+    .getByTestId('billboard-hero')
+    .getByRole('link', { name: 'Resume', exact: true })
+  await expect(action).toHaveCSS('background-image', 'none')
+  await expect(action).toHaveCSS('background-color', 'rgb(111, 224, 191)')
+  await expect(action).toHaveCSS('color', 'rgb(6, 35, 28)')
+})
+
+// A custom property's color as the browser computes it, for comparing with a computed style.
+async function resolvedColor(page: Page, property: string) {
+  return page.evaluate((name) => {
+    const probe = document.createElement('span')
+    probe.style.color = `var(${name})`
+    document.body.append(probe)
+    const color = getComputedStyle(probe).color
+    probe.remove()
+    return color
+  }, property)
+}
 
 test('continue-watching cards fit the shelf and grow with the available width', async ({
   page,
