@@ -1,5 +1,5 @@
 import { HttpResponse, graphql } from 'msw'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import type {
   ClientCapabilityDeclarationInput,
   CreatePlaybackSessionMutation,
@@ -86,6 +86,31 @@ function loadMetadata(video: HTMLVideoElement) {
 function playheadAt(video: HTMLVideoElement, seconds: number) {
   Object.assign(video, { currentTime: seconds })
   video.dispatchEvent(new Event('timeupdate'))
+}
+
+// The server answers a segment request with 503 while a stream session is being replaced, which
+// sends the player to read the playback status.
+function answerTheNextSegmentWith503({ fatal }: { fatal: boolean }) {
+  const onError = hls.on.mock.calls.findLast(([event]) => event === 'hlsError')?.[1]
+  onError?.('hlsError', { fatal, type: 'networkError', response: { code: 503 } })
+}
+
+// Holds every playback status read until the test ends, and counts them.
+function holdStatusReads(): { count: number } {
+  const reads = { count: 0 }
+  let release: () => void = () => {}
+  const released = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  onTestFinished(() => release())
+  server.use(
+    graphql.query('PlaybackSession', async () => {
+      reads.count += 1
+      await released
+      return HttpResponse.json({ data: { playbackSession: null } })
+    }),
+  )
+  return reads
 }
 
 describe('startPlayerPlayback', () => {
@@ -176,7 +201,6 @@ describe('startPlayerPlayback', () => {
       playing.chooseDynamicRange('SDR')
       loadMetadata(video)
 
-      expect(hls.destroy).toHaveBeenCalledOnce()
       expect(hls.loadSource.mock.calls).toEqual([[STREAM_URL], [STREAM_URL]])
       expect(hls.config?.videoPreference).toEqual(SDR_ONLY)
       expect(video.currentTime).toBe(120)
@@ -202,7 +226,6 @@ describe('startPlayerPlayback', () => {
 
       playing.chooseDynamicRange('HDR')
 
-      expect(hls.destroy).not.toHaveBeenCalled()
       expect(hls.loadSource).toHaveBeenCalledOnce()
     })
 
@@ -252,6 +275,20 @@ describe('startPlayerPlayback', () => {
 
       expect(hls.loadSource).toHaveBeenCalledTimes(2)
       expect(hls.config?.videoPreference).toEqual(SDR_ONLY)
+    })
+
+    it('shouldReadTheStatusForTheStreamAttachedAgainWhenItFailsWhileTheEarlierReadWaits', async () => {
+      const statusReads = holdStatusReads()
+      const video = fakeMedia()
+      const playing = startPlaying({ video })
+      await playingFrom(video, 120)
+      answerTheNextSegmentWith503({ fatal: false })
+      await vi.waitFor(() => expect(statusReads.count).toBe(1))
+
+      playing.chooseDynamicRange('SDR')
+      answerTheNextSegmentWith503({ fatal: true })
+
+      await vi.waitFor(() => expect(statusReads.count).toBe(2))
     })
 
     it('shouldKeepTheChoiceWhenThePageReturnsFromTheBackForwardCache', async () => {

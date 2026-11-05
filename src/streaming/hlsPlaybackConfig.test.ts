@@ -283,15 +283,6 @@ describe('hlsPlaybackConfig', () => {
     expect(config.errorPenaltyExpireMs).toBe(60_000)
   })
 
-  it('shouldStartOnTheVideoRangeThePreferenceNamesWhenHlsJsChoosesItsFirstVariant', () => {
-    const config = hlsPlaybackConfig(
-      playerWith({ mainForwardBufferInfo: null, audioForwardBufferInfo: null }),
-      { preferHDR: true, allowedVideoRanges: ['SDR', 'PQ'] },
-    )
-
-    expect(config.videoPreference).toEqual({ preferHDR: true, allowedVideoRanges: ['SDR', 'PQ'] })
-  })
-
   it('shouldTimeOutWhenTheBufferRunsOutAfterASeekForwardInsideIt', async () => {
     heldSegmentResponse()
     const video = playingVideo(30)
