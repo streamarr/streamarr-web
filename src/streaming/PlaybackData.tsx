@@ -18,17 +18,16 @@ import {
   type VideoRange,
 } from '../graphql/generated/graphql'
 import { Icon } from '../ui/Icon'
-import { browserText } from './browserText'
 import styles from './PlaybackData.module.css'
 import { Fact, Facts, PlaybackDecisionTracks } from './PlaybackDecisionFacts'
-import {
-  bitrateText,
-  channelsText,
-  placedReasons,
-  UNKNOWN,
-  videoRangeText,
-} from './playbackDecisionText'
+import { placedReasons } from './playbackDecisionText'
 import type { PlaybackPlatform } from './playbackCapabilities'
+import {
+  capturePlayerFigures,
+  captureScreenFigures,
+  playerFigureFacts,
+  screenFigureFacts,
+} from './playerFigures'
 import type { StreamStats } from './playerPlayback'
 import { qualityLabel } from './qualityChoices'
 
@@ -74,10 +73,6 @@ const VIDEO_EVENTS = [
   'loadedmetadata',
   'emptied',
 ] as const
-
-const seconds = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 })
-const counts = new Intl.NumberFormat('en-US')
-const pixelRatios = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 })
 
 /**
  * The playback-data panel over the video: how the server delivers the stream and why, what the
@@ -228,11 +223,7 @@ function StreamData({
             />
           </Group>
           <Group name="This screen">
-            <Facts>
-              <Fact name="Screen" value={screenText(screen.screen)} />
-              <Fact name="HDR display" value={screen.displaysHighDynamicRange ? 'Yes' : 'No'} />
-              <Fact name="Browser" value={browserText(screen.userAgent)} />
-            </Facts>
+            <FactList facts={screenFigureFacts(captureScreenFigures(screen))} />
           </Group>
         </div>
       </div>
@@ -300,10 +291,6 @@ function deliveryChipText(container: SourceContainer | null): string {
   return `${named} → direct play`
 }
 
-function screenText({ width, height, pixelRatio }: PlaybackDataScreen['screen']): string {
-  return `${width}×${height} at ${pixelRatios.format(pixelRatio)}×`
-}
-
 type PlayerFigures = Record<string, string>
 
 interface FiguresSource {
@@ -314,17 +301,19 @@ interface FiguresSource {
   playsHls: boolean
 }
 
-type StreamKind = Pick<FiguresSource, 'videoRange' | 'playsHls'>
-
 function PlayerFacts({ videoRef, streamStats, videoRange, playsHls }: Readonly<FiguresSource>) {
   const store = useMemo(
     () => playerFiguresStore({ videoRef, streamStats, videoRange, playsHls }),
     [videoRef, streamStats, videoRange, playsHls],
   )
   const figures = useSyncExternalStore(store.subscribe, store.figures)
+  return <FactList facts={figures} />
+}
+
+function FactList({ facts }: Readonly<{ facts: Record<string, string> }>) {
   return (
     <Facts>
-      {Object.entries(figures).map(([name, value]) => (
+      {Object.entries(facts).map(([name, value]) => (
         <Fact key={name} name={name} value={value} />
       ))}
     </Facts>
@@ -350,7 +339,9 @@ function playerFiguresStore({ videoRef, streamStats, ...kind }: FiguresSource) {
       }
     },
     figures: (): PlayerFigures => {
-      const figures = playerFigures(videoRef.current, streamStats(), kind)
+      const figures = playerFigureFacts(
+        capturePlayerFigures({ video: videoRef.current, stats: streamStats(), ...kind }),
+      )
       const key = JSON.stringify(figures)
       if (shown?.key !== key) {
         shown = { key, figures }
@@ -358,74 +349,4 @@ function playerFiguresStore({ videoRef, streamStats, ...kind }: FiguresSource) {
       return shown.figures
     },
   }
-}
-
-function playerFigures(
-  video: HTMLVideoElement | null,
-  stats: StreamStats,
-  kind: StreamKind,
-): PlayerFigures {
-  return {
-    'Quality step': qualityStep(stats),
-    'Observed bitrate':
-      stats.bandwidthEstimate === undefined ? UNKNOWN : bitrateText(stats.bandwidthEstimate),
-    Buffer: `${seconds.format(video ? bufferedAhead(video) : 0)} s`,
-    'Dropped frames': droppedFrames(video),
-    Stalls: counts.format(stats.stalls),
-    Resolution:
-      video && video.videoWidth > 0 ? `${video.videoWidth}×${video.videoHeight}` : UNKNOWN,
-    'Video codec': stats.videoCodec ?? UNKNOWN,
-    'HDR mode': hdrMode(stats, kind),
-    Audio: audioFormat(stats),
-  }
-}
-
-/*
- * Dolby Vision rides on a PQ or HLG base, so over HLS only the playing variant's codecs tell an
- * HDR stream from Dolby Vision. This client declares no Dolby Vision for direct play, so a file
- * plays its base.
- */
-function hdrMode({ dolbyVision }: StreamStats, { videoRange, playsHls }: StreamKind): string {
-  if (dolbyVision) {
-    return 'Dolby Vision'
-  }
-  if (playsHls && videoRange !== 'SDR' && dolbyVision === undefined) {
-    return UNKNOWN
-  }
-  return videoRangeText(videoRange)
-}
-
-function qualityStep({ variant }: StreamStats): string {
-  if (!variant) {
-    return UNKNOWN
-  }
-  const { height, bitrate, step, steps } = variant
-  return `${height}p · ${bitrateText(bitrate)} (${step} of ${steps})`
-}
-
-// The seconds the element holds past the playhead, in the buffered range that holds the playhead.
-function bufferedAhead(video: HTMLVideoElement): number {
-  const { buffered, currentTime } = video
-  for (let index = 0; index < buffered.length; index++) {
-    if (buffered.start(index) <= currentTime && currentTime <= buffered.end(index)) {
-      return buffered.end(index) - currentTime
-    }
-  }
-  return 0
-}
-
-function droppedFrames(video: HTMLVideoElement | null): string {
-  // Not every browser reports decoded frames; TypeScript's DOM library declares that it does.
-  const quality = (video as Partial<HTMLVideoElement> | null)?.getVideoPlaybackQuality?.()
-  if (!quality) {
-    return UNKNOWN
-  }
-  return counts.format(quality.droppedVideoFrames)
-}
-
-function audioFormat({ audioCodec, audioChannels }: StreamStats): string {
-  if (!audioCodec) {
-    return UNKNOWN
-  }
-  return audioChannels === undefined ? audioCodec : `${audioCodec} ${channelsText(audioChannels)}`
 }
