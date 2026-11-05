@@ -86,6 +86,8 @@ export function SharePlaybackReport({ capture }: Readonly<{ capture: (() => Repo
         value={note}
         maxLength={NOTE_LIMIT}
         rows={3}
+        // The note goes as it stood at Send; a later edit would be lost when the confirmation shows.
+        readOnly={sending}
         onChange={(event) => setNote(event.currentTarget.value)}
       />
       {step.refusal && (

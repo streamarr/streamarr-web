@@ -3,6 +3,7 @@ import { graphql, HttpResponse } from 'msw'
 import { useState } from 'react'
 import { describe, expect, it } from 'vitest'
 import type { SharePlaybackReportInput } from '../graphql/generated/graphql'
+import { deferred } from '../test/deferred'
 import { CHROME_USER_AGENT } from '../test/playbackCapabilities'
 import { playbackDecision, servedDecision } from '../test/playbackSession'
 import { renderWithProviders } from '../test/render'
@@ -58,7 +59,7 @@ function serveDecision() {
   )
 }
 
-type ShareAnswer = (input: SharePlaybackReportInput) => Response
+type ShareAnswer = (input: SharePlaybackReportInput) => Response | Promise<Response>
 
 const SHARED: ShareAnswer = () =>
   HttpResponse.json({
@@ -269,6 +270,30 @@ describe('PlaybackData', () => {
       expect(within(panel).getByRole('button', { name: 'Share with Server Admin' })).toBeDisabled()
       attach(stream)
       expect(within(panel).getByRole('button', { name: 'Share with Server Admin' })).toBeEnabled()
+    })
+
+    it('shouldHoldTheNoteAsSentWhileTheReportIsSending', async () => {
+      serveDecision()
+      const answered = deferred()
+      const shared = serveShare(async (input) => {
+        await answered.promise
+        return SHARED(input)
+      })
+      const { user, panel } = renderPanel()
+      await user.click(within(panel).getByRole('button', { name: 'Share with Server Admin' }))
+      const note = within(panel).getByRole('textbox', { name: 'Add a note (optional)' })
+      await user.type(note, 'Stutters')
+
+      await user.click(within(panel).getByRole('button', { name: 'Send' }))
+      await user.type(note, ' after every seek')
+
+      expect(note).toHaveValue('Stutters')
+      await act(async () => {
+        answered.resolve()
+        await answered.promise
+      })
+      await within(panel).findByText('Shared with your Server Admin.')
+      expect(shared.map((input) => input.note)).toEqual(['Stutters'])
     })
 
     it('shouldShowTheServersMessageAndKeepTheNoteWhenTheServerRefusesTheReport', async () => {
