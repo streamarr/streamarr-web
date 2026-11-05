@@ -117,11 +117,6 @@ describe('playbackDecisionText', () => {
       'The video is interlaced, and streaming needs progressive video.',
     ],
     [
-      'DOLBY_VISION_WITHOUT_COMPATIBLE_BASE',
-      'video',
-      'The video is Dolby Vision with no HDR10 or SDR fallback, so the server converts it.',
-    ],
-    [
       'VIDEO_PROPERTIES_NOT_PROBED',
       'video',
       'An older server version read this video, so the server encodes it until it reads it again.',
@@ -183,6 +178,11 @@ describe('playbackDecisionText', () => {
       "The video's keyframe times are out of order or out of range.",
     ],
     [
+      'SEGMENT_EXCEEDS_CAP',
+      'video',
+      'Parts of this video hold too much data to copy into the stream, so the server encodes it.',
+    ],
+    [
       'NO_WORKER_DELIVERS_COPY',
       'video',
       'No connected transcoder can rewrite this video for copying, so the server encodes it.',
@@ -199,6 +199,16 @@ describe('playbackDecisionText', () => {
       'AUDIO_CODEC_STRING_UNKNOWN',
       'audio',
       "The server couldn't read the codec details it needs to copy this audio, so it encodes it.",
+    ],
+    [
+      'AUDIO_BLOCK_SIZE_NOT_DECLARED',
+      'audio',
+      "This device can't play this FLAC audio's block size, so the server encodes the audio.",
+    ],
+    [
+      'AUDIO_BLOCK_SIZE_UNKNOWN',
+      'audio',
+      "The server couldn't read this FLAC audio's block size to confirm this device can play it, so it encodes the audio.",
     ],
     [
       'AUDIO_LOWERED_FOR_BITRATE_LIMIT',
@@ -231,6 +241,11 @@ describe('playbackDecisionText', () => {
       "The server couldn't confirm that this device can play every audio track in this file directly.",
     ],
     [
+      'DIRECT_PLAY_AUDIO_TRACK_NOT_SELECTABLE',
+      'stream',
+      "This device can't switch audio tracks inside a file it plays directly, so the server streams the video with the chosen audio track.",
+    ],
+    [
       'FORCED_IMAGE_SUBTITLE_IN_AUDIO_LANGUAGE',
       'stream',
       "This file has forced image subtitles in an audio track's language, so the server streams the video.",
@@ -245,6 +260,11 @@ describe('playbackDecisionText', () => {
       'ENCODE_FAILED',
       'stream',
       'The encode failed, so the server encodes the video in another codec.',
+    ],
+    [
+      'DOLBY_VISION_COPY_FAILED',
+      'stream',
+      'The Dolby Vision copy failed, so the server sends the video without Dolby Vision.',
     ],
   ])('shouldPlaceAndNameTheReasonWhenTheServerNames(%s)', (reason, track, sentence) => {
     expect(reasonsOf([reason])).toEqual({ stream: [], video: [], audio: [], [track]: [sentence] })
