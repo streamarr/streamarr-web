@@ -1,4 +1,5 @@
 import {
+  type DirectPlayAudioTrack,
   OFFERED_FOR_FULL_HD,
   type PlaybackChoices,
   readyDirectPlaySession,
@@ -41,6 +42,8 @@ import type {
   CreatePlaybackSessionInput,
   PlaybackFormatChange,
   ReportPlaybackFormatFailureInput,
+  SwitchPlaybackAudioTrackInput,
+  SwitchPlaybackAudioTrackMutation,
   VideoQuality,
 } from '../graphql/generated/graphql'
 import type { PlaybackPlatform } from './playbackCapabilities'
@@ -49,6 +52,8 @@ import { Player } from './Player'
 vi.mock('hls.js', async () => (await import('../test/fakeHls')).hlsModule)
 
 const withoutDecodingInfo = () => playbackPlatformFixture()
+// WebKit lists a direct-played file's audio tracks on the element and switches between them.
+const selectingAudioTracks = () => playbackPlatformFixture({ selectsAudioTrackInDirectPlay: true })
 const STREAM_URL = '/api/stream/abcd/multivariant.m3u8?t=playback-token'
 const CHANGED_TO_AUTO_NOTICE =
   "This video couldn't play in its original form, so a converted version is playing. " +
@@ -6896,9 +6901,11 @@ describe('Player', () => {
     function serveDirectPlay({
       sourceStatus = 206,
       audioTrackPosition = 0,
+      audioTracks = [],
     }: {
       sourceStatus?: number
       audioTrackPosition?: number | null
+      audioTracks?: DirectPlayAudioTrack[]
     } = {}): ReportPlaybackFormatFailureInput[] {
       const reports: ReportPlaybackFormatFailureInput[] = []
       server.use(
@@ -6916,7 +6923,7 @@ describe('Player', () => {
               createPlaybackSession: {
                 playbackSession: readyDirectPlaySession({
                   id: 'playback-1',
-                  streamSession: { ...SOURCE_FILE, audioTrackPosition },
+                  streamSession: { ...SOURCE_FILE, audioTrackPosition, audioTracks },
                 }),
                 userErrors: [],
               },
@@ -6968,7 +6975,7 @@ describe('Player', () => {
     // WebKit lists a file's audio tracks after the file's metadata and before its first frame.
     it('shouldSelectTheAudioTrackTheStreamDecisionNamesWhenTheFirstFrameLoads', async () => {
       serveDirectPlay({ audioTrackPosition: 1 })
-      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={selectingAudioTracks} mediaFileId="abcd" />)
       const { audioTracks } = giveElementTracks(renderedVideo(), {})
       const video = await nativeVideo(SOURCE_FILE.streamUrl)
       loadMetadata(video)
@@ -6986,7 +6993,7 @@ describe('Player', () => {
 
     it('shouldSelectTheNamedAudioTrackAmongEveryTrackWhenTheElementListsALaterTrackOfTheFileFirst', async () => {
       serveDirectPlay({ audioTrackPosition: 0 })
-      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={selectingAudioTracks} mediaFileId="abcd" />)
       const { audioTracks } = giveElementTracks(renderedVideo(), {})
       const video = await nativeVideo(SOURCE_FILE.streamUrl)
       const english: FakeAudioTrack = { label: '', language: 'en', enabled: false }
@@ -7002,7 +7009,7 @@ describe('Player', () => {
     it('shouldKeepTheAudioTrackTheViewerPicksBeforeTheFirstFrameLoads', async () => {
       serveDirectPlay({ audioTrackPosition: 0 })
       const { user } = renderWithProviders(
-        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        <Player playbackPlatform={selectingAudioTracks} mediaFileId="abcd" />,
       )
       const { audioTracks } = giveElementTracks(renderedVideo(), {})
       const video = await nativeVideo(SOURCE_FILE.streamUrl)
@@ -7022,7 +7029,7 @@ describe('Player', () => {
 
     it('shouldLeaveTheAudioTracksAloneWhenTheHlsFallbackReplacesTheSourceFileBeforeItsFirstFrame', async () => {
       serveDirectPlay({ audioTrackPosition: 1 })
-      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+      renderWithProviders(<Player playbackPlatform={selectingAudioTracks} mediaFileId="abcd" />)
       const { audioTracks } = giveElementTracks(renderedVideo(), {})
       const video = await nativeVideo(SOURCE_FILE.streamUrl)
       const audio: FakeAudioTrack[] = [
@@ -7045,7 +7052,7 @@ describe('Player', () => {
       'shouldKeepTheFilesOwnAudioTrackWhenTheStreamDecision$case',
       async ({ audioTrackPosition }) => {
         serveDirectPlay({ audioTrackPosition })
-        renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+        renderWithProviders(<Player playbackPlatform={selectingAudioTracks} mediaFileId="abcd" />)
         const { audioTracks } = giveElementTracks(renderedVideo(), {})
         const video = await nativeVideo(SOURCE_FILE.streamUrl)
         const audio: FakeAudioTrack[] = [
@@ -7059,6 +7066,269 @@ describe('Player', () => {
         expect(audio.map((track) => track.enabled)).toEqual([false, true])
       },
     )
+
+    describe('when the player cannot select an audio track in the file', () => {
+      const TWO_TRACKS: DirectPlayAudioTrack[] = [
+        { position: 0, language: 'eng', title: null },
+        { position: 1, language: 'fre', title: null },
+      ]
+      const SWITCH_REFUSAL = 'No format attempt is left for this playback session.'
+
+      // The server answers each switch with `answer`, once `answered` lets it.
+      function serveAudioTrackSwitch({
+        answer,
+        answered = Promise.resolve(),
+      }: {
+        answer: () => SwitchPlaybackAudioTrackMutation['switchPlaybackAudioTrack']
+        answered?: Promise<void>
+      }): SwitchPlaybackAudioTrackInput[] {
+        const switches: SwitchPlaybackAudioTrackInput[] = []
+        server.use(
+          graphql.mutation('SwitchPlaybackAudioTrack', async ({ variables }) => {
+            switches.push((variables as { input: SwitchPlaybackAudioTrackInput }).input)
+            await answered
+            return HttpResponse.json({ data: { switchPlaybackAudioTrack: answer() } })
+          }),
+        )
+        return switches
+      }
+
+      const directPlayStill = () =>
+        readyDirectPlaySession({
+          id: 'playback-1',
+          streamSession: { ...SOURCE_FILE, audioTrackPosition: 0, audioTracks: TWO_TRACKS },
+        })
+
+      async function chooseAudioTrack(user: UserEvent, { from, to }: { from: string; to: string }) {
+        await user.click(screen.getByRole('button', { name: `Audio: ${from}` }))
+        await user.click(screen.getByRole('menuitemradio', { name: to }))
+      }
+
+      async function directPlayAt(seconds: number): Promise<HTMLVideoElement> {
+        const video = await nativeVideo(SOURCE_FILE.streamUrl)
+        loadMetadata(video)
+        loadFirstFrame(video)
+        playheadAt(video, seconds)
+        return video
+      }
+
+      it('shouldOfferTheAudioTracksTheServerListsWhenThePlayerCannotListThem', async () => {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        await directPlayAt(0)
+
+        await user.click(screen.getByRole('button', { name: 'Audio: English' }))
+
+        expect(
+          screen.getAllByRole('menuitemradio').map((item) => [item.textContent, item.ariaChecked]),
+        ).toEqual([
+          ['English', 'true'],
+          ['French', 'false'],
+        ])
+      })
+
+      it('shouldMoveToHlsWhereDirectPlayWasWithTheChosenTrackOnceTheServerAnswersTheSwitch', async () => {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        const answered = deferred()
+        const switches = serveAudioTrackSwitch({
+          answered: answered.promise,
+          answer: () => ({
+            playbackSession: readyPlaybackSession({
+              id: 'playback-1',
+              streamSession: replacementStream(1),
+              requestedChoice: 'ORIGINAL',
+              playbackChoice: 'ORIGINAL',
+            }),
+            userErrors: [],
+          }),
+        })
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        const video = await directPlayAt(42)
+
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+
+        await waitFor(() =>
+          expect(switches).toEqual([
+            {
+              playbackSessionId: 'playback-1',
+              streamSessionId: SOURCE_FILE.id,
+              audioTrackPosition: 1,
+            },
+          ]),
+        )
+        expect(video).toHaveAttribute('src', SOURCE_FILE.streamUrl)
+        answered.resolve()
+        await attachedVideo(replacementStream(1).streamUrl)
+        loadMetadata(video)
+        expect(video.currentTime).toBe(42)
+        expect(video.paused).toBe(false)
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      })
+
+      it('shouldKeepDirectPlayingAndShowTheServersWordsWhenTheServerRefusesTheSwitch', async () => {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        serveAudioTrackSwitch({
+          answer: () => ({
+            playbackSession: directPlayStill(),
+            userErrors: [
+              { __typename: 'PlaybackFormatAttemptsExhaustedError', message: SWITCH_REFUSAL },
+            ],
+          }),
+        })
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        const video = await directPlayAt(42)
+
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+
+        await waitFor(() => expect(notice()).toHaveTextContent(SWITCH_REFUSAL))
+        expect(video).toHaveAttribute('src', SOURCE_FILE.streamUrl)
+        expect(hls.loadSource).not.toHaveBeenCalled()
+        expect(screen.getByRole('button', { name: 'Audio: English' })).toBeInTheDocument()
+      })
+
+      it('shouldKeepDirectPlayingWhenTheServerKeepsTheSameStreamSession', async () => {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        const switches = serveAudioTrackSwitch({
+          answer: () => ({ playbackSession: directPlayStill(), userErrors: [] }),
+        })
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        const video = await directPlayAt(42)
+
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+
+        await waitFor(() => expect(switches).toHaveLength(1))
+        // A handover would release the file and show the starting phase without controls.
+        await expect
+          .poll(() => screen.getByRole('button', { name: 'Audio: English' }))
+          .toBeInTheDocument()
+        expect(video).toHaveAttribute('src', SOURCE_FILE.streamUrl)
+        expect(video.currentTime).toBe(42)
+        expect(hls.loadSource).not.toHaveBeenCalled()
+      })
+
+      it('shouldReportADirectPlayFailureThatArrivesWhileTheServerRefusesTheSwitch', async () => {
+        const reports = serveDirectPlay({ audioTracks: TWO_TRACKS })
+        const answered = deferred()
+        const switches = serveAudioTrackSwitch({
+          answered: answered.promise,
+          answer: () => ({
+            playbackSession: directPlayStill(),
+            userErrors: [
+              { __typename: 'PlaybackFormatAttemptsExhaustedError', message: SWITCH_REFUSAL },
+            ],
+          }),
+        })
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        const video = await directPlayAt(42)
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+        await waitFor(() => expect(switches).toHaveLength(1))
+
+        failTheSourceFile(video, 3)
+        expect(reports).toEqual([])
+        answered.resolve()
+
+        await attachedVideo(replacementStream(1).streamUrl)
+        expect(reports).toEqual([
+          {
+            playbackSessionId: 'playback-1',
+            streamSessionId: SOURCE_FILE.id,
+            reason: 'DECODE_ERROR',
+          },
+        ])
+      })
+
+      it('shouldAttachTheStreamThePlaybackStatusNamesWhenTheSwitchsAnswerIsLost', async () => {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        server.use(
+          graphql.mutation('SwitchPlaybackAudioTrack', () => HttpResponse.error()),
+          graphql.query('PlaybackSession', () =>
+            HttpResponse.json({
+              data: {
+                playbackSession: readyPlaybackSession({
+                  id: 'playback-1',
+                  streamSession: replacementStream(1),
+                }),
+              },
+            }),
+          ),
+        )
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        const video = await directPlayAt(42)
+
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+
+        await attachedVideo(replacementStream(1).streamUrl)
+        loadMetadata(video)
+        expect(video.currentTime).toBe(42)
+      })
+
+      it('shouldAskForOneSwitchWhenTheViewerPicksAgainBeforeTheServerAnswers', async () => {
+        serveDirectPlay({
+          audioTracks: [...TWO_TRACKS, { position: 2, language: 'ger', title: null }],
+        })
+        const answered = deferred()
+        const switches = serveAudioTrackSwitch({
+          answered: answered.promise,
+          answer: () => ({ playbackSession: directPlayStill(), userErrors: [] }),
+        })
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        await directPlayAt(42)
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+        await waitFor(() => expect(switches).toHaveLength(1))
+
+        await chooseAudioTrack(user, { from: 'English', to: 'German' })
+        answered.resolve()
+
+        await waitFor(() =>
+          expect(screen.getByRole('button', { name: 'Audio: English' })).toBeEnabled(),
+        )
+        expect(switches.map((input) => input.audioTrackPosition)).toEqual([1])
+      })
+    })
+
+    it('shouldSwitchTheElementsAudioTrackWithoutAskingTheServerWhenThePlayerSelectsTracksInTheFile', async () => {
+      serveDirectPlay({ audioTracks: [] })
+      const switches: unknown[] = []
+      server.use(
+        graphql.mutation('SwitchPlaybackAudioTrack', ({ variables }) => {
+          switches.push(variables)
+          return HttpResponse.json({ data: { switchPlaybackAudioTrack: null } })
+        }),
+      )
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={selectingAudioTracks} mediaFileId="abcd" />,
+      )
+      const { audioTracks } = giveElementTracks(renderedVideo(), {})
+      const video = await nativeVideo(SOURCE_FILE.streamUrl)
+      const audio: FakeAudioTrack[] = [
+        { label: '', language: 'en', enabled: true },
+        { label: '', language: 'fr', enabled: false },
+      ]
+      act(() => listAudioTracks(audioTracks, audio))
+      loadFirstFrame(video)
+
+      await user.click(screen.getByRole('button', { name: 'Audio: English' }))
+      await user.click(screen.getByRole('menuitemradio', { name: 'French' }))
+
+      expect(audio.map((track) => track.enabled)).toEqual([false, true])
+      expect(screen.getByRole('button', { name: 'Audio: French' })).toBeInTheDocument()
+      expect(video).toHaveAttribute('src', SOURCE_FILE.streamUrl)
+      expect(switches).toEqual([])
+    })
 
     it.each([
       { code: 3, reason: 'DECODE_ERROR' },

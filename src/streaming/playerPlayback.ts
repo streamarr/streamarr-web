@@ -10,6 +10,7 @@ import {
   ReportPlaybackFormatFailureDocument,
   ReportStreamSessionTimelineDocument,
   type ReportStreamSessionTimelineMutationVariables,
+  SwitchPlaybackAudioTrackDocument,
   type VideoRange,
 } from '../graphql/generated/graphql'
 import { userErrorMessage, userErrorMessageOr } from '../graphql/userErrors'
@@ -18,7 +19,13 @@ import { hlsPlaybackConfig } from './hlsPlaybackConfig'
 import { type DynamicRangeChoice, hlsVideoPreference } from './hlsVideoPreference'
 import { DECLARATION_REFUSAL_TYPENAMES } from './playbackCapabilities'
 import type { QualityChoices } from './qualityChoices'
-import { hlsTrackSource, nativeTrackSource, type TrackSource } from './trackSources'
+import {
+  hlsTrackSource,
+  type ListedAudioTrack,
+  listedAudioTrackSource,
+  nativeTrackSource,
+  type TrackSource,
+} from './trackSources'
 
 // Progress is only worth a round trip once the playhead has moved this far since the last report.
 const TIMELINE_REPORT_INTERVAL_SECONDS = 10
@@ -100,6 +107,8 @@ interface PlayerPlaybackOptions {
   onSourcePhase: (phase: SourcePhase) => void
   /** Called once each attached stream shows its first frame, with the choices that stream plays. */
   onOutputShown: (qualities: QualityChoices) => void
+  /** Shows the server's words when it refuses something the viewer asked for while playback goes on. */
+  onNotice: (text: string) => void
 }
 
 interface SessionPlayback extends PlayerPlayback {
@@ -152,6 +161,7 @@ function startSessionPlayback({
   startPositionSeconds,
   onSourcePhase,
   onOutputShown,
+  onNotice,
   resumeFrom,
   dynamicRange: initialDynamicRange,
 }: PlayerPlaybackOptions & { dynamicRange: DynamicRangeChoice }): SessionPlayback {
@@ -163,6 +173,11 @@ function startSessionPlayback({
   }
   let dynamicRange = initialDynamicRange
   let cancelled = false
+  // The declaration's word on direct play, which the server's stream decision followed.
+  let selectsAudioTrackInDirectPlay = false
+  let switchingAudioTrack = false
+  // A direct-play failure during an audio track switch waits for the switch's answer.
+  let failureDuringSwitch: PlaybackFormatFailure | null = null
   let sessionId: string | null = null
   let playbackSessionId: string | null = null
   let sourceGeneration = 0
@@ -554,6 +569,7 @@ function startSessionPlayback({
         return
       }
       declaration = capabilities
+      selectsAudioTrackInDirectPlay = capabilities.selectsAudioTrackInDirectPlay
       // The server requires a video entry, so a browser that decodes no video cannot play here.
       if (capabilities.video.length === 0) {
         showFailure(PLAYBACK_FAILURE_MESSAGE)
@@ -650,7 +666,11 @@ function startSessionPlayback({
     }
     source =
       streamSession.__typename === 'DirectPlayStreamSession'
-        ? attachSourceFile(video, streamSession, options)
+        ? attachSourceFile(video, streamSession, {
+            ...options,
+            selectsAudioTrack: selectsAudioTrackInDirectPlay,
+            onChooseAudio: (position) => void switchAudioTrack(position, generation),
+          })
         : attach(video, streamSession.streamUrl, options)
     onSourcePhase({
       at: 'attached',
@@ -670,6 +690,11 @@ function startSessionPlayback({
       tryEndAtRealEnd()
     )
       return
+    // The server lets a failure wait for a switch rather than start a second HLS attempt.
+    if (switchingAudioTrack) {
+      failureDuringSwitch ??= reason
+      return
+    }
     reportingFormat = true
     const streamSessionId = sessionId
     stopStatusCheck()
@@ -695,6 +720,54 @@ function startSessionPlayback({
       if (!cancelled) showFailure(PLAYBACK_FAILURE_MESSAGE)
     } finally {
       reportingFormat = false
+    }
+  }
+
+  // A player that cannot switch the file's audio track moves to HLS for the chosen one. Direct play
+  // goes on until the server has started that stream session, and goes on for good when it refuses.
+  async function switchAudioTrack(audioTrackPosition: number, generation: number) {
+    if (
+      cancelled ||
+      generation !== sourceGeneration ||
+      reportingFormat ||
+      switchingAudioTrack ||
+      !playbackSessionId ||
+      !sessionId
+    )
+      return
+    switchingAudioTrack = true
+    const streamSessionId = sessionId
+    try {
+      const result = await client.mutate({
+        mutation: SwitchPlaybackAudioTrackDocument,
+        variables: { input: { playbackSessionId, streamSessionId, audioTrackPosition } },
+        fetchPolicy: 'no-cache',
+        context: { fetchOptions: { signal: statusCancellation.signal } },
+      })
+      if (cancelled || generation !== sourceGeneration) return
+      const payload = result.data?.switchPlaybackAudioTrack
+      const refusal = payload?.userErrors[0]
+      if (refusal) {
+        onNotice(userErrorMessage(refusal))
+        return
+      }
+      // The server keeps a session that already plays the chosen track, or that moved on.
+      if (!payload?.playbackSession || attachedStreamIn(payload.playbackSession)) return
+      switchingAudioTrack = false
+      beginHandover()
+      const playback = await awaitReadyPlayback(payload.playbackSession)
+      if (cancelled) return
+      adoptPlayback(playback)
+    } catch {
+      // The answer is lost, so only the playback status can say whether the switch happened.
+      if (!cancelled && generation === sourceGeneration) {
+        void reconcilePlaybackStatus({ generation, fatal: false })
+      }
+    } finally {
+      switchingAudioTrack = false
+      const failure = failureDuringSwitch
+      failureDuringSwitch = null
+      if (failure) void reportFormatFailure(failure, generation)
     }
   }
 
@@ -1242,14 +1315,23 @@ interface SourceFile {
   streamUrl: string
   /** The audio track the stream decision names among the file's audio tracks; null for none. */
   audioTrackPosition: number | null
+  /** The file's audio tracks as the server lists them, in stream order. */
+  audioTracks: readonly ListedAudioTrack[]
+}
+
+interface SourceFileOptions extends StreamSourceOptions {
+  /** Whether the element lists the file's audio tracks and switches between them itself. */
+  selectsAudioTrack: boolean
+  /** Moves playback to another audio track of the file, for an element that cannot switch. */
+  onChooseAudio: (position: number) => void
 }
 
 function attachSourceFile(
   video: HTMLVideoElement,
-  { streamUrl: url, audioTrackPosition }: SourceFile,
-  options: StreamSourceOptions,
+  { streamUrl: url, audioTrackPosition, audioTracks }: SourceFile,
+  options: SourceFileOptions,
 ): StreamSource {
-  const { startupDeadline, onFirstFrame } = options
+  const { startupDeadline, onFirstFrame, selectsAudioTrack, onChooseAudio } = options
   const detached = new AbortController()
   const elementTracks = nativeTrackSource(video)
   const onVideoError = () => {
@@ -1262,17 +1344,26 @@ function attachSourceFile(
     if (elementTracks.read().audio.options.length <= audioTrackPosition) return
     elementTracks.selectAudio(audioTrackPosition)
   }
-  // A track the viewer picks before the first frame stands.
-  const tracks: TrackSource = {
-    ...elementTracks,
-    selectAudio: (id) => {
-      video.removeEventListener('loadeddata', selectNamedAudioTrack)
-      elementTracks.selectAudio(id)
-    },
-  }
+  // A track the viewer picks before the first frame stands. An element that cannot switch plays
+  // the track the server direct-plays the file for, so only the server's list names the others.
+  const tracks: TrackSource = selectsAudioTrack
+    ? {
+        ...elementTracks,
+        selectAudio: (id) => {
+          video.removeEventListener('loadeddata', selectNamedAudioTrack)
+          elementTracks.selectAudio(id)
+        },
+      }
+    : listedAudioTrackSource(elementTracks, {
+        audioTracks,
+        playing: audioTrackPosition,
+        onChooseAudio,
+      })
   video.addEventListener('error', onVideoError)
   video.addEventListener('loadedmetadata', startupDeadline.end)
-  video.addEventListener('loadeddata', selectNamedAudioTrack, { once: true })
+  if (selectsAudioTrack) {
+    video.addEventListener('loadeddata', selectNamedAudioTrack, { once: true })
+  }
   video.addEventListener('loadeddata', onFirstFrame, { once: true })
   video.src = url
   return {

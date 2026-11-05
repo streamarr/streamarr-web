@@ -41,6 +41,8 @@ export interface PlaybackFallbacks {
    * returns what to tell about each stream it shows, so that it announces each format change once.
    */
   followPlaybackSession: () => FollowPlayingChoices
+  /** Shows a text of the caller's own over the video, as a fallback's notice shows. */
+  announce: (text: string) => void
 }
 
 // Every change but the Dolby Vision copy plays a converted version, including a change the
@@ -77,6 +79,10 @@ export function usePlaybackFallbacks(viewing: object): PlaybackFallbacks {
   const [notice, setNotice] = useState<PlaybackFallbacks['notice']>(null)
   const [marked, setMarked] = useState({ viewing, marks: NO_MARKS })
 
+  const announce = useCallback((text: string) => {
+    setNotice((shown) => ({ text, serial: (shown?.serial ?? 0) + 1 }))
+  }, [])
+
   useEffect(() => {
     if (!notice) {
       return undefined
@@ -97,10 +103,9 @@ export function usePlaybackFallbacks(viewing: object): PlaybackFallbacks {
       if (!fallback || qualities.formatChange === previous) {
         return
       }
-      const text = NOTICES[fallback]
-      setNotice((shown) => ({ text, serial: (shown?.serial ?? 0) + 1 }))
+      announce(NOTICES[fallback])
     }
-  }, [viewing])
+  }, [viewing, announce])
 
-  return { notice, marks: marked.marks, followPlaybackSession }
+  return { notice, marks: marked.marks, followPlaybackSession, announce }
 }

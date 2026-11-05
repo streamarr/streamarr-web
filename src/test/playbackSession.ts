@@ -13,6 +13,8 @@ type DirectPlayStreamSession = Extract<
   ReadyAttempt['streamSession'],
   { __typename: 'DirectPlayStreamSession' }
 >
+/** One of the audio tracks the server lists for a direct-played file. */
+export type DirectPlayAudioTrack = DirectPlayStreamSession['audioTracks'][number]
 /** The fields that say which playback choice was asked for, which plays, and why they differ. */
 export type PlaybackChoices = Pick<
   PlaybackSessionFieldsFragment,
@@ -72,6 +74,7 @@ export function readyDirectPlaySession({
       sourceContainer: 'MP4',
       videoRange: 'SDR',
       audioTrackPosition: 0,
+      audioTracks: [],
       ...streamSession,
     },
   })

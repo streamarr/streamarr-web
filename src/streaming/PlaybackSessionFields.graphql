@@ -25,6 +25,11 @@ fragment PlaybackSessionFields on PlaybackSession {
           sourceContainer
           videoRange
           audioTrackPosition
+          audioTracks {
+            position
+            language
+            title
+          }
         }
       }
     }

@@ -1,0 +1,13 @@
+mutation SwitchPlaybackAudioTrack($input: SwitchPlaybackAudioTrackInput!) {
+  switchPlaybackAudioTrack(input: $input) {
+    playbackSession {
+      ...PlaybackSessionFields
+    }
+    userErrors {
+      __typename
+      ... on MutationError {
+        message
+      }
+    }
+  }
+}

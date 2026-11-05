@@ -1,7 +1,13 @@
 import Hls from 'hls.js'
 import { describe, expect, it, vi } from 'vitest'
 import { type FakeAudioTrack, type FakeTextTrack, giveElementTracks } from '../test/mediaTracks'
-import { type HlsTracks, NO_TRACKS, hlsTrackSource, nativeTrackSource } from './trackSources'
+import {
+  type HlsTracks,
+  NO_TRACKS,
+  hlsTrackSource,
+  listedAudioTrackSource,
+  nativeTrackSource,
+} from './trackSources'
 
 const HLS_TRACK_EVENTS = [
   Hls.Events.AUDIO_TRACKS_UPDATED,
@@ -209,5 +215,48 @@ describe('nativeTrackSource', () => {
 
     source.selectSubtitles(null)
     expect(text.map((track) => track.mode)).toEqual(['disabled', 'hidden', 'disabled'])
+  })
+})
+
+describe('listedAudioTrackSource', () => {
+  it('shouldNameEachListedTrackByItsTitleThenItsLanguageThenItsPlace', () => {
+    const video = document.createElement('video')
+    const source = listedAudioTrackSource(nativeTrackSource(video), {
+      audioTracks: [
+        { position: 0, language: 'eng', title: 'Commentary' },
+        { position: 1, language: 'fre', title: null },
+        { position: 2, language: 'und', title: null },
+        { position: 3, language: null, title: null },
+      ],
+      playing: 1,
+      onChooseAudio: () => undefined,
+    })
+
+    expect(source.read().audio).toEqual({
+      options: [
+        { id: 0, label: 'Commentary' },
+        { id: 1, label: 'French' },
+        { id: 2, label: 'Track 3' },
+        { id: 3, label: 'Track 4' },
+      ],
+      selected: 1,
+    })
+  })
+
+  it('shouldHandOnlyAnotherTrackToTheSwitchWhenTheViewerChoosesOne', () => {
+    const chosen: number[] = []
+    const source = listedAudioTrackSource(nativeTrackSource(document.createElement('video')), {
+      audioTracks: [
+        { position: 0, language: 'eng' },
+        { position: 1, language: 'fre' },
+      ],
+      playing: 0,
+      onChooseAudio: (position) => chosen.push(position),
+    })
+
+    source.selectAudio(0)
+    source.selectAudio(1)
+
+    expect(chosen).toEqual([1])
   })
 })
