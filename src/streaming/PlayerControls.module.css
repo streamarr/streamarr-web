@@ -291,6 +291,23 @@
   }
 }
 
+/* A small phone held sideways tightens the bar's spacing so the five chips fit beside the
+   transport. */
+@media (max-width: 40em) and (orientation: landscape) {
+  .row {
+    gap: var(--spacing-8);
+    padding-inline: var(--spacing-12);
+  }
+
+  .transport {
+    gap: var(--spacing-12);
+  }
+
+  .end {
+    gap: var(--spacing-4);
+  }
+}
+
 @media (max-width: 48em) and (orientation: portrait) {
   .row {
     grid-template-columns: minmax(0, 1fr);

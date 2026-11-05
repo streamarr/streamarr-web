@@ -1118,6 +1118,18 @@ for (const viewport of [
   })
 }
 
+// The title gives way to an ellipsis this narrow, so only the buttons must stay whole and apart.
+test('the control bar keeps its buttons apart on a small phone held sideways', async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize({ width: 568, height: 320 })
+  await openPlayer(page, request)
+
+  await expectControlsApart(page, barControls(page).slice(2))
+  await page.getByRole('button', { name: 'Forward 10 seconds' }).click({ trial: true })
+})
+
 test('the chips keep their values on a phone held upright', async ({ page, request }) => {
   await page.setViewportSize({ width: 375, height: 667 })
 
