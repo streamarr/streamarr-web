@@ -12,6 +12,7 @@ import {
   playbackPlatformFixture,
   smoothUpToFullHd,
 } from '../test/playbackCapabilities'
+import { giveElementTracks } from '../test/mediaTracks'
 import {
   browserPlaybackPlatform,
   declarePlaybackCapabilities,
@@ -1123,6 +1124,25 @@ describe('declarePlaybackCapabilities', () => {
     expect(declaration).toEqual(MINIMAL_DECLARATION)
   })
 
+  it.each([true, false])(
+    'shouldDeclareWhetherThePlayerSelectsAnAudioTrackInDirectPlayAsTheElementDoesWhenSelecting%s',
+    async (selectsAudioTrackInDirectPlay) => {
+      const declaration = await declarePlaybackCapabilities(
+        platformFixture({ selectsAudioTrackInDirectPlay }),
+      )
+
+      expect(declaration.selectsAudioTrackInDirectPlay).toBe(selectsAudioTrackInDirectPlay)
+    },
+  )
+
+  it('shouldDeclareThatThePlayerSelectsAnAudioTrackInDirectPlayWhenTheElementDoesAndTheBrowserLacksDecodingInfo', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      platformFixture({ decodingInfo: undefined, selectsAudioTrackInDirectPlay: true }),
+    )
+
+    expect(declaration).toEqual({ ...MINIMAL_DECLARATION, selectsAudioTrackInDirectPlay: true })
+  })
+
   it('shouldKeepEveryOtherAnswerWhenThe720pOnlyBrowserRejectsTheOpusProbe', async () => {
     const declaration = await declarePlaybackCapabilities(
       platformFixture({
@@ -1775,6 +1795,7 @@ describe('declarePlaybackCapabilities', () => {
           { codec: 'FLAC', maxChannels: 6, hls: true, directPlayContainers: ['MP4'] },
           { codec: 'ALAC', maxChannels: 6, hls: true },
         ],
+        selectsAudioTrackInDirectPlay: false,
       })
     })
 
@@ -2298,6 +2319,25 @@ describe('browserPlaybackPlatform', () => {
     const platform = browserPlaybackPlatform(document.createElement('video'))
 
     expect(platform.displaysHighDynamicRange).toBe(false)
+  })
+
+  it('shouldSelectAnAudioTrackInDirectPlayWhenTheElementListsTheFilesAudioTracks', () => {
+    const video = document.createElement('video')
+    giveElementTracks(video, { audio: [{ label: 'English', language: 'en', enabled: true }] })
+
+    const platform = browserPlaybackPlatform(video)
+
+    expect(platform.selectsAudioTrackInDirectPlay).toBe(true)
+  })
+
+  it('shouldSelectNoAudioTrackInDirectPlayWhenTheElementListsNoAudioTracks', () => {
+    const video = document.createElement('video')
+    // As in Chromium and Firefox, unlike jsdom, which lists an empty array.
+    Object.defineProperty(video, 'audioTracks', { configurable: true, value: undefined })
+
+    const platform = browserPlaybackPlatform(video)
+
+    expect(platform.selectsAudioTrackInDirectPlay).toBe(false)
   })
 
   it('shouldLeaveDecodingInfoAbsentWhenTheBrowserOffersNoMediaCapabilities', () => {

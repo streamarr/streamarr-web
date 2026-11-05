@@ -59,6 +59,7 @@ export function playbackPlatformFixture(
     userAgent: CHROME_USER_AGENT,
     audioOutputChannels: () => Promise.resolve(8),
     displaysHighDynamicRange: false,
+    selectsAudioTrackInDirectPlay: false,
     ...overrides,
   }
 }

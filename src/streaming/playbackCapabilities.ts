@@ -64,15 +64,15 @@ export interface PlaybackPlatform {
   audioOutputChannels: () => Promise<number>
   /** Whether the display, or the plane that video plays on, shows high dynamic range. */
   displaysHighDynamicRange: boolean
+  /** Whether the media element lists a file's audio tracks and switches among them. */
+  selectsAudioTrackInDirectPlay: boolean
 }
+
+type CapabilityEntries = Pick<ClientCapabilityDeclarationInput, 'video' | 'audio'>
 
 // The declaration gates the start of playback, so every probe shares one deadline and a probe left
 // unanswered at it counts as unconfirmed rather than holding back a player that never starts.
 const DECODING_INFO_TIMEOUT_MS = 3_000
-
-// No capability entry lists a direct-play container yet, so the declaration answers as Chromium's
-// player does: it plays a file's first audio track only.
-const SELECTS_AUDIO_TRACK_IN_DIRECT_PLAY = false
 
 type FamilyLevels = Record<'H264' | 'HEVC' | 'AV1', number>
 
@@ -334,6 +334,11 @@ interface Askers {
 export async function declarePlaybackCapabilities(
   platform: PlaybackPlatform,
 ): Promise<ClientCapabilityDeclarationInput> {
+  const entries = await declareEntries(platform)
+  return { ...entries, selectsAudioTrackInDirectPlay: platform.selectsAudioTrackInDirectPlay }
+}
+
+async function declareEntries(platform: PlaybackPlatform): Promise<CapabilityEntries> {
   const hls = platform.hlsJsSupported || platform.nativeHlsSupported
   const { decodingInfo } = platform
   if (!decodingInfo) {
@@ -383,7 +388,7 @@ async function probeDeclaration({
   askers: Askers
   hls: boolean
   outputChannels: number
-}): Promise<ClientCapabilityDeclarationInput> {
+}): Promise<CapabilityEntries> {
   const { askDecodingInfo } = askers
   // A host without an audio device reports 0 channels, and every output plays stereo.
   const channels = Math.min(Math.max(outputChannels, STEREO), SURROUND_MAXIMUM)
@@ -402,7 +407,6 @@ async function probeDeclaration({
     audio: audioEntries({ answers: audio, userAgent: platform.userAgent, hls }).filter(
       appliesToADelivery,
     ),
-    selectsAudioTrackInDirectPlay: SELECTS_AUDIO_TRACK_IN_DIRECT_PLAY,
   }
 }
 
@@ -1219,7 +1223,7 @@ function inMatroska(question: VideoQuestion): VideoQuestion {
   return { ...question, video: { ...question.video, contentType } }
 }
 
-function minimalDeclaration(hls: boolean): ClientCapabilityDeclarationInput {
+function minimalDeclaration(hls: boolean): CapabilityEntries {
   return {
     video: [
       videoEntry({
@@ -1229,7 +1233,6 @@ function minimalDeclaration(hls: boolean): ClientCapabilityDeclarationInput {
       }),
     ],
     audio: [{ codec: 'AAC', maxChannels: STEREO, hls: true }],
-    selectsAudioTrackInDirectPlay: SELECTS_AUDIO_TRACK_IN_DIRECT_PLAY,
   }
 }
 
@@ -1282,6 +1285,9 @@ export function browserPlaybackPlatform(video: HTMLVideoElement): PlaybackPlatfo
     userAgent: navigator.userAgent,
     audioOutputChannels,
     displaysHighDynamicRange: displaysHighDynamicRange(),
+    // Chromium lists a file's audio tracks only behind an experimental flag, and Firefox only behind
+    // a preference, so a file there plays its default track.
+    selectsAudioTrackInDirectPlay: Reflect.get(video, 'audioTracks') !== undefined,
   }
   // WebKit on Linux plays audio through GStreamer. On the Linux CI runner, its web process crashed
   // on the next media call after a page read maxChannelCount, so there it declares stereo. The
