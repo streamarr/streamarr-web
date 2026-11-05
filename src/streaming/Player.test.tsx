@@ -2514,6 +2514,61 @@ describe('Player', () => {
     expect(saved).toEqual([{ sessionId: 'sess-1', state: 'STOPPED', positionSeconds: 15 }])
   })
 
+  it('shouldReportAnUnsupportedFormatAndPlayTheReplacementWhenTheReadyStreamIsNotHls', async () => {
+    const directPlay = {
+      __typename: 'DirectPlayStreamSession',
+      id: 'sess-direct',
+      streamUrl: '/api/stream/direct/source.mp4?t=playback-token',
+    }
+    const failures: ReportPlaybackFormatFailureInput[] = []
+    server.use(
+      graphql.mutation('CreatePlaybackSession', () =>
+        HttpResponse.json({
+          data: {
+            createPlaybackSession: {
+              playbackSession: {
+                ...readyPlaybackSession({ id: 'playback-1', streamSession: SESSION }),
+                currentFormatAttempt: {
+                  __typename: 'ReadyPlaybackFormatAttempt',
+                  streamSession: directPlay,
+                },
+              },
+              userErrors: [],
+            },
+          },
+        }),
+      ),
+      graphql.mutation('ReportPlaybackFormatFailure', ({ variables }) => {
+        failures.push((variables as { input: ReportPlaybackFormatFailureInput }).input)
+        return HttpResponse.json({
+          data: {
+            reportPlaybackFormatFailure: {
+              playbackSession: readyPlaybackSession({
+                id: 'playback-1',
+                streamSession: replacementStream(1),
+              }),
+              userErrors: [],
+            },
+          },
+        })
+      }),
+    )
+    recordTimelineReports()
+
+    renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+
+    await attachedVideo(replacementStream(1).streamUrl)
+    expect(hls.loadSource.mock.calls).toEqual([[replacementStream(1).streamUrl]])
+    expect(failures).toEqual([
+      {
+        playbackSessionId: 'playback-1',
+        streamSessionId: 'sess-direct',
+        reason: 'UNSUPPORTED_FORMAT',
+      },
+    ])
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
   it('shouldCreateSessionAndFeedTokenedUrlToHls', async () => {
     let variables: unknown
     server.use(

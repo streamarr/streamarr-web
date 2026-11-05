@@ -123,6 +123,7 @@ const PLAYER_OPERATIONS: Record<string, unknown> = {
         currentFormatAttempt: {
           __typename: 'ReadyPlaybackFormatAttempt',
           streamSession: {
+            __typename: 'HlsStreamSession',
             id: 'sess-1',
             streamUrl: '/api/stream/e2e/multivariant.m3u8?t=playback-token',
             transcodeMode: 'REMUX',

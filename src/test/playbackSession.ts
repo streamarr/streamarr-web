@@ -8,7 +8,7 @@ type ReadyAttempt = Extract<
   PlaybackSessionFieldsFragment['currentFormatAttempt'],
   { __typename: 'ReadyPlaybackFormatAttempt' }
 >
-type StreamSession = ReadyAttempt['streamSession']
+type StreamSession = Extract<ReadyAttempt['streamSession'], { __typename: 'HlsStreamSession' }>
 /** The fields that say which playback choice was asked for, which plays, and why they differ. */
 export type PlaybackChoices = Pick<
   PlaybackSessionFieldsFragment,
@@ -45,7 +45,12 @@ export function readyPlaybackSession({
     ...choices,
     currentFormatAttempt: {
       __typename: 'ReadyPlaybackFormatAttempt',
-      streamSession: { videoRange: 'SDR', mediaEndSeconds: null, ...streamSession },
+      streamSession: {
+        __typename: 'HlsStreamSession',
+        videoRange: 'SDR',
+        mediaEndSeconds: null,
+        ...streamSession,
+      },
     },
   }
 }

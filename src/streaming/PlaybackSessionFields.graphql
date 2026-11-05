@@ -13,11 +13,14 @@ fragment PlaybackSessionFields on PlaybackSession {
     }
     ... on ReadyPlaybackFormatAttempt {
       streamSession {
+        __typename
         id
         streamUrl
-        transcodeMode
-        videoRange
-        mediaEndSeconds
+        ... on HlsStreamSession {
+          transcodeMode
+          videoRange
+          mediaEndSeconds
+        }
       }
     }
     ... on FailedPlaybackFormatAttempt {
