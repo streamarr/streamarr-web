@@ -7,9 +7,9 @@ import { resolveAmbientColors } from '../media/ambientSource'
 import { CastCard } from '../media/CastCard'
 import { ContentShelf } from '../media/ContentShelf'
 import { DetailBackButton } from '../media/DetailBack'
-import { detailAction, DetailHeader } from '../media/DetailHeader'
+import { ActionProgress, detailAction, DetailHeader } from '../media/DetailHeader'
 import { MediaTitleFallback } from '../media/MediaTitleFallback'
-import { formatRuntime, formatYear } from '../media/formatting'
+import { formatRuntime, formatTimeLeft, formatYear } from '../media/formatting'
 import { Icon } from '../ui/Icon'
 import { pickImageVariant } from '../media/images'
 import { RatingChipRow } from '../media/RatingChipRow'
@@ -83,7 +83,13 @@ export function MovieDetailScreen({ movieId }: Readonly<{ movieId: string }>) {
                 className={detailAction.primary}
               >
                 <Icon name="play" size={14} />
-                {position ? 'Resume' : 'Play'}
+                {position ? 'Resume' : 'Play'}{' '}
+                {position && movie.watchProgress?.durationSeconds ? (
+                  <span className={detailAction.detail}>{formatTimeLeft(movie.watchProgress)}</span>
+                ) : null}
+                {position && movie.watchProgress ? (
+                  <ActionProgress share={movie.watchProgress.percentComplete / 100} />
+                ) : null}
               </Link>
             )}
             <WatchedActionButton

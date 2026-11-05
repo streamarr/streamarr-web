@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { DetailHeader } from './DetailHeader'
+import { ActionProgress, DetailHeader } from './DetailHeader'
 
 const BACKDROP = {
   image: { url: 'backdrop.jpg', aspectRatio: 1.78 },
@@ -78,5 +78,17 @@ describe('DetailHeader', () => {
     const separators = screen.getAllByText('•')
     expect(separators).toHaveLength(1)
     expect(separators[0]).toHaveAttribute('aria-hidden', 'true')
+  })
+
+  it('shouldFillTheActionProgressToTheWatchedShare', () => {
+    render(<ActionProgress share={0.25} />)
+    expect(screen.getByTestId('action-progress')).toHaveStyle({ width: '25%' })
+  })
+
+  it('shouldHoldTheActionProgressWithinTheAction', () => {
+    const { rerender } = render(<ActionProgress share={1.4} />)
+    expect(screen.getByTestId('action-progress')).toHaveStyle({ width: '100%' })
+    rerender(<ActionProgress share={-0.2} />)
+    expect(screen.getByTestId('action-progress')).toHaveStyle({ width: '0%' })
   })
 })

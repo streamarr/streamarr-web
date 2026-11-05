@@ -6,6 +6,7 @@ function episode(
   overrides: {
     watchStatus?: 'UNWATCHED' | 'IN_PROGRESS' | 'WATCHED'
     positionSeconds?: number
+    durationSeconds?: number
     fileId?: string | null
   } = {},
 ) {
@@ -14,7 +15,9 @@ function episode(
     episodeNumber: number,
     watchStatus: overrides.watchStatus ?? 'UNWATCHED',
     watchProgress:
-      overrides.positionSeconds != null ? { positionSeconds: overrides.positionSeconds } : null,
+      overrides.positionSeconds != null
+        ? { positionSeconds: overrides.positionSeconds, durationSeconds: overrides.durationSeconds }
+        : null,
     files: overrides.fileId === null ? [] : [{ id: overrides.fileId ?? `file-e${number}` }],
   }
 }
@@ -38,7 +41,10 @@ describe('nextPlayableEpisode', () => {
     const playable = nextPlayableEpisode([
       {
         seasonNumber: 1,
-        episodes: [episode(1), episode(2, { watchStatus: 'IN_PROGRESS', positionSeconds: 600 })],
+        episodes: [
+          episode(1),
+          episode(2, { watchStatus: 'IN_PROGRESS', positionSeconds: 600, durationSeconds: 1800 }),
+        ],
       },
     ])
     expect(playable).toEqual({
@@ -47,8 +53,19 @@ describe('nextPlayableEpisode', () => {
       episodeNumber: 2,
       fileId: 'file-e2',
       positionSeconds: 600,
+      progress: { positionSeconds: 600, durationSeconds: 1800 },
       verb: 'Resume',
     })
+  })
+
+  it('shouldOmitProgressWhenTheResumedEpisodeHasNoDuration', () => {
+    const playable = nextPlayableEpisode([
+      {
+        seasonNumber: 1,
+        episodes: [episode(1, { watchStatus: 'IN_PROGRESS', positionSeconds: 600 })],
+      },
+    ])
+    expect(playable).toMatchObject({ verb: 'Resume', progress: null })
   })
 
   it('continues with the first unwatched episode once something has been watched', () => {

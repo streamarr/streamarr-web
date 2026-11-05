@@ -56,13 +56,14 @@ function episode(
   number: number,
   status: Status = 'UNWATCHED',
   positionSeconds: number | null = null,
+  durationSeconds?: number,
 ) {
   return {
     __typename: 'Episode',
     id: `s${number}`,
     episodeNumber: number,
     watchStatus: status,
-    watchProgress: positionSeconds != null ? { positionSeconds } : null,
+    watchProgress: positionSeconds != null ? { positionSeconds, durationSeconds } : null,
     files: [{ id: `file-e${number}` }],
   }
 }
@@ -275,6 +276,13 @@ describe('SeriesDetailScreen', () => {
         '/play/file-s2e5?episode=season-2-s5&position=600',
       ),
     )
+  })
+
+  it('shouldShowTheTimeLeftOnResumeWhenTheEpisodeHasADuration', async () => {
+    serve(seriesData({ seasons: [season(1, [episode(1, 'IN_PROGRESS', 600, 1800)])] }))
+    renderAppAt('/series/series-1')
+    expect(await screen.findByRole('link', { name: 'Resume S1 E1 20m left' })).toBeInTheDocument()
+    expect(screen.getByTestId('action-progress')).toHaveStyle({ width: `${(600 / 1800) * 100}%` })
   })
 
   it('continues with the next unwatched episode when nothing is mid-watch', async () => {

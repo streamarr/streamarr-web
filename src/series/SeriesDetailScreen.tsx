@@ -6,9 +6,9 @@ import { resolveAmbientColors } from '../media/ambientSource'
 import { CastCard } from '../media/CastCard'
 import { ContentShelf } from '../media/ContentShelf'
 import { DetailBackButton, useSeriesEntryState } from '../media/DetailBack'
-import { detailAction, DetailHeader } from '../media/DetailHeader'
+import { ActionProgress, detailAction, DetailHeader } from '../media/DetailHeader'
 import { MediaTitleFallback } from '../media/MediaTitleFallback'
-import { formatEpisodeLabel, formatLongDate, formatYear } from '../media/formatting'
+import { formatEpisodeLabel, formatLongDate, formatTimeLeft, formatYear } from '../media/formatting'
 import { Icon } from '../ui/Icon'
 import { pickImageVariant } from '../media/images'
 import { nextPlayableEpisode } from '../media/nextPlayableEpisode'
@@ -86,7 +86,15 @@ export function SeriesDetailScreen({ seriesId }: Readonly<{ seriesId: string }>)
                 className={detailAction.primary}
               >
                 <Icon name="play" size={14} />
-                {playable.verb} {formatEpisodeLabel(playable.seasonNumber, playable.episodeNumber)}
+                {playable.verb} {formatEpisodeLabel(playable.seasonNumber, playable.episodeNumber)}{' '}
+                {playable.progress && (
+                  <>
+                    <span className={detailAction.detail}>{formatTimeLeft(playable.progress)}</span>
+                    <ActionProgress
+                      share={playable.progress.positionSeconds / playable.progress.durationSeconds}
+                    />
+                  </>
+                )}
               </Link>
             )}
             {bulkWatched.action}

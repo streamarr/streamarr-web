@@ -2,7 +2,7 @@ interface EpisodeLike {
   id: string
   episodeNumber: number
   watchStatus: string
-  watchProgress: { positionSeconds: number } | null | undefined
+  watchProgress: { positionSeconds: number; durationSeconds?: number } | null | undefined
   files: ReadonlyArray<{ id: string } | null>
 }
 
@@ -17,6 +17,8 @@ export interface PlayableEpisode {
   episodeNumber: number
   fileId: string | null
   positionSeconds: number | null
+  /** The episode's progress when it is resumed, for the time left on the action. */
+  progress: { positionSeconds: number; durationSeconds: number } | null
   verb: 'Resume' | 'Continue' | 'Play'
 }
 
@@ -66,6 +68,12 @@ function playable(
     episodeNumber: episode.episodeNumber,
     fileId: episode.files.find((file): file is { id: string } => file !== null)?.id ?? null,
     positionSeconds: verb === 'Resume' ? episode.watchProgress?.positionSeconds || null : null,
+    progress: verb === 'Resume' ? resumedProgress(episode.watchProgress) : null,
     verb,
   }
+}
+
+function resumedProgress(progress: EpisodeLike['watchProgress']): PlayableEpisode['progress'] {
+  if (!progress?.durationSeconds) return null
+  return { positionSeconds: progress.positionSeconds, durationSeconds: progress.durationSeconds }
 }

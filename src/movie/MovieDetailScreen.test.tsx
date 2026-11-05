@@ -292,6 +292,18 @@ describe('MovieDetailScreen', () => {
     )
   })
 
+  it('shouldShowTheTimeLeftOnResumeWhenTheMovieIsInProgress', async () => {
+    serve(
+      movieData({
+        watchStatus: 'IN_PROGRESS',
+        watchProgress: { positionSeconds: 3000, percentComplete: 35, durationSeconds: 8520 },
+      }),
+    )
+    renderAppAt('/movie/m1')
+    expect(await screen.findByRole('link', { name: 'Resume 1h 32m left' })).toBeInTheDocument()
+    expect(screen.getByTestId('action-progress')).toHaveStyle({ width: '35%' })
+  })
+
   it('tints the page from the backdrop theme', async () => {
     serve(movieData())
     renderAppAt('/movie/m1')

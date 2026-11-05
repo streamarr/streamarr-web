@@ -58,6 +58,7 @@ query SeriesDetail($id: ID!) {
         watchStatus
         watchProgress {
           positionSeconds
+          durationSeconds
         }
         files {
           id
