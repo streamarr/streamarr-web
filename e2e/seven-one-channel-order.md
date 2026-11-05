@@ -10,8 +10,10 @@ tone is 50 Hz; the others are 1 kHz. The spec writes the stream with FFmpeg when
 
 The tones must reach outputs 1 to 8 in turn, each at least 20 dB above every other output. A tone is
 a run of readings in which one output is the loudest and reads at least -40 dBFS, heard for at least
-0.25 s. The spec identifies each tone by the order it arrives in, not by the element's time:
-WebKit on Linux runs its audio graph up to a second behind the element.
+0.25 s. A shorter run is no tone, but its readings count against the tone it interrupts. The margin
+leaves out the readings within 0.1 s of either end of a tone, which may also hear the neighbouring
+tone. The spec identifies each tone by the order it arrives in, not by the element's time: WebKit on
+Linux runs its audio graph up to a second behind the element.
 
 | Result | Meaning |
 | --- | --- |

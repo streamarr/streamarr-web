@@ -116,8 +116,8 @@ const REQUIRED_MARGIN_DB = 20
 const TONE_FLOOR_DB = -40
 const SILENCE_DB = -90
 const LEVEL_FLOOR_DB = -160
-// A reading near either end of a run may also hear the neighbouring tone.
-const RUN_EDGE_SHARE = 0.25
+// A reading within 0.1 s of either end of a tone may also hear the neighbouring tone.
+const TONE_EDGE_SECONDS = 0.1
 // Each tone lasts 1 s, and WebKit on Linux drops about half a second of the Opus stream. A run
 // heard for less than a quarter of a tone, such as a tone leaking late into another output, is no
 // tone. Only the time between neighbouring readings that hear the same output, at most 0.1 s
@@ -145,7 +145,7 @@ export function judgeChannelOrder(measurement: ChannelOrderMeasurement): Channel
   ) {
     return { result: 'not observed', tones: [], findings: [] }
   }
-  const tones = runsOfLoudestOutput(readings).map(heardTone)
+  const tones = heardTones(readings).map(heardTone)
   const outputs = tones.map(({ output }) => output)
   if (outputs.join() !== SEVEN_ONE_CHANNELS.map((_, index) => index + 1).join()) {
     const findings = [`The tones reached outputs ${outputs.join(', ')} in turn, not 1 to 8.`]
@@ -164,7 +164,7 @@ function loudestOutput(levels: number[]): number {
 }
 
 // Readings below the tone floor end no run: a run picks up again on the same output after them.
-function runsOfLoudestOutput(readings: LevelReading[]): LevelReading[][] {
+function heardTones(readings: LevelReading[]): Run[] {
   const outputs = readings.map(({ rms }) =>
     decibels(Math.max(...rms) ** 2) >= TONE_FLOOR_DB ? loudestOutput(rms) : undefined,
   )
@@ -176,8 +176,8 @@ function runsOfLoudestOutput(readings: LevelReading[]): LevelReading[][] {
       }
       return [{ output, readings: [reading], heardSeconds: heardSincePrevious(index) }]
     }),
-  ).filter(({ heardSeconds }) => heardSeconds >= MIN_TONE_SECONDS)
-  return mergeNeighbours(runs).map((run) => run.readings)
+  )
+  return claimShortRuns(runs)
 
   // A reading adds the time since the one before it only when that one heard the same output.
   function heardSincePrevious(index: number): number {
@@ -195,6 +195,7 @@ interface Run {
   heardSeconds: number
 }
 
+// Readings below the tone floor end no run: a run picks up again on the same output after them.
 function mergeNeighbours(runs: Run[]): Run[] {
   const merged: Run[] = []
   for (const run of runs) {
@@ -209,13 +210,31 @@ function mergeNeighbours(runs: Run[]): Run[] {
   return merged
 }
 
-function heardTone(run: LevelReading[]): HeardTone {
-  const edge = Math.floor(run.length * RUN_EDGE_SHARE)
-  const middle = run.slice(edge, run.length - edge)
-  const levels = SEVEN_ONE_CHANNELS.map((_, output) =>
-    decibels(middle.reduce((sum, { rms }) => sum + rms[output] ** 2, 0) / middle.length),
+// A run too short to be a tone is no tone, but its readings still count against the tone it
+// interrupts. One before the first tone interrupts none.
+function claimShortRuns(runs: Run[]): Run[] {
+  const tones: Run[] = []
+  for (const run of runs) {
+    const previous = tones.at(-1)
+    if (run.heardSeconds < MIN_TONE_SECONDS || previous?.output === run.output) {
+      previous?.readings.push(...run.readings)
+    } else {
+      tones.push({ ...run, readings: [...run.readings] })
+    }
+  }
+  return tones
+}
+
+function heardTone({ output, readings }: Run): HeardTone {
+  const first = readings[0].readAt
+  const last = readings.at(-1)!.readAt
+  const middle = readings.filter(
+    ({ readAt }) => readAt >= first + TONE_EDGE_SECONDS && readAt <= last - TONE_EDGE_SECONDS,
   )
-  return { output: loudestOutput(levels) + 1, levels }
+  const levels = SEVEN_ONE_CHANNELS.map((_, o) =>
+    decibels(middle.reduce((sum, { rms }) => sum + rms[o] ** 2, 0) / middle.length),
+  )
+  return { output: output + 1, levels }
 }
 
 function narrowMargin({ output, levels }: HeardTone): string[] {

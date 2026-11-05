@@ -105,6 +105,27 @@ test('a browser fails when another output reads a tone less than 20 dB below its
   ])
 })
 
+test('a browser fails when another output briefly drowns out a tone in its middle', () => {
+  // For 0.2 s in the middle of the LFE tone, output 1 reads 0.8 dB louder than output 4.
+  const readings = readingsOf(inOrder()).map((reading, index) => {
+    const lfe = Math.floor(index / READINGS_PER_TONE) === 4
+    if (!lfe || index % READINGS_PER_TONE < 8 || index % READINGS_PER_TONE > 11) return reading
+    return {
+      ...reading,
+      rms: reading.rms.map((rms, o) => (o === 0 ? amplitude(TONE_DB) * 1.1 : rms)),
+    }
+  })
+
+  const verdict = judgeChannelOrder({ readings, playbackError: null })
+
+  expect(verdict.result).toBe('failed')
+  expect(verdict.findings).toEqual([
+    expect.stringMatching(
+      /^The LFE tone read -13\.5 dBFS on output 4 and -\d+\.\d dBFS on output 1, a margin of \d+\.\d dB\.$/,
+    ),
+  ])
+})
+
 test('a browser fails when it hands over AAC 7.1 in AAC channel order', () => {
   // AAC's own 7.1 order is centre, front left, front right, side left, side right, back left,
   // back right, LFE.
