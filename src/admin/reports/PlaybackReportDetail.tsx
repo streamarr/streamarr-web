@@ -92,7 +92,7 @@ function useMarkReadOnOpen(report: Report | null | undefined) {
   const [markRead] = useMutation(MarkPlaybackReportReadDocument)
   const [failure, setFailure] = useState<string | null>(null)
   const marked = useRef<string | null>(null)
-  const unreadId = report && report.readAt === null ? report.id : null
+  const unreadId = report?.readAt === null ? report.id : null
   const mark = useCallback(
     async (playbackReportId: string) => {
       try {
@@ -169,11 +169,11 @@ function ReportSnapshot({ report }: Readonly<{ report: Report }>) {
       </div>
       <Section name="Device capabilities">
         <ul className={reportStyles.capabilities}>
-          {report.capabilityDeclaration.video.map((entry, index) => (
-            <li key={`video-${index}`}>{videoEntryText(entry)}</li>
-          ))}
-          {report.capabilityDeclaration.audio.map((entry, index) => (
-            <li key={`audio-${index}`}>{audioEntryText(entry)}</li>
+          {[
+            ...report.capabilityDeclaration.video.map(videoEntryText),
+            ...report.capabilityDeclaration.audio.map(audioEntryText),
+          ].map((entry) => (
+            <li key={entry}>{entry}</li>
           ))}
         </ul>
       </Section>

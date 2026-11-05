@@ -193,6 +193,7 @@
 }
 
 .shared {
+  display: block;
   margin: 0;
   color: var(--text-secondary);
 }

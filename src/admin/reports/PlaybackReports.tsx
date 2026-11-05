@@ -46,7 +46,7 @@ export function PlaybackReports() {
   }
 
   return (
-    <>
+    <div className={reportStyles.reports}>
       <div className={styles.pageHeading}>
         <div>
           <h1>Shared reports</h1>
@@ -83,7 +83,7 @@ export function PlaybackReports() {
           Couldn&apos;t load older reports.
         </FailureRow>
       )}
-    </>
+    </div>
   )
 }
 

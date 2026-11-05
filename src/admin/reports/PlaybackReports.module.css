@@ -1,12 +1,13 @@
-.lede {
+/* Under the page's class, so these beat the settings layout's element rules. */
+.reports .lede {
   max-width: 72ch;
-  margin-bottom: var(--spacing-20) !important;
+  margin-bottom: var(--spacing-20);
   color: var(--text-secondary);
   line-height: var(--line-height-prose);
 }
 
-.unread {
-  margin-top: var(--spacing-4) !important;
+.reports .unread {
+  margin-top: var(--spacing-4);
   color: var(--text-secondary);
 }
 
@@ -126,8 +127,8 @@
   overflow-wrap: anywhere;
 }
 
-.noNote {
-  margin-bottom: var(--spacing-16) !important;
+.report .noNote {
+  margin-bottom: var(--spacing-16);
   color: var(--text-secondary);
 }
 
@@ -149,10 +150,10 @@
   font-size: var(--font-size-caption);
 }
 
-.sectionHeading {
-  margin: 0 0 var(--spacing-8) !important;
-  font-size: var(--font-size-label) !important;
-  font-weight: 600 !important;
+.report .sectionHeading {
+  margin: 0 0 var(--spacing-8);
+  font-size: var(--font-size-label);
+  font-weight: 600;
   color: var(--text-secondary);
 }
 
@@ -160,13 +161,13 @@
   margin-top: var(--spacing-16);
 }
 
-.attemptHeading {
-  margin: 0 0 var(--spacing-6) !important;
-  font-size: var(--font-size-body) !important;
+.report .attemptHeading {
+  margin: 0 0 var(--spacing-6);
+  font-size: var(--font-size-body);
 }
 
-.streamReason {
-  margin: 0 0 var(--spacing-6) !important;
+.report .streamReason {
+  margin: 0 0 var(--spacing-6);
 }
 
 .capabilities {

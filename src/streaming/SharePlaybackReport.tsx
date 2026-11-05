@@ -1,6 +1,6 @@
 import { useMutation } from '@apollo/client/react'
 import { Alert, Button, Group, Textarea } from '@mantine/core'
-import { type FormEvent, useState } from 'react'
+import { type SubmitEvent, useState } from 'react'
 import {
   SharePlaybackReportDocument,
   type SharePlaybackReportInput,
@@ -40,11 +40,7 @@ export function SharePlaybackReport({
   if (step.at === 'offered') {
     return (
       <div className={styles.share}>
-        {step.shared && (
-          <p role="status" className={styles.shared}>
-            Shared with your Server Admin.
-          </p>
-        )}
+        {step.shared && <output className={styles.shared}>Shared with your Server Admin.</output>}
         <Button
           variant="default"
           size="xs"
@@ -70,7 +66,7 @@ export function SharePlaybackReport({
   }
 
   const { report, sent } = step
-  async function send(event: FormEvent) {
+  async function send(event: SubmitEvent) {
     event.preventDefault()
     const refused = (refusal: string) => setStep({ at: 'noting', report, refusal, sent: false })
     const lost = () => setStep({ at: 'noting', report, refusal: NOT_SHARED, sent: true })

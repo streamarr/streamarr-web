@@ -7,7 +7,7 @@ import { browserOf, browserVersionText, type BrowserVersion } from './browserTex
 import { bitrateText, channelsText, UNKNOWN } from './playbackDecisionText'
 import type { StreamStats } from './playerPlayback'
 
-type Maybe<Value> = Value | null | undefined
+type Maybe<Value> = Value | null
 
 /** The dynamic range that a player or display reports for what it shows. */
 export type PlayerHdrMode = Exclude<ServerHdrMode, '%future added value'>
@@ -182,7 +182,7 @@ export function isPlayerHdrMode(mode: string): mode is PlayerHdrMode {
   return Object.hasOwn(HDR_MODES, mode)
 }
 
-function known<Value>(value: Maybe<Value>, text: (value: Value) => string): string {
+function known<Value>(value: Maybe<Value> | undefined, text: (value: Value) => string): string {
   return value === null || value === undefined ? UNKNOWN : text(value)
 }
 
