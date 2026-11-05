@@ -114,8 +114,11 @@ export function AuthProvider({
         throw error
       }
       identitySwitch.succeeded()
-      adopt(tokens)
-      await forgetEarlierIdentity()
+      try {
+        adopt(tokens)
+      } finally {
+        await forgetEarlierIdentity()
+      }
       return tokens
     },
     [adopt, apollo, forgetEarlierIdentity],

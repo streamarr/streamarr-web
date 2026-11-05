@@ -56,7 +56,7 @@ export interface IdentitySwitch {
   succeeded: () => void
   /** The identity did not change, so the operations held since the switch began go out now. */
   failed: () => void
-  /** False once a sign-in or sign-out has outdated the switch. */
+  /** False once another identity, from a sign-in, a sign-out or another switch, has replaced it. */
   isCurrent: () => boolean
 }
 
@@ -111,6 +111,7 @@ class IdentitySwitchGate {
   begin(): IdentitySwitch {
     this.switchesUnderway += 1
     const epoch = this.epoch
+    const generation = this.generation
     let settled = false
     const settle = (settleHeld: (entry: HeldOperation) => void) => {
       if (settled || epoch !== this.epoch) return
@@ -128,7 +129,7 @@ class IdentitySwitchGate {
         settle((entry) => entry.refuse())
       },
       failed: () => settle((entry) => (this.awaitingReset ? entry.refuse() : entry.send())),
-      isCurrent: () => epoch === this.epoch,
+      isCurrent: () => epoch === this.epoch && generation === this.generation,
     }
   }
 

@@ -530,4 +530,57 @@ describe('AuthProvider identity fence beyond the first send', () => {
     expect(await screen.findByText('Switch refused')).toBeInTheDocument()
     expect(selections).toBe(1)
   })
+
+  it('shouldNotSendASwitchAgainWhenAnotherSwitchSucceededBeforeItsCsrfRejection', async () => {
+    const selected: string[] = []
+    let releaseRejection: () => void = () => {}
+    const rejectionHeld = new Promise<void>((resolve) => {
+      releaseRejection = resolve
+    })
+    server.use(
+      http.post('/api/auth/select-profile', async ({ request }) => {
+        const { profileId } = (await request.json()) as { profileId: string }
+        selected.push(profileId)
+        if (profileId === 'profile-3' && selected.length === 1) {
+          await rejectionHeld
+          return HttpResponse.json({ code: CSRF_REJECTION_CODE }, { status: 403 })
+        }
+        return HttpResponse.json(TOKENS)
+      }),
+    )
+    renderSwitchable()
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'Select with PIN' }))
+    await waitFor(() => expect(selected).toEqual(['profile-3']))
+
+    await user.click(screen.getByRole('button', { name: 'Switch profile' }))
+    await waitFor(() => expect(selected).toEqual(['profile-3', 'profile-2']))
+    releaseRejection()
+
+    expect(await screen.findByText('Switch refused')).toBeInTheDocument()
+    expect(selected).toEqual(['profile-3', 'profile-2'])
+  })
+
+  it('shouldResetTheStoreAndSendAgainWhenASwitchAnswersWithoutTokens', async () => {
+    const sentUnder: string[] = []
+    server.use(
+      graphql.mutation<SetLanguageOverrideMutation, SetLanguageOverrideMutationVariables>(
+        'SetLanguageOverride',
+        () => {
+          sentUnder.push('profile-2')
+          return HttpResponse.json({
+            data: { setLanguageOverride: { item: null, userErrors: [] } },
+          })
+        },
+      ),
+      http.post('/api/auth/select-profile', () => HttpResponse.json(null)),
+    )
+    const { client } = renderSwitchable()
+
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Enter PIN' }))
+    await waitFor(() => expect(client.readQuery({ query: MeDocument })).toBeNull())
+
+    expect(await storeOverride(client)).toBe('stored')
+    expect(sentUnder).toEqual(['profile-2'])
+  })
 })
