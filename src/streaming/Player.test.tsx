@@ -8717,16 +8717,23 @@ describe('Player', () => {
         currentLevel: -1,
         shown: 'Unknown',
       },
+      {
+        variant: 'no variant playing yet of an SDR stream',
+        videoRange: 'SDR' as const,
+        levels: [],
+        currentLevel: -1,
+        shown: 'SDR',
+      },
     ])(
-      'shouldNameTheHdrModeThePlayerDecodesWhenAPqStreamPlays(variant: $variant)',
-      async ({ levels, currentLevel, shown }) => {
+      'shouldNameTheHdrModeThePlayerDecodesWhenAnHlsStreamPlays(variant: $variant)',
+      async ({ videoRange = 'PQ' as const, levels, currentLevel, shown }) => {
         server.use(
           graphql.mutation('CreatePlaybackSession', () =>
             HttpResponse.json({
               data: {
                 createPlaybackSession: {
                   playbackSession: readyPlaybackSession({
-                    streamSession: { ...SESSION, videoRange: 'PQ' },
+                    streamSession: { ...SESSION, videoRange },
                   }),
                   userErrors: [],
                 },
@@ -8748,6 +8755,34 @@ describe('Player', () => {
         expect(factsIn(groupIn(panel, 'Player'))['HDR mode']).toBe(shown)
       },
     )
+
+    it('shouldNameHdr10ForTheHdrModeWhenTheBrowserPlaysAPqFileDirectly', async () => {
+      server.use(
+        http.get(DIRECT_PLAY_URL, () => new HttpResponse(new Uint8Array([0]), { status: 206 })),
+        graphql.mutation('CreatePlaybackSession', () =>
+          HttpResponse.json({
+            data: {
+              createPlaybackSession: {
+                playbackSession: readyDirectPlaySession({
+                  streamSession: { id: 'sess-1', streamUrl: DIRECT_PLAY_URL, videoRange: 'PQ' },
+                }),
+                userErrors: [],
+              },
+            },
+          }),
+        ),
+      )
+      recordTimelineReports()
+      serveDecisions(() => [playbackDecision({ streamSessionId: 'sess-1' })])
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await nativeVideo(DIRECT_PLAY_URL)
+
+      const panel = await openPlaybackData(user)
+
+      expect(factsIn(groupIn(panel, 'Player'))['HDR mode']).toBe('HDR10')
+    })
 
     it('shouldUpdateWhatThePlayerReportsWhenTheVideoAdvances', async () => {
       serveSession()
@@ -8932,6 +8967,8 @@ describe('Player', () => {
       await showingVideo(STREAM_URL)
       await openPlaybackData(user)
       act(() => screen.getByRole('slider', { name: 'Seek' }).focus())
+      await user.keyboard('{Shift}')
+      expect(screen.getByRole('region', { name: 'Playback data' })).toBeInTheDocument()
 
       await user.keyboard('{Escape}')
 
