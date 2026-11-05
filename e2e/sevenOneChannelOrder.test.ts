@@ -216,6 +216,25 @@ describe('judgeChannelOrder', () => {
     ])
   })
 
+  it('shouldFailWhenLeakageReadMoreThan100MsApartStandsInForATone', () => {
+    // The front right channel is lost, and the page reads output 2 hearing the front left tone
+    // 22.5 dB down only every 0.15 s: seven readings across 0.9 s, none near enough the next for
+    // the time between them to count as heard.
+    const readings = readingsOf(inOrder()).flatMap((reading, index) => {
+      const frontRight = Math.floor(index / READINGS_PER_TONE) === 2
+      if (!frontRight) return [reading]
+      if ((index % READINGS_PER_TONE) % 3 !== 0) return []
+      return [{ ...reading, rms: toneOnOutput(1).map((rms) => rms * amplitude(-22.5)) }]
+    })
+
+    const verdict = judgeChannelOrder({ readings, playbackError: null })
+
+    expect(verdict.result).toBe('failed')
+    expect(verdict.findings).toEqual([
+      'The tones reached outputs 1, 3, 4, 5, 6, 7, 8 in turn, not 1 to 8.',
+    ])
+  })
+
   it('shouldPassWhenTheGraphDropsMostOfAToneButHears300MsOfIt', () => {
     // WebKit on Linux drops about half a second of the 7.1 Opus stream.
     const readings = readingsOf(inOrder()).filter((_, index) => {
