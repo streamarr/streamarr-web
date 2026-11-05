@@ -1515,7 +1515,6 @@ export type SwitchPlaybackAudioTrackMutation = { switchPlaybackAudioTrack: { pla
       | { __typename: 'MediaFileNotFoundError', message: string }
       | { __typename: 'MediaFileProbeNotReadyError', message: string }
       | { __typename: 'NoEligibleVideoFormatError', message: string }
-      | { __typename: 'PlaybackFormatAttemptsExhaustedError', message: string }
       | { __typename: 'PlaybackSessionClosedError', message: string }
       | { __typename: 'PlaybackStartupFailedError', message: string }
       | { __typename: 'StartPositionOutOfRangeError', message: string }

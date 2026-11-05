@@ -7105,7 +7105,8 @@ describe('Player', () => {
         { position: 0, language: 'eng', title: null },
         { position: 1, language: 'fre', title: null },
       ]
-      const SWITCH_REFUSAL = 'No format attempt is left for this playback session.'
+      const SWITCH_REFUSAL =
+        "The server can't start this video right now. Try again in a few minutes."
 
       // The server answers each switch with `answer`, once `answered` lets it.
       function serveAudioTrackSwitch({
@@ -7208,7 +7209,7 @@ describe('Player', () => {
           answer: () => ({
             playbackSession: directPlayStill(),
             userErrors: [
-              { __typename: 'PlaybackFormatAttemptsExhaustedError', message: SWITCH_REFUSAL },
+              { __typename: 'TranscodeCapacityUnavailableError', message: SWITCH_REFUSAL },
             ],
           }),
         })
@@ -7255,7 +7256,7 @@ describe('Player', () => {
           answer: () => ({
             playbackSession: directPlayStill(),
             userErrors: [
-              { __typename: 'PlaybackFormatAttemptsExhaustedError', message: SWITCH_REFUSAL },
+              { __typename: 'TranscodeCapacityUnavailableError', message: SWITCH_REFUSAL },
             ],
           }),
         })
@@ -7370,7 +7371,7 @@ describe('Player', () => {
           answer: () => ({
             playbackSession: directPlayStill(),
             userErrors: [
-              { __typename: 'PlaybackFormatAttemptsExhaustedError', message: SWITCH_REFUSAL },
+              { __typename: 'TranscodeCapacityUnavailableError', message: SWITCH_REFUSAL },
             ],
           }),
         })
@@ -7713,7 +7714,7 @@ describe('Player', () => {
             answer: () => ({
               playbackSession: directPlayStill(),
               userErrors: [
-                { __typename: 'PlaybackFormatAttemptsExhaustedError', message: SWITCH_REFUSAL },
+                { __typename: 'TranscodeCapacityUnavailableError', message: SWITCH_REFUSAL },
               ],
             }),
           })
@@ -7757,7 +7758,7 @@ describe('Player', () => {
           answer: () => ({
             playbackSession: directPlayStill(),
             userErrors: [
-              { __typename: 'PlaybackFormatAttemptsExhaustedError', message: SWITCH_REFUSAL },
+              { __typename: 'TranscodeCapacityUnavailableError', message: SWITCH_REFUSAL },
             ],
           }),
         })

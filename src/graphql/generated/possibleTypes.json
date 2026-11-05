@@ -603,7 +603,6 @@
       "MediaFileNotFoundError",
       "MediaFileProbeNotReadyError",
       "NoEligibleVideoFormatError",
-      "PlaybackFormatAttemptsExhaustedError",
       "PlaybackSessionClosedError",
       "PlaybackStartupFailedError",
       "StartPositionOutOfRangeError",
