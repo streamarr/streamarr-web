@@ -25,6 +25,9 @@ describe('networkRouteOf', () => {
     { address: 'http://nas.local:8080/', reason: 'a .local name' },
     { address: 'http://Media-Server.LOCAL/', reason: 'a .local name in capitals' },
     { address: 'http://nas.local./', reason: 'a fully qualified .local name' },
+    { address: 'http://nas.home.arpa:8080/', reason: 'a .home.arpa name (RFC 8375)' },
+    { address: 'http://Media.Office.HOME.ARPA/', reason: 'a nested .home.arpa name in capitals' },
+    { address: 'http://nas.home.arpa./', reason: 'a fully qualified .home.arpa name' },
   ])('shouldAttestLocalNetworkWhenHostIsPrivate($reason)', ({ address }) => {
     expect(networkRouteOf(hostnameOf(address))).toBe('LOCAL_NETWORK')
   })
@@ -58,6 +61,9 @@ describe('networkRouteOf', () => {
     { address: 'http://[::ffff:203.0.113.7]/', reason: 'a public IPv4 address mapped into IPv6' },
     { address: 'http://local/', reason: 'a single label named local' },
     { address: 'http://nas.localdomain/', reason: 'a name that only starts like .local' },
+    { address: 'http://home.arpa/', reason: 'home.arpa itself, which names no device' },
+    { address: 'https://nas.myhome.arpa.example.com/', reason: 'home.arpa inside a public name' },
+    { address: 'http://nas.myhome.arpa/', reason: 'a name that only ends like home.arpa' },
   ])('shouldReportInternetWhenHostIsNotPrivate($reason)', ({ address }) => {
     expect(networkRouteOf(hostnameOf(address))).toBe('INTERNET')
   })

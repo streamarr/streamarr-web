@@ -1,15 +1,19 @@
 import type { NetworkRoute } from '../graphql/generated/graphql'
 
+const LOCAL_SUFFIXES = ['.local', '.home.arpa']
+
 /**
  * How the page reached the server, from the hostname in its address bar as `location.hostname`
  * gives it. A private IPv4 address (RFC 1918 or link-local), an IPv6 unique local (fd00::/8) or
- * link-local address, and a `.local` name are the local network; every other host is the
- * internet. Loopback counts as the internet because a tunnel can forward a loopback port, and so
- * does Tailscale's unique local prefix.
+ * link-local address, and a `.local` or `.home.arpa` (RFC 8375) name are the local network; every
+ * other host is the internet. Loopback counts as the internet because a tunnel can forward a
+ * loopback port, and so does Tailscale's unique local prefix.
  */
 export function networkRouteOf(hostname: string): NetworkRoute {
   const host = hostname.toLowerCase().replace(/\.$/, '')
-  if (host.endsWith('.local') || isLocalAddress(host)) return 'LOCAL_NETWORK'
+  if (LOCAL_SUFFIXES.some((suffix) => host.endsWith(suffix)) || isLocalAddress(host)) {
+    return 'LOCAL_NETWORK'
+  }
   return 'INTERNET'
 }
 
