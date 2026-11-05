@@ -6,8 +6,9 @@ const renewalCoreThresholds = { statements: 95, branches: 95, functions: 95, lin
 
 export default defineConfig({
   test: {
-    // Unit tests only: the Playwright specs under e2e/ run through their own runner.
-    include: ['src/**/*.test.{ts,tsx}'],
+    // Unit tests only, including those of the browser specs' helpers: the Playwright specs under
+    // e2e/ run through their own runner.
+    include: ['src/**/*.test.{ts,tsx}', 'e2e/**/*.test.ts'],
     environment: 'jsdom',
     environmentOptions: {
       jsdom: {
