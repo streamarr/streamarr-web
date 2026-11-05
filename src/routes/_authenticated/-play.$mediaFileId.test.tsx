@@ -14,15 +14,17 @@ vi.mock('hls.js', async () => (await import('../../test/fakeHls')).hlsModule)
 const ME = meFixture({ scope: 'profile' })
 const STREAM_URL = '/api/stream/file-1/multivariant.m3u8?t=playback-token'
 
-function serveApp() {
+function serveApp(): CreatePlaybackSessionInput[] {
+  const created: CreatePlaybackSessionInput[] = []
   server.use(
     graphql.mutation('DestroyPlaybackSession', ({ variables }) =>
       HttpResponse.json({ data: { destroyPlaybackSession: destroyedPlaybackSession(variables) } }),
     ),
     graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
     graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
-    graphql.mutation('CreatePlaybackSession', () =>
-      HttpResponse.json({
+    graphql.mutation('CreatePlaybackSession', ({ variables }) => {
+      created.push((variables as { input: CreatePlaybackSessionInput }).input)
+      return HttpResponse.json({
         data: {
           createPlaybackSession: {
             playbackSession: readyPlaybackSession({
@@ -31,9 +33,10 @@ function serveApp() {
             userErrors: [],
           },
         },
-      }),
-    ),
+      })
+    }),
   )
+  return created
 }
 
 const MOVIES: Record<string, object> = {
@@ -170,6 +173,16 @@ describe('/play/$mediaFileId', () => {
     fireEvent(video, new Event('loadedmetadata'))
     expect(video.currentTime).toBe(120)
     expect(created).toEqual(['AUTO', 'HIGH_720P', 'AUTO'])
+  })
+
+  it('shouldAttestTheInternetWhenThePageReachedTheServerByAPublicName', async () => {
+    const created = serveApp()
+
+    renderAppAt('/play/file-1')
+    await attachedVideo()
+
+    expect(window.location.hostname).toBe('streamarr.test')
+    expect(created.map((input) => input.networkRoute)).toEqual(['INTERNET'])
   })
 
   it('shouldNameTheEpisodeAndItsSeriesInTheTitleLine', async () => {

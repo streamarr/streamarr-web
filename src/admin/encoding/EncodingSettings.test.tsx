@@ -31,6 +31,20 @@ function serve(setting = SAVED_AUTOMATIC, me = ADMIN) {
     graphql.query('Me', () => HttpResponse.json({ data: { me } })),
     graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
     graphql.query('AdminLibraries', () => HttpResponse.json({ data: { libraries: [] } })),
+    graphql.query('UploadBudgetSetting', () =>
+      HttpResponse.json({
+        data: {
+          uploadBudgetSetting: {
+            __typename: 'UploadBudgetSetting',
+            internetUploadMegabitsPerSecond: null,
+            streamSharePercent: 80,
+            streamShareMegabitsPerSecond: null,
+            minimumInternetUploadMegabitsPerSecond: 1,
+            maximumInternetUploadMegabitsPerSecond: 10_000,
+          },
+        },
+      }),
+    ),
     graphql.query<EncoderPresetSettingQuery>('EncoderPresetSetting', () => {
       state.settingReads++
       return HttpResponse.json({ data: { encoderPresetSetting: state.setting } })

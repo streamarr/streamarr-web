@@ -9,7 +9,7 @@ import { deferred } from '../test/deferred'
 import { act, cleanup, configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import type { UserEvent } from '@testing-library/user-event'
 import { HttpResponse, graphql } from 'msw'
-import { useEffect, useState } from 'react'
+import { type ComponentProps, useEffect, useState } from 'react'
 import { afterEach, assert, beforeEach, describe, expect, it, vi } from 'vitest'
 import { type FakeHlsTrack, hls, resetFakeHls } from '../test/fakeHls'
 import {
@@ -33,14 +33,23 @@ import { server } from '../test/server'
 import type {
   ClientCapabilityDeclarationInput,
   CreatePlaybackSessionInput,
+  NetworkRoute,
   PlaybackFormatChange,
   ReportPlaybackFormatFailureInput,
   VideoQuality,
 } from '../graphql/generated/graphql'
 import type { PlaybackPlatform } from './playbackCapabilities'
-import { Player } from './Player'
+import { Player as RoutedPlayer } from './Player'
 
 vi.mock('hls.js', async () => (await import('../test/fakeHls')).hlsModule)
+
+// Every test plays over the internet unless it names the route the page reached the server by.
+function Player({
+  networkRoute = 'INTERNET',
+  ...props
+}: Omit<ComponentProps<typeof RoutedPlayer>, 'networkRoute'> & { networkRoute?: NetworkRoute }) {
+  return <RoutedPlayer networkRoute={networkRoute} {...props} />
+}
 
 const withoutDecodingInfo = () => playbackPlatformFixture()
 const STREAM_URL = '/api/stream/abcd/multivariant.m3u8?t=playback-token'
@@ -149,15 +158,19 @@ function servePlaybackChoices({
   playing = (requested) => requested,
   formatChange = () => null,
   offered = OFFERED_FOR_FULL_HD,
+  onCreate = () => {},
 }: {
   playing?: (requested: VideoQuality) => VideoQuality
   formatChange?: (requested: VideoQuality) => PlaybackFormatChange | null
   offered?: VideoQuality[]
+  onCreate?: (input: CreatePlaybackSessionInput) => void
 } = {}): string[] {
   const log: string[] = []
   server.use(
     graphql.mutation('CreatePlaybackSession', ({ variables }) => {
-      const { options } = (variables as { input: CreatePlaybackSessionInput }).input
+      const { input } = variables as { input: CreatePlaybackSessionInput }
+      const { options } = input
+      onCreate(input)
       log.push(`create ${options?.quality ?? 'without a choice'}`)
       const requested = options?.quality ?? 'AUTO'
       const number = log.filter((entry) => entry.startsWith('create')).length
@@ -951,6 +964,7 @@ describe('Player', () => {
           mediaFileId: 'abcd',
           capabilities: MINIMAL_DECLARATION,
           options: { quality: 'AUTO' },
+          networkRoute: 'INTERNET',
         },
       },
     ])
@@ -2594,6 +2608,7 @@ describe('Player', () => {
         mediaFileId: 'abcd',
         capabilities: MINIMAL_DECLARATION,
         options: { quality: 'AUTO' },
+        networkRoute: 'INTERNET',
       },
     })
   })
@@ -4958,6 +4973,24 @@ describe('Player', () => {
   })
 
   describe('quality', () => {
+    it('shouldSendTheNetworkRouteItIsGivenWhenEachPlaybackSessionStarts', async () => {
+      const routes: NetworkRoute[] = []
+      servePlaybackChoices({ onCreate: (input) => routes.push(input.networkRoute) })
+      const { user } = renderWithProviders(
+        <Player
+          networkRoute="LOCAL_NETWORK"
+          playbackPlatform={withoutDecodingInfo}
+          mediaFileId="abcd"
+        />,
+      )
+      await showingVideo(choiceStreamUrl(1))
+
+      await pickQuality(user, '720p')
+      await showingVideo(choiceStreamUrl(2))
+
+      expect(routes).toEqual(['LOCAL_NETWORK', 'LOCAL_NETWORK'])
+    })
+
     it('shouldStartInAutoWhenThePlayerOpens', async () => {
       const log = servePlaybackChoices()
 

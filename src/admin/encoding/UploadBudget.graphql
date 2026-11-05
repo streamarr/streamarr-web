@@ -1,0 +1,31 @@
+fragment UploadBudgetSettingFields on UploadBudgetSetting {
+  __typename
+  internetUploadMegabitsPerSecond
+  streamSharePercent
+  streamShareMegabitsPerSecond
+  minimumInternetUploadMegabitsPerSecond
+  maximumInternetUploadMegabitsPerSecond
+}
+
+query UploadBudgetSetting {
+  uploadBudgetSetting {
+    ...UploadBudgetSettingFields
+  }
+}
+
+mutation ChangeUploadBudget($input: ChangeUploadBudgetInput!) {
+  changeUploadBudget(input: $input) {
+    uploadBudgetSetting {
+      ...UploadBudgetSettingFields
+    }
+    userErrors {
+      __typename
+      ... on MutationError {
+        message
+      }
+      ... on InputMutationError {
+        inputPath
+      }
+    }
+  }
+}

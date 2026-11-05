@@ -3,8 +3,10 @@ import { expect, test, type Page } from '@playwright/test'
 import type {
   AddLibraryInput,
   ChangeEncoderPresetInput,
+  ChangeUploadBudgetInput,
   EncoderPresetSettingFieldsFragment,
   RemoveLibraryInput,
+  UploadBudgetSettingFieldsFragment,
 } from '../src/graphql/generated/graphql'
 import type { LibraryAdministration, ManagedLibrary } from '../src/admin/libraries/libraryModel'
 import { meFixture, profileFixture } from '../src/test/meFixture'
@@ -63,6 +65,14 @@ async function fixture(page: Page, libraries = [movie, shows]) {
         av1: 'FASTER',
       },
     } as EncoderPresetSettingFieldsFragment,
+    uploadBudgetSetting: {
+      __typename: 'UploadBudgetSetting',
+      internetUploadMegabitsPerSecond: null,
+      streamSharePercent: 80,
+      streamShareMegabitsPerSecond: null,
+      minimumInternetUploadMegabitsPerSecond: 1,
+      maximumInternetUploadMegabitsPerSecond: 10_000,
+    } as UploadBudgetSettingFieldsFragment,
     socket: await routeGraphqlSocket(page),
   }
   await page.route('**/graphql', async (route) => {
@@ -142,6 +152,19 @@ async function fixture(page: Page, libraries = [movie, shows]) {
       }
       return reply({
         changeEncoderPreset: { encoderPresetSetting: state.encoderPresetSetting, userErrors: [] },
+      })
+    }
+    if (operationName === 'UploadBudgetSetting')
+      return reply({ uploadBudgetSetting: state.uploadBudgetSetting })
+    if (operationName === 'ChangeUploadBudget') {
+      const { internetUploadMegabitsPerSecond: speed } = variables.input as ChangeUploadBudgetInput
+      state.uploadBudgetSetting = {
+        ...state.uploadBudgetSetting,
+        internetUploadMegabitsPerSecond: speed ?? null,
+        streamShareMegabitsPerSecond: typeof speed === 'number' ? speed * 0.8 : null,
+      }
+      return reply({
+        changeUploadBudget: { uploadBudgetSetting: state.uploadBudgetSetting, userErrors: [] },
       })
     }
     if (operationName === 'RemoveLibrary') {
@@ -583,4 +606,26 @@ test('the Encoding select keeps focus after a keyboard choice saves', async ({ p
   await expect(preset).toHaveValue('superfast')
   expect(state.encoderPresetSetting.preset).toBe('SUPERFAST')
   await expect(preset).toBeFocused()
+})
+
+test('the Encoding section saves the internet upload speed and shows the stream share', async ({
+  page,
+}) => {
+  const state = await fixture(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/settings/server/encoding')
+  const speed = page.getByRole('textbox', { name: 'Internet upload speed' })
+  await expect(speed).toHaveValue('')
+  await expect(page.getByText('Off: streams use as much upload as they need.')).toBeVisible()
+  await speed.fill('20')
+  await page.getByRole('button', { name: 'Save internet upload speed' }).click()
+  await expect(page.getByText('Streams use up to 80%: 16 of 20 Mb/s.')).toBeVisible()
+  expect(state.uploadBudgetSetting.internetUploadMegabitsPerSecond).toBe(20)
+  expect(await page.locator('main').evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(
+    true,
+  )
+
+  await page.reload()
+  await expect(speed).toHaveValue('20')
+  await expect(page.getByText('Streams use up to 80%: 16 of 20 Mb/s.')).toBeVisible()
 })

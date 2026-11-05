@@ -105,9 +105,6 @@
     "ChangeEncoderPresetError": [
       "UnknownEncoderPresetError"
     ],
-    "ChangeIdleSegmentRetentionError": [
-      "IdleSegmentRetentionOutOfRangeError"
-    ],
     "ChangeProfileKindError": [
       "MaximumAllowedRatingAgeInvalidError",
       "ProfileNotFoundError",
@@ -115,6 +112,9 @@
       "ReauthenticationRequiredError",
       "RestrictedAccountCannotAdministerError",
       "RestrictedProfileRequiresHouseholdAdminError"
+    ],
+    "ChangeUploadBudgetError": [
+      "UploadBudgetOutOfRangeError"
     ],
     "ContinueWatchingMedia": [
       "Episode",
@@ -245,7 +245,6 @@
       "HlsAacCapabilityRequiredError",
       "HouseholdNameRequiredError",
       "HouseholdNotFoundError",
-      "IdleSegmentRetentionOutOfRangeError",
       "InvalidIdError",
       "InvalidProfilePinError",
       "InvitationNotPendingError",
@@ -283,6 +282,7 @@
       "ShareNotFoundError",
       "ShareNotPendingError",
       "UnknownEncoderPresetError",
+      "UploadBudgetOutOfRangeError",
       "VideoCodecTierInvalidError"
     ],
     "InviteProfileManagerError": [
@@ -355,7 +355,6 @@
       "HlsAacCapabilityRequiredError",
       "HouseholdNameRequiredError",
       "HouseholdNotFoundError",
-      "IdleSegmentRetentionOutOfRangeError",
       "InvalidIdError",
       "InvalidMediaFileError",
       "InvalidProfilePinError",
@@ -422,6 +421,7 @@
       "ShareNotPendingError",
       "TranscodeCapacityUnavailableError",
       "UnknownEncoderPresetError",
+      "UploadBudgetOutOfRangeError",
       "VideoCodecTierInvalidError"
     ],
     "OfferProfileShareError": [
