@@ -432,11 +432,11 @@ function recordTimelineReports(): TimelineReport[] {
   return reports
 }
 
-function countCreatedSessions(): { count: number } {
-  const created = { count: 0 }
+function recordCreatedSessions(): CreatePlaybackSessionInput[] {
+  const created: CreatePlaybackSessionInput[] = []
   server.use(
-    graphql.mutation('CreatePlaybackSession', () => {
-      created.count += 1
+    graphql.mutation('CreatePlaybackSession', ({ variables }) => {
+      created.push((variables as { input: CreatePlaybackSessionInput }).input)
       return HttpResponse.json({
         data: {
           createPlaybackSession: {
@@ -3469,7 +3469,7 @@ describe('Player', () => {
     })
 
     it('shouldStartANewPlaybackSessionWhereTheViewerLeftWhenThePageReturnsFromTheBackForwardCache', async () => {
-      const created = countCreatedSessions()
+      const created = recordCreatedSessions()
       const closed = recordClosedSessions()
       renderWithProviders(
         <Player
@@ -3487,14 +3487,14 @@ describe('Player', () => {
 
       await waitFor(() => expect(hls.loadSource).toHaveBeenCalledTimes(2))
       loadMetadata(video)
-      expect(created.count).toBe(2)
+      expect(created).toHaveLength(2)
       expect(closed).toEqual([{ playbackSessionId: 'playback-sess-1', keepalive: true }])
       expect(video.currentTime).toBe(42)
       expect(video.paused).toBe(false)
     })
 
     it('shouldKeepAPausedVideoPausedWhenThePageReturnsFromTheBackForwardCache', async () => {
-      countCreatedSessions()
+      recordCreatedSessions()
       renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await attachedVideo()
       loadMetadata(video)
@@ -3511,7 +3511,7 @@ describe('Player', () => {
     })
 
     it('shouldKeepAPausedVideoPausedWhenThePageReturnsFromTheBackForwardCacheASecondTime', async () => {
-      countCreatedSessions()
+      recordCreatedSessions()
       renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       const video = await attachedVideo()
       loadMetadata(video)
@@ -3627,7 +3627,7 @@ describe('Player', () => {
     })
 
     it('shouldStartTheRestoredSessionWithoutWaitingForATimelineReportHeldWhenThePageWasHidden', async () => {
-      const created = countCreatedSessions()
+      const created = recordCreatedSessions()
       const reportStarted = deferred()
       const reportHeld = deferred()
       server.use(
@@ -3646,13 +3646,13 @@ describe('Player', () => {
       restoreThePage()
 
       await waitFor(() => expect(hls.loadSource).toHaveBeenCalledTimes(2))
-      expect(created.count).toBe(2)
+      expect(created).toHaveLength(2)
       reportHeld.resolve()
     })
 
     it('shouldResumeWhereTheViewerLeftWhenThePageIsHiddenWhileAnotherFormatStarts', async () => {
       hls.supported = false
-      countCreatedSessions()
+      recordCreatedSessions()
       const formatReported = deferred()
       server.use(
         graphql.mutation('ReportPlaybackFormatFailure', async () => {
@@ -3743,7 +3743,7 @@ describe('Player', () => {
     })
 
     it('shouldOfferRetryRatherThanStartAgainWhenThePageReturnsAfterStartupTimedOut', async () => {
-      const created = countCreatedSessions()
+      const created = recordCreatedSessions()
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
       renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       await attachedVideo()
@@ -3755,25 +3755,25 @@ describe('Player', () => {
       restoreThePage()
 
       expect(screen.getByRole('alert')).toHaveTextContent('Playback is taking too long to start.')
-      expect(created.count).toBe(1)
+      expect(created).toHaveLength(1)
       expect(hls.loadSource).toHaveBeenCalledOnce()
     })
 
     it('shouldKeepPlayingWhenThePageIsShownWithoutHavingBeenHidden', async () => {
-      const created = countCreatedSessions()
+      const created = recordCreatedSessions()
       const closed = recordClosedSessions()
       renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
       await attachedVideo()
 
       restoreThePage()
 
-      expect(created.count).toBe(1)
+      expect(created).toHaveLength(1)
       expect(closed).toEqual([])
       expect(hls.destroy).not.toHaveBeenCalled()
     })
 
     it('shouldStopWatchingThePageWhenThePlayerUnmounts', async () => {
-      const created = countCreatedSessions()
+      const created = recordCreatedSessions()
       const closed = recordClosedSessions()
       const { unmount } = renderWithProviders(
         <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
@@ -3788,7 +3788,7 @@ describe('Player', () => {
       restoreThePage()
 
       expect(closed).toHaveLength(1)
-      expect(created.count).toBe(1)
+      expect(created).toHaveLength(1)
     })
   })
 
