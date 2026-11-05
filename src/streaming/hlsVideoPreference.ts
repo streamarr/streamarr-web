@@ -5,7 +5,10 @@ import type {
   DolbyVisionProfile,
 } from '../graphql/generated/graphql'
 
-/** The picture the viewer asks for: HDR where the stream and the player allow it, or SDR. */
+/**
+ * The picture the viewer asks for: HDR where the stream and the player allow it, or SDR. A stream
+ * with no SDR variant plays its HDR variants even when SDR is chosen.
+ */
 export type DynamicRangeChoice = 'HDR' | 'SDR'
 
 const BASE_RANGES = new Map<DeclaredCompatibleBase, VideoRange>([

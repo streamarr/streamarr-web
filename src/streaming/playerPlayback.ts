@@ -62,8 +62,9 @@ export interface PlayerPlayback {
    */
   seek: (seconds: number) => void
   /**
-   * Plays the viewer's HDR choice, which starts as HDR. hls.js keeps the range it started on, so a
-   * changed choice attaches the stream again at the playhead.
+   * Asks hls.js for the viewer's HDR choice, which starts as HDR. hls.js keeps the range it
+   * started on, so a changed choice attaches the stream again at the playhead. A stream with no SDR
+   * variant still plays HDR after an SDR choice, until the server can be asked for SDR.
    */
   chooseDynamicRange: (choice: DynamicRangeChoice) => void
 }
