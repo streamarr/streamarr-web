@@ -106,7 +106,8 @@ export function PlaybackData({
   const closeButtonRef = useRef<HTMLButtonElement>(null)
   const openerRef = useRef<Element | null>(null)
   useEffect(() => {
-    openerRef.current = document.activeElement
+    // StrictMode runs this twice; the second run finds Close already focused, not the opener.
+    openerRef.current ??= document.activeElement
     closeButtonRef.current?.focus()
   }, [])
   const reach =

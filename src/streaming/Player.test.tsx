@@ -14,7 +14,7 @@ import { deferred } from '../test/deferred'
 import { act, cleanup, configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import type { UserEvent } from '@testing-library/user-event'
 import { HttpResponse, graphql, http } from 'msw'
-import { useEffect, useState } from 'react'
+import { StrictMode, useEffect, useState } from 'react'
 import { afterEach, assert, beforeEach, describe, expect, it, vi } from 'vitest'
 import { type FakeHlsTrack, hls, resetFakeHls } from '../test/fakeHls'
 import {
@@ -8900,6 +8900,28 @@ describe('Player', () => {
       expect(screen.getByRole('button', { name: 'Settings' })).toHaveFocus()
       expect(video.paused).toBe(false)
     })
+
+    it.each(['Close', 'Escape'])(
+      'shouldHandFocusBackToSettingsUnderStrictModeWhenTheViewerClosesPlaybackDataWith(%s)',
+      async (closing) => {
+        serveSession()
+        serveDecisions(() => [playbackDecision({ streamSessionId: SESSION.id })])
+        const { user } = renderWithProviders(
+          <StrictMode>
+            <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />
+          </StrictMode>,
+        )
+        await showingVideo(STREAM_URL)
+        const panel = await openPlaybackData(user)
+        const close = within(panel).getByRole('button', { name: 'Close playback data' })
+        expect(close).toHaveFocus()
+
+        await (closing === 'Close' ? user.click(close) : user.keyboard('{Escape}'))
+
+        expect(screen.queryByRole('region', { name: 'Playback data' })).not.toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Settings' })).toHaveFocus()
+      },
+    )
 
     it('shouldCloseOnEscapeAndHandFocusToSettingsWhenFocusHasMovedToAnotherPlayerControl', async () => {
       serveSession()
