@@ -21,14 +21,50 @@ fragment ActiveStreamFields on ActiveStream {
   }
   deviceName
   mediaFileId
-  title
-  seriesTitle
-  seasonNumber
-  episodeNumber
+  media {
+    __typename
+    ... on Movie {
+      id
+      title
+      runtime
+      images(type: POSTER) {
+        ...ActiveStreamPosterFields
+      }
+    }
+    ... on Episode {
+      id
+      title
+      episodeNumber
+      runtime
+      season {
+        id
+        seasonNumber
+        series {
+          id
+          title
+          images(type: POSTER) {
+            ...ActiveStreamPosterFields
+          }
+        }
+      }
+    }
+  }
   positionSeconds
   state
   decision {
     ...PlaybackDecisionFields
   }
   workers
+}
+
+fragment ActiveStreamPosterFields on Image {
+  aspectRatio
+  blurHash
+  variants {
+    id
+    size
+    width
+    height
+    url
+  }
 }
