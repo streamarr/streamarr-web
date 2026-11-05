@@ -13,6 +13,8 @@ const CAPABILITY_SPECS = [
 
 export default defineConfig({
   testDir: './e2e',
+  // The helpers' *.test.ts files are Vitest unit tests.
+  testMatch: '**/*.spec.ts',
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? [['github'], ['html', { open: 'never' }], ['list']] : 'list',
