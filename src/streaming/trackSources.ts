@@ -83,6 +83,50 @@ export function hlsTrackSource(hls: HlsTracks): TrackSource {
   }
 }
 
+/** One audio track that the server lists for a direct-played file. */
+export interface ListedAudioTrack {
+  position: number
+  language?: string | null
+  title?: string | null
+}
+
+/**
+ * The tracks of a direct-played file whose element can neither list nor switch its audio tracks:
+ * the audio tracks the server lists, with the one that plays selected, beside the element's own
+ * subtitles. Choosing another audio track hands it to `onChooseAudio`, which moves playback to it.
+ */
+export function listedAudioTrackSource(
+  elementTracks: TrackSource,
+  {
+    audioTracks,
+    playing,
+    onChooseAudio,
+  }: {
+    audioTracks: readonly ListedAudioTrack[]
+    playing: number | null
+    onChooseAudio: (position: number) => void
+  },
+): TrackSource {
+  const audio = choice(
+    audioTracks.map((track) => ({
+      id: track.position,
+      label: trackLabel(
+        { name: track.title ?? undefined, language: track.language ?? undefined },
+        track.position,
+      ),
+    })),
+    playing ?? -1,
+  )
+  return {
+    read: unchangedUntilDifferent(() => ({ audio, subtitles: elementTracks.read().subtitles })),
+    subscribe: elementTracks.subscribe,
+    selectAudio: (id) => {
+      if (id !== playing) onChooseAudio(id)
+    },
+    selectSubtitles: elementTracks.selectSubtitles,
+  }
+}
+
 const TRACK_LIST_EVENTS = ['addtrack', 'removetrack', 'change'] as const
 
 interface ElementTrack {
@@ -202,8 +246,9 @@ function trackLabel(
   return languageName(language) ?? `Track ${index + 1}`
 }
 
+// ISO 639's `und` marks a language as undetermined, which names no language.
 function languageName(code: string | undefined): string | undefined {
-  if (!code) {
+  if (!code || code === 'und') {
     return undefined
   }
   try {

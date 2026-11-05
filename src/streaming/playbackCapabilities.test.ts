@@ -12,6 +12,7 @@ import {
   playbackPlatformFixture,
   smoothUpToFullHd,
 } from '../test/playbackCapabilities'
+import { giveElementTracks } from '../test/mediaTracks'
 import {
   browserPlaybackPlatform,
   declarePlaybackCapabilities,
@@ -1123,6 +1124,25 @@ describe('declarePlaybackCapabilities', () => {
     expect(declaration).toEqual(MINIMAL_DECLARATION)
   })
 
+  it.each([true, false])(
+    'shouldDeclareWhetherThePlayerSelectsAnAudioTrackInDirectPlayAsTheElementDoesWhenSelecting%s',
+    async (selectsAudioTrackInDirectPlay) => {
+      const declaration = await declarePlaybackCapabilities(
+        platformFixture({ selectsAudioTrackInDirectPlay }),
+      )
+
+      expect(declaration.selectsAudioTrackInDirectPlay).toBe(selectsAudioTrackInDirectPlay)
+    },
+  )
+
+  it('shouldDeclareThatThePlayerSelectsAnAudioTrackInDirectPlayWhenTheElementDoesAndTheBrowserLacksDecodingInfo', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      platformFixture({ decodingInfo: undefined, selectsAudioTrackInDirectPlay: true }),
+    )
+
+    expect(declaration).toEqual({ ...MINIMAL_DECLARATION, selectsAudioTrackInDirectPlay: true })
+  })
+
   it('shouldKeepEveryOtherAnswerWhenThe720pOnlyBrowserRejectsTheOpusProbe', async () => {
     const declaration = await declarePlaybackCapabilities(
       platformFixture({
@@ -1746,7 +1766,354 @@ describe('declarePlaybackCapabilities', () => {
 
     expect(familyEntries(declaration, 'HEVC')).toEqual([UHD_AT_60_HEVC_ENTRY])
   })
+
+  describe('direct play', () => {
+    it('shouldDeclareMp4AndMatroskaDirectPlayWithEachSampleEntryWhenTheVideoElementPlaysThemLikeChromium', async () => {
+      const declaration = await declarePlaybackCapabilities(
+        filePlayingPlatform({ plays: CHROMIUM_FILE_TYPES }),
+      )
+
+      expect(declaration).toEqual({
+        video: [
+          {
+            ...DECLARATION_OF_EVERY_TIER.video[0],
+            directPlayContainers: ['MP4'],
+            directPlaySampleEntries: ['AVC1', 'AVC3'],
+          },
+          DECLARATION_OF_EVERY_TIER.video[1],
+          {
+            ...DECLARATION_OF_EVERY_TIER.video[2],
+            directPlayContainers: ['MP4', 'MATROSKA'],
+            directPlaySampleEntries: ['AV01'],
+          },
+        ],
+        audio: [
+          { codec: 'AAC', maxChannels: 6, hls: true, directPlayContainers: ['MP4'] },
+          { codec: 'AC3', maxChannels: 6, hls: true },
+          { codec: 'EAC3', maxChannels: 6, hls: true },
+          { codec: 'OPUS', maxChannels: 6, hls: true, directPlayContainers: ['MP4', 'MATROSKA'] },
+          { codec: 'FLAC', maxChannels: 6, hls: true, directPlayContainers: ['MP4'] },
+          { codec: 'ALAC', maxChannels: 6, hls: true },
+        ],
+        selectsAudioTrackInDirectPlay: false,
+      })
+    })
+
+    it('shouldListHvc1AndAvc1ButNotHev1OrAvc3WhenWebKitPlaysOnlyThoseSampleEntriesFromAFile', async () => {
+      const declaration = await declarePlaybackCapabilities(
+        filePlayingPlatform({ plays: WEBKIT_FILE_TYPES, userAgent: SAFARI }),
+      )
+
+      expect(directPlayOf(declaration.video)).toEqual([
+        { codecFamily: 'H264', containers: ['MP4'], sampleEntries: ['AVC1'] },
+        { codecFamily: 'HEVC', containers: ['MP4'], sampleEntries: ['HVC1'] },
+        { codecFamily: 'AV1', containers: [], sampleEntries: [] },
+      ])
+    })
+
+    it('shouldDeclareNoDirectPlayWhenTheBrowserDecodesTheStreamOnlyThroughMediaSource', async () => {
+      const declaration = await declarePlaybackCapabilities(
+        platformFixture({
+          decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) =>
+            Promise.resolve(answer(configuration.type === 'media-source')),
+          ),
+          canPlayType: canPlayTypeOf(CHROMIUM_FILE_TYPES),
+        }),
+      )
+
+      expect(declaration).toEqual(DECLARATION_OF_EVERY_TIER)
+    })
+
+    it.each(['maybe', ''] as const)(
+      'shouldDeclareNoDirectPlayWhenTheVideoElementAnswers%jForTheFilesType',
+      async (canPlay) => {
+        const declaration = await declarePlaybackCapabilities(
+          platformFixture({
+            decodingInfo: filePlayingDecodingInfo(CHROMIUM_FILE_TYPES),
+            canPlayType: () => canPlay,
+          }),
+        )
+
+        expect(declaration).toEqual(DECLARATION_OF_EVERY_TIER)
+      },
+    )
+
+    it('shouldDeclareNoDirectPlayWhenTheFileDecodesOnlyWithDroppedFramesAlthoughMediaSourceKeepsUp', async () => {
+      const declaration = await declarePlaybackCapabilities(
+        platformFixture({
+          decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) =>
+            Promise.resolve(
+              configuration.type === 'file' && configuration.video
+                ? UNSMOOTH_SOFTWARE_ANSWER
+                : answer(true),
+            ),
+          ),
+          canPlayType: canPlayTypeOf(CHROMIUM_FILE_TYPES),
+        }),
+      )
+
+      expect(directPlayOf(declaration.video).map(({ sampleEntries }) => sampleEntries)).toEqual([
+        [],
+        [],
+        [],
+      ])
+    })
+
+    it('shouldListASampleEntryOnlyWhenTheBrowserPlaysEveryProfileOfTheEntryFromAFile', async () => {
+      const declaration = await declarePlaybackCapabilities(
+        filePlayingPlatform({
+          plays: (type) => WEBKIT_FILE_TYPES(type) && !type.includes('codecs="hvc1.2.'),
+          userAgent: SAFARI,
+        }),
+      )
+
+      expect(directPlayOf(familyEntries(declaration, 'HEVC'))).toEqual([
+        { codecFamily: 'HEVC', containers: [], sampleEntries: [] },
+      ])
+    })
+
+    it('shouldListPowerEfficientHvc1WhenIphoneSafariNeverAnswersHevcSmooth', async () => {
+      const declaration = await declarePlaybackCapabilities(
+        platformFixture({
+          decodingInfo: decodingInfoAnsweringHevc(
+            () => IPHONE_SAFARI_HEVC_ANSWER,
+            smoothUpToFullHd,
+          ),
+          canPlayType: canPlayTypeOf(WEBKIT_FILE_TYPES),
+          userAgent: IPHONE_SAFARI_USER_AGENT,
+        }),
+      )
+
+      expect(directPlayOf(familyEntries(declaration, 'HEVC'))).toEqual([
+        { codecFamily: 'HEVC', containers: ['MP4'], sampleEntries: ['HVC1'] },
+      ])
+    })
+
+    it('shouldDeclareHdrDirectPlayInASeparateEntryWithoutDolbyVisionWhenTheHlsEntryListsDolbyVisionProfiles', async () => {
+      const declaration = await declarePlaybackCapabilities(
+        hdrPlatformFixture({
+          decodingInfo: hdrBrowser({ dolbyVision: ['dvh1.05', 'dvh1.08'] }),
+          canPlayType: canPlayTypeOf(WEBKIT_FILE_TYPES),
+          userAgent: SAFARI,
+        }),
+      )
+
+      expect(familyEntries(declaration, 'HEVC')).toEqual([
+        {
+          ...UHD_AT_60_HEVC_ENTRY,
+          directPlayContainers: ['MP4'],
+          directPlaySampleEntries: ['HVC1'],
+        },
+        hdrVideoEntry({
+          dolbyVisionProfiles: [
+            { profile: 'PROFILE_5', maxLevel: 9 },
+            { profile: 'PROFILE_8_1', maxLevel: 9 },
+            { profile: 'PROFILE_8_4', maxLevel: 9 },
+          ],
+        }),
+        hdrVideoEntry({
+          hls: false,
+          directPlayContainers: ['MP4'],
+          directPlaySampleEntries: ['HVC1'],
+        }),
+      ])
+    })
+
+    it('shouldDeclareNoDirectPlayForAnHdrEntryWhoseOnlyFormatIsDolbyVisionProfileFive', async () => {
+      const declaration = await declarePlaybackCapabilities(
+        hdrPlatformFixture({
+          decodingInfo: hdrBrowser({ bases: [], dolbyVision: ['dvh1.05'] }),
+          canPlayType: () => 'probably',
+        }),
+      )
+
+      expect(directPlayOf(familyEntries(declaration, 'HEVC').slice(1))).toEqual([
+        { codecFamily: 'HEVC', containers: [], sampleEntries: [] },
+      ])
+    })
+
+    it('shouldAskAnHdrEntrysDirectPlayQuestionsInTheColourOfEachCompatibleBase', async () => {
+      const declaration = await declarePlaybackCapabilities(
+        hdrPlatformFixture({
+          decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) => {
+            const refusesHlgFiles =
+              configuration.type === 'file' && configuration.video?.transferFunction === 'hlg'
+            return hdrBrowser()(configuration).then((answered) =>
+              refusesHlgFiles ? answer(false) : answered,
+            )
+          }),
+          canPlayType: canPlayTypeOf(WEBKIT_FILE_TYPES),
+          userAgent: SAFARI,
+        }),
+      )
+
+      expect(directPlayOf(familyEntries(declaration, 'HEVC'))).toEqual([
+        { codecFamily: 'HEVC', containers: ['MP4'], sampleEntries: ['HVC1'] },
+        { codecFamily: 'HEVC', containers: [], sampleEntries: [] },
+      ])
+    })
+
+    it('shouldDeclareNoMatroskaWhenTheBrowserPlaysWebmButNotTheMatroskaTypeTheServerSends', async () => {
+      const declaration = await declarePlaybackCapabilities(
+        filePlayingPlatform({
+          plays: (type) =>
+            (CHROMIUM_FILE_TYPES(type) && !type.includes('/x-matroska')) ||
+            type.startsWith('video/webm; codecs="av01.') ||
+            type === 'audio/webm; codecs="opus"',
+        }),
+      )
+
+      expect(
+        [...declaration.video, ...declaration.audio].filter((entry) =>
+          entry.directPlayContainers?.includes('MATROSKA'),
+        ),
+      ).toEqual([])
+    })
+
+    it('shouldDeclareNoHevcDirectPlayOnWebKitWhenTheFileAnswerIsOnlyPowerEfficientWhereMediaSourceKeepsUp', async () => {
+      const declaration = await declarePlaybackCapabilities(
+        platformFixture({
+          decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) =>
+            Promise.resolve(
+              configuration.type === 'file' && codecOf(configuration).startsWith('hvc1')
+                ? IPHONE_SAFARI_HEVC_ANSWER
+                : answer(true),
+            ),
+          ),
+          canPlayType: canPlayTypeOf(WEBKIT_FILE_TYPES),
+          userAgent: SAFARI,
+        }),
+      )
+
+      expect(directPlayOf(familyEntries(declaration, 'HEVC'))).toEqual([
+        { codecFamily: 'HEVC', containers: [], sampleEntries: [] },
+      ])
+    })
+
+    it('shouldDeclareADirectPlayOnlyAudioEntryWhenTheBrowserPlaysTheCodecFromAFileButNotThroughMediaSource', async () => {
+      const declaration = await declarePlaybackCapabilities(
+        platformFixture({
+          decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) =>
+            Promise.resolve(
+              answer(codecOf(configuration) !== 'flac' || configuration.type === 'file'),
+            ),
+          ),
+          canPlayType: canPlayTypeOf(WEBKIT_FILE_TYPES),
+          userAgent: SAFARI,
+        }),
+      )
+
+      expect(audioEntry(declaration, 'FLAC')).toEqual({
+        codec: 'FLAC',
+        maxChannels: 6,
+        hls: false,
+        directPlayContainers: ['MP4'],
+      })
+    })
+
+    it('shouldKeepOnlyTheEntriesThatApplyToDirectPlayWhenTheBrowserPlaysNoHls', async () => {
+      const declaration = await declarePlaybackCapabilities(
+        platformFixture({
+          canPlayType: canPlayTypeOf(CHROMIUM_FILE_TYPES),
+          hlsJsSupported: false,
+          nativeHlsSupported: false,
+        }),
+      )
+
+      expect(declaration.video.map(({ codecFamily, hls }) => [codecFamily, hls])).toEqual([
+        ['H264', false],
+        ['AV1', false],
+      ])
+      expect(declaration.audio.map(({ codec, hls }) => [codec, hls])).toEqual([
+        ['AAC', true],
+        ['OPUS', false],
+        ['FLAC', false],
+      ])
+    })
+
+    it('shouldDeclareNoDirectPlayButKeepEveryHlsAnswerWhenTheFileQuestionsGoUnansweredAtTheDeadline', async () => {
+      vi.useFakeTimers()
+      const answers = filePlayingDecodingInfo(CHROMIUM_FILE_TYPES)
+      const declaration = declarePlaybackCapabilities(
+        platformFixture({
+          decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) =>
+            configuration.type === 'file' ? NEVER_ANSWERED : answers(configuration),
+          ),
+          canPlayType: canPlayTypeOf(CHROMIUM_FILE_TYPES),
+        }),
+      )
+
+      await vi.advanceTimersByTimeAsync(3_000)
+
+      await expect(declaration).resolves.toEqual(DECLARATION_OF_EVERY_TIER)
+    })
+  })
 })
+
+// The content types that Chromium's video element plays as files, as Playwright's Chromium 156
+// answered canPlayType and decodingInfo: H.264 as avc1 and avc3, AV1 in MP4 and Matroska, and AAC,
+// Opus and FLAC audio. It has no HEVC. The server sends a Matroska file as video/x-matroska.
+function CHROMIUM_FILE_TYPES(type: string): boolean {
+  return [
+    'video/mp4; codecs="avc1.',
+    'video/mp4; codecs="avc3.',
+    'video/mp4; codecs="av01.',
+    'video/x-matroska; codecs="av01.',
+    'audio/mp4; codecs="mp4a.40.2"',
+    'audio/mp4; codecs="opus"',
+    'audio/mp4; codecs="flac"',
+    'audio/x-matroska; codecs="opus"',
+  ].some((prefix) => type.startsWith(prefix))
+}
+
+// As Playwright's WebKit 27.2 on a Mac answered: avc1, hvc1, dvh1 and Opus in WebM, never avc3,
+// hev1, dvhe, AV1 or Matroska.
+function WEBKIT_FILE_TYPES(type: string): boolean {
+  return [
+    'video/mp4; codecs="avc1.',
+    'video/mp4; codecs="hvc1.',
+    'video/mp4; codecs="dvh1.',
+    'audio/mp4; codecs="mp4a.40.2"',
+    'audio/mp4; codecs="flac"',
+    'audio/mp4; codecs="ac-3"',
+    'audio/mp4; codecs="ec-3"',
+    'audio/mp4; codecs="alac"',
+    'audio/webm; codecs="opus"',
+  ].some((prefix) => type.startsWith(prefix))
+}
+
+type FileTypes = (type: string) => boolean
+
+function canPlayTypeOf(plays: FileTypes): PlaybackPlatform['canPlayType'] {
+  return (type) => (plays(type) ? 'probably' : '')
+}
+
+// Every media-source question is supported and smooth; a file question only for a type it plays.
+function filePlayingDecodingInfo(plays: FileTypes) {
+  return vi.fn((configuration: MediaDecodingConfiguration) => {
+    const contentType = configuration.video?.contentType ?? configuration.audio?.contentType ?? ''
+    return Promise.resolve(answer(configuration.type !== 'file' || plays(contentType)))
+  })
+}
+
+function filePlayingPlatform({
+  plays,
+  ...overrides
+}: { plays: FileTypes } & Partial<PlaybackPlatform>): PlaybackPlatform {
+  return platformFixture({
+    decodingInfo: filePlayingDecodingInfo(plays),
+    canPlayType: canPlayTypeOf(plays),
+    ...overrides,
+  })
+}
+
+function directPlayOf(entries: readonly VideoCapabilityEntryInput[]) {
+  return entries.map(({ codecFamily, directPlayContainers, directPlaySampleEntries }) => ({
+    codecFamily,
+    containers: directPlayContainers ?? [],
+    sampleEntries: directPlaySampleEntries ?? [],
+  }))
+}
 
 // An AudioContext whose default output plays maxChannelCount channels, and whose close() settles
 // when closed does.
@@ -1952,6 +2319,41 @@ describe('browserPlaybackPlatform', () => {
     const platform = browserPlaybackPlatform(document.createElement('video'))
 
     expect(platform.displaysHighDynamicRange).toBe(false)
+  })
+
+  it('shouldSelectAnAudioTrackInDirectPlayWhenWebKitListsTheFilesAudioTracks', () => {
+    vi.stubGlobal('navigator', { userAgent: SAFARI, platform: 'MacIntel' })
+    const video = document.createElement('video')
+    giveElementTracks(video, { audio: [{ label: 'English', language: 'en', enabled: true }] })
+
+    const platform = browserPlaybackPlatform(video)
+
+    expect(platform.selectsAudioTrackInDirectPlay).toBe(true)
+  })
+
+  // Firefox lists audio tracks behind media.track.enabled, but only one of a file's tracks, and
+  // Chromium lists them behind an experimental flag.
+  it.each([
+    ['Firefox', FIREFOX],
+    ['Chrome', LINUX_CHROME],
+  ])('shouldSelectNoAudioTrackInDirectPlayWhen%sListsAudioTracks', (_, userAgent) => {
+    vi.stubGlobal('navigator', { userAgent })
+    const video = document.createElement('video')
+    giveElementTracks(video, { audio: [{ label: 'English', language: 'en', enabled: true }] })
+
+    const platform = browserPlaybackPlatform(video)
+
+    expect(platform.selectsAudioTrackInDirectPlay).toBe(false)
+  })
+
+  it('shouldSelectNoAudioTrackInDirectPlayWhenTheElementListsNoAudioTracks', () => {
+    const video = document.createElement('video')
+    // As in Chromium and Firefox, unlike jsdom, which lists an empty array.
+    Object.defineProperty(video, 'audioTracks', { configurable: true, value: undefined })
+
+    const platform = browserPlaybackPlatform(video)
+
+    expect(platform.selectsAudioTrackInDirectPlay).toBe(false)
   })
 
   it('shouldLeaveDecodingInfoAbsentWhenTheBrowserOffersNoMediaCapabilities', () => {

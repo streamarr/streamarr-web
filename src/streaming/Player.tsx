@@ -75,7 +75,7 @@ export function Player({
   ) {
     setChoice(startingChoice({ mediaFileId, startPositionSeconds }))
   }
-  const { notice, marks, followPlaybackSession } = usePlaybackFallbacks(choice.start)
+  const { notice, marks, followPlaybackSession, announce } = usePlaybackFallbacks(choice.start)
   const [picker, setPicker] = useState<PickerKind | null>(null)
   const tracks = sourcePhase.at === 'attached' ? sourcePhase.tracks : null
   const qualities = sourcePhase.at === 'attached' ? sourcePhase.qualities : null
@@ -123,6 +123,7 @@ export function Player({
       resumeFrom: choice.resumeFrom,
       onSourcePhase: setSourcePhase,
       onOutputShown: followPlaybackSession(),
+      onNotice: announce,
     })
     playbackRef.current = playback
     return playback.stop
@@ -134,6 +135,7 @@ export function Player({
     playbackPlatform,
     choice,
     followPlaybackSession,
+    announce,
   ])
 
   function chooseQuality(picked: VideoQuality) {

@@ -10,6 +10,8 @@ import {
   ReportPlaybackFormatFailureDocument,
   ReportStreamSessionTimelineDocument,
   type ReportStreamSessionTimelineMutationVariables,
+  SwitchPlaybackAudioTrackDocument,
+  type SwitchPlaybackAudioTrackInput,
   type VideoRange,
 } from '../graphql/generated/graphql'
 import { userErrorMessage, userErrorMessageOr } from '../graphql/userErrors'
@@ -18,7 +20,13 @@ import { hlsPlaybackConfig } from './hlsPlaybackConfig'
 import { type DynamicRangeChoice, hlsVideoPreference } from './hlsVideoPreference'
 import { DECLARATION_REFUSAL_TYPENAMES } from './playbackCapabilities'
 import type { QualityChoices } from './qualityChoices'
-import { hlsTrackSource, nativeTrackSource, type TrackSource } from './trackSources'
+import {
+  hlsTrackSource,
+  type ListedAudioTrack,
+  listedAudioTrackSource,
+  nativeTrackSource,
+  type TrackSource,
+} from './trackSources'
 
 // Progress is only worth a round trip once the playhead has moved this far since the last report.
 const TIMELINE_REPORT_INTERVAL_SECONDS = 10
@@ -69,6 +77,21 @@ export interface PlayerPlayback {
   chooseDynamicRange: (choice: DynamicRangeChoice) => void
 }
 
+// An audio track switch the server has not answered yet, and the failures of the source it
+// replaces that wait for the answer. A stall that outlasted its limit counts only while it lasts.
+interface PendingAudioTrackSwitch {
+  generation: number
+  formatFailure: PlaybackFormatFailure | null
+  failed: boolean
+  stalled: boolean
+}
+
+type AudioTrackSwitchAnswer =
+  | { kind: 'started'; playback: PlaybackSessionFieldsFragment }
+  | { kind: 'kept' }
+  | { kind: 'refused'; message: string }
+  | { kind: 'lost' }
+
 // A stall's limit, and the status read once the stall outlasts it.
 interface Stall {
   timer: ReturnType<typeof setTimeout>
@@ -79,6 +102,7 @@ interface PlaybackStatusCheck {
   controller: AbortController
   generation: number
   fatal: boolean
+  settled: Promise<void>
 }
 
 /** What the player asks of a new playback session; no start position starts at the beginning. */
@@ -100,6 +124,8 @@ interface PlayerPlaybackOptions {
   onSourcePhase: (phase: SourcePhase) => void
   /** Called once each attached stream shows its first frame, with the choices that stream plays. */
   onOutputShown: (qualities: QualityChoices) => void
+  /** Shows the server's words when it refuses something the viewer asked for while playback goes on. */
+  onNotice: (text: string) => void
 }
 
 interface SessionPlayback extends PlayerPlayback {
@@ -152,6 +178,7 @@ function startSessionPlayback({
   startPositionSeconds,
   onSourcePhase,
   onOutputShown,
+  onNotice,
   resumeFrom,
   dynamicRange: initialDynamicRange,
 }: PlayerPlaybackOptions & { dynamicRange: DynamicRangeChoice }): SessionPlayback {
@@ -163,6 +190,7 @@ function startSessionPlayback({
   }
   let dynamicRange = initialDynamicRange
   let cancelled = false
+  let pendingSwitch: PendingAudioTrackSwitch | null = null
   let sessionId: string | null = null
   let playbackSessionId: string | null = null
   let sourceGeneration = 0
@@ -438,7 +466,7 @@ function startSessionPlayback({
     if (!playbackSessionId) return
     try {
       const playback = await readPlaybackSession(playbackSessionId, statusCancellation.signal)
-      const seconds = attachedStreamIn(playback)?.mediaEndSeconds
+      const seconds = mediaEndOf(attachedStreamIn(playback))
       if (!cancelled && typeof seconds === 'number') learnRealEnd(seconds)
     } catch {
       // A stall that learns nothing waits as before; the stream's own errors still surface.
@@ -480,8 +508,11 @@ function startSessionPlayback({
     startStallLimit()
   }
 
-  // Also abandons the status read of a stall that outlasted the limit.
+  // Also abandons the status read of a stall that outlasted the limit, and forgets that it did
+  // while a switch waits: the element played, paused or seeked since.
   function clearStallLimit() {
+    const pending = switchPendingFor(sourceGeneration)
+    if (pending) pending.stalled = false
     if (!stall) return
     clearTimeout(stall.timer)
     stall.controller.abort()
@@ -500,16 +531,7 @@ function startSessionPlayback({
     clearTimeout(deadline)
     if (stall !== ended) return
     stall = undefined
-    // The media element can resume, pause or seek before it fires the event that stops the limit.
-    // A seek that hls.js or the browser started, whose event has not fired yet, starts its own
-    // limit when the event fires.
-    if (
-      video.paused ||
-      (video.seeking && video.currentTime !== seekUnderwayTo) ||
-      video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA
-    ) {
-      return
-    }
+    if (!stallStillLasts()) return
     if (!status.read) {
       failStalledStream()
       return
@@ -521,12 +543,28 @@ function startSessionPlayback({
       void reconcilePlaybackStatus({ generation: sourceGeneration, fatal: false })
       return
     }
-    const seconds = attachedStream.mediaEndSeconds
+    const seconds = mediaEndOf(attachedStream)
     if (typeof seconds === 'number') learnRealEnd(seconds)
     if (!endedAtRealEnd) failStalledStream()
   }
 
+  // The media element can resume, pause or seek before it fires the event that stops the limit.
+  // A seek that hls.js or the browser started, whose event has not fired yet, starts its own
+  // limit when the event fires.
+  function stallStillLasts(): boolean {
+    return !(
+      video.paused ||
+      (video.seeking && video.currentTime !== seekUnderwayTo) ||
+      video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA
+    )
+  }
+
   function failStalledStream() {
+    const pending = switchPendingFor(sourceGeneration)
+    if (pending) {
+      pending.stalled = true
+      return
+    }
     stopStatusCheck()
     detachSource()
     showFailure(FAILED_ATTEMPT_FALLBACK_MESSAGE)
@@ -607,16 +645,11 @@ function startSessionPlayback({
       showFailure(PLAYBACK_FAILURE_MESSAGE)
       return
     }
-    const stream = attempt.streamSession
-    if (stream.__typename !== 'HlsStreamSession') {
-      refuseStreamThatIsNotHls(stream.id)
-      return
-    }
     // The same stream attached again keeps the real end a status check named for it.
-    const sameStream = stream.id === sessionId
-    sessionId = stream.id
+    const sameStream = attempt.streamSession.id === sessionId
+    sessionId = attempt.streamSession.id
     attachedPlayback = playback
-    realEnd = stream.mediaEndSeconds ?? (sameStream ? realEnd : null)
+    realEnd = mediaEndOf(attempt.streamSession) ?? (sameStream ? realEnd : null)
     endedAtRealEnd = false
     sourceStopped = false
     firstFrameShown = false
@@ -629,7 +662,13 @@ function startSessionPlayback({
       playing: playback.playbackChoice,
       formatChange: playback.formatChange,
     }
-    source = attach(video, stream.streamUrl, {
+    const { streamSession } = attempt
+    // A source file holds no start position of its own, as a playlist's EXT-X-START does, so the
+    // element seeks where the stream session says playback starts.
+    if (streamSession.__typename === 'DirectPlayStreamSession') {
+      startAt = streamSession.startPositionSeconds ?? undefined
+    }
+    const options: StreamSourceOptions = {
       startupDeadline,
       videoPreference: hlsVideoPreference(declaration, dynamicRange),
       onFirstFrame: () => {
@@ -647,25 +686,30 @@ function startSessionPlayback({
       onFatal: () => {
         if (cancelled || generation !== sourceGeneration) return
         if (tryEndAtRealEnd()) return
+        const pending = switchPendingFor(generation)
+        if (pending) {
+          pending.failed = true
+          return
+        }
         stopStatusCheck()
         detachSource()
         showFailure(PLAYBACK_FAILURE_MESSAGE)
       },
-    })
+    }
+    source =
+      streamSession.__typename === 'DirectPlayStreamSession'
+        ? attachSourceFile(video, streamSession, {
+            ...options,
+            selectsAudioTrack: declaration.selectsAudioTrackInDirectPlay,
+            onChooseAudio: (position) => void switchAudioTrack(position, generation),
+          })
+        : attach(video, streamSession.streamUrl, options)
     onSourcePhase({
       at: 'attached',
       tracks: source.tracks,
       qualities,
-      videoRange: stream.videoRange,
+      videoRange: attempt.streamSession.videoRange,
     })
-  }
-
-  // This player opens only HLS, so the server replaces any other delivery as a refused format.
-  function refuseStreamThatIsNotHls(streamSessionId: string) {
-    sessionId = streamSessionId
-    realEnd = null
-    endedAtRealEnd = false
-    void reportFormatFailure('UNSUPPORTED_FORMAT', sourceGeneration)
   }
 
   async function reportFormatFailure(reason: PlaybackFormatFailure, generation: number) {
@@ -678,6 +722,12 @@ function startSessionPlayback({
       tryEndAtRealEnd()
     )
       return
+    // The server lets a failure wait for a switch rather than start a second HLS attempt.
+    const pending = switchPendingFor(generation)
+    if (pending) {
+      pending.formatFailure ??= reason
+      return
+    }
     reportingFormat = true
     const streamSessionId = sessionId
     stopStatusCheck()
@@ -704,6 +754,113 @@ function startSessionPlayback({
     } finally {
       reportingFormat = false
     }
+  }
+
+  // A player that cannot switch the file's audio track moves to HLS for the chosen one. Direct play
+  // goes on until the server has started that stream session, and goes on for good when it refuses.
+  // The server ends direct play as it answers, so a failure of the file meanwhile waits for the
+  // answer, and belongs to the source it came from.
+  async function switchAudioTrack(audioTrackPosition: number, generation: number) {
+    if (
+      cancelled ||
+      generation !== sourceGeneration ||
+      reportingFormat ||
+      switchPendingFor(generation) ||
+      !playbackSessionId ||
+      !sessionId
+    )
+      return
+    const pending: PendingAudioTrackSwitch = {
+      generation,
+      formatFailure: null,
+      failed: false,
+      stalled: false,
+    }
+    pendingSwitch = pending
+    const answer = await requestAudioTrackSwitch({
+      playbackSessionId,
+      streamSessionId: sessionId,
+      audioTrackPosition,
+    })
+    if (pendingSwitch === pending) pendingSwitch = null
+    if (cancelled || generation !== sourceGeneration) return
+    switch (answer.kind) {
+      case 'started': {
+        beginHandover()
+        const playback = await awaitReadyPlayback(answer.playback)
+        if (!cancelled) adoptPlayback(playback)
+        return
+      }
+      case 'refused':
+        onNotice(answer.message)
+        failAfterTheSwitch(pending)
+        return
+      case 'kept':
+        failAfterTheSwitch(pending)
+        return
+      case 'lost':
+        if (pending.formatFailure) {
+          void reportFormatFailure(pending.formatFailure, generation)
+          return
+        }
+        await recoverLostSwitch(pending)
+    }
+  }
+
+  // Only the playback status can say whether the server switched. The server may end direct play
+  // while the status is on its way, so the file's failures keep waiting until the status answers.
+  // A stall can still end meanwhile, so only a failure of the file makes the check fatal.
+  async function recoverLostSwitch(pending: PendingAudioTrackSwitch) {
+    pendingSwitch = pending
+    await reconcilePlaybackStatus({ generation: pending.generation, fatal: pending.failed })
+    if (pendingSwitch !== pending) return
+    pendingSwitch = null
+    if (cancelled || pending.generation !== sourceGeneration) return
+    failAfterTheSwitch(pending)
+  }
+
+  async function requestAudioTrackSwitch(
+    input: SwitchPlaybackAudioTrackInput,
+  ): Promise<AudioTrackSwitchAnswer> {
+    const deadline = new AbortController()
+    const timer = setTimeout(() => deadline.abort(), PLAYBACK_START_TIMEOUT_MS)
+    try {
+      const result = await client.mutate({
+        mutation: SwitchPlaybackAudioTrackDocument,
+        variables: { input },
+        fetchPolicy: 'no-cache',
+        context: {
+          fetchOptions: { signal: AbortSignal.any([statusCancellation.signal, deadline.signal]) },
+        },
+      })
+      const payload = result.data?.switchPlaybackAudioTrack
+      const refusal = payload?.userErrors[0]
+      if (refusal) return { kind: 'refused', message: userErrorMessage(refusal) }
+      // The server keeps a session that already plays the chosen track, or that moved on.
+      if (!payload?.playbackSession || attachedStreamIn(payload.playbackSession)) {
+        return { kind: 'kept' }
+      }
+      return { kind: 'started', playback: payload.playbackSession }
+    } catch {
+      return { kind: 'lost' }
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
+  function switchPendingFor(generation: number): PendingAudioTrackSwitch | undefined {
+    return pendingSwitch?.generation === generation ? pendingSwitch : undefined
+  }
+
+  // Direct play goes on after a switch the server did not make, unless the file failed meanwhile,
+  // or a stall that outlasted its limit still lasts.
+  function failAfterTheSwitch(pending: PendingAudioTrackSwitch) {
+    if (pending.failed || (pending.stalled && stallStillLasts())) {
+      stopStatusCheck()
+      failSource()
+      return
+    }
+    if (pending.formatFailure) void reportFormatFailure(pending.formatFailure, pending.generation)
   }
 
   function currentResumePoint(): ResumePoint {
@@ -750,13 +907,15 @@ function startSessionPlayback({
     previous?.controller.abort()
   }
 
-  async function reconcilePlaybackStatus({
+  // A caller that joins a running check waits for that check to settle. A check begun for a stream
+  // that has since been detached discards what it reads, so a new check replaces it.
+  function reconcilePlaybackStatus({
     generation,
     fatal,
   }: {
     generation: number
     fatal: boolean
-  }) {
+  }): Promise<void> {
     if (
       cancelled ||
       generation !== sourceGeneration ||
@@ -764,18 +923,29 @@ function startSessionPlayback({
       !playbackSessionId ||
       endedAtRealEnd
     )
-      return
-    if (statusCheck) {
+      return Promise.resolve()
+    if (statusCheck?.generation === generation) {
       statusCheck.fatal ||= fatal
-      return
+      return statusCheck.settled
     }
-    const check = { controller: new AbortController(), generation, fatal }
+    stopStatusCheck()
+    const check: PlaybackStatusCheck = {
+      controller: new AbortController(),
+      generation,
+      fatal,
+      settled: Promise.resolve(),
+    }
     statusCheck = check
+    check.settled = runStatusCheck(check, playbackSessionId)
+    return check.settled
+  }
+
+  async function runStatusCheck(check: PlaybackStatusCheck, id: string) {
     const current = () =>
       !cancelled && statusCheck === check && check.generation === sourceGeneration
     const deadline = setTimeout(() => check.controller.abort(), PLAYBACK_START_TIMEOUT_MS)
     try {
-      await pollForReplacement({ check, current, id: playbackSessionId })
+      await pollForReplacement({ check, current, id })
       if (current() && check.controller.signal.aborted && check.fatal) failSource()
     } catch {
       if (current() && check.fatal) failSource()
@@ -798,7 +968,7 @@ function startSessionPlayback({
       const playback = await readPlaybackSession(id, check.controller.signal)
       if (!current()) return
       const attachedStream = attachedStreamIn(playback)
-      const realEndOfStream = attachedStream?.mediaEndSeconds
+      const realEndOfStream = mediaEndOf(attachedStream)
       // The segments past a short copy's real end never come, and nothing replaces the stream.
       if (typeof realEndOfStream === 'number') {
         playOnToTheRealEnd(realEndOfStream, check.fatal)
@@ -825,8 +995,7 @@ function startSessionPlayback({
   function attachedStreamIn(playback: PlaybackSessionFieldsFragment | null | undefined) {
     const attempt = playback?.currentFormatAttempt
     if (attempt?.__typename !== 'ReadyPlaybackFormatAttempt') return undefined
-    const stream = attempt.streamSession
-    return stream.__typename === 'HlsStreamSession' && stream.id === sessionId ? stream : undefined
+    return attempt.streamSession.id === sessionId ? attempt.streamSession : undefined
   }
 
   function playOnToTheRealEnd(seconds: number, sourceFailed: boolean) {
@@ -1120,6 +1289,17 @@ function refusedTheStartPosition(payload: PlaybackSessionPayload | undefined): b
   )
 }
 
+type StreamSession = Extract<
+  PlaybackSessionFieldsFragment['currentFormatAttempt'],
+  { __typename: 'ReadyPlaybackFormatAttempt' }
+>['streamSession']
+
+// Only an HLS copy can run short of its advertised end; a source file ends where its media ends.
+function mediaEndOf(stream: StreamSession | undefined): number | null | undefined {
+  if (stream?.__typename !== 'HlsStreamSession') return undefined
+  return stream.mediaEndSeconds
+}
+
 function refusalMessage(payload: PlaybackSessionPayload | undefined): string {
   const refusal = payload?.userErrors[0]
   if (!refusal || DECLARATION_REFUSAL_TYPENAMES.has(refusal.__typename)) {
@@ -1227,6 +1407,174 @@ function isUnsupportedFormat(data: ErrorData): boolean {
   }
 }
 
+const SOURCE_FILE_CHECK_TIMEOUT_MS = 10_000
+
+// MediaError's codes, which not every environment defines as constants.
+const MEDIA_ERR_DECODE = 3
+const MEDIA_ERR_SRC_NOT_SUPPORTED = 4
+
+// Direct play hands the source file to the element, which reads it with byte-range requests. The
+// element has parsed the file's header by its metadata, so startup ends there, even when the
+// browser withholds the first frame until the viewer presses play.
+interface SourceFile {
+  streamUrl: string
+  /** The audio track the stream decision names among the file's audio tracks; null for none. */
+  audioTrackPosition: number | null
+  /** The file's audio tracks as the server lists them, in stream order. */
+  audioTracks: readonly ListedAudioTrack[]
+}
+
+interface SourceFileOptions extends StreamSourceOptions {
+  /** Whether the element lists the file's audio tracks and switches between them itself. */
+  selectsAudioTrack: boolean
+  /** Moves playback to another audio track of the file, for an element that cannot switch. */
+  onChooseAudio: (position: number) => void
+}
+
+function attachSourceFile(
+  video: HTMLVideoElement,
+  { streamUrl: url, audioTrackPosition, audioTracks }: SourceFile,
+  options: SourceFileOptions,
+): StreamSource {
+  const { startupDeadline, onFirstFrame, selectsAudioTrack, onChooseAudio } = options
+  const detached = new AbortController()
+  const elementTracks = nativeTrackSource(video)
+  const onVideoError = () => {
+    void handleSourceFileError({ video, url, options, signal: detached.signal })
+  }
+  // The element starts the file's default audio track, which can differ from the named one. It
+  // lists the file's tracks in the file's order, but only by the first frame is the list complete.
+  const selectNamedAudioTrack = () => {
+    if (audioTrackPosition === null) return
+    if (elementTracks.read().audio.options.length <= audioTrackPosition) return
+    elementTracks.selectAudio(audioTrackPosition)
+  }
+  // A track the viewer picks before the first frame stands. An element that cannot switch plays
+  // the track the server direct-plays the file for, so only the server's list names the others.
+  const tracks: TrackSource = selectsAudioTrack
+    ? {
+        ...elementTracks,
+        selectAudio: (id) => {
+          video.removeEventListener('loadeddata', selectNamedAudioTrack)
+          elementTracks.selectAudio(id)
+        },
+      }
+    : listedAudioTrackSource(elementTracks, {
+        audioTracks,
+        playing: audioTrackPosition,
+        onChooseAudio,
+      })
+  video.addEventListener('error', onVideoError)
+  video.addEventListener('loadedmetadata', startupDeadline.end)
+  if (selectsAudioTrack) {
+    video.addEventListener('loadeddata', selectNamedAudioTrack, { once: true })
+  }
+  video.addEventListener('loadeddata', onFirstFrame, { once: true })
+  video.src = url
+  return {
+    detach: () => {
+      detached.abort()
+      video.removeEventListener('error', onVideoError)
+      video.removeEventListener('loadedmetadata', startupDeadline.end)
+      video.removeEventListener('loadeddata', selectNamedAudioTrack)
+      video.removeEventListener('loadeddata', onFirstFrame)
+      releaseElementSource(video)
+    },
+    // The element plays the file itself, so no video preference picks its range.
+    followsVideoPreference: false,
+    tracks,
+    segmentSeconds: () => undefined,
+  }
+}
+
+// A file the browser cannot decode, or whose format it cannot open, is a format error, after which
+// the server's next format attempt is HLS at original quality. An aborted or failed fetch says
+// nothing about the format.
+async function handleSourceFileError({
+  video,
+  url,
+  options,
+  signal,
+}: {
+  video: HTMLVideoElement
+  url: string
+  options: StreamSourceOptions
+  signal: AbortSignal
+}) {
+  switch (video.error?.code) {
+    case MEDIA_ERR_DECODE:
+      options.onFormatFailure('DECODE_ERROR')
+      return
+    case MEDIA_ERR_SRC_NOT_SUPPORTED:
+      if (await isSourceFileDelivered(url, signal)) {
+        options.onFormatFailure('UNSUPPORTED_FORMAT')
+        return
+      }
+      options.onFatal()
+      return
+    default:
+      options.onFatal()
+  }
+}
+
+// The element also calls a source unsupported when the server refused it, as with a 404 for a file
+// that has gone or a 503, and a refused file says nothing about its format. Only a file whose first
+// byte arrives is one the element could not open. The response headers prove nothing: its body can
+// still stall, fail or end empty, so the deadline covers the first byte itself. An HTML page is a
+// gateway's sign-in or error page, never the file: the server answers with the container's media
+// type. Other types still count, since a proxy may rewrite them on a file that does arrive.
+async function isSourceFileDelivered(url: string, signal: AbortSignal): Promise<boolean> {
+  const check = new AbortController()
+  const deadline = setTimeout(() => check.abort(), SOURCE_FILE_CHECK_TIMEOUT_MS)
+  try {
+    const stopped = AbortSignal.any([signal, check.signal])
+    const response = await fetch(new URL(url, window.location.href), {
+      headers: { Range: 'bytes=0-0' },
+      credentials: 'same-origin',
+      signal: stopped,
+    })
+    return response.ok && !isHtmlPage(response) && (await hasFirstByte(response, stopped))
+  } catch {
+    return false
+  } finally {
+    clearTimeout(deadline)
+  }
+}
+
+function isHtmlPage(response: Response): boolean {
+  return /^text\/html\b/i.test(response.headers.get('Content-Type') ?? '')
+}
+
+// Not every fetch ties an aborted request's body to its signal, so the signal cancels the read.
+async function hasFirstByte(response: Response, stopped: AbortSignal): Promise<boolean> {
+  const reader = response.body?.getReader()
+  if (!reader) {
+    return false
+  }
+  const cancel = () => void reader.cancel().catch(() => undefined)
+  stopped.addEventListener('abort', cancel, { once: true })
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) {
+        return false
+      }
+      if (value.byteLength > 0) {
+        return true
+      }
+    }
+  } finally {
+    stopped.removeEventListener('abort', cancel)
+    cancel()
+  }
+}
+
+// The same reset hls.js performs on detach: the element stops fetching the stream.
+function releaseElementSource(video: HTMLVideoElement) {
+  video.removeAttribute('src')
+  video.load()
+}
+
 // Without MSE the element plays HLS itself and reports failure only through its error event.
 function attachNative(
   video: HTMLVideoElement,
@@ -1256,9 +1604,7 @@ function attachNative(
       video.removeEventListener('loadeddata', onFirstFrame)
       video.removeEventListener('suspend', holdWhilePaused)
       video.removeEventListener('play', startupDeadline.rearm)
-      // The same reset hls.js performs on detach: the element stops fetching the stream.
-      video.removeAttribute('src')
-      video.load()
+      releaseElementSource(video)
     },
     followsVideoPreference: false,
     tracks: nativeTrackSource(video),

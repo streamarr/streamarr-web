@@ -211,6 +211,389 @@ export type ImageSize =
   | 'SMALL'
   | '%future added value';
 
+/**
+ * A language that a Profile's language preferences name (ADR 0043). Each value's description is
+ * its BCP 47 tag. The server maps each value to the codes that files tag a stream with, such as
+ * fr, fra and fre for FR. A tag with a region or script that has no value of its own, such as
+ * pt-PT, reads as its base language.
+ */
+export type Language =
+  /** aa */
+  | 'AA'
+  /** ab */
+  | 'AB'
+  /** ae */
+  | 'AE'
+  /** af */
+  | 'AF'
+  /** ak */
+  | 'AK'
+  /** am */
+  | 'AM'
+  /** an */
+  | 'AN'
+  /** ar */
+  | 'AR'
+  /** as */
+  | 'AS'
+  /** av */
+  | 'AV'
+  /** ay */
+  | 'AY'
+  /** az */
+  | 'AZ'
+  /** ba */
+  | 'BA'
+  /** be */
+  | 'BE'
+  /** bg */
+  | 'BG'
+  /** bi */
+  | 'BI'
+  /** bm */
+  | 'BM'
+  /** bn */
+  | 'BN'
+  /** bo */
+  | 'BO'
+  /** br */
+  | 'BR'
+  /** bs */
+  | 'BS'
+  /** ca */
+  | 'CA'
+  /** ce */
+  | 'CE'
+  /** ch */
+  | 'CH'
+  /** co */
+  | 'CO'
+  /** cr */
+  | 'CR'
+  /** cs */
+  | 'CS'
+  /** cu */
+  | 'CU'
+  /** cv */
+  | 'CV'
+  /** cy */
+  | 'CY'
+  /** da */
+  | 'DA'
+  /** de */
+  | 'DE'
+  /** dv */
+  | 'DV'
+  /** dz */
+  | 'DZ'
+  /** ee */
+  | 'EE'
+  /** el */
+  | 'EL'
+  /** en */
+  | 'EN'
+  /** eo */
+  | 'EO'
+  /** es */
+  | 'ES'
+  /** es-419 */
+  | 'ES_419'
+  /** et */
+  | 'ET'
+  /** eu */
+  | 'EU'
+  /** fa */
+  | 'FA'
+  /** ff */
+  | 'FF'
+  /** fi */
+  | 'FI'
+  /** fj */
+  | 'FJ'
+  /** fo */
+  | 'FO'
+  /** fr */
+  | 'FR'
+  /** fy */
+  | 'FY'
+  /** ga */
+  | 'GA'
+  /** gd */
+  | 'GD'
+  /** gl */
+  | 'GL'
+  /** gn */
+  | 'GN'
+  /** gu */
+  | 'GU'
+  /** gv */
+  | 'GV'
+  /** ha */
+  | 'HA'
+  /** he */
+  | 'HE'
+  /** hi */
+  | 'HI'
+  /** ho */
+  | 'HO'
+  /** hr */
+  | 'HR'
+  /** ht */
+  | 'HT'
+  /** hu */
+  | 'HU'
+  /** hy */
+  | 'HY'
+  /** hz */
+  | 'HZ'
+  /** ia */
+  | 'IA'
+  /** id */
+  | 'ID'
+  /** ie */
+  | 'IE'
+  /** ig */
+  | 'IG'
+  /** ii */
+  | 'II'
+  /** ik */
+  | 'IK'
+  /** io */
+  | 'IO'
+  /** is */
+  | 'IS'
+  /** it */
+  | 'IT'
+  /** iu */
+  | 'IU'
+  /** ja */
+  | 'JA'
+  /** jv */
+  | 'JV'
+  /** ka */
+  | 'KA'
+  /** kg */
+  | 'KG'
+  /** ki */
+  | 'KI'
+  /** kj */
+  | 'KJ'
+  /** kk */
+  | 'KK'
+  /** kl */
+  | 'KL'
+  /** km */
+  | 'KM'
+  /** kn */
+  | 'KN'
+  /** ko */
+  | 'KO'
+  /** kr */
+  | 'KR'
+  /** ks */
+  | 'KS'
+  /** ku */
+  | 'KU'
+  /** kv */
+  | 'KV'
+  /** kw */
+  | 'KW'
+  /** ky */
+  | 'KY'
+  /** la */
+  | 'LA'
+  /** lb */
+  | 'LB'
+  /** lg */
+  | 'LG'
+  /** li */
+  | 'LI'
+  /** ln */
+  | 'LN'
+  /** lo */
+  | 'LO'
+  /** lt */
+  | 'LT'
+  /** lu */
+  | 'LU'
+  /** lv */
+  | 'LV'
+  /** mg */
+  | 'MG'
+  /** mh */
+  | 'MH'
+  /** mi */
+  | 'MI'
+  /** mk */
+  | 'MK'
+  /** ml */
+  | 'ML'
+  /** mn */
+  | 'MN'
+  /** mr */
+  | 'MR'
+  /** ms */
+  | 'MS'
+  /** mt */
+  | 'MT'
+  /** my */
+  | 'MY'
+  /** na */
+  | 'NA'
+  /** nb */
+  | 'NB'
+  /** nd */
+  | 'ND'
+  /** ne */
+  | 'NE'
+  /** ng */
+  | 'NG'
+  /** nl */
+  | 'NL'
+  /** nn */
+  | 'NN'
+  /** no */
+  | 'NO'
+  /** nr */
+  | 'NR'
+  /** nv */
+  | 'NV'
+  /** ny */
+  | 'NY'
+  /** oc */
+  | 'OC'
+  /** oj */
+  | 'OJ'
+  /** om */
+  | 'OM'
+  /** or */
+  | 'OR'
+  /** os */
+  | 'OS'
+  /** pa */
+  | 'PA'
+  /** pi */
+  | 'PI'
+  /** pl */
+  | 'PL'
+  /** ps */
+  | 'PS'
+  /** pt */
+  | 'PT'
+  /** pt-BR */
+  | 'PT_BR'
+  /** qu */
+  | 'QU'
+  /** rm */
+  | 'RM'
+  /** rn */
+  | 'RN'
+  /** ro */
+  | 'RO'
+  /** ru */
+  | 'RU'
+  /** rw */
+  | 'RW'
+  /** sa */
+  | 'SA'
+  /** sc */
+  | 'SC'
+  /** sd */
+  | 'SD'
+  /** se */
+  | 'SE'
+  /** sg */
+  | 'SG'
+  /** si */
+  | 'SI'
+  /** sk */
+  | 'SK'
+  /** sl */
+  | 'SL'
+  /** sm */
+  | 'SM'
+  /** sn */
+  | 'SN'
+  /** so */
+  | 'SO'
+  /** sq */
+  | 'SQ'
+  /** sr */
+  | 'SR'
+  /** ss */
+  | 'SS'
+  /** st */
+  | 'ST'
+  /** su */
+  | 'SU'
+  /** sv */
+  | 'SV'
+  /** sw */
+  | 'SW'
+  /** ta */
+  | 'TA'
+  /** te */
+  | 'TE'
+  /** tg */
+  | 'TG'
+  /** th */
+  | 'TH'
+  /** ti */
+  | 'TI'
+  /** tk */
+  | 'TK'
+  /** tl */
+  | 'TL'
+  /** tn */
+  | 'TN'
+  /** to */
+  | 'TO'
+  /** tr */
+  | 'TR'
+  /** ts */
+  | 'TS'
+  /** tt */
+  | 'TT'
+  /** tw */
+  | 'TW'
+  /** ty */
+  | 'TY'
+  /** ug */
+  | 'UG'
+  /** uk */
+  | 'UK'
+  /** ur */
+  | 'UR'
+  /** uz */
+  | 'UZ'
+  /** ve */
+  | 'VE'
+  /** vi */
+  | 'VI'
+  /** vo */
+  | 'VO'
+  /** wa */
+  | 'WA'
+  /** wo */
+  | 'WO'
+  /** xh */
+  | 'XH'
+  /** yi */
+  | 'YI'
+  /** yo */
+  | 'YO'
+  /** za */
+  | 'ZA'
+  /** zh */
+  | 'ZH'
+  /** zh-Hans */
+  | 'ZH_HANS'
+  /** zh-Hant */
+  | 'ZH_HANT'
+  /** zu */
+  | 'ZU'
+  | '%future added value';
+
 export type LibraryBackend =
   | 'LOCAL'
   | 'REMOTE'
@@ -380,12 +763,25 @@ export type StopLibraryScanInput = {
 
 /** The viewer's playback choices. What the client can play belongs in the client capability declaration. */
 export type StreamingOptionsInput = {
-  audioLanguage?: string | null | undefined;
+  /** The audio language of this session. It wins over the Profile's language preferences and overrides. */
+  audioLanguage?: Language | null | undefined;
   maxBitrate?: number | null | undefined;
   maxHeight?: number | null | undefined;
   maxWidth?: number | null | undefined;
   quality?: VideoQuality | null | undefined;
-  subtitleLanguage?: string | null | undefined;
+  /** The subtitle language of this session. Stored now; subtitles apply when they ship. */
+  subtitleLanguage?: Language | null | undefined;
+};
+
+export type SwitchPlaybackAudioTrackInput = {
+  /**
+   * The audio track that the viewer chose: its position, counting from 0, among the file's audio tracks in
+   * stream order, as DirectPlayStreamSession.audioTrackPosition counts.
+   */
+  audioTrackPosition: number;
+  playbackSessionId: string | number;
+  /** The direct-play stream session that plays now. */
+  streamSessionId: string | number;
 };
 
 export type TranscodeMode =
@@ -964,7 +1360,7 @@ export type CreatePlaybackSessionMutation = { createPlaybackSession: { playbackS
            }
         | { __typename: 'PendingPlaybackFormatAttempt', streamSessionId: string }
         | { __typename: 'ReadyPlaybackFormatAttempt', streamSession:
-            | { __typename: 'DirectPlayStreamSession', id: string, streamUrl: string }
+            | { __typename: 'DirectPlayStreamSession', sourceContainer: SourceContainer, videoRange: VideoRange, startPositionSeconds: number | null, audioTrackPosition: number | null, id: string, streamUrl: string, audioTracks: Array<{ position: number, language: string | null, title: string | null }> }
             | { __typename: 'HlsStreamSession', transcodeMode: TranscodeMode, videoRange: VideoRange, mediaEndSeconds: number | null, id: string, streamUrl: string }
            }
        } | null, userErrors: Array<
@@ -1017,7 +1413,7 @@ export type PlaybackSessionQuery = { playbackSession: { id: string, formatAttemp
          }
       | { __typename: 'PendingPlaybackFormatAttempt', streamSessionId: string }
       | { __typename: 'ReadyPlaybackFormatAttempt', streamSession:
-          | { __typename: 'DirectPlayStreamSession', id: string, streamUrl: string }
+          | { __typename: 'DirectPlayStreamSession', sourceContainer: SourceContainer, videoRange: VideoRange, startPositionSeconds: number | null, audioTrackPosition: number | null, id: string, streamUrl: string, audioTracks: Array<{ position: number, language: string | null, title: string | null }> }
           | { __typename: 'HlsStreamSession', transcodeMode: TranscodeMode, videoRange: VideoRange, mediaEndSeconds: number | null, id: string, streamUrl: string }
          }
      } | null };
@@ -1040,7 +1436,7 @@ export type PlaybackSessionFieldsFragment = { id: string, formatAttemptCount: nu
        }
     | { __typename: 'PendingPlaybackFormatAttempt', streamSessionId: string }
     | { __typename: 'ReadyPlaybackFormatAttempt', streamSession:
-        | { __typename: 'DirectPlayStreamSession', id: string, streamUrl: string }
+        | { __typename: 'DirectPlayStreamSession', sourceContainer: SourceContainer, videoRange: VideoRange, startPositionSeconds: number | null, audioTrackPosition: number | null, id: string, streamUrl: string, audioTracks: Array<{ position: number, language: string | null, title: string | null }> }
         | { __typename: 'HlsStreamSession', transcodeMode: TranscodeMode, videoRange: VideoRange, mediaEndSeconds: number | null, id: string, streamUrl: string }
        }
    };
@@ -1076,12 +1472,53 @@ export type ReportPlaybackFormatFailureMutation = { reportPlaybackFormatFailure:
            }
         | { __typename: 'PendingPlaybackFormatAttempt', streamSessionId: string }
         | { __typename: 'ReadyPlaybackFormatAttempt', streamSession:
-            | { __typename: 'DirectPlayStreamSession', id: string, streamUrl: string }
+            | { __typename: 'DirectPlayStreamSession', sourceContainer: SourceContainer, videoRange: VideoRange, startPositionSeconds: number | null, audioTrackPosition: number | null, id: string, streamUrl: string, audioTracks: Array<{ position: number, language: string | null, title: string | null }> }
             | { __typename: 'HlsStreamSession', transcodeMode: TranscodeMode, videoRange: VideoRange, mediaEndSeconds: number | null, id: string, streamUrl: string }
            }
        } | null, userErrors: Array<
       | { __typename: 'InvalidIdError', message: string }
       | { __typename: 'PlaybackSessionClosedError', message: string }
+    > } | null };
+
+export type SwitchPlaybackAudioTrackMutationVariables = Exact<{
+  input: SwitchPlaybackAudioTrackInput;
+}>;
+
+
+export type SwitchPlaybackAudioTrackMutation = { switchPlaybackAudioTrack: { playbackSession: { id: string, formatAttemptCount: number, maximumFormatAttempts: number, requestedChoice: VideoQuality, playbackChoice: VideoQuality, formatChange: PlaybackFormatChange | null, offeredChoices: Array<VideoQuality>, currentFormatAttempt:
+        | { __typename: 'FailedPlaybackFormatAttempt', streamSessionId: string, error:
+            | { __typename: 'InvalidMediaFileError', message: string }
+            | { __typename: 'MediaFileFrameRateUnknownError', message: string }
+            | { __typename: 'MediaFileHasNoVideoError', message: string }
+            | { __typename: 'MediaFileNotFoundError', message: string }
+            | { __typename: 'MediaFileProbeNotReadyError', message: string }
+            | { __typename: 'NoEligibleVideoFormatError', message: string }
+            | { __typename: 'PlaybackFormatAttemptsExhaustedError', message: string }
+            | { __typename: 'PlaybackFormatRejectedError', message: string }
+            | { __typename: 'PlaybackInvalidSpecificationError', message: string }
+            | { __typename: 'PlaybackOutputMismatchError', message: string }
+            | { __typename: 'PlaybackStartupFailedError', message: string }
+            | { __typename: 'StartPositionOutOfRangeError', message: string }
+            | { __typename: 'TranscodeCapacityUnavailableError', message: string }
+           }
+        | { __typename: 'PendingPlaybackFormatAttempt', streamSessionId: string }
+        | { __typename: 'ReadyPlaybackFormatAttempt', streamSession:
+            | { __typename: 'DirectPlayStreamSession', sourceContainer: SourceContainer, videoRange: VideoRange, startPositionSeconds: number | null, audioTrackPosition: number | null, id: string, streamUrl: string, audioTracks: Array<{ position: number, language: string | null, title: string | null }> }
+            | { __typename: 'HlsStreamSession', transcodeMode: TranscodeMode, videoRange: VideoRange, mediaEndSeconds: number | null, id: string, streamUrl: string }
+           }
+       } | null, userErrors: Array<
+      | { __typename: 'AudioTrackNotInFileError', message: string }
+      | { __typename: 'InvalidIdError', message: string }
+      | { __typename: 'InvalidMediaFileError', message: string }
+      | { __typename: 'MediaFileFrameRateUnknownError', message: string }
+      | { __typename: 'MediaFileHasNoVideoError', message: string }
+      | { __typename: 'MediaFileNotFoundError', message: string }
+      | { __typename: 'MediaFileProbeNotReadyError', message: string }
+      | { __typename: 'NoEligibleVideoFormatError', message: string }
+      | { __typename: 'PlaybackSessionClosedError', message: string }
+      | { __typename: 'PlaybackStartupFailedError', message: string }
+      | { __typename: 'StartPositionOutOfRangeError', message: string }
+      | { __typename: 'TranscodeCapacityUnavailableError', message: string }
     > } | null };
 
 export const EncoderPresetSettingFieldsFragmentDoc = {"kind":"Document","definitions":[{"kind":"FragmentDefinition","name":{"kind":"Name","value":"EncoderPresetSettingFields"},"typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"EncoderPresetSetting"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"Field","name":{"kind":"Name","value":"preset"}},{"kind":"Field","name":{"kind":"Name","value":"automatic"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"Field","name":{"kind":"Name","value":"h264"}},{"kind":"Field","name":{"kind":"Name","value":"hevc"}},{"kind":"Field","name":{"kind":"Name","value":"av1"}}]}}]}}]} as unknown as DocumentNode<EncoderPresetSettingFieldsFragment, unknown>;
@@ -1100,7 +1537,7 @@ export const EpisodeWatchStateFragmentDoc = {"kind":"Document","definitions":[{"
 export const SeasonWatchStateFragmentDoc = {"kind":"Document","definitions":[{"kind":"FragmentDefinition","name":{"kind":"Name","value":"SeasonWatchState"},"typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"Season"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"watchStatus"}},{"kind":"Field","name":{"kind":"Name","value":"watchProgress"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"WatchProgressFields"}}]}}]}},{"kind":"FragmentDefinition","name":{"kind":"Name","value":"WatchProgressFields"},"typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"WatchProgress"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"positionSeconds"}},{"kind":"Field","name":{"kind":"Name","value":"percentComplete"}},{"kind":"Field","name":{"kind":"Name","value":"durationSeconds"}}]}}]} as unknown as DocumentNode<SeasonWatchStateFragment, unknown>;
 export const SeriesWatchStateFragmentDoc = {"kind":"Document","definitions":[{"kind":"FragmentDefinition","name":{"kind":"Name","value":"SeriesWatchState"},"typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"Series"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"watchStatus"}},{"kind":"Field","name":{"kind":"Name","value":"watchProgress"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"WatchProgressFields"}}]}}]}},{"kind":"FragmentDefinition","name":{"kind":"Name","value":"WatchProgressFields"},"typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"WatchProgress"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"positionSeconds"}},{"kind":"Field","name":{"kind":"Name","value":"percentComplete"}},{"kind":"Field","name":{"kind":"Name","value":"durationSeconds"}}]}}]} as unknown as DocumentNode<SeriesWatchStateFragment, unknown>;
 export const WatchStateItemFieldsFragmentDoc = {"kind":"Document","definitions":[{"kind":"FragmentDefinition","name":{"kind":"Name","value":"WatchStateItemFields"},"typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"WatchStateItem"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"Movie"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"MovieWatchState"}}]}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"Episode"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"EpisodeWatchState"}},{"kind":"Field","name":{"kind":"Name","value":"season"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"SeasonWatchState"}},{"kind":"Field","name":{"kind":"Name","value":"series"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"SeriesWatchState"}}]}}]}}]}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"Season"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"SeasonWatchState"}},{"kind":"Field","name":{"kind":"Name","value":"episodes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"EpisodeWatchState"}}]}},{"kind":"Field","name":{"kind":"Name","value":"series"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"SeriesWatchState"}}]}}]}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"Series"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"SeriesWatchState"}},{"kind":"Field","name":{"kind":"Name","value":"seasons"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"SeasonWatchState"}},{"kind":"Field","name":{"kind":"Name","value":"episodes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"EpisodeWatchState"}}]}}]}}]}}]}},{"kind":"FragmentDefinition","name":{"kind":"Name","value":"WatchProgressFields"},"typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"WatchProgress"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"positionSeconds"}},{"kind":"Field","name":{"kind":"Name","value":"percentComplete"}},{"kind":"Field","name":{"kind":"Name","value":"durationSeconds"}}]}},{"kind":"FragmentDefinition","name":{"kind":"Name","value":"MovieWatchState"},"typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"Movie"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"watchStatus"}},{"kind":"Field","name":{"kind":"Name","value":"watchProgress"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"WatchProgressFields"}}]}}]}},{"kind":"FragmentDefinition","name":{"kind":"Name","value":"EpisodeWatchState"},"typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"Episode"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"watchStatus"}},{"kind":"Field","name":{"kind":"Name","value":"watchProgress"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"WatchProgressFields"}}]}}]}},{"kind":"FragmentDefinition","name":{"kind":"Name","value":"SeasonWatchState"},"typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"Season"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"watchStatus"}},{"kind":"Field","name":{"kind":"Name","value":"watchProgress"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"WatchProgressFields"}}]}}]}},{"kind":"FragmentDefinition","name":{"kind":"Name","value":"SeriesWatchState"},"typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"Series"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"watchStatus"}},{"kind":"Field","name":{"kind":"Name","value":"watchProgress"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"WatchProgressFields"}}]}}]}}]} as unknown as DocumentNode<WatchStateItemFieldsFragment, unknown>;
-export const PlaybackSessionFieldsFragmentDoc = {"kind":"Document","definitions":[{"kind":"FragmentDefinition","name":{"kind":"Name","value":"PlaybackSessionFields"},"typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"PlaybackSession"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"formatAttemptCount"}},{"kind":"Field","name":{"kind":"Name","value":"maximumFormatAttempts"}},{"kind":"Field","name":{"kind":"Name","value":"requestedChoice"}},{"kind":"Field","name":{"kind":"Name","value":"playbackChoice"}},{"kind":"Field","name":{"kind":"Name","value":"formatChange"}},{"kind":"Field","name":{"kind":"Name","value":"offeredChoices"}},{"kind":"Field","name":{"kind":"Name","value":"currentFormatAttempt"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"PendingPlaybackFormatAttempt"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"streamSessionId"}}]}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"ReadyPlaybackFormatAttempt"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"streamSession"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"streamUrl"}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"HlsStreamSession"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"transcodeMode"}},{"kind":"Field","name":{"kind":"Name","value":"videoRange"}},{"kind":"Field","name":{"kind":"Name","value":"mediaEndSeconds"}}]}}]}}]}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"FailedPlaybackFormatAttempt"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"streamSessionId"}},{"kind":"Field","name":{"kind":"Name","value":"error"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"MutationError"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"message"}}]}}]}}]}}]}}]}}]} as unknown as DocumentNode<PlaybackSessionFieldsFragment, unknown>;
+export const PlaybackSessionFieldsFragmentDoc = {"kind":"Document","definitions":[{"kind":"FragmentDefinition","name":{"kind":"Name","value":"PlaybackSessionFields"},"typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"PlaybackSession"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"formatAttemptCount"}},{"kind":"Field","name":{"kind":"Name","value":"maximumFormatAttempts"}},{"kind":"Field","name":{"kind":"Name","value":"requestedChoice"}},{"kind":"Field","name":{"kind":"Name","value":"playbackChoice"}},{"kind":"Field","name":{"kind":"Name","value":"formatChange"}},{"kind":"Field","name":{"kind":"Name","value":"offeredChoices"}},{"kind":"Field","name":{"kind":"Name","value":"currentFormatAttempt"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"PendingPlaybackFormatAttempt"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"streamSessionId"}}]}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"ReadyPlaybackFormatAttempt"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"streamSession"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"streamUrl"}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"HlsStreamSession"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"transcodeMode"}},{"kind":"Field","name":{"kind":"Name","value":"videoRange"}},{"kind":"Field","name":{"kind":"Name","value":"mediaEndSeconds"}}]}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"DirectPlayStreamSession"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"sourceContainer"}},{"kind":"Field","name":{"kind":"Name","value":"videoRange"}},{"kind":"Field","name":{"kind":"Name","value":"startPositionSeconds"}},{"kind":"Field","name":{"kind":"Name","value":"audioTrackPosition"}},{"kind":"Field","name":{"kind":"Name","value":"audioTracks"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"position"}},{"kind":"Field","name":{"kind":"Name","value":"language"}},{"kind":"Field","name":{"kind":"Name","value":"title"}}]}}]}}]}}]}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"FailedPlaybackFormatAttempt"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"streamSessionId"}},{"kind":"Field","name":{"kind":"Name","value":"error"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"MutationError"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"message"}}]}}]}}]}}]}}]}}]} as unknown as DocumentNode<PlaybackSessionFieldsFragment, unknown>;
 export const EncoderPresetSettingDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"EncoderPresetSetting"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"encoderPresetSetting"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"EncoderPresetSettingFields"}}]}}]}},{"kind":"FragmentDefinition","name":{"kind":"Name","value":"EncoderPresetSettingFields"},"typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"EncoderPresetSetting"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"Field","name":{"kind":"Name","value":"preset"}},{"kind":"Field","name":{"kind":"Name","value":"automatic"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"Field","name":{"kind":"Name","value":"h264"}},{"kind":"Field","name":{"kind":"Name","value":"hevc"}},{"kind":"Field","name":{"kind":"Name","value":"av1"}}]}}]}}]} as unknown as DocumentNode<EncoderPresetSettingQuery, EncoderPresetSettingQueryVariables>;
 export const ChangeEncoderPresetDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"ChangeEncoderPreset"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ChangeEncoderPresetInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"changeEncoderPreset"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"encoderPresetSetting"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"EncoderPresetSettingFields"}}]}},{"kind":"Field","name":{"kind":"Name","value":"userErrors"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"MutationError"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"message"}}]}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"InputMutationError"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"inputPath"}}]}}]}}]}}]}},{"kind":"FragmentDefinition","name":{"kind":"Name","value":"EncoderPresetSettingFields"},"typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"EncoderPresetSetting"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"Field","name":{"kind":"Name","value":"preset"}},{"kind":"Field","name":{"kind":"Name","value":"automatic"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"Field","name":{"kind":"Name","value":"h264"}},{"kind":"Field","name":{"kind":"Name","value":"hevc"}},{"kind":"Field","name":{"kind":"Name","value":"av1"}}]}}]}}]} as unknown as DocumentNode<ChangeEncoderPresetMutation, ChangeEncoderPresetMutationVariables>;
 export const IdleSegmentRetentionSettingDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"IdleSegmentRetentionSetting"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"idleSegmentRetentionSetting"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"IdleSegmentRetentionSettingFields"}}]}}]}},{"kind":"FragmentDefinition","name":{"kind":"Name","value":"IdleSegmentRetentionSettingFields"},"typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"IdleSegmentRetentionSetting"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"minutes"}},{"kind":"Field","name":{"kind":"Name","value":"minimumMinutes"}},{"kind":"Field","name":{"kind":"Name","value":"maximumMinutes"}}]}}]} as unknown as DocumentNode<IdleSegmentRetentionSettingQuery, IdleSegmentRetentionSettingQueryVariables>;
@@ -1138,8 +1575,9 @@ export const WatchStateChangedDocument = {"kind":"Document","definitions":[{"kin
 export const MovieDetailDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"MovieDetail"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"movie"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"title"}},{"kind":"Field","name":{"kind":"Name","value":"tagline"}},{"kind":"Field","name":{"kind":"Name","value":"summary"}},{"kind":"Field","name":{"kind":"Name","value":"runtime"}},{"kind":"Field","name":{"kind":"Name","value":"releaseDate"}},{"kind":"Field","name":{"kind":"Name","value":"contentRating"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}}]}},{"kind":"Field","name":{"kind":"Name","value":"genres"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"name"}}]}},{"kind":"Field","name":{"kind":"Name","value":"directors"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"name"}}]}},{"kind":"Field","name":{"kind":"Name","value":"cast"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"images"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"type"},"value":{"kind":"EnumValue","value":"PROFILE"}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"aspectRatio"}},{"kind":"Field","name":{"kind":"Name","value":"blurHash"}},{"kind":"Field","name":{"kind":"Name","value":"variants"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"size"}},{"kind":"Field","name":{"kind":"Name","value":"width"}},{"kind":"Field","name":{"kind":"Name","value":"height"}},{"kind":"Field","name":{"kind":"Name","value":"url"}}]}}]}}]}},{"kind":"Field","name":{"kind":"Name","value":"ratings"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"source"}},{"kind":"Field","name":{"kind":"Name","value":"value"}}]}},{"kind":"Field","name":{"kind":"Name","value":"files"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}}]}},{"kind":"Field","name":{"kind":"Name","value":"watchStatus"}},{"kind":"Field","name":{"kind":"Name","value":"watchProgress"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"positionSeconds"}},{"kind":"Field","name":{"kind":"Name","value":"percentComplete"}}]}},{"kind":"Field","alias":{"kind":"Name","value":"backdropImages"},"name":{"kind":"Name","value":"images"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"type"},"value":{"kind":"EnumValue","value":"BACKDROP"}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"ImageWithAmbientFields"}}]}},{"kind":"Field","alias":{"kind":"Name","value":"posterImages"},"name":{"kind":"Name","value":"images"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"type"},"value":{"kind":"EnumValue","value":"POSTER"}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"ImageWithAmbientFields"}}]}}]}}]}},{"kind":"FragmentDefinition","name":{"kind":"Name","value":"ImageWithAmbientFields"},"typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"Image"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"aspectRatio"}},{"kind":"Field","name":{"kind":"Name","value":"blurHash"}},{"kind":"Field","name":{"kind":"Name","value":"ambientColors"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"topLeft"}},{"kind":"Field","name":{"kind":"Name","value":"topRight"}},{"kind":"Field","name":{"kind":"Name","value":"bottomRight"}},{"kind":"Field","name":{"kind":"Name","value":"bottomLeft"}},{"kind":"Field","name":{"kind":"Name","value":"primary"}},{"kind":"Field","name":{"kind":"Name","value":"theme"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"base"}},{"kind":"Field","name":{"kind":"Name","value":"panel"}},{"kind":"Field","name":{"kind":"Name","value":"selected"}},{"kind":"Field","name":{"kind":"Name","value":"accent"}},{"kind":"Field","name":{"kind":"Name","value":"onAccent"}},{"kind":"Field","name":{"kind":"Name","value":"textPrimary"}},{"kind":"Field","name":{"kind":"Name","value":"textSecondary"}}]}}]}},{"kind":"Field","name":{"kind":"Name","value":"variants"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"size"}},{"kind":"Field","name":{"kind":"Name","value":"width"}},{"kind":"Field","name":{"kind":"Name","value":"height"}},{"kind":"Field","name":{"kind":"Name","value":"url"}}]}}]}}]} as unknown as DocumentNode<MovieDetailQuery, MovieDetailQueryVariables>;
 export const SeasonDetailDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"SeasonDetail"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"season"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"title"}},{"kind":"Field","name":{"kind":"Name","value":"seasonNumber"}},{"kind":"Field","name":{"kind":"Name","value":"overview"}},{"kind":"Field","name":{"kind":"Name","value":"airDate"}},{"kind":"Field","name":{"kind":"Name","value":"watchStatus"}},{"kind":"Field","name":{"kind":"Name","value":"series"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"title"}},{"kind":"Field","name":{"kind":"Name","value":"contentRating"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}}]}},{"kind":"Field","name":{"kind":"Name","value":"directors"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"name"}}]}},{"kind":"Field","name":{"kind":"Name","value":"seasons"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"seasonNumber"}},{"kind":"Field","name":{"kind":"Name","value":"title"}},{"kind":"Field","name":{"kind":"Name","value":"watchStatus"}},{"kind":"Field","name":{"kind":"Name","value":"episodes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"watchStatus"}}]}}]}},{"kind":"Field","alias":{"kind":"Name","value":"backdropImages"},"name":{"kind":"Name","value":"images"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"type"},"value":{"kind":"EnumValue","value":"BACKDROP"}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"ImageWithAmbientFields"}}]}}]}},{"kind":"Field","name":{"kind":"Name","value":"episodes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"title"}},{"kind":"Field","name":{"kind":"Name","value":"episodeNumber"}},{"kind":"Field","name":{"kind":"Name","value":"runtime"}},{"kind":"Field","name":{"kind":"Name","value":"watchStatus"}},{"kind":"Field","name":{"kind":"Name","value":"watchProgress"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"positionSeconds"}},{"kind":"Field","name":{"kind":"Name","value":"percentComplete"}},{"kind":"Field","name":{"kind":"Name","value":"durationSeconds"}}]}},{"kind":"Field","name":{"kind":"Name","value":"files"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}}]}},{"kind":"Field","alias":{"kind":"Name","value":"stillImages"},"name":{"kind":"Name","value":"images"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"type"},"value":{"kind":"EnumValue","value":"STILL"}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"aspectRatio"}},{"kind":"Field","name":{"kind":"Name","value":"blurHash"}},{"kind":"Field","name":{"kind":"Name","value":"variants"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"size"}},{"kind":"Field","name":{"kind":"Name","value":"width"}},{"kind":"Field","name":{"kind":"Name","value":"height"}},{"kind":"Field","name":{"kind":"Name","value":"url"}}]}}]}}]}},{"kind":"Field","alias":{"kind":"Name","value":"backdropImages"},"name":{"kind":"Name","value":"images"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"type"},"value":{"kind":"EnumValue","value":"BACKDROP"}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"ImageWithAmbientFields"}}]}},{"kind":"Field","alias":{"kind":"Name","value":"posterImages"},"name":{"kind":"Name","value":"images"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"type"},"value":{"kind":"EnumValue","value":"POSTER"}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"ImageWithAmbientFields"}}]}}]}}]}},{"kind":"FragmentDefinition","name":{"kind":"Name","value":"ImageWithAmbientFields"},"typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"Image"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"aspectRatio"}},{"kind":"Field","name":{"kind":"Name","value":"blurHash"}},{"kind":"Field","name":{"kind":"Name","value":"ambientColors"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"topLeft"}},{"kind":"Field","name":{"kind":"Name","value":"topRight"}},{"kind":"Field","name":{"kind":"Name","value":"bottomRight"}},{"kind":"Field","name":{"kind":"Name","value":"bottomLeft"}},{"kind":"Field","name":{"kind":"Name","value":"primary"}},{"kind":"Field","name":{"kind":"Name","value":"theme"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"base"}},{"kind":"Field","name":{"kind":"Name","value":"panel"}},{"kind":"Field","name":{"kind":"Name","value":"selected"}},{"kind":"Field","name":{"kind":"Name","value":"accent"}},{"kind":"Field","name":{"kind":"Name","value":"onAccent"}},{"kind":"Field","name":{"kind":"Name","value":"textPrimary"}},{"kind":"Field","name":{"kind":"Name","value":"textSecondary"}}]}}]}},{"kind":"Field","name":{"kind":"Name","value":"variants"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"size"}},{"kind":"Field","name":{"kind":"Name","value":"width"}},{"kind":"Field","name":{"kind":"Name","value":"height"}},{"kind":"Field","name":{"kind":"Name","value":"url"}}]}}]}}]} as unknown as DocumentNode<SeasonDetailQuery, SeasonDetailQueryVariables>;
 export const SeriesDetailDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"SeriesDetail"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"series"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"title"}},{"kind":"Field","name":{"kind":"Name","value":"tagline"}},{"kind":"Field","name":{"kind":"Name","value":"summary"}},{"kind":"Field","name":{"kind":"Name","value":"firstAirDate"}},{"kind":"Field","name":{"kind":"Name","value":"contentRating"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}}]}},{"kind":"Field","name":{"kind":"Name","value":"genres"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"name"}}]}},{"kind":"Field","name":{"kind":"Name","value":"directors"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"name"}}]}},{"kind":"Field","name":{"kind":"Name","value":"cast"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"images"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"type"},"value":{"kind":"EnumValue","value":"PROFILE"}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"aspectRatio"}},{"kind":"Field","name":{"kind":"Name","value":"blurHash"}},{"kind":"Field","name":{"kind":"Name","value":"variants"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"size"}},{"kind":"Field","name":{"kind":"Name","value":"width"}},{"kind":"Field","name":{"kind":"Name","value":"height"}},{"kind":"Field","name":{"kind":"Name","value":"url"}}]}}]}}]}},{"kind":"Field","name":{"kind":"Name","value":"watchStatus"}},{"kind":"Field","name":{"kind":"Name","value":"seasons"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"seasonNumber"}},{"kind":"Field","name":{"kind":"Name","value":"title"}},{"kind":"Field","name":{"kind":"Name","value":"airDate"}},{"kind":"Field","name":{"kind":"Name","value":"watchStatus"}},{"kind":"Field","name":{"kind":"Name","value":"watchProgress"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"percentComplete"}}]}},{"kind":"Field","alias":{"kind":"Name","value":"posterImages"},"name":{"kind":"Name","value":"images"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"type"},"value":{"kind":"EnumValue","value":"POSTER"}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"aspectRatio"}},{"kind":"Field","name":{"kind":"Name","value":"blurHash"}},{"kind":"Field","name":{"kind":"Name","value":"variants"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"size"}},{"kind":"Field","name":{"kind":"Name","value":"width"}},{"kind":"Field","name":{"kind":"Name","value":"height"}},{"kind":"Field","name":{"kind":"Name","value":"url"}}]}}]}},{"kind":"Field","name":{"kind":"Name","value":"episodes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"episodeNumber"}},{"kind":"Field","name":{"kind":"Name","value":"watchStatus"}},{"kind":"Field","name":{"kind":"Name","value":"watchProgress"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"positionSeconds"}}]}},{"kind":"Field","name":{"kind":"Name","value":"files"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}}]}}]}}]}},{"kind":"Field","alias":{"kind":"Name","value":"backdropImages"},"name":{"kind":"Name","value":"images"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"type"},"value":{"kind":"EnumValue","value":"BACKDROP"}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"ImageWithAmbientFields"}}]}},{"kind":"Field","alias":{"kind":"Name","value":"posterImages"},"name":{"kind":"Name","value":"images"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"type"},"value":{"kind":"EnumValue","value":"POSTER"}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"ImageWithAmbientFields"}}]}}]}}]}},{"kind":"FragmentDefinition","name":{"kind":"Name","value":"ImageWithAmbientFields"},"typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"Image"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"aspectRatio"}},{"kind":"Field","name":{"kind":"Name","value":"blurHash"}},{"kind":"Field","name":{"kind":"Name","value":"ambientColors"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"topLeft"}},{"kind":"Field","name":{"kind":"Name","value":"topRight"}},{"kind":"Field","name":{"kind":"Name","value":"bottomRight"}},{"kind":"Field","name":{"kind":"Name","value":"bottomLeft"}},{"kind":"Field","name":{"kind":"Name","value":"primary"}},{"kind":"Field","name":{"kind":"Name","value":"theme"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"base"}},{"kind":"Field","name":{"kind":"Name","value":"panel"}},{"kind":"Field","name":{"kind":"Name","value":"selected"}},{"kind":"Field","name":{"kind":"Name","value":"accent"}},{"kind":"Field","name":{"kind":"Name","value":"onAccent"}},{"kind":"Field","name":{"kind":"Name","value":"textPrimary"}},{"kind":"Field","name":{"kind":"Name","value":"textSecondary"}}]}}]}},{"kind":"Field","name":{"kind":"Name","value":"variants"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"size"}},{"kind":"Field","name":{"kind":"Name","value":"width"}},{"kind":"Field","name":{"kind":"Name","value":"height"}},{"kind":"Field","name":{"kind":"Name","value":"url"}}]}}]}}]} as unknown as DocumentNode<SeriesDetailQuery, SeriesDetailQueryVariables>;
-export const CreatePlaybackSessionDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"CreatePlaybackSession"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"CreatePlaybackSessionInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"createPlaybackSession"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"playbackSession"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"PlaybackSessionFields"}}]}},{"kind":"Field","name":{"kind":"Name","value":"userErrors"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"MutationError"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"message"}}]}}]}}]}}]}},{"kind":"FragmentDefinition","name":{"kind":"Name","value":"PlaybackSessionFields"},"typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"PlaybackSession"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"formatAttemptCount"}},{"kind":"Field","name":{"kind":"Name","value":"maximumFormatAttempts"}},{"kind":"Field","name":{"kind":"Name","value":"requestedChoice"}},{"kind":"Field","name":{"kind":"Name","value":"playbackChoice"}},{"kind":"Field","name":{"kind":"Name","value":"formatChange"}},{"kind":"Field","name":{"kind":"Name","value":"offeredChoices"}},{"kind":"Field","name":{"kind":"Name","value":"currentFormatAttempt"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"PendingPlaybackFormatAttempt"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"streamSessionId"}}]}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"ReadyPlaybackFormatAttempt"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"streamSession"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"streamUrl"}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"HlsStreamSession"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"transcodeMode"}},{"kind":"Field","name":{"kind":"Name","value":"videoRange"}},{"kind":"Field","name":{"kind":"Name","value":"mediaEndSeconds"}}]}}]}}]}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"FailedPlaybackFormatAttempt"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"streamSessionId"}},{"kind":"Field","name":{"kind":"Name","value":"error"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"MutationError"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"message"}}]}}]}}]}}]}}]}}]} as unknown as DocumentNode<CreatePlaybackSessionMutation, CreatePlaybackSessionMutationVariables>;
+export const CreatePlaybackSessionDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"CreatePlaybackSession"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"CreatePlaybackSessionInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"createPlaybackSession"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"playbackSession"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"PlaybackSessionFields"}}]}},{"kind":"Field","name":{"kind":"Name","value":"userErrors"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"MutationError"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"message"}}]}}]}}]}}]}},{"kind":"FragmentDefinition","name":{"kind":"Name","value":"PlaybackSessionFields"},"typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"PlaybackSession"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"formatAttemptCount"}},{"kind":"Field","name":{"kind":"Name","value":"maximumFormatAttempts"}},{"kind":"Field","name":{"kind":"Name","value":"requestedChoice"}},{"kind":"Field","name":{"kind":"Name","value":"playbackChoice"}},{"kind":"Field","name":{"kind":"Name","value":"formatChange"}},{"kind":"Field","name":{"kind":"Name","value":"offeredChoices"}},{"kind":"Field","name":{"kind":"Name","value":"currentFormatAttempt"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"PendingPlaybackFormatAttempt"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"streamSessionId"}}]}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"ReadyPlaybackFormatAttempt"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"streamSession"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"streamUrl"}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"HlsStreamSession"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"transcodeMode"}},{"kind":"Field","name":{"kind":"Name","value":"videoRange"}},{"kind":"Field","name":{"kind":"Name","value":"mediaEndSeconds"}}]}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"DirectPlayStreamSession"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"sourceContainer"}},{"kind":"Field","name":{"kind":"Name","value":"videoRange"}},{"kind":"Field","name":{"kind":"Name","value":"startPositionSeconds"}},{"kind":"Field","name":{"kind":"Name","value":"audioTrackPosition"}},{"kind":"Field","name":{"kind":"Name","value":"audioTracks"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"position"}},{"kind":"Field","name":{"kind":"Name","value":"language"}},{"kind":"Field","name":{"kind":"Name","value":"title"}}]}}]}}]}}]}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"FailedPlaybackFormatAttempt"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"streamSessionId"}},{"kind":"Field","name":{"kind":"Name","value":"error"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"MutationError"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"message"}}]}}]}}]}}]}}]}}]} as unknown as DocumentNode<CreatePlaybackSessionMutation, CreatePlaybackSessionMutationVariables>;
 export const DestroyPlaybackSessionDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"DestroyPlaybackSession"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"DestroyPlaybackSessionInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"destroyPlaybackSession"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"playbackSessionId"}},{"kind":"Field","name":{"kind":"Name","value":"userErrors"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"MutationError"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"message"}}]}}]}}]}}]}}]} as unknown as DocumentNode<DestroyPlaybackSessionMutation, DestroyPlaybackSessionMutationVariables>;
-export const PlaybackSessionDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PlaybackSession"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"playbackSession"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"PlaybackSessionFields"}}]}}]}},{"kind":"FragmentDefinition","name":{"kind":"Name","value":"PlaybackSessionFields"},"typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"PlaybackSession"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"formatAttemptCount"}},{"kind":"Field","name":{"kind":"Name","value":"maximumFormatAttempts"}},{"kind":"Field","name":{"kind":"Name","value":"requestedChoice"}},{"kind":"Field","name":{"kind":"Name","value":"playbackChoice"}},{"kind":"Field","name":{"kind":"Name","value":"formatChange"}},{"kind":"Field","name":{"kind":"Name","value":"offeredChoices"}},{"kind":"Field","name":{"kind":"Name","value":"currentFormatAttempt"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"PendingPlaybackFormatAttempt"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"streamSessionId"}}]}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"ReadyPlaybackFormatAttempt"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"streamSession"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"streamUrl"}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"HlsStreamSession"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"transcodeMode"}},{"kind":"Field","name":{"kind":"Name","value":"videoRange"}},{"kind":"Field","name":{"kind":"Name","value":"mediaEndSeconds"}}]}}]}}]}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"FailedPlaybackFormatAttempt"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"streamSessionId"}},{"kind":"Field","name":{"kind":"Name","value":"error"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"MutationError"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"message"}}]}}]}}]}}]}}]}}]} as unknown as DocumentNode<PlaybackSessionQuery, PlaybackSessionQueryVariables>;
+export const PlaybackSessionDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PlaybackSession"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"playbackSession"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"PlaybackSessionFields"}}]}}]}},{"kind":"FragmentDefinition","name":{"kind":"Name","value":"PlaybackSessionFields"},"typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"PlaybackSession"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"formatAttemptCount"}},{"kind":"Field","name":{"kind":"Name","value":"maximumFormatAttempts"}},{"kind":"Field","name":{"kind":"Name","value":"requestedChoice"}},{"kind":"Field","name":{"kind":"Name","value":"playbackChoice"}},{"kind":"Field","name":{"kind":"Name","value":"formatChange"}},{"kind":"Field","name":{"kind":"Name","value":"offeredChoices"}},{"kind":"Field","name":{"kind":"Name","value":"currentFormatAttempt"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"PendingPlaybackFormatAttempt"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"streamSessionId"}}]}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"ReadyPlaybackFormatAttempt"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"streamSession"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"streamUrl"}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"HlsStreamSession"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"transcodeMode"}},{"kind":"Field","name":{"kind":"Name","value":"videoRange"}},{"kind":"Field","name":{"kind":"Name","value":"mediaEndSeconds"}}]}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"DirectPlayStreamSession"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"sourceContainer"}},{"kind":"Field","name":{"kind":"Name","value":"videoRange"}},{"kind":"Field","name":{"kind":"Name","value":"startPositionSeconds"}},{"kind":"Field","name":{"kind":"Name","value":"audioTrackPosition"}},{"kind":"Field","name":{"kind":"Name","value":"audioTracks"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"position"}},{"kind":"Field","name":{"kind":"Name","value":"language"}},{"kind":"Field","name":{"kind":"Name","value":"title"}}]}}]}}]}}]}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"FailedPlaybackFormatAttempt"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"streamSessionId"}},{"kind":"Field","name":{"kind":"Name","value":"error"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"MutationError"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"message"}}]}}]}}]}}]}}]}}]} as unknown as DocumentNode<PlaybackSessionQuery, PlaybackSessionQueryVariables>;
 export const PlayerMediaTitleDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"PlayerMediaTitle"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"movie"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"Boolean"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"movie"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"directives":[{"kind":"Directive","name":{"kind":"Name","value":"include"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"if"},"value":{"kind":"Variable","name":{"kind":"Name","value":"movie"}}}]}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"title"}}]}},{"kind":"Field","name":{"kind":"Name","value":"episode"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"directives":[{"kind":"Directive","name":{"kind":"Name","value":"skip"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"if"},"value":{"kind":"Variable","name":{"kind":"Name","value":"movie"}}}]}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"title"}},{"kind":"Field","name":{"kind":"Name","value":"episodeNumber"}},{"kind":"Field","name":{"kind":"Name","value":"season"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"seasonNumber"}},{"kind":"Field","name":{"kind":"Name","value":"series"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"title"}}]}}]}}]}}]}}]} as unknown as DocumentNode<PlayerMediaTitleQuery, PlayerMediaTitleQueryVariables>;
-export const ReportPlaybackFormatFailureDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"ReportPlaybackFormatFailure"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ReportPlaybackFormatFailureInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"reportPlaybackFormatFailure"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"playbackSession"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"PlaybackSessionFields"}}]}},{"kind":"Field","name":{"kind":"Name","value":"userErrors"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"MutationError"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"message"}}]}}]}}]}}]}},{"kind":"FragmentDefinition","name":{"kind":"Name","value":"PlaybackSessionFields"},"typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"PlaybackSession"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"formatAttemptCount"}},{"kind":"Field","name":{"kind":"Name","value":"maximumFormatAttempts"}},{"kind":"Field","name":{"kind":"Name","value":"requestedChoice"}},{"kind":"Field","name":{"kind":"Name","value":"playbackChoice"}},{"kind":"Field","name":{"kind":"Name","value":"formatChange"}},{"kind":"Field","name":{"kind":"Name","value":"offeredChoices"}},{"kind":"Field","name":{"kind":"Name","value":"currentFormatAttempt"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"PendingPlaybackFormatAttempt"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"streamSessionId"}}]}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"ReadyPlaybackFormatAttempt"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"streamSession"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"streamUrl"}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"HlsStreamSession"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"transcodeMode"}},{"kind":"Field","name":{"kind":"Name","value":"videoRange"}},{"kind":"Field","name":{"kind":"Name","value":"mediaEndSeconds"}}]}}]}}]}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"FailedPlaybackFormatAttempt"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"streamSessionId"}},{"kind":"Field","name":{"kind":"Name","value":"error"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"MutationError"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"message"}}]}}]}}]}}]}}]}}]} as unknown as DocumentNode<ReportPlaybackFormatFailureMutation, ReportPlaybackFormatFailureMutationVariables>;
+export const ReportPlaybackFormatFailureDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"ReportPlaybackFormatFailure"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ReportPlaybackFormatFailureInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"reportPlaybackFormatFailure"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"playbackSession"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"PlaybackSessionFields"}}]}},{"kind":"Field","name":{"kind":"Name","value":"userErrors"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"MutationError"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"message"}}]}}]}}]}}]}},{"kind":"FragmentDefinition","name":{"kind":"Name","value":"PlaybackSessionFields"},"typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"PlaybackSession"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"formatAttemptCount"}},{"kind":"Field","name":{"kind":"Name","value":"maximumFormatAttempts"}},{"kind":"Field","name":{"kind":"Name","value":"requestedChoice"}},{"kind":"Field","name":{"kind":"Name","value":"playbackChoice"}},{"kind":"Field","name":{"kind":"Name","value":"formatChange"}},{"kind":"Field","name":{"kind":"Name","value":"offeredChoices"}},{"kind":"Field","name":{"kind":"Name","value":"currentFormatAttempt"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"PendingPlaybackFormatAttempt"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"streamSessionId"}}]}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"ReadyPlaybackFormatAttempt"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"streamSession"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"streamUrl"}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"HlsStreamSession"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"transcodeMode"}},{"kind":"Field","name":{"kind":"Name","value":"videoRange"}},{"kind":"Field","name":{"kind":"Name","value":"mediaEndSeconds"}}]}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"DirectPlayStreamSession"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"sourceContainer"}},{"kind":"Field","name":{"kind":"Name","value":"videoRange"}},{"kind":"Field","name":{"kind":"Name","value":"startPositionSeconds"}},{"kind":"Field","name":{"kind":"Name","value":"audioTrackPosition"}},{"kind":"Field","name":{"kind":"Name","value":"audioTracks"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"position"}},{"kind":"Field","name":{"kind":"Name","value":"language"}},{"kind":"Field","name":{"kind":"Name","value":"title"}}]}}]}}]}}]}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"FailedPlaybackFormatAttempt"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"streamSessionId"}},{"kind":"Field","name":{"kind":"Name","value":"error"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"MutationError"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"message"}}]}}]}}]}}]}}]}}]} as unknown as DocumentNode<ReportPlaybackFormatFailureMutation, ReportPlaybackFormatFailureMutationVariables>;
+export const SwitchPlaybackAudioTrackDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"SwitchPlaybackAudioTrack"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"SwitchPlaybackAudioTrackInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"switchPlaybackAudioTrack"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"playbackSession"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"PlaybackSessionFields"}}]}},{"kind":"Field","name":{"kind":"Name","value":"userErrors"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"MutationError"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"message"}}]}}]}}]}}]}},{"kind":"FragmentDefinition","name":{"kind":"Name","value":"PlaybackSessionFields"},"typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"PlaybackSession"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"formatAttemptCount"}},{"kind":"Field","name":{"kind":"Name","value":"maximumFormatAttempts"}},{"kind":"Field","name":{"kind":"Name","value":"requestedChoice"}},{"kind":"Field","name":{"kind":"Name","value":"playbackChoice"}},{"kind":"Field","name":{"kind":"Name","value":"formatChange"}},{"kind":"Field","name":{"kind":"Name","value":"offeredChoices"}},{"kind":"Field","name":{"kind":"Name","value":"currentFormatAttempt"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"PendingPlaybackFormatAttempt"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"streamSessionId"}}]}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"ReadyPlaybackFormatAttempt"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"streamSession"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"streamUrl"}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"HlsStreamSession"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"transcodeMode"}},{"kind":"Field","name":{"kind":"Name","value":"videoRange"}},{"kind":"Field","name":{"kind":"Name","value":"mediaEndSeconds"}}]}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"DirectPlayStreamSession"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"sourceContainer"}},{"kind":"Field","name":{"kind":"Name","value":"videoRange"}},{"kind":"Field","name":{"kind":"Name","value":"startPositionSeconds"}},{"kind":"Field","name":{"kind":"Name","value":"audioTrackPosition"}},{"kind":"Field","name":{"kind":"Name","value":"audioTracks"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"position"}},{"kind":"Field","name":{"kind":"Name","value":"language"}},{"kind":"Field","name":{"kind":"Name","value":"title"}}]}}]}}]}}]}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"FailedPlaybackFormatAttempt"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"streamSessionId"}},{"kind":"Field","name":{"kind":"Name","value":"error"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"__typename"}},{"kind":"InlineFragment","typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"MutationError"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"message"}}]}}]}}]}}]}}]}}]} as unknown as DocumentNode<SwitchPlaybackAudioTrackMutation, SwitchPlaybackAudioTrackMutationVariables>;
