@@ -850,9 +850,10 @@ function startSessionPlayback({
     return pendingSwitch?.generation === generation ? pendingSwitch : undefined
   }
 
-  // Direct play goes on after a switch the server did not make, unless the file failed meanwhile.
+  // Direct play goes on after a switch the server did not make, unless the file failed meanwhile,
+  // or a stall that outlasted its limit still lasts.
   function failAfterTheSwitch(pending: PendingAudioTrackSwitch) {
-    if (pending.failed || pending.stalled) {
+    if (pending.failed || (pending.stalled && stallStillLasts())) {
       stopStatusCheck()
       failSource()
       return

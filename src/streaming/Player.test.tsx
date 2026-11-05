@@ -7648,48 +7648,69 @@ describe('Player', () => {
         expect(video.currentTime).toBe(42)
       })
 
-      it('shouldKeepDirectPlayingWhenAStallThatOutlastedItsLimitEndsBeforeTheServerRefusesTheSwitch', async () => {
-        serveDirectPlay({ audioTracks: TWO_TRACKS })
-        let statusReads = 0
-        server.use(
-          graphql.query('PlaybackSession', () => {
-            statusReads += 1
-            return HttpResponse.json({ data: { playbackSession: directPlayStill() } })
-          }),
-        )
-        const answered = deferred()
-        const switches = serveAudioTrackSwitch({
-          answered: answered.promise,
-          answer: () => ({
-            playbackSession: directPlayStill(),
-            userErrors: [
-              { __typename: 'PlaybackFormatAttemptsExhaustedError', message: SWITCH_REFUSAL },
-            ],
-          }),
-        })
-        const { user } = renderWithProviders(
-          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
-        )
-        const video = await directPlayAt(42)
-        vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout'] })
-        stallAt(video, 42)
-        await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 10_000))
-        await chooseAudioTrack(user, { from: 'English', to: 'French' })
-        await vi.waitFor(() => expect(switches).toHaveLength(1))
-        await act(async () => vi.advanceTimersByTimeAsync(10_000))
-        // The waiting element asked for a real end; the second read is the stall's own.
-        await vi.waitFor(() => expect(statusReads).toBe(2))
-        await act(async () => vi.advanceTimersByTimeAsync(100))
-        vi.useRealTimers()
+      it.each([
+        { case: 'Ended', recover: resumeAfterTheStall },
+        {
+          // The new wait has not outlasted a limit of its own.
+          case: 'EndedAndAnotherWaitBegan',
+          recover: (video: HTMLVideoElement) => {
+            resumeAfterTheStall(video)
+            stallAt(video, video.currentTime)
+          },
+        },
+        {
+          // The element fires its playing event from a queued task, after the server answers.
+          case: 'HadItsMediaBeforeTheElementSaidSo',
+          recover: (video: HTMLVideoElement) => {
+            setReadyState(video, HTMLMediaElement.HAVE_ENOUGH_DATA)
+            playheadAt(video, video.currentTime + 1)
+          },
+        },
+      ])(
+        'shouldKeepDirectPlayingWhenTheServerRefusesTheSwitchAfterAStallThatOutlastedItsLimit$case',
+        async ({ recover }) => {
+          serveDirectPlay({ audioTracks: TWO_TRACKS })
+          let statusReads = 0
+          server.use(
+            graphql.query('PlaybackSession', () => {
+              statusReads += 1
+              return HttpResponse.json({ data: { playbackSession: directPlayStill() } })
+            }),
+          )
+          const answered = deferred()
+          const switches = serveAudioTrackSwitch({
+            answered: answered.promise,
+            answer: () => ({
+              playbackSession: directPlayStill(),
+              userErrors: [
+                { __typename: 'PlaybackFormatAttemptsExhaustedError', message: SWITCH_REFUSAL },
+              ],
+            }),
+          })
+          const { user } = renderWithProviders(
+            <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+          )
+          const video = await directPlayAt(42)
+          vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout'] })
+          stallAt(video, 42)
+          await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 10_000))
+          await chooseAudioTrack(user, { from: 'English', to: 'French' })
+          await vi.waitFor(() => expect(switches).toHaveLength(1))
+          await act(async () => vi.advanceTimersByTimeAsync(10_000))
+          // The waiting element asked for a real end; the second read is the stall's own.
+          await vi.waitFor(() => expect(statusReads).toBe(2))
+          await act(async () => vi.advanceTimersByTimeAsync(100))
+          vi.useRealTimers()
 
-        resumeAfterTheStall(video)
-        answered.resolve()
+          recover(video)
+          answered.resolve()
 
-        await waitFor(() => expect(notice()).toHaveTextContent(SWITCH_REFUSAL))
-        expect(video).toHaveAttribute('src', SOURCE_FILE.streamUrl)
-        expect(video.currentTime).toBe(43)
-        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-      })
+          await waitFor(() => expect(notice()).toHaveTextContent(SWITCH_REFUSAL))
+          expect(video).toHaveAttribute('src', SOURCE_FILE.streamUrl)
+          expect(video.currentTime).toBe(43)
+          expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+        },
+      )
 
       it('shouldShowThePlaybackFailureWhenAStallOutlastsItsLimitAndTheServerRefusesTheSwitch', async () => {
         serveDirectPlay({ audioTracks: TWO_TRACKS })
