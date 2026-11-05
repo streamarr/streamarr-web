@@ -116,6 +116,7 @@ export function listedAudioTrackSource(
         { name: track.title ?? undefined, language: track.language ?? undefined },
         track.position,
       ),
+      language: track.language ?? undefined,
     })),
     playing ?? -1,
   )

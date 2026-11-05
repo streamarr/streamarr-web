@@ -7660,6 +7660,37 @@ describe('Player', () => {
         ])
       })
 
+      it('shouldStoreTheChosenTracksLanguageForThatEpisodeWhenTheViewerSwitchesAudio', async () => {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        serveAudioTrackSwitch({
+          answer: () => ({ playbackSession: directPlayStill(), userErrors: [] }),
+        })
+        const overrides: SetLanguageOverrideInput[] = []
+        server.use(
+          graphql.mutation<SetLanguageOverrideMutation, SetLanguageOverrideMutationVariables>(
+            'SetLanguageOverride',
+            ({ variables: { input } }) => {
+              overrides.push(input)
+              return HttpResponse.json({
+                data: { setLanguageOverride: { item: null, userErrors: [] } },
+              })
+            },
+          ),
+        )
+        const { user } = renderWithProviders(
+          <Player
+            playbackPlatform={withoutDecodingInfo}
+            mediaFileId="abcd"
+            mediaTitle={{ kind: 'episode', id: 'e1' }}
+          />,
+        )
+        await directPlayAt(0)
+
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+
+        await waitFor(() => expect(overrides).toEqual([{ itemId: 'e1', audioLanguage: 'FR' }]))
+      })
+
       it('shouldMoveToHlsWhereDirectPlayWasWithTheChosenTrackOnceTheServerAnswersTheSwitch', async () => {
         serveDirectPlay({ audioTracks: TWO_TRACKS })
         const answered = deferred()
