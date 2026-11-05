@@ -1,5 +1,5 @@
 import type { ApolloClient, ObservableQuery } from '@apollo/client'
-import Hls, { type ErrorData } from 'hls.js'
+import Hls, { type ErrorData, type VideoSelectionOption } from 'hls.js'
 import {
   type ClientCapabilityDeclarationInput,
   type CreatePlaybackSessionMutation,
@@ -15,6 +15,7 @@ import {
 import { userErrorMessage, userErrorMessageOr } from '../graphql/userErrors'
 import { discardWatchedState } from '../media/watchedState'
 import { hlsPlaybackConfig } from './hlsPlaybackConfig'
+import { hlsVideoPreference } from './hlsVideoPreference'
 import { DECLARATION_REFUSAL_TYPENAMES } from './playbackCapabilities'
 import type { QualityChoices } from './qualityChoices'
 import { hlsTrackSource, nativeTrackSource, type TrackSource } from './trackSources'
@@ -137,6 +138,7 @@ function startSessionPlayback({
   resumeFrom,
 }: PlayerPlaybackOptions): SessionPlayback {
   let source: StreamSource | null = null
+  let declaration: ClientCapabilityDeclarationInput = { video: [], audio: [] }
   let cancelled = false
   let sessionId: string | null = null
   let playbackSessionId: string | null = null
@@ -515,6 +517,7 @@ function startSessionPlayback({
       if (cancelled || !capabilities) {
         return
       }
+      declaration = capabilities
       // The server requires a video entry, so a browser that decodes no video cannot play here.
       if (capabilities.video.length === 0) {
         showFailure(PLAYBACK_FAILURE_MESSAGE)
@@ -578,6 +581,7 @@ function startSessionPlayback({
     }
     source = attach(video, stream.streamUrl, {
       startupDeadline,
+      videoPreference: hlsVideoPreference(declaration, 'HDR'),
       onFirstFrame: () => {
         firstFrameShown = true
         onOutputShown(qualities)
@@ -1078,6 +1082,7 @@ interface StreamSourceOptions {
   onFormatFailure: (reason: PlaybackFormatFailure) => void
   onStatusRequired: (fatal: boolean) => void
   startupDeadline: StartupDeadline
+  videoPreference: VideoSelectionOption
 }
 
 // The stream URL carries the playback ?t= token; relative segment requests inherit it.
@@ -1085,7 +1090,7 @@ function attach(video: HTMLVideoElement, url: string, options: StreamSourceOptio
   if (!Hls.isSupported()) {
     return attachNative(video, url, options)
   }
-  const hls: Hls = new Hls(hlsPlaybackConfig(() => hls))
+  const hls: Hls = new Hls(hlsPlaybackConfig(() => hls, options.videoPreference))
   hls.on(Hls.Events.ERROR, (_event, data) => {
     if (data.type === Hls.ErrorTypes.NETWORK_ERROR && data.response?.code === 503) {
       options.onStatusRequired(data.fatal)
