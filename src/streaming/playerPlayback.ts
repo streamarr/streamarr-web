@@ -1520,7 +1520,9 @@ async function handleSourceFileError({
 // The element also calls a source unsupported when the server refused it, as with a 404 for a file
 // that has gone or a 503, and a refused file says nothing about its format. Only a file whose first
 // byte arrives is one the element could not open. The response headers prove nothing: its body can
-// still stall, fail or end empty, so the deadline covers the first byte itself.
+// still stall, fail or end empty, so the deadline covers the first byte itself. An HTML page is a
+// gateway's sign-in or error page, never the file: the server answers with the container's media
+// type. Other types still count, since a proxy may rewrite them on a file that does arrive.
 async function isSourceFileDelivered(url: string, signal: AbortSignal): Promise<boolean> {
   const check = new AbortController()
   const deadline = setTimeout(() => check.abort(), SOURCE_FILE_CHECK_TIMEOUT_MS)
@@ -1531,12 +1533,16 @@ async function isSourceFileDelivered(url: string, signal: AbortSignal): Promise<
       credentials: 'same-origin',
       signal: stopped,
     })
-    return response.ok && (await hasFirstByte(response, stopped))
+    return response.ok && !isHtmlPage(response) && (await hasFirstByte(response, stopped))
   } catch {
     return false
   } finally {
     clearTimeout(deadline)
   }
+}
+
+function isHtmlPage(response: Response): boolean {
+  return /^text\/html\b/i.test(response.headers.get('Content-Type') ?? '')
 }
 
 // Not every fetch ties an aborted request's body to its signal, so the signal cancels the read.

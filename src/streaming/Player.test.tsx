@@ -7930,6 +7930,28 @@ describe('Player', () => {
       },
     )
 
+    it('shouldShowThePlaybackFailureWithoutReportingAFormatWhenAGatewayAnswersTheSourceFileWithA200SignInPage', async () => {
+      const reports = serveDirectPlay()
+      server.use(
+        http.get(
+          '/api/stream/abcd/source.mp4',
+          () =>
+            new HttpResponse('<!doctype html><title>Sign in</title>', {
+              status: 200,
+              headers: { 'Content-Type': 'text/html; charset=utf-8' },
+            }),
+        ),
+      )
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+      const video = await nativeVideo(SOURCE_FILE.streamUrl)
+
+      failTheSourceFile(video, 4)
+
+      expect(await screen.findByRole('alert')).toHaveTextContent("Playback couldn't start.")
+      expect(reports).toEqual([])
+      expect(hls.loadSource).not.toHaveBeenCalled()
+    })
+
     it('shouldShowThePlaybackFailureWithoutReportingAFormatWhenTheSourceFileCannotBeReachedAfterTheBrowserCallsItUnsupported', async () => {
       const reports = serveDirectPlay()
       server.use(http.get('/api/stream/abcd/source.mp4', () => HttpResponse.error()))
