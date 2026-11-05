@@ -8691,6 +8691,64 @@ describe('Player', () => {
       })
     })
 
+    it.each([
+      {
+        variant: 'a Dolby Vision copy on an HDR10 base',
+        levels: [
+          {
+            height: 2160,
+            bitrate: 20_000_000,
+            videoCodec: 'hvc1.2.4.L153.B0',
+            supplemental: { videoCodec: 'dvh1.08.06' },
+          },
+        ],
+        currentLevel: 0,
+        shown: 'Dolby Vision',
+      },
+      {
+        variant: 'a profile 5 Dolby Vision copy',
+        levels: [{ height: 2160, bitrate: 20_000_000, videoCodec: 'dvh1.05.06' }],
+        currentLevel: 0,
+        shown: 'Dolby Vision',
+      },
+      {
+        variant: 'no variant playing yet',
+        levels: [],
+        currentLevel: -1,
+        shown: 'Unknown',
+      },
+    ])(
+      'shouldNameTheHdrModeThePlayerDecodesWhenAPqStreamPlays(variant: $variant)',
+      async ({ levels, currentLevel, shown }) => {
+        server.use(
+          graphql.mutation('CreatePlaybackSession', () =>
+            HttpResponse.json({
+              data: {
+                createPlaybackSession: {
+                  playbackSession: readyPlaybackSession({
+                    streamSession: { ...SESSION, videoRange: 'PQ' },
+                  }),
+                  userErrors: [],
+                },
+              },
+            }),
+          ),
+        )
+        recordTimelineReports()
+        serveDecisions(() => [playbackDecision({ streamSessionId: SESSION.id })])
+        hls.levels = levels
+        hls.currentLevel = currentLevel
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        await showingVideo(STREAM_URL)
+
+        const panel = await openPlaybackData(user)
+
+        expect(factsIn(groupIn(panel, 'Player'))['HDR mode']).toBe(shown)
+      },
+    )
+
     it('shouldUpdateWhatThePlayerReportsWhenTheVideoAdvances', async () => {
       serveSession()
       serveDecisions(() => [playbackDecision({ streamSessionId: SESSION.id })])
