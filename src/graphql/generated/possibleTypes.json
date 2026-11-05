@@ -280,6 +280,9 @@
       "MediaFileNotFoundError",
       "NotAManagerError",
       "OfferInvalidatedError",
+      "PlaybackReportNotFoundError",
+      "PlaybackReportNoteTooLongError",
+      "PlayerFigureInvalidError",
       "ProfileAlreadyLinkedError",
       "ProfileAlreadySharedError",
       "ProfileManagerNotEligibleError",
@@ -345,6 +348,10 @@
       "Movie",
       "Season",
       "Series"
+    ],
+    "MarkPlaybackReportReadError": [
+      "InvalidIdError",
+      "PlaybackReportNotFoundError"
     ],
     "MarkUnwatchedError": [
       "InvalidIdError",
@@ -421,8 +428,11 @@
       "PlaybackFormatRejectedError",
       "PlaybackInvalidSpecificationError",
       "PlaybackOutputMismatchError",
+      "PlaybackReportNotFoundError",
+      "PlaybackReportNoteTooLongError",
       "PlaybackSessionClosedError",
       "PlaybackStartupFailedError",
+      "PlayerFigureInvalidError",
       "ProfileAlreadyLinkedError",
       "ProfileAlreadySharedError",
       "ProfileBelongsToAccountError",
@@ -573,6 +583,12 @@
     "SetProfilePinError": [
       "InvalidProfilePinError",
       "ProfileNotFoundError"
+    ],
+    "SharePlaybackReportError": [
+      "InvalidIdError",
+      "PlaybackReportNoteTooLongError",
+      "PlaybackSessionClosedError",
+      "PlayerFigureInvalidError"
     ],
     "StartLibraryRefreshError": [
       "InvalidIdError",

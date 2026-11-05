@@ -1,6 +1,6 @@
 {
   "repository": "streamarr/streamarr-server",
-  "commit": "5198450c18d2bcbda533b390542e43648ffab8f0",
+  "commit": "8fca127c87268cd51d8f1928224682de2eaecddc",
   "schemaDirectory": "src/main/resources/schema",
   "openapiDocument": "docs/openapi.json",
   "liveListConformance": "contracts/live-lists.json"
