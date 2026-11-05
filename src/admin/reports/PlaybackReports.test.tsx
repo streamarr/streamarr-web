@@ -7,7 +7,8 @@ import type {
   PlaybackReportsQueryVariables,
 } from '../../graphql/generated/graphql'
 import { deferred } from '../../test/deferred'
-import { meFixture } from '../../test/meFixture'
+import { serveGraphqlSocket } from '../../test/graphqlSocket'
+import { meFixture, profileFixture } from '../../test/meFixture'
 import { H264_FULL_HD, playbackDecision, servedDecision } from '../../test/playbackSession'
 import { renderAppAt } from '../../test/render'
 import { server } from '../../test/server'
@@ -490,6 +491,33 @@ describe('shared reports', () => {
     window.dispatchEvent(new Event('online'))
 
     expect(await screen.findByText('1 unread')).toBeInTheDocument()
+  })
+
+  it('shouldReadTheUnreadCountAgainWhenTheLiveSocketReconnects', async () => {
+    const state = serveReports({ reports: [] })
+    const socket = serveGraphqlSocket()
+    // A ServerAdmin who browses with a selected Profile, whose live changes run on the socket.
+    server.use(
+      graphql.query('Me', () =>
+        HttpResponse.json({
+          data: {
+            me: meFixture({
+              scope: 'profile',
+              serverAdmin: true,
+              profiles: [profileFixture({ selected: true })],
+            }),
+          },
+        }),
+      ),
+    )
+    renderAppAt(REPORTS)
+    await screen.findByText('0 unread')
+    await waitFor(() => expect(socket.isLive('LibraryStatusChanged')).toBe(true))
+
+    state.reports = [reportFixture()]
+    socket.closeAll(1001, 'Going away')
+
+    expect(await screen.findByText('1 unread', undefined, { timeout: 3_000 })).toBeInTheDocument()
   })
 
   it('shouldLeaveAReadReportAsItIsWhenTheServerAdminOpensIt', async () => {

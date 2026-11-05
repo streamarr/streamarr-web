@@ -1,5 +1,6 @@
 import type { ApolloClient } from '@apollo/client'
 import { useApolloClient } from '@apollo/client/react'
+import { useRouteContext } from '@tanstack/react-router'
 import { useEffect, useSyncExternalStore } from 'react'
 import { UnreadPlaybackReportCountDocument } from '../../graphql/generated/graphql'
 import { installRevalidation } from '../../graphql/revalidation'
@@ -7,6 +8,7 @@ import { installRevalidation } from '../../graphql/revalidation'
 interface UnreadCount {
   subscribe: (onChange: () => void) => () => void
   current: () => number | null
+  isReading: () => boolean
   read: () => Promise<void>
 }
 
@@ -20,28 +22,14 @@ function unreadCountFor(client: ApolloClient): UnreadCount {
   let count: number | null = null
   let latestRead = 0
   let readsOut = 0
-  let stopRevalidation: (() => void) | null = null
   const listeners = new Set<() => void>()
   const unread: UnreadCount = {
     subscribe: (onChange) => {
       listeners.add(onChange)
-      // The count is no watched query, so it reads again by itself when the network or the page
-      // returns, as the app's queries do. No live change reports a new report.
-      stopRevalidation ??= installRevalidation({
-        refetchActive: () => unread.read(),
-        isReading: () => readsOut > 0,
-        onMissedChanges: () => () => undefined,
-        window,
-        document,
-      })
-      return () => {
-        listeners.delete(onChange)
-        if (listeners.size > 0) return
-        stopRevalidation?.()
-        stopRevalidation = null
-      }
+      return () => listeners.delete(onChange)
     },
     current: () => count,
+    isReading: () => readsOut > 0,
     read: async () => {
       const read = ++latestRead
       readsOut += 1
@@ -68,9 +56,19 @@ function unreadCountFor(client: ApolloClient): UnreadCount {
 /** How many shared playback reports no ServerAdmin has read; null until the server says. */
 export function useUnreadReportCount(): number | null {
   const unread = unreadCountFor(useApolloClient())
+  const { subscriptions } = useRouteContext({ from: '__root__' })
+  // The count is no watched query, so it reads again by itself on each gap that the app's queries
+  // read again on: the socket's missed changes, and the network's and the page's return.
   useEffect(() => {
     void unread.read()
-  }, [unread])
+    return installRevalidation({
+      refetchActive: () => unread.read(),
+      isReading: unread.isReading,
+      onMissedChanges: (listener) => subscriptions.onMissedChanges(listener),
+      window,
+      document,
+    })
+  }, [unread, subscriptions])
   return useSyncExternalStore(unread.subscribe, unread.current)
 }
 
