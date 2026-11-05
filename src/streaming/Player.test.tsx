@@ -8870,6 +8870,37 @@ describe('Player', () => {
       expect(screen.getByRole('region', { name: 'Playback data' })).toBeInTheDocument()
     })
 
+    it('shouldShowThePlaybackChoiceThatPlaysWhenOriginalHasChangedToAuto', async () => {
+      server.use(
+        graphql.mutation('CreatePlaybackSession', () =>
+          HttpResponse.json({
+            data: {
+              createPlaybackSession: {
+                playbackSession: readyPlaybackSession({
+                  streamSession: SESSION,
+                  ...ORIGINAL_CHANGED_TO_AUTO,
+                }),
+                userErrors: [],
+              },
+            },
+          }),
+        ),
+      )
+      recordTimelineReports()
+      serveDecisions(() => [playbackDecision({ streamSessionId: SESSION.id })])
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await showingVideo(STREAM_URL)
+
+      const panel = await openPlaybackData(user)
+
+      expect(factsIn(within(panel).getByRole('group', { name: 'Summary' }))).toEqual({
+        Quality: 'Auto',
+        Delivery: 'HLS',
+      })
+    })
+
     it('shouldKeepTheControlsWhilePlaybackDataShows', async () => {
       serveSession()
       serveDecisions(() => [playbackDecision({ streamSessionId: SESSION.id })])

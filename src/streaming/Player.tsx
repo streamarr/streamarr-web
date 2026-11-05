@@ -171,6 +171,7 @@ export function Player({
           streamSessionId: sourcePhase.streamSessionId,
           videoRange: sourcePhase.videoRange,
           requestedChoice: sourcePhase.qualities.requested,
+          playingChoice: sourcePhase.qualities.playing,
           sourceContainer: sourcePhase.sourceContainer,
           streamStats: sourcePhase.streamStats,
         }
