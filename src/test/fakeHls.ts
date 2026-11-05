@@ -17,6 +17,8 @@ export interface FakeHlsLevel {
   bitrate: number
   videoCodec?: string
   audioCodec?: string
+  /** The SUPPLEMENTAL-CODECS of the variant, as Dolby Vision on a compatible base names it. */
+  supplemental?: { videoCodec?: string }
 }
 
 const listeners = new Map<string, Set<HlsListener>>()

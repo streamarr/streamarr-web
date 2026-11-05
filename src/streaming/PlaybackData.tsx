@@ -223,6 +223,7 @@ function StreamData({
               videoRef={videoRef}
               streamStats={stream.streamStats}
               videoRange={stream.videoRange}
+              playsHls={stream.sourceContainer === null}
             />
           </Group>
           <Group name="This screen">
@@ -308,12 +309,16 @@ interface FiguresSource {
   videoRef: RefObject<HTMLVideoElement | null>
   streamStats: () => StreamStats
   videoRange: VideoRange
+  /** Whether hls.js plays the stream, rather than the element playing the source file directly. */
+  playsHls: boolean
 }
 
-function PlayerFacts({ videoRef, streamStats, videoRange }: Readonly<FiguresSource>) {
+type StreamKind = Pick<FiguresSource, 'videoRange' | 'playsHls'>
+
+function PlayerFacts({ videoRef, streamStats, videoRange, playsHls }: Readonly<FiguresSource>) {
   const store = useMemo(
-    () => playerFiguresStore({ videoRef, streamStats, videoRange }),
-    [videoRef, streamStats, videoRange],
+    () => playerFiguresStore({ videoRef, streamStats, videoRange, playsHls }),
+    [videoRef, streamStats, videoRange, playsHls],
   )
   const figures = useSyncExternalStore(store.subscribe, store.figures)
   return (
@@ -326,7 +331,7 @@ function PlayerFacts({ videoRef, streamStats, videoRange }: Readonly<FiguresSour
 }
 
 // Hands React the same figures object until a figure changes, as useSyncExternalStore requires.
-function playerFiguresStore({ videoRef, streamStats, videoRange }: FiguresSource) {
+function playerFiguresStore({ videoRef, streamStats, ...kind }: FiguresSource) {
   let shown: { key: string; figures: PlayerFigures } | null = null
   return {
     subscribe: (onChange: () => void) => {
@@ -344,7 +349,7 @@ function playerFiguresStore({ videoRef, streamStats, videoRange }: FiguresSource
       }
     },
     figures: (): PlayerFigures => {
-      const figures = playerFigures(videoRef.current, streamStats(), videoRange)
+      const figures = playerFigures(videoRef.current, streamStats(), kind)
       const key = JSON.stringify(figures)
       if (shown?.key !== key) {
         shown = { key, figures }
@@ -357,7 +362,7 @@ function playerFiguresStore({ videoRef, streamStats, videoRange }: FiguresSource
 function playerFigures(
   video: HTMLVideoElement | null,
   stats: StreamStats,
-  videoRange: VideoRange,
+  kind: StreamKind,
 ): PlayerFigures {
   return {
     'Quality step': qualityStep(stats),
@@ -369,9 +374,23 @@ function playerFigures(
     Resolution:
       video && video.videoWidth > 0 ? `${video.videoWidth}×${video.videoHeight}` : UNKNOWN,
     'Video codec': stats.videoCodec ?? UNKNOWN,
-    'HDR mode': videoRangeText(videoRange),
+    'HDR mode': hdrMode(stats, kind),
     Audio: audioFormat(stats),
   }
+}
+
+/*
+ * PQ covers both HDR10 and the base of Dolby Vision, so over HLS only the playing variant's codecs
+ * tell them apart. This client declares no Dolby Vision for direct play, so a file plays its base.
+ */
+function hdrMode({ dolbyVision }: StreamStats, { videoRange, playsHls }: StreamKind): string {
+  if (dolbyVision) {
+    return 'Dolby Vision'
+  }
+  if (playsHls && videoRange === 'PQ' && dolbyVision === undefined) {
+    return UNKNOWN
+  }
+  return videoRangeText(videoRange)
 }
 
 function qualityStep({ variant }: StreamStats): string {

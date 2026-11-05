@@ -77,6 +77,11 @@ export interface SourceStats {
   bandwidthEstimate?: number
   /** The playing variant's video codec string, such as avc1.64001f. */
   videoCodec?: string
+  /**
+   * Whether the playing variant names a Dolby Vision codec, in CODECS or SUPPLEMENTAL-CODECS;
+   * absent while no variant plays.
+   */
+  dolbyVision?: boolean
   audioCodec?: string
   audioChannels?: number
 }
@@ -1453,9 +1458,17 @@ function hlsSourceStats(hls: Hls): SourceStats {
     },
     bandwidthEstimate: Number.isFinite(hls.bandwidthEstimate) ? hls.bandwidthEstimate : undefined,
     videoCodec: level?.videoCodec,
+    dolbyVision: level && namesDolbyVision([level.videoCodec, level.supplemental?.videoCodec]),
     audioCodec: audio?.audioCodec ?? level?.audioCodec,
     audioChannels: Number.isNaN(channels) ? undefined : channels,
   }
+}
+
+// The sample entries under which a codec string names Dolby Vision, such as dvh1.08.06.
+const DOLBY_VISION_ENTRIES = ['dvh1', 'dvhe', 'dav1', 'dvav', 'dva1']
+
+function namesDolbyVision(codecs: readonly (string | undefined)[]): boolean {
+  return codecs.some((codec) => DOLBY_VISION_ENTRIES.includes(codec?.split('.')[0] ?? ''))
 }
 
 // The element reports its own figures; nothing else reads a native or source file stream.
