@@ -1,5 +1,6 @@
-import { screen, within } from '@testing-library/react'
+import { act, screen, within } from '@testing-library/react'
 import { graphql, HttpResponse } from 'msw'
+import { useState } from 'react'
 import { describe, expect, it } from 'vitest'
 import type { SharePlaybackReportInput } from '../graphql/generated/graphql'
 import { CHROME_USER_AGENT } from '../test/playbackCapabilities'
@@ -77,6 +78,27 @@ function serveShare(answer: ShareAnswer = SHARED): SharePlaybackReportInput[] {
   return shared
 }
 
+type Attached = PlaybackDataStream | null
+
+// The panel over a player that can attach another stream, or none, as a format fallback does.
+function ReplaceablePanel({
+  initial,
+  onReplace,
+}: Readonly<{ initial: Attached; onReplace: (replace: (next: Attached) => void) => void }>) {
+  const [stream, setStream] = useState(initial)
+  onReplace(setStream)
+  return (
+    <PlaybackData
+      videoRef={{ current: playingVideo() }}
+      stream={stream}
+      screen={SCREEN}
+      controlsReach={null}
+      closesOnEscape
+      onClose={() => undefined}
+    />
+  )
+}
+
 function renderPanel({ stats = PLAYING_STATS }: { stats?: StreamStats } = {}) {
   const current = { stats }
   const stream: PlaybackDataStream = {
@@ -88,24 +110,26 @@ function renderPanel({ stats = PLAYING_STATS }: { stats?: StreamStats } = {}) {
     sourceContainer: null,
     streamStats: () => current.stats,
   }
+  let replace: (next: Attached) => void = () => undefined
   const rendered = renderWithProviders(
-    <PlaybackData
-      videoRef={{ current: playingVideo() }}
-      stream={stream}
-      screen={SCREEN}
-      controlsReach={null}
-      closesOnEscape
-      onClose={() => undefined}
+    <ReplaceablePanel
+      initial={stream}
+      onReplace={(setter) => {
+        replace = setter
+      }}
     />,
   )
   const panel = screen.getByRole('region', { name: 'Playback data' })
   return {
     ...rendered,
     panel,
+    stream,
     // The player reports new figures, as it does while the note is written.
     reportStats: (next: StreamStats) => {
       current.stats = next
     },
+    // The player attaches another stream, or none while the next one prepares.
+    attach: (next: Attached) => act(() => replace(next)),
   }
 }
 
@@ -205,6 +229,46 @@ describe('PlaybackData', () => {
         within(panel).getByRole('button', { name: 'Share with Server Admin' }),
       ).toBeInTheDocument()
       expect(shared).toEqual([])
+    })
+
+    it('shouldKeepTheNoteAndShareTheFiguresFromThePressWhenTheStreamIsReplacedMeanwhile', async () => {
+      serveDecision()
+      const shared = serveShare()
+      const { user, panel, stream, attach, reportStats } = renderPanel()
+
+      await user.click(within(panel).getByRole('button', { name: 'Share with Server Admin' }))
+      await user.type(
+        within(panel).getByRole('textbox', { name: 'Add a note (optional)' }),
+        'Froze, then',
+      )
+      attach(null)
+      reportStats({ stalls: 0 })
+      attach({ ...stream, streamSessionId: 'sess-3' })
+      await user.type(
+        within(panel).getByRole('textbox', { name: 'Add a note (optional)' }),
+        ' changed quality',
+      )
+      await user.click(within(panel).getByRole('button', { name: 'Send' }))
+
+      await within(panel).findByText('Shared with your Server Admin.')
+      expect(shared).toMatchObject([
+        {
+          streamSessionId: STREAM_SESSION_ID,
+          note: 'Froze, then changed quality',
+          player: { stalls: 1, qualityStep: { number: 2 } },
+        },
+      ])
+    })
+
+    it('shouldOfferShareOnlyOnceAStreamIsAttachedWhenThePanelOpensBeforeOne', async () => {
+      const { panel, stream, attach } = renderPanel()
+      serveDecision()
+
+      attach(null)
+
+      expect(within(panel).getByRole('button', { name: 'Share with Server Admin' })).toBeDisabled()
+      attach(stream)
+      expect(within(panel).getByRole('button', { name: 'Share with Server Admin' })).toBeEnabled()
     })
 
     it('shouldShowTheServersMessageAndKeepTheNoteWhenTheServerRefusesTheReport', async () => {

@@ -20,9 +20,10 @@ type ShareStep =
 
 /**
  * Shares the panel with the Server Admin. Pressing Share takes the panel's figures at once, then
- * offers an optional note; Send shares the figures from the press with the note.
+ * offers an optional note; Send shares the figures from the press with the note. `capture` is null
+ * while no stream is attached, and Share waits for one.
  */
-export function SharePlaybackReport({ capture }: Readonly<{ capture: () => Report }>) {
+export function SharePlaybackReport({ capture }: Readonly<{ capture: (() => Report) | null }>) {
   const [step, setStep] = useState<ShareStep>({ at: 'offered', shared: false })
   const [note, setNote] = useState('')
   const [share, { loading: sending }] = useMutation(SharePlaybackReportDocument)
@@ -38,10 +39,15 @@ export function SharePlaybackReport({ capture }: Readonly<{ capture: () => Repor
         <Button
           variant="default"
           size="xs"
-          onClick={() => {
-            setNote('')
-            setStep({ at: 'noting', report: capture(), refusal: null })
-          }}
+          disabled={capture === null}
+          onClick={
+            capture
+              ? () => {
+                  setNote('')
+                  setStep({ at: 'noting', report: capture(), refusal: null })
+                }
+              : undefined
+          }
         >
           Share with Server Admin
         </Button>

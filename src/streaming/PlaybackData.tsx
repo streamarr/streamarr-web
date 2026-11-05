@@ -158,6 +158,25 @@ export function PlaybackData({
       ) : (
         <p className={styles.note}>Waiting for the stream to start.</p>
       )}
+      {/* Outside the stream's own subtree, so a note in progress outlasts a stream replacement. */}
+      <SharePlaybackReport
+        capture={
+          stream &&
+          (() => ({
+            playbackSessionId: stream.playbackSessionId,
+            streamSessionId: stream.streamSessionId,
+            player: playerFiguresInput(
+              capturePlayerFigures({
+                video: videoRef.current,
+                stats: stream.streamStats(),
+                videoRange: stream.videoRange,
+                playsHls: stream.sourceContainer === null,
+              }),
+              captureScreenFigures(screen),
+            ),
+          }))
+        }
+      />
     </section>
   )
 }
@@ -216,21 +235,6 @@ function StreamData({
           </Group>
         </div>
       </div>
-      <SharePlaybackReport
-        capture={() => ({
-          playbackSessionId: stream.playbackSessionId,
-          streamSessionId: stream.streamSessionId,
-          player: playerFiguresInput(
-            capturePlayerFigures({
-              video: videoRef.current,
-              stats: stream.streamStats(),
-              videoRange: stream.videoRange,
-              playsHls: stream.sourceContainer === null,
-            }),
-            captureScreenFigures(screen),
-          ),
-        })}
-      />
     </>
   )
 }
