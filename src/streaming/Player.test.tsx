@@ -951,6 +951,7 @@ describe('Player', () => {
           mediaFileId: 'abcd',
           capabilities: MINIMAL_DECLARATION,
           options: { quality: 'AUTO' },
+          networkRoute: 'INTERNET',
         },
       },
     ])
@@ -2594,6 +2595,7 @@ describe('Player', () => {
         mediaFileId: 'abcd',
         capabilities: MINIMAL_DECLARATION,
         options: { quality: 'AUTO' },
+        networkRoute: 'INTERNET',
       },
     })
   })

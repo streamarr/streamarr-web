@@ -96,6 +96,8 @@ export type CreatePlaybackSessionInput = {
   /** What the client's current player and display accept. */
   capabilities: ClientCapabilityDeclarationInput;
   mediaFileId: string | number;
+  /** How the client reached the server. Every format attempt of the playback session keeps it. */
+  networkRoute: NetworkRoute;
   options?: StreamingOptionsInput | null | undefined;
 };
 
@@ -227,6 +229,24 @@ export type MediaType =
   | 'MOVIE'
   | 'OTHER'
   | 'SERIES'
+  | '%future added value';
+
+/**
+ * How the client says it reached the server. The server never classifies a viewer by IP address; it takes the
+ * client's word. The route decides only whether the playback session's stream sessions count against the upload
+ * budget. A false claim keeps a stream session out of the budget and grants no access.
+ */
+export type NetworkRoute =
+  /**
+   * Every other route, including a public hostname, a tunnel, carrier-grade NAT (100.64.0.0/10, which includes
+   * Tailscale), and hairpin NAT through a public name. The stream sessions count against the upload budget.
+   */
+  | 'INTERNET'
+  /**
+   * The client reached the server through a private address (RFC 1918, IPv6 unique local fd00::/8 or
+   * link-local), a .local name, or local discovery. The stream sessions never count against the upload budget.
+   */
+  | 'LOCAL_NETWORK'
   | '%future added value';
 
 export type OfferProfileShareInput = {

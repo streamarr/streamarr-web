@@ -6,6 +6,20 @@ interface StreamSession {
     id: ID!
     "The URL that the player opens. It carries the playback token."
     streamUrl: String!
+    "Whether the stream session counts against the upload budget now, and why it does not."
+    uploadBudgetUse: UploadBudgetUse!
+}
+
+"Whether a stream session counts against the upload budget, and why it does not."
+enum UploadBudgetUse {
+    "The stream session is active, its client reached the server over the internet, and it counts."
+    COUNTED
+    "The client attested that it reached the server over the local network, so the stream session never counts."
+    LOCAL_NETWORK_ATTESTED
+    "No ServerAdmin has set an internet upload speed, so no stream session counts."
+    BUDGET_OFF
+    "The stream session is suspended and sends nothing."
+    SUSPENDED
 }
 
 """
@@ -21,6 +35,7 @@ type DirectPlayStreamSession implements StreamSession {
     sourceContainer: SourceContainer!
     "The dynamic range of the source's video."
     videoRange: VideoRange!
+    uploadBudgetUse: UploadBudgetUse!
 }
 
 "A stream session that sends HLS, from job attempts that copy or encode the source."
@@ -40,6 +55,7 @@ type HlsStreamSession implements StreamSession {
     media ends before the advertised end.
     """
     mediaEndSeconds: Float
+    uploadBudgetUse: UploadBudgetUse!
 }
 
 "The dynamic range of a stream session's video, as an HLS playlist's VIDEO-RANGE attribute names it."

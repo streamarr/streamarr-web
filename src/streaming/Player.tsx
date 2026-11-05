@@ -111,7 +111,12 @@ export function Player({
       createPlaybackSession: (capabilities) =>
         createPlaybackSession({
           variables: {
-            input: { mediaFileId, capabilities, options: { quality: choice.quality } },
+            input: {
+              mediaFileId,
+              capabilities,
+              options: { quality: choice.quality },
+              networkRoute: 'INTERNET',
+            },
           },
         }),
       startPositionSeconds,

@@ -427,7 +427,7 @@ type UnknownEncoderPresetError implements InputMutationError & MutationError {
     inputPath: [String!]!
 }
 
-type IdleSegmentRetentionOutOfRangeError implements InputMutationError & MutationError {
+type UploadBudgetOutOfRangeError implements InputMutationError & MutationError {
     message: String!
     inputPath: [String!]!
 }
