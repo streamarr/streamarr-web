@@ -1321,21 +1321,47 @@ async function handleSourceFileError({
 
 // The element also calls a source unsupported when the server refused it, as with a 404 for a file
 // that has gone or a 503, and a refused file says nothing about its format. Only a file whose first
-// byte arrives is one the element could not open.
+// byte arrives is one the element could not open. The response headers prove nothing: its body can
+// still stall, fail or end empty, so the deadline covers the first byte itself.
 async function isSourceFileDelivered(url: string, signal: AbortSignal): Promise<boolean> {
   const check = new AbortController()
   const deadline = setTimeout(() => check.abort(), SOURCE_FILE_CHECK_TIMEOUT_MS)
   try {
+    const stopped = AbortSignal.any([signal, check.signal])
     const response = await fetch(new URL(url, window.location.href), {
       headers: { Range: 'bytes=0-0' },
       credentials: 'same-origin',
-      signal: AbortSignal.any([signal, check.signal]),
+      signal: stopped,
     })
-    return response.ok
+    return response.ok && (await hasFirstByte(response, stopped))
   } catch {
     return false
   } finally {
     clearTimeout(deadline)
+  }
+}
+
+// Not every fetch ties an aborted request's body to its signal, so the signal cancels the read.
+async function hasFirstByte(response: Response, stopped: AbortSignal): Promise<boolean> {
+  const reader = response.body?.getReader()
+  if (!reader) {
+    return false
+  }
+  const cancel = () => void reader.cancel().catch(() => undefined)
+  stopped.addEventListener('abort', cancel, { once: true })
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) {
+        return false
+      }
+      if (value.byteLength > 0) {
+        return true
+      }
+    }
+  } finally {
+    stopped.removeEventListener('abort', cancel)
+    cancel()
   }
 }
 
