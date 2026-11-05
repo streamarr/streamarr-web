@@ -270,6 +270,58 @@ describe('idle segment retention settings', () => {
     expect(screen.getByText(unconfirmed)).toBeInTheDocument()
   })
 
+  it('shouldKeepUnconfirmedMessageWhenAdminEntersOutOfRangeRetentionAfterUnconfirmedSave', async () => {
+    serve()
+    server.use(
+      graphql.mutation('ChangeIdleSegmentRetention', () =>
+        HttpResponse.json({ errors: [{ message: 'offline' }] }),
+      ),
+    )
+    const { user } = renderAppAt(ENCODING)
+    const field = await retentionField()
+    await user.clear(field)
+    await user.type(field, '120')
+    await user.click(saveButton())
+    const unconfirmed =
+      "Couldn't confirm the change. Refresh the page to check the saved retention before trying again."
+    expect(await screen.findByText(unconfirmed)).toBeInTheDocument()
+    await user.clear(field)
+    await user.type(field, '4')
+    await user.click(saveButton())
+    expect(field).toHaveAccessibleDescription(
+      expect.stringContaining('The shortest retention is 5 minutes.'),
+    )
+    expect(field).toHaveAccessibleDescription(expect.stringContaining(unconfirmed))
+    await user.clear(field)
+    await user.type(field, '60')
+    expect(field).toHaveAccessibleDescription(expect.stringContaining(unconfirmed))
+  })
+
+  it('shouldClearUnconfirmedMessageWhenLaterSaveIsConfirmed', async () => {
+    const state = serve()
+    server.use(
+      graphql.mutation(
+        'ChangeIdleSegmentRetention',
+        () => HttpResponse.json({ errors: [{ message: 'offline' }] }),
+        { once: true },
+      ),
+    )
+    const { user } = renderAppAt(ENCODING)
+    const field = await retentionField()
+    await user.clear(field)
+    await user.type(field, '120')
+    await user.click(saveButton())
+    const unconfirmed =
+      "Couldn't confirm the change. Refresh the page to check the saved retention before trying again."
+    expect(await screen.findByText(unconfirmed)).toBeInTheDocument()
+    await user.clear(field)
+    await user.type(field, '90')
+    await user.click(saveButton())
+    await waitFor(() => expect(state.changes).toEqual([90]))
+    await waitFor(() => expect(screen.queryByText(unconfirmed)).not.toBeInTheDocument())
+    expect(field).toHaveValue('90')
+  })
+
   it('shouldClearRefusalWhenAdminEditsRefusedRetention', async () => {
     serve()
     const { user } = renderAppAt(ENCODING)

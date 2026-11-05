@@ -35,6 +35,9 @@ export function IdleSegmentRetentionSettings() {
   const [change, { loading: saving }] = useMutation(ChangeIdleSegmentRetentionDocument)
   const [draft, setDraft] = useState<string | number | null>(null)
   const [refusal, setRefusal] = useState<string | null>(null)
+  // Only a confirmed save resolves an unconfirmed one: a refusal or an edit says nothing about
+  // whether the earlier change took effect.
+  const [unconfirmed, setUnconfirmed] = useState(false)
   const mounted = useRef(true)
   useEffect(() => {
     mounted.current = true
@@ -51,11 +54,10 @@ export function IdleSegmentRetentionSettings() {
     void query.refetch()
   }
 
-  // A correction should not sit under the refusal it answers. An unconfirmed save stays unresolved
-  // until the admin checks it, so its message stays.
+  // A correction should not sit under the refusal it answers.
   function edit(value: string | number) {
     setDraft(value)
-    setRefusal((current) => (current === UNCONFIRMED ? current : null))
+    setRefusal(null)
   }
 
   async function save(minutes: number, bounds: IdleSegmentRetentionSettingFieldsFragment) {
@@ -71,12 +73,13 @@ export function IdleSegmentRetentionSettings() {
         return
       }
       if (!payload?.idleSegmentRetentionSetting) {
-        setRefusal(UNCONFIRMED)
+        setUnconfirmed(true)
         return
       }
+      setUnconfirmed(false)
       if (mounted.current) setDraft(null)
     } catch {
-      setRefusal(UNCONFIRMED)
+      setUnconfirmed(true)
     }
   }
 
@@ -106,7 +109,7 @@ export function IdleSegmentRetentionSettings() {
         onEdit={edit}
         busy={saving || query.loading}
         saving={saving}
-        refusal={refusal}
+        refusal={[refusal, unconfirmed && UNCONFIRMED].filter(Boolean).join(' ') || null}
         onSave={(minutes) => void save(minutes, setting)}
       />
     </>
