@@ -6,6 +6,7 @@ import type {
   DeclaredCompatibleBase,
   ReportPlaybackFormatFailureInput,
   SourceContainer,
+  SwitchPlaybackAudioTrackInput,
   VideoSampleEntry,
 } from '../src/graphql/generated/graphql'
 import { STUB_URL } from './ports'
@@ -332,17 +333,26 @@ const DIRECT_PLAY_SESSION = readyPlaybackSession({
   sourceContainer: 'MP4',
   videoRange: 'SDR',
   audioTrackPosition: 0,
+  audioTracks: [{ position: 0, language: null, title: null }],
 })
 
-// The stream decision names the file's second audio track, French, for the Profile.
-const SECOND_AUDIO_TRACK_DIRECT_PLAY_SESSION = readyPlaybackSession({
-  __typename: 'DirectPlayStreamSession',
-  id: 'sess-1',
-  streamUrl: SOURCE_FILE_URL,
-  sourceContainer: 'MP4',
-  videoRange: 'SDR',
-  audioTrackPosition: 1,
-})
+// The two-track fixture's audio tracks as the server lists them: English, the default, then French.
+const TWO_AUDIO_TRACKS = [
+  { position: 0, language: 'eng', title: null },
+  { position: 1, language: 'fre', title: null },
+]
+
+function twoAudioTrackDirectPlaySession(audioTrackPosition: number) {
+  return readyPlaybackSession({
+    __typename: 'DirectPlayStreamSession',
+    id: 'sess-1',
+    streamUrl: SOURCE_FILE_URL,
+    sourceContainer: 'MP4',
+    videoRange: 'SDR',
+    audioTrackPosition,
+    audioTracks: TWO_AUDIO_TRACKS,
+  })
+}
 
 const HLS_SESSION = readyPlaybackSession({
   __typename: 'HlsStreamSession',
@@ -353,11 +363,14 @@ const HLS_SESSION = readyPlaybackSession({
   mediaEndSeconds: null,
 })
 
-// As the server decides for a file with two audio tracks (ADR 0045).
-function twoAudioTrackFileSession(capabilities: ClientCapabilityDeclarationInput) {
-  return capabilities.selectsAudioTrackInDirectPlay
-    ? SECOND_AUDIO_TRACK_DIRECT_PLAY_SESSION
-    : HLS_SESSION
+// As the server decides for the two-track file when the stream decision chooses the track at
+// `chosen` (ADR 0045, decision A18): a player that cannot select a track plays the file's first,
+// default track, so it direct-plays the file only when that track is the chosen one.
+function twoAudioTrackFileSession(chosen: number) {
+  return (capabilities: ClientCapabilityDeclarationInput) =>
+    capabilities.selectsAudioTrackInDirectPlay || chosen === 0
+      ? twoAudioTrackDirectPlaySession(chosen)
+      : HLS_SESSION
 }
 
 const HLS_FALLBACK_SESSION = {
@@ -379,6 +392,9 @@ const PLAYER_OPERATIONS: Record<string, unknown> = {
   ReportPlaybackFormatFailure: {
     reportPlaybackFormatFailure: { playbackSession: HLS_FALLBACK_SESSION, userErrors: [] },
   },
+  SwitchPlaybackAudioTrack: {
+    switchPlaybackAudioTrack: { playbackSession: HLS_FALLBACK_SESSION, userErrors: [] },
+  },
   PlayerMediaTitle: {
     movie: { __typename: 'Movie', id: 'file-1', title: 'Everlight' },
   },
@@ -390,16 +406,19 @@ const PLAYER_OPERATIONS: Record<string, unknown> = {
 
 // Opens the player on the playback session `playbackSessionFor` answers for the declaration the
 // player sends, a direct-play session unless it says otherwise, with a source file that
-// `serveSource` answers, and returns each format failure the player reports.
+// `serveSource` answers, and returns each format failure the player reports. Each audio track
+// switch the player asks for lands in `switches`, and the server answers it with HLS.
 async function openDirectPlay(
   page: Page,
   request: APIRequestContext,
   {
     serveSource,
     playbackSessionFor = () => DIRECT_PLAY_SESSION,
+    switches = [],
   }: {
     serveSource: (route: Route) => Promise<void>
     playbackSessionFor?: (capabilities: ClientCapabilityDeclarationInput) => unknown
+    switches?: SwitchPlaybackAudioTrackInput[]
   },
 ): Promise<ReportPlaybackFormatFailureInput[]> {
   const reports: ReportPlaybackFormatFailureInput[] = []
@@ -418,6 +437,9 @@ async function openDirectPlay(
     const input = body?.variables?.input
     if (operationName === 'ReportPlaybackFormatFailure' && input) {
       reports.push(input)
+    }
+    if (operationName === 'SwitchPlaybackAudioTrack' && input) {
+      switches.push(input as unknown as SwitchPlaybackAudioTrackInput)
     }
     if (operationName === 'CreatePlaybackSession' && input?.capabilities) {
       const playbackSession = playbackSessionFor(input.capabilities)
@@ -515,7 +537,7 @@ test('the player plays a file with two audio tracks on the named track where the
 
   await openDirectPlay(page, request, {
     serveSource: (route) => serveFile(route, fixturePath(TWO_AUDIO_TRACKS_FILE), 'video/mp4'),
-    playbackSessionFor: twoAudioTrackFileSession,
+    playbackSessionFor: twoAudioTrackFileSession(1),
   })
 
   const directPlay = {
@@ -533,4 +555,71 @@ test('the player plays a file with two audio tracks on the named track where the
   await expect
     .poll(() => twoAudioTrackPlayback(page, requested))
     .toEqual(SELECTS_AUDIO_TRACK[browserName] ? directPlay : hls)
+})
+
+test('every engine plays a file with two audio tracks directly when its first track is the chosen one', async ({
+  page,
+  request,
+  browserName,
+}) => {
+  const requested: string[] = []
+  page.on('request', (sent) => requested.push(sent.url()))
+  await page.route('**/api/stream/e2e-fallback/**', (route) => route.abort())
+
+  await openDirectPlay(page, request, {
+    serveSource: (route) => serveFile(route, fixturePath(TWO_AUDIO_TRACKS_FILE), 'video/mp4'),
+    playbackSessionFor: twoAudioTrackFileSession(0),
+  })
+
+  await expect
+    .poll(() => twoAudioTrackPlayback(page, requested))
+    .toEqual({
+      playlistRequested: false,
+      sourceFileRequested: true,
+      // Only WebKit lists the file's tracks, and English plays there too.
+      enabled: SELECTS_AUDIO_TRACK[browserName] ? [true, false] : [],
+      frenchShown: false,
+    })
+  await expect(page.getByRole('button', { name: 'Audio: English' })).toBeVisible()
+})
+
+test('choosing another audio track during direct play moves to HLS where the engine cannot select one, and switches the track in the file where it can', async ({
+  page,
+  request,
+  browserName,
+}) => {
+  const requested: string[] = []
+  page.on('request', (sent) => requested.push(sent.url()))
+  await page.route('**/api/stream/e2e-fallback/**', (route) => route.abort())
+  const switches: SwitchPlaybackAudioTrackInput[] = []
+  await openDirectPlay(page, request, {
+    serveSource: (route) => serveFile(route, fixturePath(TWO_AUDIO_TRACKS_FILE), 'video/mp4'),
+    playbackSessionFor: twoAudioTrackFileSession(0),
+    switches,
+  })
+  const video = page.locator('video')
+  await expect
+    .poll(() => video.evaluate((element: HTMLVideoElement) => element.readyState))
+    .toBeGreaterThanOrEqual(2)
+
+  await page.getByRole('button', { name: 'Audio: English' }).click()
+  await expect(page.getByRole('menuitemradio')).toHaveText(['English', 'French'])
+  await page.getByRole('menuitemradio', { name: 'French' }).click()
+
+  if (SELECTS_AUDIO_TRACK[browserName]) {
+    await expect
+      .poll(() => twoAudioTrackPlayback(page, requested))
+      .toEqual({
+        playlistRequested: false,
+        sourceFileRequested: true,
+        enabled: [false, true],
+        frenchShown: true,
+      })
+    expect(switches).toEqual([])
+    return
+  }
+  await expect.poll(() => requested.some((url) => url.includes(MULTIVARIANT_URL))).toBe(true)
+  expect(switches).toEqual([
+    { playbackSessionId: 'playback-1', streamSessionId: 'sess-1', audioTrackPosition: 1 },
+  ])
 })
