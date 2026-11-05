@@ -161,7 +161,7 @@ describe('PlaybackData', () => {
             resolution: { width: 1280, height: 720 },
             videoCodec: 'avc1.64001f',
             hdrMode: 'SDR',
-            audio: { codec: 'mp4a.40.2', channels: 2, dolbyAtmos: false },
+            audio: { codec: 'mp4a.40.2', channels: 2 },
             screen: { width: 2560, height: 1440, pixelRatio: 2, hdr: true },
             browser: { name: 'Chrome', version: '141' },
           },

@@ -81,9 +81,8 @@ export function capturePlayerFigures({
         : undefined,
     videoCodec: stats.videoCodec,
     hdrMode: hdrMode(stats, { videoRange, playsHls }),
-    audio: audioCodec
-      ? { codec: audioCodec, channels: audioChannels, dolbyAtmos: false }
-      : undefined,
+    // The element and hls.js report no Dolby Atmos either way, so the report leaves it out.
+    audio: audioCodec ? { codec: audioCodec, channels: audioChannels } : undefined,
   }
 }
 
