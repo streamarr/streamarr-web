@@ -12,6 +12,7 @@ import { requestFailureMessage } from '../../graphql/requestErrors'
 import { userErrorMessage } from '../../graphql/userErrors'
 import { FailureRow } from '../../ui/Failure'
 import styles from '../Settings.module.css'
+import { IdleSegmentRetentionSettings } from './IdleSegmentRetentionSettings'
 
 type KnownChoice = Exclude<EncoderPresetChoice, '%future added value'>
 
@@ -86,19 +87,26 @@ export function EncodingSettings() {
       <div className={styles.pageHeading}>
         <h1>Encoding</h1>
       </div>
-      {setting && query.error && (
-        <FailureRow className={styles.failureRow} onRetry={query.refetch}>
-          {requestFailureMessage(query.error, "Couldn't load the latest encoder preset.")}
-        </FailureRow>
-      )}
-      <EncodingContent
-        setting={setting}
-        error={setting ? undefined : query.error}
-        onRetry={query.refetch}
-        saving={saving}
-        refusal={refusal}
-        onChoose={(value) => void choose(value)}
-      />
+      <div className={styles.formPanel}>
+        <div className={styles.settingRow}>
+          {setting && query.error && (
+            <FailureRow className={styles.failureRow} onRetry={query.refetch}>
+              {requestFailureMessage(query.error, "Couldn't load the latest encoder preset.")}
+            </FailureRow>
+          )}
+          <EncodingContent
+            setting={setting}
+            error={setting ? undefined : query.error}
+            onRetry={query.refetch}
+            saving={saving}
+            refusal={refusal}
+            onChoose={(value) => void choose(value)}
+          />
+        </div>
+        <div className={styles.settingRow}>
+          <IdleSegmentRetentionSettings />
+        </div>
+      </div>
     </>
   )
 }
@@ -132,21 +140,19 @@ function EncodingContent({
     )
 
   return (
-    <div className={styles.formPanel}>
-      <div className={styles.form}>
-        <Select
-          classNames={{ dropdown: styles.popover, option: styles.popoverOption }}
-          label="Encoder preset"
-          description="Faster presets start playback sooner and fit more encodes on a worker. Slower presets give a better picture at the same bitrate. A change reaches only quality levels that start afterwards. A quality level that has already started keeps its preset, even after a seek."
-          value={setting.preset}
-          data={choicesShowing(setting.preset)}
-          allowDeselect={false}
-          readOnly={saving}
-          error={refusal}
-          onChange={onChoose}
-        />
-        <p className={styles.fieldNote}>{automaticLine(setting.automatic)}</p>
-      </div>
+    <div className={styles.form}>
+      <Select
+        classNames={{ dropdown: styles.popover, option: styles.popoverOption }}
+        label="Encoder preset"
+        description="The quality profile the transcoder uses. Faster presets give lower-quality video but use fewer resources. Slower presets give higher-quality video but use more resources."
+        value={setting.preset}
+        data={choicesShowing(setting.preset)}
+        allowDeselect={false}
+        readOnly={saving}
+        error={refusal}
+        onChange={onChoose}
+      />
+      <p className={styles.fieldNote}>{automaticLine(setting.automatic)}</p>
     </div>
   )
 }

@@ -31,6 +31,19 @@ function serve(setting = SAVED_AUTOMATIC, me = ADMIN) {
     graphql.query('Me', () => HttpResponse.json({ data: { me } })),
     graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
     graphql.query('AdminLibraries', () => HttpResponse.json({ data: { libraries: [] } })),
+    graphql.query('IdleSegmentRetentionSetting', () =>
+      HttpResponse.json({
+        data: {
+          idleSegmentRetentionSetting: {
+            __typename: 'IdleSegmentRetentionSetting',
+            id: '0b8f7a2e-5d41-4c3a-9e6f-2a1d8c7b4e90',
+            minutes: 60,
+            minimumMinutes: 5,
+            maximumMinutes: 10_080,
+          },
+        },
+      }),
+    ),
     graphql.query<EncoderPresetSettingQuery>('EncoderPresetSetting', () => {
       state.settingReads++
       return HttpResponse.json({ data: { encoderPresetSetting: state.setting } })
@@ -81,7 +94,7 @@ describe('encoding settings', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Encoding' })).toBeInTheDocument()
     expect(
       screen.getByText(
-        'Faster presets start playback sooner and fit more encodes on a worker. Slower presets give a better picture at the same bitrate. A change reaches only quality levels that start afterwards. A quality level that has already started keeps its preset, even after a seek.',
+        'The quality profile the transcoder uses. Faster presets give lower-quality video but use fewer resources. Slower presets give higher-quality video but use more resources.',
       ),
     ).toBeInTheDocument()
   })

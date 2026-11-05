@@ -1,0 +1,30 @@
+fragment IdleSegmentRetentionSettingFields on IdleSegmentRetentionSetting {
+  __typename
+  id
+  minutes
+  minimumMinutes
+  maximumMinutes
+}
+
+query IdleSegmentRetentionSetting {
+  idleSegmentRetentionSetting {
+    ...IdleSegmentRetentionSettingFields
+  }
+}
+
+mutation ChangeIdleSegmentRetention($input: ChangeIdleSegmentRetentionInput!) {
+  changeIdleSegmentRetention(input: $input) {
+    idleSegmentRetentionSetting {
+      ...IdleSegmentRetentionSettingFields
+    }
+    userErrors {
+      __typename
+      ... on MutationError {
+        message
+      }
+      ... on InputMutationError {
+        inputPath
+      }
+    }
+  }
+}
