@@ -110,9 +110,6 @@ const REASONS: Record<Known<DecisionReason>, Reason> = {
     return `You chose ${choiceText(choice)}, so the server re-encodes ${source} to fit your choice.`
   }),
   SOURCE_INTERLACED: video(() => 'The video is interlaced, and streaming needs progressive video.'),
-  DOLBY_VISION_WITHOUT_COMPATIBLE_BASE: video(
-    () => 'The video is Dolby Vision with no HDR10 or SDR fallback, so the server converts it.',
-  ),
   VIDEO_PROPERTIES_NOT_PROBED: video(
     () =>
       'An older server version read this video, so the server encodes it until it reads it again.',
@@ -154,6 +151,10 @@ const REASONS: Record<Known<DecisionReason>, Reason> = {
   KEYFRAME_TIMESTAMPS_INVALID: video(
     () => "The video's keyframe times are out of order or out of range.",
   ),
+  SEGMENT_EXCEEDS_CAP: video(
+    () =>
+      'Parts of this video hold too much data to copy into the stream, so the server encodes it.',
+  ),
   NO_WORKER_DELIVERS_COPY: video(
     () => 'No connected transcoder can rewrite this video for copying, so the server encodes it.',
   ),
@@ -177,6 +178,13 @@ const REASONS: Record<Known<DecisionReason>, Reason> = {
     () =>
       "The server couldn't read the codec details it needs to copy this audio, so it encodes it.",
   ),
+  AUDIO_BLOCK_SIZE_NOT_DECLARED: audio(
+    () => "This device can't play this FLAC audio's block size, so the server encodes the audio.",
+  ),
+  AUDIO_BLOCK_SIZE_UNKNOWN: audio(
+    () =>
+      "The server couldn't read this FLAC audio's block size to confirm this device can play it, so it encodes the audio.",
+  ),
   AUDIO_LOWERED_FOR_BITRATE_LIMIT: audio(({ audio, choice }) => {
     const { bitrate } = audio.output
     const lowered = bitrate === null ? 'the audio' : `the audio to ${bitrateText(bitrate)}`
@@ -192,12 +200,18 @@ const REASONS: Record<Known<DecisionReason>, Reason> = {
   DIRECT_PLAY_AUDIO_NOT_DECLARED: stream(
     "The server couldn't confirm that this device can play every audio track in this file directly.",
   ),
+  DIRECT_PLAY_AUDIO_TRACK_NOT_SELECTABLE: stream(
+    "This device can't switch audio tracks inside a file it plays directly, so the server streams the video with the chosen audio track.",
+  ),
   FORCED_IMAGE_SUBTITLE_IN_AUDIO_LANGUAGE: stream(
     "This file has forced image subtitles in an audio track's language, so the server streams the video.",
   ),
   DIRECT_PLAY_FAILED: stream('Direct play failed, so the server streams the video instead.'),
   COPY_FAILED: stream('The copy failed, so the server encodes the video instead.'),
   ENCODE_FAILED: stream('The encode failed, so the server encodes the video in another codec.'),
+  DOLBY_VISION_COPY_FAILED: stream(
+    'The Dolby Vision copy failed, so the server sends the video without Dolby Vision.',
+  ),
 }
 
 const CODECS = new Map([
