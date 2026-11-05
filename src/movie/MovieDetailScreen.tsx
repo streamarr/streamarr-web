@@ -61,6 +61,7 @@ export function MovieDetailScreen({ movieId }: Readonly<{ movieId: string }>) {
           height: 400,
         }}
         back={<DetailBackButton />}
+        endsIn={secondsToPlay(movie)}
         metadata={[
           { label: 'Genre', value: names(movie.genres) },
           { label: 'Directed by', value: names(movie.directors) },
@@ -122,6 +123,15 @@ export function MovieDetailScreen({ movieId }: Readonly<{ movieId: string }>) {
       )}
     </>
   )
+}
+
+// How long the movie plays from where it would start: the saved position when it is in progress.
+function secondsToPlay(movie: Movie): number | null {
+  const progress = movie.watchProgress
+  if (progress?.positionSeconds && progress.durationSeconds) {
+    return Math.max(0, progress.durationSeconds - progress.positionSeconds)
+  }
+  return movie.runtime != null ? movie.runtime * 60 : null
 }
 
 function names(people: ReadonlyArray<{ name: string } | null>): string | null {

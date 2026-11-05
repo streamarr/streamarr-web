@@ -63,6 +63,13 @@
   gap: var(--spacing-12);
 }
 
+/* Parts Back from the end time beside it. */
+.rule {
+  width: 1px;
+  height: 18px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
 .metadata {
   position: absolute;
   right: 36px;

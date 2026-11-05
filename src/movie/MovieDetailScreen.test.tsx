@@ -304,6 +304,17 @@ describe('MovieDetailScreen', () => {
     expect(screen.getByTestId('action-progress')).toHaveStyle({ width: '35%' })
   })
 
+  it('shouldShowWhenTheMovieWouldEndBesideBack', async () => {
+    const endAt = (now: number) =>
+      new Date(now + 142 * 60_000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    const before = endAt(Date.now())
+    serve(movieData())
+    renderAppAt('/movie/m1')
+    const badge = await screen.findByRole('img', { name: 'Ends at' })
+    // The page renders between the two reads, so its end time is one of them even across a minute.
+    expect([before, endAt(Date.now())]).toContain(badge.nextElementSibling?.textContent)
+  })
+
   it('tints the page from the backdrop theme', async () => {
     serve(movieData())
     renderAppAt('/movie/m1')

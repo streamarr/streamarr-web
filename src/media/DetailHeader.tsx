@@ -37,6 +37,7 @@ export function ActionProgress({ share }: Readonly<{ share: number }>) {
 export function DetailHeader({
   backdrop,
   back,
+  endsIn,
   metadata,
   eyebrow,
   title,
@@ -49,6 +50,7 @@ export function DetailHeader({
 }: Readonly<{
   backdrop: DetailBackdrop
   back?: ReactNode
+  endsIn?: number | null
   metadata: MetadataEntry[]
   eyebrow?: string
   title: string
@@ -65,6 +67,7 @@ export function DetailHeader({
         {...backdrop}
         alt=""
         back={back}
+        endsIn={endsIn}
         metadata={<MetadataColumns entries={metadata} />}
       />
       <div className={titleColumn ? `${styles.panel} ${styles.split}` : styles.panel}>
