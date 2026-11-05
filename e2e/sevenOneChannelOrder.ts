@@ -78,6 +78,8 @@ export async function writeSevenOneStream(
 export interface LevelReading {
   /** The element's time at the reading. The judge does not use it: the graph can run behind. */
   mediaTime: number
+  /** The page's clock at the reading, in seconds. */
+  readAt: number
   /** The RMS amplitude of each splitter output's most recent samples. */
   rms: number[]
 }
@@ -116,11 +118,14 @@ const SILENCE_DB = -90
 const LEVEL_FLOOR_DB = -160
 // A reading near either end of a run may also hear the neighbouring tone.
 const RUN_EDGE_SHARE = 0.25
+// Each tone lasts 1 s. A shorter run, such as a tone leaking late into another output, is no tone.
+const MIN_TONE_SECONDS = 0.5
 
 /**
  * Judges whether the tones reached outputs 1 to 8 in turn, each at least 20 dB above every other
- * output. The order the tones arrive in identifies each one, so a graph that runs behind the
- * element is judged the same as one that keeps up.
+ * output. A tone is a run of readings, at least half a second long, with one loudest output. The
+ * order the tones arrive in identifies each one, so a graph that runs behind the element is judged
+ * the same as one that keeps up.
  */
 export function judgeChannelOrder(measurement: ChannelOrderMeasurement): ChannelOrderVerdict {
   if (measurement.playbackError) {
@@ -154,22 +159,32 @@ function loudestOutput(levels: number[]): number {
   return levels.indexOf(Math.max(...levels))
 }
 
-// Readings below the tone floor end a run, and a run picks up again on the same output after them.
+// Readings below the tone floor end no run: a run picks up again on the same output after them.
 function runsOfLoudestOutput(readings: LevelReading[]): LevelReading[][] {
-  const runs: { output: number; readings: LevelReading[] }[] = []
-  for (const reading of readings) {
-    if (decibels(Math.max(...reading.rms) ** 2) < TONE_FLOOR_DB) {
-      continue
-    }
-    const output = loudestOutput(reading.rms)
-    const run = runs.at(-1)
-    if (run?.output === output) {
-      run.readings.push(reading)
+  const runs = mergeNeighbours(
+    readings
+      .filter(({ rms }) => decibels(Math.max(...rms) ** 2) >= TONE_FLOOR_DB)
+      .map((reading) => ({ output: loudestOutput(reading.rms), readings: [reading] })),
+  ).filter(({ readings: run }) => run.at(-1)!.readAt - run[0].readAt >= MIN_TONE_SECONDS)
+  return mergeNeighbours(runs).map((run) => run.readings)
+}
+
+interface Run {
+  output: number
+  readings: LevelReading[]
+}
+
+function mergeNeighbours(runs: Run[]): Run[] {
+  const merged: Run[] = []
+  for (const run of runs) {
+    const previous = merged.at(-1)
+    if (previous?.output === run.output) {
+      previous.readings.push(...run.readings)
     } else {
-      runs.push({ output, readings: [reading] })
+      merged.push({ output: run.output, readings: [...run.readings] })
     }
   }
-  return runs.map((run) => run.readings)
+  return merged
 }
 
 function heardTone(run: LevelReading[]): HeardTone {

@@ -5,7 +5,8 @@ import type { ChannelOrderMeasurement, LevelReading } from './sevenOneChannelOrd
 // The page of seven-one-channel-order.spec.ts, which Vite's dev server serves. It plays the stream
 // named by the `stream` query parameter through hls.js on Media Source Extensions with the
 // player's hls.js settings, and reads each channel through a ChannelSplitterNode. The Start
-// button's click is the user gesture that lets the AudioContext run and the element play.
+// button's click is the user gesture that lets the AudioContext run and the element play. The
+// `deadline` query parameter shortens the 30 s the page waits for the end of the stream.
 
 declare global {
   interface Window {
@@ -16,13 +17,14 @@ declare global {
 const OUTPUTS = 8
 const READ_INTERVAL_MS = 20
 const ANALYSER_SAMPLES = 2048
+const parameters = new URLSearchParams(location.search)
 // The stream lasts 11 s.
-const PLAYBACK_DEADLINE_MS = 30_000
+const PLAYBACK_DEADLINE_SECONDS = Number(parameters.get('deadline') ?? 30)
 
 const PLAYBACK_ERRORS = {
   refused: 'play() was refused',
   stopped: 'Playback stopped before the end',
-  'timed out': `Playback did not reach the end within ${PLAYBACK_DEADLINE_MS / 1000} s`,
+  'timed out': `Playback did not reach the end within ${PLAYBACK_DEADLINE_SECONDS} s`,
 }
 
 const video = document.querySelector('video')!
@@ -49,7 +51,7 @@ const finished = new Promise<'ended' | 'stopped'>((resolve) => {
   })
 })
 hls.attachMedia(video)
-hls.loadSource(new URLSearchParams(location.search).get('stream') ?? '')
+hls.loadSource(parameters.get('stream') ?? '')
 
 start.addEventListener(
   'click',
@@ -77,14 +79,11 @@ async function measure(): Promise<ChannelOrderMeasurement> {
   const readings: LevelReading[] = []
   const samples = new Float32Array(ANALYSER_SAMPLES)
   const reading = setInterval(() => {
-    if (video.paused) {
-      return
-    }
     const rms = analysers.map((analyser) => {
       analyser.getFloatTimeDomainData(samples)
       return Math.sqrt(samples.reduce((sum, sample) => sum + sample * sample, 0) / samples.length)
     })
-    readings.push({ mediaTime: video.currentTime, rms })
+    readings.push({ mediaTime: video.currentTime, readAt: performance.now() / 1000, rms })
   }, READ_INTERVAL_MS)
   let deadline: ReturnType<typeof setTimeout> | undefined
   try {
@@ -97,7 +96,7 @@ async function measure(): Promise<ChannelOrderMeasurement> {
         () => 'refused' as const,
       ),
       new Promise<'timed out'>((resolve) => {
-        deadline = setTimeout(() => resolve('timed out'), PLAYBACK_DEADLINE_MS)
+        deadline = setTimeout(() => resolve('timed out'), PLAYBACK_DEADLINE_SECONDS * 1000)
       }),
     ])
     if (outcome === 'ended') {

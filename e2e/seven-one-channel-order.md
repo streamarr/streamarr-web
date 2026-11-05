@@ -8,9 +8,10 @@ centre, LFE, back left, back right, side left, side right. 2 s of silence end th
 tone is 50 Hz; the others are 1 kHz. The spec writes the stream with FFmpeg when it starts: AAC at
 768 kb/s, FLAC, and Opus at 768 kb/s with `-mapping_family 1`.
 
-The tones must reach outputs 1 to 8 in turn, each at least 20 dB above every other output. The spec
-identifies each tone by the order it arrives in, not by the element's time: WebKit on Linux runs its
-audio graph up to a second behind the element.
+The tones must reach outputs 1 to 8 in turn, each at least 20 dB above every other output. A tone is
+a run of readings, at least 0.5 s long, in which one output is the loudest and reads at least
+-40 dBFS. The spec identifies each tone by the order it arrives in, not by the element's time:
+WebKit on Linux runs its audio graph up to a second behind the element.
 
 | Result | Meaning |
 | --- | --- |
@@ -32,7 +33,8 @@ the oldest version that passed.
 
 The macOS rows come from macOS 26.6 on Apple silicon. The Linux rows come from the CI runner. There,
 Firefox runs its audio graph only when an audio server runs, so CI starts PulseAudio with a null sink
-for Firefox. WebKit stalls Opus streams while PulseAudio runs, so WebKit runs without it.
+for Firefox. WebKit runs without it, because in a local Linux container WebKit stalled Opus streams
+while PulseAudio ran.
 
 | Browser | Version | Platform | Codec | Result | Note |
 | --- | --- | --- | --- | --- | --- |
@@ -58,5 +60,5 @@ for Firefox. WebKit stalls Opus streams while PulseAudio runs, so WebKit runs wi
 | firefox | 157.0 | Linux | FLAC | passed | |
 | firefox | 157.0 | Linux | OPUS | passed | |
 | webkit | 27.2 | Linux | AAC | passed | |
-| webkit | 27.2 | Linux | FLAC | failed | Front left, front right, back left, back right, centre, LFE, side left, side right. |
+| webkit | 27.2 | Linux | FLAC | passed | |
 | webkit | 27.2 | Linux | OPUS | passed | |

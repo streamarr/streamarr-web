@@ -24,6 +24,7 @@ function readingsOf(tones: number[][]): LevelReading[] {
   const tonesInTurn = tones.flatMap((rms) => Array.from({ length: READINGS_PER_TONE }, () => rms))
   return [...silence, ...tonesInTurn, ...silence].map((rms, index) => ({
     mediaTime: index * READ_SECONDS,
+    readAt: index * READ_SECONDS,
     rms,
   }))
 }
@@ -128,6 +129,24 @@ test('a browser fails when it hands over 5.1, leaving the side outputs silent', 
   expect(verdict.result).toBe('failed')
   expect(verdict.findings).toEqual([
     'The tones reached outputs 1, 2, 3, 4, 5, 6 in turn, not 1 to 8.',
+  ])
+})
+
+test('a browser fails when a tone leaking briefly into a silent output stands in for its own', () => {
+  // The front right channel is lost, and the front left tone reaches output 2 for 0.1 s after it
+  // ends, 22.5 dB down: loud enough to pass for a tone, too short to be one.
+  const readings = readingsOf(inOrder()).map((reading, index) => {
+    const frontRight = Math.floor(index / READINGS_PER_TONE) === 2
+    if (!frontRight) return reading
+    const leaking = index % READINGS_PER_TONE < 2
+    return { ...reading, rms: toneOnOutput(leaking ? 1 : -1).map((rms) => rms * amplitude(-22.5)) }
+  })
+
+  const verdict = judgeChannelOrder({ readings, playbackError: null })
+
+  expect(verdict.result).toBe('failed')
+  expect(verdict.findings).toEqual([
+    'The tones reached outputs 1, 3, 4, 5, 6, 7, 8 in turn, not 1 to 8.',
   ])
 })
 

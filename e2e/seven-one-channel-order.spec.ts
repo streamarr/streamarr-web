@@ -81,8 +81,8 @@ async function serveStream(
   )
 }
 
-async function measure(page: Page): Promise<ChannelOrderMeasurement> {
-  await page.goto(`${PAGE_PATH}?stream=${STREAM_PATH}/multivariant.m3u8`)
+async function measure(page: Page, query = ''): Promise<ChannelOrderMeasurement> {
+  await page.goto(`${PAGE_PATH}?stream=${STREAM_PATH}/multivariant.m3u8${query}`)
   await page.getByRole('button', { name: 'Start' }).click()
   return page.evaluate(() => window.channelOrder!)
 }
@@ -144,4 +144,20 @@ test('a stream that hls.js cannot play is judged as not played', async ({ page }
 
   expect(verdict.result).toBe('did not play')
   expect(verdict.findings.join(' ')).toContain('manifestIncompatibleCodecsError')
+})
+
+test('a stream that stops arriving is judged as not played once the deadline passes', async ({
+  page,
+}) => {
+  await serveStream(page, 'FLAC')
+  // The media segment never arrives.
+  await page.route(
+    (url) => url.pathname.endsWith('/segment0.m4s'),
+    () => undefined,
+  )
+
+  const verdict = judgeChannelOrder(await measure(page, '&deadline=2'))
+
+  expect(verdict.result).toBe('did not play')
+  expect(verdict.findings[0]).toMatch(/^Playback did not reach the end within 2 s/)
 })

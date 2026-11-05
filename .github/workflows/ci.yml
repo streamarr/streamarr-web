@@ -125,7 +125,7 @@ jobs:
         run: node_modules/.bin/playwright install-deps firefox webkit
       - name: Install FFmpeg, which writes the 7.1 channel-order streams, and PulseAudio
         run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends ffmpeg pulseaudio
-      # WebKit stalls Opus streams when PulseAudio runs, so it runs before the audio server starts.
+      # WebKit stalled Opus streams under PulseAudio in a local container, so it runs before it starts.
       - run: npm run test:e2e -- --project=webkit --project=chrome
       # Firefox runs no audio graph without an audio server; PulseAudio gives it a null sink.
       - name: Start PulseAudio
