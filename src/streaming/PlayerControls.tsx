@@ -262,11 +262,14 @@ export function PlayerControls({
             open={openPicker === 'audio'}
             onOpenChange={(open) => onOpenPicker(open ? 'audio' : null)}
             onChoose={(id) => {
-              if (!tracks || id === audio.selected) {
+              if (!tracks) {
                 return
               }
+              // A pick of the track in use still reaches the source, which lets it stand.
               tracks.selectAudio(id)
-              onTrackChosen?.({ kind: 'audio', language: languageOf(audio.options, id) })
+              if (id !== audio.selected) {
+                onTrackChosen?.({ kind: 'audio', language: languageOf(audio.options, id) })
+              }
             }}
           />
           <ChoicePicker

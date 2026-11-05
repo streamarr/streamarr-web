@@ -7557,6 +7557,26 @@ describe('Player', () => {
       expect(screen.getByRole('button', { name: 'Audio: French' })).toBeInTheDocument()
     })
 
+    it('shouldKeepTheAudioTrackPlayingWhenTheViewerPicksItBeforeTheFirstFrameLoads', async () => {
+      serveDirectPlay({ audioTrackPosition: 1 })
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={selectingAudioTracks} mediaFileId="abcd" />,
+      )
+      const { audioTracks } = giveElementTracks(renderedVideo(), {})
+      const video = await nativeVideo(SOURCE_FILE.streamUrl)
+      const audio: FakeAudioTrack[] = [
+        { label: '', language: 'en', enabled: true },
+        { label: '', language: 'fr', enabled: false },
+      ]
+      act(() => listAudioTracks(audioTracks, audio))
+      await user.click(screen.getByRole('button', { name: 'Audio: English' }))
+      await user.click(screen.getByRole('menuitemradio', { name: 'English' }))
+
+      loadFirstFrame(video)
+
+      expect(audio.map((track) => track.enabled)).toEqual([true, false])
+    })
+
     it('shouldLeaveTheAudioTracksAloneWhenTheHlsFallbackReplacesTheSourceFileBeforeItsFirstFrame', async () => {
       serveDirectPlay({ audioTrackPosition: 1 })
       renderWithProviders(<Player playbackPlatform={selectingAudioTracks} mediaFileId="abcd" />)
