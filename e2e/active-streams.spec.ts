@@ -25,10 +25,13 @@ const MOVIE = {
   profile: { __typename: 'ActiveStreamProfile', id: 'profile-ada', name: 'Ada' },
   deviceName: 'Safari on Mac',
   mediaFileId: 'file-movie',
-  title: 'Everlight',
-  seriesTitle: null,
-  seasonNumber: null,
-  episodeNumber: null,
+  media: {
+    __typename: 'Movie',
+    id: 'movie-everlight',
+    title: 'Everlight',
+    runtime: 118,
+    images: [],
+  },
   positionSeconds: 754,
   state: 'PLAYING',
   decision: {
@@ -53,10 +56,24 @@ const EPISODE = {
   playbackSessionId: 'playback-episode',
   profile: { __typename: 'ActiveStreamProfile', id: 'profile-ben', name: 'Ben' },
   deviceName: 'Apple TV',
-  title: 'Breakage',
-  seriesTitle: 'Northern Line',
-  seasonNumber: 2,
-  episodeNumber: 5,
+  media: {
+    __typename: 'Episode',
+    id: 'episode-breakage',
+    title: 'Breakage',
+    episodeNumber: 5,
+    runtime: 52,
+    season: {
+      __typename: 'Season',
+      id: 'season-northern-line-2',
+      seasonNumber: 2,
+      series: {
+        __typename: 'Series',
+        id: 'series-northern-line',
+        title: 'Northern Line',
+        images: [],
+      },
+    },
+  },
   positionSeconds: null,
   state: null,
   decision: null,
@@ -80,15 +97,20 @@ async function fixture(page: Page, streams: unknown[]) {
   return state
 }
 
+const MOVIE_CARD = 'Everlight, Ada. Playing, Encode.'
+const EPISODE_CARD = 'Northern Line, S2 E5 · Breakage, Ben. Preparing.'
+
 test('the active streams page shows a stream that starts and drops one that ends, live', async ({
   page,
 }) => {
   const state = await fixture(page, [MOVIE])
   await page.goto(PAGE)
-  const movie = page.getByRole('article', { name: 'Everlight' })
-  await expect(movie).toContainText('Ada')
-  await expect(movie).toContainText('12:34 · Playing')
-  await expect(movie).toContainText("This device can't play the video's codec (HEVC).")
+  const movie = page.getByRole('button', { name: MOVIE_CARD })
+  await movie.click()
+  const details = page.getByRole('region', { name: 'Everlight' })
+  await expect(details).toContainText('Ada')
+  await expect(details).toContainText('12:34 · Playing')
+  await expect(details).toContainText("This device can't play the video's codec (HEVC).")
   await expect.poll(() => state.socket.isLive('ActiveStreamsChanged')).toBe(true)
 
   state.socket.publish('ActiveStreamsChanged', {
@@ -100,8 +122,8 @@ test('the active streams page shows a stream that starts and drops one that ends
       },
     },
   })
-  const episode = page.getByRole('article', { name: 'Northern Line · S2 E5 · Breakage' })
-  await expect(episode).toContainText('Preparing')
+  const episode = page.getByRole('button', { name: EPISODE_CARD })
+  await expect(episode).toBeVisible()
 
   state.socket.publish('ActiveStreamsChanged', {
     data: {
@@ -113,19 +135,44 @@ test('the active streams page shows a stream that starts and drops one that ends
     },
   })
   await expect(movie).toBeHidden()
+  await expect(details).toBeHidden()
   await expect(episode).toBeVisible()
 })
 
-test('on a phone held upright each active stream fits the screen', async ({ page }) => {
+test('on a phone held upright the filters, each poster and the open details fit the screen', async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 375, height: 667 })
-  await fixture(page, [MOVIE, EPISODE])
+  // A copy and a direct play beside the encode and the preparing stream, so every delivery has a chip.
+  const copy = {
+    ...MOVIE,
+    playbackSessionId: 'playback-copy',
+    decision: { ...MOVIE.decision, video: { ...MOVIE.decision.video, delivery: 'COPY' } },
+  }
+  const directPlay = {
+    ...MOVIE,
+    playbackSessionId: 'playback-direct',
+    decision: {
+      ...MOVIE.decision,
+      video: { ...MOVIE.decision.video, delivery: 'DIRECT_PLAY' },
+      audio: { ...MOVIE.decision.audio, delivery: 'DIRECT_PLAY' },
+    },
+  }
+  await fixture(page, [MOVIE, EPISODE, copy, directPlay])
   await page.goto(PAGE)
 
-  const movie = page.getByRole('article', { name: 'Everlight' })
-  await expect(movie).toContainText('Encode')
-  const box = await movie.boundingBox()
-  expect(box).not.toBeNull()
-  expect(box!.x).toBeGreaterThanOrEqual(0)
-  expect(box!.x + box!.width).toBeLessThanOrEqual(375)
+  await page.getByRole('button', { name: MOVIE_CARD }).click()
+  const details = page.getByRole('region', { name: 'Everlight' })
+  await expect(details).toContainText('Encode')
+  for (const box of [
+    await page.getByRole('button', { name: EPISODE_CARD }).boundingBox(),
+    await details.boundingBox(),
+    // The details clip their content, so the close button at the panel's far edge shows a clipped panel.
+    await details.getByRole('button', { name: 'Close details' }).boundingBox(),
+  ]) {
+    expect(box).not.toBeNull()
+    expect(box!.x).toBeGreaterThanOrEqual(0)
+    expect(box!.x + box!.width).toBeLessThanOrEqual(375)
+  }
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375)
 })
