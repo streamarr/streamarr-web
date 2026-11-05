@@ -113,10 +113,10 @@ function useMarkReadOnOpen(report: Report | null | undefined) {
     marked.current = unreadId
     void mark(unreadId)
   }, [unreadId, mark])
-  return {
-    failure,
-    retry: () => (unreadId === null ? undefined : mark(unreadId)),
-  }
+  // A mark whose answer was lost may still have marked the report read, as a later read shows.
+  return unreadId === null
+    ? { failure: null, retry: () => undefined }
+    : { failure, retry: () => mark(unreadId) }
 }
 
 function ReportSnapshot({ report }: Readonly<{ report: Report }>) {

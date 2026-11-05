@@ -540,6 +540,27 @@ describe('shared reports', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
+  it('shouldDropTheMarkFailureWhenALaterReadFindsTheReportRead', async () => {
+    const state = serveReports({ reports: [reportFixture()] })
+    server.use(
+      graphql.mutation('MarkPlaybackReportRead', () => {
+        // The server marks the report read, and its answer is lost.
+        state.reports = state.reports.map((report) => ({
+          ...report,
+          readAt: '2026-11-04T19:00:00Z',
+        }))
+        return HttpResponse.error()
+      }),
+    )
+    renderAppAt(`${REPORTS}/report-1`)
+    await screen.findByText("Couldn't mark the report read.")
+
+    window.dispatchEvent(new Event('online'))
+
+    expect(await screen.findByText('First read')).toBeInTheDocument()
+    expect(screen.queryByText("Couldn't mark the report read.")).not.toBeInTheDocument()
+  })
+
   it('shouldLeaveAReadReportAsItIsWhenTheServerAdminOpensIt', async () => {
     const state = serveReports({ reports: [OLDER] })
     renderAppAt(`${REPORTS}/report-2`)
