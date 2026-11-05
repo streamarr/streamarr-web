@@ -101,6 +101,7 @@ interface PlaybackStatusCheck {
   controller: AbortController
   generation: number
   fatal: boolean
+  settled: Promise<void>
 }
 
 /** What the player asks of a new playback session; no start position starts at the beginning. */
@@ -891,13 +892,14 @@ function startSessionPlayback({
     previous?.controller.abort()
   }
 
-  async function reconcilePlaybackStatus({
+  // A caller that joins a running check waits for that check to settle.
+  function reconcilePlaybackStatus({
     generation,
     fatal,
   }: {
     generation: number
     fatal: boolean
-  }) {
+  }): Promise<void> {
     if (
       cancelled ||
       generation !== sourceGeneration ||
@@ -905,18 +907,28 @@ function startSessionPlayback({
       !playbackSessionId ||
       endedAtRealEnd
     )
-      return
+      return Promise.resolve()
     if (statusCheck) {
       statusCheck.fatal ||= fatal
-      return
+      return statusCheck.settled
     }
-    const check = { controller: new AbortController(), generation, fatal }
+    const check: PlaybackStatusCheck = {
+      controller: new AbortController(),
+      generation,
+      fatal,
+      settled: Promise.resolve(),
+    }
     statusCheck = check
+    check.settled = runStatusCheck(check, playbackSessionId)
+    return check.settled
+  }
+
+  async function runStatusCheck(check: PlaybackStatusCheck, id: string) {
     const current = () =>
       !cancelled && statusCheck === check && check.generation === sourceGeneration
     const deadline = setTimeout(() => check.controller.abort(), PLAYBACK_START_TIMEOUT_MS)
     try {
-      await pollForReplacement({ check, current, id: playbackSessionId })
+      await pollForReplacement({ check, current, id })
       if (current() && check.controller.signal.aborted && check.fatal) failSource()
     } catch {
       if (current() && check.fatal) failSource()

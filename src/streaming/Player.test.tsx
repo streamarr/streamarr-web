@@ -7438,6 +7438,53 @@ describe('Player', () => {
         expect(screen.queryByRole('alert')).not.toBeInTheDocument()
       })
 
+      it('shouldMoveToHlsWhenTheSourceFileFailsWhileAStallsStatusCheckAnswersALostSwitch', async () => {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        const switchLost = deferred()
+        const checkAsked = deferred()
+        const checkAnswered = deferred()
+        let statusReads = 0
+        const replacement = () =>
+          readyPlaybackSession({ id: 'playback-1', streamSession: replacementStream(1) })
+        server.use(
+          graphql.mutation('SwitchPlaybackAudioTrack', async () => {
+            await switchLost.promise
+            return HttpResponse.error()
+          }),
+          // The waiting element asks for a real end, then the stall's own read starts the status
+          // check, whose first read waits.
+          graphql.query('PlaybackSession', async () => {
+            statusReads += 1
+            if (statusReads > 2) {
+              checkAsked.resolve()
+              await checkAnswered.promise
+            }
+            const playbackSession = statusReads === 1 ? directPlayStill() : replacement()
+            return HttpResponse.json({ data: { playbackSession } })
+          }),
+        )
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        const video = await directPlayAt(42)
+        vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout'] })
+        stallAt(video, 42)
+        await act(async () => vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 10_000))
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+        await act(async () => vi.advanceTimersByTimeAsync(10_000))
+        vi.useRealTimers()
+        await checkAsked.promise
+        failTheSourceFile(video, 2)
+
+        switchLost.resolve()
+        checkAnswered.resolve()
+
+        await attachedVideo(replacementStream(1).streamUrl)
+        loadMetadata(video)
+        expect(video.currentTime).toBe(42)
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      })
+
       it('shouldShowThePlaybackFailureWhenTheSourceFileFailsAndTheStatusStillNamesItAfterALostSwitch', async () => {
         serveDirectPlay({ audioTracks: TWO_TRACKS })
         const statusAsked = deferred()
