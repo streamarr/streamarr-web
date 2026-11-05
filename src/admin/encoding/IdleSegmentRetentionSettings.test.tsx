@@ -160,6 +160,27 @@ describe('idle segment retention settings', () => {
     expect(saveButton()).toBeDisabled()
   })
 
+  it.each([
+    { entered: '4', refusal: 'The shortest retention is 5 minutes.' },
+    { entered: '10081', refusal: 'The longest retention is 7 days.' },
+    { entered: '2147483648', refusal: 'The longest retention is 7 days.' },
+  ])(
+    'shouldRefuseWithoutAskingServerWhenRetentionIsOutsideAllowedRange($entered)',
+    async ({ entered, refusal }) => {
+      const state = serve()
+      const { user } = renderAppAt(ENCODING)
+      const field = await retentionField()
+      await user.clear(field)
+      await user.type(field, entered)
+      await user.click(saveButton())
+      expect(await screen.findByText(refusal)).toBeInTheDocument()
+      expect(field).toBeInvalid()
+      expect(field).toHaveAccessibleDescription(expect.stringContaining(refusal))
+      expect(field).toHaveValue(entered)
+      expect(state.changes).toEqual([])
+    },
+  )
+
   it('shouldShowServerMessageAndKeepSavedRetentionWhenServerRefusesChange', async () => {
     const state = serve()
     server.use(
@@ -175,7 +196,7 @@ describe('idle segment retention settings', () => {
               userErrors: [
                 {
                   __typename: 'IdleSegmentRetentionOutOfRangeError',
-                  message: 'Choose from 5 to 10080 minutes.',
+                  message: 'Choose from 60 to 10080 minutes.',
                   inputPath: ['minutes'],
                 },
               ],
@@ -187,13 +208,13 @@ describe('idle segment retention settings', () => {
     const { user } = renderAppAt(ENCODING)
     const field = await retentionField()
     await user.clear(field)
-    await user.type(field, '4')
+    await user.type(field, '30')
     await user.click(saveButton())
-    expect(await screen.findByText('Choose from 5 to 10080 minutes.')).toBeInTheDocument()
+    expect(await screen.findByText('Choose from 60 to 10080 minutes.')).toBeInTheDocument()
     expect(field).toHaveAccessibleDescription(
-      expect.stringContaining('Choose from 5 to 10080 minutes.'),
+      expect.stringContaining('Choose from 60 to 10080 minutes.'),
     )
-    expect(state.changes).toEqual([4])
+    expect(state.changes).toEqual([30])
     const reread = deferred()
     server.use(
       graphql.query<IdleSegmentRetentionSettingQuery>(

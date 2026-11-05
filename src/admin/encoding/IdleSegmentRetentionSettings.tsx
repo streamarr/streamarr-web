@@ -51,8 +51,11 @@ export function IdleSegmentRetentionSettings() {
     void query.refetch()
   }
 
-  async function save(minutes: number) {
-    setRefusal(null)
+  async function save(minutes: number, bounds: IdleSegmentRetentionSettingFieldsFragment) {
+    // A value too large for GraphQL's Int fails the whole request, which would read as unconfirmed.
+    const outside = rangeRefusal(minutes, bounds)
+    setRefusal(outside)
+    if (outside) return
     try {
       const { data } = await change({ variables: { input: { minutes } } })
       const payload = data?.changeIdleSegmentRetention
@@ -97,7 +100,7 @@ export function IdleSegmentRetentionSettings() {
         busy={saving || query.loading}
         saving={saving}
         refusal={refusal}
-        onSave={(minutes) => void save(minutes)}
+        onSave={(minutes) => void save(minutes, setting)}
       />
     </>
   )
@@ -161,6 +164,17 @@ function RetentionForm({
       </form>
     </div>
   )
+}
+
+function rangeRefusal(
+  minutes: number,
+  bounds: IdleSegmentRetentionSettingFieldsFragment,
+): string | null {
+  if (minutes < bounds.minimumMinutes)
+    return `The shortest retention is ${duration(bounds.minimumMinutes)}.`
+  if (minutes > bounds.maximumMinutes)
+    return `The longest retention is ${duration(bounds.maximumMinutes)}.`
+  return null
 }
 
 function allowedRange(setting: IdleSegmentRetentionSettingFieldsFragment): string {
