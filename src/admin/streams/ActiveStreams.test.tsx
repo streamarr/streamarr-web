@@ -514,6 +514,27 @@ describe('active streams', () => {
     )
   })
 
+  it('shouldMoveThroughAMenuByKeyboardAndReturnToItsButtonWhenTheAdminChoosesOrLeaves', async () => {
+    serve()
+    const { user } = renderAppAt(PAGE)
+    await streamCard(MOVIE_CARD)
+
+    await user.click(screen.getByRole('button', { name: 'Sort: Viewer' }))
+    expect(screen.getByRole('menuitemradio', { name: 'Viewer' })).toHaveFocus()
+    await user.keyboard('{ArrowDown}')
+    expect(screen.getByRole('menuitemradio', { name: 'Title' })).toHaveFocus()
+    await user.keyboard('{End}')
+    expect(screen.getByRole('menuitemradio', { name: 'Output bitrate' })).toHaveFocus()
+    await user.keyboard('{Enter}')
+
+    expect(screen.getByRole('button', { name: 'Sort: Output bitrate' })).toHaveFocus()
+
+    await user.keyboard('{Enter}')
+    await user.keyboard('{Escape}')
+
+    expect(screen.getByRole('button', { name: 'Sort: Output bitrate' })).toHaveFocus()
+  })
+
   it('shouldLeaveTheOutputTotalOutWhenAStreamsOutputBitrateIsNotKnown', async () => {
     const unknownOutput = playbackDecision({
       streamSessionId: 'sess-unknown',

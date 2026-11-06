@@ -3,6 +3,7 @@ import {
   type CSSProperties,
   type ReactNode,
   type RefObject,
+  useCallback,
   useEffect,
   useId,
   useLayoutEffect,
@@ -20,6 +21,7 @@ import filterStyles from '../../library/FilterBar.module.css'
 import sortStyles from '../../library/SortMenu.module.css'
 import { formatTimecode } from '../../media/formatting'
 import { PosterCard } from '../../media/PosterCard'
+import { moveBetweenRows } from '../../streaming/CaretPopover'
 import { Fact, Facts, PlaybackDecisionTracks } from '../../streaming/PlaybackDecisionFacts'
 import { bitrateText, placedReasons } from '../../streaming/playbackDecisionText'
 import { FailurePanel, FailureRow } from '../../ui/Failure'
@@ -382,12 +384,30 @@ function ChipMenu<Value extends string | null>({
 }>) {
   const [opened, setOpened] = useState(false)
   const anchor = useRef<HTMLDivElement>(null)
+  const trigger = useRef<HTMLButtonElement>(null)
+  const menu = useRef<HTMLDivElement>(null)
   const menuId = useId()
-  useDismiss(anchor, opened, setOpened)
+
+  // Escape and a choice hand focus back to the button; a click elsewhere keeps it where it landed.
+  const close = useCallback(({ returnFocus }: { returnFocus: boolean }) => {
+    setOpened(false)
+    if (returnFocus) trigger.current?.focus()
+  }, [])
+
+  useDismiss(anchor, opened, close)
+  useLayoutEffect(() => {
+    if (!opened) return
+    const rows = Array.from(
+      menu.current?.querySelectorAll<HTMLElement>('[role="menuitemradio"]') ?? [],
+    )
+    const checked = rows.find((row) => row.getAttribute('aria-checked') === 'true')
+    ;(checked ?? rows[0])?.focus()
+  }, [opened])
 
   return (
     <div className={sortStyles.anchor} ref={anchor}>
       <button
+        ref={trigger}
         type="button"
         className={active ? `${filterStyles.chip} ${filterStyles.chipActive}` : filterStyles.chip}
         aria-expanded={opened}
@@ -401,6 +421,7 @@ function ChipMenu<Value extends string | null>({
       </button>
       {opened && (
         <div
+          ref={menu}
           id={menuId}
           className={align === 'start' ? `${sortStyles.menu} ${styles.menuStart}` : sortStyles.menu}
           role="menu"
@@ -412,6 +433,7 @@ function ChipMenu<Value extends string | null>({
               type="button"
               role="menuitemradio"
               aria-checked={option.value === value}
+              tabIndex={-1}
               className={
                 option.value === value
                   ? `${sortStyles.item} ${sortStyles.itemActive}`
@@ -419,8 +441,9 @@ function ChipMenu<Value extends string | null>({
               }
               onClick={() => {
                 onChange(option.value)
-                setOpened(false)
+                close({ returnFocus: true })
               }}
+              onKeyDown={moveBetweenRows}
             >
               {option.label}
             </button>
@@ -434,15 +457,16 @@ function ChipMenu<Value extends string | null>({
 function useDismiss(
   anchor: RefObject<HTMLElement | null>,
   opened: boolean,
-  setOpened: (opened: boolean) => void,
+  close: (options: { returnFocus: boolean }) => void,
 ) {
   useEffect(() => {
     if (!opened) return
     function onPointerDown(event: MouseEvent) {
-      if (anchor.current && !anchor.current.contains(event.target as Node)) setOpened(false)
+      if (anchor.current && !anchor.current.contains(event.target as Node))
+        close({ returnFocus: false })
     }
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') setOpened(false)
+      if (event.key === 'Escape') close({ returnFocus: true })
     }
     document.addEventListener('mousedown', onPointerDown)
     document.addEventListener('keydown', onKeyDown)
@@ -450,7 +474,7 @@ function useDismiss(
       document.removeEventListener('mousedown', onPointerDown)
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [anchor, opened, setOpened])
+  }, [anchor, opened, close])
 }
 
 function PosterGrid({ streams }: Readonly<{ streams: readonly Stream[] }>) {
