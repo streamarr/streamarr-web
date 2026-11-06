@@ -43,8 +43,10 @@ import type {
   PlaybackFormatChange,
   ReportPlaybackFormatFailureInput,
   SwitchPlaybackAudioTrackInput,
+  StreamingOptionsInput,
   SwitchPlaybackAudioTrackMutation,
   VideoQuality,
+  VideoRange,
 } from '../graphql/generated/graphql'
 import type { PlaybackPlatform } from './playbackCapabilities'
 import { Player } from './Player'
@@ -158,15 +160,20 @@ function serveSessionRecordingDeclarations(): ClientCapabilityDeclarationInput[]
 
 // Each creation answers a new playback session that names the choice asked for, Auto when none
 // was, or the one `playing` says the server plays instead, with the format change `formatChange`
-// names. Every creation, with the start position it names, and every destruction joins the log.
+// names, from a source of `sourceRange` whose stream plays the range `videoRange` names. Every
+// creation, with the HDR choice and start position it names, and every destruction joins the log.
 function servePlaybackChoices({
   playing = (requested) => requested,
   formatChange = () => null,
   offered = OFFERED_FOR_FULL_HD,
+  sourceRange,
+  videoRange = () => 'SDR',
 }: {
   playing?: (requested: VideoQuality) => VideoQuality
   formatChange?: (requested: VideoQuality) => PlaybackFormatChange | null
   offered?: VideoQuality[]
+  sourceRange?: VideoRange
+  videoRange?: (options: StreamingOptionsInput) => VideoRange
 } = {}): string[] {
   const log: string[] = []
   server.use(
@@ -174,7 +181,8 @@ function servePlaybackChoices({
       const { options, startPositionSeconds } = (variables as { input: CreatePlaybackSessionInput })
         .input
       const startsAt = startPositionSeconds == null ? '' : ` at ${startPositionSeconds}`
-      log.push(`create ${options?.quality ?? 'without a choice'}${startsAt}`)
+      const range = options?.dynamicRange ? ` ${options.dynamicRange}` : ''
+      log.push(`create ${options?.quality ?? 'without a choice'}${range}${startsAt}`)
       const requested = options?.quality ?? 'AUTO'
       const number = log.filter((entry) => entry.startsWith('create')).length
       return HttpResponse.json({
@@ -186,7 +194,9 @@ function servePlaybackChoices({
                 ...SESSION,
                 id: `sess-${number}`,
                 streamUrl: choiceStreamUrl(number),
+                videoRange: videoRange(options ?? {}),
               },
+              sourceRange,
               requestedChoice: requested,
               playbackChoice: playing(requested),
               formatChange: formatChange(requested),
@@ -221,7 +231,10 @@ function replacementStream(replacement: number) {
 
 // The format failure report answers with the attempt that replaces the refused stream, already
 // Ready on `stream`, and with the choices the server names for it.
-function replaceTheRefusedStream(choices: Partial<PlaybackChoices>, stream = replacementStream(1)) {
+function replaceTheRefusedStream(
+  choices: Partial<PlaybackChoices> & { sourceRange?: VideoRange },
+  stream: Parameters<typeof readyPlaybackSession>[0]['streamSession'] = replacementStream(1),
+) {
   server.use(
     graphql.mutation('ReportPlaybackFormatFailure', ({ variables }) => {
       const { playbackSessionId } = (variables as { input: ReportPlaybackFormatFailureInput }).input
@@ -6894,6 +6907,217 @@ describe('Player', () => {
       await showingVideo(replacementStream(1).streamUrl)
       expect(notice()).toBeEmptyDOMElement()
       expect(screen.getByRole('button', { name: 'Quality: Auto' })).toBeInTheDocument()
+    })
+  })
+
+  describe('HDR control', () => {
+    const HDR_UNAVAILABLE = "HDR isn't available on this playback setup."
+    const SDR_ONLY = { preferHDR: false, allowedVideoRanges: ['SDR'] }
+    // A browser on an HDR display that decodes every configuration it asks about, so its
+    // declaration lists PQ and HLG.
+    const showingHdr = () =>
+      playbackPlatformFixture({
+        displaysHighDynamicRange: true,
+        decodingInfo: () =>
+          Promise.resolve({ supported: true, smooth: true, powerEfficient: true }),
+      })
+    // Before HDR encodes, as the server names it: an HDR source plays HDR unless SDR is chosen.
+    const playsHdrUnlessSdrIsChosen = ({ dynamicRange }: StreamingOptionsInput): VideoRange =>
+      dynamicRange === 'SDR' ? 'SDR' : 'PQ'
+
+    function hdrToggleIn(menu: HTMLElement): HTMLElement | null {
+      return within(menu).queryByRole('menuitemcheckbox', { name: /^HDR/ })
+    }
+
+    // An HDR source plays in Auto, then in the `picked` row's choice, on `platform`.
+    async function pickForAnHdrSource({
+      picked,
+      platform = showingHdr,
+      videoRange = playsHdrUnlessSdrIsChosen,
+      playing,
+    }: {
+      picked: string
+      platform?: () => PlaybackPlatform
+      videoRange?: (options: StreamingOptionsInput) => VideoRange
+      playing?: (requested: VideoQuality) => VideoQuality
+    }) {
+      const log = servePlaybackChoices({ sourceRange: 'PQ', videoRange, playing })
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={platform} mediaFileId="abcd" />,
+      )
+      await showingVideo(choiceStreamUrl(1))
+      await pickQuality(user, picked)
+      const video = await showingVideo(choiceStreamUrl(2))
+      return { user, log, video }
+    }
+
+    it('shouldHideTheHdrToggleWhileAutoPlaysAnHdrSource', async () => {
+      servePlaybackChoices({ sourceRange: 'PQ', videoRange: playsHdrUnlessSdrIsChosen })
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={showingHdr} mediaFileId="abcd" />,
+      )
+      await showingVideo(choiceStreamUrl(1))
+
+      expect(hdrToggleIn(await openQualityMenu(user))).toBeNull()
+    })
+
+    it.each([
+      { case: 'Original plays', playing: undefined },
+      { case: 'Original changed to Auto', playing: () => 'AUTO' as const },
+    ])('shouldLeaveTheHdrToggleOutWhen$case', async ({ playing }) => {
+      const { user, log } = await pickForAnHdrSource({ picked: 'Original', playing })
+
+      expect(hdrToggleIn(await openQualityMenu(user))).toBeNull()
+      expect(log.at(-1)).toBe('create ORIGINAL')
+    })
+
+    it('shouldLeaveTheHdrToggleOutAndSendNoChoiceWhenTheSourceIsSdr', async () => {
+      const log = servePlaybackChoices({ sourceRange: 'SDR' })
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={showingHdr} mediaFileId="abcd" />,
+      )
+      await showingVideo(choiceStreamUrl(1))
+      await pickQuality(user, '720p')
+      await showingVideo(choiceStreamUrl(2))
+
+      expect(hdrToggleIn(await openQualityMenu(user))).toBeNull()
+      expect(log.at(-1)).toBe('create HIGH_720P')
+    })
+
+    it('shouldShowTheHdrToggleOnWhileAFixedQualityPlaysHdr', async () => {
+      const { user } = await pickForAnHdrSource({ picked: '720p' })
+
+      const toggle = hdrToggleIn(await openQualityMenu(user))
+
+      expect(toggle).toHaveAccessibleName('HDR')
+      expect(toggle).toHaveAttribute('aria-checked', 'true')
+      expect(toggle).not.toHaveAttribute('aria-disabled')
+    })
+
+    it.each([
+      { playing: 'PQ', sent: 'HDR' },
+      { playing: 'HLG', sent: 'HDR' },
+      { playing: 'SDR', sent: 'SDR' },
+    ] as const)(
+      'shouldAskForTheRangePlayingNowWhenTheViewerLeavesAutoForAFixedQuality(playing: $playing)',
+      async ({ playing, sent }) => {
+        const { log } = await pickForAnHdrSource({
+          picked: '720p',
+          videoRange: ({ quality }) => (quality === 'AUTO' ? playing : 'PQ'),
+        })
+
+        expect(log).toEqual(['create AUTO', 'destroy playback-1', `create HIGH_720P ${sent}`])
+      },
+    )
+
+    it.each([
+      { picked: 'Original', created: 'create ORIGINAL' },
+      { picked: 'Auto', created: 'create AUTO' },
+    ])(
+      'shouldSendNoHdrChoiceWhenTheViewerLeavesAFixedQualityFor$picked',
+      async ({ picked, created }) => {
+        const { user, log } = await pickForAnHdrSource({ picked: '720p' })
+
+        await pickQuality(user, picked)
+        await showingVideo(choiceStreamUrl(3))
+
+        expect(log.at(-1)).toBe(created)
+      },
+    )
+
+    it('shouldStartANewPlaybackSessionAtThePlayheadWithTheRangeTheViewerToggles', async () => {
+      const { user, log, video } = await pickForAnHdrSource({ picked: '720p' })
+      playheadAt(video, 120)
+
+      await user.click(hdrToggleIn(await openQualityMenu(user)) as HTMLElement)
+      await showingVideo(choiceStreamUrl(3))
+
+      expect(log.slice(3)).toEqual(['destroy playback-2', 'create HIGH_720P SDR at 120'])
+      expect(hls.config?.videoPreference).toEqual(SDR_ONLY)
+      expect(hdrToggleIn(await openQualityMenu(user))).toHaveAttribute('aria-checked', 'false')
+      expect(screen.getByRole('button', { name: 'Quality: 720p' })).toBeInTheDocument()
+    })
+
+    it('shouldAskForHdrAgainWhenTheViewerTogglesHdrBackOn', async () => {
+      const { user, log } = await pickForAnHdrSource({ picked: '720p' })
+      await user.click(hdrToggleIn(await openQualityMenu(user)) as HTMLElement)
+      await showingVideo(choiceStreamUrl(3))
+
+      await user.click(hdrToggleIn(await openQualityMenu(user)) as HTMLElement)
+      await showingVideo(choiceStreamUrl(4))
+
+      expect(log.at(-1)).toBe('create HIGH_720P HDR')
+      expect(hdrToggleIn(await openQualityMenu(user))).toHaveAttribute('aria-checked', 'true')
+    })
+
+    it('shouldShowSdrInTheHdrToggleWhenTheFixedQualitysHdrCopyFallsBackToAnSdrEncode', async () => {
+      const { user } = await pickForAnHdrSource({ picked: '720p' })
+      replaceTheRefusedStream(
+        { ...FIXED_QUALITY_CONVERTED, sourceRange: 'PQ' },
+        { ...replacementStream(1), videoRange: 'SDR' },
+      )
+
+      refuseTheStreamsFormat()
+      await showingVideo(replacementStream(1).streamUrl)
+
+      expect(notice().textContent).toBe(CONVERTED_NOTICE)
+      expect(hdrToggleIn(await openQualityMenu(user))).toHaveAttribute('aria-checked', 'false')
+    })
+
+    it('shouldDisableTheHdrToggleWithAnExplanationWhenThisPlaybackSetupCannotShowHdr', async () => {
+      const { user, log } = await pickForAnHdrSource({
+        picked: '720p',
+        platform: withoutDecodingInfo,
+        videoRange: () => 'SDR',
+      })
+      const menu = await openQualityMenu(user)
+      const toggle = hdrToggleIn(menu) as HTMLElement
+      expect(screen.getByText(HDR_UNAVAILABLE)).not.toBeVisible()
+
+      await user.keyboard('{End}')
+
+      expect(toggle).toHaveFocus()
+      expect(toggle).toHaveAccessibleName(`HDR. ${HDR_UNAVAILABLE}`)
+      expect(toggle).toHaveAttribute('aria-disabled', 'true')
+      expect(toggle).toHaveAttribute('aria-checked', 'false')
+      expect(screen.getByText(HDR_UNAVAILABLE)).toBeVisible()
+      expect(log.at(-1)).toBe('create HIGH_720P SDR')
+    })
+
+    it('shouldKeepPlayingAndTheMenuOpenWhenTheViewerPressesTheDisabledHdrToggle', async () => {
+      const { user, log } = await pickForAnHdrSource({
+        picked: '720p',
+        platform: withoutDecodingInfo,
+        videoRange: () => 'SDR',
+      })
+      const menu = await openQualityMenu(user)
+
+      await user.click(hdrToggleIn(menu) as HTMLElement)
+
+      expect(screen.getByRole('menu')).toBe(menu)
+      expect(log).toHaveLength(3)
+    })
+
+    it('shouldShowTheConvertedNoticeWhenAFixedQualityPlaysSdrUnderTheViewersHdrChoice', async () => {
+      const { user, log } = await pickForAnHdrSource({
+        picked: '720p',
+        videoRange: ({ quality }) => (quality === 'AUTO' ? 'PQ' : 'SDR'),
+      })
+
+      expect(log.at(-1)).toBe('create HIGH_720P HDR')
+      expect(notice().textContent).toBe(CONVERTED_NOTICE)
+      const menu = await openQualityMenu(user)
+      expect(hdrToggleIn(menu)).toHaveAttribute('aria-checked', 'false')
+      expect(marksIn(menu)).toEqual([])
+    })
+
+    it('shouldShowNoNoticeWhenAFixedQualityPlaysTheSdrTheViewerChose', async () => {
+      const { user } = await pickForAnHdrSource({ picked: '720p' })
+
+      await user.click(hdrToggleIn(await openQualityMenu(user)) as HTMLElement)
+      await showingVideo(choiceStreamUrl(3))
+
+      expect(notice()).toBeEmptyDOMElement()
     })
   })
 

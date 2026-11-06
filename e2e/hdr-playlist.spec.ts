@@ -58,6 +58,7 @@ const PQ_SESSION = {
       playbackChoice: 'AUTO',
       formatChange: null,
       offeredChoices: ['ORIGINAL', 'AUTO', 'MEDIUM_480P', 'LOW_360P'],
+      decisions: [],
       currentFormatAttempt: {
         __typename: 'ReadyPlaybackFormatAttempt',
         streamSession: {

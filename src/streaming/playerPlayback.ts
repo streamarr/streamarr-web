@@ -17,7 +17,11 @@ import {
 import { userErrorMessage, userErrorMessageOr } from '../graphql/userErrors'
 import { discardWatchedState } from '../media/watchedState'
 import { hlsPlaybackConfig } from './hlsPlaybackConfig'
-import { type DynamicRangeChoice, hlsVideoPreference } from './hlsVideoPreference'
+import {
+  type DynamicRangeChoice,
+  declaresHdrForHls,
+  hlsVideoPreference,
+} from './hlsVideoPreference'
 import { DECLARATION_REFUSAL_TYPENAMES } from './playbackCapabilities'
 import type { QualityChoices } from './qualityChoices'
 import {
@@ -50,7 +54,15 @@ type PlaybackSessionPayload = CreatePlaybackSessionMutation['createPlaybackSessi
 
 export type SourcePhase =
   | { at: 'starting' }
-  | { at: 'attached'; tracks: TrackSource; qualities: QualityChoices; videoRange: VideoRange }
+  | {
+      at: 'attached'
+      tracks: TrackSource
+      qualities: QualityChoices
+      /** The source's dynamic range, or null while no decision names it. */
+      sourceRange: VideoRange | null
+      /** Whether the declaration lists an HDR range that the player can show. */
+      declaresHdr: boolean
+    }
   | { at: 'failed'; message: string }
 
 /** Where playback picks up on a new stream: the playhead, and whether it plays on from there. */
@@ -641,6 +653,7 @@ function startSessionPlayback({
       requested: playback.requestedChoice,
       playing: playback.playbackChoice,
       formatChange: playback.formatChange,
+      videoRange: attempt.streamSession.videoRange,
     }
     const { streamSession } = attempt
     // A source file holds no start position of its own, as a playlist's EXT-X-START does, so the
@@ -688,7 +701,8 @@ function startSessionPlayback({
       at: 'attached',
       tracks: source.tracks,
       qualities,
-      videoRange: attempt.streamSession.videoRange,
+      sourceRange: playback.decisions.at(-1)?.video.source.videoRange ?? null,
+      declaresHdr: declaresHdrForHls(declaration),
     })
   }
 

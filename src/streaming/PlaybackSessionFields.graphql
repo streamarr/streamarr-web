@@ -6,6 +6,13 @@ fragment PlaybackSessionFields on PlaybackSession {
   playbackChoice
   formatChange
   offeredChoices
+  decisions {
+    video {
+      source {
+        videoRange
+      }
+    }
+  }
   currentFormatAttempt {
     __typename
     ... on PendingPlaybackFormatAttempt {

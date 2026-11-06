@@ -70,6 +70,23 @@
   color: var(--color-white);
 }
 
+/* A hairline sets the toggle apart from the options, stopping short of the menu's edges. */
+.separator {
+  flex: none;
+  height: var(--border-width-hairline);
+  margin: var(--spacing-4) var(--spacing-8);
+  background: var(--border-hairline);
+}
+
+.toggle[aria-disabled='true'] {
+  color: var(--text-tertiary);
+  cursor: default;
+}
+
+.toggle[aria-disabled='true']:hover {
+  background: none;
+}
+
 .label {
   display: inline-flex;
   align-items: center;

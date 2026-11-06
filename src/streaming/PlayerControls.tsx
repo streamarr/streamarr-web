@@ -3,7 +3,8 @@ import { type Ref, type RefObject, useEffect, useId, useRef, useState } from 're
 import type { VideoQuality } from '../graphql/generated/graphql'
 import { formatTimecode } from '../media/formatting'
 import { Icon, type IconName } from '../ui/Icon'
-import { CaretPopover, type PopoverOption } from './CaretPopover'
+import { CaretPopover, type PopoverOption, type PopoverToggle } from './CaretPopover'
+import type { HdrControl } from './hdrControl'
 import styles from './PlayerControls.module.css'
 import { qualityChipValue, qualityLabel } from './qualityChoices'
 import type { QualityMarks } from './usePlaybackFallbacks'
@@ -30,6 +31,8 @@ interface QualityMenu {
   offered: readonly VideoQuality[]
   selected: VideoQuality
   marks: QualityMarks
+  /** The HDR toggle after the choices, while the stream that plays offers one. */
+  hdr?: HdrControl
 }
 
 /** What each picker offers: the stream's tracks and the playback choices the server lists. */
@@ -80,6 +83,7 @@ export function PlayerControls({
   tracks,
   quality,
   onChooseQuality,
+  onToggleHdr,
   openPicker,
   onOpenPicker,
   title,
@@ -96,6 +100,7 @@ export function PlayerControls({
   tracks: TrackSource | null
   quality: QualityMenu
   onChooseQuality: (choice: VideoQuality) => void
+  onToggleHdr: () => void
   openPicker: PickerKind | null
   onOpenPicker: (kind: PickerKind | null) => void
   title?: PlayerTitle
@@ -240,6 +245,14 @@ export function PlayerControls({
             selected={quality.selected}
             value={qualityChipValue(quality.selected, videoState.videoHeight)}
             choosable={pickerOffersChoice('quality', choices)}
+            toggle={
+              quality.hdr && {
+                label: 'HDR',
+                checked: quality.hdr.on,
+                unavailable: quality.hdr.unavailable,
+                onToggle: onToggleHdr,
+              }
+            }
             open={openPicker === 'quality'}
             onOpenChange={(open) => onOpenPicker(open ? 'quality' : null)}
             onChoose={onChooseQuality}
@@ -365,6 +378,7 @@ function ChoicePicker<Id extends string | number | null>({
   value = options.find((option) => option.id === selected)?.label,
   showsActiveTrack,
   choosable,
+  toggle,
   open,
   onOpenChange,
   onChoose,
@@ -377,6 +391,7 @@ function ChoicePicker<Id extends string | number | null>({
   value?: string
   showsActiveTrack?: boolean
   choosable: boolean
+  toggle?: PopoverToggle
   open: boolean
   onOpenChange: (open: boolean) => void
   onChoose: (id: Id) => void
@@ -403,6 +418,15 @@ function ChoicePicker<Id extends string | number | null>({
           anchorRef={chipRef}
           options={options}
           selected={selected}
+          toggle={
+            toggle && {
+              ...toggle,
+              onToggle: () => {
+                toggle.onToggle()
+                onOpenChange(false)
+              },
+            }
+          }
           onChoose={(id) => {
             onChoose(id)
             onOpenChange(false)
