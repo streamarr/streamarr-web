@@ -152,12 +152,26 @@ describe('apollo client', () => {
       await requested.promise
 
       await client[reset]()
-      const nextIdentityMovie = { __typename: 'Movie', id: 'm1', watchStatus: 'UNWATCHED' }
+      const nextIdentityMovie = {
+        __typename: 'Movie',
+        id: 'm1',
+        selectedProfileState: {
+          __typename: 'SelectedProfileState',
+          watchState: { __typename: 'WatchState', watchStatus: 'UNWATCHED', watchProgress: null },
+        },
+      }
       client.cache.writeFragment({
         fragment: gql`
           fragment NextIdentityMovie on Movie {
             id
-            watchStatus
+            selectedProfileState {
+              watchState {
+                watchStatus
+                watchProgress {
+                  positionSeconds
+                }
+              }
+            }
           }
         `,
         data: nextIdentityMovie,

@@ -1,4 +1,5 @@
 import { watchingChange } from '../test/continueWatchingFixtures'
+import { selectedProfileState } from '../test/selectedProfileStateFixture'
 import { InMemoryCache } from '@apollo/client'
 import { describe, expect, it } from 'vitest'
 import possibleTypes from '../graphql/generated/possibleTypes.json'
@@ -32,9 +33,10 @@ function node(item: Item) {
     id: item.id,
     title: item.title,
     titleSort: item.titleSort === undefined ? item.title : item.titleSort,
-    watchStatus: item.watchStatus ?? 'UNWATCHED',
-    lastWatchedAt: item.lastWatchedAt ?? null,
-    watchProgress: null,
+    selectedProfileState: selectedProfileState({
+      watchStatus: item.watchStatus,
+      lastWatchedAt: item.lastWatchedAt,
+    }),
     images: [],
   }
   if (typename === 'Series') return { ...shared, firstAirDate: null, seasons: [] }
