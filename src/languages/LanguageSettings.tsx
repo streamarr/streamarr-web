@@ -74,8 +74,8 @@ export function LanguageSettings() {
       if (!payload?.languagePreferences) {
         setRefusal(UNSAVED)
       }
-    } catch {
-      setRefusal(UNSAVED)
+    } catch (error) {
+      setRefusal(requestFailureMessage(error, UNSAVED))
     }
   }
 

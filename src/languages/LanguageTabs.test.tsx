@@ -329,6 +329,23 @@ describe('LanguageTabs', () => {
     )
   })
 
+  it('shouldShowTheServersWordsWhenTheOverrideFailsWithThem', async () => {
+    serveLanguageTabs()
+    server.use(
+      graphql.mutation('SetLanguageOverride', () =>
+        HttpResponse.json({
+          errors: [{ message: 'Profile storage is offline.', extensions: { code: 'UNAVAILABLE' } }],
+        }),
+      ),
+    )
+    const { user } = renderWithProviders(<LanguageTabs item={MOVIE} />)
+
+    await pick(user, 'Default audio', 'Japanese')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Profile storage is offline.')
+    expect(await tab('Default audio')).toHaveAccessibleDescription('English · from Profile')
+  })
+
   it('shouldOfferRetryWhenTheTabsCannotLoad', async () => {
     const state = serveLanguageTabs()
     server.use(graphql.query('LanguageTabs', () => networkFailure(), { once: true }))

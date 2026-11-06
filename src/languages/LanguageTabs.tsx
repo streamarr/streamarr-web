@@ -166,8 +166,8 @@ function Tabs({
       if (!payload?.item) {
         setRefusal(UNSAVED)
       }
-    } catch {
-      setRefusal(UNSAVED)
+    } catch (error) {
+      setRefusal(requestFailureMessage(error, UNSAVED))
     }
   }
 

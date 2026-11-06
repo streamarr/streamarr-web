@@ -337,6 +337,23 @@ describe('language settings', () => {
     expect(await audioLanguages()).toEqual(['Japanese', 'English'])
   })
 
+  it('shouldShowTheServersWordsWhenTheChangeFailsWithThem', async () => {
+    serve()
+    server.use(
+      graphql.mutation('SetLanguagePreferences', () =>
+        HttpResponse.json({
+          errors: [{ message: 'Profile storage is offline.', extensions: { code: 'UNAVAILABLE' } }],
+        }),
+      ),
+    )
+    const { user } = renderAppAt(LANGUAGES)
+
+    await user.click(await screen.findByRole('button', { name: 'Remove Japanese' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Profile storage is offline.')
+    expect(await audioLanguages()).toEqual(['Japanese', 'English'])
+  })
+
   it('shouldOfferRetryWhenThePreferencesCannotLoad', async () => {
     const state = serve()
     server.use(graphql.query('LanguageSettings', () => networkFailure(), { once: true }))
