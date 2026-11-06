@@ -1,7 +1,12 @@
 import { useApolloClient, useMutation } from '@apollo/client/react'
 import { Alert, Button } from '@mantine/core'
 import { useEffect, useRef, useState } from 'react'
-import { CreatePlaybackSessionDocument, type VideoQuality } from '../graphql/generated/graphql'
+import {
+  CreatePlaybackSessionDocument,
+  type Language,
+  type VideoQuality,
+} from '../graphql/generated/graphql'
+import { languageOfTrack } from '../languages/languages'
 import { DetailBackButton } from '../media/DetailBack'
 import focusStyles from '../styles/focus.module.css'
 import { BufferingRing } from './BufferingRing'
@@ -23,6 +28,7 @@ import {
 import { useIdle } from './useIdle'
 import { useLanguageSwitchReport } from './useLanguageSwitchReport'
 import { usePlaybackFallbacks } from './usePlaybackFallbacks'
+import type { StreamTracks } from './trackSources'
 import { useStreamTracks } from './useStreamTracks'
 import type { PlayableMediaTitle } from './usePlayerTitle'
 import { useVideoState } from './useVideoState'
@@ -35,12 +41,21 @@ interface ChoiceRequest {
   start: PlaybackStart
   quality: VideoQuality
   resumeFrom?: ResumePoint
+  /**
+   * The audio language that played when the viewer picked the quality. The server puts the
+   * client's choice before the title's override (ADR 0043), so a switch still storing stands.
+   */
+  audioLanguage?: Language
 }
 
 // Where the player was asked to start: a pick holds only until the player is asked to start anew.
 interface PlaybackStart {
   mediaFileId: string
   startPositionSeconds?: number
+}
+
+function playingAudio({ audio }: StreamTracks) {
+  return audio.options.find((option) => option.id === audio.selected)
 }
 
 function startingChoice(start: PlaybackStart): ChoiceRequest {
@@ -121,7 +136,7 @@ export function Player({
               mediaFileId,
               capabilities,
               startPositionSeconds,
-              options: { quality: choice.quality },
+              options: { quality: choice.quality, audioLanguage: choice.audioLanguage },
             },
           },
         }),
@@ -149,7 +164,12 @@ export function Player({
     if (!playback || picked === quality.selected) {
       return
     }
-    setChoice({ start: choice.start, quality: picked, resumeFrom: playback.resumePoint() })
+    setChoice({
+      start: choice.start,
+      quality: picked,
+      resumeFrom: playback.resumePoint(),
+      audioLanguage: languageOfTrack(playingAudio(streamTracks)?.language),
+    })
   }
 
   function seek(seconds: number) {
