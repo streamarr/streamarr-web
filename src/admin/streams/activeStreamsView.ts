@@ -78,6 +78,18 @@ export function progressPercent(stream: Stream): number | null {
   return Math.min(100, (stream.positionSeconds / runtime) * 100)
 }
 
+/** Where the produced stretch sits on the title's runtime, in percent, or null without either. */
+export function producedSpan(stream: Stream): { left: number; width: number } | null {
+  const runtime = runtimeSeconds(stream)
+  const range = stream.producedRange
+  if (!range || !runtime) return null
+  const { startSeconds, endSeconds } = range
+  return {
+    left: (startSeconds / runtime) * 100,
+    width: ((endSeconds - startSeconds) / runtime) * 100,
+  }
+}
+
 function secondsLeft(stream: Stream): number {
   const runtime = runtimeSeconds(stream)
   if (stream.positionSeconds === null || !runtime) return Number.POSITIVE_INFINITY

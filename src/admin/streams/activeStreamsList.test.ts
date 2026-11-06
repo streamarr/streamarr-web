@@ -14,6 +14,7 @@ function stream(playbackSessionId: string): ActiveStreamFieldsFragment {
     mediaFileId: `file-${playbackSessionId}`,
     media: null,
     positionSeconds: 0,
+    producedRange: null,
     state: 'PLAYING',
     decision: null,
     workers: [],

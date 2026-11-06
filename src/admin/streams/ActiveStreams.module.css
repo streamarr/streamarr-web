@@ -159,6 +159,30 @@
   translate: 1px 0;
 }
 
+/* The library's progress track, with the produced stretch as a quieter layer behind the position. */
+.track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: var(--color-alpha-16);
+}
+
+.produced {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--color-alpha-50);
+}
+
+.played {
+  position: relative;
+  display: block;
+  height: 100%;
+  background: var(--color-white);
+}
+
 /* InlineDetailRow (mock 02d): the details open under the card's row, spanning every column, and
    grow open over 180ms like the settings' inline rows (none under reduced motion). */
 .detail {

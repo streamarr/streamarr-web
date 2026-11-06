@@ -50,6 +50,10 @@ fragment ActiveStreamFields on ActiveStream {
     }
   }
   positionSeconds
+  producedRange {
+    startSeconds
+    endSeconds
+  }
   state
   decision {
     ...PlaybackDecisionFields

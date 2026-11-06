@@ -33,6 +33,7 @@ const MOVIE = {
     images: [],
   },
   positionSeconds: 754,
+  producedRange: { __typename: 'MediaTimeRange', startSeconds: 600, endSeconds: 1_500 },
   state: 'PLAYING',
   decision: {
     __typename: 'PlaybackDecision',
@@ -75,6 +76,7 @@ const EPISODE = {
     },
   },
   positionSeconds: null,
+  producedRange: null,
   state: null,
   decision: null,
   workers: [],
@@ -106,10 +108,16 @@ test('the active streams page shows a stream that starts and drops one that ends
   const state = await fixture(page, [MOVIE])
   await page.goto(PAGE)
   const movie = page.getByRole('button', { name: MOVIE_CARD })
+  const track = movie.getByRole('progressbar', { name: 'Position' })
+  const produced = await track.getByTestId('produced-range').boundingBox()
+  const trackBox = await track.boundingBox()
+  expect(produced!.x).toBeGreaterThan(trackBox!.x)
+  expect(produced!.x + produced!.width).toBeLessThan(trackBox!.x + trackBox!.width)
   await movie.click()
   const details = page.getByRole('region', { name: 'Everlight' })
   await expect(details).toContainText('Ada')
   await expect(details).toContainText('12:34 · Playing')
+  await expect(details).toContainText('10:00 to 25:00')
   await expect(details).toContainText("This device can't play the video's codec (HEVC).")
   await expect.poll(() => state.socket.isLive('ActiveStreamsChanged')).toBe(true)
 
