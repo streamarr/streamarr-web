@@ -16,6 +16,10 @@ describe('fittingChipCount', () => {
     ).toBe(1)
   })
 
+  it('shouldLeaveOutOnlyTheLastChipWhenTheMoreChipFitsWhereItWouldGo', () => {
+    expect(fittingChipCount({ ...BAR, more: 40, available: 230 })).toBe(1)
+  })
+
   it('shouldShowNoChipWhenEvenTheFirstOneLeavesNoRoom', () => {
     expect(fittingChipCount({ ...BAR, available: 100 })).toBe(0)
   })

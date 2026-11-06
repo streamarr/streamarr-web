@@ -304,6 +304,13 @@ describe('playbackDecisionText', () => {
     })
   })
 
+  it('shouldNameTheChoiceAsSentWhenTheAppHasNoLabelForIt', () => {
+    expect(
+      reasonsOf(['PICTURE_ABOVE_VIEWER_LIMIT'], { requestedChoice: 'EIGHT_K' as VideoQuality })
+        .video,
+    ).toEqual(['You chose EIGHT_K, so the server scales this 3840×2160 video down to 1080p.'])
+  })
+
   it('shouldLeaveOutAFigureTheProbeDidNotFindWhenAReasonNamesIt', () => {
     const { video } = ENCODED_FOR_1080P
     const decision = {
