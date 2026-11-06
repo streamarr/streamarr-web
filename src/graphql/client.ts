@@ -2,7 +2,7 @@ import { ApolloClient, ApolloLink, HttpLink, InMemoryCache } from '@apollo/clien
 import { SetContextLink } from '@apollo/client/link/context'
 import { ErrorLink } from '@apollo/client/link/error'
 import { OperationTypeNode } from 'graphql'
-import { map } from 'rxjs'
+import { map, Observable, type Subscription, throwError } from 'rxjs'
 import { csrfHeaders, isCsrfRejection } from '../auth/csrf'
 import generatedIntrospection from './generated/possibleTypes.json'
 import { decideAuthRoute, extractAuthContext } from './errorRouting'
@@ -38,6 +38,127 @@ function discardResponsesSentBeforeStoreReset(cache: ResetCountingCache) {
       }),
     )
   })
+}
+
+class OperationOfEarlierIdentityError extends Error {
+  constructor() {
+    super('The operation belongs to the identity that was active before the identity switch.')
+    this.name = 'OperationOfEarlierIdentityError'
+  }
+}
+
+/** One Household or Profile switch, from its request until its answer. */
+export interface IdentitySwitch {
+  /**
+   * The server switched the identity, or may have: operations of the earlier identity are refused
+   * from now on, and the store reset that follows opens the gate to the new one.
+   */
+  succeeded: () => void
+  /** The identity did not change, so the operations held since the switch began go out now. */
+  failed: () => void
+  /** False once another identity, from a sign-in, a sign-out or another switch, has replaced it. */
+  isCurrent: () => boolean
+}
+
+interface HeldOperation {
+  send: () => void
+  refuse: () => void
+}
+
+const IDENTITY_GENERATION = 'identityGeneration'
+
+// The browser installs the new identity's cookie when a switch's response arrives, before the
+// client reads it, so an operation the earlier identity sends from the switch's start until the
+// store reset could act as the new identity. Each operation keeps the identity generation it began
+// under, and the gate admits it before every send, a CSRF retry included. While a switch is
+// underway it holds operations until the answer: a failed switch sends them, and a successful one
+// refuses them, and every later one until the reset.
+class IdentitySwitchGate {
+  private generation = 0
+  // A sign-in or sign-out outdates every switch begun before it.
+  private epoch = 0
+  private switchesUnderway = 0
+  private awaitingReset = false
+  private readonly held = new Set<HeldOperation>()
+
+  readonly link = new ApolloLink((operation, forward) => {
+    const began = operation.getContext()[IDENTITY_GENERATION] as number | undefined
+    if (began === undefined) {
+      operation.setContext({ [IDENTITY_GENERATION]: this.generation })
+    }
+    if (this.awaitingReset || (began !== undefined && began !== this.generation)) {
+      return throwError(() => new OperationOfEarlierIdentityError())
+    }
+    if (this.switchesUnderway === 0) {
+      return forward(operation)
+    }
+    return new Observable((observer) => {
+      let sent: Subscription | undefined
+      const entry: HeldOperation = {
+        send: () => {
+          sent = forward(operation).subscribe(observer)
+        },
+        refuse: () => observer.error(new OperationOfEarlierIdentityError()),
+      }
+      this.held.add(entry)
+      return () => {
+        this.held.delete(entry)
+        sent?.unsubscribe()
+      }
+    })
+  })
+
+  begin(): IdentitySwitch {
+    this.switchesUnderway += 1
+    const epoch = this.epoch
+    const generation = this.generation
+    let settled = false
+    const settle = (settleHeld: (entry: HeldOperation) => void) => {
+      if (settled || epoch !== this.epoch) return
+      settled = true
+      this.switchesUnderway -= 1
+      if (this.switchesUnderway > 0 && !this.awaitingReset) return
+      const entries = [...this.held]
+      this.held.clear()
+      entries.forEach(settleHeld)
+    }
+    return {
+      succeeded: () => {
+        this.generation += 1
+        this.awaitingReset = true
+        settle((entry) => entry.refuse())
+      },
+      failed: () => settle((entry) => (this.awaitingReset ? entry.refuse() : entry.send())),
+      isCurrent: () => epoch === this.epoch && generation === this.generation,
+    }
+  }
+
+  storeReset() {
+    this.awaitingReset = false
+  }
+
+  // A sign-in or sign-out clears the store for another identity, whatever switch was underway.
+  storeCleared() {
+    this.epoch += 1
+    this.generation += 1
+    this.switchesUnderway = 0
+    this.awaitingReset = false
+    const entries = [...this.held]
+    this.held.clear()
+    entries.forEach((entry) => entry.refuse())
+  }
+}
+
+const gates = new WeakMap<ApolloClient, IdentitySwitchGate>()
+
+/**
+ * Starts a Household or Profile switch on a client from createApolloClient: its operations wait
+ * for the switch's answer, and after a successful switch none goes out until the store resets.
+ */
+export function beginIdentitySwitch(client: ApolloClient): IdentitySwitch {
+  const gate = gates.get(client)
+  if (!gate) throw new Error('The client was not created by createApolloClient.')
+  return gate.begin()
 }
 
 const CSRF_RETRY_ATTEMPTED = 'csrfRetryAttempted'
@@ -83,6 +204,8 @@ export function createApolloClient(
   const cache = new ResetCountingCache({
     possibleTypes: generatedIntrospection.possibleTypes,
     typePolicies: {
+      // One Me per session, which screens read in parts: each part adds to it, never replaces it.
+      Me: { merge: true },
       Library: {
         fields: {
           alphabetIndex: { merge: false },
@@ -99,10 +222,14 @@ export function createApolloClient(
 
   // Error link next: forward() on a CSRF rejection re-enters the CSRF link, which re-reads the
   // re-minted cookie before the HTTP link sends.
+  const gate = new IdentitySwitchGate()
+  // The gate comes first and again before the HTTP link, which a CSRF retry re-enters.
   const httpChain = ApolloLink.from([
+    gate.link,
     discardResponsesSentBeforeStoreReset(cache),
     errorLink,
     csrfLink,
+    gate.link,
     httpLink,
   ])
   const link = subscriptionLink
@@ -113,11 +240,22 @@ export function createApolloClient(
       )
     : httpChain
 
-  return new ApolloClient({
+  const client = new ApolloClient({
     link,
     cache,
     // A refetch loading notification clears its error while retaining old data. Keep a refused
     // screen on its last result until the server answers; loading new variables still emits.
     defaultOptions: { watchQuery: { notifyOnNetworkStatusChange: false } },
   })
+  // Reset callbacks run after the store empties and before the refetches go out.
+  client.onResetStore(() => {
+    gate.storeReset()
+    return Promise.resolve()
+  })
+  client.onClearStore(() => {
+    gate.storeCleared()
+    return Promise.resolve()
+  })
+  gates.set(client, gate)
+  return client
 }

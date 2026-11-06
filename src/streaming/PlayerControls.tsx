@@ -3,7 +3,7 @@ import { type Ref, type RefObject, useEffect, useId, useRef, useState } from 're
 import type { VideoQuality } from '../graphql/generated/graphql'
 import { formatTimecode } from '../media/formatting'
 import { Icon, type IconName } from '../ui/Icon'
-import { CaretPopover, type PopoverOption } from './CaretPopover'
+import { CaretPopover, type PopoverOption } from '../ui/CaretPopover'
 import styles from './PlayerControls.module.css'
 import { qualityChipValue, qualityLabel } from './qualityChoices'
 import type { QualityMarks } from './usePlaybackFallbacks'
@@ -40,6 +40,17 @@ type PickerChoices = StreamTracks & { qualities: readonly VideoQuality[] }
 type Scrub = { at: 'dragging'; seconds: number; resume: boolean } | { at: 'abandoned' }
 
 const SUBTITLES_OFF: PopoverOption<null> = { id: null, label: 'Off' }
+
+/** A track the viewer chose in a picker, by the language code the stream tags it with. */
+export type ChosenTrack =
+  | {
+      kind: 'audio'
+      language?: string
+      /** Resolves whether playback moved to the track, which a server may refuse. */
+      moved: Promise<boolean>
+    }
+  | { kind: 'subtitles'; language?: string }
+  | { kind: 'subtitles-off' }
 
 /**
  * Whether a picker has a choice to make: one option alone would only repeat what its chip shows.
@@ -82,6 +93,7 @@ export function PlayerControls({
   onChooseQuality,
   openPicker,
   onOpenPicker,
+  onTrackChosen,
   title,
 }: Readonly<{
   ref: Ref<HTMLDivElement>
@@ -98,6 +110,8 @@ export function PlayerControls({
   onChooseQuality: (choice: VideoQuality) => void
   openPicker: PickerKind | null
   onOpenPicker: (kind: PickerKind | null) => void
+  /** Hears each audio or subtitle track the viewer switches to, as the stream switches. */
+  onTrackChosen?: (chosen: ChosenTrack) => void
   title?: PlayerTitle
 }>) {
   const [scrub, setScrub] = useState<Scrub | null>(null)
@@ -252,7 +266,16 @@ export function PlayerControls({
             choosable={pickerOffersChoice('audio', choices)}
             open={openPicker === 'audio'}
             onOpenChange={(open) => onOpenPicker(open ? 'audio' : null)}
-            onChoose={(id) => tracks?.selectAudio(id)}
+            onChoose={(id) => {
+              if (!tracks) {
+                return
+              }
+              // A pick of the track in use still reaches the source, which lets it stand.
+              const moved = tracks.selectAudio(id)
+              if (id !== audio.selected) {
+                onTrackChosen?.({ kind: 'audio', language: languageOf(audio.options, id), moved })
+              }
+            }}
           />
           <ChoicePicker
             name="Subtitles"
@@ -263,13 +286,30 @@ export function PlayerControls({
             choosable={pickerOffersChoice('subtitles', choices)}
             open={openPicker === 'subtitles'}
             onOpenChange={(open) => onOpenPicker(open ? 'subtitles' : null)}
-            onChoose={(id) => tracks?.selectSubtitles(id)}
+            onChoose={(id) => {
+              if (!tracks || id === subtitles.selected) {
+                return
+              }
+              tracks.selectSubtitles(id)
+              onTrackChosen?.(
+                id === null
+                  ? { kind: 'subtitles-off' }
+                  : { kind: 'subtitles', language: languageOf(subtitles.options, id) },
+              )
+            }}
           />
           <FullscreenButton targetRef={playerRef} />
         </div>
       </div>
     </div>
   )
+}
+
+function languageOf(
+  options: readonly { id: number; language?: string }[],
+  id: number,
+): string | undefined {
+  return options.find((option) => option.id === id)?.language
 }
 
 function TitleLine({

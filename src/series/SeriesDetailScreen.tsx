@@ -6,6 +6,7 @@ import { resolveAmbientColors } from '../media/ambientSource'
 import { CastCard } from '../media/CastCard'
 import { ContentShelf } from '../media/ContentShelf'
 import { DetailBackButton, useSeriesEntryState } from '../media/DetailBack'
+import { LanguageTabs } from '../languages/LanguageTabs'
 import { ActionProgress, detailAction, DetailHeader } from '../media/DetailHeader'
 import { MediaTitleFallback } from '../media/MediaTitleFallback'
 import { formatEpisodeLabel, formatLongDate, formatTimeLeft, formatYear } from '../media/formatting'
@@ -67,6 +68,7 @@ export function SeriesDetailScreen({ seriesId }: Readonly<{ seriesId: string }>)
   return (
     <>
       <DetailHeader
+        tabs={<LanguageTabs item={{ kind: 'series', id: seriesId }} />}
         titleColumn
         backdrop={{
           image: pickImageVariant(artwork, 'LARGE'),

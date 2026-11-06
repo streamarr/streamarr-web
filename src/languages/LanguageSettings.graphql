@@ -1,0 +1,32 @@
+fragment ProfileLanguagePreferencesFields on ProfileLanguagePreferences {
+  __typename
+  audioLanguages
+  subtitleLanguage
+  subtitleMode
+}
+
+query LanguageSettings {
+  me {
+    __typename
+    languagePreferences {
+      ...ProfileLanguagePreferencesFields
+    }
+  }
+}
+
+mutation SetLanguagePreferences($input: SetLanguagePreferencesInput!) {
+  setLanguagePreferences(input: $input) {
+    languagePreferences {
+      ...ProfileLanguagePreferencesFields
+    }
+    userErrors {
+      __typename
+      ... on MutationError {
+        message
+      }
+      ... on InputMutationError {
+        inputPath
+      }
+    }
+  }
+}

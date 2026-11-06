@@ -1,0 +1,35 @@
+query PlayerSubtitleModes($id: ID!, $movie: Boolean!) {
+  movie(id: $id) @include(if: $movie) {
+    __typename
+    id
+    selectedProfileState {
+      languagePreference {
+        ...LanguagePreferenceFields
+      }
+    }
+  }
+  episode(id: $id) @skip(if: $movie) {
+    __typename
+    id
+    selectedProfileState {
+      languagePreference {
+        ...LanguagePreferenceFields
+      }
+    }
+    season {
+      __typename
+      id
+      selectedProfileState {
+        languagePreference {
+          ...LanguagePreferenceFields
+        }
+      }
+    }
+  }
+  me {
+    __typename
+    languagePreferences {
+      ...ProfileLanguagePreferencesFields
+    }
+  }
+}

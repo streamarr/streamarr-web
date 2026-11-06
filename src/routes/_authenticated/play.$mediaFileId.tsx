@@ -21,12 +21,14 @@ export const Route = createFileRoute('/_authenticated/play/$mediaFileId')({
 function Play() {
   const { mediaFileId } = Route.useParams()
   const { position, movie, episode } = Route.useSearch()
-  const title = usePlayerTitle(parseMediaTitle({ movie, episode }))
+  const mediaTitle = parseMediaTitle({ movie, episode })
+  const title = usePlayerTitle(mediaTitle)
   return (
     <Player
       mediaFileId={mediaFileId}
       startPositionSeconds={position}
       title={title}
+      mediaTitle={mediaTitle}
       playbackPlatform={browserPlaybackPlatform}
     />
   )

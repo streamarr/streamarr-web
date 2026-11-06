@@ -182,4 +182,25 @@ describe('ProfileMenu', () => {
     await waitFor(() => expect(onSignedOut).toHaveBeenCalled())
     expect(revoked).toBe(true)
   })
+
+  it('shouldOpenTheSelectedProfilesLanguagesWhenTheViewerChoosesLanguages', async () => {
+    const onLanguageSettings = vi.fn()
+    const { user } = renderMenu({ onLanguageSettings })
+
+    await openMenu(user)
+    await user.click(screen.getByRole('button', { name: 'Languages' }))
+
+    expect(onLanguageSettings).toHaveBeenCalledOnce()
+    expect(screen.queryByTestId('profile-menu')).toBeNull()
+  })
+
+  it('shouldOfferNoLanguagesWhenNoProfileIsSelected', async () => {
+    const profiles = [profileFixture({ id: 'p-alex', name: 'Alex', selected: false })]
+    const { user } = renderMenu({ me: meFixture({ profiles }), onLanguageSettings: vi.fn() })
+
+    await user.click(screen.getByRole('button', { name: /^Profile menu/ }))
+
+    expect(await screen.findByTestId('profile-menu')).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Languages' })).toBeNull()
+  })
 })
