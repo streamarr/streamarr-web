@@ -184,3 +184,18 @@ test('on a phone held upright the filters, each poster and the open details fit 
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375)
 })
+
+test('with nothing playing, the title sits where the other settings pages put theirs', async ({
+  page,
+}) => {
+  await fixture(page, [])
+  const titleTop = async (path: string) => {
+    await page.goto(path)
+    return (await page.getByRole('heading', { level: 1 }).boundingBox())!.y
+  }
+
+  const streams = await titleTop(PAGE)
+  await expect(page.getByText('Nothing is playing right now.')).toBeVisible()
+
+  expect(Math.abs(streams - (await titleTop('/settings/server/encoding')))).toBeLessThanOrEqual(2)
+})
