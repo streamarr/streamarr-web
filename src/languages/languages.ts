@@ -83,7 +83,16 @@ function subtagOf(subtag: string): string {
 /** The language's English name, or its tag when the browser knows no name for it. */
 export function languageName(language: string): string {
   const tag = tagOf(language)
-  return NAMES_UNICODE_RENAMES.get(tag) ?? names.of(tag) ?? NAMES_BROWSERS_LACK.get(tag) ?? tag
+  return NAMES_UNICODE_RENAMES.get(tag) ?? browserName(tag) ?? NAMES_BROWSERS_LACK.get(tag) ?? tag
+}
+
+// A value newer than this client need not be a tag the browser can read, and it throws then.
+function browserName(tag: string): string | undefined {
+  try {
+    return names.of(tag)
+  } catch {
+    return undefined
+  }
 }
 
 /** Every Language the pinned schema lists, in the order of its English name. */

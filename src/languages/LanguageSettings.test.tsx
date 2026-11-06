@@ -193,6 +193,13 @@ describe('language settings', () => {
     expect(screen.getByText('A Profile keeps up to five audio languages.')).toBeVisible()
   })
 
+  it('shouldListAnAudioLanguageNewerThanThisClientByItsTagWhenTheBrowserCannotReadIt', async () => {
+    serve({ saved: preferences({ audioLanguages: ['JA', 'QAA_QTZ' as Language] }) })
+    renderAppAt(LANGUAGES)
+
+    expect(await audioLanguages()).toEqual(['Japanese', 'qaa-QTZ'])
+  })
+
   it('shouldKeepShowingASubtitleLanguageNewerThanThisClientWhenItIsSaved', async () => {
     serve({ saved: preferences({ subtitleLanguage: 'FR_CA' as Language }) })
     const { user } = renderAppAt(LANGUAGES)

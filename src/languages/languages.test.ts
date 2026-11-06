@@ -19,6 +19,10 @@ describe('languageName', () => {
     expect(languageName('FR_CA')).toBe('Canadian French')
   })
 
+  it('shouldNameAValueByItsTagWhenTheBrowserCannotReadThatTag', () => {
+    expect(languageName('QAA_QTZ')).toBe('qaa-QTZ')
+  })
+
   it('shouldNameTagalogAndTwiAsTheServersTableDoesWhereUnicodeRenamesThem', () => {
     expect(languageName('TL')).toBe('Tagalog')
     expect(languageName('TW')).toBe('Twi')
