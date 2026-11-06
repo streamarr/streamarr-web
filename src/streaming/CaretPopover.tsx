@@ -250,7 +250,7 @@ export function CaretPopover<Id>({
             </button>
           )
         })}
-        {toggle && <div role="separator" className={styles.separator} />}
+        {toggle && <hr className={styles.separator} />}
         {toggle && (
           <button
             type="button"
