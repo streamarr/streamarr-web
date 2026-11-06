@@ -35,14 +35,14 @@ import {
   type KindFilter,
   producedSpan,
   progressPercent,
-  sentBitrate,
+  outputBitrate,
   SORT_LABELS,
   type StreamKind,
   streamKind,
   streamPoster,
   type StreamSort,
   streamTitle,
-  totalSent,
+  outputTotal,
   viewerName,
   visibleStreams,
   workerNames,
@@ -103,6 +103,7 @@ export function ActiveStreams() {
 }
 
 function StreamsHeading({ streams }: Readonly<{ streams: readonly Stream[] }>) {
+  const summary = summaryText(streams)
   return (
     <div className={`${settingsStyles.pageHeading} ${styles.pageHeading}`}>
       <h1>
@@ -111,7 +112,7 @@ function StreamsHeading({ streams }: Readonly<{ streams: readonly Stream[] }>) {
           <span className={settingsStyles.libraryCount}>{streams.length}</span>
         )}
       </h1>
-      {streams.length > 0 && <p className={styles.summary}>{summaryText(streams)}</p>}
+      {summary && <p className={styles.summary}>{summary}</p>}
     </div>
   )
 }
@@ -121,7 +122,10 @@ function summaryText(streams: readonly Stream[]): string {
   const kinds = (['DIRECT_PLAY', 'COPY', 'ENCODE'] as const)
     .filter((kind) => counts[kind] > 0)
     .map((kind) => `${counts[kind]} ${KIND_LABELS[kind].toLowerCase()}`)
-  return [`${bitrateText(totalSent(streams))} sent`, kinds.join(', ')].filter(Boolean).join(' · ')
+  const total = outputTotal(streams)
+  return [total !== null && `Output up to ${bitrateText(total)}`, kinds.join(', ')]
+    .filter(Boolean)
+    .join(' · ')
 }
 
 function StreamList({
@@ -537,7 +541,7 @@ function StreamCard({
           overlay={
             <>
               <span className={styles.badges}>
-                <span className={styles.badge}>{KIND_LABELS[kind]}</span>
+                {kind && <span className={styles.badge}>{KIND_LABELS[kind]}</span>}
                 {state && (
                   <span className={styles.glyph} data-state={state}>
                     <Icon name={STATE_ICONS[state]} size={14} />
@@ -588,7 +592,8 @@ function cardLabel(stream: Stream): string {
   const episode = episodeLine(stream)
   const title = episode ? `${streamTitle(stream)}, ${episode}` : streamTitle(stream)
   // A stream that prepares has neither a state nor a delivery yet, so it says Preparing once.
-  const status = [...new Set([stateText(stream), KIND_LABELS[streamKind(stream)]])]
+  const kind = streamKind(stream)
+  const status = [...new Set([stateText(stream), kind && KIND_LABELS[kind]])]
     .filter(Boolean)
     .join(', ')
   return `${title}, ${viewerName(stream)}. ${status}.`
@@ -733,6 +738,6 @@ function producedText({ startSeconds, endSeconds }: NonNullable<Stream['produced
 }
 
 function outputBitrateText(stream: Stream): string {
-  const sent = sentBitrate(stream)
+  const sent = outputBitrate(stream)
   return sent === null ? 'Not known' : bitrateText(sent)
 }

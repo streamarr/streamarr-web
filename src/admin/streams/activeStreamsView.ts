@@ -6,7 +6,7 @@ type Stream = ActiveStreamFieldsFragment
 
 export type StreamKind = 'DIRECT_PLAY' | 'COPY' | 'ENCODE' | 'PREPARING'
 export type KindFilter = 'ALL' | StreamKind
-export type StreamSort = 'VIEWER' | 'TITLE' | 'TIME_LEFT' | 'SENT'
+export type StreamSort = 'VIEWER' | 'TITLE' | 'TIME_LEFT' | 'OUTPUT'
 
 export const KIND_LABELS: Record<StreamKind, string> = {
   DIRECT_PLAY: 'Direct play',
@@ -19,22 +19,28 @@ export const SORT_LABELS: Record<StreamSort, string> = {
   VIEWER: 'Viewer',
   TITLE: 'Title',
   TIME_LEFT: 'Time left',
-  SENT: 'Bitrate sent',
+  OUTPUT: 'Output bitrate',
 }
 
 const UNMATCHED = 'A file without a matched title'
 
-/** The heaviest work a stream's tracks need: one encoded track makes the stream an encode. */
-export function streamKind({ decision }: Stream): StreamKind {
+/**
+ * The heaviest work a stream's tracks need: one encoded track makes the stream an encode. Null
+ * when a track's delivery is newer than the pinned schema, rather than a delivery the page knows.
+ */
+export function streamKind({ decision }: Stream): StreamKind | null {
   if (!decision) return 'PREPARING'
-  const deliveries = [decision.video.delivery, decision.audio?.delivery]
+  const deliveries = [decision.video.delivery, decision.audio?.delivery ?? 'DIRECT_PLAY']
   if (deliveries.includes('ENCODE')) return 'ENCODE'
   if (deliveries.includes('COPY')) return 'COPY'
-  return 'DIRECT_PLAY'
+  return deliveries.every((delivery) => delivery === 'DIRECT_PLAY') ? 'DIRECT_PLAY' : null
 }
 
-/** What the stream sends: its video output and, when it has one, its audio output. */
-export function sentBitrate({ decision }: Stream): number | null {
+/**
+ * The format attempt's output: its video and, when it has one, its audio. For an encode the video
+ * is the largest variant it offers, so the player may take less.
+ */
+export function outputBitrate({ decision }: Stream): number | null {
   const video = decision?.video.output.bitrate
   const audio = decision?.audio ? decision.audio.output.bitrate : 0
   if (video == null || audio === null) return null
@@ -102,7 +108,7 @@ const SORTS: Record<StreamSort, (a: Stream, b: Stream) => number> = {
   TITLE: (a, b) =>
     streamTitle(a).localeCompare(streamTitle(b)) || viewerName(a).localeCompare(viewerName(b)),
   TIME_LEFT: (a, b) => secondsLeft(a) - secondsLeft(b),
-  SENT: (a, b) => (sentBitrate(b) ?? -1) - (sentBitrate(a) ?? -1),
+  OUTPUT: (a, b) => (outputBitrate(b) ?? -1) - (outputBitrate(a) ?? -1),
 }
 
 function matchesQuery(stream: Stream, query: string): boolean {
@@ -125,7 +131,10 @@ export function visibleStreams(
 
 export function kindCounts(streams: readonly Stream[]): Record<StreamKind, number> {
   const counts: Record<StreamKind, number> = { DIRECT_PLAY: 0, COPY: 0, ENCODE: 0, PREPARING: 0 }
-  for (const stream of streams) counts[streamKind(stream)] += 1
+  for (const stream of streams) {
+    const kind = streamKind(stream)
+    if (kind) counts[kind] += 1
+  }
   return counts
 }
 
@@ -133,6 +142,13 @@ export function workerNames(streams: readonly Stream[]): string[] {
   return [...new Set(streams.flatMap((stream) => stream.workers))].sort()
 }
 
-export function totalSent(streams: readonly Stream[]): number {
-  return streams.reduce((total, stream) => total + (sentBitrate(stream) ?? 0), 0)
+/**
+ * The streams' summed output, or null when none has started or any started one's output is not
+ * known: a partial sum would read as the whole.
+ */
+export function outputTotal(streams: readonly Stream[]): number | null {
+  const started = streams.filter((stream) => stream.decision)
+  const outputs = started.map(outputBitrate)
+  if (started.length === 0 || outputs.includes(null)) return null
+  return outputs.reduce<number>((total, output) => total + (output ?? 0), 0)
 }
