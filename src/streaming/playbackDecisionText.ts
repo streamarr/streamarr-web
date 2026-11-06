@@ -27,10 +27,13 @@ export interface TrackRow {
   changed: boolean
 }
 
-/** What a reason sentence names: the decision's tracks, and the playback choice the viewer asked for. */
+/**
+ * What a reason sentence names: the decision's tracks, and the playback choice the viewer asked for,
+ * null for a reader who isn't the viewer and doesn't know it.
+ */
 interface ReasonFacts {
   video: VideoDelivery
-  choice: VideoQuality
+  choice: VideoQuality | null
 }
 
 type AudioReasonFacts = ReasonFacts & { audio: AudioDelivery }
@@ -106,12 +109,12 @@ const REASONS: Record<Known<DecisionReason>, Reason> = {
   ),
   PICTURE_ABOVE_VIEWER_LIMIT: video(
     ({ video, choice }) =>
-      `You chose ${choiceText(choice)}, so the server scales this ${pictureSizeText(video.source)} video down to ${video.output.height}p.`,
+      `${chosenText(choice)}, so the server scales this ${pictureSizeText(video.source)} video down to ${video.output.height}p.`,
   ),
   BITRATE_ABOVE_VIEWER_LIMIT: video(({ video, choice }) => {
     const { bitrate } = video.source
     const source = bitrate === null ? 'this video' : `this ${bitrateText(bitrate)} video`
-    return `You chose ${choiceText(choice)}, so the server re-encodes ${source} to fit your choice.`
+    return `${chosenText(choice)}, so the server re-encodes ${source} to fit ${chooserText(choice)} choice.`
   }),
   SOURCE_INTERLACED: video(() => 'The video is interlaced, and streaming needs progressive video.'),
   VIDEO_PROPERTIES_NOT_PROBED: video(
@@ -192,7 +195,7 @@ const REASONS: Record<Known<DecisionReason>, Reason> = {
   AUDIO_LOWERED_FOR_BITRATE_LIMIT: audio(({ audio, choice }) => {
     const { bitrate } = audio.output
     const lowered = bitrate === null ? 'the audio' : `the audio to ${bitrateText(bitrate)}`
-    return `You chose ${choiceText(choice)}, so the server lowers ${lowered} to fit your choice.`
+    return `${chosenText(choice)}, so the server lowers ${lowered} to fit ${chooserText(choice)} choice.`
   }),
   SOURCE_CONTAINER_UNKNOWN: stream(
     "The server couldn't name this file's container, so it streams the video.",
@@ -283,7 +286,7 @@ export function placedReasons({
   requestedChoice,
 }: Readonly<{
   decision: PlaybackDecisionFieldsFragment
-  requestedChoice: VideoQuality
+  requestedChoice: VideoQuality | null
 }>): PlacedReasons {
   const placed: PlacedReasons = { stream: [], video: [], audio: [] }
   const named = new Set(decision.reasons)
@@ -377,8 +380,13 @@ function frameRateText(frameRate: number): string {
   return frameRates.format(frameRate)
 }
 
-function choiceText(choice: VideoQuality): string {
-  return qualityLabel(choice) ?? choice
+function chosenText(choice: VideoQuality | null): string {
+  if (choice === null) return 'The viewer chose a lower quality'
+  return `You chose ${qualityLabel(choice) ?? choice}`
+}
+
+function chooserText(choice: VideoQuality | null): string {
+  return choice === null ? 'their' : 'your'
 }
 
 // The server names codecs in lower case; one this client has no name for shows as sent.
