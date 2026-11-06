@@ -23,7 +23,11 @@ import {
 import { userErrorMessage, userErrorMessageOr } from '../graphql/userErrors'
 import { discardWatchedState } from '../media/watchedState'
 import { hlsPlaybackConfig } from './hlsPlaybackConfig'
-import { type DynamicRangeChoice, hlsVideoPreference } from './hlsVideoPreference'
+import {
+  type DynamicRangeChoice,
+  declaresHdrForHls,
+  hlsVideoPreference,
+} from './hlsVideoPreference'
 import { DECLARATION_REFUSAL_TYPENAMES } from './playbackCapabilities'
 import type { QualityChoices } from './qualityChoices'
 import {
@@ -61,6 +65,10 @@ export type SourcePhase =
       tracks: TrackSource
       qualities: QualityChoices
       videoRange: VideoRange
+      /** The source's dynamic range, or null while no decision names it. */
+      sourceRange: VideoRange | null
+      /** Whether the declaration lists an HDR range that the player can show. */
+      declaresHdr: boolean
       /** The container of a directly played file; null for HLS. */
       sourceContainer: SourceContainer | null
       playbackSessionId: string
@@ -694,6 +702,7 @@ function startSessionPlayback({
       requested: playback.requestedChoice,
       playing: playback.playbackChoice,
       formatChange: playback.formatChange,
+      videoRange: attempt.streamSession.videoRange,
     }
     const { streamSession } = attempt
     // A source file holds no start position of its own, as a playlist's EXT-X-START does, so the
@@ -743,6 +752,8 @@ function startSessionPlayback({
       tracks: source.tracks,
       qualities,
       videoRange: streamSession.videoRange,
+      sourceRange: playback.decisions.at(-1)?.video.source.videoRange ?? null,
+      declaresHdr: declaresHdrForHls(declaration),
       sourceContainer:
         streamSession.__typename === 'DirectPlayStreamSession'
           ? streamSession.sourceContainer

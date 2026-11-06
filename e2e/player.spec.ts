@@ -156,6 +156,7 @@ const PLAYER_OPERATIONS: Record<string, unknown> = {
         playbackChoice: 'AUTO',
         formatChange: null,
         offeredChoices: ['ORIGINAL', 'AUTO', 'HIGH_720P', 'MEDIUM_480P', 'LOW_360P'],
+        decisions: [],
         currentFormatAttempt: {
           __typename: 'ReadyPlaybackFormatAttempt',
           streamSession: {

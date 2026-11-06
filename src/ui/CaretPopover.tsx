@@ -37,6 +37,17 @@ export interface PopoverOption<Id> {
   divided?: boolean
 }
 
+/**
+ * A row after the options that turns one setting on or off. While it is unavailable, it shows its
+ * state, changes nothing, and explains why as a caution does, without the mark.
+ */
+export interface PopoverToggle {
+  label: string
+  checked: boolean
+  unavailable?: string
+  onToggle: () => void
+}
+
 // Which row's caution shows: the hovered row first, then a tapped mark, then the focused row.
 // Focus moving to a row clears the other two.
 interface ExplainedRows {
@@ -63,6 +74,7 @@ export function CaretPopover<Id>({
   anchorRef,
   options,
   selected,
+  toggle,
   onChoose,
   onDismiss,
   placement = 'above',
@@ -72,6 +84,7 @@ export function CaretPopover<Id>({
   anchorRef: RefObject<HTMLElement | null>
   options: readonly PopoverOption<Id>[]
   selected: Id | null
+  toggle?: PopoverToggle
   onChoose: (id: Id) => void
   onDismiss: () => void
   placement?: Side
@@ -83,10 +96,11 @@ export function CaretPopover<Id>({
   const pressedByTouch = useRef(false)
   const [explainedRows, setExplainedRows] = useState(NO_EXPLAINED_ROWS)
   const explainedIndex = explainedRows.hovered ?? explainedRows.tapped ?? explainedRows.focused
-  const explanation = explainedIndex === null ? undefined : options[explainedIndex]?.caution
+  const explanations = [...options.map(({ caution }) => caution), toggle?.unavailable]
+  const explanation = explainedIndex === null ? undefined : explanations[explainedIndex]
   // The menu keeps room for its longest explanation from the start, so no explanation that
   // shows or goes moves a row: a row moving under the pointer would end its own hover.
-  const longestCaution = longestCautionOf(options)
+  const longestCaution = longestOf(explanations)
   const reservedRoom = useRef(0)
   const headingId = useId()
 
@@ -159,6 +173,24 @@ export function CaretPopover<Id>({
     onChoose(option)
   }
 
+  // An unavailable toggle explains itself on any press rather than change.
+  function pressToggle(index: number) {
+    if (!toggle) {
+      return
+    }
+    if (toggle.unavailable) {
+      tapMark(index)
+      return
+    }
+    anchorRef.current?.focus()
+    toggle.onToggle()
+  }
+
+  function focusRow(row: HTMLElement, index: number) {
+    focusedRow.current = { row, index }
+    explainFocused(index)
+  }
+
   // Moving focus supersedes whatever the pointer last explained, even where it still rests.
   function explainFocused(index: number) {
     setExplainedRows({ hovered: null, tapped: null, focused: index })
@@ -216,10 +248,7 @@ export function CaretPopover<Id>({
                   }
                   choose(option.id)
                 }}
-                onFocus={(event) => {
-                  focusedRow.current = { row: event.currentTarget, index }
-                  explainFocused(index)
-                }}
+                onFocus={(event) => focusRow(event.currentTarget, index)}
                 onPointerEnter={() => explainHovered(index)}
                 onPointerLeave={() => stopHovering(index)}
                 onKeyDown={handleRowKey}
@@ -237,6 +266,26 @@ export function CaretPopover<Id>({
             </Fragment>
           )
         })}
+        {toggle && <div role="separator" className={styles.divider} />}
+        {toggle && (
+          <button
+            type="button"
+            role="menuitemcheckbox"
+            aria-checked={toggle.checked}
+            aria-disabled={toggle.unavailable ? true : undefined}
+            aria-label={toggle.unavailable && `${toggle.label}. ${toggle.unavailable}`}
+            tabIndex={-1}
+            className={`${styles.row} ${styles.toggle}`}
+            onClick={() => pressToggle(options.length)}
+            onFocus={(event) => focusRow(event.currentTarget, options.length)}
+            onPointerEnter={() => explainHovered(options.length)}
+            onPointerLeave={() => stopHovering(options.length)}
+            onKeyDown={handleRowKey}
+          >
+            <span className={styles.label}>{toggle.label}</span>
+            {toggle.checked && <Icon name="check" size={14} />}
+          </button>
+        )}
       </div>
       {longestCaution && (
         <div
@@ -259,12 +308,17 @@ function cautionedName<Id>({ label, caution }: PopoverOption<Id>): string | unde
 }
 
 function rowsOf(menu: HTMLElement | null): HTMLElement[] {
-  return Array.from(menu?.querySelectorAll<HTMLElement>('[role="menuitemradio"]') ?? [])
+  return Array.from(
+    menu?.querySelectorAll<HTMLElement>('[role="menuitemradio"], [role="menuitemcheckbox"]') ?? [],
+  )
 }
 
 function focusCheckedOrNearestRow(menu: HTMLElement | null, index: number) {
   const rows = rowsOf(menu)
-  const checked = rows.find((row) => row.getAttribute('aria-checked') === 'true')
+  const checked = rows.find(
+    (row) =>
+      row.getAttribute('role') === 'menuitemradio' && row.getAttribute('aria-checked') === 'true',
+  )
   const target = checked ?? rows.at(Math.min(index, rows.length - 1))
   target?.focus()
 }
@@ -280,10 +334,9 @@ export function moveBetweenRows(event: ReactKeyboardEvent<HTMLElement>) {
   rows[move(rows.indexOf(event.currentTarget), rows.length)]?.focus()
 }
 
-function longestCautionOf<Id>(options: readonly PopoverOption<Id>[]): string | undefined {
-  return options.reduce<string | undefined>(
-    (longest, { caution }) =>
-      caution && caution.length > (longest?.length ?? 0) ? caution : longest,
+function longestOf(texts: readonly (string | undefined)[]): string | undefined {
+  return texts.reduce<string | undefined>(
+    (longest, text) => (text && text.length > (longest?.length ?? 0) ? text : longest),
     undefined,
   )
 }

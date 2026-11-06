@@ -91,6 +91,15 @@
   color: var(--color-white);
 }
 
+.toggle[aria-disabled='true'] {
+  color: var(--text-tertiary);
+  cursor: default;
+}
+
+.toggle[aria-disabled='true']:hover {
+  background: none;
+}
+
 .label {
   display: inline-flex;
   align-items: center;
