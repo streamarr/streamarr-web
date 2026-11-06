@@ -32,5 +32,9 @@ describe('EndsAt', () => {
       vi.advanceTimersByTime(30_000)
     })
     expect(screen.getByText(clock(15, 11))).toBeInTheDocument()
+    act(() => {
+      vi.advanceTimersByTime(60_000)
+    })
+    expect(screen.getByText(clock(15, 12))).toBeInTheDocument()
   })
 })
