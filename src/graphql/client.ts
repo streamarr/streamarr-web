@@ -1,5 +1,4 @@
 import { ApolloClient, ApolloLink, HttpLink, InMemoryCache } from '@apollo/client'
-import { SetContextLink } from '@apollo/client/link/context'
 import { ErrorLink } from '@apollo/client/link/error'
 import { OperationTypeNode } from 'graphql'
 import { map, Observable, type Subscription, throwError } from 'rxjs'
@@ -190,9 +189,14 @@ export function createApolloClient(
     }
   })
 
-  const csrfLink = new SetContextLink((prevContext) => ({
-    headers: { ...(prevContext.headers as Record<string, string> | undefined), ...csrfHeaders() },
-  }))
+  // Synchronous, so the header reads the cookie as the request goes out, and no switch can begin
+  // between the gate admitting an operation and the HTTP link sending it.
+  const csrfLink = new ApolloLink((operation, forward) => {
+    operation.setContext(({ headers }) => ({
+      headers: { ...(headers as Record<string, string> | undefined), ...csrfHeaders() },
+    }))
+    return forward(operation)
+  })
 
   const httpLink = new HttpLink({
     uri: '/graphql',
@@ -223,13 +227,14 @@ export function createApolloClient(
   // Error link next: forward() on a CSRF rejection re-enters the CSRF link, which re-reads the
   // re-minted cookie before the HTTP link sends.
   const gate = new IdentitySwitchGate()
-  // The gate comes first and again before the HTTP link, which a CSRF retry re-enters.
+  // The gate comes first and again before the CSRF link, which a CSRF retry re-enters: a retry the
+  // gate held reads the cookie only when it is released.
   const httpChain = ApolloLink.from([
     gate.link,
     discardResponsesSentBeforeStoreReset(cache),
     errorLink,
-    csrfLink,
     gate.link,
+    csrfLink,
     httpLink,
   ])
   const link = subscriptionLink
