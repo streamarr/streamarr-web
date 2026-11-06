@@ -36,10 +36,10 @@ export function streamKind({ decision }: Stream): StreamKind | null {
   return deliveries.includes('COPY') ? 'COPY' : 'DIRECT_PLAY'
 }
 
-const KNOWN_DELIVERIES: readonly string[] = ['DIRECT_PLAY', 'COPY', 'ENCODE']
+const KNOWN_DELIVERIES: ReadonlySet<string> = new Set(['DIRECT_PLAY', 'COPY', 'ENCODE'])
 
 function isKnownDelivery(delivery: string): boolean {
-  return KNOWN_DELIVERIES.includes(delivery)
+  return KNOWN_DELIVERIES.has(delivery)
 }
 
 /**
