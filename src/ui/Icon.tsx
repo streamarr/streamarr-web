@@ -7,6 +7,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Clock,
   CircleCheck,
   CircleStop,
   Clapperboard,
@@ -70,6 +71,7 @@ const icons = {
   settings: Settings,
   encoding: Gauge,
   close: X,
+  'ends-at': Clock,
 } as const
 
 /** Approved semantic names from streamarr-ux's ICONOGRAPHY.md. */

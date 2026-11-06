@@ -16,11 +16,28 @@ export const detailAction = {
   primary: `${styles.action} ${styles.primary}`,
   secondary: `${styles.action} ${styles.secondary}`,
   outline: `${styles.action} ${styles.outline}`,
+  /** A quieter run after an action's verb, such as Resume's time left. */
+  detail: styles.actionDetail,
+}
+
+/** How much of a title has been watched, along the foot of its Resume action. */
+export function ActionProgress({ share }: Readonly<{ share: number }>) {
+  const watched = Math.min(Math.max(share, 0), 1)
+  return (
+    <span className={styles.progress} aria-hidden>
+      <span
+        className={styles.progressFill}
+        style={{ width: `${watched * 100}%` }}
+        data-testid="action-progress"
+      />
+    </span>
+  )
 }
 
 export function DetailHeader({
   backdrop,
   back,
+  endsIn,
   metadata,
   eyebrow,
   title,
@@ -33,6 +50,7 @@ export function DetailHeader({
 }: Readonly<{
   backdrop: DetailBackdrop
   back?: ReactNode
+  endsIn?: number | null
   metadata: MetadataEntry[]
   eyebrow?: string
   title: string
@@ -49,6 +67,7 @@ export function DetailHeader({
         {...backdrop}
         alt=""
         back={back}
+        endsIn={endsIn}
         metadata={<MetadataColumns entries={metadata} />}
       />
       <div className={titleColumn ? `${styles.panel} ${styles.split}` : styles.panel}>

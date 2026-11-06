@@ -2,6 +2,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import styles from './BackdropHero.module.css'
 import type { PickedImage } from './images'
 import { MediaImage } from './MediaImage'
+import { EndsAt } from './EndsAt'
 
 export interface AmbientCorners {
   topLeft: string
@@ -18,6 +19,7 @@ export function BackdropHero({
   height,
   alt,
   back,
+  endsIn,
   metadata,
 }: Readonly<{
   image: PickedImage | null
@@ -26,6 +28,8 @@ export function BackdropHero({
   height: number
   alt: string
   back?: ReactNode
+  /** Seconds left to play from where the viewer would start; shown as an end time beside Back. */
+  endsIn?: number | null
   metadata?: ReactNode
 }>) {
   return (
@@ -41,7 +45,17 @@ export function BackdropHero({
       )}
       <div className={styles.scrim} aria-hidden />
       <div className={styles.fade} aria-hidden />
-      {back && <div className={styles.back}>{back}</div>}
+      {back && (
+        <div className={styles.back}>
+          {back}
+          {endsIn != null && (
+            <>
+              <span className={styles.rule} aria-hidden />
+              <EndsAt remainingSeconds={endsIn} />
+            </>
+          )}
+        </div>
+      )}
       {metadata && <div className={styles.metadata}>{metadata}</div>}
     </div>
   )
