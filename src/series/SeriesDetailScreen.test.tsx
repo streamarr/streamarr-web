@@ -168,8 +168,8 @@ function serve(data: SeriesDetailQuery, requestedIds: string[] = []) {
 }
 
 async function renderSeries(data: SeriesDetailQuery) {
-  const rendered = renderAppAt('/series/series-1')
   serve(data)
+  const rendered = renderAppAt('/series/series-1')
   await waitFor(() =>
     expect(screen.getByRole('heading', { level: 1, name: 'Northern Line' })).toBeInTheDocument(),
   )
