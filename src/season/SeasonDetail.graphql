@@ -5,7 +5,11 @@ query SeasonDetail($id: ID!) {
     seasonNumber
     overview
     airDate
-    watchStatus
+    selectedProfileState {
+      watchState {
+        watchStatus
+      }
+    }
     series {
       id
       title
@@ -20,10 +24,18 @@ query SeasonDetail($id: ID!) {
         id
         seasonNumber
         title
-        watchStatus
+        selectedProfileState {
+          watchState {
+            watchStatus
+          }
+        }
         episodes {
           id
-          watchStatus
+          selectedProfileState {
+            watchState {
+              watchStatus
+            }
+          }
         }
       }
       backdropImages: images(type: BACKDROP) {
@@ -35,11 +47,15 @@ query SeasonDetail($id: ID!) {
       title
       episodeNumber
       runtime
-      watchStatus
-      watchProgress {
-        positionSeconds
-        percentComplete
-        durationSeconds
+      selectedProfileState {
+        watchState {
+          watchStatus
+          watchProgress {
+            positionSeconds
+            percentComplete
+            durationSeconds
+          }
+        }
       }
       files {
         id

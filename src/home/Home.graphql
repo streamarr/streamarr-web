@@ -62,10 +62,14 @@ fragment ContinueWatchingItemFields on ContinueWatchingMedia {
     images(type: BACKDROP) {
       ...ImageWithAmbientFields
     }
-    watchProgress {
-      positionSeconds
-      percentComplete
-      durationSeconds
+    selectedProfileState {
+      watchState {
+        watchProgress {
+          positionSeconds
+          percentComplete
+          durationSeconds
+        }
+      }
     }
     files {
       id
@@ -88,10 +92,14 @@ fragment ContinueWatchingItemFields on ContinueWatchingMedia {
         url
       }
     }
-    watchProgress {
-      positionSeconds
-      percentComplete
-      durationSeconds
+    selectedProfileState {
+      watchState {
+        watchProgress {
+          positionSeconds
+          percentComplete
+          durationSeconds
+        }
+      }
     }
     files {
       id

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { selectedProfileState } from '../test/selectedProfileStateFixture'
 import { nextPlayableEpisode } from './nextPlayableEpisode'
 
 function episode(
@@ -13,16 +14,34 @@ function episode(
   return {
     id: `e${number}`,
     episodeNumber: number,
-    watchStatus: overrides.watchStatus ?? 'UNWATCHED',
-    watchProgress:
-      overrides.positionSeconds != null
-        ? { positionSeconds: overrides.positionSeconds, durationSeconds: overrides.durationSeconds }
-        : null,
+    selectedProfileState: selectedProfileState({
+      watchStatus: overrides.watchStatus,
+      watchProgress:
+        overrides.positionSeconds != null
+          ? {
+              positionSeconds: overrides.positionSeconds,
+              durationSeconds: overrides.durationSeconds,
+            }
+          : null,
+    }),
     files: overrides.fileId === null ? [] : [{ id: overrides.fileId ?? `file-e${number}` }],
   }
 }
 
 describe('nextPlayableEpisode', () => {
+  it('shouldContinueWithAnEpisodeThatHasNoSelectedProfileState', () => {
+    const playable = nextPlayableEpisode([
+      {
+        seasonNumber: 1,
+        episodes: [
+          episode(1, { watchStatus: 'WATCHED' }),
+          { ...episode(2), selectedProfileState: null },
+        ],
+      },
+    ])
+    expect(playable).toMatchObject({ id: 'e2', verb: 'Continue', positionSeconds: null })
+  })
+
   it('shouldSkipUnavailableEpisodesWhileKeepingTheWatchedHistory', () => {
     const result = nextPlayableEpisode([
       {

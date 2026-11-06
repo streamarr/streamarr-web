@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { selectedProfileState } from '../src/test/selectedProfileStateFixture'
 import type { LibraryPageQuery, LibraryPageQueryVariables } from '../src/graphql/generated/graphql'
 import { mediaEdge } from '../src/test/libraryContentsFixtures'
 import { STUB_URL } from './ports'
@@ -21,9 +22,7 @@ function movie(index: number, perLetter: number) {
     titleSort: title,
     releaseDate: '2024-01-01',
     runtime: 90,
-    watchStatus: 'UNWATCHED' as const,
-    lastWatchedAt: null,
-    watchProgress: null,
+    selectedProfileState: selectedProfileState(),
     images: [],
   }
 }
@@ -81,8 +80,7 @@ const movieDetail = (id: string) => ({
     cast: [],
     ratings: [],
     files: [],
-    watchStatus: 'UNWATCHED',
-    watchProgress: null,
+    selectedProfileState: selectedProfileState(),
     backdropImages: [],
     posterImages: [],
   },
@@ -903,7 +901,9 @@ for (const { seek, sort, failRecovery } of [
       }
       if (operation.operationName === 'MovieDetail') {
         const data = movieDetail(operation.variables.id)
-        data.movie.watchStatus = watched ? 'WATCHED' : 'UNWATCHED'
+        data.movie.selectedProfileState = selectedProfileState({
+          watchStatus: watched ? 'WATCHED' : 'UNWATCHED',
+        })
         return route.fulfill({ json: { data } })
       }
       if (operation.operationName === 'MarkWatched') {
@@ -911,8 +911,7 @@ for (const { seek, sort, failRecovery } of [
         const item = {
           __typename: 'Movie',
           id: operation.variables.input.itemId,
-          watchStatus: 'WATCHED',
-          watchProgress: null,
+          selectedProfileState: selectedProfileState({ watchStatus: 'WATCHED' }),
         }
         return route.fulfill({ json: { data: { markWatched: { item, userErrors: [] } } } })
       }

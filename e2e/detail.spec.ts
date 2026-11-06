@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { selectedProfileState } from '../src/test/selectedProfileStateFixture'
 import type { SeasonDetailQuery } from '../src/graphql/generated/graphql'
 import { actionButtonRadius, cornerRadii } from './actionButton'
 import { movie, openMovie } from './movieDetail'
@@ -186,7 +187,11 @@ test('marking the movie watched flips the verb from the returned movie and then 
 }) => {
   await openMovie(page, request)
   const later = await answerMarkWatched(page, {
-    item: { __typename: 'Movie', id: 'm1', watchStatus: 'WATCHED', watchProgress: null },
+    item: {
+      __typename: 'Movie',
+      id: 'm1',
+      selectedProfileState: selectedProfileState({ watchStatus: 'WATCHED' }),
+    },
     userErrors: [],
   })
 
@@ -222,8 +227,7 @@ const watchedEpisodes = Array.from({ length: 22 }, (_, index) => ({
   title: `Episode ${index + 1}`,
   episodeNumber: index + 1,
   runtime: 42,
-  watchStatus: 'WATCHED' as const,
-  watchProgress: null,
+  selectedProfileState: selectedProfileState({ watchStatus: 'WATCHED' }),
   files: [{ id: `file-e${index + 1}` }],
   stillImages: [],
 }))
@@ -235,7 +239,7 @@ const watchedSeason: SeasonDetailQuery = {
     seasonNumber: 1,
     overview: null,
     airDate: null,
-    watchStatus: 'WATCHED',
+    selectedProfileState: selectedProfileState({ watchStatus: 'WATCHED' }),
     series: {
       id: 'series-1',
       title: 'Longwatch',
@@ -246,8 +250,11 @@ const watchedSeason: SeasonDetailQuery = {
           id: 's1',
           seasonNumber: 1,
           title: 'Season 1',
-          watchStatus: 'WATCHED',
-          episodes: watchedEpisodes.map(({ id }) => ({ id, watchStatus: 'WATCHED' as const })),
+          selectedProfileState: selectedProfileState({ watchStatus: 'WATCHED' }),
+          episodes: watchedEpisodes.map(({ id, selectedProfileState }) => ({
+            id,
+            selectedProfileState,
+          })),
         },
       ],
       backdropImages: [],

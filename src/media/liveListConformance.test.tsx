@@ -7,6 +7,7 @@ import {
   WatchStateChangedDocument,
   type LibraryPageQueryVariables,
 } from '../graphql/generated/graphql'
+import { selectedProfileState } from '../test/selectedProfileStateFixture'
 import possibleTypes from '../graphql/generated/possibleTypes.json'
 import cases from '../test/contracts/live-lists.json'
 import { watchingMovie, watchingConnection, watchingChange } from '../test/continueWatchingFixtures'
@@ -37,7 +38,7 @@ function LibraryWindow({ startLetter }: { startLetter: 'A' | null }) {
         ))}
       </ol>
       <output aria-label="Watch states">
-        {view.edges.map(({ node }) => node.watchStatus).join(',')}
+        {view.edges.map(({ node }) => node.selectedProfileState?.watchState.watchStatus).join(',')}
       </output>
       <button onClick={view.loadMore}>More</button>
       <button onClick={view.retry}>Retry</button>
@@ -132,7 +133,12 @@ describe('shared live-list conformance', () => {
                   __typename: 'MediaEdge' as const,
                   cursor: `cursor-${item.id}`,
                   orderKey: item.orderKey,
-                  node: { ...movie(item), watchStatus: recovered ? 'WATCHED' : 'UNWATCHED' },
+                  node: {
+                    ...movie(item),
+                    selectedProfileState: selectedProfileState({
+                      watchStatus: recovered ? 'WATCHED' : 'UNWATCHED',
+                    }),
+                  },
                 })),
                 pageInfo: {
                   hasPreviousPage: start > 0,

@@ -1,8 +1,10 @@
+import { selectedProfileState } from '../test/selectedProfileStateFixture'
 import { watchingConnection } from '../test/continueWatchingFixtures'
 import { readyPlaybackSession, destroyedPlaybackSession } from '../test/playbackSession'
 import { deferred } from '../test/deferred'
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { graphql, HttpResponse } from 'msw'
+import type { WatchStatus } from '../graphql/generated/graphql'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { hls } from '../test/fakeHls'
 import { meFixture } from '../test/meFixture'
@@ -26,7 +28,7 @@ function movieDetail({
   watchStatus,
   watchProgress = null,
 }: {
-  watchStatus: string
+  watchStatus: WatchStatus
   watchProgress?: { positionSeconds: number; percentComplete: number } | null
 }) {
   return {
@@ -43,8 +45,7 @@ function movieDetail({
     cast: [],
     ratings: [],
     files: [{ __typename: 'MediaFile', id: 'f1' }],
-    watchStatus,
-    watchProgress,
+    selectedProfileState: selectedProfileState({ watchStatus, watchProgress }),
     backdropImages: [],
     posterImages: [],
   }
@@ -86,15 +87,14 @@ describe('watched state across routes', () => {
   it('shouldUpdateTheSeriesActionFromTheMarkedSeasonWithoutLoadingTheSeriesAgain', async () => {
     let seriesRequests = 0
     // The server answers every read after the mark with the marked state.
-    let watchStatus = 'UNWATCHED'
+    let watchStatus: WatchStatus = 'UNWATCHED'
     const episode = () => ({
       __typename: 'Episode',
       id: 'e1',
       title: 'First',
       episodeNumber: 1,
       runtime: 45,
-      watchStatus,
-      watchProgress: null,
+      selectedProfileState: selectedProfileState({ watchStatus }),
       files: [{ __typename: 'MediaFile', id: 'f1' }],
       stillImages: [],
     })
@@ -105,8 +105,7 @@ describe('watched state across routes', () => {
       seasonNumber: 1,
       overview: 'One season',
       airDate: '2024-01-01',
-      watchStatus,
-      watchProgress: null,
+      selectedProfileState: selectedProfileState({ watchStatus }),
       episodes: [episode()],
       posterImages: [],
       backdropImages: [],
@@ -128,7 +127,7 @@ describe('watched state across routes', () => {
               genres: [],
               directors: [],
               cast: [],
-              watchStatus,
+              selectedProfileState: selectedProfileState({ watchStatus }),
               seasons: [season()],
               backdropImages: [],
               posterImages: [],
@@ -156,7 +155,7 @@ describe('watched state across routes', () => {
       ),
       graphql.mutation('MarkWatched', () => {
         watchStatus = 'WATCHED'
-        const watched = { watchStatus: 'WATCHED', watchProgress: null }
+        const watched = { selectedProfileState: selectedProfileState({ watchStatus: 'WATCHED' }) }
         return HttpResponse.json({
           data: {
             markWatched: {
@@ -217,11 +216,14 @@ describe('watched state across routes', () => {
                       genres: [],
                       images: [],
                       files: [{ id: 'f1' }],
-                      watchProgress: {
-                        positionSeconds: 20,
-                        percentComplete: 2,
-                        durationSeconds: 5400,
-                      },
+                      selectedProfileState: selectedProfileState({
+                        watchStatus: 'IN_PROGRESS',
+                        watchProgress: {
+                          positionSeconds: 20,
+                          percentComplete: 2,
+                          durationSeconds: 5400,
+                        },
+                      }),
                     },
                   ],
             ),
@@ -245,10 +247,12 @@ describe('watched state across routes', () => {
               cast: [],
               ratings: [],
               files: [{ __typename: 'MediaFile', id: 'f1' }],
-              watchStatus: watched ? 'WATCHED' : 'IN_PROGRESS',
-              watchProgress: watched
-                ? null
-                : { positionSeconds: 20, percentComplete: 2, durationSeconds: 5400 },
+              selectedProfileState: selectedProfileState({
+                watchStatus: watched ? 'WATCHED' : 'IN_PROGRESS',
+                watchProgress: watched
+                  ? null
+                  : { positionSeconds: 20, percentComplete: 2, durationSeconds: 5400 },
+              }),
               backdropImages: [],
               posterImages: [],
             },
@@ -260,7 +264,11 @@ describe('watched state across routes', () => {
         return HttpResponse.json({
           data: {
             markWatched: {
-              item: { __typename: 'Movie', id: 'm1', watchStatus: 'WATCHED', watchProgress: null },
+              item: {
+                __typename: 'Movie',
+                id: 'm1',
+                selectedProfileState: selectedProfileState({ watchStatus: 'WATCHED' }),
+              },
               userErrors: [],
             },
           },
@@ -463,11 +471,14 @@ describe('watched state across routes', () => {
                       genres: [],
                       images: [],
                       files: [{ id: 'f1' }],
-                      watchProgress: {
-                        positionSeconds: position,
-                        percentComplete: 2,
-                        durationSeconds: 5400,
-                      },
+                      selectedProfileState: selectedProfileState({
+                        watchStatus: 'IN_PROGRESS',
+                        watchProgress: {
+                          positionSeconds: position,
+                          percentComplete: 2,
+                          durationSeconds: 5400,
+                        },
+                      }),
                     },
                   ]
                 : [],

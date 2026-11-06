@@ -6,10 +6,14 @@ fragment MediaSummaryFields on Media {
     titleSort
     releaseDate
     runtime
-    watchStatus
-    lastWatchedAt
-    watchProgress {
-      percentComplete
+    selectedProfileState {
+      watchState {
+        watchStatus
+        lastWatchedAt
+        watchProgress {
+          percentComplete
+        }
+      }
     }
     images(type: POSTER) {
       aspectRatio
@@ -31,10 +35,14 @@ fragment MediaSummaryFields on Media {
     seasons {
       id
     }
-    watchStatus
-    lastWatchedAt
-    watchProgress {
-      percentComplete
+    selectedProfileState {
+      watchState {
+        watchStatus
+        lastWatchedAt
+        watchProgress {
+          percentComplete
+        }
+      }
     }
     images(type: POSTER) {
       aspectRatio

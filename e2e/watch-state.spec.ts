@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { selectedProfileState } from '../src/test/selectedProfileStateFixture'
 import type { LibraryPageQuery } from '../src/graphql/generated/graphql'
 import { mediaEdge } from '../src/test/libraryContentsFixtures'
 import { meFixture, profileFixture } from '../src/test/meFixture'
@@ -16,15 +17,17 @@ function movie(id: string, title: string) {
     titleSort: title,
     releaseDate: '2024-01-01',
     runtime: 100,
-    watchStatus: 'UNWATCHED' as const,
-    lastWatchedAt: null,
-    watchProgress: null,
+    selectedProfileState: selectedProfileState(),
     images: [],
   }
 }
 
 const EVERLIGHT = movie('m1', 'Everlight')
 const NORTHERN_LINE = movie('m2', 'Northern Line')
+const FINISHED = selectedProfileState({
+  watchStatus: 'WATCHED',
+  lastWatchedAt: '2026-10-16T10:00:00Z',
+})
 
 test('an Unwatched view drops a movie that another device finishes', async ({ page }) => {
   const me = meFixture({ scope: 'profile', profiles: [profileFixture({ selected: true })] })
@@ -81,8 +84,7 @@ test('an Unwatched view drops a movie that another device finishes', async ({ pa
         items: [
           {
             ...EVERLIGHT,
-            watchStatus: 'WATCHED',
-            lastWatchedAt: '2026-10-16T10:00:00Z',
+            selectedProfileState: FINISHED,
             unmatched: false,
             library: { __typename: 'Library', id: LIBRARY_ID },
           },
@@ -98,7 +100,7 @@ test('an Unwatched view drops a movie that another device finishes', async ({ pa
         libraryId: LIBRARY_ID,
         itemId: EVERLIGHT.id,
         kind: 'MOVIE',
-        item: { ...EVERLIGHT, watchStatus: 'WATCHED', lastWatchedAt: '2026-10-16T10:00:00Z' },
+        item: { ...EVERLIGHT, selectedProfileState: FINISHED },
         edge: null,
       },
     },

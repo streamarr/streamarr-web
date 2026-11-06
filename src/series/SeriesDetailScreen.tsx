@@ -17,6 +17,7 @@ import { ProgressDivider } from '../media/ProgressDivider'
 import { useBulkWatchedAction } from '../media/useBulkWatchedAction'
 import type { WatchedBadgeProps } from '../media/WatchedBadge'
 import styles from './SeriesDetailScreen.module.css'
+import { isWatched, watchStateOf } from '../media/selectedProfileWatchState'
 
 type Series = NonNullable<SeriesDetailQuery['series']>
 type Season = NonNullable<Series['seasons'][number]>
@@ -49,7 +50,7 @@ export function SeriesDetailScreen({ seriesId }: Readonly<{ seriesId: string }>)
   const episodes = seasons.flatMap((season) =>
     season.episodes.filter((episode): episode is Episode => episode !== null),
   )
-  const watchedCount = episodes.filter((episode) => episode.watchStatus === 'WATCHED').length
+  const watchedCount = episodes.filter(isWatched).length
   const playable = nextPlayableEpisode(seasons)
   const artwork = series.backdropImages[0] ?? series.posterImages[0] ?? null
   const cast = series.cast.filter(
@@ -121,7 +122,9 @@ export function SeriesDetailScreen({ seriesId }: Readonly<{ seriesId: string }>)
                   image={pickImageVariant(season.posterImages[0], 'MEDIUM')}
                   blurHash={season.posterImages[0]?.blurHash ?? null}
                   badge={seasonBadge(season)}
-                  progressPercent={season.watchProgress?.percentComplete ?? undefined}
+                  progressPercent={
+                    watchStateOf(season)?.watchProgress?.percentComplete ?? undefined
+                  }
                 />
               </Link>
             ))}
@@ -148,12 +151,10 @@ export function SeriesDetailScreen({ seriesId }: Readonly<{ seriesId: string }>)
 }
 
 function seasonBadge(season: Season): WatchedBadgeProps | undefined {
-  if (season.watchStatus === 'WATCHED') {
+  if (isWatched(season)) {
     return { status: 'watched' }
   }
-  const unwatched = season.episodes.filter(
-    (episode) => episode && episode.watchStatus !== 'WATCHED',
-  ).length
+  const unwatched = season.episodes.filter((episode) => episode && !isWatched(episode)).length
   return unwatched > 0 ? { status: 'unwatched-count', count: unwatched } : undefined
 }
 

@@ -8,6 +8,7 @@ import {
   type Request,
 } from '@playwright/test'
 import { fileURLToPath } from 'node:url'
+import { selectedProfileState } from '../src/test/selectedProfileStateFixture'
 import { RING, ringOnActiveElement } from './focusRing'
 import { STUB_URL } from './ports'
 
@@ -218,8 +219,7 @@ const MOVIE_DETAIL = {
     cast: [],
     ratings: [],
     files: [{ id: 'file-1' }],
-    watchStatus: 'UNWATCHED',
-    watchProgress: null,
+    selectedProfileState: selectedProfileState(),
     backdropImages: [],
     posterImages: [],
   },

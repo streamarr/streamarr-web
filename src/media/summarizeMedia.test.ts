@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { MediaSummaryFieldsFragment } from '../graphql/generated/graphql'
+import { selectedProfileState } from '../test/selectedProfileStateFixture'
 import { summarizeMedia, summaryLetter } from './summarizeMedia'
 
 function movie(
@@ -12,9 +13,7 @@ function movie(
     titleSort: 'Everlight',
     releaseDate: '2024-03-15',
     runtime: 142,
-    watchStatus: 'UNWATCHED',
-    lastWatchedAt: null,
-    watchProgress: null,
+    selectedProfileState: selectedProfileState(),
     images: [],
     ...overrides,
   } satisfies Extract<MediaSummaryFieldsFragment, { __typename: 'Movie' }>
@@ -30,9 +29,10 @@ function series(
     titleSort: 'Northern Line',
     firstAirDate: '2017-09-01',
     seasons: [{ id: 's1' }, { id: 's2' }],
-    watchStatus: 'IN_PROGRESS',
-    lastWatchedAt: null,
-    watchProgress: { percentComplete: 27 },
+    selectedProfileState: selectedProfileState({
+      watchStatus: 'IN_PROGRESS',
+      watchProgress: { percentComplete: 27 },
+    }),
     images: [],
     ...overrides,
   } satisfies Extract<MediaSummaryFieldsFragment, { __typename: 'Series' }>
@@ -60,6 +60,12 @@ describe('summarizeMedia', () => {
     const summary = summarizeMedia(series())
     expect(summary.watchStatus).toBe('IN_PROGRESS')
     expect(summary.percentComplete).toBe(27)
+  })
+
+  it('shouldShowNoWatchStateWhenTheTitleHasNoSelectedProfileState', () => {
+    const summary = summarizeMedia(series({ selectedProfileState: null }))
+    expect(summary.watchStatus).toBeNull()
+    expect(summary.percentComplete).toBeNull()
   })
 
   it('falls back to "Untitled" when the server has no title yet', () => {

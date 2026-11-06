@@ -10,6 +10,7 @@ import type {
   MediaFilter,
   MediaSort,
 } from '../graphql/generated/graphql'
+import { selectedProfileState } from '../test/selectedProfileStateFixture'
 import { readActiveQueriesAgain } from '../graphql/readAgain'
 import { LibraryContentsProvider } from './LibraryContentsProvider'
 import { serveGraphqlSocket } from '../test/graphqlSocket'
@@ -28,9 +29,7 @@ function movieNode(id: string, title: string) {
     titleSort: title,
     releaseDate: '2024-01-01',
     runtime: 100,
-    watchStatus: 'UNWATCHED' as const,
-    lastWatchedAt: null,
-    watchProgress: null,
+    selectedProfileState: selectedProfileState(),
     images: [],
   }
 }

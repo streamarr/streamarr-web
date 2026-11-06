@@ -7,6 +7,7 @@ import { StillCard } from '../media/StillCard'
 import type { WatchedBadgeProps } from '../media/WatchedBadge'
 import type { MediaTitleSearch } from '../streaming/usePlayerTitle'
 import styles from './ContinueWatchingShelf.module.css'
+import { watchStateOf } from '../media/selectedProfileWatchState'
 
 type ContinueWatchingItem = NonNullable<
   NonNullable<HomeQuery['continueWatching']['edges'][number]>['node']
@@ -63,12 +64,13 @@ function summarize(item: ContinueWatchingItem): {
   ctaMediaTitle: MediaTitleSearch
   ctaPositionSeconds: number | null
 } {
-  const timeLeft = item.watchProgress ? formatTimeLeft(item.watchProgress) : ''
+  const progress = watchStateOf(item)?.watchProgress
+  const timeLeft = progress ? formatTimeLeft(progress) : ''
   // The bar along the still pairs with the time left in its line (principle 6.3).
-  const badge: WatchedBadgeProps | undefined = item.watchProgress
-    ? { status: 'in-progress', percentComplete: item.watchProgress.percentComplete }
+  const badge: WatchedBadgeProps | undefined = progress
+    ? { status: 'in-progress', percentComplete: progress.percentComplete }
     : undefined
-  const ctaPositionSeconds = item.watchProgress?.positionSeconds || null
+  const ctaPositionSeconds = progress?.positionSeconds || null
 
   if (item.__typename === 'Movie') {
     const backdrop = item.images[0] ?? null

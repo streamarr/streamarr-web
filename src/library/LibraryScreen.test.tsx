@@ -3,13 +3,18 @@ import userEvent from '@testing-library/user-event'
 import { graphql, HttpResponse, type GraphQLQuery } from 'msw'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
-import type { LibraryPageQuery, LibraryPageQueryVariables } from '../graphql/generated/graphql'
+import type {
+  LibraryPageQuery,
+  LibraryPageQueryVariables,
+  WatchStatus,
+} from '../graphql/generated/graphql'
 import {
   intersectionObserverInstances,
   JSDOM_GRID_HEIGHT,
   JSDOM_ROW_HEIGHT,
   resizeObserverInstances,
 } from '../../vitest.setup'
+import { selectedProfileState } from '../test/selectedProfileStateFixture'
 import { failsOnceThen, invalidIdResponse } from '../test/graphqlResponses'
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
@@ -21,7 +26,7 @@ function movieNode(
   overrides: Partial<{
     id: string
     title: string
-    watchStatus: string
+    watchStatus: WatchStatus
     percentComplete: number | null
   }> = {},
 ) {
@@ -32,10 +37,11 @@ function movieNode(
     titleSort: overrides.title ?? 'Everlight',
     releaseDate: '2024-01-01',
     runtime: 100,
-    watchStatus: (overrides.watchStatus as 'UNWATCHED' | 'IN_PROGRESS' | 'WATCHED') ?? 'UNWATCHED',
-    lastWatchedAt: null,
-    watchProgress:
-      overrides.percentComplete != null ? { percentComplete: overrides.percentComplete } : null,
+    selectedProfileState: selectedProfileState({
+      watchStatus: overrides.watchStatus,
+      watchProgress:
+        overrides.percentComplete != null ? { percentComplete: overrides.percentComplete } : null,
+    }),
     images: [],
   }
 }
@@ -48,9 +54,7 @@ function seriesNode(overrides: Partial<{ id: string; title: string }> = {}) {
     titleSort: overrides.title ?? 'Northern Line',
     firstAirDate: '2017-07-21',
     seasons: [{ id: 'season-1' }],
-    watchStatus: 'UNWATCHED' as const,
-    lastWatchedAt: null,
-    watchProgress: null,
+    selectedProfileState: selectedProfileState(),
     images: [],
   }
 }

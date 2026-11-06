@@ -2,6 +2,7 @@ import type { MediaSummaryFieldsFragment, WatchStatus } from '../graphql/generat
 import { alphabetLetterFromTitle } from './alphabetLetter'
 import { formatRuntime, formatYear } from './formatting'
 import { pickImageVariant, type PickedImage } from './images'
+import { watchStateOf } from './selectedProfileWatchState'
 
 export interface MediaSummary {
   id: string
@@ -10,7 +11,7 @@ export interface MediaSummary {
   meta: string
   poster: PickedImage | null
   blurHash: string | null
-  watchStatus: WatchStatus
+  watchStatus: WatchStatus | null
   percentComplete: number | null
 }
 
@@ -18,6 +19,7 @@ export function summarizeMedia(media: MediaSummaryFieldsFragment): MediaSummary 
   const image = media.images[0] ?? null
   const title = media.title ?? 'Untitled'
   const titleSort = media.titleSort ?? title
+  const watchState = watchStateOf(media)
 
   return {
     id: media.id,
@@ -26,8 +28,8 @@ export function summarizeMedia(media: MediaSummaryFieldsFragment): MediaSummary 
     meta: media.__typename === 'Movie' ? movieMeta(media) : seriesMeta(media),
     poster: pickImageVariant(image, 'MEDIUM'),
     blurHash: image?.blurHash ?? null,
-    watchStatus: media.watchStatus,
-    percentComplete: media.watchProgress?.percentComplete ?? null,
+    watchStatus: watchState?.watchStatus ?? null,
+    percentComplete: watchState?.watchProgress?.percentComplete ?? null,
   }
 }
 

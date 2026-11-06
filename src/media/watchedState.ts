@@ -77,8 +77,7 @@ export function discardWatchedState(cache: ApolloCache) {
     cache.modify({
       id,
       fields: {
-        watchStatus: (_value, { DELETE }) => DELETE,
-        watchProgress: (_value, { DELETE }) => DELETE,
+        selectedProfileState: (_value, { DELETE }) => DELETE,
         // Membership and ordering can change even when the old connection was empty.
         items: (_value, { DELETE }) => DELETE,
       },

@@ -129,8 +129,14 @@ describe('apollo client', () => {
                 item: {
                   __typename: 'Movie',
                   id: 'm1',
-                  watchStatus: 'WATCHED',
-                  watchProgress: null,
+                  selectedProfileState: {
+                    __typename: 'SelectedProfileState',
+                    watchState: {
+                      __typename: 'WatchState',
+                      watchStatus: 'WATCHED',
+                      watchProgress: null,
+                    },
+                  },
                 },
                 userErrors: [],
               },
@@ -169,4 +175,79 @@ describe('apollo client', () => {
       expect(outcome).toBe('discarded')
     },
   )
+
+  it('shouldKeepWhatEachQueryReadOfASelectedProfileStateWhenAnotherQueryWritesOtherFields', () => {
+    const client = createApolloClient(vi.fn())
+    const posterFields = gql`
+      fragment PosterFields on Movie {
+        id
+        selectedProfileState {
+          watchState {
+            watchStatus
+            lastWatchedAt
+          }
+        }
+      }
+    `
+    const detailFields = gql`
+      fragment DetailFields on Movie {
+        id
+        selectedProfileState {
+          profile {
+            id
+          }
+          watchState {
+            watchStatus
+            watchProgress {
+              positionSeconds
+            }
+          }
+        }
+      }
+    `
+    client.cache.writeFragment({
+      fragment: posterFields,
+      data: {
+        __typename: 'Movie',
+        id: 'm1',
+        selectedProfileState: {
+          __typename: 'SelectedProfileState',
+          watchState: {
+            __typename: 'WatchState',
+            watchStatus: 'IN_PROGRESS',
+            lastWatchedAt: '2026-10-16T10:00:00Z',
+          },
+        },
+      },
+    })
+
+    client.cache.writeFragment({
+      fragment: detailFields,
+      data: {
+        __typename: 'Movie',
+        id: 'm1',
+        selectedProfileState: {
+          __typename: 'SelectedProfileState',
+          profile: { __typename: 'SelectableProfile', id: 'p1' },
+          watchState: {
+            __typename: 'WatchState',
+            watchStatus: 'IN_PROGRESS',
+            watchProgress: { __typename: 'WatchProgress', positionSeconds: 600 },
+          },
+        },
+      },
+    })
+
+    expect(client.cache.readFragment({ fragment: posterFields, id: 'Movie:m1' })).toMatchObject({
+      selectedProfileState: {
+        watchState: { watchStatus: 'IN_PROGRESS', lastWatchedAt: '2026-10-16T10:00:00Z' },
+      },
+    })
+    expect(client.cache.readFragment({ fragment: detailFields, id: 'Movie:m1' })).toMatchObject({
+      selectedProfileState: {
+        profile: { id: 'p1' },
+        watchState: { watchProgress: { positionSeconds: 600 } },
+      },
+    })
+  })
 })

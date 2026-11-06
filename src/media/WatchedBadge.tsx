@@ -8,7 +8,7 @@ export type WatchedBadgeProps =
   | { status: 'unwatched-count'; count: number }
 
 export function badgeFromWatchState(
-  watchStatus: WatchStatus,
+  watchStatus: WatchStatus | null,
   percentComplete: number | null,
 ): WatchedBadgeProps | undefined {
   if (watchStatus === 'WATCHED') {

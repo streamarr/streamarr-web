@@ -90,6 +90,10 @@ export function createApolloClient(
           items: { keyArgs: ['sort', 'filter'] },
         },
       },
+      // Neither type has an id, so each is stored inside its title. Merging keeps the fields one
+      // query read when another query writes different ones.
+      SelectedProfileState: { merge: true },
+      WatchState: { merge: true },
     },
   })
 

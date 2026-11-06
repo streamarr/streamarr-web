@@ -1,8 +1,9 @@
+import { selectedProfileState } from '../test/selectedProfileStateFixture'
 import { watchingConnection } from '../test/continueWatchingFixtures'
 import { act, screen, waitFor } from '@testing-library/react'
 import { graphql, HttpResponse, http } from 'msw'
 import { describe, expect, it } from 'vitest'
-import type { MovieDetailQuery } from '../graphql/generated/graphql'
+import type { MovieDetailQuery, WatchStatus } from '../graphql/generated/graphql'
 import { deferred } from '../test/deferred'
 import { serveGraphqlSocket } from '../test/graphqlSocket'
 import { meFixture, profileFixture } from '../test/meFixture'
@@ -69,7 +70,19 @@ function endTimesAround(minutesLeft: number): () => string[] {
   return () => [before, endAt()]
 }
 
-function movieData(overrides: Record<string, unknown> = {}): MovieDetailQuery {
+function movieData({
+  watchStatus,
+  watchProgress,
+  ...overrides
+}: {
+  watchStatus?: WatchStatus
+  watchProgress?: {
+    positionSeconds: number
+    percentComplete: number
+    durationSeconds?: number
+  } | null
+  [field: string]: unknown
+} = {}): MovieDetailQuery {
   return {
     movie: {
       __typename: 'Movie',
@@ -85,8 +98,7 @@ function movieData(overrides: Record<string, unknown> = {}): MovieDetailQuery {
       cast: [{ id: 'p2', name: 'Lead Actor', images: [] }],
       ratings: [{ id: 'r1', source: 'TMDB', value: '7.8' }],
       files: [{ id: 'file-1' }],
-      watchStatus: 'UNWATCHED',
-      watchProgress: null,
+      selectedProfileState: selectedProfileState({ watchStatus, watchProgress }),
       backdropImages: [image({ ambientColors: colored(AMBER_THEME) })],
       posterImages: [],
       ...overrides,
@@ -110,7 +122,11 @@ function markWatchedAnswers() {
     HttpResponse.json({
       data: {
         markWatched: {
-          item: { __typename: 'Movie', id: 'm1', watchStatus: 'WATCHED', watchProgress: null },
+          item: {
+            __typename: 'Movie',
+            id: 'm1',
+            selectedProfileState: selectedProfileState({ watchStatus: 'WATCHED' }),
+          },
           userErrors: [],
         },
       },
@@ -327,6 +343,18 @@ describe('MovieDetailScreen', () => {
     expect(endTimes()).toContain(badge.nextElementSibling?.textContent)
   })
 
+  it('shouldOfferPlayAndMarkWatchedWhenTheMovieHasNoSelectedProfileState', async () => {
+    serve(movieData({ selectedProfileState: null }))
+    renderAppAt('/movie/m1')
+    await waitFor(() =>
+      expect(screen.getByRole('link', { name: 'Play' })).toHaveAttribute(
+        'href',
+        '/play/file-1?movie=m1',
+      ),
+    )
+    expect(screen.getByRole('button', { name: 'Mark watched' })).toBeInTheDocument()
+  })
+
   it('tints the page from the backdrop theme', async () => {
     serve(movieData())
     renderAppAt('/movie/m1')
@@ -363,7 +391,7 @@ describe('MovieDetailScreen', () => {
 
   it('shouldFlipTheVerbFromTheMarkedItemAndThenReadTheMovieAgain', async () => {
     const markAnswer = deferred()
-    let watchStatus = 'IN_PROGRESS'
+    let watchStatus: WatchStatus = 'IN_PROGRESS'
     const requestedIds: string[] = []
     const markedIds: string[] = []
     serve(movieData({ watchStatus }), requestedIds)
@@ -379,7 +407,11 @@ describe('MovieDetailScreen', () => {
         return HttpResponse.json({
           data: {
             markWatched: {
-              item: { __typename: 'Movie', id: 'm1', watchStatus: 'WATCHED', watchProgress: null },
+              item: {
+                __typename: 'Movie',
+                id: 'm1',
+                selectedProfileState: selectedProfileState({ watchStatus: 'WATCHED' }),
+              },
               userErrors: [],
             },
           },
@@ -498,7 +530,11 @@ describe('MovieDetailScreen', () => {
         return HttpResponse.json({
           data: {
             markWatched: {
-              item: { __typename: 'Movie', id: 'm1', watchStatus: 'WATCHED', watchProgress: null },
+              item: {
+                __typename: 'Movie',
+                id: 'm1',
+                selectedProfileState: selectedProfileState({ watchStatus: 'WATCHED' }),
+              },
               userErrors: [],
             },
           },
@@ -528,13 +564,13 @@ describe('MovieDetailScreen', () => {
     {
       operation: 'MarkWatched',
       field: 'markWatched',
-      watchStatus: 'UNWATCHED',
+      watchStatus: 'UNWATCHED' as const,
       action: 'Mark watched',
     },
     {
       operation: 'MarkUnwatched',
       field: 'markUnwatched',
-      watchStatus: 'WATCHED',
+      watchStatus: 'WATCHED' as const,
       action: 'Mark unwatched',
     },
   ])(

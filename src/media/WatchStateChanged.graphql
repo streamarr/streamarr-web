@@ -12,7 +12,11 @@ subscription WatchStateChanged {
       __typename
       ... on Movie {
         ...MovieWatchState
-        lastWatchedAt
+        selectedProfileState {
+          watchState {
+            lastWatchedAt
+          }
+        }
         unmatched
         library {
           id
@@ -26,7 +30,11 @@ subscription WatchStateChanged {
       }
       ... on Series {
         ...SeriesWatchState
-        lastWatchedAt
+        selectedProfileState {
+          watchState {
+            lastWatchedAt
+          }
+        }
         unmatched
         library {
           id

@@ -1,4 +1,5 @@
 import { expect, type APIRequestContext, type Page } from '@playwright/test'
+import { selectedProfileState } from '../src/test/selectedProfileStateFixture'
 import type { MovieDetailQuery } from '../src/graphql/generated/graphql'
 import { STUB_URL } from './ports'
 
@@ -20,8 +21,7 @@ export const movie: MovieDetailQuery & { movie: { __typename: 'Movie' } } = {
     ],
     ratings: [],
     files: [{ id: 'file-1' }],
-    watchStatus: 'UNWATCHED',
-    watchProgress: null,
+    selectedProfileState: selectedProfileState(),
     backdropImages: [],
     posterImages: [],
   },

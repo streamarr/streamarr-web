@@ -31,15 +31,23 @@ query SeriesDetail($id: ID!) {
         }
       }
     }
-    watchStatus
+    selectedProfileState {
+      watchState {
+        watchStatus
+      }
+    }
     seasons {
       id
       seasonNumber
       title
       airDate
-      watchStatus
-      watchProgress {
-        percentComplete
+      selectedProfileState {
+        watchState {
+          watchStatus
+          watchProgress {
+            percentComplete
+          }
+        }
       }
       posterImages: images(type: POSTER) {
         aspectRatio
@@ -55,10 +63,14 @@ query SeriesDetail($id: ID!) {
       episodes {
         id
         episodeNumber
-        watchStatus
-        watchProgress {
-          positionSeconds
-          durationSeconds
+        selectedProfileState {
+          watchState {
+            watchStatus
+            watchProgress {
+              positionSeconds
+              durationSeconds
+            }
+          }
         }
         files {
           id
