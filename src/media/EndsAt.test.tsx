@@ -46,4 +46,13 @@ describe('EndsAt', () => {
     })
     expect(screen.getByText(clock(15, 12))).toBeInTheDocument()
   })
+
+  it('shouldCountFromTheCurrentTimeWhenTheRemainingTimeChanges', () => {
+    const { rerender } = render(<EndsAt remainingSeconds={10 * 60} />)
+    act(() => {
+      vi.advanceTimersByTime(25_000)
+    })
+    rerender(<EndsAt remainingSeconds={10 * 60 + 10} />)
+    expect(screen.getByText(clock(15, 11))).toBeInTheDocument()
+  })
 })

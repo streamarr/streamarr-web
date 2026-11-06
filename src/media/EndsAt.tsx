@@ -4,7 +4,11 @@ import styles from './EndsAt.module.css'
 
 /** When a title would finish if played now, kept current as the minutes pass. */
 export function EndsAt({ remainingSeconds }: Readonly<{ remainingSeconds: number }>) {
-  const remainingMs = remainingSeconds * 1000
+  // A new time left starts a new clock, so the end time never counts from a time already past.
+  return <EndTime key={remainingSeconds} remainingMs={remainingSeconds * 1000} />
+}
+
+function EndTime({ remainingMs }: Readonly<{ remainingMs: number }>) {
   const now = useEndMinuteClock(remainingMs)
   const end = new Date(now.getTime() + remainingMs)
   return (
