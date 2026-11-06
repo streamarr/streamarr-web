@@ -3,7 +3,7 @@ import { HttpResponse, graphql, http } from 'msw'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { server } from '../test/server'
 import { deferred } from '../test/deferred'
-import { createApolloClient } from './client'
+import { beginIdentitySwitch, createApolloClient } from './client'
 import { MarkWatchedDocument, MeDocument } from './generated/graphql'
 import { meFixture } from '../test/meFixture'
 
@@ -86,6 +86,29 @@ describe('apollo client', () => {
       data: { me: ME },
     })
     expect(headers).toEqual(['stale-token', 'fresh-token'])
+  })
+
+  it('shouldSendNothingWhileASwitchIsUnderwayWhenTheSwitchBeginsAsAnOperationStarts', async () => {
+    const switchUnderwayAtSend: boolean[] = []
+    let switchUnderway = false
+    const networkFetch = globalThis.fetch
+    vi.stubGlobal('fetch', (...request: Parameters<typeof fetch>) => {
+      switchUnderwayAtSend.push(switchUnderway)
+      return networkFetch(...request)
+    })
+    server.use(graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })))
+    const client = createApolloClient(vi.fn())
+
+    const query = client.query({ query: MeDocument })
+    const identitySwitch = beginIdentitySwitch(client)
+    switchUnderway = true
+    // Every promise continuation already queued runs before this timer fires.
+    await new Promise((resolve) => setTimeout(resolve))
+    switchUnderway = false
+    identitySwitch.failed()
+
+    await expect(query).resolves.toMatchObject({ data: { me: ME } })
+    expect(switchUnderwayAtSend).toEqual([false])
   })
 
   it('shouldStopAfterOneRetryWhenCsrfIsRejectedAgain', async () => {
