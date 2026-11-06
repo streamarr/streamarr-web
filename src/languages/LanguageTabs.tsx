@@ -99,8 +99,9 @@ export function LanguageTabs({ item }: Readonly<{ item: LanguageTabsItem }>) {
   if (!shown) {
     return null
   }
-  // An answer read before a pick would replace the pick's answer in the cache.
-  return <Tabs item={item} reading={query.loading} {...shown} />
+  // An answer read before a pick would replace the pick's answer in the cache. Each title keeps
+  // its own picker and refusal, which a cached title shown next would otherwise inherit.
+  return <Tabs key={item.id} item={item} reading={query.loading} {...shown} />
 }
 
 function shownPreferences(

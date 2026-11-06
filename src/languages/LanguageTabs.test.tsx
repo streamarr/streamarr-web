@@ -408,6 +408,32 @@ describe('LanguageTabs', () => {
     expect(await tab('Default audio')).toHaveAccessibleDescription('English · from Profile')
   })
 
+  it('shouldShowASavesFailureOnlyOnItsOwnTitleWhenTheViewerMovesToAnother', async () => {
+    serveLanguageTabs()
+    server.use(graphql.mutation('SetLanguageOverride', () => networkFailure()))
+    let showSeason: ((id: string) => void) | undefined
+    function SeasonTabs() {
+      const [id, setId] = useState('season-1')
+      useEffect(() => {
+        showSeason = setId
+      }, [])
+      return <LanguageTabs item={{ kind: 'season', id }} />
+    }
+    const { user } = renderWithProviders(<SeasonTabs />)
+    await tab('Default audio')
+    act(() => showSeason?.('season-2'))
+    await waitFor(async () =>
+      expect(await tab('Default audio')).not.toHaveAttribute('aria-disabled'),
+    )
+    await pick(user, 'Default audio', 'Japanese')
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't save the language.")
+
+    act(() => showSeason?.('season-1'))
+
+    expect(await tab('Default audio')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
   it('shouldOfferRetryWhenTheTabsCannotLoad', async () => {
     const state = serveLanguageTabs()
     server.use(graphql.query('LanguageTabs', () => networkFailure(), { once: true }))
