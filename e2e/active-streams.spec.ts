@@ -199,3 +199,17 @@ test('with nothing playing, the title sits where the other settings pages put th
 
   expect(Math.abs(streams - (await titleTop('/settings/server/encoding')))).toBeLessThanOrEqual(2)
 })
+
+test('on a desktop, the title of each settings page lines up with the top of the settings rail', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await fixture(page, [MOVIE])
+  const rail = page.getByRole('navigation', { name: 'Server settings' })
+
+  for (const path of [PAGE, '/settings/server/encoding']) {
+    await page.goto(path)
+    const title = (await page.getByRole('heading', { level: 1 }).boundingBox())!.y
+    expect(Math.abs(title - (await rail.boundingBox())!.y), path).toBeLessThanOrEqual(4)
+  }
+})

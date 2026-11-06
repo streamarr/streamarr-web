@@ -1,9 +1,7 @@
-/* The heading keeps the settings page's height, stacking the summary under the title and centring
-   both, so an empty page puts its title where the other settings pages do. */
+/* The summary stacks under the title. */
 .pageHeading {
   flex-direction: column;
   align-items: flex-start;
-  justify-content: center;
   gap: var(--spacing-8);
   margin-bottom: var(--spacing-20);
 }
