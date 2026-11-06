@@ -23,7 +23,9 @@ Linux runs its audio graph up to a second behind the element.
 | `did not play` | The stream did not play to its end. |
 
 Only `passed` lets a browser declare 8 channels for that codec, and only when `decodingInfo()` also
-confirms 8 channels (streamarr/streamarr-web#29). Every other result keeps the 6-channel cap. The
+confirms 8 channels (streamarr/streamarr-web#29). Every other result keeps the 6-channel cap.
+`SEVEN_ONE_PASSES` in `src/streaming/playbackCapabilities.ts` lists the engine, operating system and
+oldest major version of each `passed` row; change it with this table. The
 result shows the order in which the decoder hands channels to the audio graph. It does not show how
 the operating system maps the device's channels to speakers.
 
@@ -33,7 +35,10 @@ The spec fails when its result differs from the last row for the same browser, p
 Add a row when a result changes, and keep the old rows: the declaration keys an 8-channel entry on
 the oldest version that passed.
 
-The macOS rows come from macOS 26.6 on Apple silicon. The Linux rows come from the CI runner. There,
+The macOS rows come from macOS 26.6 on Apple silicon. The `safari` rows come from real Safari,
+which `node e2e/record-safari-seven-one-channel-order.ts` drives through `safaridriver` on a Mac
+with the same page and judge; that script prints the rows and exits 1 when a result differs from
+the last `safari` row. The Linux rows come from the CI runner. There,
 Firefox runs its audio graph only when an audio server runs, so CI starts PulseAudio with a null sink
 for Firefox. WebKit runs without it, because in a local Linux container WebKit stalled Opus streams
 while PulseAudio ran.
@@ -64,3 +69,6 @@ while PulseAudio ran.
 | webkit | 27.2 | Linux | AAC | passed | |
 | webkit | 27.2 | Linux | FLAC | passed | |
 | webkit | 27.2 | Linux | OPUS | passed | The audio graph hears about 0.5 s of the side left tone: WebKit drops part of the stream. |
+| safari | 26.6.2 | macOS | AAC | not observed | Safari 26.6.2 (21624.5.1.11.3) on macOS 26.6.2 (25G83), Apple M1 Max. |
+| safari | 26.6.2 | macOS | FLAC | not observed | Safari 26.6.2 (21624.5.1.11.3) on macOS 26.6.2 (25G83), Apple M1 Max. |
+| safari | 26.6.2 | macOS | OPUS | did not play | The audio SourceBuffer rejects the first append, as in WebKit. |

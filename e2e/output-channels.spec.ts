@@ -53,11 +53,14 @@ test('declarations cap each audio entry at the output after decodingInfo questio
     body: JSON.stringify({ outputChannels, audio: first.audio }, null, 2),
     contentType: 'application/json',
   })
-  // A host without an audio device reports 0 channels. No entry declares more than 5.1.
-  const declared = Math.min(Math.max(outputChannels, 2), 6)
+  // A host without an audio device reports 0 channels. Every entry declares 5.1 where the output
+  // plays more, and 7.1 only for a codec that passed e2e/seven-one-channel-order.spec.ts.
+  const outputPlays = Math.max(outputChannels, 2)
   const aac = first.audio.find((entry) => entry.codec === 'AAC')
-  expect(aac?.maxChannels).toBe(declared)
-  expect(Math.max(...first.audio.map((entry) => entry.maxChannels))).toBe(declared)
+  expect(aac?.maxChannels).toBeGreaterThanOrEqual(Math.min(outputPlays, 6))
+  expect(Math.max(...first.audio.map((entry) => entry.maxChannels))).toBeLessThanOrEqual(
+    Math.min(outputPlays, 8),
+  )
   expect(second).toEqual(first)
   expect(third).toEqual(first)
 })

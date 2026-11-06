@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 
@@ -72,6 +73,51 @@ export async function writeSevenOneStream(
     ...['-hls_segment_type', 'fmp4', '-hls_fmp4_init_filename', 'init.mp4'],
     ...['-hls_segment_filename', join(directory, 'segment%d.m4s'), join(directory, 'stream.m3u8')],
   ])
+}
+
+// A cross-origin element without CORS feeds Web Audio silence, so the page and the stream share
+// the app's origin.
+export const SEVEN_ONE_PAGE_PATH = '/seven-one-channel-order'
+export const SEVEN_ONE_STREAM_PATH = '/seven-one-channel-order/stream'
+/** A path under SEVEN_ONE_STREAM_PATH that names a file writeSevenOneStream writes. */
+export const SEVEN_ONE_STREAM_FILE =
+  /^\/seven-one-channel-order\/stream\/(stream\.m3u8|init\.mp4|segment\d+\.m4s)$/
+
+/** The page, which Vite's dev server completes with e2e/sevenOneChannelOrderPage.ts. */
+export const SEVEN_ONE_PAGE = [
+  '<!doctype html><title>7.1 channel order</title>',
+  '<video></video><button>Start</button>',
+  '<script type="module" src="/e2e/sevenOneChannelOrderPage.ts"></script>',
+].join('')
+
+/** The multivariant playlist, whose CODECS attribute is `codecs`. */
+export function sevenOneMultivariant(codecs: string): string {
+  return [
+    '#EXTM3U',
+    `#EXT-X-STREAM-INF:BANDWIDTH=4000000,CODECS="${codecs}"`,
+    'stream.m3u8',
+    '',
+  ].join('\n')
+}
+
+const RESULTS = new URL('seven-one-channel-order.md', import.meta.url)
+
+/** The result of the last row in seven-one-channel-order.md for a browser, platform and codec. */
+export async function recordedChannelOrderResult(
+  browser: string,
+  platform: string,
+  codec: string,
+): Promise<string | undefined> {
+  const rows = (await readFile(RESULTS, 'utf8'))
+    .split('\n')
+    .filter((line) => line.startsWith('|'))
+    .map((line) =>
+      line
+        .split('|')
+        .slice(1, -1)
+        .map((cell) => cell.trim()),
+    )
+  return rows.findLast(([b, , p, c]) => b === browser && p === platform && c === codec)?.[4]
 }
 
 /** What the page read from one splitter output per channel while the stream played. */
