@@ -6779,6 +6779,22 @@ describe('Player', () => {
       expect(marksIn(await openQualityMenu(user))).toEqual([])
     })
 
+    it('shouldShowTheNoticeAgainWhenOriginalPickedAfreshFallsBackAgain', async () => {
+      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      await pickQuality(user, `Original. ${ORIGINAL_EXPLANATION}`)
+      await showingVideo(choiceStreamUrl(3))
+      expect(notice()).toBeEmptyDOMElement()
+      replaceTheRefusedStream(ORIGINAL_CHANGED_TO_AUTO, replacementStream(2))
+
+      refuseTheStreamsFormat()
+
+      await showingVideo(replacementStream(2).streamUrl)
+      expect(notice().textContent).toBe(CHANGED_TO_AUTO_NOTICE)
+      const menu = await openQualityMenu(user)
+      expect(within(menu).getByRole('menuitemradio', { checked: true }).textContent).toBe('Auto')
+      expect(marksIn(menu)).toEqual([`Original: ${ORIGINAL_EXPLANATION}`])
+    })
+
     it('shouldForgetTheMarksWhenTheNextMediaFileStarts', async () => {
       servePlaybackChoices({
         playing: (requested) => (requested === 'ORIGINAL' ? 'AUTO' : requested),
