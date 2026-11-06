@@ -1082,7 +1082,7 @@ describe('declarePlaybackCapabilities', () => {
       ['Chrome 156 on Linux', LINUX_CHROME_156],
       ['Edge 156 on a Mac', MAC_EDGE_156],
     ])(
-      'shouldDeclareEightChannelsForAacFlacAndOpusWhenTheOutputPlaysEightChannelsIn(%s)',
+      'shouldDeclareEightChannelsForAacFlacAndOpusWhenThePassingBrowserPlaysToEightChannels(%s)',
       async (_, userAgent) => {
         expect(await channelsByCodec(userAgent)).toEqual({
           AAC: 8,
@@ -1095,7 +1095,7 @@ describe('declarePlaybackCapabilities', () => {
       },
     )
 
-    it('shouldKeepAacAtSixChannelsWhereFirefoxOnAMacHandsItOverInAacsOwnOrder', async () => {
+    it('shouldKeepAacAtSixChannelsWhenFirefoxOnAMacHandsItOverInAacsOwnOrder', async () => {
       expect(await channelsByCodec(MAC_FIREFOX_157)).toEqual({
         AAC: 6,
         AC3: 6,
@@ -1118,17 +1118,20 @@ describe('declarePlaybackCapabilities', () => {
       ['Chrome on ChromeOS, where nothing was measured', CHROME_OS_156],
       ['Safari, whose audio graph reads silence', SAFARI],
       ['WebKit on Linux, which declares stereo output', LINUX_WEBKIT],
-    ])('shouldKeepEveryAudioCodecAtSixChannelsFor(%s)', async (_, userAgent) => {
-      const declared = await channelsByCodec(userAgent)
+    ])(
+      'shouldKeepEveryAudioCodecAtSixChannelsWhenNoPassingResultCoversTheBrowser(%s)',
+      async (_, userAgent) => {
+        const declared = await channelsByCodec(userAgent)
 
-      expect(Math.max(...Object.values(declared))).toBe(6)
-    })
+        expect(Math.max(...Object.values(declared))).toBe(6)
+      },
+    )
 
     it('shouldDeclareTheOutputsChannelCountWhenAPassingBrowserPlaysToASixChannelOutput', async () => {
       expect(await channelsByCodec(MAC_CHROME_156, 6)).toMatchObject({ AAC: 6, OPUS: 6, FLAC: 6 })
     })
 
-    it('shouldAskDecodingInfoAtEightChannelsForEachCodecTheBrowserPassedFor', async () => {
+    it('shouldAskDecodingInfoAtEightChannelsWhenTheBrowserPassedForTheCodec', async () => {
       const asked: MediaDecodingConfiguration[] = []
       await declarePlaybackCapabilities(
         platformFixture({
@@ -1154,7 +1157,7 @@ describe('declarePlaybackCapabilities', () => {
       })
     })
 
-    it('shouldDeclareSixChannelsForACodecWhoseEightChannelQuestionTheBrowserRefuses', async () => {
+    it('shouldDeclareSixChannelsWhenTheBrowserRefusesTheEightChannelQuestion', async () => {
       const declaration = await declarePlaybackCapabilities(
         platformFixture({
           userAgent: MAC_CHROME_156,
