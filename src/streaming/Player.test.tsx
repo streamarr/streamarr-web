@@ -35,7 +35,7 @@ import {
   playbackPlatformFixture,
   smoothUpToFullHd,
 } from '../test/playbackCapabilities'
-import { networkFailure } from '../test/graphqlResponses'
+import { answerDelivered, networkFailure } from '../test/graphqlResponses'
 import {
   languagePreferenceFixture,
   profileLanguagesFixture,
@@ -5315,13 +5315,7 @@ describe('Player', () => {
       await act(async () => {
         await resetStore?.()
       })
-      const firstAnswered = new Promise<void>((resolve) => {
-        const answered = () => {
-          server.events.removeListener('response:mocked', answered)
-          resolve()
-        }
-        server.events.on('response:mocked', answered)
-      })
+      const firstAnswered = answerDelivered('SetLanguageOverride')
       first.resolve()
       await firstAnswered
       // A queued switch that was not dropped is sent as soon as the first store settles.
