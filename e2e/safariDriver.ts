@@ -22,6 +22,8 @@ export interface SafariSession {
   /** Safari's version, as the driver reports it. */
   browserVersion: string
   open: (url: string) => Promise<void>
+  /** Clicks the first element that matches `selector`, as a user's click. */
+  click: (selector: string) => Promise<void>
   /** Runs `script` with `args`; its last argument is the callback that settles the result. */
   executeAsync: <T>(script: string, args?: unknown[]) => Promise<T>
 }
@@ -49,6 +51,14 @@ export async function withSafari<T>(
     browserVersion: capabilities.browserVersion,
     open: async (url) => {
       await command('POST', `/session/${sessionId}/url`, { url })
+    },
+    click: async (selector) => {
+      const element = await command<Record<string, string>>(
+        'POST',
+        `/session/${sessionId}/element`,
+        { using: 'css selector', value: selector },
+      )
+      await command('POST', `/session/${sessionId}/element/${Object.values(element)[0]}/click`)
     },
     executeAsync: (script, args = []) =>
       command('POST', `/session/${sessionId}/execute/async`, { script, args }),
