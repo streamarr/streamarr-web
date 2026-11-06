@@ -3,7 +3,7 @@
   display: inline-flex;
   align-items: center;
   padding: 7px 14px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   gap: var(--spacing-8);
   background: rgba(0, 0, 0, 0.45);
   font-size: 14px;
