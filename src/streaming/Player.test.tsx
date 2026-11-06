@@ -5524,7 +5524,7 @@ describe('Player', () => {
 
       act(() => setOpen?.(false))
       act(() => setOpen?.(true))
-      await attachedVideo()
+      await waitFor(() => expect(hls.loadSource).toHaveBeenCalledTimes(2))
       offerHlsTracks(tracks)
       await pickTrack(user, /^Audio/, 'Español')
       first.resolve()
