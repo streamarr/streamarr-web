@@ -15,6 +15,8 @@ export function fittingChipCount({
   chips: readonly number[]
   more: number
 }>): number {
+  const all = chips.reduce((sum, width) => sum + gap + width, first)
+  if (all <= available) return chips.length
   let used = first
   let fit = 0
   for (const [index, width] of chips.entries()) {
