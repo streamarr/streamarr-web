@@ -311,6 +311,28 @@ describe('language settings', () => {
     await waitFor(() => expect(state.inputs.map((input) => input.audioLanguages)).toEqual([['EN']]))
   })
 
+  it('shouldSayTheChangeWasNotSavedWhenAReadBesideTheScreenHoldsIt', async () => {
+    serve()
+    const answer = { me: { __typename: 'Me', languagePreferences: preferences() } }
+    const reads = answersThenHolds(answer, answer)
+    server.use(graphql.query('LanguageSettings', reads.resolver))
+    const { user } = renderAppAt(LANGUAGES)
+    await screen.findByRole('button', { name: 'Remove Japanese' })
+    comeBackOnline()
+    await waitFor(() => expect(reads.calls).toBe(2))
+
+    await user.click(screen.getByRole('button', { name: 'Remove Japanese' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "Your languages were still loading, so that change wasn't saved.",
+    )
+    const readAnswered = answerDelivered('LanguageSettings')
+    reads.release()
+    await readAnswered
+    await user.click(screen.getByRole('button', { name: 'Remove Japanese' }))
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
+  })
+
   it('shouldOfferNoChangeWhenTheNextProfilesPreferencesCannotBeRead', async () => {
     const state = serve()
     const { apolloClient } = renderAppAt(LANGUAGES)

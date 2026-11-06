@@ -22,6 +22,7 @@ type Preferences = Omit<ProfileLanguagePreferencesFieldsFragment, '__typename'>
 // The most audio languages a Profile keeps (ADR 0043).
 const MAX_AUDIO_LANGUAGES = 5
 const UNSAVED = "Couldn't save your languages. Try again."
+const STILL_READING = "Your languages were still loading, so that change wasn't saved."
 
 const NO_SUBTITLE_LANGUAGE = { value: 'none', label: 'None' }
 
@@ -49,8 +50,12 @@ export function LanguageSettings() {
   const data = query.data
 
   async function change(next: Preferences) {
+    if (saving) {
+      return
+    }
     // A revalidation reads beside the query without marking it loading, so it is asked here.
-    if (saving || [...client.getObservableQueries([LanguageSettingsDocument])].some(isReading)) {
+    if ([...client.getObservableQueries([LanguageSettingsDocument])].some(isReading)) {
+      setRefusal(STILL_READING)
       return
     }
     setRefusal(null)
