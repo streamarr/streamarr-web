@@ -10,7 +10,12 @@ import { STUB_URL } from './ports'
 // keep the one variant the server lists for them (streamarr/streamarr-web#29). These specs play a
 // synthetic two-variant ladder through hls.js in Chromium and slow its segments down.
 
-test.use({ viewport: { width: 1512, height: 850 }, serviceWorkers: 'block' })
+// The player starts on its own, so no press on Play races the browser's autoplay decision.
+test.use({
+  viewport: { width: 1512, height: 850 },
+  serviceWorkers: 'block',
+  launchOptions: { args: ['--autoplay-policy=no-user-gesture-required'] },
+})
 
 const SEGMENT_SECONDS = 2
 // Longer than the 30 s that hls.js buffers ahead, so it keeps loading while the video plays.
@@ -111,9 +116,18 @@ function operationName(call: Request): string {
   return body?.operationName ?? ''
 }
 
+/** One media segment that hls.js asked for. */
+interface SegmentRequest {
+  variant: Variant['name']
+  /** The segment's number; it starts at this number times SEGMENT_SECONDS. */
+  index: number
+  /** Whether the route held the segment back before answering. */
+  slowed: boolean
+}
+
 interface Ladder {
-  /** The variant of each media segment hls.js asked for, in order. */
-  segments: string[]
+  /** Each media segment hls.js asked for, in order. */
+  segments: SegmentRequest[]
   /** Each playback-session mutation the player sent, in order; reads of its status are left out. */
   mutations: string[]
 }
@@ -158,9 +172,14 @@ async function serveLadder(
   await page.route(/\/api\/stream\/ladder\/(large|small)\/([\w.]+)/, async (route) => {
     const [, variant, file] = /\/(large|small)\/([\w.]+)/.exec(route.request().url())!
     if (file.startsWith('segment')) {
-      ladder.segments.push(variant)
-      const largeSegments = ladder.segments.filter((loaded) => loaded === 'large').length
-      if (variant === 'large' && largeSegments > fastLargeSegments) {
+      const largeSegments = ladder.segments.filter((loaded) => loaded.variant === 'large').length
+      const slowed = variant === 'large' && largeSegments >= fastLargeSegments
+      ladder.segments.push({
+        variant: variant as Variant['name'],
+        index: Number(/\d+/.exec(file)?.[0]),
+        slowed,
+      })
+      if (slowed) {
         await new Promise((resolve) => setTimeout(resolve, SLOW_SEGMENT_MS))
       }
     }
@@ -172,44 +191,55 @@ async function serveLadder(
   return ladder
 }
 
-// The browser may refuse to start a page opened from its address. Then the viewer presses Play.
-async function openAndPlay(page: Page): Promise<void> {
-  await page.goto('/play/file-1?movie=m1')
-  const play = page.getByRole('button', { name: 'Play', exact: true })
-  const isPaused = () => page.locator('video').evaluate((video: HTMLVideoElement) => video.paused)
-  await expect
-    .poll(async () => !(await isPaused()) || (await play.isEnabled().catch(() => false)), {
-      // The first page of a run waits for Vite to compile the player.
-      timeout: 30_000,
-    })
-    .toBe(true)
-  if (await isPaused()) {
-    await play.click()
-  }
-}
-
 async function playedSeconds(page: Page): Promise<number> {
   return page.locator('video').evaluate((video: HTMLVideoElement) => video.currentTime)
 }
 
-test('Auto climbs to the large variant and drops to the small one when its segments slow down', async ({
+function variantsOf(segments: readonly SegmentRequest[]): string[] {
+  return segments.map((segment) => segment.variant)
+}
+
+test('Auto stays on the large variant while its segments arrive fast', async ({
   page,
   request,
 }) => {
   const ladder = await serveLadder(page, request, {
     choice: 'AUTO',
     variants: [LARGE, SMALL],
-    fastLargeSegments: 1,
+    fastLargeSegments: Infinity,
   })
 
-  await openAndPlay(page)
+  await page.goto('/play/file-1?movie=m1')
 
-  await expect.poll(() => ladder.segments.indexOf('large'), { timeout: 30_000 }).not.toBe(-1)
+  await expect.poll(() => ladder.segments.length, { timeout: 30_000 }).toBeGreaterThan(10)
+  const fromLarge = variantsOf(ladder.segments).slice(variantsOf(ladder.segments).indexOf('large'))
+  expect(new Set(fromLarge)).toEqual(new Set(['large']))
+})
+
+test('Auto drops from the large variant to the small one once its segments arrive slower than they play', async ({
+  page,
+  request,
+}) => {
+  const ladder = await serveLadder(page, request, {
+    choice: 'AUTO',
+    variants: [LARGE, SMALL],
+    fastLargeSegments: 2,
+  })
+
+  await page.goto('/play/file-1?movie=m1')
+
+  const firstSmallAfterASlowedLarge = () => {
+    const slowed = ladder.segments.findIndex((segment) => segment.slowed)
+    return ladder.segments.find(
+      (segment, position) => slowed !== -1 && position > slowed && segment.variant === 'small',
+    )
+  }
+  await expect.poll(firstSmallAfterASlowedLarge, { timeout: 30_000 }).toBeDefined()
+  const small = firstSmallAfterASlowedLarge()!
+  // The element plays into the small variant's first segment.
   await expect
-    .poll(() => ladder.segments.slice(ladder.segments.indexOf('large')).includes('small'), {
-      timeout: 30_000,
-    })
-    .toBe(true)
+    .poll(() => playedSeconds(page), { timeout: 30_000 })
+    .toBeGreaterThan(small.index * SEGMENT_SECONDS + 1)
   await expect(page.getByRole('button', { name: 'Quality: Auto' })).toBeVisible()
   expect(ladder.mutations).toEqual(['CreatePlaybackSession'])
 })
@@ -228,11 +258,11 @@ for (const { choice, label } of [
       fastLargeSegments: 0,
     })
 
-    await openAndPlay(page)
+    await page.goto('/play/file-1?movie=m1')
 
     await expect.poll(() => playedSeconds(page), { timeout: 30_000 }).toBeGreaterThan(6)
     await expect(page.getByRole('button', { name: `Quality: ${label}` })).toBeVisible()
-    expect(new Set(ladder.segments)).toEqual(new Set(['large']))
+    expect(new Set(variantsOf(ladder.segments))).toEqual(new Set(['large']))
     expect(ladder.mutations).toEqual(['CreatePlaybackSession'])
   })
 }
