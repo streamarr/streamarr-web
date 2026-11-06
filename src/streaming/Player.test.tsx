@@ -7783,6 +7783,22 @@ describe('Player', () => {
       expect(log).toHaveLength(3)
     })
 
+    it('shouldLeavePlaybackAsItIsWhenSpaceIsPressedOnTheUnavailableHdrToggle', async () => {
+      const { user, log, video } = await pickForAnHdrSource({
+        picked: '720p',
+        platform: withoutDecodingInfo,
+        videoRange: () => 'SDR',
+      })
+      const paused = video.paused
+      await openQualityMenu(user)
+      await user.keyboard('{End}')
+
+      await user.keyboard(' ')
+
+      expect(video.paused).toBe(paused)
+      expect(log).toHaveLength(3)
+    })
+
     it('shouldShowTheConvertedNoticeWhenAFixedQualityPlaysSdrUnderTheViewersHdrChoice', async () => {
       const { user, log } = await pickForAnHdrSource({
         picked: '720p',
