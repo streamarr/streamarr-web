@@ -2,7 +2,12 @@ import { act, screen, waitFor, within } from '@testing-library/react'
 import type { UserEvent } from '@testing-library/user-event'
 import { graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
-import type { SeasonDetailQuery, SeriesDetailQuery } from '../graphql/generated/graphql'
+import type {
+  SeasonDetailQuery,
+  SeriesDetailQuery,
+  WatchStatus,
+} from '../graphql/generated/graphql'
+import { selectedProfileState } from '../test/selectedProfileStateFixture'
 import { watchingConnection } from '../test/continueWatchingFixtures'
 import { meFixture } from '../test/meFixture'
 import {
@@ -51,19 +56,17 @@ const COLORED = {
   theme: TEAL_THEME,
 }
 
-type Status = 'UNWATCHED' | 'IN_PROGRESS' | 'WATCHED'
-
-function siblingSeason(number: number, status: Status, episodeStatuses: Status[]) {
+function siblingSeason(number: number, status: WatchStatus, episodeStatuses: WatchStatus[]) {
   return {
     __typename: 'Season',
     id: `season-${number}`,
     seasonNumber: number,
     title: `Season ${number}`,
-    watchStatus: status,
+    selectedProfileState: selectedProfileState({ watchStatus: status }),
     episodes: episodeStatuses.map((watchStatus, index) => ({
       __typename: 'Episode',
       id: `s${number}e${index + 1}`,
-      watchStatus,
+      selectedProfileState: selectedProfileState({ watchStatus }),
     })),
   }
 }
@@ -72,7 +75,7 @@ function episode(
   number: number,
   title: string,
   overrides: {
-    watchStatus?: Status
+    watchStatus?: WatchStatus
     positionSeconds?: number
     durationSeconds?: number
     percentComplete?: number
@@ -85,14 +88,16 @@ function episode(
     title,
     episodeNumber: number,
     runtime: 52,
-    watchStatus: overrides.watchStatus ?? 'UNWATCHED',
-    watchProgress: inProgress
-      ? {
-          positionSeconds: overrides.positionSeconds,
-          percentComplete: overrides.percentComplete ?? 29,
-          durationSeconds: overrides.durationSeconds ?? 2040,
-        }
-      : null,
+    selectedProfileState: selectedProfileState({
+      watchStatus: overrides.watchStatus,
+      watchProgress: inProgress
+        ? {
+            positionSeconds: overrides.positionSeconds,
+            percentComplete: overrides.percentComplete ?? 29,
+            durationSeconds: overrides.durationSeconds ?? 2040,
+          }
+        : null,
+    }),
     files: [{ id: `file-e${number}` }],
     stillImages: [],
   }
@@ -107,7 +112,7 @@ function seasonData(overrides: Record<string, unknown> = {}): SeasonDetailQuery 
       seasonNumber: 2,
       overview: 'The team regroups.',
       airDate: '2018-03-01',
-      watchStatus: 'IN_PROGRESS',
+      selectedProfileState: selectedProfileState({ watchStatus: 'IN_PROGRESS' }),
       series: {
         __typename: 'Series',
         id: 'series-1',
@@ -289,6 +294,24 @@ describe('SeasonDetailScreen', () => {
     )
   })
 
+  it('shouldContinueWithAnEpisodeThatHasNoSelectedProfileState', async () => {
+    await renderSeason(
+      seasonData({
+        episodes: [
+          episode(4, 'Cold Open', { watchStatus: 'WATCHED' }),
+          { ...episode(5, 'Breakage'), selectedProfileState: null },
+        ],
+      }),
+    )
+    expect(screen.getByRole('link', { name: 'Continue E5' })).toHaveAttribute(
+      'href',
+      '/play/file-e5?episode=e5',
+    )
+    const card = screen.getByRole('link', { name: /E5 — Breakage/ })
+    expect(within(card).queryByLabelText('Watched')).not.toBeInTheDocument()
+    expect(within(card).getByText('52m')).toBeInTheDocument()
+  })
+
   it('rolls the watched episodes up into the progress divider', async () => {
     await renderSeason()
     expect(screen.getByRole('progressbar', { name: '1 of 3 watched' })).toBeInTheDocument()
@@ -331,7 +354,7 @@ describe('SeasonDetailScreen', () => {
     const markedIds: string[] = []
     const data = seasonData()
     serve(data)
-    const watchedState = { watchStatus: 'WATCHED', watchProgress: null }
+    const watchedState = { selectedProfileState: selectedProfileState({ watchStatus: 'WATCHED' }) }
     const marked = {
       season: {
         ...data.season!,
@@ -360,8 +383,10 @@ describe('SeasonDetailScreen', () => {
                 series: {
                   __typename: 'Series',
                   id: 'series-1',
-                  watchStatus: 'IN_PROGRESS',
-                  watchProgress: { positionSeconds: 0, percentComplete: 75, durationSeconds: 0 },
+                  selectedProfileState: selectedProfileState({
+                    watchStatus: 'IN_PROGRESS',
+                    watchProgress: { positionSeconds: 0, percentComplete: 75, durationSeconds: 0 },
+                  }),
                 },
               },
               userErrors: [],
@@ -429,8 +454,7 @@ const showSeason = {
   seasonNumber: 2,
   title: 'Season 2',
   airDate: null,
-  watchStatus: 'IN_PROGRESS',
-  watchProgress: null,
+  selectedProfileState: selectedProfileState({ watchStatus: 'IN_PROGRESS' }),
   posterImages: [],
   episodes: [],
 }
@@ -444,7 +468,7 @@ function showData(): SeriesDetailQuery {
       tagline: null,
       summary: null,
       firstAirDate: null,
-      watchStatus: 'IN_PROGRESS',
+      selectedProfileState: selectedProfileState({ watchStatus: 'IN_PROGRESS' }),
       contentRating: null,
       genres: [],
       directors: [],

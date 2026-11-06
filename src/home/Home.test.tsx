@@ -1,3 +1,4 @@
+import { selectedProfileState } from '../test/selectedProfileStateFixture'
 import { watchingConnection } from '../test/continueWatchingFixtures'
 import { act, screen, waitFor, within } from '@testing-library/react'
 import { graphql, http, HttpResponse } from 'msw'
@@ -35,7 +36,10 @@ function continueWatchingMovie(overrides: Record<string, unknown> = {}) {
     createdOn: '2026-08-26T12:00:00Z',
     genres: [{ id: 'g1', name: 'Drama' }],
     images: [],
-    watchProgress: { positionSeconds: 10, percentComplete: 5, durationSeconds: 200 },
+    selectedProfileState: selectedProfileState({
+      watchStatus: 'IN_PROGRESS',
+      watchProgress: { positionSeconds: 10, percentComplete: 5, durationSeconds: 200 },
+    }),
     files: [{ id: 'file-1' }],
     ...overrides,
   }
@@ -50,7 +54,10 @@ function continueWatchingEpisode(overrides: Record<string, unknown> = {}) {
     overview: 'The team regroups.',
     runtime: 47,
     images: [],
-    watchProgress: { positionSeconds: 600, percentComplete: 40, durationSeconds: 1500 },
+    selectedProfileState: selectedProfileState({
+      watchStatus: 'IN_PROGRESS',
+      watchProgress: { positionSeconds: 600, percentComplete: 40, durationSeconds: 1500 },
+    }),
     files: [{ id: 'file-2' }],
     season: {
       id: 'season-1',
@@ -78,8 +85,7 @@ function recentMovie(overrides: Record<string, unknown> = {}) {
     titleSort: 'Grid Movie',
     releaseDate: '2024-01-01',
     runtime: 90,
-    watchStatus: 'UNWATCHED',
-    watchProgress: null,
+    selectedProfileState: selectedProfileState(),
     images: [],
     tagline: null,
     summary: null,
@@ -98,8 +104,7 @@ function recentSeries(overrides: Record<string, unknown> = {}) {
     title: 'Grid Series',
     titleSort: 'Grid Series',
     firstAirDate: '2020-01-01',
-    watchStatus: 'UNWATCHED',
-    watchProgress: null,
+    selectedProfileState: selectedProfileState(),
     images: [],
     tagline: null,
     summary: null,
@@ -147,7 +152,7 @@ describe('Home', () => {
         library({
           __typename: 'Library',
           id: LIBRARY,
-          items: { edges: [{ cursor: 'movie', node: recentMovie({ lastWatchedAt: null }) }] },
+          items: { edges: [{ cursor: 'movie', node: recentMovie() }] },
         }),
       ],
     })

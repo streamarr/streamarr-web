@@ -47,4 +47,8 @@ describe('badgeFromWatchState', () => {
   it('renders no badge for IN_PROGRESS with no known percentage', () => {
     expect(badgeFromWatchState('IN_PROGRESS', null)).toBeUndefined()
   })
+
+  it('shouldRenderNoBadgeWhenTheWatchStatusIsUnknown', () => {
+    expect(badgeFromWatchState(null, null)).toBeUndefined()
+  })
 })

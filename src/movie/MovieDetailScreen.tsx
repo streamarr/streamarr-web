@@ -13,6 +13,7 @@ import { formatRuntime, formatTimeLeft, formatYear } from '../media/formatting'
 import { Icon } from '../ui/Icon'
 import { pickImageVariant } from '../media/images'
 import { RatingChipRow } from '../media/RatingChipRow'
+import { isWatched, watchStateOf } from '../media/selectedProfileWatchState'
 import { useWatchedToggle } from '../media/useWatchedToggle'
 import { WatchedActionButton } from '../media/WatchedActionButton'
 import styles from './MovieDetailScreen.module.css'
@@ -41,9 +42,10 @@ export function MovieDetailScreen({ movieId }: Readonly<{ movieId: string }>) {
   }
 
   const artwork = movie.backdropImages[0] ?? movie.posterImages[0] ?? null
-  const position = movie.watchProgress?.positionSeconds || null
+  const progress = watchStateOf(movie)?.watchProgress
+  const position = progress?.positionSeconds || null
   const fileId = movie.files.find((file) => file !== null)?.id ?? null
-  const isWatched = movie.watchStatus === 'WATCHED'
+  const movieWatched = isWatched(movie)
   const cast = movie.cast.filter(
     (person): person is NonNullable<Movie['cast'][number]> => person !== null,
   )
@@ -85,18 +87,18 @@ export function MovieDetailScreen({ movieId }: Readonly<{ movieId: string }>) {
               >
                 <Icon name="play" size={14} />
                 {position ? 'Resume' : 'Play'}{' '}
-                {position && movie.watchProgress?.durationSeconds ? (
-                  <span className={detailAction.detail}>{formatTimeLeft(movie.watchProgress)}</span>
+                {position && progress?.durationSeconds ? (
+                  <span className={detailAction.detail}>{formatTimeLeft(progress)}</span>
                 ) : null}
-                {position && movie.watchProgress ? (
-                  <ActionProgress share={movie.watchProgress.percentComplete / 100} />
+                {position && progress ? (
+                  <ActionProgress share={progress.percentComplete / 100} />
                 ) : null}
               </Link>
             )}
             <WatchedActionButton
-              isWatched={isWatched}
+              isWatched={movieWatched}
               pending={watched.pending}
-              onClick={isWatched ? watched.markUnwatched : watched.markWatched}
+              onClick={movieWatched ? watched.markUnwatched : watched.markWatched}
             />
           </>
         }
@@ -127,7 +129,7 @@ export function MovieDetailScreen({ movieId }: Readonly<{ movieId: string }>) {
 
 // How long the movie plays from where it would start: the saved position when it is in progress.
 function secondsToPlay(movie: Movie): number | null {
-  const progress = movie.watchProgress
+  const progress = watchStateOf(movie)?.watchProgress
   if (progress?.positionSeconds && progress.durationSeconds) {
     return Math.max(0, progress.durationSeconds - progress.positionSeconds)
   }

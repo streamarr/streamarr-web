@@ -1,3 +1,5 @@
+import { selectedProfileState } from './selectedProfileStateFixture'
+
 export const LIBRARY = '44444444-4444-4444-4444-444444444444'
 
 type MovieOptions = { id?: string; title?: string }
@@ -10,9 +12,7 @@ export function movie({ id = 'a', title = 'Alpha' }: MovieOptions = {}) {
     titleSort: title,
     releaseDate: '2024-01-01',
     runtime: 100,
-    watchStatus: 'UNWATCHED' as const,
-    lastWatchedAt: null,
-    watchProgress: null,
+    selectedProfileState: selectedProfileState(),
     images: [],
   }
 }

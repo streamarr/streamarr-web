@@ -1,6 +1,8 @@
+import { selectedProfileState } from '../test/selectedProfileStateFixture'
 import { watchingConnection } from '../test/continueWatchingFixtures'
 import { act, screen, waitFor, within } from '@testing-library/react'
 import { graphql, HttpResponse } from 'msw'
+import type { WatchStatus } from '../graphql/generated/graphql'
 import { describe, expect, it } from 'vitest'
 import { serveGraphqlSocket } from '../test/graphqlSocket'
 import { meFixture, profileFixture } from '../test/meFixture'
@@ -24,9 +26,7 @@ const EVERLIGHT_CARD = {
   titleSort: 'Everlight',
   releaseDate: '2024-01-01',
   runtime: 100,
-  watchStatus: 'UNWATCHED',
-  lastWatchedAt: null,
-  watchProgress: null,
+  selectedProfileState: selectedProfileState(),
   images: [],
 }
 
@@ -51,8 +51,7 @@ const EVERLIGHT_DETAIL = {
   cast: [],
   ratings: [],
   files: [{ __typename: 'MediaFile', id: 'f1' }],
-  watchStatus: 'UNWATCHED',
-  watchProgress: null,
+  selectedProfileState: selectedProfileState(),
   backdropImages: [],
   posterImages: [],
 }
@@ -65,10 +64,13 @@ const CONTINUE_WATCHING_MOVIE = {
   summary: null,
   runtime: 100,
   createdOn: '2026-08-26T12:00:00Z',
-  lastWatchedAt: '2026-10-16T09:00:00Z',
   genres: [],
   images: [],
-  watchProgress: PROGRESS,
+  selectedProfileState: selectedProfileState({
+    watchStatus: 'IN_PROGRESS',
+    lastWatchedAt: '2026-10-16T09:00:00Z',
+    watchProgress: PROGRESS,
+  }),
   files: [{ __typename: 'MediaFile', id: 'f1' }],
 }
 
@@ -95,13 +97,20 @@ const RECENTLY_ADDED = {
   },
 }
 
-type SavedWatchState = { watchStatus?: string; watchProgress?: unknown }
+type SavedWatchState = { watchStatus?: WatchStatus; watchProgress?: unknown }
+type WithWatchState = { id: string; selectedProfileState: { watchState: object } }
 
 // Answers every read with the watch state the server has saved, which a test changes before it
 // publishes the change, and counts the reads by operation.
 function serve(me = WATCHER) {
   const saved: Record<string, SavedWatchState> = {}
-  const withSaved = <T extends { id: string }>(item: T) => ({ ...item, ...saved[item.id] })
+  const withSaved = <T extends WithWatchState>(item: T) => ({
+    ...item,
+    selectedProfileState: {
+      ...item.selectedProfileState,
+      watchState: { ...item.selectedProfileState.watchState, ...saved[item.id] },
+    },
+  })
   const reads: Record<string, number> = {}
   const count = (operationName: string) => {
     reads[operationName] = (reads[operationName] ?? 0) + 1
@@ -173,12 +182,11 @@ function change(items: Item[]) {
   }
 }
 
-function movie(id: string, watchStatus: string, watchProgress: unknown = null): Item {
+function movie(id: string, watchStatus: WatchStatus, watchProgress: unknown = null): Item {
   return {
     __typename: 'Movie',
     id,
-    watchStatus,
-    watchProgress,
+    selectedProfileState: selectedProfileState({ watchStatus, watchProgress }),
   }
 }
 
@@ -244,7 +252,7 @@ describe('live watch state', () => {
     saved.m2 = { watchStatus: 'WATCHED' }
     socket.publish('WatchStateChanged', {
       ...change([null, movie('m2', 'WATCHED')]),
-      errors: [{ message: 'Timed out', path: ['watchStateChanged', 'items', 0, 'watchStatus'] }],
+      errors: [{ message: 'Timed out', path: ['watchStateChanged', 'items', 0, 'unmatched'] }],
     })
 
     await waitFor(() =>
@@ -260,7 +268,7 @@ describe('live watch state', () => {
 
     socket.publish('WatchStateChanged', {
       ...change([null]),
-      errors: [{ message: 'Timed out', path: ['watchStateChanged', 'items', 0, 'watchStatus'] }],
+      errors: [{ message: 'Timed out', path: ['watchStateChanged', 'items', 0, 'unmatched'] }],
     })
 
     await waitFor(() => expect(reads.LibraryPage).toBe(readsBeforeChange + 1))

@@ -15,6 +15,7 @@ import { SeasonSideRail } from '../media/SeasonSideRail'
 import { StillCard } from '../media/StillCard'
 import { useBulkWatchedAction } from '../media/useBulkWatchedAction'
 import styles from './SeasonDetailScreen.module.css'
+import { flattenWatchState, isWatched, watchStateOf } from '../media/selectedProfileWatchState'
 
 type Season = NonNullable<SeasonDetailQuery['season']>
 type Episode = NonNullable<Season['episodes'][number]>
@@ -50,9 +51,9 @@ export function SeasonDetailScreen({ seasonId }: Readonly<{ seasonId: string }>)
   const episodes = season.episodes
     .filter((episode): episode is Episode => episode !== null)
     .toSorted((a, b) => a.episodeNumber - b.episodeNumber)
-  const watchedCount = episodes.filter((episode) => episode.watchStatus === 'WATCHED').length
+  const watchedCount = episodes.filter(isWatched).length
   const playable = nextPlayableEpisode([
-    { seasonNumber: season.seasonNumber, episodes: season.episodes },
+    { seasonNumber: season.seasonNumber, episodes: episodes.map(flattenWatchState) },
   ])
   const artwork =
     season.backdropImages[0] ?? series.backdropImages[0] ?? season.posterImages[0] ?? null
@@ -62,10 +63,8 @@ export function SeasonDetailScreen({ seasonId }: Readonly<{ seasonId: string }>)
     .map((sibling) => ({
       id: sibling.id,
       label: sibling.title ?? `Season ${sibling.seasonNumber}`,
-      watched: sibling.watchStatus === 'WATCHED',
-      unwatchedCount: sibling.episodes.filter(
-        (episode) => episode && episode.watchStatus !== 'WATCHED',
-      ).length,
+      watched: isWatched(sibling),
+      unwatchedCount: sibling.episodes.filter((episode) => episode && !isWatched(episode)).length,
     }))
 
   return (
@@ -132,7 +131,7 @@ export function SeasonDetailScreen({ seasonId }: Readonly<{ seasonId: string }>)
                   subtitle={episodeSubtitle(episode)}
                   image={pickImageVariant(still, 'MEDIUM')}
                   blurHash={still?.blurHash ?? null}
-                  badge={episode.watchStatus === 'WATCHED' ? { status: 'watched' } : undefined}
+                  badge={isWatched(episode) ? { status: 'watched' } : undefined}
                 />
               )
               // Clicking an episode plays it directly; there is no episode page on web.
@@ -143,7 +142,7 @@ export function SeasonDetailScreen({ seasonId }: Readonly<{ seasonId: string }>)
                   params={{ mediaFileId: fileId }}
                   search={{
                     episode: episode.id,
-                    position: episode.watchProgress?.positionSeconds || undefined,
+                    position: watchStateOf(episode)?.watchProgress?.positionSeconds || undefined,
                   }}
                   className={styles.cardLink}
                 >
@@ -163,8 +162,9 @@ export function SeasonDetailScreen({ seasonId }: Readonly<{ seasonId: string }>)
 
 // One progress readout per surface: time left while mid-watch, otherwise the runtime.
 function episodeSubtitle(episode: Episode): string {
-  if (episode.watchProgress && episode.watchProgress.positionSeconds > 0) {
-    return formatTimeLeft(episode.watchProgress)
+  const progress = watchStateOf(episode)?.watchProgress
+  if (progress && progress.positionSeconds > 0) {
+    return formatTimeLeft(progress)
   }
   return episode.runtime != null ? formatRuntime(episode.runtime) : ''
 }

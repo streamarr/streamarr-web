@@ -1,3 +1,4 @@
+import { selectedProfileState } from '../src/test/selectedProfileStateFixture'
 import { watchingConnection } from '../src/test/continueWatchingFixtures'
 import { expect, test, type Page } from '@playwright/test'
 import type { HomeQuery } from '../src/graphql/generated/graphql'
@@ -26,9 +27,10 @@ function movie(index: number) {
     ],
     images: [],
     backdropImages: [],
-    watchStatus: 'IN_PROGRESS' as const,
-    lastWatchedAt: null,
-    watchProgress: { positionSeconds: 600, percentComplete: 25, durationSeconds: 2400 },
+    selectedProfileState: selectedProfileState({
+      watchStatus: 'IN_PROGRESS',
+      watchProgress: { positionSeconds: 600, percentComplete: 25, durationSeconds: 2400 },
+    }),
     files: [{ id: `home-file-${index}` }],
   }
 }

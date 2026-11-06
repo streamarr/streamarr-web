@@ -4,6 +4,7 @@ import type { AmbientTheme } from '../media/ambientTheme'
 import { formatRelativeTime, formatRuntime } from '../media/formatting'
 import { pickImageVariant, type PickedImage } from '../media/images'
 import type { MediaTitleSearch } from '../streaming/usePlayerTitle'
+import { watchStateOf } from '../media/selectedProfileWatchState'
 
 export interface BillboardMetadataEntry {
   label: string
@@ -48,7 +49,7 @@ export function billboardFromRecentlyAdded(
 
 function movieBillboard(movie: ContinueWatchingMovie): BillboardContent {
   const backdrop = movie.images[0] ?? null
-  const position = resumePosition(movie.watchProgress)
+  const position = resumePosition(watchStateOf(movie)?.watchProgress)
   return {
     title: movie.title ?? 'Untitled',
     tagline: movie.tagline,
@@ -71,7 +72,7 @@ function movieBillboard(movie: ContinueWatchingMovie): BillboardContent {
 function episodeBillboard(episode: ContinueWatchingEpisode): BillboardContent {
   const series = episode.season.series
   const backdrop = series.images[0] ?? null
-  const position = resumePosition(episode.watchProgress)
+  const position = resumePosition(watchStateOf(episode)?.watchProgress)
   return {
     title: series.title ?? 'Untitled',
     tagline: series.tagline,

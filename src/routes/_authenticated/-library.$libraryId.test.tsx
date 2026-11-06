@@ -1,3 +1,4 @@
+import { selectedProfileState } from '../../test/selectedProfileStateFixture'
 import { watchingConnection } from '../../test/continueWatchingFixtures'
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { HttpResponse, graphql, type GraphQLQuery } from 'msw'
@@ -7,6 +8,7 @@ import type {
   MediaFilter,
   MediaSort,
   MovieDetailQuery,
+  WatchStatus,
 } from '../../graphql/generated/graphql'
 import styles from '../../library/LibraryScreen.module.css'
 import { deferred } from '../../test/deferred'
@@ -53,9 +55,7 @@ const EVERLIGHT_CARD = {
   titleSort: 'Everlight',
   releaseDate: '2024-01-01',
   runtime: 100,
-  watchStatus: 'UNWATCHED',
-  lastWatchedAt: null,
-  watchProgress: null,
+  selectedProfileState: selectedProfileState(),
   images: [],
 }
 
@@ -74,8 +74,7 @@ const EVERLIGHT_DETAIL: MovieDetailQuery = {
     cast: [],
     ratings: [],
     files: [],
-    watchStatus: 'UNWATCHED',
-    watchProgress: null,
+    selectedProfileState: selectedProfileState(),
     backdropImages: [],
     posterImages: [],
   },
@@ -163,7 +162,7 @@ function mockLibraryPage(
 
 async function markEverlightWatchedFromItsDetail(libraryPath: string) {
   let libraryRequests = 0
-  let watchStatus = 'UNWATCHED'
+  let watchStatus: WatchStatus = 'UNWATCHED'
   server.use(
     graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
     graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
@@ -173,14 +172,25 @@ async function markEverlightWatchedFromItsDetail(libraryPath: string) {
       return HttpResponse.json({ data: { library: { ...data.library, __typename: 'Library' } } })
     }),
     graphql.query('MovieDetail', () =>
-      HttpResponse.json({ data: { movie: { ...EVERLIGHT_DETAIL.movie!, watchStatus } } }),
+      HttpResponse.json({
+        data: {
+          movie: {
+            ...EVERLIGHT_DETAIL.movie!,
+            selectedProfileState: selectedProfileState({ watchStatus }),
+          },
+        },
+      }),
     ),
     graphql.mutation('MarkWatched', () => {
       watchStatus = 'WATCHED'
       return HttpResponse.json({
         data: {
           markWatched: {
-            item: { __typename: 'Movie', id: 'm1', watchStatus: 'WATCHED', watchProgress: null },
+            item: {
+              __typename: 'Movie',
+              id: 'm1',
+              selectedProfileState: selectedProfileState({ watchStatus: 'WATCHED' }),
+            },
             userErrors: [],
           },
         },
@@ -214,7 +224,12 @@ describe('/library/$libraryId', () => {
       graphql.query('MovieDetail', () =>
         HttpResponse.json({
           data: {
-            movie: { ...EVERLIGHT_DETAIL.movie, watchStatus: watched ? 'WATCHED' : 'UNWATCHED' },
+            movie: {
+              ...EVERLIGHT_DETAIL.movie,
+              selectedProfileState: selectedProfileState({
+                watchStatus: watched ? 'WATCHED' : 'UNWATCHED',
+              }),
+            },
           },
         }),
       ),
@@ -226,8 +241,7 @@ describe('/library/$libraryId', () => {
               item: {
                 __typename: 'Movie',
                 id: 'm1',
-                watchStatus: 'UNWATCHED',
-                watchProgress: null,
+                selectedProfileState: selectedProfileState(),
               },
               userErrors: [],
             },

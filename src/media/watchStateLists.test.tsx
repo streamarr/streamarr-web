@@ -1,8 +1,13 @@
+import { selectedProfileState } from '../test/selectedProfileStateFixture'
 import { watchingConnection, watchingChange } from '../test/continueWatchingFixtures'
 import { act, screen, waitFor, within } from '@testing-library/react'
 import { graphql, HttpResponse, type GraphQLQuery } from 'msw'
 import { describe, expect, it } from 'vitest'
-import type { HomeQueryVariables, LibraryPageQueryVariables } from '../graphql/generated/graphql'
+import type {
+  HomeQueryVariables,
+  LibraryPageQueryVariables,
+  WatchStatus,
+} from '../graphql/generated/graphql'
 import { serveGraphqlSocket } from '../test/graphqlSocket'
 import { meFixture, profileFixture } from '../test/meFixture'
 import { renderAppAt } from '../test/render'
@@ -11,8 +16,6 @@ import { server } from '../test/server'
 const MOVIES = '44444444-4444-4444-4444-444444444444'
 const SHOWS = '55555555-5555-5555-5555-555555555555'
 const WATCHER = meFixture({ scope: 'profile', profiles: [profileFixture({ selected: true })] })
-
-type WatchStatus = 'WATCHED' | 'IN_PROGRESS' | 'UNWATCHED'
 
 interface Title {
   id: string
@@ -46,6 +49,14 @@ function progressOf({ watchStatus }: Title) {
   }
 }
 
+function stateOf(movie: Title) {
+  return selectedProfileState({
+    watchStatus: movie.watchStatus,
+    lastWatchedAt: movie.lastWatchedAt,
+    watchProgress: progressOf(movie),
+  })
+}
+
 function card(movie: Title) {
   return {
     __typename: 'Movie',
@@ -54,9 +65,7 @@ function card(movie: Title) {
     titleSort: movie.title,
     releaseDate: '2024-01-01',
     runtime: 100,
-    lastWatchedAt: movie.lastWatchedAt,
-    watchStatus: movie.watchStatus,
-    watchProgress: progressOf(movie),
+    selectedProfileState: stateOf(movie),
     images: [],
   }
 }
@@ -70,10 +79,9 @@ function continueWatchingCard(movie: Title) {
     summary: null,
     runtime: 100,
     createdOn: '2026-08-26T12:00:00Z',
-    lastWatchedAt: movie.lastWatchedAt,
     genres: [],
     images: [],
-    watchProgress: progressOf(movie),
+    selectedProfileState: stateOf(movie),
     files: [{ __typename: 'MediaFile', id: `file-${movie.id}` }],
   }
 }
@@ -469,8 +477,7 @@ describe('watch-state lists', () => {
               cast: [],
               ratings: [],
               files: [],
-              watchStatus: 'UNWATCHED',
-              watchProgress: null,
+              selectedProfileState: selectedProfileState(),
               backdropImages: [],
               posterImages: [],
             },

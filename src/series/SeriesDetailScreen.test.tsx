@@ -1,7 +1,8 @@
 import { screen, waitFor } from '@testing-library/react'
 import { graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
-import type { SeriesDetailQuery } from '../graphql/generated/graphql'
+import { selectedProfileState } from '../test/selectedProfileStateFixture'
+import type { SeriesDetailQuery, WatchStatus } from '../graphql/generated/graphql'
 import { deferred } from '../test/deferred'
 import { meFixture } from '../test/meFixture'
 import {
@@ -50,22 +51,22 @@ const COLORED = {
   theme: TEAL_THEME,
 }
 
-type Status = 'UNWATCHED' | 'IN_PROGRESS' | 'WATCHED'
-
 function episode(
   number: number,
   {
     status = 'UNWATCHED',
     positionSeconds = null,
     durationSeconds,
-  }: { status?: Status; positionSeconds?: number | null; durationSeconds?: number } = {},
+  }: { status?: WatchStatus; positionSeconds?: number | null; durationSeconds?: number } = {},
 ) {
   return {
     __typename: 'Episode',
     id: `s${number}`,
     episodeNumber: number,
-    watchStatus: status,
-    watchProgress: positionSeconds != null ? { positionSeconds, durationSeconds } : null,
+    selectedProfileState: selectedProfileState({
+      watchStatus: status,
+      watchProgress: positionSeconds != null ? { positionSeconds, durationSeconds } : null,
+    }),
     files: [{ id: `file-e${number}` }],
   }
 }
@@ -73,21 +74,27 @@ function episode(
 function season(
   number: number,
   episodes: ReturnType<typeof episode>[],
-  overrides: Record<string, unknown> = {},
+  {
+    watchProgress = null,
+    ...overrides
+  }: { watchProgress?: { percentComplete: number } | null; [field: string]: unknown } = {},
 ) {
-  const watched = episodes.every((entry) => entry.watchStatus === 'WATCHED')
+  const statuses = episodes.map((entry) => entry.selectedProfileState.watchState.watchStatus)
+  const watched = statuses.every((status) => status === 'WATCHED')
   return {
     __typename: 'Season',
     id: `season-${number}`,
     seasonNumber: number,
     title: `Season ${number}`,
     airDate: `${2016 + number}-07-21`,
-    watchStatus: watched
-      ? 'WATCHED'
-      : episodes.some((entry) => entry.watchStatus !== 'UNWATCHED')
-        ? 'IN_PROGRESS'
-        : 'UNWATCHED',
-    watchProgress: null,
+    selectedProfileState: selectedProfileState({
+      watchStatus: watched
+        ? 'WATCHED'
+        : statuses.some((status) => status !== 'UNWATCHED')
+          ? 'IN_PROGRESS'
+          : 'UNWATCHED',
+      watchProgress,
+    }),
     posterImages: [],
     episodes: episodes.map((entry) => ({
       ...entry,
@@ -98,7 +105,10 @@ function season(
   }
 }
 
-function seriesData(overrides: Record<string, unknown> = {}): SeriesDetailQuery {
+function seriesData({
+  watchStatus = 'IN_PROGRESS',
+  ...overrides
+}: { watchStatus?: WatchStatus; [field: string]: unknown } = {}): SeriesDetailQuery {
   return {
     series: {
       __typename: 'Series',
@@ -114,7 +124,7 @@ function seriesData(overrides: Record<string, unknown> = {}): SeriesDetailQuery 
       ],
       directors: [{ id: 'p1', name: 'Placeholder Creator' }],
       cast: [{ id: 'p2', name: 'Lead Actor', images: [] }],
-      watchStatus: 'IN_PROGRESS',
+      selectedProfileState: selectedProfileState({ watchStatus }),
       seasons: [
         season(1, [
           episode(1, { status: 'WATCHED' }),
@@ -347,7 +357,7 @@ describe('SeriesDetailScreen', () => {
     const markedIds: string[] = []
     const data = seriesData()
     serve(data)
-    const watchedState = { watchStatus: 'WATCHED', watchProgress: null }
+    const watchedState = { selectedProfileState: selectedProfileState({ watchStatus: 'WATCHED' }) }
     const marked = {
       series: {
         ...data.series!,

@@ -1,3 +1,4 @@
+import { selectedProfileState } from '../test/selectedProfileStateFixture'
 import { watchingConnection } from '../test/continueWatchingFixtures'
 import { screen } from '@testing-library/react'
 import { HttpResponse, graphql } from 'msw'
@@ -29,8 +30,7 @@ const MOVIE: MovieDetailQuery = {
     cast: [],
     ratings: [],
     files: [],
-    watchStatus: 'UNWATCHED',
-    watchProgress: null,
+    selectedProfileState: selectedProfileState(),
     backdropImages: [],
     posterImages: [],
   },
@@ -48,7 +48,7 @@ const SERIES: SeriesDetailQuery = {
     genres: [],
     directors: [],
     cast: [],
-    watchStatus: 'UNWATCHED',
+    selectedProfileState: selectedProfileState(),
     seasons: [],
     backdropImages: [],
     posterImages: [],
@@ -63,7 +63,7 @@ const SEASON: SeasonDetailQuery = {
     seasonNumber: 2,
     overview: null,
     airDate: '2018-03-01',
-    watchStatus: 'UNWATCHED',
+    selectedProfileState: selectedProfileState(),
     series: {
       id: 'series-1',
       title: 'Northern Line',

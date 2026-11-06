@@ -1,3 +1,5 @@
+import { selectedProfileState } from './selectedProfileStateFixture'
+
 interface Placement {
   id: string
   orderKey: string | null
@@ -16,14 +18,16 @@ export function watchingMovie({ id }: Placement) {
     createdOn: '2026-10-19T15:07:00Z',
     genres: [],
     images: [],
-    watchStatus: 'IN_PROGRESS' as const,
-    lastWatchedAt: '2026-10-19T15:07:00Z',
-    watchProgress: {
-      __typename: 'WatchProgress' as const,
-      positionSeconds: 600,
-      percentComplete: 10,
-      durationSeconds: 6000,
-    },
+    selectedProfileState: selectedProfileState({
+      watchStatus: 'IN_PROGRESS',
+      lastWatchedAt: '2026-10-19T15:07:00Z',
+      watchProgress: {
+        __typename: 'WatchProgress' as const,
+        positionSeconds: 600,
+        percentComplete: 10,
+        durationSeconds: 6000,
+      },
+    }),
     unmatched: false,
     library: { __typename: 'Library' as const, id: 'library' },
     files: [{ __typename: 'MediaFile' as const, id: `file-${id}` }],
@@ -40,8 +44,7 @@ export function watchingEpisode(placement: Placement) {
     overview: null,
     runtime: 100,
     images: [],
-    watchStatus: movie.watchStatus,
-    watchProgress: movie.watchProgress,
+    selectedProfileState: movie.selectedProfileState,
     files: movie.files,
     season: {
       __typename: 'Season' as const,

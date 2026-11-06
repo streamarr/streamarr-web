@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { HomeQuery } from '../graphql/generated/graphql'
+import { selectedProfileState } from '../test/selectedProfileStateFixture'
 import { billboardFromContinueWatching, billboardFromRecentlyAdded } from './billboardContent'
 
 type ContinueWatchingItem = NonNullable<
@@ -57,7 +58,7 @@ function continueWatchingMovie(
         ],
       },
     ],
-    watchProgress: null,
+    selectedProfileState: selectedProfileState(),
     files: [{ id: 'file-1' }],
     ...overrides,
   }
@@ -74,7 +75,10 @@ function continueWatchingEpisode(
     overview: 'The team regroups.',
     runtime: 47,
     images: [],
-    watchProgress: { positionSeconds: 600, percentComplete: 40, durationSeconds: 1500 },
+    selectedProfileState: selectedProfileState({
+      watchStatus: 'IN_PROGRESS',
+      watchProgress: { positionSeconds: 600, percentComplete: 40, durationSeconds: 1500 },
+    }),
     files: [{ id: 'file-2' }],
     season: {
       id: 'season-1',
@@ -113,9 +117,7 @@ function recentMovie(
     titleSort: 'Everlight',
     releaseDate: '2024-01-01',
     runtime: 90,
-    watchStatus: 'UNWATCHED',
-    lastWatchedAt: null,
-    watchProgress: null,
+    selectedProfileState: selectedProfileState(),
     images: [],
     tagline: 'Change begins with a whisper.',
     summary: 'A quiet town discovers a secret.',
@@ -153,11 +155,22 @@ describe('billboardFromContinueWatching', () => {
   it('maps a Movie in progress to a "Resume" CTA at its saved position', () => {
     const content = billboardFromContinueWatching(
       continueWatchingMovie({
-        watchProgress: { positionSeconds: 10, percentComplete: 5, durationSeconds: 100 },
+        selectedProfileState: selectedProfileState({
+          watchStatus: 'IN_PROGRESS',
+          watchProgress: { positionSeconds: 10, percentComplete: 5, durationSeconds: 100 },
+        }),
       }),
     )
     expect(content.ctaLabel).toBe('Resume')
     expect(content.ctaPositionSeconds).toBe(10)
+  })
+
+  it('shouldContinueFromTheStartWhenAnEpisodeHasNoSelectedProfileState', () => {
+    const content = billboardFromContinueWatching(
+      continueWatchingEpisode({ selectedProfileState: null }),
+    )
+    expect(content.ctaLabel).toBe('Continue S2 E5')
+    expect(content.ctaPositionSeconds).toBeNull()
   })
 
   it('maps an Episode: Seasons/Genre/Added sourced from the parent series, "Resume S{n} E{n}"', () => {

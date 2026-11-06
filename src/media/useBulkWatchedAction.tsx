@@ -10,11 +10,15 @@ import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { WatchedActionButton } from './WatchedActionButton'
 import { useWatchedToggle } from './useWatchedToggle'
 import styles from './useBulkWatchedAction.module.css'
+import { isWatched } from './selectedProfileWatchState'
 
-type Series = Pick<NonNullable<SeriesDetailQuery['series']>, 'title' | 'watchStatus' | 'seasons'>
+type Series = Pick<
+  NonNullable<SeriesDetailQuery['series']>,
+  'title' | 'selectedProfileState' | 'seasons'
+>
 type Season = Pick<
   NonNullable<SeasonDetailQuery['season']>,
-  'title' | 'seasonNumber' | 'watchStatus' | 'episodes'
+  'title' | 'seasonNumber' | 'selectedProfileState' | 'episodes'
 >
 type BulkWatchedTarget = Readonly<
   | { kind: 'series'; id: string; detail: Series | null | undefined }
@@ -76,13 +80,13 @@ function describeTarget(target: BulkWatchedTarget) {
     )
     return {
       title: target.detail.title ?? 'Untitled',
-      isWatched: target.detail.watchStatus === 'WATCHED',
+      isWatched: isWatched(target.detail),
       consequence: `All ${seasons.length} seasons — ${episodeCount} episodes —`,
     }
   }
   return {
     title: target.detail.title ?? `Season ${target.detail.seasonNumber}`,
-    isWatched: target.detail.watchStatus === 'WATCHED',
+    isWatched: isWatched(target.detail),
     consequence: `All ${target.detail.episodes.filter((episode) => episode !== null).length} episodes`,
   }
 }

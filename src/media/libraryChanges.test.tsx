@@ -8,6 +8,7 @@ import { serveGraphqlSocket } from '../test/graphqlSocket'
 import { meFixture, profileFixture } from '../test/meFixture'
 import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
+import { selectedProfileState } from '../test/selectedProfileStateFixture'
 
 const VIEWER = meFixture({ scope: 'profile', profiles: [profileFixture({ selected: true })] })
 const VIEWING_ADMIN = meFixture({
@@ -40,9 +41,7 @@ const EVERLIGHT_EDGE = {
     titleSort: 'Everlight',
     releaseDate: '2024-01-01',
     runtime: 100,
-    watchStatus: 'UNWATCHED',
-    lastWatchedAt: null,
-    watchProgress: null,
+    selectedProfileState: selectedProfileState(),
     images: [],
     tagline: null,
     summary: null,

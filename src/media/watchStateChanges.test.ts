@@ -1,3 +1,4 @@
+import { selectedProfileState } from '../test/selectedProfileStateFixture'
 import cases from '../test/contracts/live-lists.json'
 import { watchingMovie, watchingConnection } from '../test/continueWatchingFixtures'
 import { showContinueWatching, CONTINUE_WATCHING_LIMIT } from './watchStateLists'
@@ -32,7 +33,7 @@ function setup() {
       fragment: MovieWatchStateFragmentDoc,
       fragmentName: 'MovieWatchState',
       id: client.cache.identify({ __typename: 'Movie', id }),
-    })
+    })?.selectedProfileState?.watchState
   const watchStatusOf = (id: string) => watchStateOf(id)?.watchStatus
   return { client, transport, watchStateOf, watchStatusOf }
 }
@@ -51,7 +52,13 @@ function movieChange(
         watchStateChanged: {
           continueWatching: [],
           __typename: 'WatchStateChange',
-          items: [{ __typename: 'Movie', id, watchStatus, watchProgress }],
+          items: [
+            {
+              __typename: 'Movie',
+              id,
+              selectedProfileState: selectedProfileState({ watchStatus, watchProgress }),
+            },
+          ],
         },
       },
     },
@@ -113,13 +120,31 @@ describe('subscribeToWatchStateChanges', () => {
             continueWatching: [],
             __typename: 'WatchStateChange',
             items: [
-              { __typename: 'Movie', id: 'm1', watchStatus: 'IN_PROGRESS', watchProgress: null },
-              { __typename: 'Movie', id: 'm2', watchStatus: 'WATCHED', watchProgress: null },
+              {
+                __typename: 'Movie',
+                id: 'm1',
+                selectedProfileState: selectedProfileState({ watchStatus: 'IN_PROGRESS' }),
+              },
+              {
+                __typename: 'Movie',
+                id: 'm2',
+                selectedProfileState: selectedProfileState({ watchStatus: 'WATCHED' }),
+              },
             ],
           },
         },
         errors: [
-          { message: 'Timed out', path: ['watchStateChanged', 'items', 0, 'watchProgress'] },
+          {
+            message: 'Timed out',
+            path: [
+              'watchStateChanged',
+              'items',
+              0,
+              'selectedProfileState',
+              'watchState',
+              'watchProgress',
+            ],
+          },
         ],
       },
     })
@@ -127,6 +152,49 @@ describe('subscribeToWatchStateChanges', () => {
 
     expect(watchStatusOf('m2')).toBe('WATCHED')
     expect(watchStateOf('m1')?.watchProgress).toMatchObject(resumed)
+  })
+
+  it('shouldKeepTheCachedWatchStateWhenTheSelectedProfileStateOfAnItemFailed', async () => {
+    const { client, watchStateOf, watchStatusOf } = setup()
+    const resumed = { positionSeconds: 600, percentComplete: 10, durationSeconds: 6000 }
+    const socket = await connectAndSubscribe(() => subscribeToWatchStateChanges(client))
+    socket.deliver(
+      movieChange('m1', socket.subscriptionIds()[0], 'IN_PROGRESS', {
+        __typename: 'WatchProgress',
+        ...resumed,
+      }),
+    )
+
+    socket.deliver({
+      type: 'next',
+      id: socket.subscriptionIds()[0],
+      payload: {
+        data: {
+          watchStateChanged: {
+            continueWatching: [],
+            __typename: 'WatchStateChange',
+            items: [
+              { __typename: 'Movie', id: 'm1', selectedProfileState: null },
+              {
+                __typename: 'Movie',
+                id: 'm2',
+                selectedProfileState: selectedProfileState({ watchStatus: 'WATCHED' }),
+              },
+            ],
+          },
+        },
+        errors: [
+          {
+            message: 'Timed out',
+            path: ['watchStateChanged', 'items', 0, 'selectedProfileState', 'watchState'],
+          },
+        ],
+      },
+    })
+    await settle()
+
+    expect(watchStatusOf('m2')).toBe('WATCHED')
+    expect(watchStateOf('m1')).toMatchObject({ watchStatus: 'IN_PROGRESS', watchProgress: resumed })
   })
 
   it.each(['failed-edge', 'missing-node', 'nonmember'] as const)(
@@ -220,7 +288,11 @@ describe('subscribeToWatchStateChanges', () => {
           watchStateChanged: {
             __typename: 'WatchStateChange',
             items: [
-              { __typename: 'Movie', id: 'movie-1', watchStatus: 'WATCHED', watchProgress: null },
+              {
+                __typename: 'Movie',
+                id: 'movie-1',
+                selectedProfileState: selectedProfileState({ watchStatus: 'WATCHED' }),
+              },
               null,
             ],
             continueWatching:
@@ -273,7 +345,11 @@ describe('subscribeToWatchStateChanges', () => {
             watchStateChanged: {
               __typename: 'WatchStateChange',
               items: [
-                { __typename: 'Movie', id: 'a', watchStatus: 'WATCHED', watchProgress: null },
+                {
+                  __typename: 'Movie',
+                  id: 'a',
+                  selectedProfileState: selectedProfileState({ watchStatus: 'WATCHED' }),
+                },
               ],
               continueWatching: outcome === 'failed-list' ? null : [{ itemId: 'a', edge: null }],
             },

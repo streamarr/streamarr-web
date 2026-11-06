@@ -129,8 +129,14 @@ describe('apollo client', () => {
                 item: {
                   __typename: 'Movie',
                   id: 'm1',
-                  watchStatus: 'WATCHED',
-                  watchProgress: null,
+                  selectedProfileState: {
+                    __typename: 'SelectedProfileState',
+                    watchState: {
+                      __typename: 'WatchState',
+                      watchStatus: 'WATCHED',
+                      watchProgress: null,
+                    },
+                  },
                 },
                 userErrors: [],
               },
@@ -146,12 +152,26 @@ describe('apollo client', () => {
       await requested.promise
 
       await client[reset]()
-      const nextIdentityMovie = { __typename: 'Movie', id: 'm1', watchStatus: 'UNWATCHED' }
+      const nextIdentityMovie = {
+        __typename: 'Movie',
+        id: 'm1',
+        selectedProfileState: {
+          __typename: 'SelectedProfileState',
+          watchState: { __typename: 'WatchState', watchStatus: 'UNWATCHED', watchProgress: null },
+        },
+      }
       client.cache.writeFragment({
         fragment: gql`
           fragment NextIdentityMovie on Movie {
             id
-            watchStatus
+            selectedProfileState {
+              watchState {
+                watchStatus
+                watchProgress {
+                  positionSeconds
+                }
+              }
+            }
           }
         `,
         data: nextIdentityMovie,
@@ -169,4 +189,135 @@ describe('apollo client', () => {
       expect(outcome).toBe('discarded')
     },
   )
+
+  it('shouldKeepTheWatchStateFieldsEachQueryReadWhenAnotherQueryWritesOtherFields', () => {
+    const client = createApolloClient(vi.fn())
+    const posterFields = gql`
+      fragment PosterFields on Movie {
+        id
+        selectedProfileState {
+          watchState {
+            watchStatus
+            lastWatchedAt
+          }
+        }
+      }
+    `
+    const detailFields = gql`
+      fragment DetailFields on Movie {
+        id
+        selectedProfileState {
+          watchState {
+            watchStatus
+            watchProgress {
+              positionSeconds
+            }
+          }
+        }
+      }
+    `
+    client.cache.writeFragment({
+      fragment: posterFields,
+      data: {
+        __typename: 'Movie',
+        id: 'm1',
+        selectedProfileState: {
+          __typename: 'SelectedProfileState',
+          watchState: {
+            __typename: 'WatchState',
+            watchStatus: 'IN_PROGRESS',
+            lastWatchedAt: '2026-10-16T10:00:00Z',
+          },
+        },
+      },
+    })
+
+    client.cache.writeFragment({
+      fragment: detailFields,
+      data: {
+        __typename: 'Movie',
+        id: 'm1',
+        selectedProfileState: {
+          __typename: 'SelectedProfileState',
+          watchState: {
+            __typename: 'WatchState',
+            watchStatus: 'IN_PROGRESS',
+            watchProgress: { __typename: 'WatchProgress', positionSeconds: 600 },
+          },
+        },
+      },
+    })
+
+    expect(client.cache.readFragment({ fragment: posterFields, id: 'Movie:m1' })).toMatchObject({
+      selectedProfileState: {
+        watchState: { watchStatus: 'IN_PROGRESS', lastWatchedAt: '2026-10-16T10:00:00Z' },
+      },
+    })
+    expect(client.cache.readFragment({ fragment: detailFields, id: 'Movie:m1' })).toMatchObject({
+      selectedProfileState: {
+        watchState: { watchProgress: { positionSeconds: 600 } },
+      },
+    })
+  })
+
+  it('shouldKeepACachedLanguagePreferenceWhenAMarkAnswersWithTheWatchStateOnly', async () => {
+    server.use(
+      graphql.mutation('MarkWatched', () =>
+        HttpResponse.json({
+          data: {
+            markWatched: {
+              item: {
+                __typename: 'Movie',
+                id: 'm1',
+                selectedProfileState: {
+                  __typename: 'SelectedProfileState',
+                  watchState: {
+                    __typename: 'WatchState',
+                    watchStatus: 'WATCHED',
+                    watchProgress: null,
+                  },
+                },
+              },
+              userErrors: [],
+            },
+          },
+        }),
+      ),
+    )
+    const client = createApolloClient(vi.fn())
+    const languageFields = gql`
+      fragment LanguageFields on Movie {
+        id
+        selectedProfileState {
+          languagePreference {
+            audioLanguages
+            subtitleMode
+          }
+        }
+      }
+    `
+    client.cache.writeFragment({
+      fragment: languageFields,
+      data: {
+        __typename: 'Movie',
+        id: 'm1',
+        selectedProfileState: {
+          __typename: 'SelectedProfileState',
+          languagePreference: {
+            __typename: 'LanguagePreference',
+            audioLanguages: ['JA'],
+            subtitleMode: 'FORCED',
+          },
+        },
+      },
+    })
+
+    await client.mutate({ mutation: MarkWatchedDocument, variables: { input: { itemId: 'm1' } } })
+
+    expect(client.cache.readFragment({ fragment: languageFields, id: 'Movie:m1' })).toMatchObject({
+      selectedProfileState: {
+        languagePreference: { audioLanguages: ['JA'], subtitleMode: 'FORCED' },
+      },
+    })
+  })
 })

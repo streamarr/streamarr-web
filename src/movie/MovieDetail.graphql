@@ -40,11 +40,15 @@ query MovieDetail($id: ID!) {
     files {
       id
     }
-    watchStatus
-    watchProgress {
-      positionSeconds
-      percentComplete
-      durationSeconds
+    selectedProfileState {
+      watchState {
+        watchStatus
+        watchProgress {
+          positionSeconds
+          percentComplete
+          durationSeconds
+        }
+      }
     }
     backdropImages: images(type: BACKDROP) {
       ...ImageWithAmbientFields
