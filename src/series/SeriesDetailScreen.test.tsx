@@ -54,9 +54,11 @@ type Status = 'UNWATCHED' | 'IN_PROGRESS' | 'WATCHED'
 
 function episode(
   number: number,
-  status: Status = 'UNWATCHED',
-  positionSeconds: number | null = null,
-  durationSeconds?: number,
+  {
+    status = 'UNWATCHED',
+    positionSeconds = null,
+    durationSeconds,
+  }: { status?: Status; positionSeconds?: number | null; durationSeconds?: number } = {},
 ) {
   return {
     __typename: 'Episode',
@@ -114,10 +116,21 @@ function seriesData(overrides: Record<string, unknown> = {}): SeriesDetailQuery 
       cast: [{ id: 'p2', name: 'Lead Actor', images: [] }],
       watchStatus: 'IN_PROGRESS',
       seasons: [
-        season(1, [episode(1, 'WATCHED'), episode(2, 'WATCHED'), episode(3, 'WATCHED')]),
-        season(2, [episode(4, 'UNWATCHED'), episode(5, 'IN_PROGRESS', 600)], {
-          watchProgress: { percentComplete: 56 },
-        }),
+        season(1, [
+          episode(1, { status: 'WATCHED' }),
+          episode(2, { status: 'WATCHED' }),
+          episode(3, { status: 'WATCHED' }),
+        ]),
+        season(
+          2,
+          [
+            episode(4, { status: 'UNWATCHED' }),
+            episode(5, { status: 'IN_PROGRESS', positionSeconds: 600 }),
+          ],
+          {
+            watchProgress: { percentComplete: 56 },
+          },
+        ),
       ],
       backdropImages: [image({ ambientColors: COLORED })],
       posterImages: [],
@@ -153,8 +166,8 @@ describe('SeriesDetailScreen', () => {
         seasons: [
           season(1, [], {
             episodes: [
-              { ...episode(1, 'WATCHED'), files: [] },
-              { ...episode(2, 'IN_PROGRESS', 30), files: [null] },
+              { ...episode(1, { status: 'WATCHED' }), files: [] },
+              { ...episode(2, { status: 'IN_PROGRESS', positionSeconds: 30 }), files: [null] },
               episode(3),
             ],
           }),
@@ -279,14 +292,22 @@ describe('SeriesDetailScreen', () => {
   })
 
   it('shouldShowTheTimeLeftOnResumeWhenTheEpisodeHasADuration', async () => {
-    serve(seriesData({ seasons: [season(1, [episode(1, 'IN_PROGRESS', 600, 1800)])] }))
+    serve(
+      seriesData({
+        seasons: [
+          season(1, [
+            episode(1, { status: 'IN_PROGRESS', positionSeconds: 600, durationSeconds: 1800 }),
+          ]),
+        ],
+      }),
+    )
     renderAppAt('/series/series-1')
     expect(await screen.findByRole('link', { name: 'Resume S1 E1 20m left' })).toBeInTheDocument()
     expect(screen.getByTestId('action-progress')).toHaveStyle({ width: `${(600 / 1800) * 100}%` })
   })
 
   it('continues with the next unwatched episode when nothing is mid-watch', async () => {
-    serve(seriesData({ seasons: [season(1, [episode(1, 'WATCHED'), episode(2)])] }))
+    serve(seriesData({ seasons: [season(1, [episode(1, { status: 'WATCHED' }), episode(2)])] }))
     renderAppAt('/series/series-1')
     await waitFor(() =>
       expect(screen.getByRole('link', { name: 'Continue S1 E2' })).toHaveAttribute(
