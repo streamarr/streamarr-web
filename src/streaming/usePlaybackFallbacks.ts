@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { PlaybackFormatChange, VideoQuality } from '../graphql/generated/graphql'
-import { takesHdrChoice } from './hdrControl'
 import type { DynamicRangeChoice } from './hlsVideoPreference'
 import type { QualityChoices } from './qualityChoices'
 
@@ -67,18 +66,14 @@ function fallbackOf({ requested, playing, formatChange }: QualityChoices): Fallb
 }
 
 // A fixed quality may play SDR under the viewer's HDR choice without a format change, as an
-// encode before HDR encodes do. The answer names SDR, and the notice keeps the change from passing
-// silently (ADR 0013); it leaves no mark, which belongs to a fallback.
+// encode before HDR encodes does. The answer names SDR, and the notice keeps the change from
+// passing silently (ADR 0013); it leaves no mark, which belongs to a fallback. Only a fixed quality
+// is ever asked for a range.
 function playsSdrUnderHdrChoice(
-  { requested, formatChange, videoRange }: QualityChoices,
+  { videoRange }: QualityChoices,
   dynamicRange: DynamicRangeChoice | undefined,
 ): boolean {
-  return (
-    dynamicRange === 'HDR' &&
-    takesHdrChoice(requested) &&
-    formatChange === null &&
-    videoRange === 'SDR'
-  )
+  return dynamicRange === 'HDR' && videoRange === 'SDR'
 }
 
 // The requested choice keeps a mark while its output falls back, and loses it once it plays the
@@ -121,20 +116,25 @@ export function usePlaybackFallbacks(viewing: object): PlaybackFallbacks {
       setMarked((current) => (current.viewing === viewing ? current : { viewing, marks: NO_MARKS }))
       let announced: PlaybackFormatChange | null = null
       let announcedSdr = false
+      const announceSdrOnce = (qualities: QualityChoices) => {
+        if (announcedSdr || !playsSdrUnderHdrChoice(qualities, dynamicRange)) {
+          return
+        }
+        announcedSdr = true
+        announce(NOTICES.converted)
+      }
       return (qualities: QualityChoices) => {
         setMarked((current) => ({ viewing, marks: markFallback(current.marks, qualities) }))
         const previous = announced
         announced = qualities.formatChange
-        if (!announcedSdr && playsSdrUnderHdrChoice(qualities, dynamicRange)) {
-          announcedSdr = true
-          announce(NOTICES.converted)
-          return
-        }
         const fallback = fallbackOf(qualities)
-        if (!fallback || qualities.formatChange === previous) {
+        if (!fallback) {
+          announceSdrOnce(qualities)
           return
         }
-        announce(NOTICES[fallback])
+        if (qualities.formatChange !== previous) {
+          announce(NOTICES[fallback])
+        }
       }
     },
     [viewing, announce],
