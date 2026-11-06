@@ -3,8 +3,8 @@ import { decodeBlurHashToDataUrl } from './blurhash'
 import type { PickedImage } from './images'
 import styles from './MediaImage.module.css'
 
-// The base box always carries the diagonal-stripe wash as its background (MediaImage.module.css),
-// so a title with neither artwork nor a blurHash still reads as an intentional placeholder.
+// The base box's flat panel background (MediaImage.module.css) is all a title with neither
+// artwork nor a blurHash shows.
 export function MediaImage({
   image,
   blurHash,

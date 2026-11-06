@@ -26,7 +26,7 @@ describe('MediaImage', () => {
     expect(screen.queryByTestId('blur-placeholder')).not.toBeInTheDocument()
   })
 
-  it('falls back to the diagonal-stripe background when there is no image and no blurHash', () => {
+  it('shows only the panel background when there is no image and no blurHash', () => {
     render(<MediaImage image={null} blurHash={null} alt="Northern Line" />)
     expect(screen.queryByTestId('blur-placeholder')).not.toBeInTheDocument()
     expect(screen.queryByAltText('Northern Line')).not.toBeInTheDocument()
