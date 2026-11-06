@@ -7127,6 +7127,57 @@ describe('Player', () => {
       expect(marksIn(menu)).toEqual([])
     })
 
+    it('shouldShowTheSdrNoticeOnceWhenThePlaybackSessionMovesToAnotherStream', async () => {
+      const sdrUnderHdrChoice = ({ quality }: StreamingOptionsInput): VideoRange =>
+        quality === 'AUTO' ? 'PQ' : 'SDR'
+      server.use(
+        graphql.query('PlaybackSession', () =>
+          HttpResponse.json({
+            data: {
+              playbackSession: readyPlaybackSession({
+                id: 'playback-2',
+                streamSession: { ...replacementStream(2), videoRange: 'SDR' },
+                sourceRange: 'PQ',
+                requestedChoice: 'HIGH_720P',
+                playbackChoice: 'HIGH_720P',
+              }),
+            },
+          }),
+        ),
+      )
+      servePlaybackChoices({ sourceRange: 'PQ', videoRange: sdrUnderHdrChoice })
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={showingHdr} mediaFileId="abcd" />,
+      )
+      await showingVideo(choiceStreamUrl(1))
+      await pickQuality(user, '720p')
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      await showingVideo(choiceStreamUrl(2))
+      expect(notice().textContent).toBe(CONVERTED_NOTICE)
+      await act(async () => vi.advanceTimersByTimeAsync(6_000))
+      expect(notice()).toBeEmptyDOMElement()
+
+      const onError = hls.on.mock.calls.findLast(([event]) => event === 'hlsError')?.[1]
+      act(() =>
+        onError?.('hlsError', { fatal: false, type: 'networkError', response: { code: 503 } }),
+      )
+
+      await showingVideo(replacementStream(2).streamUrl)
+      expect(notice()).toBeEmptyDOMElement()
+    })
+
+    it('shouldKeepTheHdrChoiceWhenTheViewerRetries', async () => {
+      const { user, log } = await pickForAnHdrSource({ picked: '720p' })
+      await user.click(hdrToggleIn(await openQualityMenu(user)) as HTMLElement)
+      await showingVideo(choiceStreamUrl(3))
+
+      raiseHlsFatalError()
+      await user.click(await screen.findByRole('button', { name: 'Retry playback' }))
+      await attachedVideo(choiceStreamUrl(4))
+
+      expect(log.at(-1)).toBe('create HIGH_720P SDR')
+    })
+
     it('shouldShowNoNoticeWhenAFixedQualityPlaysTheSdrTheViewerChose', async () => {
       const { user } = await pickForAnHdrSource({ picked: '720p' })
 
