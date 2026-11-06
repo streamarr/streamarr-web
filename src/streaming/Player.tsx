@@ -120,6 +120,7 @@ export function Player({
           },
         }),
       startPositionSeconds,
+      dynamicRange: 'HDR',
       resumeFrom: choice.resumeFrom,
       onSourcePhase: setSourcePhase,
       onOutputShown: followPlaybackSession(),
