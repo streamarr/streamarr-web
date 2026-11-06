@@ -99,7 +99,8 @@ export function LanguageTabs({ item }: Readonly<{ item: LanguageTabsItem }>) {
   if (!shown) {
     return null
   }
-  return <Tabs item={item} {...shown} />
+  // An answer read before a pick would replace the pick's answer in the cache.
+  return <Tabs item={item} reading={query.loading} {...shown} />
 }
 
 function shownPreferences(
@@ -132,11 +133,14 @@ function shownPreferences(
 
 function Tabs({
   item,
+  reading,
   preference,
   wider,
   first,
 }: Readonly<{
   item: LanguageTabsItem
+  /** While the title is read again: no pick goes out until the read answers. */
+  reading: boolean
   preference: LanguagePreferenceFieldsFragment
   wider: WiderChoice
   /** The Profile's own audio languages, which every picker lists first. */
@@ -147,6 +151,7 @@ function Tabs({
   const [setOverride, { loading: saving }] = useMutation(SetLanguageOverrideDocument)
   const audioRef = useRef<HTMLButtonElement>(null)
   const subtitlesRef = useRef<HTMLButtonElement>(null)
+  const busy = saving || reading
   const level = LEVEL_OF[item.kind]
   const listing = languagesListing(first)
   const languageRows = listing.map((language) => ({
@@ -184,7 +189,7 @@ function Tabs({
           kind="audio"
           name="Default audio"
           anchorRef={audioRef}
-          disabled={saving}
+          disabled={busy}
           caption={`${audioName(preference.audioLanguages[0])} · ${sourcePhrase(preference.audioSource, level)}`}
           open={open}
           onOpen={setOpen}
@@ -199,7 +204,7 @@ function Tabs({
           kind="subtitles"
           name="Subtitles"
           anchorRef={subtitlesRef}
-          disabled={saving}
+          disabled={busy}
           caption={`${subtitlesName(preference)} · ${sourcePhrase(preference.subtitleSource, level)}`}
           open={open}
           onOpen={setOpen}
@@ -234,7 +239,7 @@ function Tab({
   kind: TabKind
   name: string
   anchorRef: RefObject<HTMLButtonElement | null>
-  /** While an override saves, so that a second pick cannot overtake it. Focus stays on the tab. */
+  /** While an override saves or the title is read, so no pick overtakes it. Focus stays put. */
   disabled: boolean
   caption: string
   open: TabKind | null

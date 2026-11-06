@@ -2,14 +2,14 @@ import { useApolloClient } from '@apollo/client/react'
 import { act, screen, waitFor, within } from '@testing-library/react'
 import type { UserEvent } from '@testing-library/user-event'
 import { graphql, HttpResponse } from 'msw'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { describe, expect, it } from 'vitest'
 import type {
   Language,
   LanguagePreferenceFieldsFragment,
   SetLanguageOverrideInput,
 } from '../graphql/generated/graphql'
-import { heldAnswer, networkFailure } from '../test/graphqlResponses'
+import { answersThenHolds, heldAnswer, networkFailure } from '../test/graphqlResponses'
 import {
   languagePreferenceFixture,
   pickMenuRow,
@@ -82,6 +82,50 @@ describe('LanguageTabs', () => {
 
     expect(await screen.findByText("Couldn't load the languages.")).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Default audio' })).not.toBeInTheDocument()
+  })
+
+  it('shouldHoldBothTabsWhileTheTitleIsReadAgainSoAnOlderAnswerCannotUndoAPick', async () => {
+    const fromProfile = {
+      movie: {
+        __typename: 'Movie',
+        id: 'm1',
+        selectedProfileState: selectedProfileLanguages(languagePreferenceFixture()),
+      },
+      me: { __typename: 'Me', languagePreferences: profileLanguagesFixture() },
+    }
+    const reads = answersThenHolds(fromProfile, fromProfile)
+    serveLanguageTabs({
+      answer: movieBecomes(
+        languagePreferenceFixture({ audioLanguages: ['JA', 'EN'], audioSource: 'TITLE' }),
+      ),
+    })
+    server.use(graphql.query('LanguageTabs', reads.resolver))
+    let show: ((shown: boolean) => void) | undefined
+    function ShownTabs() {
+      const [shown, setShown] = useState(true)
+      useEffect(() => {
+        show = setShown
+      }, [])
+      return shown ? <LanguageTabs item={MOVIE} /> : null
+    }
+    const { user } = renderWithProviders(<ShownTabs />)
+    await tab('Default audio')
+    act(() => show?.(false))
+    act(() => show?.(true))
+    await waitFor(() => expect(reads.calls).toBe(2))
+
+    expect(await tab('Default audio')).toHaveAttribute('aria-disabled', 'true')
+    await user.click(await tab('Default audio'))
+    expect(screen.queryByRole('menu')).toBeNull()
+    reads.release()
+    await waitFor(async () =>
+      expect(await tab('Default audio')).not.toHaveAttribute('aria-disabled'),
+    )
+    await pick(user, 'Default audio', 'Japanese')
+
+    await waitFor(async () =>
+      expect(await tab('Default audio')).toHaveAccessibleDescription('Japanese · set here'),
+    )
   })
 
   it('shouldSayAValueIsSetHereWhenTheTitlesOwnOverrideDecidesIt', async () => {
