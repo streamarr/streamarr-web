@@ -9,7 +9,8 @@ const POINTER_FOCUS = 'data-pointer-focus'
 
 /**
  * Space keeps its usual meaning on a button or form control that the viewer reached by keyboard,
- * or that sits in a menu, unless the button is aria-disabled. Anywhere else, Space calls `toggle`
+ * unless the button is aria-disabled, and on every menu item, which does nothing while
+ * aria-disabled. Anywhere else, Space calls `toggle`
  * once for each press while `enabled`, and does nothing while not.
  *
  * A button or form control outside a menu that focus reached without the keyboard carries
@@ -61,10 +62,11 @@ function isBareSpace(event: KeyboardEvent): boolean {
 }
 
 function isPressedBySpace(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) {
+    return false
+  }
   return (
-    target instanceof Element &&
-    target.matches(PRESSED_BY_SPACE) &&
-    !target.hasAttribute(POINTER_FOCUS)
+    isInMenu(target) || (target.matches(PRESSED_BY_SPACE) && !target.hasAttribute(POINTER_FOCUS))
   )
 }
 
