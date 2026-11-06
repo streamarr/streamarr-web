@@ -1,5 +1,5 @@
 import { HttpResponse, graphql } from 'msw'
-import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   ClientCapabilityDeclarationInput,
   CreatePlaybackSessionMutation,
@@ -8,12 +8,9 @@ import type {
 import { createApolloClient } from '../graphql/client'
 import { hls, resetFakeHls } from '../test/fakeHls'
 import { MINIMAL_DECLARATION } from '../test/playbackCapabilities'
-import {
-  destroyedPlaybackSession,
-  readyDirectPlaySession,
-  readyPlaybackSession,
-} from '../test/playbackSession'
+import { destroyedPlaybackSession, readyPlaybackSession } from '../test/playbackSession'
 import { server } from '../test/server'
+import type { DynamicRangeChoice } from './hlsVideoPreference'
 import { type PlayerPlayback, startPlayerPlayback } from './playerPlayback'
 
 vi.mock('hls.js', async () => (await import('../test/fakeHls')).hlsModule)
@@ -92,31 +89,6 @@ function playheadAt(video: HTMLVideoElement, seconds: number) {
   video.dispatchEvent(new Event('timeupdate'))
 }
 
-// The server answers a segment request with 503 while a stream session is being replaced, which
-// sends the player to read the playback status.
-function answerTheNextSegmentWith503({ fatal }: { fatal: boolean }) {
-  const onError = hls.on.mock.calls.findLast(([event]) => event === 'hlsError')?.[1]
-  onError?.('hlsError', { fatal, type: 'networkError', response: { code: 503 } })
-}
-
-// Holds every playback status read until the test ends, and counts them.
-function holdStatusReads(): { count: number } {
-  const reads = { count: 0 }
-  let release: () => void = () => {}
-  const released = new Promise<void>((resolve) => {
-    release = resolve
-  })
-  onTestFinished(() => release())
-  server.use(
-    graphql.query('PlaybackSession', async () => {
-      reads.count += 1
-      await released
-      return HttpResponse.json({ data: { playbackSession: null } })
-    }),
-  )
-  return reads
-}
-
 describe('startPlayerPlayback', () => {
   let playback: PlayerPlayback | undefined
   // Each playback session the player created and each one it destroyed, so a test ends only once
@@ -128,10 +100,12 @@ describe('startPlayerPlayback', () => {
     video,
     declaration = PQ_DECLARATION,
     session = Promise.resolve(created(readyPlaybackSession({ streamSession: PQ_SESSION }))),
+    dynamicRange = 'HDR',
   }: {
     video: HTMLVideoElement
     declaration?: ClientCapabilityDeclarationInput
     session?: Promise<{ data: CreatePlaybackSessionMutation }>
+    dynamicRange?: DynamicRangeChoice
   }): PlayerPlayback {
     playback = startPlayerPlayback({
       video,
@@ -141,6 +115,7 @@ describe('startPlayerPlayback', () => {
         sessions.created += 1
         return session
       },
+      dynamicRange,
       onSourcePhase: vi.fn(),
       onOutputShown: vi.fn(),
       onNotice: vi.fn(),
@@ -195,140 +170,23 @@ describe('startPlayerPlayback', () => {
     })
   })
 
-  describe('chooseDynamicRange', () => {
-    it('shouldAttachTheStreamAgainAtThePlayheadPreferringSdrWhenTheViewerChoosesSdr', async () => {
-      const video = fakeMedia()
-      const playing = startPlaying({ video })
-      await playingFrom(video, 120)
-      // Like hls.js, which releases the element as it is destroyed.
-      hls.destroy.mockImplementationOnce(() => video.load())
+  describe('dynamicRange', () => {
+    it('shouldStartHlsJsOnSdrOnlyWhenTheViewerChoseSdr', async () => {
+      startPlaying({ video: fakeMedia(), dynamicRange: 'SDR' })
 
-      playing.chooseDynamicRange('SDR')
-      loadMetadata(video)
-
-      expect(hls.loadSource.mock.calls).toEqual([[STREAM_URL], [STREAM_URL]])
+      await vi.waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(STREAM_URL))
       expect(hls.config?.videoPreference).toEqual(SDR_ONLY)
-      expect(video.currentTime).toBe(120)
-      expect(video.paused).toBe(false)
-    })
-
-    it('shouldPreferTheDeclaredHdrRangesAgainWhenTheViewerChoosesHdrAfterSdr', async () => {
-      const video = fakeMedia()
-      const playing = startPlaying({ video })
-      await playingFrom(video, 120)
-
-      playing.chooseDynamicRange('SDR')
-      playing.chooseDynamicRange('HDR')
-
-      expect(hls.loadSource).toHaveBeenCalledTimes(3)
-      expect(hls.config?.videoPreference).toEqual(PREFERRING_PQ)
-    })
-
-    it('shouldKeepTheAttachedStreamWhenTheViewerChoosesTheRangeItPrefers', async () => {
-      const video = fakeMedia()
-      const playing = startPlaying({ video })
-      await playingFrom(video, 120)
-
-      playing.chooseDynamicRange('HDR')
-
-      expect(hls.loadSource).toHaveBeenCalledOnce()
-    })
-
-    it('shouldStartTheStreamPreferringSdrWhenTheViewerChoseSdrBeforeItWasReady', async () => {
-      let answer: (session: { data: CreatePlaybackSessionMutation }) => void = () => {}
-      const session = new Promise<{ data: CreatePlaybackSessionMutation }>((resolve) => {
-        answer = resolve
-      })
-      const playing = startPlaying({ video: fakeMedia(), session })
-
-      playing.chooseDynamicRange('SDR')
-      answer(created(readyPlaybackSession({ streamSession: PQ_SESSION })))
-
-      await vi.waitFor(() => expect(hls.loadSource).toHaveBeenCalledOnce())
-      expect(hls.config?.videoPreference).toEqual(SDR_ONLY)
-    })
-
-    it('shouldLeaveTheStreamToTheElementWhenTheBrowserPlaysHlsWithoutHlsJs', async () => {
-      hls.supported = false
-      const video = fakeMedia()
-      const playing = startPlaying({ video })
-      await vi.waitFor(() => expect(video.getAttribute('src')).toBe(STREAM_URL))
-      loadMetadata(video)
-      playheadAt(video, 120)
-
-      playing.chooseDynamicRange('SDR')
-
-      expect(video.getAttribute('src')).toBe(STREAM_URL)
-      expect(video.currentTime).toBe(120)
-    })
-
-    it('shouldLeaveADirectPlayedFileToTheElementWhenTheViewerChoosesSdr', async () => {
-      const fileUrl = '/api/stream/file/source.mp4?t=playback-token'
-      const video = fakeMedia()
-      const playing = startPlaying({
-        video,
-        session: Promise.resolve(
-          created(
-            readyDirectPlaySession({
-              streamSession: { id: 'sess-file', streamUrl: fileUrl, videoRange: 'PQ' },
-            }),
-          ),
-        ),
-      })
-      await vi.waitFor(() => expect(video.getAttribute('src')).toBe(fileUrl))
-      loadMetadata(video)
-      playheadAt(video, 120)
-
-      playing.chooseDynamicRange('SDR')
-
-      expect(video.getAttribute('src')).toBe(fileUrl)
-      expect(video.currentTime).toBe(120)
-    })
-
-    it('shouldPlayTheChosenPreferenceWhenTheViewerPlaysAgainAfterTheRealEnd', async () => {
-      const video = fakeMedia()
-      const playing = startPlaying({
-        video,
-        session: Promise.resolve(
-          created(readyPlaybackSession({ streamSession: { ...PQ_SESSION, mediaEndSeconds: 600 } })),
-        ),
-      })
-      await playingFrom(video, 120)
-      playheadAt(video, 600)
-      expect(video.paused).toBe(true)
-
-      playing.chooseDynamicRange('SDR')
-      expect(hls.loadSource).toHaveBeenCalledOnce()
-      void video.play()
-
-      expect(hls.loadSource).toHaveBeenCalledTimes(2)
-      expect(hls.config?.videoPreference).toEqual(SDR_ONLY)
-    })
-
-    it('shouldReadTheStatusForTheStreamAttachedAgainWhenItFailsWhileTheEarlierReadWaits', async () => {
-      const statusReads = holdStatusReads()
-      const video = fakeMedia()
-      const playing = startPlaying({ video })
-      await playingFrom(video, 120)
-      answerTheNextSegmentWith503({ fatal: false })
-      await vi.waitFor(() => expect(statusReads.count).toBe(1))
-
-      playing.chooseDynamicRange('SDR')
-      answerTheNextSegmentWith503({ fatal: true })
-
-      await vi.waitFor(() => expect(statusReads.count).toBe(2))
     })
 
     it('shouldKeepTheChoiceWhenThePageReturnsFromTheBackForwardCache', async () => {
       const video = fakeMedia()
-      const playing = startPlaying({ video })
+      startPlaying({ video, dynamicRange: 'SDR' })
       await playingFrom(video, 120)
-      playing.chooseDynamicRange('SDR')
 
       window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }))
       window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))
 
-      await vi.waitFor(() => expect(hls.loadSource).toHaveBeenCalledTimes(3))
+      await vi.waitFor(() => expect(hls.loadSource).toHaveBeenCalledTimes(2))
       expect(hls.config?.videoPreference).toEqual(SDR_ONLY)
     })
   })
