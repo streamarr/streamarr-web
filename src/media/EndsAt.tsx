@@ -4,8 +4,9 @@ import styles from './EndsAt.module.css'
 
 /** When a title would finish if played now, kept current as the minutes pass. */
 export function EndsAt({ remainingSeconds }: Readonly<{ remainingSeconds: number }>) {
-  const now = useMinuteClock()
-  const end = new Date(now.getTime() + remainingSeconds * 1000)
+  const remainingMs = remainingSeconds * 1000
+  const now = useEndMinuteClock(remainingMs)
+  const end = new Date(now.getTime() + remainingMs)
   return (
     <span className={styles.endsAt}>
       <Icon name="ends-at" size={16} label="Ends at" />
@@ -16,8 +17,9 @@ export function EndsAt({ remainingSeconds }: Readonly<{ remainingSeconds: number
   )
 }
 
-// The current time, refreshed on each minute boundary so an end time never lags the clock.
-function useMinuteClock(): Date {
+// The current time, refreshed each time the end time reaches a new minute, which falls between
+// the clock's own minutes when the time left has seconds, so the end time shown never lags.
+function useEndMinuteClock(remainingMs: number): Date {
   const [now, setNow] = useState(() => new Date())
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>
@@ -27,12 +29,12 @@ function useMinuteClock(): Date {
           setNow(new Date())
           schedule()
         },
-        MINUTE - (Date.now() % MINUTE),
+        MINUTE - ((Date.now() + remainingMs) % MINUTE),
       )
     }
     schedule()
     return () => clearTimeout(timer)
-  }, [])
+  }, [remainingMs])
   return now
 }
 

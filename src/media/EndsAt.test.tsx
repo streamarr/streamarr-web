@@ -37,4 +37,13 @@ describe('EndsAt', () => {
     })
     expect(screen.getByText(clock(15, 12))).toBeInTheDocument()
   })
+
+  it('shouldMoveTheEndTimeOnWhenTheEndTimeReachesTheNextMinute', () => {
+    render(<EndsAt remainingSeconds={10 * 60 + 45} />)
+    expect(screen.getByText(clock(15, 11))).toBeInTheDocument()
+    act(() => {
+      vi.advanceTimersByTime(45_000)
+    })
+    expect(screen.getByText(clock(15, 12))).toBeInTheDocument()
+  })
 })
