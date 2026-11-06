@@ -12,6 +12,7 @@ import {
 import type {
   ActiveStreamFieldsFragment,
   PlaybackDecisionFieldsFragment,
+  PlaybackState,
 } from '../../graphql/generated/graphql'
 import { isForbidden } from '../../graphql/errorRouting'
 import { requestFailureMessage } from '../../graphql/requestErrors'
@@ -22,7 +23,7 @@ import { PosterCard } from '../../media/PosterCard'
 import { Fact, Facts, PlaybackDecisionTracks } from '../../streaming/PlaybackDecisionFacts'
 import { bitrateText, placedReasons } from '../../streaming/playbackDecisionText'
 import { FailurePanel, FailureRow } from '../../ui/Failure'
-import { Icon } from '../../ui/Icon'
+import { Icon, type IconName } from '../../ui/Icon'
 import { initials } from '../../ui/ProfileTile'
 import settingsStyles from '../Settings.module.css'
 import styles from './ActiveStreams.module.css'
@@ -56,6 +57,25 @@ const LIVE_STOP_MESSAGES = {
 } as const satisfies Record<LiveStreamsStop, string>
 
 const KINDS: StreamKind[] = ['DIRECT_PLAY', 'COPY', 'ENCODE', 'PREPARING']
+
+type KnownState = Exclude<PlaybackState, '%future added value'>
+
+const STATE_LABELS: Record<KnownState, string> = {
+  PLAYING: 'Playing',
+  PAUSED: 'Paused',
+  STOPPED: 'Stopped',
+}
+
+const STATE_ICONS: Record<KnownState, IconName> = {
+  PLAYING: 'play',
+  PAUSED: 'pause',
+  STOPPED: 'stop',
+}
+
+// A state newer than the pinned schema is left unsaid rather than shown as one the page knows.
+function knownState({ state }: Stream): KnownState | null {
+  return state !== null && Object.hasOwn(STATE_LABELS, state) ? (state as KnownState) : null
+}
 
 /** Every stream that plays on the server now, one poster each, kept current as streams change. */
 export function ActiveStreams() {
@@ -496,6 +516,7 @@ function StreamCard({
 }>) {
   const { image, blurHash } = streamPoster(stream)
   const kind = streamKind(stream)
+  const state = knownState(stream)
   const viewer = viewerName(stream)
   return (
     <>
@@ -517,9 +538,9 @@ function StreamCard({
             <>
               <span className={styles.badges}>
                 <span className={styles.badge}>{KIND_LABELS[kind]}</span>
-                {stream.state && (
-                  <span className={styles.glyph} data-state={stream.state}>
-                    <Icon name={stream.state === 'PAUSED' ? 'pause' : 'play'} size={14} />
+                {state && (
+                  <span className={styles.glyph} data-state={state}>
+                    <Icon name={STATE_ICONS[state]} size={14} />
                   </span>
                 )}
               </span>
@@ -567,13 +588,16 @@ function cardLabel(stream: Stream): string {
   const episode = episodeLine(stream)
   const title = episode ? `${streamTitle(stream)}, ${episode}` : streamTitle(stream)
   // A stream that prepares has neither a state nor a delivery yet, so it says Preparing once.
-  const status = [...new Set([stateText(stream), KIND_LABELS[streamKind(stream)]])].join(', ')
+  const status = [...new Set([stateText(stream), KIND_LABELS[streamKind(stream)]])]
+    .filter(Boolean)
+    .join(', ')
   return `${title}, ${viewerName(stream)}. ${status}.`
 }
 
-function stateText({ state }: Stream): string {
-  if (state === null) return 'Preparing'
-  return state === 'PAUSED' ? 'Paused' : 'Playing'
+function stateText(stream: Stream): string | null {
+  if (stream.state === null) return 'Preparing'
+  const state = knownState(stream)
+  return state && STATE_LABELS[state]
 }
 
 function StreamDetail({
@@ -699,7 +723,7 @@ function positionText(stream: Stream): string {
   const { positionSeconds, state } = stream
   if (positionSeconds === null || state === null) return 'Preparing'
   const position = formatTimecode({ positionSeconds, durationSeconds: positionSeconds })
-  return `${position} · ${stateText(stream)}`
+  return [position, stateText(stream)].filter(Boolean).join(' · ')
 }
 
 function producedText({ startSeconds, endSeconds }: NonNullable<Stream['producedRange']>): string {
