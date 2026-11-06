@@ -15,7 +15,7 @@ import { SeasonSideRail } from '../media/SeasonSideRail'
 import { StillCard } from '../media/StillCard'
 import { useBulkWatchedAction } from '../media/useBulkWatchedAction'
 import styles from './SeasonDetailScreen.module.css'
-import { isWatched, watchStateOf } from '../media/selectedProfileWatchState'
+import { flattenWatchState, isWatched, watchStateOf } from '../media/selectedProfileWatchState'
 
 type Season = NonNullable<SeasonDetailQuery['season']>
 type Episode = NonNullable<Season['episodes'][number]>
@@ -53,7 +53,7 @@ export function SeasonDetailScreen({ seasonId }: Readonly<{ seasonId: string }>)
     .toSorted((a, b) => a.episodeNumber - b.episodeNumber)
   const watchedCount = episodes.filter(isWatched).length
   const playable = nextPlayableEpisode([
-    { seasonNumber: season.seasonNumber, episodes: season.episodes },
+    { seasonNumber: season.seasonNumber, episodes: episodes.map(flattenWatchState) },
   ])
   const artwork =
     season.backdropImages[0] ?? series.backdropImages[0] ?? season.posterImages[0] ?? null

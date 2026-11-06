@@ -17,7 +17,7 @@ import { ProgressDivider } from '../media/ProgressDivider'
 import { useBulkWatchedAction } from '../media/useBulkWatchedAction'
 import type { WatchedBadgeProps } from '../media/WatchedBadge'
 import styles from './SeriesDetailScreen.module.css'
-import { isWatched, watchStateOf } from '../media/selectedProfileWatchState'
+import { flattenWatchState, isWatched, watchStateOf } from '../media/selectedProfileWatchState'
 
 type Series = NonNullable<SeriesDetailQuery['series']>
 type Season = NonNullable<Series['seasons'][number]>
@@ -51,7 +51,14 @@ export function SeriesDetailScreen({ seriesId }: Readonly<{ seriesId: string }>)
     season.episodes.filter((episode): episode is Episode => episode !== null),
   )
   const watchedCount = episodes.filter(isWatched).length
-  const playable = nextPlayableEpisode(seasons)
+  const playable = nextPlayableEpisode(
+    seasons.map((season) => ({
+      seasonNumber: season.seasonNumber,
+      episodes: season.episodes
+        .filter((episode): episode is Episode => episode !== null)
+        .map(flattenWatchState),
+    })),
+  )
   const artwork = series.backdropImages[0] ?? series.posterImages[0] ?? null
   const cast = series.cast.filter(
     (person): person is NonNullable<Series['cast'][number]> => person !== null,

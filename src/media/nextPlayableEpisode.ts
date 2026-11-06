@@ -1,17 +1,8 @@
-import {
-  isWatched,
-  watchStateOf,
-  type WithSelectedProfileWatchState,
-} from './selectedProfileWatchState'
-
-interface WatchStateLike {
-  watchStatus: string
-  watchProgress: { positionSeconds: number; durationSeconds?: number } | null | undefined
-}
-
-interface EpisodeLike extends WithSelectedProfileWatchState<WatchStateLike> {
+interface EpisodeLike {
   id: string
   episodeNumber: number
+  watchStatus: string
+  watchProgress: { positionSeconds: number; durationSeconds?: number } | null | undefined
   files: ReadonlyArray<{ id: string } | null>
 }
 
@@ -50,20 +41,17 @@ export function nextPlayableEpisode(
     return null
   }
 
-  const inProgress = available.find(({ episode }) => {
-    const watchState = watchStateOf(episode)
-    return (
-      watchState?.watchStatus === 'IN_PROGRESS' ||
-      (watchState?.watchProgress?.positionSeconds ?? 0) > 0
-    )
-  })
+  const inProgress = available.find(
+    ({ episode }) =>
+      episode.watchStatus === 'IN_PROGRESS' || (episode.watchProgress?.positionSeconds ?? 0) > 0,
+  )
   if (inProgress) {
     return playable(inProgress, 'Resume')
   }
 
-  const unwatched = available.find(({ episode }) => !isWatched(episode))
+  const unwatched = available.find(({ episode }) => episode.watchStatus !== 'WATCHED')
   if (unwatched) {
-    const anyWatched = ordered.some(({ episode }) => isWatched(episode))
+    const anyWatched = ordered.some(({ episode }) => episode.watchStatus === 'WATCHED')
     return playable(unwatched, anyWatched ? 'Continue' : 'Play')
   }
 
@@ -79,14 +67,13 @@ function playable(
     seasonNumber: season.seasonNumber,
     episodeNumber: episode.episodeNumber,
     fileId: episode.files.find((file): file is { id: string } => file !== null)?.id ?? null,
-    positionSeconds:
-      verb === 'Resume' ? watchStateOf(episode)?.watchProgress?.positionSeconds || null : null,
-    progress: verb === 'Resume' ? resumedProgress(watchStateOf(episode)?.watchProgress) : null,
+    positionSeconds: verb === 'Resume' ? episode.watchProgress?.positionSeconds || null : null,
+    progress: verb === 'Resume' ? resumedProgress(episode.watchProgress) : null,
     verb,
   }
 }
 
-function resumedProgress(progress: WatchStateLike['watchProgress']): PlayableEpisode['progress'] {
+function resumedProgress(progress: EpisodeLike['watchProgress']): PlayableEpisode['progress'] {
   if (!progress?.durationSeconds) return null
   return { positionSeconds: progress.positionSeconds, durationSeconds: progress.durationSeconds }
 }

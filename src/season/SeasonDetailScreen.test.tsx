@@ -294,6 +294,24 @@ describe('SeasonDetailScreen', () => {
     )
   })
 
+  it('shouldContinueWithAnEpisodeThatHasNoSelectedProfileState', async () => {
+    await renderSeason(
+      seasonData({
+        episodes: [
+          episode(4, 'Cold Open', { watchStatus: 'WATCHED' }),
+          { ...episode(5, 'Breakage'), selectedProfileState: null },
+        ],
+      }),
+    )
+    expect(screen.getByRole('link', { name: 'Continue E5' })).toHaveAttribute(
+      'href',
+      '/play/file-e5?episode=e5',
+    )
+    const card = screen.getByRole('link', { name: /E5 — Breakage/ })
+    expect(within(card).queryByLabelText('Watched')).not.toBeInTheDocument()
+    expect(within(card).getByText('52m')).toBeInTheDocument()
+  })
+
   it('rolls the watched episodes up into the progress divider', async () => {
     await renderSeason()
     expect(screen.getByRole('progressbar', { name: '1 of 3 watched' })).toBeInTheDocument()
