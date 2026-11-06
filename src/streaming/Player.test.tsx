@@ -5106,44 +5106,6 @@ describe('Player', () => {
       await waitFor(() => expect(inputs).toEqual([{ itemId: 'e1', audioLanguage: 'FR' }]))
     })
 
-    it('shouldStartAnotherQualityInTheAudioLanguageThatPlaysWhileItsSwitchIsStillStoring', async () => {
-      servePlaybackChoices()
-      const requested: CreatePlaybackSessionInput[] = []
-      const stored = deferred()
-      server.use(
-        graphql.mutation('CreatePlaybackSession', ({ variables }) => {
-          requested.push((variables as { input: CreatePlaybackSessionInput }).input)
-        }),
-        graphql.mutation('SetLanguageOverride', async () => {
-          await stored.promise
-          return HttpResponse.json({
-            data: { setLanguageOverride: { item: null, userErrors: [] } },
-          })
-        }),
-      )
-      const { user } = renderWithProviders(
-        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" mediaTitle={EPISODE} />,
-      )
-      await attachedVideo(choiceStreamUrl(1))
-      offerHlsTracks({
-        audio: [
-          { name: 'English', lang: 'en' },
-          { name: 'Français', lang: 'fre' },
-        ],
-        audioTrack: 0,
-      })
-      await pickTrack(user, /^Audio/, 'Français')
-
-      await pickQuality(user, '720p')
-
-      await attachedVideo(choiceStreamUrl(2))
-      expect(requested.map(({ options }) => options)).toEqual([
-        { quality: 'AUTO' },
-        { quality: 'HIGH_720P', audioLanguage: 'FR' },
-      ])
-      stored.resolve()
-    })
-
     function recordRequestedOptions(): CreatePlaybackSessionInput['options'][] {
       const requested: CreatePlaybackSessionInput['options'][] = []
       server.use(
@@ -5161,6 +5123,35 @@ describe('Player', () => {
       ],
       audioTrack: 0,
     }
+
+    it('shouldStartAnotherQualityInTheAudioLanguageThatPlaysWhileItsSwitchIsStillStoring', async () => {
+      servePlaybackChoices()
+      const requested = recordRequestedOptions()
+      const stored = deferred()
+      server.use(
+        graphql.mutation('SetLanguageOverride', async () => {
+          await stored.promise
+          return HttpResponse.json({
+            data: { setLanguageOverride: { item: null, userErrors: [] } },
+          })
+        }),
+      )
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" mediaTitle={EPISODE} />,
+      )
+      await attachedVideo(choiceStreamUrl(1))
+      offerHlsTracks(FRENCH_BESIDE_ENGLISH)
+      await pickTrack(user, /^Audio/, 'Français')
+
+      await pickQuality(user, '720p')
+
+      await attachedVideo(choiceStreamUrl(2))
+      expect(requested).toEqual([
+        { quality: 'AUTO' },
+        { quality: 'HIGH_720P', audioLanguage: 'FR' },
+      ])
+      stored.resolve()
+    })
 
     it('shouldRetryAFailedQualityInTheAudioLanguageThatPlayedWhileItsSwitchIsStillStoring', async () => {
       servePlaybackChoices()
