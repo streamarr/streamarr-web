@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest'
 import { server } from '../src/test/server'
 import { withSafari } from './safariDriver'
 
-const DRIVER = 'http://localhost:4444'
+// The address the client under test reads, so an overridden driver address keeps the fake in place.
+const DRIVER = process.env.SAFARIDRIVER_URL ?? 'http://localhost:4444'
 
 // A safaridriver that opens session s-1 and records each command it receives.
 function fakeDriver(): string[] {
