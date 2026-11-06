@@ -122,6 +122,16 @@
   border-radius: var(--radius-md);
   font-size: var(--font-size-emphasis);
 }
+.unreadCount {
+  margin-left: auto;
+  min-width: 22px;
+  padding: 0 var(--spacing-6);
+  border-radius: var(--radius-sm);
+  background: var(--color-brand-blue);
+  color: var(--color-white);
+  font-size: var(--font-size-caption);
+  text-align: center;
+}
 .section[aria-current='page'] {
   background: var(--selection-active);
 }

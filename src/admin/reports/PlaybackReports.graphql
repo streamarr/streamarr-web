@@ -1,0 +1,132 @@
+fragment PlaybackReportSummaryFields on PlaybackReport {
+  id
+  sharedAt
+  readAt
+  profileName
+  note
+}
+
+query PlaybackReports($first: Int!, $after: String) {
+  playbackReports(first: $first, after: $after) {
+    edges {
+      cursor
+      node {
+        ...PlaybackReportSummaryFields
+      }
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+  }
+}
+
+query UnreadPlaybackReportCount {
+  unreadPlaybackReportCount
+}
+
+query PlaybackReport($id: ID!) {
+  playbackReport(id: $id) {
+    ...PlaybackReportSummaryFields
+    playbackSessionId
+    streamSessionId
+    mediaFileId
+    requestedChoice
+    playbackChoice
+    decisions {
+      ...PlaybackDecisionFields
+    }
+    player {
+      qualityStep {
+        number
+        count
+        height
+        bitrate
+      }
+      observedBitrate
+      bufferSeconds
+      droppedFrames
+      stalls
+      resolution {
+        width
+        height
+      }
+      videoCodec
+      hdrMode
+      audio {
+        codec
+        channels
+        dolbyAtmos
+      }
+      display {
+        width
+        height
+        hdrMode
+        refreshRate
+        dynamicRangeMatched
+        frameRateMatched
+      }
+      audioOutput {
+        route
+        channels
+      }
+      screen {
+        width
+        height
+        pixelRatio
+        hdr
+      }
+      browser {
+        name
+        version
+      }
+    }
+    capabilityDeclaration {
+      video {
+        codecFamily
+        codecProfiles {
+          profile
+          maxLevel
+          maxTier
+        }
+        maxBitDepth
+        maxWidth
+        maxHeight
+        maxFrameRate
+        compatibleBases
+        dolbyVisionProfiles {
+          profile
+          maxLevel
+        }
+        hdr10Plus
+        hls
+        directPlayContainers
+        directPlaySampleEntries
+      }
+      audio {
+        codec
+        maxChannels
+        hls
+        directPlayContainers
+      }
+    }
+  }
+}
+
+mutation MarkPlaybackReportRead($input: MarkPlaybackReportReadInput!) {
+  markPlaybackReportRead(input: $input) {
+    playbackReport {
+      id
+      readAt
+    }
+    userErrors {
+      __typename
+      ... on MutationError {
+        message
+      }
+      ... on InputMutationError {
+        inputPath
+      }
+    }
+  }
+}

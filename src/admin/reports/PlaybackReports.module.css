@@ -1,0 +1,182 @@
+/* Under the page's class, so these beat the settings layout's element rules. */
+.reports .lede {
+  max-width: 72ch;
+  margin-bottom: var(--spacing-20);
+  color: var(--text-secondary);
+  line-height: var(--line-height-prose);
+}
+
+.reports .unread {
+  margin-top: var(--spacing-4);
+  color: var(--text-secondary);
+}
+
+.empty {
+  color: var(--text-secondary);
+}
+
+.list {
+  display: grid;
+  gap: var(--spacing-6);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* One report per row: the unread mark, who shared it, when, and the start of the note. */
+.row {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 10rem) auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--spacing-12);
+  padding: var(--spacing-12) var(--spacing-16);
+  border: var(--border-width-hairline) solid var(--border-hairline);
+  border-radius: var(--radius-lg);
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  text-decoration: none;
+
+  &:hover {
+    background: var(--surface-panel-strong);
+  }
+
+  & > :first-child:not(.unreadDot) {
+    grid-column: 2;
+  }
+
+  @media (max-width: 48em) {
+    grid-template-columns: 12px minmax(0, 1fr) auto;
+
+    & .notePreview {
+      grid-column: 2 / -1;
+    }
+  }
+}
+
+.unreadDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-brand-blue);
+}
+
+.profile {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--font-weight-medium);
+}
+
+.row:not([data-unread]) .profile {
+  font-weight: var(--font-weight-regular);
+}
+
+.sharedAt {
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.notePreview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-6);
+  margin-top: var(--spacing-16);
+  color: var(--text-secondary);
+  text-decoration: none;
+
+  &:hover {
+    color: var(--text-primary);
+  }
+}
+
+.report {
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-prose);
+}
+
+.meta {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--spacing-4) var(--spacing-16);
+  margin: 0 0 var(--spacing-16);
+
+  & dt {
+    color: var(--text-secondary);
+  }
+
+  & dd {
+    margin: 0;
+  }
+}
+
+.note {
+  max-width: 72ch;
+  margin: 0 0 var(--spacing-16);
+  padding: var(--spacing-12) var(--spacing-16);
+  border-left: 3px solid var(--color-brand-blue);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.report .noNote {
+  margin-bottom: var(--spacing-16);
+  color: var(--text-secondary);
+}
+
+.choice {
+  color: var(--text-secondary);
+}
+
+.columns {
+  display: grid;
+  gap: 0 var(--spacing-24);
+
+  @media (min-width: 64em) {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  }
+}
+
+.section {
+  margin-top: var(--spacing-20);
+  font-size: var(--font-size-caption);
+}
+
+.report .sectionHeading {
+  margin: 0 0 var(--spacing-8);
+  font-size: var(--font-size-label);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.attempt + .attempt {
+  margin-top: var(--spacing-16);
+}
+
+.report .attemptHeading {
+  margin: 0 0 var(--spacing-6);
+  font-size: var(--font-size-body);
+}
+
+.streamReasons {
+  display: grid;
+  gap: var(--spacing-4);
+  margin: 0 0 var(--spacing-6);
+  padding: 0;
+  list-style: none;
+}
+
+.capabilities {
+  display: grid;
+  gap: var(--spacing-4);
+  margin: 0;
+  padding-left: 1.1em;
+}

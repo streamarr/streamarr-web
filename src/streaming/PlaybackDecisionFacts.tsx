@@ -106,3 +106,14 @@ export function Fact({ name, value }: Readonly<{ name: string; value: string }>)
     </div>
   )
 }
+
+/** A facts list of figures by their names, in the order given. */
+export function FactList({ facts }: Readonly<{ facts: Record<string, string> }>) {
+  return (
+    <Facts>
+      {Object.entries(facts).map(([name, value]) => (
+        <Fact key={name} name={name} value={value} />
+      ))}
+    </Facts>
+  )
+}

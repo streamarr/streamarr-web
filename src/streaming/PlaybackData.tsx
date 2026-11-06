@@ -18,19 +18,20 @@ import {
   type VideoRange,
 } from '../graphql/generated/graphql'
 import { Icon } from '../ui/Icon'
-import { browserText } from './browserText'
 import styles from './PlaybackData.module.css'
-import { Fact, Facts, PlaybackDecisionTracks } from './PlaybackDecisionFacts'
-import {
-  bitrateText,
-  channelsText,
-  placedReasons,
-  UNKNOWN,
-  videoRangeText,
-} from './playbackDecisionText'
+import { FactList, PlaybackDecisionTracks } from './PlaybackDecisionFacts'
+import { containerText, placedReasons } from './playbackDecisionText'
 import type { PlaybackPlatform } from './playbackCapabilities'
+import {
+  capturePlayerFigures,
+  captureScreenFigures,
+  playerFigureFacts,
+  playerFiguresInput,
+  screenFigureFacts,
+} from './playerFigures'
 import type { StreamStats } from './playerPlayback'
 import { qualityLabel } from './qualityChoices'
+import { SharePlaybackReport } from './SharePlaybackReport'
 
 /** The attached stream that the panel describes. */
 export interface PlaybackDataStream {
@@ -52,19 +53,6 @@ export type PlaybackDataScreen = Pick<
   'screen' | 'displaysHighDynamicRange' | 'userAgent'
 >
 
-type Known<Value extends string> = Exclude<Value, '%future added value'>
-
-const CONTAINERS: Record<Known<SourceContainer>, string> = {
-  MP4: 'MP4',
-  MOV: 'MOV',
-  MATROSKA: 'MKV',
-  MPEG_TS: 'MPEG-TS',
-  MPEG_PS: 'MPEG-PS',
-  AVI: 'AVI',
-  ASF: 'ASF',
-  FLV: 'FLV',
-}
-
 // The figures change as the element plays, stalls, buffers, resizes or loads another stream.
 const VIDEO_EVENTS = [
   'timeupdate',
@@ -74,10 +62,6 @@ const VIDEO_EVENTS = [
   'loadedmetadata',
   'emptied',
 ] as const
-
-const seconds = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 })
-const counts = new Intl.NumberFormat('en-US')
-const pixelRatios = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 })
 
 /**
  * The playback-data panel over the video: how the server delivers the stream and why, what the
@@ -174,6 +158,25 @@ export function PlaybackData({
       ) : (
         <p className={styles.note}>Waiting for the stream to start.</p>
       )}
+      {/* Outside the stream's own subtree, so a note in progress outlasts a stream replacement. */}
+      <SharePlaybackReport
+        capture={
+          stream &&
+          (() => ({
+            playbackSessionId: stream.playbackSessionId,
+            streamSessionId: stream.streamSessionId,
+            player: playerFiguresInput(
+              capturePlayerFigures({
+                video: videoRef.current,
+                stats: stream.streamStats(),
+                videoRange: stream.videoRange,
+                playsHls: stream.sourceContainer === null,
+              }),
+              captureScreenFigures(screen),
+            ),
+          }))
+        }
+      />
     </section>
   )
 }
@@ -228,11 +231,7 @@ function StreamData({
             />
           </Group>
           <Group name="This screen">
-            <Facts>
-              <Fact name="Screen" value={screenText(screen.screen)} />
-              <Fact name="HDR display" value={screen.displaysHighDynamicRange ? 'Yes' : 'No'} />
-              <Fact name="Browser" value={browserText(screen.userAgent)} />
-            </Facts>
+            <FactList facts={screenFigureFacts(captureScreenFigures(screen))} />
           </Group>
         </div>
       </div>
@@ -294,14 +293,7 @@ function deliveryChipText(container: SourceContainer | null): string {
   if (container === null) {
     return 'HLS'
   }
-  const named = Object.hasOwn(CONTAINERS, container)
-    ? CONTAINERS[container as Known<SourceContainer>]
-    : container
-  return `${named} → direct play`
-}
-
-function screenText({ width, height, pixelRatio }: PlaybackDataScreen['screen']): string {
-  return `${width}×${height} at ${pixelRatios.format(pixelRatio)}×`
+  return `${containerText(container)} → direct play`
 }
 
 type PlayerFigures = Record<string, string>
@@ -314,21 +306,13 @@ interface FiguresSource {
   playsHls: boolean
 }
 
-type StreamKind = Pick<FiguresSource, 'videoRange' | 'playsHls'>
-
 function PlayerFacts({ videoRef, streamStats, videoRange, playsHls }: Readonly<FiguresSource>) {
   const store = useMemo(
     () => playerFiguresStore({ videoRef, streamStats, videoRange, playsHls }),
     [videoRef, streamStats, videoRange, playsHls],
   )
   const figures = useSyncExternalStore(store.subscribe, store.figures)
-  return (
-    <Facts>
-      {Object.entries(figures).map(([name, value]) => (
-        <Fact key={name} name={name} value={value} />
-      ))}
-    </Facts>
-  )
+  return <FactList facts={figures} />
 }
 
 // Hands React the same figures object until a figure changes, as useSyncExternalStore requires.
@@ -350,7 +334,9 @@ function playerFiguresStore({ videoRef, streamStats, ...kind }: FiguresSource) {
       }
     },
     figures: (): PlayerFigures => {
-      const figures = playerFigures(videoRef.current, streamStats(), kind)
+      const figures = playerFigureFacts(
+        capturePlayerFigures({ video: videoRef.current, stats: streamStats(), ...kind }),
+      )
       const key = JSON.stringify(figures)
       if (shown?.key !== key) {
         shown = { key, figures }
@@ -358,74 +344,4 @@ function playerFiguresStore({ videoRef, streamStats, ...kind }: FiguresSource) {
       return shown.figures
     },
   }
-}
-
-function playerFigures(
-  video: HTMLVideoElement | null,
-  stats: StreamStats,
-  kind: StreamKind,
-): PlayerFigures {
-  return {
-    'Quality step': qualityStep(stats),
-    'Observed bitrate':
-      stats.bandwidthEstimate === undefined ? UNKNOWN : bitrateText(stats.bandwidthEstimate),
-    Buffer: `${seconds.format(video ? bufferedAhead(video) : 0)} s`,
-    'Dropped frames': droppedFrames(video),
-    Stalls: counts.format(stats.stalls),
-    Resolution:
-      video && video.videoWidth > 0 ? `${video.videoWidth}×${video.videoHeight}` : UNKNOWN,
-    'Video codec': stats.videoCodec ?? UNKNOWN,
-    'HDR mode': hdrMode(stats, kind),
-    Audio: audioFormat(stats),
-  }
-}
-
-/*
- * Dolby Vision rides on a PQ or HLG base, so over HLS only the playing variant's codecs tell an
- * HDR stream from Dolby Vision. This client declares no Dolby Vision for direct play, so a file
- * plays its base.
- */
-function hdrMode({ dolbyVision }: StreamStats, { videoRange, playsHls }: StreamKind): string {
-  if (dolbyVision) {
-    return 'Dolby Vision'
-  }
-  if (playsHls && videoRange !== 'SDR' && dolbyVision === undefined) {
-    return UNKNOWN
-  }
-  return videoRangeText(videoRange)
-}
-
-function qualityStep({ variant }: StreamStats): string {
-  if (!variant) {
-    return UNKNOWN
-  }
-  const { height, bitrate, step, steps } = variant
-  return `${height}p · ${bitrateText(bitrate)} (${step} of ${steps})`
-}
-
-// The seconds the element holds past the playhead, in the buffered range that holds the playhead.
-function bufferedAhead(video: HTMLVideoElement): number {
-  const { buffered, currentTime } = video
-  for (let index = 0; index < buffered.length; index++) {
-    if (buffered.start(index) <= currentTime && currentTime <= buffered.end(index)) {
-      return buffered.end(index) - currentTime
-    }
-  }
-  return 0
-}
-
-function droppedFrames(video: HTMLVideoElement | null): string {
-  // Not every browser reports decoded frames; TypeScript's DOM library declares that it does.
-  const quality = (video as Partial<HTMLVideoElement> | null)?.getVideoPlaybackQuality?.()
-  if (!quality) {
-    return UNKNOWN
-  }
-  return counts.format(quality.droppedVideoFrames)
-}
-
-function audioFormat({ audioCodec, audioChannels }: StreamStats): string {
-  if (!audioCodec) {
-    return UNKNOWN
-  }
-  return audioChannels === undefined ? audioCodec : `${audioCodec} ${channelsText(audioChannels)}`
 }

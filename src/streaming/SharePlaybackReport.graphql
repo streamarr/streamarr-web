@@ -1,0 +1,14 @@
+mutation SharePlaybackReport($input: SharePlaybackReportInput!) {
+  sharePlaybackReport(input: $input) {
+    playbackReportId
+    userErrors {
+      __typename
+      ... on MutationError {
+        message
+      }
+      ... on InputMutationError {
+        inputPath
+      }
+    }
+  }
+}

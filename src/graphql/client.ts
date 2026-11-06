@@ -6,6 +6,7 @@ import { map } from 'rxjs'
 import { csrfHeaders, isCsrfRejection } from '../auth/csrf'
 import generatedIntrospection from './generated/possibleTypes.json'
 import { decideAuthRoute, extractAuthContext } from './errorRouting'
+import { contiguousRelayPagination } from './pagination'
 
 export type AuthRoute = '/login' | '/select-profile'
 
@@ -83,6 +84,18 @@ export function createApolloClient(
   const cache = new ResetCountingCache({
     possibleTypes: generatedIntrospection.possibleTypes,
     typePolicies: {
+      Query: {
+        fields: {
+          // Older shared playback reports load after the ones already loaded.
+          playbackReports: contiguousRelayPagination(),
+        },
+      },
+      PlaybackReport: {
+        fields: {
+          // A report stays read: a read sent before it was marked read may answer after.
+          readAt: { merge: (existing: unknown, incoming: unknown) => incoming ?? existing ?? null },
+        },
+      },
       Library: {
         fields: {
           alphabetIndex: { merge: false },
