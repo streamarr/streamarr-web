@@ -59,6 +59,13 @@ const NAMES_BROWSERS_LACK = new Map([
   ['za', 'Zhuang'],
 ])
 
+// Unicode's aliases name tl Filipino and tw Akan, which is also ak's name; the server's table, like
+// the files that use these codes, reads them as Tagalog and Twi.
+const NAMES_UNICODE_RENAMES = new Map([
+  ['tl', 'Tagalog'],
+  ['tw', 'Twi'],
+])
+
 // The BCP 47 tag that a value stands for: the schema writes pt-BR as PT_BR and zh-Hans as ZH_HANS.
 function tagOf(language: string): string {
   const [base = '', ...subtags] = language.split('_')
@@ -76,7 +83,7 @@ function subtagOf(subtag: string): string {
 /** The language's English name, or its tag when the browser knows no name for it. */
 export function languageName(language: string): string {
   const tag = tagOf(language)
-  return names.of(tag) ?? NAMES_BROWSERS_LACK.get(tag) ?? tag
+  return NAMES_UNICODE_RENAMES.get(tag) ?? names.of(tag) ?? NAMES_BROWSERS_LACK.get(tag) ?? tag
 }
 
 /** Every Language the pinned schema lists, in the order of its English name. */

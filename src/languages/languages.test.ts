@@ -18,6 +18,17 @@ describe('languageName', () => {
   it('shouldNameAValueFromItsTagWhenTheServerAddedItAfterThisClient', () => {
     expect(languageName('FR_CA')).toBe('Canadian French')
   })
+
+  it('shouldNameTagalogAndTwiAsTheServersTableDoesWhereUnicodeRenamesThem', () => {
+    expect(languageName('TL')).toBe('Tagalog')
+    expect(languageName('TW')).toBe('Twi')
+  })
+
+  it('shouldGiveEachLanguageANameNoOtherLanguageHas', () => {
+    const names = Object.values(Language).map(languageName)
+
+    expect(names.filter((name, index) => names.indexOf(name) !== index)).toEqual([])
+  })
 })
 
 describe('LANGUAGES_BY_NAME', () => {
