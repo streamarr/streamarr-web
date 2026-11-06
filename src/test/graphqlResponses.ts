@@ -2,6 +2,7 @@ import { act, waitFor } from '@testing-library/react'
 import { HttpResponse, type GraphQLQuery, type GraphQLResponseBody } from 'msw'
 import { expect } from 'vitest'
 import { deferred } from './deferred'
+import { server } from './server'
 
 /** The server's answer to an id it cannot parse, reported on the query's `rootField`. */
 export function invalidIdResponse(rootField: string) {
@@ -109,5 +110,19 @@ export async function comeBackOnlineUntil(handler: { calls: number }, calls: num
   await waitFor(() => {
     if (handler.calls < calls) window.dispatchEvent(new Event('online'))
     expect(handler.calls).toBe(calls)
+  })
+}
+
+/** Settles once the server has answered the next request named `operationName`. */
+export function answerDelivered(operationName: string): Promise<void> {
+  return new Promise((resolve) => {
+    const delivered = async ({ request }: { request: Request }) => {
+      const body = (await request.clone().json()) as { operationName?: string }
+      if (body.operationName === operationName) {
+        server.events.removeListener('response:mocked', delivered)
+        resolve()
+      }
+    }
+    server.events.on('response:mocked', delivered)
   })
 }
