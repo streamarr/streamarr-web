@@ -57,6 +57,18 @@ function colored(theme: typeof AMBER_THEME) {
   }
 }
 
+// Reads the end time before the page renders and again after, so the page's end time is one of the
+// two even when a minute turns while it renders.
+function endTimesAround(minutesLeft: number): () => string[] {
+  const endAt = () =>
+    new Date(Date.now() + minutesLeft * 60_000).toLocaleTimeString([], {
+      hour: 'numeric',
+      minute: '2-digit',
+    })
+  const before = endAt()
+  return () => [before, endAt()]
+}
+
 function movieData(overrides: Record<string, unknown> = {}): MovieDetailQuery {
   return {
     movie: {
@@ -293,6 +305,7 @@ describe('MovieDetailScreen', () => {
   })
 
   it('shouldShowTheTimeLeftOnResumeWhenTheMovieIsInProgress', async () => {
+    const endTimes = endTimesAround(92)
     serve(
       movieData({
         watchStatus: 'IN_PROGRESS',
@@ -302,17 +315,16 @@ describe('MovieDetailScreen', () => {
     renderAppAt('/movie/m1')
     expect(await screen.findByRole('link', { name: 'Resume 1h 32m left' })).toBeInTheDocument()
     expect(screen.getByTestId('action-progress')).toHaveStyle({ width: '35%' })
+    const badge = screen.getByRole('img', { name: 'Ends at' })
+    expect(endTimes()).toContain(badge.nextElementSibling?.textContent)
   })
 
   it('shouldShowWhenTheMovieWouldEndBesideBack', async () => {
-    const endAt = (now: number) =>
-      new Date(now + 142 * 60_000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-    const before = endAt(Date.now())
+    const endTimes = endTimesAround(142)
     serve(movieData())
     renderAppAt('/movie/m1')
     const badge = await screen.findByRole('img', { name: 'Ends at' })
-    // The page renders between the two reads, so its end time is one of them even across a minute.
-    expect([before, endAt(Date.now())]).toContain(badge.nextElementSibling?.textContent)
+    expect(endTimes()).toContain(badge.nextElementSibling?.textContent)
   })
 
   it('tints the page from the backdrop theme', async () => {
