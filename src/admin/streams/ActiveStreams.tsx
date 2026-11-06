@@ -30,6 +30,7 @@ import { initials } from '../../ui/ProfileTile'
 import settingsStyles from '../Settings.module.css'
 import styles from './ActiveStreams.module.css'
 import type { LiveStreamsStop } from './activeStreamsList'
+import { fittingChipCount } from './chipFit'
 import {
   episodeLine,
   KIND_LABELS,
@@ -329,16 +330,7 @@ function fittingCount(row: HTMLElement, host: HTMLElement, measure: HTMLElement)
   const widths = [...measure.children].map((child) => (child as HTMLElement).offsetWidth)
   const more = widths.pop() ?? 0
   const [first = 0, ...chips] = widths
-  let used = first
-  let fit = 0
-  for (const [index, width] of chips.entries()) {
-    const left = chips.length - index - 1
-    const needed = used + gap + width + (left > 0 ? gap + more : 0)
-    if (needed > available) break
-    used += gap + width
-    fit += 1
-  }
-  return fit
+  return fittingChipCount({ available, gap, first, chips, more })
 }
 
 function KindChip({
