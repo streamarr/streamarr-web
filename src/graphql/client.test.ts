@@ -250,4 +250,65 @@ describe('apollo client', () => {
       },
     })
   })
+
+  it('shouldKeepACachedLanguagePreferenceWhenAMarkAnswersWithTheWatchStateOnly', async () => {
+    server.use(
+      graphql.mutation('MarkWatched', () =>
+        HttpResponse.json({
+          data: {
+            markWatched: {
+              item: {
+                __typename: 'Movie',
+                id: 'm1',
+                selectedProfileState: {
+                  __typename: 'SelectedProfileState',
+                  watchState: {
+                    __typename: 'WatchState',
+                    watchStatus: 'WATCHED',
+                    watchProgress: null,
+                  },
+                },
+              },
+              userErrors: [],
+            },
+          },
+        }),
+      ),
+    )
+    const client = createApolloClient(vi.fn())
+    const languageFields = gql`
+      fragment LanguageFields on Movie {
+        id
+        selectedProfileState {
+          languagePreference {
+            audioLanguages
+            subtitleMode
+          }
+        }
+      }
+    `
+    client.cache.writeFragment({
+      fragment: languageFields,
+      data: {
+        __typename: 'Movie',
+        id: 'm1',
+        selectedProfileState: {
+          __typename: 'SelectedProfileState',
+          languagePreference: {
+            __typename: 'LanguagePreference',
+            audioLanguages: ['JA'],
+            subtitleMode: 'FORCED',
+          },
+        },
+      },
+    })
+
+    await client.mutate({ mutation: MarkWatchedDocument, variables: { input: { itemId: 'm1' } } })
+
+    expect(client.cache.readFragment({ fragment: languageFields, id: 'Movie:m1' })).toMatchObject({
+      selectedProfileState: {
+        languagePreference: { audioLanguages: ['JA'], subtitleMode: 'FORCED' },
+      },
+    })
+  })
 })
