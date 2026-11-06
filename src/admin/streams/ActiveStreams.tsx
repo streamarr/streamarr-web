@@ -23,6 +23,7 @@ import { Fact, Facts, PlaybackDecisionTracks } from '../../streaming/PlaybackDec
 import { bitrateText, placedReasons } from '../../streaming/playbackDecisionText'
 import { FailurePanel, FailureRow } from '../../ui/Failure'
 import { Icon } from '../../ui/Icon'
+import { initials } from '../../ui/ProfileTile'
 import settingsStyles from '../Settings.module.css'
 import styles from './ActiveStreams.module.css'
 import type { LiveStreamsStop } from './activeStreamsList'
@@ -495,6 +496,7 @@ function StreamCard({
 }>) {
   const { image, blurHash } = streamPoster(stream)
   const kind = streamKind(stream)
+  const viewer = viewerName(stream)
   return (
     <>
       <button
@@ -508,7 +510,7 @@ function StreamCard({
       >
         <PosterCard
           title={streamTitle(stream)}
-          meta={[episodeLine(stream), viewerName(stream)].filter(Boolean).join(' · ')}
+          meta={episodeLine(stream) ?? ''}
           image={image}
           blurHash={blurHash}
           overlay={
@@ -520,6 +522,10 @@ function StreamCard({
                     <Icon name={stream.state === 'PAUSED' ? 'pause' : 'play'} size={14} />
                   </span>
                 )}
+              </span>
+              <span className={styles.viewer}>
+                <span className={styles.viewerMark}>{initials(viewer)}</span>
+                <span className={styles.viewerName}>{viewer}</span>
               </span>
               <PositionTrack stream={stream} />
             </>

@@ -159,6 +159,45 @@
   translate: 1px 0;
 }
 
+/* The viewer's initials and name ride the poster in the same chrome as the delivery badge. */
+.viewer {
+  position: absolute;
+  left: 8px;
+  bottom: 12px;
+  max-width: calc(100% - 16px);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-6);
+  padding: 3px 9px 3px 3px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-chrome);
+  backdrop-filter: blur(12px) brightness(0.6);
+  color: var(--color-alpha-92);
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
+}
+
+.viewerMark {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-xs);
+  background: var(--color-alpha-18);
+  color: var(--color-white);
+  font-size: 10px;
+  font-weight: var(--font-weight-semibold);
+  line-height: 1;
+}
+
+.viewerName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* The library's progress track, with the produced stretch as a quieter layer behind the position. */
 .track {
   position: absolute;
