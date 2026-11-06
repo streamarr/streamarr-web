@@ -21,7 +21,12 @@ import {
   invalidIdResponse,
   networkFailure,
 } from '../test/graphqlResponses'
-import { languagePreferenceFixture, pickMenuRow, serveLanguageTabs } from '../test/languageFixtures'
+import {
+  languagePreferenceFixture,
+  pickMenuRow,
+  serveLanguageTabs,
+  titleBecomes,
+} from '../test/languageFixtures'
 import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
 
@@ -165,6 +170,10 @@ describe('SeasonDetailScreen', () => {
     serve(seasonData())
     const tabs = serveLanguageTabs({
       preference: languagePreferenceFixture({ audioLanguages: ['FR'] }),
+      answer: titleBecomes(
+        { __typename: 'Season', id: 'season-2' },
+        languagePreferenceFixture({ audioLanguages: ['JA', 'FR'], audioSource: 'SEASON' }),
+      ),
     })
     const { user } = renderAppAt('/season/season-2')
     await screen.findByRole('heading', { level: 1, name: 'Season 2' })
@@ -175,6 +184,7 @@ describe('SeasonDetailScreen', () => {
     await pickMenuRow(user, 'Japanese')
 
     await waitFor(() => expect(tabs.inputs).toEqual([{ itemId: 'season-2', audioLanguage: 'JA' }]))
+    await waitFor(() => expect(audio).toHaveAccessibleDescription('Japanese · set here'))
   })
 
   it('shouldNotLabelAnEmptyUnwatchedSeasonAsWatched', async () => {

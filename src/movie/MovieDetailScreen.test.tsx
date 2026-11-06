@@ -18,7 +18,12 @@ import {
   invalidIdResponse,
   networkFailure,
 } from '../test/graphqlResponses'
-import { languagePreferenceFixture, pickMenuRow, serveLanguageTabs } from '../test/languageFixtures'
+import {
+  languagePreferenceFixture,
+  pickMenuRow,
+  serveLanguageTabs,
+  titleBecomes,
+} from '../test/languageFixtures'
 import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
 
@@ -141,6 +146,10 @@ describe('MovieDetailScreen', () => {
     serve(movieData())
     const tabs = serveLanguageTabs({
       preference: languagePreferenceFixture({ audioLanguages: ['FR'] }),
+      answer: titleBecomes(
+        { __typename: 'Movie', id: 'm1' },
+        languagePreferenceFixture({ audioLanguages: ['JA', 'FR'], audioSource: 'TITLE' }),
+      ),
     })
     const { user } = renderAppAt('/movie/m1')
     await screen.findByRole('heading', { level: 1, name: 'Everlight' })
@@ -151,6 +160,7 @@ describe('MovieDetailScreen', () => {
     await pickMenuRow(user, 'Japanese')
 
     await waitFor(() => expect(tabs.inputs).toEqual([{ itemId: 'm1', audioLanguage: 'JA' }]))
+    await waitFor(() => expect(audio).toHaveAccessibleDescription('Japanese · set here'))
   })
 
   it('shouldPlayTheFirstAvailableFileWhenTheFileListStartsWithNull', async () => {

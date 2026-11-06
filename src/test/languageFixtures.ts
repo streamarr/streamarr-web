@@ -46,9 +46,23 @@ export function profileLanguagesFixture(
 type OverrideAnswer = SetLanguageOverrideMutation['setLanguageOverride']
 
 /**
+ * The server's answer to an override: the title with the preference that results from it.
+ */
+export function titleBecomes(
+  title: { __typename: 'Movie' | 'Series' | 'Season'; id: string },
+  preference: LanguagePreferenceFieldsFragment,
+): () => OverrideAnswer {
+  return () => ({
+    item: { ...title, selectedProfileState: selectedProfileLanguages(preference) },
+    userErrors: [],
+  })
+}
+
+/**
  * Serves the language tabs of every title with `preference`, the series of a season, which the
- * detail fixtures call `series-1`, with `seriesPreference`, and the Profile's own with `profile`. Each override the page sets is kept in
- * `inputs`, and answered with `answer` when given, else with the title unchanged.
+ * detail fixtures call `series-1`, with `seriesPreference`, and the Profile's own with `profile`.
+ * Each override the page sets is kept in `inputs`, and answered with `answer` when given, else
+ * without the title, which the tabs show as not saved.
  */
 export function serveLanguageTabs({
   preference = languagePreferenceFixture(),

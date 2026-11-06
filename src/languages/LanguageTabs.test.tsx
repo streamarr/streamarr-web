@@ -15,6 +15,7 @@ import {
   profileLanguagesFixture,
   selectedProfileLanguages,
   serveLanguageTabs,
+  titleBecomes,
 } from '../test/languageFixtures'
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
@@ -24,16 +25,8 @@ const MOVIE: LanguageTabsItem = { kind: 'movie', id: 'm1' }
 const SERIES: LanguageTabsItem = { kind: 'series', id: 's1' }
 const SEASON: LanguageTabsItem = { kind: 'season', id: 'season-2' }
 
-// The server's answer to an override: the movie with the preference that results from it.
 function movieBecomes(preference: LanguagePreferenceFieldsFragment) {
-  return () => ({
-    item: {
-      __typename: 'Movie' as const,
-      id: 'm1',
-      selectedProfileState: selectedProfileLanguages(preference),
-    },
-    userErrors: [],
-  })
+  return titleBecomes({ __typename: 'Movie', id: 'm1' }, preference)
 }
 
 async function tab(name: 'Default audio' | 'Subtitles') {
@@ -181,7 +174,15 @@ describe('LanguageTabs', () => {
   })
 
   it('shouldTurnSubtitlesOnInALanguageWhenTheViewerPicksOne', async () => {
-    const state = serveLanguageTabs()
+    const state = serveLanguageTabs({
+      answer: movieBecomes(
+        languagePreferenceFixture({
+          subtitleLanguage: 'DE',
+          subtitleMode: 'ALWAYS',
+          subtitleSource: 'TITLE',
+        }),
+      ),
+    })
     const { user } = renderWithProviders(<LanguageTabs item={MOVIE} />)
 
     await pick(user, 'Subtitles', 'German')
@@ -191,6 +192,9 @@ describe('LanguageTabs', () => {
         { itemId: 'm1', subtitleLanguage: 'DE', subtitleMode: 'ALWAYS' },
       ]),
     )
+    await waitFor(async () =>
+      expect(await tab('Subtitles')).toHaveAccessibleDescription('German · set here'),
+    )
   })
 
   it.each([
@@ -199,18 +203,24 @@ describe('LanguageTabs', () => {
   ] as const)(
     'shouldSetTheSubtitleModeAloneWhenTheViewerPicks$option',
     async ({ option, subtitleMode }) => {
-      const state = serveLanguageTabs()
+      const state = serveLanguageTabs({
+        answer: movieBecomes(languagePreferenceFixture({ subtitleMode, subtitleSource: 'TITLE' })),
+      })
       const { user } = renderWithProviders(<LanguageTabs item={MOVIE} />)
 
       await pick(user, 'Subtitles', option)
 
       await waitFor(() => expect(state.inputs).toEqual([{ itemId: 'm1', subtitleMode }]))
+      await waitFor(async () =>
+        expect(await tab('Subtitles')).toHaveAccessibleDescription(`${option} · set here`),
+      )
     },
   )
 
   it('shouldClearTheSubtitleLanguageAndModeWhenTheViewerPicksTheWiderChoice', async () => {
     const state = serveLanguageTabs({
       preference: languagePreferenceFixture({ subtitleMode: 'OFF', subtitleSource: 'TITLE' }),
+      answer: movieBecomes(languagePreferenceFixture()),
     })
     const { user } = renderWithProviders(<LanguageTabs item={MOVIE} />)
 
@@ -222,11 +232,18 @@ describe('LanguageTabs', () => {
     await waitFor(() =>
       expect(state.inputs).toEqual([{ itemId: 'm1', subtitleLanguage: null, subtitleMode: null }]),
     )
+    await waitFor(async () =>
+      expect(await tab('Subtitles')).toHaveAccessibleDescription('Forced only · from Profile'),
+    )
   })
 
   it('shouldSetTheSeriesOverrideAndOfferTheProfilesChoiceOnASeries', async () => {
     const state = serveLanguageTabs({
       profile: profileLanguagesFixture({ audioLanguages: ['DE'] }),
+      answer: titleBecomes(
+        { __typename: 'Series', id: 's1' },
+        languagePreferenceFixture({ audioLanguages: ['JA', 'DE'], audioSource: 'SERIES' }),
+      ),
     })
     const { user } = renderWithProviders(<LanguageTabs item={SERIES} />)
 
@@ -235,11 +252,21 @@ describe('LanguageTabs', () => {
     await pickMenuRow(user, 'Japanese')
 
     await waitFor(() => expect(state.inputs).toEqual([{ itemId: 's1', audioLanguage: 'JA' }]))
+    await waitFor(async () =>
+      expect(await tab('Default audio')).toHaveAccessibleDescription('Japanese · set here'),
+    )
   })
 
   it('shouldOfferTheSeriesChoiceAndSayWhereItComesFromOnASeason', async () => {
     const fromSeries = languagePreferenceFixture({ audioLanguages: ['JA'], audioSource: 'SERIES' })
-    const state = serveLanguageTabs({ preference: fromSeries, seriesPreference: fromSeries })
+    const state = serveLanguageTabs({
+      preference: fromSeries,
+      seriesPreference: fromSeries,
+      answer: titleBecomes(
+        { __typename: 'Season', id: 'season-2' },
+        languagePreferenceFixture({ audioLanguages: ['EN', 'JA'], audioSource: 'SEASON' }),
+      ),
+    })
     const { user } = renderWithProviders(<LanguageTabs item={SEASON} />)
 
     expect(await tab('Default audio')).toHaveAccessibleDescription('Japanese · from series')
@@ -249,6 +276,9 @@ describe('LanguageTabs', () => {
     await pickMenuRow(user, 'English')
 
     await waitFor(() => expect(state.inputs).toEqual([{ itemId: 'season-2', audioLanguage: 'EN' }]))
+    await waitFor(async () =>
+      expect(await tab('Default audio')).toHaveAccessibleDescription('English · set here'),
+    )
   })
 
   it('shouldHoldBothTabsUntilTheServerAnswersAnOverride', async () => {
