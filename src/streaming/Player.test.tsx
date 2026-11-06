@@ -7636,7 +7636,7 @@ describe('Player', () => {
       return { user, log, video }
     }
 
-    it('shouldHideTheHdrToggleWhileAutoPlaysAnHdrSource', async () => {
+    it('shouldHideTheHdrToggleWhenAutoPlaysAnHdrSource', async () => {
       servePlaybackChoices({ sourceRange: 'PQ', videoRange: playsHdrUnlessSdrIsChosen })
       const { user } = renderWithProviders(
         <Player playbackPlatform={showingHdr} mediaFileId="abcd" />,
@@ -7649,7 +7649,7 @@ describe('Player', () => {
     it.each([
       { case: 'Original plays', playing: undefined },
       { case: 'Original changed to Auto', playing: () => 'AUTO' as const },
-    ])('shouldLeaveTheHdrToggleOutWhen$case', async ({ playing }) => {
+    ])('shouldLeaveTheHdrToggleOutWhenOriginalIsRequested(case: $case)', async ({ playing }) => {
       const { user, log } = await pickForAnHdrSource({ picked: 'Original', playing })
 
       expect(hdrToggleIn(await openQualityMenu(user))).toBeNull()
@@ -7669,7 +7669,7 @@ describe('Player', () => {
       expect(log.at(-1)).toBe('create HIGH_720P')
     })
 
-    it('shouldShowTheHdrToggleOnWhileAFixedQualityPlaysHdr', async () => {
+    it('shouldShowTheHdrToggleOnWhenAFixedQualityPlaysHdr', async () => {
       const { user } = await pickForAnHdrSource({ picked: '720p' })
 
       const toggle = hdrToggleIn(await openQualityMenu(user))
@@ -7699,7 +7699,7 @@ describe('Player', () => {
       { picked: 'Original', created: 'create ORIGINAL' },
       { picked: 'Auto', created: 'create AUTO' },
     ])(
-      'shouldSendNoHdrChoiceWhenTheViewerLeavesAFixedQualityFor$picked',
+      'shouldSendNoHdrChoiceWhenTheViewerLeavesAFixedQualityForAutoOrOriginal(picked: $picked)',
       async ({ picked, created }) => {
         const { user, log } = await pickForAnHdrSource({ picked: '720p' })
 
@@ -7710,7 +7710,7 @@ describe('Player', () => {
       },
     )
 
-    it('shouldStartANewPlaybackSessionAtThePlayheadWithTheRangeTheViewerToggles', async () => {
+    it('shouldStartANewPlaybackSessionAtThePlayheadWithTheOtherRangeWhenTheViewerTogglesHdr', async () => {
       const { user, log, video } = await pickForAnHdrSource({ picked: '720p' })
       playheadAt(video, 120)
 
@@ -7769,7 +7769,7 @@ describe('Player', () => {
       expect(log.at(-1)).toBe('create HIGH_720P SDR')
     })
 
-    it('shouldKeepPlayingAndTheMenuOpenWhenTheViewerPressesTheDisabledHdrToggle', async () => {
+    it('shouldChangeNothingWhenTheViewerPressesTheUnavailableHdrToggle', async () => {
       const { user, log } = await pickForAnHdrSource({
         picked: '720p',
         platform: withoutDecodingInfo,
