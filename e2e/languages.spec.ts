@@ -59,7 +59,9 @@ test('the language tabs sit on the rule above the title and open their picker be
   const audio = page.getByRole('button', { name: 'Default audio' })
   await expect(audio).toHaveAccessibleDescription('English · from Profile')
   const tab = (await audio.boundingBox())!
+  const panel = (await page.getByTestId('detail-panel').boundingBox())!
   const title = (await page.getByRole('heading', { level: 1, name: 'Everlight' }).boundingBox())!
+  expect(Math.abs(tab.y + tab.height - panel.y)).toBeLessThanOrEqual(1)
   expect(tab.y + tab.height).toBeLessThanOrEqual(title.y)
 
   await audio.click()

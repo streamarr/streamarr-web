@@ -73,7 +73,10 @@ export function DetailHeader({
         endsIn={endsIn}
         metadata={<MetadataColumns entries={metadata} />}
       />
-      <div className={titleColumn ? `${styles.panel} ${styles.split}` : styles.panel}>
+      <div
+        className={titleColumn ? `${styles.panel} ${styles.split}` : styles.panel}
+        data-testid="detail-panel"
+      >
         {tabs && <div className={styles.tabs}>{tabs}</div>}
         <div className={styles.main}>
           <div className={styles.heading}>
