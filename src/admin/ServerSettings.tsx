@@ -72,7 +72,7 @@ function SettingsRail() {
             className={styles.section}
             aria-current={section === current ? 'page' : undefined}
           >
-            <Icon name={section.icon} />
+            <Icon name={section.icon} size={16} />
             {section.label}
           </Link>
         ))}

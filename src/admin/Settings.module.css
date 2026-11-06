@@ -115,14 +115,19 @@
 .section {
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: var(--spacing-10);
   width: 100%;
-  padding: var(--spacing-12);
+  min-height: 34px;
+  padding: 7px var(--spacing-10);
   background: transparent;
   color: var(--text-primary);
   border: 0;
-  border-radius: var(--radius-md);
-  font-size: var(--font-size-emphasis);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  text-decoration: none;
+}
+.section:hover {
+  background: var(--surface-panel);
 }
 .section[aria-current='page'] {
   background: var(--selection-active);
@@ -481,9 +486,6 @@
   .railTitle {
     padding: 2px 4px 12px;
     font-size: var(--font-size-micro);
-  }
-  .section {
-    padding: 9px 12px;
   }
   .railContent .pageHeading {
     margin-top: 0;
