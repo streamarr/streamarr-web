@@ -66,6 +66,8 @@ export async function withSafari<T>(
   try {
     return await run(session)
   } finally {
-    await command('DELETE', `/session/${sessionId}`)
+    // Closing the session's only window ends the session. Ending the session alone leaves the
+    // window open in Safari, and a window left there kept the next session's media from playing.
+    await command('DELETE', `/session/${sessionId}/window`)
   }
 }
