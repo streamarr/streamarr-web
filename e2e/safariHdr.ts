@@ -60,6 +60,8 @@ const HLG_PARAMETERS = `${COLOR}:transfer=arib-std-b67`
 
 const run = promisify(execFile)
 
+// No B-frames: the raw HEVC stream between the encoder and the MP4 keeps no presentation times, so
+// the MP4 muxer would present reordered frames in decode order.
 async function encodeHevc(x265Parameters: string, output: string): Promise<void> {
   const frames = FRAME_RATE * SEGMENT_SECONDS
   await run('ffmpeg', [
@@ -68,7 +70,7 @@ async function encodeHevc(x265Parameters: string, output: string): Promise<void>
     ...['-pix_fmt', 'yuv420p10le', '-c:v', 'libx265'],
     ...[
       '-x265-params',
-      `log-level=error:keyint=${frames}:min-keyint=${frames}:no-open-gop=1:${x265Parameters}`,
+      `log-level=error:keyint=${frames}:min-keyint=${frames}:no-open-gop=1:bframes=0:${x265Parameters}`,
     ],
     ...['-f', 'hevc', output],
   ])

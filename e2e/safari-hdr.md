@@ -2,7 +2,7 @@
 
 `node e2e/record-safari-hdr.ts` records what real Safari on a Mac reports and plays for three
 synthetic HLS streams, through `safaridriver`. Each stream is four seconds of a 720p24 test
-pattern in HEVC Main 10, tagged BT.2020, in two 2 s fMP4 segments:
+pattern in HEVC Main 10 without B-frames, tagged BT.2020, in two 2 s fMP4 segments:
 
 - **HDR10:** PQ, with a mastering display and MaxCLL/MaxFALL. The playlist says `VIDEO-RANGE=PQ`.
 - **HLG:** the HLG transfer. The playlist says `VIDEO-RANGE=HLG`.
