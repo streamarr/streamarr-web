@@ -60,7 +60,6 @@
   color: var(--text-secondary);
 }
 .pageHeading {
-  min-height: 95px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -134,10 +133,6 @@
 }
 .railContent {
   min-width: 0;
-}
-.railContent .pageHeading {
-  padding-top: 0;
-  margin-top: -9px;
 }
 .typeIcon {
   display: flex;
@@ -487,11 +482,7 @@
     padding: 2px 4px 12px;
     font-size: var(--font-size-micro);
   }
-  .railContent .pageHeading {
-    margin-top: 0;
-  }
   .pageHeading {
-    min-height: 45px;
     gap: var(--spacing-12);
     margin-bottom: 23px;
     flex-wrap: wrap;
