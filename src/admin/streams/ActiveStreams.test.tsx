@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type {
   ActiveStreamFieldsFragment,
   ActiveStreamPosterFieldsFragment,
+  PlaybackState,
 } from '../../graphql/generated/graphql'
 import { deferred } from '../../test/deferred'
 import { serveGraphqlSocket } from '../../test/graphqlSocket'
@@ -390,6 +391,24 @@ describe('active streams', () => {
       expect(await streamCard(MOVIE_CARD)).toHaveAttribute('aria-expanded', 'false')
     },
   )
+
+  it('shouldSayAStreamStoppedWhenTheClientLastReportedItStopped', async () => {
+    serve([{ ...MOVIE, state: 'STOPPED' }])
+    const { user } = renderAppAt(PAGE)
+
+    const details = await openDetails(user, 'Everlight, Ada. Stopped, Encode.', 'Everlight')
+
+    expect(factsIn(details).Position).toBe('12:34 · Stopped')
+  })
+
+  it('shouldLeaveOutAStateNewerThanThePageKnows', async () => {
+    serve([{ ...MOVIE, state: 'BUFFERING' as PlaybackState }])
+    const { user } = renderAppAt(PAGE)
+
+    const details = await openDetails(user, 'Everlight, Ada. Encode.', 'Everlight')
+
+    expect(factsIn(details).Position).toBe('12:34')
+  })
 
   it('shouldCloseTheDetailsWhenTheAdminPressesTheOpenCardAgain', async () => {
     serve()
