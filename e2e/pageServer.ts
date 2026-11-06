@@ -1,3 +1,4 @@
+import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createServer, type Plugin } from 'vite'
 
@@ -56,4 +57,21 @@ export async function servePages(answers: ReadonlyMap<string, PageAnswer>): Prom
     origin: server.resolvedUrls?.local[0]?.replace(/\/$/, '') ?? '',
     close: () => server.close(),
   }
+}
+
+/** An answer for each file in `directory`, at `servedPath` followed by the file's name. */
+export async function fileAnswers(
+  servedPath: string,
+  directory: string,
+): Promise<[string, PageAnswer][]> {
+  const files = await readdir(directory)
+  return Promise.all(
+    files.map(async (file): Promise<[string, PageAnswer]> => [
+      `${servedPath}/${file}`,
+      {
+        contentType: file.endsWith('.m3u8') ? 'application/vnd.apple.mpegurl' : 'video/mp4',
+        body: await readFile(join(directory, file)),
+      },
+    ]),
+  )
 }
