@@ -562,18 +562,22 @@ describe('AuthProvider identity fence beyond the first send', () => {
   })
 
   it('shouldResetTheStoreAndSendAgainWhenASwitchAnswersWithoutTokens', async () => {
+    const cookie = { profile: 'profile-1' }
     const sentUnder: string[] = []
     server.use(
       graphql.mutation<SetLanguageOverrideMutation, SetLanguageOverrideMutationVariables>(
         'SetLanguageOverride',
         () => {
-          sentUnder.push('profile-2')
+          sentUnder.push(cookie.profile)
           return HttpResponse.json({
             data: { setLanguageOverride: { item: null, userErrors: [] } },
           })
         },
       ),
-      http.post('/api/auth/select-profile', () => HttpResponse.json(null)),
+      http.post('/api/auth/select-profile', () => {
+        cookie.profile = 'profile-2'
+        return HttpResponse.json(null)
+      }),
     )
     const { client } = renderSwitchable()
 
