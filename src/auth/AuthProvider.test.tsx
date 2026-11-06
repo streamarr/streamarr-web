@@ -4,7 +4,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { useState } from 'react'
 import userEvent from '@testing-library/user-event'
 import { graphql, HttpResponse, http } from 'msw'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { server } from '../test/server'
 import { createApolloClient } from '../graphql/client'
 import {
@@ -13,9 +13,10 @@ import {
   type SetLanguageOverrideMutation,
   type SetLanguageOverrideMutationVariables,
 } from '../graphql/generated/graphql'
+import { deferred } from '../test/deferred'
 import { meFixture } from '../test/meFixture'
 import { AuthProvider, useAuth } from './AuthProvider'
-import { CSRF_REJECTION_CODE } from './csrf'
+import { CSRF_HEADER, CSRF_REJECTION_CODE, readCsrfCookie } from './csrf'
 import { createSessionStore, type SessionStore } from './session'
 
 const TOKENS = {
@@ -425,6 +426,64 @@ describe('AuthProvider identity fence beyond the first send', () => {
 
     expect(await store).toBeInstanceOf(Error)
     expect(sentUnder).toEqual(['profile-1'])
+  })
+
+  it('shouldEchoTheCurrentCsrfCookieWhenAFailedSwitchReleasesAHeldCsrfRetry', async () => {
+    const issueCsrfToken = (token: string) => {
+      document.cookie = `__Host-XSRF-TOKEN=${token}; Secure; Path=/`
+    }
+    issueCsrfToken('token-1')
+    onTestFinished(() => {
+      document.cookie = '__Host-XSRF-TOKEN=; Max-Age=0; Secure; Path=/'
+    })
+    const overrideHeaders: (string | null)[] = []
+    const overrideRejected = deferred()
+    const switchRejected = deferred()
+    let switchAttempts = 0
+    server.use(
+      // The server's double-submit check: the header must echo the cookie the browser holds now.
+      http.post('/graphql', async ({ request }) => {
+        const { operationName } = (await request.clone().json()) as { operationName?: string }
+        if (operationName !== 'SetLanguageOverride') return undefined
+        const header = request.headers.get(CSRF_HEADER)
+        overrideHeaders.push(header)
+        if (overrideHeaders.length === 1) {
+          await overrideRejected.promise
+          issueCsrfToken('token-2')
+          return HttpResponse.json({ code: CSRF_REJECTION_CODE }, { status: 403 })
+        }
+        if (header !== readCsrfCookie()) {
+          return HttpResponse.json({ code: CSRF_REJECTION_CODE }, { status: 403 })
+        }
+        return HttpResponse.json({
+          data: { setLanguageOverride: { item: null, userErrors: [] } },
+        })
+      }),
+      http.post('/api/auth/select-profile', async () => {
+        switchAttempts += 1
+        if (switchAttempts === 1) {
+          await switchRejected.promise
+          issueCsrfToken('token-3')
+          return HttpResponse.json({ code: CSRF_REJECTION_CODE }, { status: 403 })
+        }
+        return HttpResponse.json({ status: 403, title: 'Forbidden' }, { status: 403 })
+      }),
+    )
+    const { client } = renderSwitchable()
+    const store = storeOverride(client)
+    await waitFor(() => expect(overrideHeaders).toEqual(['token-1']))
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Select with PIN' }))
+    await waitFor(() => expect(switchAttempts).toBe(1))
+
+    overrideRejected.resolve()
+    // A bounded settle before asserting that the CSRF retry stays held while the switch is underway.
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(overrideHeaders).toEqual(['token-1'])
+    switchRejected.resolve()
+
+    expect(await screen.findByText('Switch refused')).toBeInTheDocument()
+    expect(await store).toBe('stored')
+    expect(overrideHeaders).toEqual(['token-1', 'token-3'])
   })
 
   it('shouldRefuseHeldOperationsAndResetTheStoreWhenTheSwitchAnswerCannotBeRead', async () => {
