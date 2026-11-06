@@ -5007,7 +5007,53 @@ describe('Player', () => {
     const EPISODE = { kind: 'episode', id: 'e1' } as const
     const MOVIE = { kind: 'movie', id: 'm1' } as const
 
-    function serveOverrides({ seasonMode = 'FORCED', profileMode = 'FORCED' } = {}) {
+    interface SubtitleModes {
+      /** The episode's or movie's own stored mode; without one it gets the wider levels' mode. */
+      titleMode?: SubtitleMode
+      seasonMode?: SubtitleMode
+      profileMode?: SubtitleMode
+    }
+
+    function subtitleModesAnswer(
+      movie: boolean,
+      { titleMode, seasonMode = 'FORCED', profileMode = 'FORCED' }: SubtitleModes = {},
+    ): PlayerSubtitleModesQuery {
+      const titlePreference = (widerMode: SubtitleMode) =>
+        languagePreferenceFixture(
+          titleMode
+            ? { subtitleMode: titleMode, subtitleSource: 'TITLE' }
+            : { subtitleMode: widerMode },
+        )
+      const me = {
+        __typename: 'Me',
+        languagePreferences: profileLanguagesFixture({ subtitleMode: profileMode }),
+      } as const
+      if (movie) {
+        return {
+          movie: {
+            __typename: 'Movie',
+            id: 'm1',
+            languagePreference: titlePreference(profileMode),
+          },
+          me,
+        }
+      }
+      return {
+        episode: {
+          __typename: 'Episode',
+          id: 'e1',
+          languagePreference: titlePreference(seasonMode),
+          season: {
+            __typename: 'Season',
+            id: 'season-1',
+            languagePreference: languagePreferenceFixture({ subtitleMode: seasonMode }),
+          },
+        },
+        me,
+      }
+    }
+
+    function serveOverrides(modes: SubtitleModes = {}) {
       const inputs: SetLanguageOverrideInput[] = []
       server.use(
         graphql.mutation<SetLanguageOverrideMutation, SetLanguageOverrideMutationVariables>(
@@ -5022,29 +5068,7 @@ describe('Player', () => {
         graphql.query<PlayerSubtitleModesQuery, PlayerSubtitleModesQueryVariables>(
           'PlayerSubtitleModes',
           ({ variables: { movie } }) =>
-            HttpResponse.json({
-              data: {
-                ...(!movie && {
-                  episode: {
-                    __typename: 'Episode',
-                    id: 'e1',
-                    season: {
-                      __typename: 'Season',
-                      id: 'season-1',
-                      languagePreference: languagePreferenceFixture({
-                        subtitleMode: seasonMode as SubtitleMode,
-                      }),
-                    },
-                  },
-                }),
-                me: {
-                  __typename: 'Me',
-                  languagePreferences: profileLanguagesFixture({
-                    subtitleMode: profileMode as SubtitleMode,
-                  }),
-                },
-              },
-            }),
+            HttpResponse.json({ data: subtitleModesAnswer(movie, modes) }),
         ),
       )
       return inputs
@@ -5163,22 +5187,9 @@ describe('Player', () => {
       const inputs = serveOverrides()
       const wider = deferred()
       server.use(
-        graphql.query('PlayerSubtitleModes', async () => {
+        graphql.query<PlayerSubtitleModesQuery>('PlayerSubtitleModes', async () => {
           await wider.promise
-          return HttpResponse.json({
-            data: {
-              episode: {
-                __typename: 'Episode',
-                id: 'e1',
-                season: {
-                  __typename: 'Season',
-                  id: 'season-1',
-                  languagePreference: languagePreferenceFixture(),
-                },
-              },
-              me: { __typename: 'Me', languagePreferences: profileLanguagesFixture() },
-            },
-          })
+          return HttpResponse.json({ data: subtitleModesAnswer(false) })
         }),
       )
       const { user } = renderWithProviders(
@@ -5452,16 +5463,18 @@ describe('Player', () => {
       expect(screen.queryByRole('alert')).toBeNull()
     })
 
-    it.each([
-      { title: EPISODE, wider: { seasonMode: 'FORCED' }, stored: 'FORCED' },
-      { title: EPISODE, wider: { seasonMode: 'OFF' }, stored: 'OFF' },
-      { title: MOVIE, wider: { seasonMode: 'OFF', profileMode: 'FORCED' }, stored: 'FORCED' },
-      { title: MOVIE, wider: { profileMode: 'OFF' }, stored: 'OFF' },
+    it.each<{ title: typeof EPISODE | typeof MOVIE; modes: SubtitleModes; stored: SubtitleMode }>([
+      { title: EPISODE, modes: { seasonMode: 'FORCED' }, stored: 'FORCED' },
+      { title: EPISODE, modes: { seasonMode: 'OFF' }, stored: 'OFF' },
+      { title: MOVIE, modes: { seasonMode: 'OFF', profileMode: 'FORCED' }, stored: 'FORCED' },
+      { title: MOVIE, modes: { profileMode: 'OFF' }, stored: 'OFF' },
+      { title: EPISODE, modes: { titleMode: 'ALWAYS', seasonMode: 'FORCED' }, stored: 'FORCED' },
+      { title: EPISODE, modes: { titleMode: 'OFF', seasonMode: 'OFF' }, stored: 'OFF' },
     ])(
       'shouldStoreTheWiderLevelsOffOrElseForcedWhenTheViewerTurnsSubtitlesOff $title.kind $stored',
-      async ({ title, wider, stored }) => {
+      async ({ title, modes, stored }) => {
         serveSession()
-        const inputs = serveOverrides(wider)
+        const inputs = serveOverrides(modes)
         const { user } = renderWithProviders(
           <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" mediaTitle={title} />,
         )
@@ -5472,6 +5485,36 @@ describe('Player', () => {
 
         expect(hls.subtitleTrack).toBe(-1)
         await waitFor(() => expect(inputs).toEqual([{ itemId: title.id, subtitleMode: stored }]))
+      },
+    )
+
+    it.each([
+      { title: EPISODE, modes: { titleMode: 'OFF', seasonMode: 'FORCED' } },
+      { title: MOVIE, modes: { titleMode: 'OFF', profileMode: 'ALWAYS' } },
+    ] satisfies { title: typeof EPISODE | typeof MOVIE; modes: SubtitleModes }[])(
+      'shouldKeepTheTitlesOwnOffWhenTheViewerTurnsSubtitlesOff $title.kind',
+      async ({ title, modes }) => {
+        serveSession()
+        const inputs = serveOverrides(modes)
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" mediaTitle={title} />,
+        )
+        await attachedVideo()
+        offerHlsTracks({
+          audio: [
+            { name: 'English', lang: 'en' },
+            { name: 'Deutsch', lang: 'de' },
+          ],
+          audioTrack: 0,
+          subtitles: [{ name: 'English', lang: 'en' }],
+          subtitleTrack: 0,
+        })
+
+        await pickTrack(user, /^Subtitles/, 'Off')
+        await pickTrack(user, /^Audio/, 'Deutsch')
+
+        expect(hls.subtitleTrack).toBe(-1)
+        await waitFor(() => expect(inputs).toEqual([{ itemId: title.id, audioLanguage: 'DE' }]))
       },
     )
   })

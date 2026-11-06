@@ -25,8 +25,8 @@ interface StoreRequest {
  * movie playing, never for its season or series, so resuming it keeps the switch and the next
  * episode starts from the wider levels (ADR 0043). Switches store one at a time, in the order the
  * viewer made them. A track that names no language of the server's table stores nothing, and so
- * do an audio switch that playback never moved to and a switch still waiting when the store resets
- * for another Profile or account.
+ * do an audio switch that playback never moved to, Subtitles Off for a title that already stores
+ * Off, and a switch still waiting when the store resets for another Profile or account.
  */
 export function useLanguageSwitchReport(
   mediaTitle: PlayableMediaTitle | undefined,
@@ -117,26 +117,48 @@ async function overrideChange({
       const language = languageOfTrack(chosen.language)
       return language && { subtitleLanguage: language, subtitleMode: 'ALWAYS' }
     }
-    case 'subtitles-off': {
-      const wider = await widerSubtitleMode(client, mediaTitle)
-      return { subtitleMode: wider === 'OFF' ? 'OFF' : 'FORCED' }
-    }
+    case 'subtitles-off':
+      return subtitlesOffChange(await subtitleModes(client, mediaTitle))
   }
 }
 
-// The mode the episode or movie gets without its own override: its season's, else the Profile's.
+interface SubtitleModes {
+  /** The mode the episode or movie gets now, its own override included. */
+  title?: SubtitleMode
+  /** The mode it gets without its own override: its season's, else the Profile's. */
+  wider?: SubtitleMode
+}
+
+// Off stores Forced only, or Off when the wider levels give Off. A title whose mode is Off while
+// the wider levels give another mode stores Off itself, and keeps it.
+function subtitlesOffChange({ title, wider }: SubtitleModes): OverrideChange | undefined {
+  if (wider === 'OFF') {
+    return { subtitleMode: 'OFF' }
+  }
+  if (title === 'OFF') {
+    return undefined
+  }
+  return { subtitleMode: 'FORCED' }
+}
+
 // A read that fails rejects, so the switch stores nothing rather than guess.
-async function widerSubtitleMode(
+async function subtitleModes(
   client: ApolloClient,
   { kind, id }: PlayableMediaTitle,
-): Promise<SubtitleMode | undefined> {
+): Promise<SubtitleModes> {
   const { data } = await client.query({
     query: PlayerSubtitleModesDocument,
     variables: { id, movie: kind === 'movie' },
     fetchPolicy: 'network-only',
   })
   if (kind === 'movie') {
-    return data?.me.languagePreferences?.subtitleMode
+    return {
+      title: data?.movie?.languagePreference.subtitleMode,
+      wider: data?.me.languagePreferences?.subtitleMode,
+    }
   }
-  return data?.episode?.season.languagePreference.subtitleMode
+  return {
+    title: data?.episode?.languagePreference.subtitleMode,
+    wider: data?.episode?.season.languagePreference.subtitleMode,
+  }
 }
