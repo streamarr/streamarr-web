@@ -1,4 +1,5 @@
 import { Link } from '@tanstack/react-router'
+import type { CSSProperties } from 'react'
 import { MediaImage } from '../media/MediaImage'
 import type { BillboardContent } from './billboardContent'
 import styles from './BillboardHero.module.css'
@@ -7,7 +8,7 @@ import styles from './BillboardHero.module.css'
 // the schema, no Detail route, no watchlist mutation) — a single primary CTA only.
 export function BillboardHero({ content }: Readonly<{ content: BillboardContent }>) {
   return (
-    <div className={styles.hero} data-testid="billboard-hero">
+    <div className={styles.hero} style={accentVariables(content)} data-testid="billboard-hero">
       <MediaImage
         image={content.backdrop}
         blurHash={content.blurHash}
@@ -43,4 +44,16 @@ export function BillboardHero({ content }: Readonly<{ content: BillboardContent 
       </div>
     </div>
   )
+}
+
+// The primary action takes the featured title's accent; without one it keeps the neutral
+// selection color (principle 10.3). Only the action reads these, so Home itself stays neutral.
+function accentVariables({ ambientTheme }: BillboardContent): CSSProperties | undefined {
+  if (!ambientTheme) {
+    return undefined
+  }
+  return {
+    '--ambient-accent': ambientTheme.accent,
+    '--ambient-on-accent': ambientTheme.onAccent,
+  } as CSSProperties
 }

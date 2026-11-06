@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import type { SeasonDetailQuery } from '../src/graphql/generated/graphql'
+import { actionButtonRadius, cornerRadii } from './actionButton'
 import { movie, openMovie } from './movieDetail'
 import { STUB_URL } from './ports'
 
@@ -84,6 +85,21 @@ test('the tagline sits upright under the title', async ({ page, request }) => {
   const title = await page.getByRole('heading', { level: 1, name: 'Everlight' }).boundingBox()
   const taglineBox = await tagline.boundingBox()
   expect(taglineBox!.y).toBeGreaterThanOrEqual(title!.y + title!.height)
+})
+
+test('the detail actions and Back round their corners like every action button', async ({
+  page,
+  request,
+}) => {
+  await openMovie(page, request)
+
+  const actions = [
+    page.getByRole('link', { name: 'Play', exact: true }),
+    page.getByRole('button', { name: 'Mark watched' }),
+    page.getByRole('button', { name: 'Back' }),
+  ]
+  const radius = await actionButtonRadius(page)
+  expect(await cornerRadii(actions)).toEqual(actions.map(() => radius))
 })
 
 test('the metadata columns clear the Back button on a phone', async ({ page, request }) => {

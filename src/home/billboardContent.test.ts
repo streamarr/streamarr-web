@@ -5,6 +5,32 @@ import { billboardFromContinueWatching, billboardFromRecentlyAdded } from './bil
 type ContinueWatchingItem = NonNullable<
   NonNullable<HomeQuery['continueWatching']['edges'][number]>['node']
 >
+const TEAL = {
+  base: '#071f1b',
+  panel: '#0e3b34',
+  selected: '#123f38',
+  accent: '#6fe0bf',
+  onAccent: '#06231c',
+  textPrimary: '#ffffff',
+  textSecondary: '#b9d6cf',
+}
+
+function coloredBackdrop(url: string) {
+  return {
+    aspectRatio: 1.78,
+    blurHash: null,
+    ambientColors: {
+      topLeft: '#071f1b',
+      topRight: '#071f1b',
+      bottomRight: '#071f1b',
+      bottomLeft: '#071f1b',
+      primary: '#0d322c',
+      theme: TEAL,
+    },
+    variants: [{ id: url, size: 'LARGE' as const, width: 1920, height: 1080, url }],
+  }
+}
+
 type RecentlyAddedNode = NonNullable<
   NonNullable<HomeQuery['libraries'][number]['items']['edges']>[number]
 >['node']
@@ -25,6 +51,7 @@ function continueWatchingMovie(
       {
         aspectRatio: 1.78,
         blurHash: 'HASH',
+        ambientColors: null,
         variants: [
           { id: 'v1', size: 'LARGE', width: 1920, height: 1080, url: 'movie-backdrop.jpg' },
         ],
@@ -64,6 +91,7 @@ function continueWatchingEpisode(
           {
             aspectRatio: 1.78,
             blurHash: 'SERIESHASH',
+            ambientColors: null,
             variants: [
               { id: 'v2', size: 'LARGE', width: 1920, height: 1080, url: 'series-backdrop.jpg' },
             ],
@@ -98,6 +126,7 @@ function recentMovie(
       {
         aspectRatio: 1.78,
         blurHash: 'HASH2',
+        ambientColors: null,
         variants: [
           { id: 'v3', size: 'LARGE', width: 1920, height: 1080, url: 'recent-backdrop.jpg' },
         ],
@@ -149,6 +178,29 @@ describe('billboardFromContinueWatching', () => {
     expect(content.synopsis).toBe('A crime drama.')
   })
 
+  it("carries the movie's ambient theme so the billboard action can take its accent", () => {
+    const content = billboardFromContinueWatching(
+      continueWatchingMovie({ images: [coloredBackdrop('movie-backdrop.jpg')] }),
+    )
+    expect(content.ambientTheme).toEqual(TEAL)
+  })
+
+  it("carries the series' ambient theme for an episode", () => {
+    const episode = continueWatchingEpisode()
+    const content = billboardFromContinueWatching({
+      ...episode,
+      season: {
+        ...episode.season,
+        series: { ...episode.season.series, images: [coloredBackdrop('series-backdrop.jpg')] },
+      },
+    })
+    expect(content.ambientTheme).toEqual(TEAL)
+  })
+
+  it('carries no ambient theme when the backdrop has no ambient colors', () => {
+    expect(billboardFromContinueWatching(continueWatchingMovie()).ambientTheme).toBeNull()
+  })
+
   it('keeps the episode overview when present', () => {
     const content = billboardFromContinueWatching(continueWatchingEpisode())
     expect(content.synopsis).toBe('The team regroups.')
@@ -161,5 +213,12 @@ describe('billboardFromRecentlyAdded', () => {
     expect(content.ctaLabel).toBe('Play')
     expect(content.ctaFileId).toBe('file-3')
     expect(content.ctaPositionSeconds).toBeNull()
+  })
+
+  it("carries the recently-added title's ambient theme", () => {
+    const content = billboardFromRecentlyAdded(
+      recentMovie({ backdropImages: [coloredBackdrop('recent-backdrop.jpg')] }),
+    )
+    expect(content.ambientTheme).toEqual(TEAL)
   })
 })
