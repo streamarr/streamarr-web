@@ -5144,6 +5144,82 @@ describe('Player', () => {
       stored.resolve()
     })
 
+    function recordRequestedOptions(): CreatePlaybackSessionInput['options'][] {
+      const requested: CreatePlaybackSessionInput['options'][] = []
+      server.use(
+        graphql.mutation('CreatePlaybackSession', ({ variables }) => {
+          requested.push((variables as { input: CreatePlaybackSessionInput }).input.options)
+        }),
+      )
+      return requested
+    }
+
+    const FRENCH_BESIDE_ENGLISH = {
+      audio: [
+        { name: 'English', lang: 'en' },
+        { name: 'Français', lang: 'fre' },
+      ],
+      audioTrack: 0,
+    }
+
+    it('shouldRetryAFailedQualityInTheAudioLanguageThatPlayedWhileItsSwitchIsStillStoring', async () => {
+      servePlaybackChoices()
+      const requested = recordRequestedOptions()
+      const stored = deferred()
+      server.use(
+        graphql.mutation('SetLanguageOverride', async () => {
+          await stored.promise
+          return HttpResponse.json({
+            data: { setLanguageOverride: { item: null, userErrors: [] } },
+          })
+        }),
+      )
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" mediaTitle={EPISODE} />,
+      )
+      await attachedVideo(choiceStreamUrl(1))
+      offerHlsTracks(FRENCH_BESIDE_ENGLISH)
+      await pickTrack(user, /^Audio/, 'Français')
+      await pickQuality(user, '720p')
+      await attachedVideo(choiceStreamUrl(2))
+
+      raiseHlsFatalError()
+      await user.click(await screen.findByRole('button', { name: 'Retry playback' }))
+
+      await attachedVideo(choiceStreamUrl(3))
+      expect(requested).toEqual([
+        { quality: 'AUTO' },
+        { quality: 'HIGH_720P', audioLanguage: 'FR' },
+        { quality: 'HIGH_720P', audioLanguage: 'FR' },
+      ])
+      stored.resolve()
+    })
+
+    it('shouldRestoreThePageInTheAudioLanguageTheViewerSwitchedToAfterPickingAQuality', async () => {
+      servePlaybackChoices()
+      const requested = recordRequestedOptions()
+      serveOverrides()
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" mediaTitle={EPISODE} />,
+      )
+      await attachedVideo(choiceStreamUrl(1))
+      offerHlsTracks(FRENCH_BESIDE_ENGLISH)
+      await pickQuality(user, '720p')
+      await attachedVideo(choiceStreamUrl(2))
+      offerHlsTracks(FRENCH_BESIDE_ENGLISH)
+      await pickTrack(user, /^Audio/, 'Français')
+
+      hideThePage({ persisted: true })
+      restoreThePage()
+
+      await attachedVideo(choiceStreamUrl(3))
+      expect(requested).toEqual([
+        { quality: 'AUTO' },
+        { quality: 'HIGH_720P', audioLanguage: 'EN' },
+        { quality: 'HIGH_720P', audioLanguage: 'FR' },
+      ])
+    })
+
     it('shouldStoreTheAudioLanguageForTheMovieWhenTheViewerSwitchesAudio', async () => {
       serveSession()
       const inputs = serveOverrides()

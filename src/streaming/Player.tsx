@@ -41,11 +41,14 @@ interface ChoiceRequest {
   start: PlaybackStart
   quality: VideoQuality
   resumeFrom?: ResumePoint
-  /**
-   * The audio language that played when the viewer picked the quality. The server puts the
-   * client's choice before the title's override (ADR 0043), so a switch still storing stands.
-   */
-  audioLanguage?: Language
+}
+
+// The audio language that plays from a start, which every later playback session of that start asks
+// for: the server puts the client's choice before the title's override (ADR 0043), so a switch that
+// is still storing, or whose store failed, stands across a quality pick, a Retry or a page restored.
+interface PlayingAudio {
+  start: PlaybackStart
+  language: Language | undefined
 }
 
 // Where the player was asked to start: a pick holds only until the player is asked to start anew.
@@ -105,6 +108,16 @@ export function Player({
     marks,
   }
   const streamTracks = useStreamTracks(tracks)
+  const playingAudioLanguage = useRef<PlayingAudio>(null)
+  useEffect(() => {
+    const playing = playingAudio(streamTracks)
+    if (playing) {
+      playingAudioLanguage.current = {
+        start: choice.start,
+        language: languageOfTrack(playing.language),
+      }
+    }
+  }, [streamTracks, choice.start])
   const openPicker =
     picker !== null && pickerOffersChoice(picker, { ...streamTracks, qualities: quality.offered })
       ? picker
@@ -136,7 +149,13 @@ export function Player({
               mediaFileId,
               capabilities,
               startPositionSeconds,
-              options: { quality: choice.quality, audioLanguage: choice.audioLanguage },
+              options: {
+                quality: choice.quality,
+                audioLanguage:
+                  playingAudioLanguage.current?.start === choice.start
+                    ? playingAudioLanguage.current.language
+                    : undefined,
+              },
             },
           },
         }),
@@ -164,12 +183,7 @@ export function Player({
     if (!playback || picked === quality.selected) {
       return
     }
-    setChoice({
-      start: choice.start,
-      quality: picked,
-      resumeFrom: playback.resumePoint(),
-      audioLanguage: languageOfTrack(playingAudio(streamTracks)?.language),
-    })
+    setChoice({ start: choice.start, quality: picked, resumeFrom: playback.resumePoint() })
   }
 
   function seek(seconds: number) {
