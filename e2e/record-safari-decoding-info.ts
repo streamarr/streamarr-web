@@ -12,21 +12,7 @@ import {
   supportedFlacAnswersAboveItsLimit,
   type ChannelCountRecord,
 } from './decodingInfoChannels.ts'
-
-const DRIVER = process.env.SAFARIDRIVER_URL ?? 'http://localhost:4444'
-
-async function command<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const response = await fetch(`${DRIVER}${path}`, {
-    method,
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body ?? {}),
-  })
-  const { value } = (await response.json()) as { value: T }
-  if (!response.ok) {
-    throw new Error(`${method} ${path} failed: ${JSON.stringify(value)}`)
-  }
-  return value
-}
+import { withSafari } from './safariDriver.ts'
 
 const IGNORES_THE_COUNT = 'Safari answers each audio codec the same at every channel count.'
 
@@ -53,23 +39,16 @@ await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
 server.unref()
 const { port } = server.address() as AddressInfo
 
-const { sessionId } = await command<{ sessionId: string }>('POST', '/session', {
-  // A page that never loads, or a probe that never answers, fails the run after 30 seconds.
-  capabilities: {
-    alwaysMatch: { browserName: 'safari', timeouts: { pageLoad: 30_000, script: 30_000 } },
-  },
-})
-try {
-  await command('POST', `/session/${sessionId}/url`, { url: `http://127.0.0.1:${port}/` })
-  const record = await command<ChannelCountRecord>('POST', `/session/${sessionId}/execute/async`, {
-    script: `const done = arguments[arguments.length - 1];
+// A page that never loads, or a probe that never answers, fails the run after 30 seconds.
+await withSafari(30_000, async (safari) => {
+  await safari.open(`http://127.0.0.1:${port}/`)
+  const record = await safari.executeAsync<ChannelCountRecord>(
+    `const done = arguments[arguments.length - 1];
       (${recordDecodingInfo.toString()})(arguments[0]).then(done)`,
-    args: [CHANNEL_COUNT_PROBE],
-  })
+    [CHANNEL_COUNT_PROBE],
+  )
   console.log(JSON.stringify(record, null, 2))
   const outcome = verdict(record)
   console.log(outcome)
   process.exitCode = outcome === IGNORES_THE_COUNT ? 0 : 1
-} finally {
-  await command('DELETE', `/session/${sessionId}`)
-}
+})
