@@ -2,6 +2,7 @@ import type { VideoQuality, VideoRange } from '../graphql/generated/graphql'
 import type { DynamicRangeChoice } from './hlsVideoPreference'
 
 const HDR_UNAVAILABLE = "HDR isn't available on this playback setup."
+const ORIGINAL_PLAYS_AS_IT_IS = 'Original plays the video as it is.'
 
 // Auto adapts by itself and Original plays the source as it is, so only a fixed quality takes the
 // viewer's HDR choice (ADR 0013).
@@ -28,15 +29,23 @@ export function takesHdrChoice(choice: VideoQuality): boolean {
   return !CHOICES_WITHOUT_HDR_CHOICE.has(choice)
 }
 
-/** The HDR toggle for an HDR source in a fixed quality; none for any other stream. */
+/**
+ * The HDR toggle for an HDR source in a fixed quality or in Original, where it stays unavailable
+ * because Original plays the source's own range (ADR 0013); none in Auto or for an SDR source.
+ */
 export function hdrControlFor(ranges: PlayingRanges): HdrControl | undefined {
-  if (!takesHdrChoice(ranges.choice) || !isHdr(ranges.source)) {
+  if (ranges.choice === 'AUTO' || !isHdr(ranges.source)) {
     return undefined
   }
-  return {
-    on: ranges.output !== 'SDR',
-    unavailable: ranges.declaresHdr ? undefined : HDR_UNAVAILABLE,
+  return { on: ranges.output !== 'SDR', unavailable: unavailability(ranges) }
+}
+
+// A setup that cannot show HDR explains itself first: no playback choice changes that.
+function unavailability({ choice, declaresHdr }: PlayingRanges): string | undefined {
+  if (!declaresHdr) {
+    return HDR_UNAVAILABLE
   }
+  return takesHdrChoice(choice) ? undefined : ORIGINAL_PLAYS_AS_IT_IS
 }
 
 /**
