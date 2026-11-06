@@ -99,6 +99,22 @@ async function fixture(page: Page, streams: unknown[]) {
   return state
 }
 
+// A copy and a direct play beside the encode and the preparing stream, so every delivery has a chip.
+const copy = {
+  ...MOVIE,
+  playbackSessionId: 'playback-copy',
+  decision: { ...MOVIE.decision, video: { ...MOVIE.decision.video, delivery: 'COPY' } },
+}
+const directPlay = {
+  ...MOVIE,
+  playbackSessionId: 'playback-direct',
+  decision: {
+    ...MOVIE.decision,
+    video: { ...MOVIE.decision.video, delivery: 'DIRECT_PLAY' },
+    audio: { ...MOVIE.decision.audio, delivery: 'DIRECT_PLAY' },
+  },
+}
+
 const MOVIE_CARD = 'Everlight, Ada. Playing, Encode.'
 const EPISODE_CARD = 'Northern Line, S2 E5 · Breakage, Ben. Preparing.'
 
@@ -151,21 +167,6 @@ test('on a phone held upright the filters, each poster and the open details fit 
   page,
 }) => {
   await page.setViewportSize({ width: 375, height: 667 })
-  // A copy and a direct play beside the encode and the preparing stream, so every delivery has a chip.
-  const copy = {
-    ...MOVIE,
-    playbackSessionId: 'playback-copy',
-    decision: { ...MOVIE.decision, video: { ...MOVIE.decision.video, delivery: 'COPY' } },
-  }
-  const directPlay = {
-    ...MOVIE,
-    playbackSessionId: 'playback-direct',
-    decision: {
-      ...MOVIE.decision,
-      video: { ...MOVIE.decision.video, delivery: 'DIRECT_PLAY' },
-      audio: { ...MOVIE.decision.audio, delivery: 'DIRECT_PLAY' },
-    },
-  }
   await fixture(page, [MOVIE, EPISODE, copy, directPlay])
   await page.goto(PAGE)
 
@@ -212,4 +213,22 @@ test('on a desktop, the title of each settings page lines up with the top of the
     const title = (await page.getByRole('heading', { level: 1 }).boundingBox())!.y
     expect(Math.abs(title - (await rail.boundingBox())!.y), path).toBeLessThanOrEqual(4)
   }
+})
+
+test('on a phone, the delivery chips that do not fit fold into a menu that still filters', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 667 })
+  await fixture(page, [MOVIE, EPISODE, copy, directPlay])
+  await page.goto(PAGE)
+
+  await page.getByRole('button', { name: /^\d+ more$/ }).click()
+  const menu = page.getByRole('menu', { name: 'More deliveries' })
+  await menu.getByRole('menuitemradio', { name: 'Preparing' }).click()
+
+  await expect(
+    page.getByRole('button', { name: 'Preparing', exact: true, expanded: false }),
+  ).toBeVisible()
+  await expect(page.getByRole('button', { name: EPISODE_CARD })).toBeVisible()
+  await expect(page.getByRole('button', { name: MOVIE_CARD })).toBeHidden()
 })

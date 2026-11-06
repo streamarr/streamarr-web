@@ -491,6 +491,28 @@ describe('active streams', () => {
     expect(screen.queryByRole('menu', { name: 'Worker' })).not.toBeInTheDocument()
   })
 
+  it.each([
+    { dismiss: 'presses Escape', act: (user: UserEvent) => user.keyboard('{Escape}') },
+    {
+      dismiss: 'clicks outside it',
+      act: (user: UserEvent) => user.click(screen.getByRole('heading', { level: 1 })),
+    },
+  ])('shouldCloseAMenuWithoutAChoiceWhenTheAdmin(dismiss: $dismiss)', async ({ act: dismiss }) => {
+    serve()
+    const { user } = renderAppAt(PAGE)
+    await streamCard(MOVIE_CARD)
+    await user.click(screen.getByRole('button', { name: 'Sort: Viewer' }))
+    expect(screen.getByRole('menu', { name: 'Sort' })).toBeInTheDocument()
+
+    await dismiss(user)
+
+    expect(screen.queryByRole('menu', { name: 'Sort' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Sort: Viewer' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    )
+  })
+
   it('shouldFindTheStreamsWhoseViewerTitleOrDeviceMatchesTheSearch', async () => {
     serve()
     const { user } = renderAppAt(PAGE)
