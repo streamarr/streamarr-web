@@ -11,7 +11,12 @@ import { deferred } from '../../test/deferred'
 import { serveGraphqlSocket } from '../../test/graphqlSocket'
 import { comeBackOnline } from '../../test/graphqlResponses'
 import { meFixture } from '../../test/meFixture'
-import { H264_FULL_HD, playbackDecision, servedDecision } from '../../test/playbackSession'
+import {
+  AAC_STEREO,
+  H264_FULL_HD,
+  playbackDecision,
+  servedDecision,
+} from '../../test/playbackSession'
 import { renderAppAt } from '../../test/render'
 import type { UserEvent } from '@testing-library/user-event'
 import { server } from '../../test/server'
@@ -535,6 +540,23 @@ describe('active streams', () => {
     expect(screen.getByRole('button', { name: 'Sort: Output bitrate' })).toHaveFocus()
   })
 
+  it('shouldCloseAMenuWhenFocusLeavesItSoEscapeLaterKeepsFocusWhereItIs', async () => {
+    serve()
+    const { user } = renderAppAt(PAGE)
+    await streamCard(MOVIE_CARD)
+    await user.click(screen.getByRole('button', { name: 'Any worker' }))
+    const search = screen.getByRole('searchbox', { name: 'Search viewers, titles and devices' })
+
+    await user.tab()
+
+    expect(screen.queryByRole('menu', { name: 'Worker' })).not.toBeInTheDocument()
+    expect(search).toHaveFocus()
+
+    await user.keyboard('{Escape}')
+
+    expect(search).toHaveFocus()
+  })
+
   it('shouldLeaveTheOutputTotalOutWhenAStreamsOutputBitrateIsNotKnown', async () => {
     const unknownOutput = playbackDecision({
       streamSessionId: 'sess-unknown',
@@ -547,40 +569,59 @@ describe('active streams', () => {
     expect(screen.getByText('1 copy, 1 encode')).toBeInTheDocument()
   })
 
-  it('shouldLeaveTheDeliveryOutWhenTheServerSendsOneThePageDoesNotKnow', async () => {
-    const future = playbackDecision({
-      streamSessionId: 'sess-future',
-      video: {
-        delivery: 'SPLICE' as PlaybackDelivery,
-        source: H264_FULL_HD,
-        output: H264_FULL_HD,
-      },
-      audio: null,
-    })
-    serve([{ ...MOVIE, decision: future }])
-    renderAppAt(PAGE)
+  it.each([
+    { audio: 'no audio', track: null },
+    {
+      audio: 'copied audio',
+      track: { delivery: 'COPY', source: AAC_STEREO, output: AAC_STEREO } as const,
+    },
+  ])(
+    'shouldLeaveTheDeliveryOutWhenTheServerSendsOneThePageDoesNotKnow(audio: $audio)',
+    async ({ track }) => {
+      const future = playbackDecision({
+        streamSessionId: 'sess-future',
+        video: {
+          delivery: 'SPLICE' as PlaybackDelivery,
+          source: H264_FULL_HD,
+          output: H264_FULL_HD,
+        },
+        audio: track,
+      })
+      serve([{ ...MOVIE, decision: future }])
+      renderAppAt(PAGE)
 
-    await streamCard('Everlight, Ada. Playing.')
+      await streamCard('Everlight, Ada. Playing.')
 
-    expect(
-      screen
-        .getAllByRole('button')
-        .filter((button) => button.hasAttribute('aria-pressed'))
-        .map((chip) => chip.textContent),
-    ).toEqual(['All 1'])
-  })
+      expect(
+        screen
+          .getAllByRole('button')
+          .filter((button) => button.hasAttribute('aria-pressed'))
+          .map((chip) => chip.textContent),
+      ).toEqual(['All 1'])
+    },
+  )
 
-  it('shouldMoveFocusToTheNextCardWhenTheStreamWhoseDetailsHoldFocusEnds', async () => {
-    const state = serve([MOVIE, EPISODE])
-    const { user } = renderAppAt(PAGE)
-    const details = await openDetails(user, MOVIE_CARD, 'Everlight')
-    within(details).getByRole('button', { name: 'Close details' }).focus()
-    await liveChanges(state)
+  it.each([
+    { focus: 'its open card', place: () => undefined },
+    {
+      focus: 'its details',
+      place: (details: HTMLElement) =>
+        within(details).getByRole('button', { name: 'Close details' }).focus(),
+    },
+  ])(
+    'shouldMoveFocusToTheNextCardWhenAStreamEndsWhileFocusIsOn(focus: $focus)',
+    async ({ place }) => {
+      const state = serve([MOVIE, EPISODE])
+      const { user } = renderAppAt(PAGE)
+      const details = await openDetails(user, MOVIE_CARD, 'Everlight')
+      place(details)
+      await liveChanges(state)
 
-    publishChange(state, MOVIE.playbackSessionId, null)
+      publishChange(state, MOVIE.playbackSessionId, null)
 
-    await waitFor(() => expect(screen.getByRole('button', { name: EPISODE_CARD })).toHaveFocus())
-  })
+      await waitFor(() => expect(screen.getByRole('button', { name: EPISODE_CARD })).toHaveFocus())
+    },
+  )
 
   it('shouldFindTheStreamsWhoseViewerTitleOrDeviceMatchesTheSearch', async () => {
     serve()
@@ -609,8 +650,8 @@ describe('active streams', () => {
   ])('shouldOrderTheStreamsByTheSortTheAdminPicks(sort: $sort)', async ({ sort, shown }) => {
     // Zoe sorts after Ben, and her movie has less left than his episode, so both picks reorder.
     serve([
-      { ...MOVIE, profile: { id: 'profile-zoe', name: 'Zoe' }, positionSeconds: 7_000 },
       { ...EPISODE, positionSeconds: 60 },
+      { ...MOVIE, profile: { id: 'profile-zoe', name: 'Zoe' }, positionSeconds: 7_000 },
     ])
     const { user } = renderAppAt(PAGE)
     await streamCard(ZOE_MOVIE_CARD)

@@ -453,17 +453,20 @@ function useDismiss(
 ) {
   useEffect(() => {
     if (!opened) return
-    function onPointerDown(event: MouseEvent) {
+    // A press or focus outside the menu and its button closes it, so a later Escape is not its.
+    function onOutside(event: Event) {
       if (anchor.current && !anchor.current.contains(event.target as Node))
         close({ returnFocus: false })
     }
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') close({ returnFocus: true })
     }
-    document.addEventListener('mousedown', onPointerDown)
+    document.addEventListener('mousedown', onOutside)
+    document.addEventListener('focusin', onOutside)
     document.addEventListener('keydown', onKeyDown)
     return () => {
-      document.removeEventListener('mousedown', onPointerDown)
+      document.removeEventListener('mousedown', onOutside)
+      document.removeEventListener('focusin', onOutside)
       document.removeEventListener('keydown', onKeyDown)
     }
   }, [anchor, opened, close])
@@ -477,22 +480,25 @@ function PosterGrid({ streams }: Readonly<{ streams: readonly Stream[] }>) {
   const cards = useRef(new Map<string, HTMLButtonElement>())
   // The element inside the details that last held focus, until focus leaves them.
   const detailFocus = useRef<HTMLElement | null>(null)
-  const lastOpenIndex = useRef(-1)
+  // The stream whose card or details hold focus, until focus leaves the grid.
+  const focusedStream = useRef<string | null>(null)
+  const previousStreams = useRef(streams)
   const openIndex = streams.findIndex((stream) => stream.playbackSessionId === openId)
   const rowEnd = Math.min(streams.length, (Math.floor(openIndex / columns) + 1) * columns) - 1
   const detailAfter = openIndex < 0 ? -1 : rowEnd
 
-  // When the open stream ends while its details hold focus, focus goes to the card in its place.
+  // A stream that ends while its card or details hold focus hands focus to the card in its place.
   useLayoutEffect(() => {
-    if (openIndex >= 0) {
-      lastOpenIndex.current = openIndex
-      return
-    }
-    if (!detailFocus.current) return
+    const before = previousStreams.current
+    previousStreams.current = streams
+    const ended = focusedStream.current
+    if (!ended || streams.some((stream) => stream.playbackSessionId === ended)) return
+    focusedStream.current = null
     detailFocus.current = null
-    const next = streams[Math.min(lastOpenIndex.current, streams.length - 1)]
+    const index = before.findIndex((stream) => stream.playbackSessionId === ended)
+    const next = streams[Math.min(index, streams.length - 1)]
     if (next) cards.current.get(next.playbackSessionId)?.focus()
-  }, [openIndex, streams])
+  }, [streams])
 
   function close() {
     const card = openId ? cards.current.get(openId) : undefined
@@ -520,6 +526,9 @@ function PosterGrid({ streams }: Readonly<{ streams: readonly Stream[] }>) {
           else cards.current.delete(stream.playbackSessionId)
         }}
         onToggle={() => toggle(stream.playbackSessionId)}
+        onFocus={() => {
+          focusedStream.current = stream.playbackSessionId
+        }}
       />,
     )
     if (index !== detailAfter) return
@@ -531,13 +540,23 @@ function PosterGrid({ streams }: Readonly<{ streams: readonly Stream[] }>) {
         caretColumn={openIndex % columns}
         columns={columns}
         focusMemoryRef={detailFocus}
+        onFocus={() => {
+          focusedStream.current = streams[openIndex].playbackSessionId
+        }}
         onClose={close}
       />,
     )
   })
 
   return (
-    <div ref={grid} className={styles.grid} data-testid="stream-grid">
+    <div
+      ref={grid}
+      className={styles.grid}
+      data-testid="stream-grid"
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) focusedStream.current = null
+      }}
+    >
       {items}
     </div>
   )
@@ -549,12 +568,14 @@ function StreamCard({
   detailId,
   register,
   onToggle,
+  onFocus,
 }: Readonly<{
   stream: Stream
   open: boolean
   detailId: string
   register: (element: HTMLButtonElement | null) => void
   onToggle: () => void
+  onFocus: () => void
 }>) {
   const { image, blurHash } = streamPoster(stream)
   const kind = streamKind(stream)
@@ -569,6 +590,7 @@ function StreamCard({
       aria-controls={open ? detailId : undefined}
       aria-label={cardLabel(stream)}
       onClick={onToggle}
+      onFocus={onFocus}
     >
       <PosterCard
         title={streamTitle(stream)}
@@ -646,6 +668,7 @@ function StreamDetail({
   caretColumn,
   columns,
   focusMemoryRef,
+  onFocus,
   onClose,
 }: Readonly<{
   id: string
@@ -653,6 +676,7 @@ function StreamDetail({
   caretColumn: number
   columns: number
   focusMemoryRef: RefObject<HTMLElement | null>
+  onFocus: () => void
   onClose: () => void
 }>) {
   const titleId = useId()
@@ -676,6 +700,7 @@ function StreamDetail({
       style={{ '--caret-left': caretLeft(caretColumn, columns) } as CSSProperties}
       onFocus={(event) => {
         focusMemoryRef.current = event.target
+        onFocus()
       }}
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget)) focusMemoryRef.current = null

@@ -31,9 +31,15 @@ const UNMATCHED = 'A file without a matched title'
 export function streamKind({ decision }: Stream): StreamKind | null {
   if (!decision) return 'PREPARING'
   const deliveries = [decision.video.delivery, decision.audio?.delivery ?? 'DIRECT_PLAY']
+  if (!deliveries.every(isKnownDelivery)) return null
   if (deliveries.includes('ENCODE')) return 'ENCODE'
-  if (deliveries.includes('COPY')) return 'COPY'
-  return deliveries.every((delivery) => delivery === 'DIRECT_PLAY') ? 'DIRECT_PLAY' : null
+  return deliveries.includes('COPY') ? 'COPY' : 'DIRECT_PLAY'
+}
+
+const KNOWN_DELIVERIES: readonly string[] = ['DIRECT_PLAY', 'COPY', 'ENCODE']
+
+function isKnownDelivery(delivery: string): boolean {
+  return KNOWN_DELIVERIES.includes(delivery)
 }
 
 /**
