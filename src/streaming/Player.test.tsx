@@ -43,8 +43,8 @@ import type {
   ClientCapabilityDeclarationInput,
   CreatePlaybackSessionInput,
   PlaybackFormatChange,
-  PlayerWiderSubtitleModeQuery,
-  PlayerWiderSubtitleModeQueryVariables,
+  PlayerSubtitleModesQuery,
+  PlayerSubtitleModesQueryVariables,
   ReportPlaybackFormatFailureInput,
   SetLanguageOverrideInput,
   SetLanguageOverrideMutation,
@@ -5019,8 +5019,8 @@ describe('Player', () => {
             })
           },
         ),
-        graphql.query<PlayerWiderSubtitleModeQuery, PlayerWiderSubtitleModeQueryVariables>(
-          'PlayerWiderSubtitleMode',
+        graphql.query<PlayerSubtitleModesQuery, PlayerSubtitleModesQueryVariables>(
+          'PlayerSubtitleModes',
           ({ variables: { movie } }) =>
             HttpResponse.json({
               data: {
@@ -5137,7 +5137,7 @@ describe('Player', () => {
     it('shouldStoreNothingWhenTheWiderModeCannotBeReadAsTheViewerTurnsSubtitlesOff', async () => {
       serveSession()
       const inputs = serveOverrides()
-      server.use(graphql.query('PlayerWiderSubtitleMode', () => networkFailure()))
+      server.use(graphql.query('PlayerSubtitleModes', () => networkFailure()))
       const { user } = renderWithProviders(
         <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" mediaTitle={EPISODE} />,
       )
@@ -5163,7 +5163,7 @@ describe('Player', () => {
       const inputs = serveOverrides()
       const wider = deferred()
       server.use(
-        graphql.query('PlayerWiderSubtitleMode', async () => {
+        graphql.query('PlayerSubtitleModes', async () => {
           await wider.promise
           return HttpResponse.json({
             data: {

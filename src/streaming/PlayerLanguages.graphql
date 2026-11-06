@@ -1,4 +1,4 @@
-query PlayerWiderSubtitleMode($id: ID!, $movie: Boolean!) {
+query PlayerSubtitleModes($id: ID!, $movie: Boolean!) {
   episode(id: $id) @skip(if: $movie) {
     __typename
     id

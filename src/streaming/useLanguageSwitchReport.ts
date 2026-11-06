@@ -1,7 +1,7 @@
 import type { ApolloClient } from '@apollo/client'
 import { useApolloClient } from '@apollo/client/react'
 import {
-  PlayerWiderSubtitleModeDocument,
+  PlayerSubtitleModesDocument,
   SetLanguageOverrideDocument,
   type SetLanguageOverrideInput,
   type SubtitleMode,
@@ -131,7 +131,7 @@ async function widerSubtitleMode(
   { kind, id }: PlayableMediaTitle,
 ): Promise<SubtitleMode | undefined> {
   const { data } = await client.query({
-    query: PlayerWiderSubtitleModeDocument,
+    query: PlayerSubtitleModesDocument,
     variables: { id, movie: kind === 'movie' },
     fetchPolicy: 'network-only',
   })
