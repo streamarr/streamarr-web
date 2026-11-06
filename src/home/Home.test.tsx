@@ -625,16 +625,19 @@ describe('Home', () => {
   })
 
   it.each([
-    ['Episode', /Breakage/, 'S2 E5 · Breakage · 15m left'],
-    ['Movie', /Everlight/, '3m left'],
-  ])('shouldGiveThe%sCardOneProgressReadout', async (_kind, title, readout) => {
+    ['Episode', /Breakage/, 'S2 E5 · Breakage · 15m left', 40],
+    ['Movie', /Everlight/, '3m left', 5],
+  ])('shouldPairThe%sCardsTimeLeftWithItsWatchedBar', async (_kind, title, readout, watched) => {
     serve(homeData({ continueWatching: [continueWatchingMovie(), continueWatchingEpisode()] }))
     renderAppAt('/')
     await screen.findByRole('heading', { name: 'Continue watching' })
 
     const card = screen.getByRole('link', { name: title })
     expect(within(card).getAllByText(readout)).toHaveLength(1)
-    expect(card.querySelector('[style*="width"]')).toBeNull()
+    expect(within(card).getByRole('progressbar', { name: 'In progress' })).toHaveAttribute(
+      'aria-valuenow',
+      String(watched),
+    )
   })
 
   it('falls back to the newest recently-added item when continueWatching is empty', async () => {

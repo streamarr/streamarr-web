@@ -4,6 +4,7 @@ import { ContentShelf } from '../media/ContentShelf'
 import { formatTimeLeft } from '../media/formatting'
 import { pickImageVariant, type PickedImage } from '../media/images'
 import { StillCard } from '../media/StillCard'
+import type { WatchedBadgeProps } from '../media/WatchedBadge'
 import type { MediaTitleSearch } from '../streaming/usePlayerTitle'
 import styles from './ContinueWatchingShelf.module.css'
 
@@ -26,6 +27,7 @@ export function ContinueWatchingShelf({ items }: Readonly<{ items: ContinueWatch
             subtitle={summary.subtitle}
             image={summary.image}
             blurHash={summary.blurHash}
+            badge={summary.badge}
           />
         )
         return summary.ctaFileId ? (
@@ -56,11 +58,16 @@ function summarize(item: ContinueWatchingItem): {
   subtitle: string
   image: PickedImage | null
   blurHash: string | null
+  badge: WatchedBadgeProps | undefined
   ctaFileId: string | null
   ctaMediaTitle: MediaTitleSearch
   ctaPositionSeconds: number | null
 } {
   const timeLeft = item.watchProgress ? formatTimeLeft(item.watchProgress) : ''
+  // The bar along the still pairs with the time left in its line (principle 6.3).
+  const badge: WatchedBadgeProps | undefined = item.watchProgress
+    ? { status: 'in-progress', percentComplete: item.watchProgress.percentComplete }
+    : undefined
   const ctaPositionSeconds = item.watchProgress?.positionSeconds || null
 
   if (item.__typename === 'Movie') {
@@ -70,6 +77,7 @@ function summarize(item: ContinueWatchingItem): {
       subtitle: timeLeft,
       image: pickImageVariant(backdrop, 'MEDIUM'),
       blurHash: backdrop?.blurHash ?? null,
+      badge,
       ctaFileId: item.files.find((file) => file !== null)?.id ?? null,
       ctaMediaTitle: { movie: item.id },
       ctaPositionSeconds,
@@ -82,6 +90,7 @@ function summarize(item: ContinueWatchingItem): {
     subtitle: `S${item.season.seasonNumber} E${item.episodeNumber} · ${item.title ?? ''} · ${timeLeft}`,
     image: pickImageVariant(still, 'MEDIUM'),
     blurHash: still?.blurHash ?? null,
+    badge,
     ctaFileId: item.files.find((file) => file !== null)?.id ?? null,
     ctaMediaTitle: { episode: item.id },
     ctaPositionSeconds,
