@@ -570,6 +570,18 @@ describe('active streams', () => {
     ).toEqual(['All 1'])
   })
 
+  it('shouldMoveFocusToTheNextCardWhenTheStreamWhoseDetailsHoldFocusEnds', async () => {
+    const state = serve([MOVIE, EPISODE])
+    const { user } = renderAppAt(PAGE)
+    const details = await openDetails(user, MOVIE_CARD, 'Everlight')
+    within(details).getByRole('button', { name: 'Close details' }).focus()
+    await liveChanges(state)
+
+    publishChange(state, MOVIE.playbackSessionId, null)
+
+    await waitFor(() => expect(screen.getByRole('button', { name: EPISODE_CARD })).toHaveFocus())
+  })
+
   it('shouldFindTheStreamsWhoseViewerTitleOrDeviceMatchesTheSearch', async () => {
     serve()
     const { user } = renderAppAt(PAGE)

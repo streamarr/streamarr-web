@@ -483,12 +483,28 @@ function PosterGrid({ streams }: Readonly<{ streams: readonly Stream[] }>) {
   const [openId, setOpenId] = useState<string | null>(null)
   const detailId = useId()
   const cards = useRef(new Map<string, HTMLButtonElement>())
+  // The element inside the details that last held focus, until focus leaves them.
+  const detailFocus = useRef<HTMLElement | null>(null)
+  const lastOpenIndex = useRef(-1)
   const openIndex = streams.findIndex((stream) => stream.playbackSessionId === openId)
   const rowEnd = Math.min(streams.length, (Math.floor(openIndex / columns) + 1) * columns) - 1
   const detailAfter = openIndex < 0 ? -1 : rowEnd
 
+  // When the open stream ends while its details hold focus, focus goes to the card in its place.
+  useLayoutEffect(() => {
+    if (openIndex >= 0) {
+      lastOpenIndex.current = openIndex
+      return
+    }
+    if (!detailFocus.current) return
+    detailFocus.current = null
+    const next = streams[Math.min(lastOpenIndex.current, streams.length - 1)]
+    if (next) cards.current.get(next.playbackSessionId)?.focus()
+  }, [openIndex, streams])
+
   function close() {
     const card = openId ? cards.current.get(openId) : undefined
+    detailFocus.current = null
     setOpenId(null)
     card?.focus()
   }
@@ -497,92 +513,95 @@ function PosterGrid({ streams }: Readonly<{ streams: readonly Stream[] }>) {
     setOpenId((open) => (open === id ? null : id))
   }
 
+  // The details are a sibling keyed by their stream, so a card that starts or ends in the row
+  // moves them rather than mounting them afresh.
+  const items: ReactNode[] = []
+  streams.forEach((stream, index) => {
+    items.push(
+      <StreamCard
+        key={stream.playbackSessionId}
+        stream={stream}
+        open={stream.playbackSessionId === openId}
+        detailId={detailId}
+        register={(element) => {
+          if (element) cards.current.set(stream.playbackSessionId, element)
+          else cards.current.delete(stream.playbackSessionId)
+        }}
+        onToggle={() => toggle(stream.playbackSessionId)}
+      />,
+    )
+    if (index !== detailAfter) return
+    items.push(
+      <StreamDetail
+        key={`detail-${streams[openIndex].playbackSessionId}`}
+        id={detailId}
+        stream={streams[openIndex]}
+        caretColumn={openIndex % columns}
+        columns={columns}
+        focusMemoryRef={detailFocus}
+        onClose={close}
+      />,
+    )
+  })
+
   return (
     <div ref={grid} className={styles.grid} data-testid="stream-grid">
-      {streams.map((stream, index) => (
-        <StreamCard
-          key={stream.playbackSessionId}
-          stream={stream}
-          open={stream.playbackSessionId === openId}
-          detailId={detailId}
-          register={(element) => {
-            if (element) cards.current.set(stream.playbackSessionId, element)
-            else cards.current.delete(stream.playbackSessionId)
-          }}
-          onToggle={() => toggle(stream.playbackSessionId)}
-        >
-          {index === detailAfter && (
-            <StreamDetail
-              id={detailId}
-              stream={streams[openIndex]}
-              caretColumn={openIndex % columns}
-              columns={columns}
-              onClose={close}
-            />
-          )}
-        </StreamCard>
-      ))}
+      {items}
     </div>
   )
 }
 
-// The detail row renders after the last card of the open card's row, spanning every column.
 function StreamCard({
   stream,
   open,
   detailId,
   register,
   onToggle,
-  children,
 }: Readonly<{
   stream: Stream
   open: boolean
   detailId: string
   register: (element: HTMLButtonElement | null) => void
   onToggle: () => void
-  children: ReactNode
 }>) {
   const { image, blurHash } = streamPoster(stream)
   const kind = streamKind(stream)
   const state = knownState(stream)
   const viewer = viewerName(stream)
   return (
-    <>
-      <button
-        ref={register}
-        type="button"
-        className={styles.card}
-        aria-expanded={open}
-        aria-controls={open ? detailId : undefined}
-        aria-label={cardLabel(stream)}
-        onClick={onToggle}
-      >
-        <PosterCard
-          title={streamTitle(stream)}
-          meta={episodeLine(stream) ?? ''}
-          image={image}
-          blurHash={blurHash}
-          overlay={
-            <>
-              <span className={styles.badges}>
-                {kind && <span className={styles.badge}>{KIND_LABELS[kind]}</span>}
-                {state && (
-                  <span className={styles.glyph} data-state={state}>
-                    <Icon name={STATE_ICONS[state]} size={14} />
-                  </span>
-                )}
-              </span>
-              <span className={styles.viewer}>
-                <span className={styles.viewerMark}>{initials(viewer)}</span>
-                <span className={styles.viewerName}>{viewer}</span>
-              </span>
-              <PositionTrack stream={stream} />
-            </>
-          }
-        />
-      </button>
-      {children}
-    </>
+    <button
+      ref={register}
+      type="button"
+      className={styles.card}
+      aria-expanded={open}
+      aria-controls={open ? detailId : undefined}
+      aria-label={cardLabel(stream)}
+      onClick={onToggle}
+    >
+      <PosterCard
+        title={streamTitle(stream)}
+        meta={episodeLine(stream) ?? ''}
+        image={image}
+        blurHash={blurHash}
+        overlay={
+          <>
+            <span className={styles.badges}>
+              {kind && <span className={styles.badge}>{KIND_LABELS[kind]}</span>}
+              {state && (
+                <span className={styles.glyph} data-state={state}>
+                  <Icon name={STATE_ICONS[state]} size={14} />
+                </span>
+              )}
+            </span>
+            <span className={styles.viewer}>
+              <span className={styles.viewerMark}>{initials(viewer)}</span>
+              <span className={styles.viewerName}>{viewer}</span>
+            </span>
+            <PositionTrack stream={stream} />
+          </>
+        }
+      />
+    </button>
   )
 }
 
@@ -634,12 +653,14 @@ function StreamDetail({
   stream,
   caretColumn,
   columns,
+  focusMemoryRef,
   onClose,
 }: Readonly<{
   id: string
   stream: Stream
   caretColumn: number
   columns: number
+  focusMemoryRef: RefObject<HTMLElement | null>
   onClose: () => void
 }>) {
   const titleId = useId()
@@ -648,6 +669,11 @@ function StreamDetail({
   useLayoutEffect(() => {
     panel.current?.scrollIntoView?.({ block: 'nearest' })
   }, [stream.playbackSessionId])
+  // Moving the details in the page drops focus without a blur; hand it back to where it was.
+  useLayoutEffect(() => {
+    const focused = focusMemoryRef.current
+    if (focused?.isConnected && document.activeElement === document.body) focused.focus()
+  })
 
   return (
     <section
@@ -656,6 +682,12 @@ function StreamDetail({
       className={styles.detail}
       aria-labelledby={titleId}
       style={{ '--caret-left': caretLeft(caretColumn, columns) } as CSSProperties}
+      onFocus={(event) => {
+        focusMemoryRef.current = event.target
+      }}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) focusMemoryRef.current = null
+      }}
       onKeyDown={(event) => {
         if (event.key === 'Escape') onClose()
       }}
