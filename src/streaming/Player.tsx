@@ -20,6 +20,8 @@ import {
   startPlayerPlayback,
   type SourcePhase,
 } from './playerPlayback'
+import { hdrChoiceFor, hdrControlFor, type PlayingRanges } from './hdrControl'
+import type { DynamicRangeChoice } from './hlsVideoPreference'
 import { useIdle } from './useIdle'
 import { usePlaybackFallbacks } from './usePlaybackFallbacks'
 import { useStreamTracks } from './useStreamTracks'
@@ -32,6 +34,8 @@ const STARTING: SourcePhase = { at: 'starting' }
 interface ChoiceRequest {
   start: PlaybackStart
   quality: VideoQuality
+  /** The viewer's HDR choice, which only a fixed quality takes. */
+  dynamicRange?: DynamicRangeChoice
   resumeFrom?: ResumePoint
 }
 
@@ -43,6 +47,15 @@ interface PlaybackStart {
 
 function startingChoice(start: PlaybackStart): ChoiceRequest {
   return { start, quality: 'AUTO' }
+}
+
+function playingRanges(phase: Extract<SourcePhase, { at: 'attached' }>): PlayingRanges {
+  return {
+    choice: phase.qualities.playing,
+    source: phase.sourceRange,
+    output: phase.qualities.videoRange,
+    declaresHdr: phase.declaresHdr,
+  }
 }
 
 export function Player({
@@ -79,10 +92,12 @@ export function Player({
   const [picker, setPicker] = useState<PickerKind | null>(null)
   const tracks = sourcePhase.at === 'attached' ? sourcePhase.tracks : null
   const qualities = sourcePhase.at === 'attached' ? sourcePhase.qualities : null
+  const ranges = sourcePhase.at === 'attached' ? playingRanges(sourcePhase) : null
   const quality = {
     offered: qualities?.offered ?? [],
     selected: qualities?.playing ?? choice.quality,
     marks,
+    hdr: ranges ? hdrControlFor(ranges) : undefined,
   }
   const streamTracks = useStreamTracks(tracks)
   const openPicker =
@@ -115,14 +130,15 @@ export function Player({
               mediaFileId,
               capabilities,
               startPositionSeconds,
-              options: { quality: choice.quality },
+              options: { quality: choice.quality, dynamicRange: choice.dynamicRange },
             },
           },
         }),
       startPositionSeconds,
+      dynamicRange: choice.dynamicRange ?? 'HDR',
       resumeFrom: choice.resumeFrom,
       onSourcePhase: setSourcePhase,
-      onOutputShown: followPlaybackSession(),
+      onOutputShown: followPlaybackSession(choice.dynamicRange),
       onNotice: announce,
     })
     playbackRef.current = playback
@@ -143,7 +159,27 @@ export function Player({
     if (!playback || picked === quality.selected) {
       return
     }
-    setChoice({ start: choice.start, quality: picked, resumeFrom: playback.resumePoint() })
+    setChoice({
+      start: choice.start,
+      quality: picked,
+      dynamicRange: hdrChoiceFor(picked, ranges),
+      resumeFrom: playback.resumePoint(),
+    })
+  }
+
+  // The toggle asks for the other range in the fixed quality that plays.
+  function toggleHdr() {
+    const playback = playbackRef.current
+    const { hdr } = quality
+    if (!playback || !hdr || hdr.unavailable) {
+      return
+    }
+    setChoice({
+      start: choice.start,
+      quality: quality.selected,
+      dynamicRange: hdr.on ? 'SDR' : 'HDR',
+      resumeFrom: playback.resumePoint(),
+    })
   }
 
   function seek(seconds: number) {
@@ -152,7 +188,7 @@ export function Player({
 
   // The pick's resume point is long past by now, so Retry starts where playback first started.
   function retry() {
-    setChoice({ start: choice.start, quality: choice.quality })
+    setChoice({ start: choice.start, quality: choice.quality, dynamicRange: choice.dynamicRange })
   }
 
   return (
@@ -188,6 +224,7 @@ export function Player({
         tracks={tracks}
         quality={quality}
         onChooseQuality={chooseQuality}
+        onToggleHdr={toggleHdr}
         openPicker={openPicker}
         onOpenPicker={setPicker}
         title={title}
