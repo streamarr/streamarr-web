@@ -88,6 +88,10 @@ const REASONS: Record<Known<DecisionReason>, Reason> = {
     ({ video }) =>
       `This device can't show ${videoRangeText(video.source.videoRange)}, so the server converts it.`,
   ),
+  VIEWER_CHOSE_SDR: video(
+    ({ video }) =>
+      `You chose SDR, so the server converts this ${videoRangeText(video.source.videoRange)} video to SDR.`,
+  ),
   DOLBY_VISION_NOT_DECLARED: video(
     ({ video }) =>
       `This device can't play this video's Dolby Vision profile or level, so the server sends ${sentHdrText(video)}.`,
@@ -211,6 +215,9 @@ const REASONS: Record<Known<DecisionReason>, Reason> = {
   ENCODE_FAILED: stream('The encode failed, so the server encodes the video in another codec.'),
   DOLBY_VISION_COPY_FAILED: stream(
     'The Dolby Vision copy failed, so the server sends the video without Dolby Vision.',
+  ),
+  HARDWARE_ENCODER_FAILED: stream(
+    'The hardware encoder failed, so the server encodes the video in software.',
   ),
 }
 

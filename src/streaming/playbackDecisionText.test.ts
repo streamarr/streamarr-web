@@ -85,6 +85,7 @@ describe('playbackDecisionText', () => {
       'video',
       "This device can't show HDR10, so the server converts it.",
     ],
+    ['VIEWER_CHOSE_SDR', 'video', 'You chose SDR, so the server converts this HDR10 video to SDR.'],
     [
       'DOLBY_VISION_NOT_DECLARED',
       'video',
@@ -265,6 +266,11 @@ describe('playbackDecisionText', () => {
       'DOLBY_VISION_COPY_FAILED',
       'stream',
       'The Dolby Vision copy failed, so the server sends the video without Dolby Vision.',
+    ],
+    [
+      'HARDWARE_ENCODER_FAILED',
+      'stream',
+      'The hardware encoder failed, so the server encodes the video in software.',
     ],
   ])('shouldPlaceAndNameTheReasonWhenTheServerNames(%s)', (reason, track, sentence) => {
     expect(reasonsOf([reason])).toEqual({ stream: [], video: [], audio: [], [track]: [sentence] })
