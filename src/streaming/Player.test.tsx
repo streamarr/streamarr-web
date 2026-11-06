@@ -6912,6 +6912,7 @@ describe('Player', () => {
 
   describe('HDR control', () => {
     const HDR_UNAVAILABLE = "HDR isn't available on this playback setup."
+    const ORIGINAL_PLAYS_AS_IT_IS = 'Original plays the video as it is.'
     const SDR_ONLY = { preferHDR: false, allowedVideoRanges: ['SDR'] }
     // A browser on an HDR display that decodes every configuration it asks about, so its
     // declaration lists PQ and HLG.
@@ -6961,14 +6962,48 @@ describe('Player', () => {
       expect(hdrToggleIn(await openQualityMenu(user))).toBeNull()
     })
 
-    it.each([
-      { case: 'Original plays', playing: undefined },
-      { case: 'Original changed to Auto', playing: () => 'AUTO' as const },
-    ])('shouldLeaveTheHdrToggleOutWhenOriginalIsRequested(case: $case)', async ({ playing }) => {
-      const { user, log } = await pickForAnHdrSource({ picked: 'Original', playing })
+    it('shouldHideTheHdrToggleWhenOriginalChangesToAuto', async () => {
+      const { user, log } = await pickForAnHdrSource({ picked: 'Original', playing: () => 'AUTO' })
 
       expect(hdrToggleIn(await openQualityMenu(user))).toBeNull()
       expect(log.at(-1)).toBe('create ORIGINAL')
+    })
+
+    it('shouldShowTheHdrToggleUnavailableWithItsExplanationWhenOriginalPlays', async () => {
+      const { user, log } = await pickForAnHdrSource({ picked: 'Original' })
+      const toggle = hdrToggleIn(await openQualityMenu(user)) as HTMLElement
+      expect(screen.getByText(ORIGINAL_PLAYS_AS_IT_IS)).not.toBeVisible()
+
+      await user.keyboard('{End}')
+
+      expect(toggle).toHaveFocus()
+      expect(toggle).toHaveAccessibleName(`HDR. ${ORIGINAL_PLAYS_AS_IT_IS}`)
+      expect(toggle).toHaveAttribute('aria-disabled', 'true')
+      expect(toggle).toHaveAttribute('aria-checked', 'true')
+      expect(screen.getByText(ORIGINAL_PLAYS_AS_IT_IS)).toBeVisible()
+      expect(log.at(-1)).toBe('create ORIGINAL')
+    })
+
+    it('shouldChangeNothingWhenTheViewerPressesTheHdrToggleInOriginal', async () => {
+      const { user, log } = await pickForAnHdrSource({ picked: 'Original' })
+      const menu = await openQualityMenu(user)
+
+      await user.click(hdrToggleIn(menu) as HTMLElement)
+
+      expect(screen.getByRole('menu')).toBe(menu)
+      expect(log).toHaveLength(3)
+    })
+
+    it('shouldExplainThatThisSetupCannotShowHdrWhenOriginalPlaysOnIt', async () => {
+      const { user } = await pickForAnHdrSource({
+        picked: 'Original',
+        platform: withoutDecodingInfo,
+        videoRange: () => 'SDR',
+      })
+
+      expect(hdrToggleIn(await openQualityMenu(user))).toHaveAccessibleName(
+        `HDR. ${HDR_UNAVAILABLE}`,
+      )
     })
 
     it('shouldLeaveTheHdrToggleOutAndSendNoChoiceWhenTheSourceIsSdr', async () => {
