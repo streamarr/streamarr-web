@@ -5470,6 +5470,8 @@ describe('Player', () => {
       { title: MOVIE, modes: { profileMode: 'OFF' }, stored: 'OFF' },
       { title: EPISODE, modes: { titleMode: 'ALWAYS', seasonMode: 'FORCED' }, stored: 'FORCED' },
       { title: EPISODE, modes: { titleMode: 'OFF', seasonMode: 'OFF' }, stored: 'OFF' },
+      { title: EPISODE, modes: { seasonMode: 'ALWAYS' }, stored: 'FORCED' },
+      { title: MOVIE, modes: { profileMode: 'ALWAYS' }, stored: 'FORCED' },
     ])(
       'shouldStoreTheWiderLevelsOffOrElseForcedWhenTheViewerTurnsSubtitlesOff $title.kind $stored',
       async ({ title, modes, stored }) => {
@@ -7812,6 +7814,31 @@ describe('Player', () => {
 
         await chooseAudioTrack(user, { from: 'English', to: 'German' })
         answered.resolve()
+
+        await attachedVideo(replacementStream(1).streamUrl)
+        await waitFor(() => expect(overrides).toEqual([{ itemId: 'e1', audioLanguage: 'FR' }]))
+      })
+
+      it('shouldStoreTheChosenTracksLanguageWhenThePlaybackStatusShowsTheSwitchAfterItsAnswerIsLost', async () => {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        server.use(
+          graphql.mutation('SwitchPlaybackAudioTrack', () => HttpResponse.error()),
+          graphql.query('PlaybackSession', () =>
+            HttpResponse.json({
+              data: {
+                playbackSession: readyPlaybackSession({
+                  id: 'playback-1',
+                  streamSession: replacementStream(1),
+                }),
+              },
+            }),
+          ),
+        )
+        const overrides = serveOverrideStores()
+        const { user } = renderEpisode()
+        await directPlayAt(0)
+
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
 
         await attachedVideo(replacementStream(1).streamUrl)
         await waitFor(() => expect(overrides).toEqual([{ itemId: 'e1', audioLanguage: 'FR' }]))
