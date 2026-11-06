@@ -1,0 +1,183 @@
+/*
+ * The panel holds the top right over the video, beside Back, and scrolls when the player is short.
+ * Once the player is too narrow for both side by side, it sits below Back. It ends above the control
+ * bar and the seek track's hit area, which reach --controls-reach up from the player's bottom: the
+ * player measures it, and these values hold until it does.
+ */
+.panel {
+  --panel-top: var(--spacing-24);
+  --controls-reach: 140px;
+
+  position: absolute;
+  z-index: 1;
+  top: var(--panel-top);
+  right: var(--spacing-page);
+  box-sizing: border-box;
+  width: min(760px, calc(100% - 2 * var(--spacing-page)));
+  max-height: calc(100% - var(--panel-top) - var(--controls-reach));
+  padding: var(--spacing-20);
+  overflow-y: auto;
+  border: var(--border-width-hairline) solid var(--border-hairline);
+  border-radius: var(--radius-2xl);
+  background: var(--surface-chrome);
+  /* Half the brightness behind it keeps text.secondary at 4.5:1 over a white frame. */
+  backdrop-filter: blur(24px) brightness(0.5);
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-prose);
+  color: var(--text-primary);
+  container-type: inline-size;
+
+  @media (max-width: 1000px) {
+    --panel-top: calc(var(--spacing-24) + 56px);
+  }
+
+  @media (max-width: 48em) {
+    --panel-top: calc(var(--spacing-16) + 56px);
+
+    right: var(--spacing-16);
+    width: calc(100% - 2 * var(--spacing-16));
+  }
+
+  /* A portrait phone stacks the control bar's rows. */
+  @media (max-width: 48em) and (orientation: portrait) {
+    --controls-reach: 270px;
+  }
+}
+
+/*
+ * The head row: the title, the summary chips beside it, and Close at the right end. A panel too
+ * narrow for the chips beside the title moves them to a row of their own under it.
+ */
+.header {
+  display: grid;
+  grid-template-areas: 'heading summary close';
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--spacing-8) var(--spacing-12);
+
+  @container (max-width: 420px) {
+    grid-template-areas:
+      'heading close'
+      'summary summary';
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
+
+.summary {
+  grid-area: summary;
+  min-width: 0;
+}
+
+.heading {
+  grid-area: heading;
+  margin: 0;
+  font-size: var(--font-size-subtitle);
+  font-weight: var(--font-weight-semibold);
+}
+
+.close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--text-secondary);
+  grid-area: close;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--text-primary);
+    background: var(--color-alpha-10);
+  }
+}
+
+.group {
+  margin-top: var(--spacing-16);
+}
+
+.groupHeading {
+  margin: 0 0 var(--spacing-6);
+  font-size: var(--font-size-label);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.note {
+  margin: var(--spacing-10) 0 0;
+  color: var(--text-secondary);
+}
+
+.failure {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--spacing-8) var(--spacing-12);
+
+  & .note {
+    margin-top: 0;
+  }
+}
+
+.retry {
+  padding: var(--spacing-4) var(--spacing-12);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--surface-panel-heavy);
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--color-alpha-32);
+  }
+}
+
+/* The reasons about the whole format attempt, one per line under the head row. */
+.streamReasons {
+  display: grid;
+  gap: var(--spacing-4);
+  margin: var(--spacing-12) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Rounded rectangles, never pills; both texts in text.primary, which keeps 4.5:1 on the fill. */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-6);
+  margin: 0;
+}
+
+.chip {
+  display: flex;
+  gap: var(--spacing-6);
+  padding: var(--spacing-4) var(--spacing-10);
+  border-radius: var(--radius-sm);
+  background: var(--surface-panel-strong);
+  font-size: var(--font-size-label);
+}
+
+.chipName {
+  color: var(--text-primary);
+}
+
+.chipValue {
+  margin: 0;
+  font-weight: var(--font-weight-semibold);
+}
+
+/* Server beside Player and This screen once the panel is wide enough for both tables. */
+.columns {
+  display: grid;
+  gap: 0 28px;
+
+  @container (min-width: 600px) {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  }
+}

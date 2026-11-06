@@ -1,0 +1,88 @@
+.facts {
+  display: grid;
+  gap: var(--spacing-6);
+  margin: 0;
+}
+
+.fact {
+  display: grid;
+  grid-template-columns: 9em minmax(0, 1fr);
+  gap: var(--spacing-12);
+}
+
+.name {
+  color: var(--text-secondary);
+}
+
+.value {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+.track + .track {
+  margin-top: var(--spacing-20);
+}
+
+.trackHeading {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  margin: 0 0 var(--spacing-4);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-semibold);
+}
+
+/* A neutral rounded rectangle, never a pill. */
+.delivery {
+  padding: 0 var(--spacing-6);
+  border-radius: var(--radius-sm);
+  background: var(--surface-panel-strong);
+  font-size: var(--font-size-micro);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+
+  & th,
+  & td {
+    padding: var(--spacing-4) var(--spacing-6);
+    text-align: start;
+    font-weight: var(--font-weight-regular);
+    overflow-wrap: anywhere;
+  }
+
+  & thead th,
+  & tbody th {
+    color: var(--text-secondary);
+  }
+
+  & tbody th {
+    width: 30%;
+  }
+
+  & tbody .changed th {
+    color: var(--text-primary);
+  }
+}
+
+/* A changed row: filled, its label in text.primary for contrast on the fill, its Playing value semibold. */
+.changed {
+  background: var(--surface-panel);
+
+  & td:last-child {
+    font-weight: var(--font-weight-semibold);
+  }
+}
+
+.reasons {
+  display: grid;
+  gap: var(--spacing-4);
+  margin: var(--spacing-6) 0 0;
+  padding: 0;
+  list-style: none;
+}

@@ -6,6 +6,19 @@ type HlsListener = (event: string, data: unknown) => void
 export interface FakeHlsTrack {
   name: string
   lang?: string
+  audioCodec?: string
+  /** The rendition's CHANNELS attribute. */
+  channels?: string
+}
+
+/** A variant as hls.js parses it from the multivariant playlist. */
+export interface FakeHlsLevel {
+  height: number
+  bitrate: number
+  videoCodec?: string
+  audioCodec?: string
+  /** The SUPPLEMENTAL-CODECS of the variant, as Dolby Vision on a compatible base names it. */
+  supplemental?: { videoCodec?: string }
 }
 
 const listeners = new Map<string, Set<HlsListener>>()
@@ -31,6 +44,9 @@ export const hls = {
   mainForwardBufferInfo: null as BufferInfo | null,
   audioForwardBufferInfo: null as BufferInfo | null,
   latestLevelDetails: null as { targetduration: number } | null,
+  levels: [] as FakeHlsLevel[],
+  currentLevel: -1,
+  bandwidthEstimate: Number.NaN,
 }
 
 export function resetFakeHls() {
@@ -44,6 +60,9 @@ export function resetFakeHls() {
   hls.mainForwardBufferInfo = null
   hls.audioForwardBufferInfo = null
   hls.latestLevelDetails = null
+  hls.levels = []
+  hls.currentLevel = -1
+  hls.bandwidthEstimate = Number.NaN
 }
 
 class FakeHls {
@@ -100,6 +119,15 @@ class FakeHls {
   }
   get latestLevelDetails() {
     return hls.latestLevelDetails
+  }
+  get levels() {
+    return hls.levels
+  }
+  get currentLevel() {
+    return hls.currentLevel
+  }
+  get bandwidthEstimate() {
+    return hls.bandwidthEstimate
   }
 }
 

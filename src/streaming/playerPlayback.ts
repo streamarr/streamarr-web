@@ -1,5 +1,10 @@
 import type { ApolloClient, ObservableQuery } from '@apollo/client'
-import Hls, { type ErrorData, type VideoSelectionOption } from 'hls.js'
+import Hls, {
+  type ErrorData,
+  type Level,
+  type MediaPlaylist,
+  type VideoSelectionOption,
+} from 'hls.js'
 import {
   type ClientCapabilityDeclarationInput,
   type CreatePlaybackSessionMutation,
@@ -12,6 +17,7 @@ import {
   type ReportStreamSessionTimelineMutationVariables,
   SwitchPlaybackAudioTrackDocument,
   type SwitchPlaybackAudioTrackInput,
+  type SourceContainer,
   type VideoRange,
 } from '../graphql/generated/graphql'
 import { userErrorMessage, userErrorMessageOr } from '../graphql/userErrors'
@@ -50,8 +56,51 @@ type PlaybackSessionPayload = CreatePlaybackSessionMutation['createPlaybackSessi
 
 export type SourcePhase =
   | { at: 'starting' }
-  | { at: 'attached'; tracks: TrackSource; qualities: QualityChoices; videoRange: VideoRange }
+  | {
+      at: 'attached'
+      tracks: TrackSource
+      qualities: QualityChoices
+      videoRange: VideoRange
+      /** The container of a directly played file; null for HLS. */
+      sourceContainer: SourceContainer | null
+      playbackSessionId: string
+      streamSessionId: string
+      /** Reads what the player reports of the attached stream now. */
+      streamStats: () => StreamStats
+    }
   | { at: 'failed'; message: string }
+
+/** What the player library reports of the stream that plays. A figure it does not report is absent. */
+export interface SourceStats {
+  variant?: VariantStats
+  /** The player library's estimate of the connection's bandwidth, in bits per second. */
+  bandwidthEstimate?: number
+  /** The playing variant's video codec string, such as avc1.64001f. */
+  videoCodec?: string
+  /**
+   * Whether the playing variant names a Dolby Vision codec, in CODECS or SUPPLEMENTAL-CODECS;
+   * absent while no variant plays.
+   */
+  dolbyVision?: boolean
+  audioCodec?: string
+  audioChannels?: number
+}
+
+/** The variant that plays, and its place among the stream's variants, largest bitrate first. */
+export interface VariantStats {
+  height: number
+  /** In bits per second. */
+  bitrate: number
+  /** 1 for the variant with the largest bitrate. */
+  step: number
+  steps: number
+}
+
+/** What the player reports of the stream that plays. */
+export interface StreamStats extends SourceStats {
+  /** How often playback stalled for media since the playback session started. */
+  stalls: number
+}
 
 /** Where playback picks up on a new stream: the playhead, and whether it plays on from there. */
 export interface ResumePoint {
@@ -221,6 +270,7 @@ function startSessionPlayback({
   // to attach again before it can play.
   let attachedPlayback: PlaybackSessionFieldsFragment | null = null
   let stall: Stall | undefined
+  let stalls = 0
   let timelineReports = Promise.resolve()
   const reportCancellation = new AbortController()
   const statusCancellation = new AbortController()
@@ -380,6 +430,9 @@ function startSessionPlayback({
         if (element.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) return
         if (realEnd === null) void askForRealEnd()
         if (!seekingBeforeRealEnd() && tryEndAtRealEnd()) return
+        // Neither the first frame's wait nor a seek's wait is a stall, even a seek made while
+        // paused that waits only once playback resumes.
+        if (firstFrameShown && !stall && !seekUnresumed) stalls++
         startStallLimit()
         if (sourceStopped) restartStoppedSource()
       },
@@ -704,11 +757,19 @@ function startSessionPlayback({
             onChooseAudio: (position) => void switchAudioTrack(position, generation),
           })
         : attach(video, streamSession.streamUrl, options)
+    const { sourceStats } = source
     onSourcePhase({
       at: 'attached',
       tracks: source.tracks,
       qualities,
-      videoRange: attempt.streamSession.videoRange,
+      videoRange: streamSession.videoRange,
+      sourceContainer:
+        streamSession.__typename === 'DirectPlayStreamSession'
+          ? streamSession.sourceContainer
+          : null,
+      playbackSessionId: playback.id,
+      streamSessionId: streamSession.id,
+      streamStats: () => ({ ...sourceStats(), stalls }),
     })
   }
 
@@ -1325,6 +1386,7 @@ interface StreamSource {
   tracks: TrackSource
   /** The playlist's target segment duration, when the player can read it. */
   segmentSeconds: () => number | undefined
+  sourceStats: () => SourceStats
 }
 
 interface StreamSourceOptions {
@@ -1378,7 +1440,40 @@ function attach(video: HTMLVideoElement, url: string, options: StreamSourceOptio
     followsVideoPreference: true,
     tracks: hlsTrackSource(hls),
     segmentSeconds: () => hls.latestLevelDetails?.targetduration,
+    sourceStats: () => hlsSourceStats(hls),
   }
+}
+
+function hlsSourceStats(hls: Hls): SourceStats {
+  const level: Level | undefined = hls.levels[hls.currentLevel]
+  const audio: MediaPlaylist | undefined = hls.audioTracks[hls.audioTrack]
+  // CHANNELS leads with the channel count, as in "6" or "16/JOC".
+  const channels = Number.parseInt(audio?.channels ?? '', 10)
+  return {
+    variant: level && {
+      height: level.height,
+      bitrate: level.bitrate,
+      step: 1 + hls.levels.filter((other) => other.bitrate > level.bitrate).length,
+      steps: hls.levels.length,
+    },
+    bandwidthEstimate: Number.isFinite(hls.bandwidthEstimate) ? hls.bandwidthEstimate : undefined,
+    videoCodec: level?.videoCodec,
+    dolbyVision: level && namesDolbyVision([level.videoCodec, level.supplemental?.videoCodec]),
+    audioCodec: audio?.audioCodec ?? level?.audioCodec,
+    audioChannels: Number.isNaN(channels) ? undefined : channels,
+  }
+}
+
+// The sample entries under which a codec string names Dolby Vision, such as dvh1.08.06.
+const DOLBY_VISION_ENTRIES = new Set(['dvh1', 'dvhe', 'dav1', 'dvav', 'dva1'])
+
+function namesDolbyVision(codecs: readonly (string | undefined)[]): boolean {
+  return codecs.some((codec) => DOLBY_VISION_ENTRIES.has(codec?.split('.')[0] ?? ''))
+}
+
+// The element reports its own figures; nothing else reads a native or source file stream.
+function noSourceStats(): SourceStats {
+  return {}
 }
 
 function handleVideoError(video: HTMLVideoElement, options: StreamSourceOptions) {
@@ -1484,6 +1579,7 @@ function attachSourceFile(
     followsVideoPreference: false,
     tracks,
     segmentSeconds: () => undefined,
+    sourceStats: noSourceStats,
   }
 }
 
@@ -1609,5 +1705,6 @@ function attachNative(
     followsVideoPreference: false,
     tracks: nativeTrackSource(video),
     segmentSeconds: () => undefined,
+    sourceStats: noSourceStats,
   }
 }

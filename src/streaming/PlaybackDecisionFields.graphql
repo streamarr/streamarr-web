@@ -1,0 +1,39 @@
+fragment PlaybackDecisionFields on PlaybackDecision {
+  formatAttempt
+  streamSessionId
+  video {
+    delivery
+    source {
+      ...VideoFormatFields
+    }
+    output {
+      ...VideoFormatFields
+    }
+  }
+  audio {
+    delivery
+    source {
+      ...AudioFormatFields
+    }
+    output {
+      ...AudioFormatFields
+    }
+  }
+  reasons
+}
+
+fragment VideoFormatFields on VideoFormat {
+  codec
+  width
+  height
+  frameRate
+  bitrate
+  videoRange
+  dolbyVision
+}
+
+fragment AudioFormatFields on AudioFormat {
+  codec
+  channels
+  bitrate
+}
