@@ -16,6 +16,10 @@
       "ExistingAccountInvitationProfile",
       "NewAccountInvitationProfile"
     ],
+    "ActiveStreamMedia": [
+      "Episode",
+      "Movie"
+    ],
     "AddLibraryError": [
       "LibraryNameRequiredError",
       "LibraryPathAlreadyRegisteredError",

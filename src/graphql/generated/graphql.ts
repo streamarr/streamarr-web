@@ -160,6 +160,14 @@ export type DolbyVisionProfileCapabilityInput = {
   profile: DolbyVisionProfile;
 };
 
+/** The viewer's HDR choice in a fixed quality. */
+export type DynamicRangeChoice =
+  /** Keep the source's HDR range when the client declares it. */
+  | 'HDR'
+  /** Play an HDR source as an SDR encode. */
+  | 'SDR'
+  | '%future added value';
+
 /** A preset on the scale that every software encoder uses, from fastest to slowest. */
 export type EncoderPreset =
   | 'FAST'
@@ -765,6 +773,13 @@ export type StopLibraryScanInput = {
 export type StreamingOptionsInput = {
   /** The audio language of this session. It wins over the Profile's language preferences and overrides. */
   audioLanguage?: Language | null | undefined;
+  /**
+   * The viewer's HDR choice (ADR 0013). Only a fixed quality takes it: SDR plays an HDR source as an SDR encode,
+   * and HDR keeps the source's HDR range when the client declares it. Auto and Original ignore it. Null for no
+   * choice, which keeps the source's HDR range when the client declares it. The stream session's videoRange
+   * names the range that plays.
+   */
+  dynamicRange?: DynamicRangeChoice | null | undefined;
   maxBitrate?: number | null | undefined;
   maxHeight?: number | null | undefined;
   maxWidth?: number | null | undefined;
