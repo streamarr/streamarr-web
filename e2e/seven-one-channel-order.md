@@ -23,7 +23,9 @@ Linux runs its audio graph up to a second behind the element.
 | `did not play` | The stream did not play to its end. |
 
 Only `passed` lets a browser declare 8 channels for that codec, and only when `decodingInfo()` also
-confirms 8 channels (streamarr/streamarr-web#29). Every other result keeps the 6-channel cap. The
+confirms 8 channels (streamarr/streamarr-web#29). Every other result keeps the 6-channel cap.
+`SEVEN_ONE_PASSES` in `src/streaming/playbackCapabilities.ts` lists the engine, operating system and
+oldest major version of each `passed` row; change it with this table. The
 result shows the order in which the decoder hands channels to the audio graph. It does not show how
 the operating system maps the device's channels to speakers.
 
