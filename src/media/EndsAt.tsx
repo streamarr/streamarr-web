@@ -10,7 +10,7 @@ export function EndsAt({ remainingSeconds }: Readonly<{ remainingSeconds: number
 
 function EndTime({ remainingMs }: Readonly<{ remainingMs: number }>) {
   const now = useEndMinuteClock(remainingMs)
-  const end = new Date(now.getTime() + remainingMs)
+  const end = new Date(now + remainingMs)
   return (
     <span className={styles.endsAt}>
       <Icon name="ends-at" size={16} label="Ends at" />
@@ -22,23 +22,20 @@ function EndTime({ remainingMs }: Readonly<{ remainingMs: number }>) {
 }
 
 // The current time, refreshed each time the end time reaches a new minute, which falls between
-// the clock's own minutes when the time left has seconds, so the end time shown never lags.
-function useEndMinuteClock(remainingMs: number): Date {
-  const [now, setNow] = useState(() => new Date())
+// the clock's own minutes when the time left has seconds, so the end time shown never lags. The
+// next refresh counts from the time the end was drawn with, so a minute that turns before the
+// effect starts refreshes at once.
+function useEndMinuteClock(remainingMs: number): number {
+  const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
-    let timer: ReturnType<typeof setTimeout>
-    const schedule = () => {
-      timer = setTimeout(
-        () => {
-          setNow(new Date())
-          schedule()
-        },
-        MINUTE - ((Date.now() + remainingMs) % MINUTE),
-      )
-    }
-    schedule()
+    const drawnEnd = now + remainingMs
+    const nextMinute = drawnEnd - (drawnEnd % MINUTE) + MINUTE
+    const timer = setTimeout(
+      () => setNow(Date.now()),
+      Math.max(0, nextMinute - remainingMs - Date.now()),
+    )
     return () => clearTimeout(timer)
-  }, [remainingMs])
+  }, [now, remainingMs])
   return now
 }
 

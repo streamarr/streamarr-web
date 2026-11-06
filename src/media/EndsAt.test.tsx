@@ -1,4 +1,5 @@
 import { act, render, screen } from '@testing-library/react'
+import { useEffect } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { EndsAt } from './EndsAt'
 
@@ -7,6 +8,14 @@ function clock(hours: number, minutes: number) {
     hour: 'numeric',
     minute: '2-digit',
   })
+}
+
+// Moves the clock on after the page renders and before the effects that follow it start.
+function ElapseBeforeLaterEffects({ ms }: Readonly<{ ms: number }>) {
+  useEffect(() => {
+    vi.setSystemTime(Date.now() + ms)
+  }, [ms])
+  return null
 }
 
 describe('EndsAt', () => {
@@ -53,6 +62,21 @@ describe('EndsAt', () => {
       vi.advanceTimersByTime(25_000)
     })
     rerender(<EndsAt remainingSeconds={10 * 60 + 10} />)
+    expect(screen.getByText(clock(15, 11))).toBeInTheDocument()
+  })
+
+  it('shouldMoveTheEndTimeOnWhenItsMinuteTurnsBeforeTheClockStarts', () => {
+    vi.setSystemTime(new Date(2026, 10, 5, 15, 0, 29, 999))
+    render(
+      <>
+        <ElapseBeforeLaterEffects ms={2} />
+        <EndsAt remainingSeconds={10 * 60 + 30} />
+      </>,
+    )
+    expect(screen.getByText(clock(15, 10))).toBeInTheDocument()
+    act(() => {
+      vi.advanceTimersByTime(1)
+    })
     expect(screen.getByText(clock(15, 11))).toBeInTheDocument()
   })
 })
