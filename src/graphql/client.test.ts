@@ -176,7 +176,7 @@ describe('apollo client', () => {
     },
   )
 
-  it('shouldKeepWhatEachQueryReadOfASelectedProfileStateWhenAnotherQueryWritesOtherFields', () => {
+  it('shouldKeepTheWatchStateFieldsEachQueryReadWhenAnotherQueryWritesOtherFields', () => {
     const client = createApolloClient(vi.fn())
     const posterFields = gql`
       fragment PosterFields on Movie {
@@ -193,9 +193,6 @@ describe('apollo client', () => {
       fragment DetailFields on Movie {
         id
         selectedProfileState {
-          profile {
-            id
-          }
           watchState {
             watchStatus
             watchProgress {
@@ -228,7 +225,6 @@ describe('apollo client', () => {
         id: 'm1',
         selectedProfileState: {
           __typename: 'SelectedProfileState',
-          profile: { __typename: 'SelectableProfile', id: 'p1' },
           watchState: {
             __typename: 'WatchState',
             watchStatus: 'IN_PROGRESS',
@@ -245,7 +241,6 @@ describe('apollo client', () => {
     })
     expect(client.cache.readFragment({ fragment: detailFields, id: 'Movie:m1' })).toMatchObject({
       selectedProfileState: {
-        profile: { id: 'p1' },
         watchState: { watchProgress: { positionSeconds: 600 } },
       },
     })
