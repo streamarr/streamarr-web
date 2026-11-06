@@ -61,6 +61,16 @@ function playingAudio({ audio }: StreamTracks) {
   return audio.options.find((option) => option.id === audio.selected)
 }
 
+function audioLanguageFrom(
+  playing: PlayingAudio | null,
+  start: PlaybackStart,
+): Language | undefined {
+  if (playing?.start !== start) {
+    return undefined
+  }
+  return playing.language
+}
+
 function startingChoice(start: PlaybackStart): ChoiceRequest {
   return { start, quality: 'AUTO' }
 }
@@ -151,10 +161,7 @@ export function Player({
               startPositionSeconds,
               options: {
                 quality: choice.quality,
-                audioLanguage:
-                  playingAudioLanguage.current?.start === choice.start
-                    ? playingAudioLanguage.current.language
-                    : undefined,
+                audioLanguage: audioLanguageFrom(playingAudioLanguage.current, choice.start),
               },
             },
           },
