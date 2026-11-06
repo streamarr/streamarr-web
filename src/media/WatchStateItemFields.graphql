@@ -37,37 +37,43 @@ fragment WatchStateItemFields on WatchStateItem {
 fragment MovieWatchState on Movie {
   id
   selectedProfileState {
-    ...SelectedProfileWatchState
+    watchState {
+      ...WatchStateFields
+    }
   }
 }
 
 fragment EpisodeWatchState on Episode {
   id
   selectedProfileState {
-    ...SelectedProfileWatchState
+    watchState {
+      ...WatchStateFields
+    }
   }
 }
 
 fragment SeasonWatchState on Season {
   id
   selectedProfileState {
-    ...SelectedProfileWatchState
+    watchState {
+      ...WatchStateFields
+    }
   }
 }
 
 fragment SeriesWatchState on Series {
   id
   selectedProfileState {
-    ...SelectedProfileWatchState
+    watchState {
+      ...WatchStateFields
+    }
   }
 }
 
-fragment SelectedProfileWatchState on SelectedProfileState {
-  watchState {
-    watchStatus
-    watchProgress {
-      ...WatchProgressFields
-    }
+fragment WatchStateFields on WatchState {
+  watchStatus
+  watchProgress {
+    ...WatchProgressFields
   }
 }
 
