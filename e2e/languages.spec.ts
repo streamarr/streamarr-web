@@ -26,13 +26,16 @@ async function recordOverrides(page: Page): Promise<SetLanguageOverrideInput[]> 
             item: {
               __typename: 'Movie',
               id: 'm1',
-              languagePreference: {
-                __typename: 'LanguagePreference',
-                audioLanguages: [variables.input.audioLanguage, 'EN'],
-                subtitleLanguage: null,
-                subtitleMode: 'FORCED',
-                audioSource: 'TITLE',
-                subtitleSource: 'PROFILE',
+              selectedProfileState: {
+                __typename: 'SelectedProfileState',
+                languagePreference: {
+                  __typename: 'LanguagePreference',
+                  audioLanguages: [variables.input.audioLanguage, 'EN'],
+                  subtitleLanguage: null,
+                  subtitleMode: 'FORCED',
+                  audioSource: 'TITLE',
+                  subtitleSource: 'PROFILE',
+                },
               },
             },
             userErrors: [],

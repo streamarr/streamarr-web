@@ -73,7 +73,11 @@ const languagePreference = {
 }
 
 function languageTabs({ id, movie, series, season }) {
-  const title = (typename) => ({ __typename: typename, id, languagePreference })
+  const title = (typename) => ({
+    __typename: typename,
+    id,
+    selectedProfileState: { __typename: 'SelectedProfileState', languagePreference },
+  })
   return {
     ...(movie && { movie: title('Movie') }),
     ...(series && { series: title('Series') }),

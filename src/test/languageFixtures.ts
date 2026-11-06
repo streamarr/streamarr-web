@@ -26,6 +26,11 @@ export function languagePreferenceFixture(
   }
 }
 
+/** A title's state for the selected Profile, as the language queries select it. */
+export function selectedProfileLanguages(languagePreference: LanguagePreferenceFieldsFragment) {
+  return { __typename: 'SelectedProfileState' as const, languagePreference }
+}
+
 export function profileLanguagesFixture(
   overrides: Partial<ProfileLanguagePreferencesFieldsFragment> = {},
 ): ProfileLanguagePreferencesFieldsFragment {
@@ -65,20 +70,28 @@ export function serveLanguageTabs({
         return HttpResponse.json({
           data: {
             ...(movie && {
-              movie: { __typename: 'Movie', id: String(id), languagePreference: preference },
+              movie: {
+                __typename: 'Movie',
+                id: String(id),
+                selectedProfileState: selectedProfileLanguages(preference),
+              },
             }),
             ...(series && {
-              series: { __typename: 'Series', id: String(id), languagePreference: preference },
+              series: {
+                __typename: 'Series',
+                id: String(id),
+                selectedProfileState: selectedProfileLanguages(preference),
+              },
             }),
             ...(season && {
               season: {
                 __typename: 'Season',
                 id: String(id),
-                languagePreference: preference,
+                selectedProfileState: selectedProfileLanguages(preference),
                 series: {
                   __typename: 'Series',
                   id: 'series-1',
-                  languagePreference: seriesPreference,
+                  selectedProfileState: selectedProfileLanguages(seriesPreference),
                 },
               },
             }),

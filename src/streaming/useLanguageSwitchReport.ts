@@ -153,12 +153,12 @@ async function subtitleModes(
   })
   if (kind === 'movie') {
     return {
-      title: data?.movie?.languagePreference.subtitleMode,
+      title: data?.movie?.selectedProfileState?.languagePreference.subtitleMode,
       wider: data?.me.languagePreferences?.subtitleMode,
     }
   }
   return {
-    title: data?.episode?.languagePreference.subtitleMode,
-    wider: data?.episode?.season.languagePreference.subtitleMode,
+    title: data?.episode?.selectedProfileState?.languagePreference.subtitleMode,
+    wider: data?.episode?.season.selectedProfileState?.languagePreference.subtitleMode,
   }
 }

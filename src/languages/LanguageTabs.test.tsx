@@ -13,6 +13,7 @@ import {
   languagePreferenceFixture,
   pickMenuRow,
   profileLanguagesFixture,
+  selectedProfileLanguages,
   serveLanguageTabs,
 } from '../test/languageFixtures'
 import { renderWithProviders } from '../test/render'
@@ -26,7 +27,11 @@ const SEASON: LanguageTabsItem = { kind: 'season', id: 'season-2' }
 // The server's answer to an override: the movie with the preference that results from it.
 function movieBecomes(preference: LanguagePreferenceFieldsFragment) {
   return () => ({
-    item: { __typename: 'Movie' as const, id: 'm1', languagePreference: preference },
+    item: {
+      __typename: 'Movie' as const,
+      id: 'm1',
+      selectedProfileState: selectedProfileLanguages(preference),
+    },
     userErrors: [],
   })
 }
@@ -314,7 +319,7 @@ describe('LanguageTabs', () => {
             movie: {
               __typename: 'Movie',
               id: 'm1',
-              languagePreference: languagePreferenceFixture(),
+              selectedProfileState: selectedProfileLanguages(languagePreferenceFixture()),
             },
             me: { __typename: 'Me', languagePreferences: null },
           },
@@ -327,5 +332,62 @@ describe('LanguageTabs', () => {
       expect(screen.queryByRole('status', { name: 'Loading the languages' })).toBeNull(),
     )
     expect(screen.queryByRole('button', { name: 'Default audio' })).toBeNull()
+  })
+
+  it('shouldShowNoTabsWhenTheTitleHasNoSelectedProfileState', async () => {
+    serveLanguageTabs()
+    server.use(
+      graphql.query('LanguageTabs', () =>
+        HttpResponse.json({
+          data: {
+            movie: { __typename: 'Movie', id: 'm1', selectedProfileState: null },
+            me: { __typename: 'Me', languagePreferences: profileLanguagesFixture() },
+          },
+        }),
+      ),
+    )
+    renderWithProviders(
+      <>
+        <LanguageTabs item={MOVIE} />
+        <p>Beside the tabs</p>
+      </>,
+    )
+
+    await waitFor(() =>
+      expect(screen.queryByRole('status', { name: 'Loading the languages' })).toBeNull(),
+    )
+    expect(screen.queryByRole('button', { name: 'Default audio' })).toBeNull()
+    expect(screen.getByText('Beside the tabs')).toBeInTheDocument()
+  })
+
+  it('shouldShowNoTabsWhenTheSeasonsSeriesHasNoSelectedProfileState', async () => {
+    serveLanguageTabs()
+    server.use(
+      graphql.query('LanguageTabs', () =>
+        HttpResponse.json({
+          data: {
+            season: {
+              __typename: 'Season',
+              id: 'season-2',
+              selectedProfileState: selectedProfileLanguages(languagePreferenceFixture()),
+              series: { __typename: 'Series', id: 'series-1', selectedProfileState: null },
+            },
+            me: { __typename: 'Me', languagePreferences: profileLanguagesFixture() },
+          },
+        }),
+      ),
+    )
+    renderWithProviders(
+      <>
+        <LanguageTabs item={SEASON} />
+        <p>Beside the tabs</p>
+      </>,
+    )
+
+    await waitFor(() =>
+      expect(screen.queryByRole('status', { name: 'Loading the languages' })).toBeNull(),
+    )
+    expect(screen.queryByRole('button', { name: 'Default audio' })).toBeNull()
+    expect(screen.getByText('Beside the tabs')).toBeInTheDocument()
   })
 })

@@ -107,13 +107,16 @@ function shownPreferences(
   { movie, series, season, me }: LanguageTabsQuery,
 ): { preference: LanguagePreferenceFieldsFragment; wider: WiderChoice; first: Language[] } | null {
   const profile = me.languagePreferences
-  const preference = (movie ?? series ?? season)?.languagePreference
+  const preference = (movie ?? series ?? season)?.selectedProfileState?.languagePreference
   if (!profile || !preference) {
     return null
   }
   const first = profile.audioLanguages
   if (item.kind === 'season' && season) {
-    const fromSeries = season.series.languagePreference
+    const fromSeries = season.series.selectedProfileState?.languagePreference
+    if (!fromSeries) {
+      return null
+    }
     return {
       preference,
       first,

@@ -36,7 +36,11 @@ import {
   smoothUpToFullHd,
 } from '../test/playbackCapabilities'
 import { networkFailure } from '../test/graphqlResponses'
-import { languagePreferenceFixture, profileLanguagesFixture } from '../test/languageFixtures'
+import {
+  languagePreferenceFixture,
+  profileLanguagesFixture,
+  selectedProfileLanguages,
+} from '../test/languageFixtures'
 import { renderWithProviders } from '../test/render'
 import { server } from '../test/server'
 import type {
@@ -5033,7 +5037,7 @@ describe('Player', () => {
           movie: {
             __typename: 'Movie',
             id: 'm1',
-            languagePreference: titlePreference(profileMode),
+            selectedProfileState: selectedProfileLanguages(titlePreference(profileMode)),
           },
           me,
         }
@@ -5042,11 +5046,13 @@ describe('Player', () => {
         episode: {
           __typename: 'Episode',
           id: 'e1',
-          languagePreference: titlePreference(seasonMode),
+          selectedProfileState: selectedProfileLanguages(titlePreference(seasonMode)),
           season: {
             __typename: 'Season',
             id: 'season-1',
-            languagePreference: languagePreferenceFixture({ subtitleMode: seasonMode }),
+            selectedProfileState: selectedProfileLanguages(
+              languagePreferenceFixture({ subtitleMode: seasonMode }),
+            ),
           },
         },
         me,

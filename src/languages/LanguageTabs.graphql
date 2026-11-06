@@ -11,28 +11,36 @@ query LanguageTabs($id: ID!, $movie: Boolean!, $series: Boolean!, $season: Boole
   movie(id: $id) @include(if: $movie) {
     __typename
     id
-    languagePreference {
-      ...LanguagePreferenceFields
+    selectedProfileState {
+      languagePreference {
+        ...LanguagePreferenceFields
+      }
     }
   }
   series(id: $id) @include(if: $series) {
     __typename
     id
-    languagePreference {
-      ...LanguagePreferenceFields
+    selectedProfileState {
+      languagePreference {
+        ...LanguagePreferenceFields
+      }
     }
   }
   season(id: $id) @include(if: $season) {
     __typename
     id
-    languagePreference {
-      ...LanguagePreferenceFields
+    selectedProfileState {
+      languagePreference {
+        ...LanguagePreferenceFields
+      }
     }
     series {
       __typename
       id
-      languagePreference {
-        ...LanguagePreferenceFields
+      selectedProfileState {
+        languagePreference {
+          ...LanguagePreferenceFields
+        }
       }
     }
   }
@@ -50,26 +58,34 @@ mutation SetLanguageOverride($input: SetLanguageOverrideInput!) {
       __typename
       ... on Movie {
         id
-        languagePreference {
-          ...LanguagePreferenceFields
+        selectedProfileState {
+          languagePreference {
+            ...LanguagePreferenceFields
+          }
         }
       }
       ... on Series {
         id
-        languagePreference {
-          ...LanguagePreferenceFields
+        selectedProfileState {
+          languagePreference {
+            ...LanguagePreferenceFields
+          }
         }
       }
       ... on Season {
         id
-        languagePreference {
-          ...LanguagePreferenceFields
+        selectedProfileState {
+          languagePreference {
+            ...LanguagePreferenceFields
+          }
         }
       }
       ... on Episode {
         id
-        languagePreference {
-          ...LanguagePreferenceFields
+        selectedProfileState {
+          languagePreference {
+            ...LanguagePreferenceFields
+          }
         }
       }
     }
