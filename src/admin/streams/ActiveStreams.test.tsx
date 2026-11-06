@@ -623,6 +623,23 @@ describe('active streams', () => {
     },
   )
 
+  it('shouldListTheWorkersAlphabeticallyWhateverTheirCase', async () => {
+    serve([
+      { ...MOVIE, workers: ['worker-b'] },
+      { ...EPISODE, workers: ['Worker-c', 'worker-a'] },
+    ])
+    const { user } = renderAppAt(PAGE)
+    await streamCard(MOVIE_CARD)
+
+    await user.click(screen.getByRole('button', { name: 'Any worker' }))
+
+    expect(
+      within(screen.getByRole('menu', { name: 'Worker' }))
+        .getAllByRole('menuitemradio')
+        .map((item) => item.textContent),
+    ).toEqual(['Any worker', 'worker-a', 'worker-b', 'Worker-c'])
+  })
+
   it('shouldFindTheStreamsWhoseViewerTitleOrDeviceMatchesTheSearch', async () => {
     serve()
     const { user } = renderAppAt(PAGE)
