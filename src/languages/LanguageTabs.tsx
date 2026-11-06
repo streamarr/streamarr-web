@@ -148,7 +148,8 @@ function Tabs({
   const audioRef = useRef<HTMLButtonElement>(null)
   const subtitlesRef = useRef<HTMLButtonElement>(null)
   const level = LEVEL_OF[item.kind]
-  const languageRows = languagesListing(first).map((language) => ({
+  const listing = languagesListing(first)
+  const languageRows = listing.map((language) => ({
     id: LANGUAGE + language,
     label: languageName(language),
   }))
@@ -192,7 +193,7 @@ function Tabs({
             ...languageRows,
           ]}
           selected={audioChoice(preference, level)}
-          onChoose={(id) => void save({ audioLanguage: chosenLanguage(id) })}
+          onChoose={(id) => void save({ audioLanguage: chosenLanguage(listing, id) })}
         />
         <Tab
           kind="subtitles"
@@ -211,7 +212,7 @@ function Tabs({
             ...languageRows,
           ]}
           selected={subtitlesChoice(preference, level)}
-          onChoose={(id) => void save(subtitlesChange(id))}
+          onChoose={(id) => void save(subtitlesChange(listing, id))}
         />
       </div>
     </>
@@ -329,19 +330,19 @@ function subtitlesChoice(preference: LanguagePreferenceFieldsFragment, level: Pr
   return MODE + preference.subtitleMode
 }
 
-// The wider choice clears this level's audio language; a language row sets it.
-function chosenLanguage(id: string): Language | null {
-  return LANGUAGES_BY_NAME.find((language) => LANGUAGE + language === id) ?? null
+// The wider choice clears this level's audio language; a language row of `listing` sets it.
+function chosenLanguage(listing: readonly Language[], id: string): Language | null {
+  return listing.find((language) => LANGUAGE + language === id) ?? null
 }
 
 // A mode row sets the mode alone, a language row turns subtitles on in it, and the wider choice
 // clears both.
-function subtitlesChange(id: string): OverrideChange {
+function subtitlesChange(listing: readonly Language[], id: string): OverrideChange {
   const mode = SUBTITLE_MODES.find((candidate) => MODE + candidate.value === id)
   if (mode) {
     return { subtitleMode: mode.value }
   }
-  const language = chosenLanguage(id)
+  const language = chosenLanguage(listing, id)
   if (language) {
     return { subtitleLanguage: language, subtitleMode: 'ALWAYS' }
   }

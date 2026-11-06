@@ -5,6 +5,7 @@ import { graphql, HttpResponse } from 'msw'
 import { useEffect } from 'react'
 import { describe, expect, it } from 'vitest'
 import type {
+  Language,
   LanguagePreferenceFieldsFragment,
   SetLanguageOverrideInput,
 } from '../graphql/generated/graphql'
@@ -155,6 +156,23 @@ describe('LanguageTabs', () => {
       expect(await tab('Default audio')).toHaveAccessibleDescription('Japanese · set here'),
     )
   })
+
+  it.each([
+    { tabName: 'Default audio', input: { audioLanguage: 'FR_CA' } },
+    { tabName: 'Subtitles', input: { subtitleLanguage: 'FR_CA', subtitleMode: 'ALWAYS' } },
+  ] as const)(
+    'shouldSetAProfileLanguageNewerThanThisClientWhenTheViewerPicksItIn$tabName',
+    async ({ tabName, input }) => {
+      const state = serveLanguageTabs({
+        profile: profileLanguagesFixture({ audioLanguages: ['FR_CA' as Language] }),
+      })
+      const { user } = renderWithProviders(<LanguageTabs item={MOVIE} />)
+
+      await pick(user, tabName, 'Canadian French')
+
+      await waitFor(() => expect(state.inputs).toEqual([{ itemId: 'm1', ...input }]))
+    },
+  )
 
   it('shouldClearOnlyTheAudioWhenTheViewerPicksTheWiderChoice', async () => {
     const state = serveLanguageTabs({
