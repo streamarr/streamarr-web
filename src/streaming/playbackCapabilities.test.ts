@@ -1052,6 +1052,122 @@ describe('declarePlaybackCapabilities', () => {
     },
   )
 
+  describe('7.1', () => {
+    const MAC_CHROME_156 =
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36'
+    const MAC_CHROME_155 = MAC_CHROME_156.replace('Chrome/156', 'Chrome/155')
+    const LINUX_CHROME_156 = LINUX_CHROME.replace('Chrome/141', 'Chrome/156')
+    const MAC_EDGE_156 = `${MAC_CHROME_156} Edg/156.0.0.0`
+    const WINDOWS_CHROME_156 =
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36'
+    const ANDROID_CHROME_156 = ANDROID_CHROME.replace('Chrome/141', 'Chrome/156')
+    const CHROME_OS_156 =
+      'Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36'
+    const MAC_FIREFOX_157 = FIREFOX.replaceAll('144.0', '157.0')
+    const MAC_FIREFOX_156 = FIREFOX.replaceAll('144.0', '156.0')
+    const LINUX_FIREFOX_157 =
+      'Mozilla/5.0 (X11; Linux x86_64; rv:157.0) Gecko/20100101 Firefox/157.0'
+    const LINUX_WEBKIT =
+      'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.2 Safari/605.1.15'
+
+    async function channelsByCodec(userAgent: string, outputChannels = 8) {
+      const declaration = await declarePlaybackCapabilities(
+        platformFixture({ userAgent, audioOutputChannels: () => Promise.resolve(outputChannels) }),
+      )
+      return Object.fromEntries(declaration.audio.map((entry) => [entry.codec, entry.maxChannels]))
+    }
+
+    it.each([
+      ['Chrome 156 on a Mac', MAC_CHROME_156],
+      ['Chrome 156 on Linux', LINUX_CHROME_156],
+      ['Edge 156 on a Mac', MAC_EDGE_156],
+    ])(
+      'shouldDeclareEightChannelsForAacFlacAndOpusWhenTheOutputPlaysEightChannelsIn(%s)',
+      async (_, userAgent) => {
+        expect(await channelsByCodec(userAgent)).toEqual({
+          AAC: 8,
+          AC3: 6,
+          EAC3: 6,
+          OPUS: 8,
+          FLAC: 8,
+          ALAC: 6,
+        })
+      },
+    )
+
+    it('shouldKeepAacAtSixChannelsWhereFirefoxOnAMacHandsItOverInAacsOwnOrder', async () => {
+      expect(await channelsByCodec(MAC_FIREFOX_157)).toEqual({
+        AAC: 6,
+        AC3: 6,
+        EAC3: 6,
+        OPUS: 8,
+        FLAC: 8,
+        ALAC: 6,
+      })
+    })
+
+    it('shouldDeclareEightChannelsForAacFlacAndOpusWhenFirefox157OnLinuxPlaysToEightChannels', async () => {
+      expect(await channelsByCodec(LINUX_FIREFOX_157)).toMatchObject({ AAC: 8, OPUS: 8, FLAC: 8 })
+    })
+
+    it.each([
+      ['Chrome 155, older than the oldest Chrome that passed', MAC_CHROME_155],
+      ['Firefox 156, older than the oldest Firefox that passed', MAC_FIREFOX_156],
+      ['Chrome on Windows, where nothing was measured', WINDOWS_CHROME_156],
+      ['Chrome on Android, where nothing was measured', ANDROID_CHROME_156],
+      ['Chrome on ChromeOS, where nothing was measured', CHROME_OS_156],
+      ['Safari, whose audio graph reads silence', SAFARI],
+      ['WebKit on Linux, which declares stereo output', LINUX_WEBKIT],
+    ])('shouldKeepEveryAudioCodecAtSixChannelsFor(%s)', async (_, userAgent) => {
+      const declared = await channelsByCodec(userAgent)
+
+      expect(Math.max(...Object.values(declared))).toBe(6)
+    })
+
+    it('shouldDeclareTheOutputsChannelCountWhenAPassingBrowserPlaysToASixChannelOutput', async () => {
+      expect(await channelsByCodec(MAC_CHROME_156, 6)).toMatchObject({ AAC: 6, OPUS: 6, FLAC: 6 })
+    })
+
+    it('shouldAskDecodingInfoAtEightChannelsForEachCodecTheBrowserPassedFor', async () => {
+      const asked: MediaDecodingConfiguration[] = []
+      await declarePlaybackCapabilities(
+        platformFixture({
+          userAgent: MAC_FIREFOX_157,
+          decodingInfo: (configuration) => {
+            asked.push(configuration)
+            return Promise.resolve(answer(true))
+          },
+        }),
+      )
+
+      const hlsChannels: Record<string, string | undefined> = {}
+      for (const { type, audio } of asked) {
+        if (type === 'media-source' && audio) hlsChannels[audio.contentType] = audio.channels
+      }
+      expect(hlsChannels).toEqual({
+        'audio/mp4; codecs="mp4a.40.2"': '6',
+        'audio/mp4; codecs="ac-3"': '6',
+        'audio/mp4; codecs="ec-3"': '6',
+        'audio/mp4; codecs="opus"': '8',
+        'audio/mp4; codecs="flac"': '8',
+        'audio/mp4; codecs="alac"': '6',
+      })
+    })
+
+    it('shouldDeclareSixChannelsForACodecWhoseEightChannelQuestionTheBrowserRefuses', async () => {
+      const declaration = await declarePlaybackCapabilities(
+        platformFixture({
+          userAgent: MAC_CHROME_156,
+          decodingInfo: decodingInfoAnswering(
+            (configuration) => configuration.audio?.channels !== '8',
+          ),
+        }),
+      )
+
+      expect(audioEntry(declaration, 'FLAC')).toEqual({ codec: 'FLAC', maxChannels: 6, hls: true })
+    })
+  })
+
   it('shouldDeclareEveryAudioCodecInStereoWhenReadingTheOutputFails', async () => {
     const declaration = await declarePlaybackCapabilities(
       platformFixture({

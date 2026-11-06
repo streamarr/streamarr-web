@@ -277,10 +277,36 @@ const AUDIO_CODECS: readonly { codec: AudioCodec; mimeCodec: string }[] = [
   { codec: 'ALAC', mimeCodec: 'alac' },
 ]
 
-// No entry declares more than 5.1 until a browser passes a 7.1 channel-order test
-// (streamarr-web#29): Firefox hands 7.1 AAC over in the wrong order.
+// An entry declares more than 5.1 only for a codec whose 7.1 channels the browser hands to its audio
+// graph in order: Firefox on a Mac hands 7.1 AAC over in AAC's own order.
 const SURROUND_MAXIMUM = 6
+const SEVEN_ONE = 8
 const STEREO = 2
+
+type SevenOneEngine = 'BLINK' | 'GECKO'
+type SevenOneOperatingSystem = 'MAC_OS' | 'LINUX'
+
+interface SevenOnePass {
+  engine: SevenOneEngine
+  operatingSystem: SevenOneOperatingSystem
+  /** The oldest major version that passed. */
+  sinceVersion: number
+  codecs: readonly AudioCodec[]
+}
+
+// The `passed` rows of e2e/seven-one-channel-order.md. WebKit passed only on Linux, where it declares
+// a stereo output, so no WebKit row counts.
+const SEVEN_ONE_PASSES: readonly SevenOnePass[] = [
+  {
+    engine: 'BLINK',
+    operatingSystem: 'MAC_OS',
+    sinceVersion: 156,
+    codecs: ['AAC', 'FLAC', 'OPUS'],
+  },
+  { engine: 'BLINK', operatingSystem: 'LINUX', sinceVersion: 156, codecs: ['AAC', 'FLAC', 'OPUS'] },
+  { engine: 'GECKO', operatingSystem: 'MAC_OS', sinceVersion: 157, codecs: ['FLAC', 'OPUS'] },
+  { engine: 'GECKO', operatingSystem: 'LINUX', sinceVersion: 157, codecs: ['AAC', 'FLAC', 'OPUS'] },
+]
 
 interface DecodedTier {
   tier: PictureTier
@@ -391,14 +417,20 @@ async function probeDeclaration({
 }): Promise<CapabilityEntries> {
   const { askDecodingInfo } = askers
   // A host without an audio device reports 0 channels, and every output plays stereo.
-  const channels = Math.min(Math.max(outputChannels, STEREO), SURROUND_MAXIMUM)
+  const outputPlays = Math.max(outputChannels, STEREO)
   const [video, audio] = await Promise.all([
     probeVideo({ platform, askDecodingInfo, hls }).then((entries) =>
       withVideoDirectPlay({ platform, askers, entries }),
     ),
     Promise.all(
       AUDIO_CODECS.map(({ codec, mimeCodec }) =>
-        probeAudio({ codec, mimeCodec, channels, platform, askers }),
+        probeAudio({
+          codec,
+          mimeCodec,
+          channels: Math.min(outputPlays, channelMaximum(codec, platform.userAgent)),
+          platform,
+          askers,
+        }),
       ),
     ),
   ])
@@ -918,6 +950,9 @@ async function probeAudio({
     askers.askDecodingInfo(audio(`audio/mp4; codecs="${mimeCodec}"`)),
     Promise.all(audioFileTypes(codec).map(playsFromFile)).then((found) => found.flat()),
   ])
+  if (!answer?.supported && channels > SURROUND_MAXIMUM) {
+    return probeAudio({ codec, mimeCodec, channels: SURROUND_MAXIMUM, platform, askers })
+  }
   return {
     codec,
     channels,
@@ -1004,6 +1039,49 @@ function channelCap({
     return Math.min(maxChannels, STEREO)
   }
   return maxChannels
+}
+
+// The most channels an entry for the codec may declare in this browser.
+function channelMaximum(codec: AudioCodec, userAgent: string): number {
+  const engine = sevenOneEngine(userAgent)
+  const operatingSystem = sevenOneOperatingSystem(userAgent)
+  const passed = SEVEN_ONE_PASSES.some(
+    (pass) =>
+      pass.engine === engine?.engine &&
+      engine.version >= pass.sinceVersion &&
+      pass.operatingSystem === operatingSystem &&
+      pass.codecs.includes(codec),
+  )
+  if (passed) {
+    return SEVEN_ONE
+  }
+  return SURROUND_MAXIMUM
+}
+
+// Every iPhone browser names itself CriOS/ or FxiOS/ instead, and plays through WebKit.
+function sevenOneEngine(userAgent: string): { engine: SevenOneEngine; version: number } | null {
+  const blink = /\b(?:Chrome|Chromium)\/(\d+)/.exec(userAgent)
+  if (blink) {
+    return { engine: 'BLINK', version: Number(blink[1]) }
+  }
+  const gecko = /\bFirefox\/(\d+)/.exec(userAgent)
+  if (gecko) {
+    return { engine: 'GECKO', version: Number(gecko[1]) }
+  }
+  return null
+}
+
+function sevenOneOperatingSystem(userAgent: string): SevenOneOperatingSystem | null {
+  if (userAgent.includes('Macintosh')) {
+    return 'MAC_OS'
+  }
+  if (/Android|CrOS/.test(userAgent)) {
+    return null
+  }
+  if (userAgent.includes('Linux')) {
+    return 'LINUX'
+  }
+  return null
 }
 
 // Every iPhone browser is WebKit; Blink keeps AppleWebKit in its user agent beside Chrome/.
