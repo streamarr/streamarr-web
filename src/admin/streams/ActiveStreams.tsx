@@ -31,6 +31,7 @@ import {
   KIND_LABELS,
   kindCounts,
   type KindFilter,
+  producedSpan,
   progressPercent,
   sentBitrate,
   SORT_LABELS,
@@ -510,21 +511,49 @@ function StreamCard({
           meta={[episodeLine(stream), viewerName(stream)].filter(Boolean).join(' · ')}
           image={image}
           blurHash={blurHash}
-          progressPercent={progressPercent(stream) ?? undefined}
           overlay={
-            <span className={styles.badges}>
-              <span className={styles.badge}>{KIND_LABELS[kind]}</span>
-              {stream.state && (
-                <span className={styles.glyph} data-state={stream.state}>
-                  <Icon name={stream.state === 'PAUSED' ? 'pause' : 'play'} size={14} />
-                </span>
-              )}
-            </span>
+            <>
+              <span className={styles.badges}>
+                <span className={styles.badge}>{KIND_LABELS[kind]}</span>
+                {stream.state && (
+                  <span className={styles.glyph} data-state={stream.state}>
+                    <Icon name={stream.state === 'PAUSED' ? 'pause' : 'play'} size={14} />
+                  </span>
+                )}
+              </span>
+              <PositionTrack stream={stream} />
+            </>
           }
         />
       </button>
       {children}
     </>
+  )
+}
+
+// The produced stretch sits behind the position, so an encode that runs ahead shows its lead.
+function PositionTrack({ stream }: Readonly<{ stream: Stream }>) {
+  const percent = progressPercent(stream)
+  if (percent === null) return null
+  const produced = producedSpan(stream)
+  return (
+    <span
+      className={styles.track}
+      role="progressbar"
+      aria-label="Position"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(percent)}
+    >
+      {produced && (
+        <span
+          className={styles.produced}
+          data-testid="produced-range"
+          style={{ left: `${produced.left}%`, width: `${produced.width}%` }}
+        />
+      )}
+      <span className={styles.played} style={{ width: `${percent}%` }} />
+    </span>
   )
 }
 
@@ -597,6 +626,9 @@ function StreamDetail({
                 <Fact name="Viewer" value={viewerName(stream)} />
                 <Fact name="Device" value={stream.deviceName ?? 'Not named'} />
                 <Fact name="Position" value={positionText(stream)} />
+                {stream.producedRange && (
+                  <Fact name="Produced" value={producedText(stream.producedRange)} />
+                )}
                 <Fact name="Output bitrate" value={outputBitrateText(stream)} />
                 <Fact name="Workers" value={stream.workers.join(', ') || 'None'} />
               </Facts>
@@ -662,6 +694,12 @@ function positionText(stream: Stream): string {
   if (positionSeconds === null || state === null) return 'Preparing'
   const position = formatTimecode({ positionSeconds, durationSeconds: positionSeconds })
   return `${position} · ${stateText(stream)}`
+}
+
+function producedText({ startSeconds, endSeconds }: NonNullable<Stream['producedRange']>): string {
+  const timecode = (seconds: number) =>
+    formatTimecode({ positionSeconds: seconds, durationSeconds: endSeconds })
+  return `${timecode(startSeconds)} to ${timecode(endSeconds)}`
 }
 
 function outputBitrateText(stream: Stream): string {

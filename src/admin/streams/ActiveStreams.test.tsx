@@ -41,6 +41,7 @@ const MOVIE: ActiveStreamFieldsFragment = {
     images: [],
   },
   positionSeconds: 754,
+  producedRange: { startSeconds: 600, endSeconds: 1_500.5 },
   state: 'PLAYING',
   decision: playbackDecision({
     streamSessionId: 'sess-movie',
@@ -79,6 +80,7 @@ const EPISODE: ActiveStreamFieldsFragment = {
   mediaFileId: 'file-episode',
   media: BREAKAGE,
   positionSeconds: 3_725,
+  producedRange: { startSeconds: 3_600, endSeconds: 3_900 },
   state: 'PAUSED',
   decision: playbackDecision({ streamSessionId: 'sess-episode' }),
   workers: ['worker-session-1', 'worker-session-2'],
@@ -257,6 +259,53 @@ describe('active streams', () => {
     )
   })
 
+  it('shouldShowWhereThePlayerIsAndTheProducedStretchOnTheCardsTrack', async () => {
+    serve([MOVIE])
+    renderAppAt(PAGE)
+    const runtime = 118 * 60
+
+    const track = within(await streamCard(MOVIE_CARD)).getByRole('progressbar', {
+      name: 'Position',
+    })
+
+    expect(track).toHaveAttribute('aria-valuenow', String(Math.round((754 / runtime) * 100)))
+    expect(within(track).getByTestId('produced-range')).toHaveStyle({
+      left: `${(600 / runtime) * 100}%`,
+      width: `${((1_500.5 - 600) / runtime) * 100}%`,
+    })
+  })
+
+  it('shouldLeaveOutTheProducedStretchWhenTheServerReportsNoneForADirectPlay', async () => {
+    const directPlay = playbackDecision({
+      streamSessionId: 'sess-direct',
+      video: { delivery: 'DIRECT_PLAY', source: H264_FULL_HD, output: H264_FULL_HD },
+      audio: null,
+    })
+    serve([{ ...MOVIE, decision: directPlay, producedRange: null }])
+    const { user } = renderAppAt(PAGE)
+    const card = 'Everlight, Ada. Playing, Direct play.'
+
+    const details = await openDetails(user, card, 'Everlight')
+
+    const track = within(await streamCard(card)).getByRole('progressbar', { name: 'Position' })
+    expect(within(track).queryByTestId('produced-range')).not.toBeInTheDocument()
+    expect(factsIn(details)).not.toHaveProperty('Produced')
+  })
+
+  it('shouldMoveTheProducedStretchWhenAChangeReportsANewOne', async () => {
+    const state = serve([MOVIE])
+    const { user } = renderAppAt(PAGE)
+    const details = await openDetails(user, MOVIE_CARD, 'Everlight')
+    await liveChanges(state)
+
+    publishChange(state, MOVIE.playbackSessionId, {
+      ...MOVIE,
+      producedRange: { startSeconds: 600, endSeconds: 1_800 },
+    })
+
+    await waitFor(() => expect(factsIn(details).Produced).toBe('10:00 to 30:00'))
+  })
+
   it('shouldShowWhoWatchesWhatPlaysAndHowWhenTheAdminOpensAStreamsDetails', async () => {
     serve()
     const { user } = renderAppAt(PAGE)
@@ -268,6 +317,7 @@ describe('active streams', () => {
       Viewer: 'Ada',
       Device: 'Safari on Mac',
       Position: '12:34 · Playing',
+      Produced: '10:00 to 25:00',
       'Output bitrate': '8.2 Mb/s',
       Workers: 'worker-session-1',
     })
@@ -308,6 +358,7 @@ describe('active streams', () => {
       Viewer: 'Ben',
       Device: 'Apple TV',
       Position: '1:02:05 · Paused',
+      Produced: '1:00:00 to 1:05:00',
       'Output bitrate': '8.2 Mb/s',
       Workers: 'worker-session-1, worker-session-2',
     })
@@ -354,6 +405,7 @@ describe('active streams', () => {
         deviceName: null,
         media: null,
         positionSeconds: null,
+        producedRange: null,
         state: null,
         decision: null,
         workers: [],
