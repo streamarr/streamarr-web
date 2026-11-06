@@ -232,3 +232,42 @@ test('on a phone, the delivery chips that do not fit fold into a menu that still
   await expect(page.getByRole('button', { name: EPISODE_CARD })).toBeVisible()
   await expect(page.getByRole('button', { name: MOVIE_CARD })).toBeHidden()
 })
+
+test('focus stays in the open details when a card before them in the row ends', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  // More streams than any row holds, so an ending card pulls the next row's first card up.
+  const viewers = Array.from({ length: 9 }, (_, index) => ({
+    ...MOVIE,
+    playbackSessionId: `playback-viewer-${index + 1}`,
+    profile: {
+      __typename: 'ActiveStreamProfile',
+      id: `profile-${index + 1}`,
+      name: `Viewer ${index + 1}`,
+    },
+  }))
+  const state = await fixture(page, viewers)
+  await page.goto(PAGE)
+  await page.getByRole('button', { name: 'Everlight, Viewer 1. Playing, Encode.' }).click()
+  const close = page.getByRole('region', { name: 'Everlight' }).getByRole('button', {
+    name: 'Close details',
+  })
+  await close.focus()
+  await expect.poll(() => state.socket.isLive('ActiveStreamsChanged')).toBe(true)
+
+  state.socket.publish('ActiveStreamsChanged', {
+    data: {
+      activeStreamsChanged: {
+        __typename: 'ActiveStreamChange',
+        playbackSessionId: 'playback-viewer-2',
+        activeStream: null,
+      },
+    },
+  })
+
+  await expect(
+    page.getByRole('button', { name: 'Everlight, Viewer 2. Playing, Encode.' }),
+  ).toBeHidden()
+  await expect(close).toBeFocused()
+})
