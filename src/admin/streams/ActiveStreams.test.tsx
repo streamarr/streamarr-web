@@ -235,6 +235,10 @@ describe('active streams', () => {
     await streamCard(MOVIE_CARD)
 
     expect(cardNames()).toEqual([MOVIE_CARD, EPISODE_CARD])
+    const episode = await streamCard(EPISODE_CARD)
+    expect(within(episode).getByText('BE')).toBeInTheDocument()
+    expect(within(episode).getByText('Ben')).toBeInTheDocument()
+    expect(within(episode).getByText('S2 E5 · Breakage')).toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Active streams2')
     expect(screen.getByText('16.4 Mb/s sent · 1 copy, 1 encode')).toBeInTheDocument()
   })
