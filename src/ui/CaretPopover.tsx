@@ -266,7 +266,7 @@ export function CaretPopover<Id>({
             </Fragment>
           )
         })}
-        {toggle && <div role="separator" className={styles.divider} />}
+        {toggle && <hr className={styles.divider} />}
         {toggle && (
           <button
             type="button"
