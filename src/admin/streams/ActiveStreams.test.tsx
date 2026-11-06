@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type {
   ActiveStreamFieldsFragment,
   ActiveStreamPosterFieldsFragment,
+  PlaybackDelivery,
   PlaybackState,
 } from '../../graphql/generated/graphql'
 import { deferred } from '../../test/deferred'
@@ -241,7 +242,7 @@ describe('active streams', () => {
     expect(within(episode).getByText('Ben')).toBeInTheDocument()
     expect(within(episode).getByText('S2 E5 · Breakage')).toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Active streams2')
-    expect(screen.getByText('16.4 Mb/s sent · 1 copy, 1 encode')).toBeInTheDocument()
+    expect(screen.getByText('Output up to 16.4 Mb/s · 1 copy, 1 encode')).toBeInTheDocument()
   })
 
   it('shouldShowTheSeriesPosterOnAnEpisodesCard', async () => {
@@ -453,7 +454,7 @@ describe('active streams', () => {
       within(details).getByText('The tracks appear once the stream starts.'),
     ).toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Active streams1')
-    expect(screen.getByText('0 kb/s sent')).toBeInTheDocument()
+    expect(screen.queryByText(/Mb\/s|kb\/s/)).not.toBeInTheDocument()
   })
 
   it('shouldShowOnlyTheStreamsOfADeliveryWhenTheAdminPicksItsChip', async () => {
@@ -513,6 +514,41 @@ describe('active streams', () => {
     )
   })
 
+  it('shouldLeaveTheOutputTotalOutWhenAStreamsOutputBitrateIsNotKnown', async () => {
+    const unknownOutput = playbackDecision({
+      streamSessionId: 'sess-unknown',
+      video: { delivery: 'COPY', source: H264_FULL_HD, output: { ...H264_FULL_HD, bitrate: null } },
+    })
+    serve([MOVIE, { ...EPISODE, decision: unknownOutput }])
+    renderAppAt(PAGE)
+    await streamCard(MOVIE_CARD)
+
+    expect(screen.getByText('1 copy, 1 encode')).toBeInTheDocument()
+  })
+
+  it('shouldLeaveTheDeliveryOutWhenTheServerSendsOneThePageDoesNotKnow', async () => {
+    const future = playbackDecision({
+      streamSessionId: 'sess-future',
+      video: {
+        delivery: 'SPLICE' as PlaybackDelivery,
+        source: H264_FULL_HD,
+        output: H264_FULL_HD,
+      },
+      audio: null,
+    })
+    serve([{ ...MOVIE, decision: future }])
+    renderAppAt(PAGE)
+
+    await streamCard('Everlight, Ada. Playing.')
+
+    expect(
+      screen
+        .getAllByRole('button')
+        .filter((button) => button.hasAttribute('aria-pressed'))
+        .map((chip) => chip.textContent),
+    ).toEqual(['All 1'])
+  })
+
   it('shouldFindTheStreamsWhoseViewerTitleOrDeviceMatchesTheSearch', async () => {
     serve()
     const { user } = renderAppAt(PAGE)
@@ -536,10 +572,13 @@ describe('active streams', () => {
 
   it.each([
     { sort: 'Title', shown: [ZOE_MOVIE_CARD, EPISODE_CARD] },
-    { sort: 'Time left', shown: [EPISODE_CARD, ZOE_MOVIE_CARD] },
+    { sort: 'Time left', shown: [ZOE_MOVIE_CARD, EPISODE_CARD] },
   ])('shouldOrderTheStreamsByTheSortTheAdminPicks(sort: $sort)', async ({ sort, shown }) => {
-    // Zoe sorts after Ben, so the viewer order differs from the first pick's.
-    serve([{ ...MOVIE, profile: { id: 'profile-zoe', name: 'Zoe' } }, EPISODE])
+    // Zoe sorts after Ben, and her movie has less left than his episode, so both picks reorder.
+    serve([
+      { ...MOVIE, profile: { id: 'profile-zoe', name: 'Zoe' }, positionSeconds: 7_000 },
+      { ...EPISODE, positionSeconds: 60 },
+    ])
     const { user } = renderAppAt(PAGE)
     await streamCard(ZOE_MOVIE_CARD)
 
