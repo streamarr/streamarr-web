@@ -145,7 +145,9 @@ export function kindCounts(streams: readonly Stream[]): Record<StreamKind, numbe
 }
 
 export function workerNames(streams: readonly Stream[]): string[] {
-  return [...new Set(streams.flatMap((stream) => stream.workers))].sort()
+  return [...new Set(streams.flatMap((stream) => stream.workers))].sort((a, b) =>
+    a.localeCompare(b),
+  )
 }
 
 /**
