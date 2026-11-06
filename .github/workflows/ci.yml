@@ -70,7 +70,7 @@ jobs:
       # The cache holds only the browser; the OS packages it needs are not cached.
       - if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: node_modules/.bin/playwright install-deps chromium
-      - name: Install FFmpeg, which writes the 7.1 channel-order streams
+      - name: Install FFmpeg, which writes the 7.1 channel-order and quality-ladder streams
         run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends ffmpeg
       - run: npm run test:e2e -- --project=chromium
       - name: Upload browser test output
