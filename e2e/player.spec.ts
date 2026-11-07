@@ -1265,6 +1265,7 @@ const H264_HD = {
   bitrate: 1_800_000,
   videoRange: 'SDR',
   dolbyVision: false,
+  details: null,
 }
 
 // The server encodes the HEVC source because the browser declares no HEVC, and copies its audio.

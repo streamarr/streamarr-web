@@ -122,6 +122,7 @@ export const H264_FULL_HD: VideoFormatFieldsFragment = {
   bitrate: 8_000_000,
   videoRange: 'SDR',
   dolbyVision: false,
+  details: null,
 }
 
 /** A stereo AAC audio track at 192 kb/s. */
