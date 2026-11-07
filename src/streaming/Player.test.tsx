@@ -1469,9 +1469,14 @@ describe('Player', () => {
     },
   )
 
-  it.each([true, false])(
-    'shouldReconcileThePublicationGapWithoutReportingAFormatFailureOn503(%s)',
-    async (fatal) => {
+  it.each([
+    { code: 404, fatal: true },
+    { code: 404, fatal: false },
+    { code: 503, fatal: true },
+    { code: 503, fatal: false },
+  ])(
+    'shouldReconcileThePublicationGapWithoutReportingAFormatFailureOn$code(fatal=$fatal)',
+    async ({ code, fatal }) => {
       serveSession()
       const failures: unknown[] = []
       let queries = 0
@@ -1526,7 +1531,7 @@ describe('Player', () => {
           fatal,
           type: 'networkError',
           details: 'fragLoadError',
-          response: { code: 503 },
+          response: { code },
         }),
       )
 
