@@ -20,6 +20,7 @@ import {
 import { renderAppAt } from '../../test/render'
 import type { UserEvent } from '@testing-library/user-event'
 import { server } from '../../test/server'
+import { videoFormatDetails } from '../../test/videoFormatDetails'
 
 const ADMIN = meFixture({ scope: 'profile', serverAdmin: true })
 const PAGE = '/settings/server/streams'
@@ -230,6 +231,39 @@ async function liveChanges(state: ReturnType<typeof serve>) {
 const ACTIVE_STREAMS_READ_DEADLINE_MS = 15_000
 
 describe('active streams', () => {
+  it('should show the source and delivered video facts in the admin stream details', async () => {
+    const decision = playbackDecision({
+      streamSessionId: 'sess-movie',
+      video: {
+        delivery: 'ENCODE',
+        source: {
+          ...HEVC_UHD,
+          details: videoFormatDetails({ bitDepth: 10, compatibleBase: 'PQ', hdr10Plus: 'PRESENT' }),
+        },
+        output: {
+          ...H264_FULL_HD,
+          details: videoFormatDetails({ bitDepth: 8, compatibleBase: 'SDR', hdr10Plus: 'ABSENT' }),
+        },
+      },
+    })
+    serve([{ ...MOVIE, decision }])
+    const { user } = renderAppAt(PAGE)
+
+    const details = await openDetails(user, MOVIE_CARD, 'Everlight')
+
+    expect(trackIn(details, 'Video').rows).toContainEqual([
+      'Bit depth (changed)',
+      '10-bit',
+      '8-bit',
+    ])
+    expect(trackIn(details, 'Video').rows).toContainEqual(['HDR (changed)', 'HDR10+', 'SDR'])
+    expect(trackIn(details, 'Video').rows).toContainEqual([
+      'HDR base (changed)',
+      'PQ (ST 2084)',
+      'SDR',
+    ])
+  })
+
   afterEach(() => {
     vi.useRealTimers()
     vi.restoreAllMocks()

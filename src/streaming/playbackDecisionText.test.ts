@@ -30,6 +30,7 @@ const ENCODED_FOR_1080P = playbackDecision({
       bitrate: 61_200_000,
       videoRange: 'PQ',
       dolbyVision: true,
+      details: null,
     },
     output: {
       codec: 'hevc',
@@ -39,6 +40,7 @@ const ENCODED_FOR_1080P = playbackDecision({
       bitrate: 38_400_000,
       videoRange: 'PQ',
       dolbyVision: false,
+      details: null,
     },
   },
   audio: TRUEHD_AS_EAC3,
@@ -55,6 +57,22 @@ function reasonsOf(
 }
 
 describe('playbackDecisionText', () => {
+  it.each<[DecisionReason, 'video' | 'audio', string]>([
+    [
+      'START_TIME_CORRECTION_UNKNOWN',
+      'video',
+      "The server couldn't read the start time needed to copy this video, so it encodes it.",
+    ],
+    [
+      'VIDEO_ENDS_EARLY',
+      'video',
+      'The video ends early, so the server holds its last frame to the end.',
+    ],
+    ['AUDIO_ENDS_EARLY', 'audio', 'The audio ends early, so the server adds silence to the end.'],
+  ])('should explain the current server reason %s', (reason, track, text) => {
+    expect(reasonsOf([reason])[track]).toEqual([text])
+  })
+
   // Every DecisionReason in the schema's order, each with its sentence from streamarr/streamarr-ux#21.
   it.each<[DecisionReason, 'video' | 'audio' | 'stream', string]>([
     ['VIDEO_CODEC_NOT_DECLARED', 'video', "This device can't play the video's codec (HEVC)."],
