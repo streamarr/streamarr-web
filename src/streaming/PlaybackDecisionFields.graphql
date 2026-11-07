@@ -30,6 +30,31 @@ fragment VideoFormatFields on VideoFormat {
   bitrate
   videoRange
   dolbyVision
+  details {
+    codecProfile
+    codecLevel
+    bitDepth
+    chromaSubsampling
+    compatibleBase
+    hdr10Plus
+    dolbyVision {
+      presence
+      profile
+      level
+      baseLayerCompatibilityId
+      enhancementLayer
+      observedRpu
+    }
+    masteringDisplay {
+      minLuminance
+      maxLuminance
+    }
+    contentLightLevel {
+      maxContentLightLevel
+      maxFrameAverageLightLevel
+    }
+    bitstreamRewrites
+  }
 }
 
 fragment AudioFormatFields on AudioFormat {

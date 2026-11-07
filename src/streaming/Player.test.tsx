@@ -8095,6 +8095,7 @@ describe('Player', () => {
       bitrate: 45_000_000,
       videoRange: 'PQ',
       dolbyVision: true,
+      details: null,
     } as const
     const EAC3_SURROUND = { codec: 'eac3', channels: 6, bitrate: 640_000 } as const
     const H264_HD = { ...H264_FULL_HD, width: 1280, height: 720, bitrate: 3_000_000 }

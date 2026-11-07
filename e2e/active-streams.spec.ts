@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { meFixture, profileFixture } from '../src/test/meFixture'
 import { routeGraphqlSocket } from './graphqlSocket'
+import { videoFormatDetails } from '../src/test/videoFormatDetails'
 
 test.use({ serviceWorkers: 'block' })
 
@@ -15,6 +16,7 @@ const H264_HD = {
   bitrate: 1_800_000,
   videoRange: 'SDR',
   dolbyVision: false,
+  details: null,
 }
 const AAC = { __typename: 'AudioFormat', codec: 'aac', channels: 2, bitrate: 128_000 }
 
@@ -117,6 +119,61 @@ const directPlay = {
 
 const MOVIE_CARD = 'Everlight, Ada. Playing, Encode.'
 const EPISODE_CARD = 'Northern Line, S2 E5 · Breakage, Ben. Preparing.'
+
+test('HDR source and output facts remain readable on a phone', async ({ page }) => {
+  const sourceDetails = videoFormatDetails({
+    compatibleBase: 'PQ',
+    bitDepth: 10,
+    hdr10Plus: 'ABSENT',
+    dolbyVision: {
+      presence: 'PRESENT',
+      profile: 7,
+      level: 6,
+      baseLayerCompatibilityId: 6,
+      enhancementLayer: 'FEL',
+      observedRpu: 'PRESENT',
+    },
+    masteringDisplay: { minLuminance: 0.0001, maxLuminance: 1000 },
+  })
+  const outputDetails = {
+    ...sourceDetails,
+    dolbyVision: {
+      ...sourceDetails.dolbyVision,
+      profile: 8,
+      baseLayerCompatibilityId: 1,
+      enhancementLayer: 'NONE',
+    },
+    bitstreamRewrites: ['CONVERT_DOLBY_VISION_PROFILE_7_TO_8_1'],
+  }
+  await page.setViewportSize({ width: 375, height: 667 })
+  await fixture(page, [
+    {
+      ...copy,
+      decision: {
+        ...copy.decision,
+        video: {
+          ...copy.decision.video,
+          source: { ...H264_HD, codec: 'hevc', dolbyVision: true, details: sourceDetails },
+          output: { ...H264_HD, codec: 'hevc', dolbyVision: true, details: outputDetails },
+        },
+      },
+    },
+  ])
+  await page.goto(PAGE)
+  await page.getByRole('button', { name: 'Everlight, Ada. Playing, Copy.' }).click()
+  const details = page.getByRole('region', { name: 'Everlight' })
+  await expect(details.getByRole('row', { name: /Dolby Vision profile/ })).toContainText(
+    '7 · level 6',
+  )
+  await expect(details.getByRole('row', { name: /Dolby Vision profile/ })).toContainText(
+    '8.1 · level 6',
+  )
+  const changes = details.getByRole('row', { name: /Bitstream changes/ })
+  await changes.scrollIntoViewIfNeeded()
+  await expect(changes).toContainText('enhancement layer removed')
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375)
+  await page.screenshot({ path: '/tmp/streamarr-hdr-details-mobile.png', fullPage: true })
+})
 
 test('the active streams page shows a stream that starts and drops one that ends, live', async ({
   page,

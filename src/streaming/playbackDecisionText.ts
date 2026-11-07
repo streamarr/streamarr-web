@@ -8,6 +8,7 @@ import type {
   VideoRange,
 } from '../graphql/generated/graphql'
 import { qualityLabel } from './qualityChoices'
+import { detailedHdrText, videoDetailsRows } from './playbackVideoDetails'
 
 type Known<Value extends string> = Exclude<Value, '%future added value'>
 
@@ -222,6 +223,13 @@ const REASONS: Record<Known<DecisionReason>, Reason> = {
   HARDWARE_ENCODER_FAILED: stream(
     'The hardware encoder failed, so the server encodes the video in software.',
   ),
+  START_TIME_CORRECTION_UNKNOWN: video(
+    () => "The server couldn't read the start time needed to copy this video, so it encodes it.",
+  ),
+  VIDEO_ENDS_EARLY: video(
+    () => 'The video ends early, so the server holds its last frame to the end.',
+  ),
+  AUDIO_ENDS_EARLY: audio(() => 'The audio ends early, so the server adds silence to the end.'),
 }
 
 const CODECS = new Map([
@@ -321,6 +329,7 @@ export function videoRows({ source, output }: VideoDelivery): TrackRow[] {
       frameRate === null ? UNKNOWN : frameRateText(frameRate),
     ),
     row('Bitrate', source, output, optionalBitrateText),
+    ...videoDetailsRows(source, output),
   ]
 }
 
@@ -369,6 +378,7 @@ function optionalBitrateText({ bitrate }: { bitrate: number | null }): string {
 }
 
 function hdrText(format: VideoFormatFieldsFragment): string {
+  if (format.details) return detailedHdrText(format.details)
   return format.dolbyVision ? 'Dolby Vision' : videoRangeText(format.videoRange)
 }
 
