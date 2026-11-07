@@ -1343,7 +1343,10 @@ function attach(video: HTMLVideoElement, url: string, options: StreamSourceOptio
   }
   const hls: Hls = new Hls(hlsPlaybackConfig(() => hls, options.videoPreference))
   hls.on(Hls.Events.ERROR, (_event, data) => {
-    if (data.type === Hls.ErrorTypes.NETWORK_ERROR && data.response?.code === 503) {
+    if (
+      data.type === Hls.ErrorTypes.NETWORK_ERROR &&
+      (data.response?.code === 404 || data.response?.code === 503)
+    ) {
       options.onStatusRequired(data.fatal)
       return
     }
