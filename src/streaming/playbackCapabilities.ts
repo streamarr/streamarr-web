@@ -203,6 +203,25 @@ const HEVC: VideoFamily = {
   },
 }
 
+// High tier starts at level 4. Its entries also require the separate Main-tier measurements.
+// Dolby Vision has no tier in its codec string, so it stays in the Main entries.
+const HEVC_HIGH: VideoFamily = {
+  codecFamily: 'HEVC',
+  maxTier: 'HIGH',
+  eightBit: { bitDepth: 8, profiles: ['HEVC_MAIN'], codec: (level) => hevcHighCodec(level, 8) },
+  tenBit: { bitDepth: 10, profiles: ['HEVC_MAIN_10'], codec: (level) => hevcHighCodec(level, 10) },
+  hdr: {
+    profiles: ['HEVC_MAIN_10'],
+    codec: (level) => hevcHighCodec(level, 10),
+    dolbyVision: [],
+  },
+}
+
+function hevcHighCodec(level: number, bitDepth: number): string {
+  const profile = bitDepth === 8 ? '1.6' : '2.4'
+  return `hvc1.${profile}.H${level * 3}.B0`
+}
+
 // AV1 Main covers both bit depths, so a 10-bit maximum also accepts 8-bit (ADR 0049): the 10-bit
 // probe names no profile, and a tier declares 10-bit only beside an 8-bit answer that keeps up.
 const AV1: VideoFamily = {
@@ -260,7 +279,7 @@ const BASELESS_DOLBY_VISION_PROFILES: ReadonlySet<DolbyVisionProfile> = new Set(
 ])
 
 // H.264 is probed beside these: on WebKit, its tiers answered smooth cap power-efficient HEVC.
-const VIDEO_FAMILIES_BESIDES_H264 = [HEVC, AV1]
+const VIDEO_FAMILIES_BESIDES_H264 = [HEVC, AV1, HEVC_HIGH]
 
 // AV1 numbers its levels by seq_level_idx: level 2.0 is 0, and each major level has four minors.
 function av1Codec(level: number, bitDepth: number): string {
@@ -469,9 +488,53 @@ async function probeVideo({
     ),
   ])
   const probed = [{ family: H264, answers: h264Answers, hdrAnswers: [] }, ...otherFamilies]
-  return probed.flatMap(({ family, answers, hdrAnswers }) =>
-    familyEntries({ platform, family, answers, hdrAnswers, h264Answers, hls }),
-  )
+  const main = otherFamilies.find(({ family }) => family === HEVC)
+  return probed.flatMap(({ family, answers, hdrAnswers }) => {
+    if (family !== HEVC_HIGH || !main) {
+      return familyEntries({ platform, family, answers, hdrAnswers, h264Answers, hls })
+    }
+    const bounded = highTierWithinMain({ platform, answers, hdrAnswers, main, h264Answers })
+    return familyEntries({ platform, family, ...bounded, h264Answers, hls })
+  })
+}
+
+// A High-tier maximum includes Main tier. Require the existing Main keeps-up rules independently
+// for each profile and HDR base; a smooth High answer cannot erase a Main refusal or ceiling.
+function highTierWithinMain({
+  platform,
+  answers,
+  hdrAnswers,
+  main,
+  h264Answers,
+}: {
+  platform: PlaybackPlatform
+  answers: TierAnswers[]
+  hdrAnswers: HdrTierAnswers[]
+  main: { answers: TierAnswers[]; hdrAnswers: HdrTierAnswers[] }
+  h264Answers: TierAnswers[]
+}): { answers: TierAnswers[]; hdrAnswers: HdrTierAnswers[] } {
+  const sdrKeepsUp = keepsUpWithoutSmallerRefusal({
+    answers: main.answers,
+    keepsUp: keepsUpOn({ platform, family: HEVC, answers: main.answers, h264Answers }),
+  })
+  const hdrKeepsUp = keepsUpAtEveryAnsweredSmallerTier({
+    answers: main.hdrAnswers,
+    keepsUp: keepsUpOn({ platform, family: HEVC, answers: main.hdrAnswers, h264Answers }),
+  })
+  const refused: DecodingAnswer = { supported: false, smooth: false, powerEfficient: false }
+  return {
+    answers: answers.map((answer, index) => ({
+      ...answer,
+      eightBit: sdrKeepsUp(main.answers[index], (row) => row.eightBit) ? answer.eightBit : refused,
+      tenBit: sdrKeepsUp(main.answers[index], (row) => row.tenBit) ? answer.tenBit : refused,
+    })),
+    hdrAnswers: hdrAnswers.map((answer, index) => ({
+      ...answer,
+      bases: answer.bases.map((base, baseIndex) =>
+        hdrKeepsUp(main.hdrAnswers[index], (row) => row.bases[baseIndex]) ? base : refused,
+      ),
+    })),
+  }
 }
 
 // HDR shows only on an HDR display, so an SDR display asks no HDR question and declares SDR alone.
@@ -489,7 +552,7 @@ function probeHdr({
     return Promise.resolve([])
   }
   return Promise.all(
-    PICTURE_TIERS.map(async (tier) => {
+    pictureTiersFor(family).map(async (tier) => {
       const level = tier.levels[family.codecFamily]
       const [bases, dolbyVisionAnswers] = await Promise.all([
         Promise.all(
@@ -517,7 +580,15 @@ function probeFamily({
   family: VideoFamily
   askDecodingInfo: AskDecodingInfo
 }): Promise<TierAnswers[]> {
-  return Promise.all(PICTURE_TIERS.map((tier) => probeTier({ family, tier, askDecodingInfo })))
+  return Promise.all(
+    pictureTiersFor(family).map((tier) => probeTier({ family, tier, askDecodingInfo })),
+  )
+}
+
+function pictureTiersFor(family: VideoFamily): readonly PictureTier[] {
+  return family === HEVC_HIGH
+    ? PICTURE_TIERS.filter((tier) => tier.levels.HEVC >= 40)
+    : PICTURE_TIERS
 }
 
 function familyEntries({
@@ -728,7 +799,7 @@ function keepsUpOn<T extends { tier: PictureTier }>({
   answers: readonly T[]
   h264Answers: readonly TierAnswers[]
 }): KeepsUp<T> {
-  if (family !== HEVC || !isWebKit(platform.userAgent)) {
+  if (family.codecFamily !== 'HEVC' || !isWebKit(platform.userAgent)) {
     return (answer, answerOf) => isSmooth(answerOf(answer))
   }
   const budget = h264Answers.filter((answer) => isSmooth(answer.eightBit))
@@ -1131,7 +1202,7 @@ async function withVideoDirectPlay({
         return [entry]
       }
       const directPlay = { ...entry, dolbyVisionProfiles: [] }
-      const questions = entryQuestions({ family, entry: directPlay })
+      const questions = directPlayQuestions({ family, entry: directPlay })
       const playsAll = (asked: readonly VideoQuestion[]) =>
         playsEveryFile({ platform, family, askers, questions: asked })
       const [sampleEntries, matroska] = await Promise.all([
@@ -1264,6 +1335,20 @@ function entryQuestions({
         (probe.profiles.length === 0 || probe.profiles.some((profile) => profiles.has(profile))),
     )
     .map((probe) => videoConfiguration(tier, probe.codec(level)))
+}
+
+function directPlayQuestions({
+  family,
+  entry,
+}: {
+  family: VideoFamily
+  entry: VideoCapabilityEntryInput
+}): VideoQuestion[] {
+  const main = entryQuestions({ family, entry })
+  if (family !== HEVC || !entry.codecProfiles.some(({ maxTier }) => maxTier === 'HIGH')) {
+    return main
+  }
+  return [...main, ...entryQuestions({ family: HEVC_HIGH, entry })]
 }
 
 function hdrQuestions({

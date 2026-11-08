@@ -434,7 +434,7 @@ async function watchAFallback(picked: string, choices: Partial<PlaybackChoices>)
 }
 
 function codecFamilies(declarations: readonly ClientCapabilityDeclarationInput[]) {
-  return declarations.map(({ video }) => video.map((entry) => entry.codecFamily))
+  return declarations.map(({ video }) => [...new Set(video.map((entry) => entry.codecFamily))])
 }
 
 function recordTimelineReports(): TimelineReport[] {
@@ -1083,13 +1083,17 @@ describe('Player', () => {
       declarations.flatMap(({ video }) =>
         video
           .filter((entry) => entry.codecFamily === 'HEVC')
-          .map(({ maxHeight, maxFrameRate, maxBitDepth }) => ({
+          .map(({ maxHeight, maxFrameRate, maxBitDepth, codecProfiles }) => ({
             maxHeight,
             maxFrameRate,
             maxBitDepth,
+            tiers: codecProfiles.map(({ maxTier }) => maxTier),
           })),
       ),
-    ).toEqual([{ maxHeight: 1080, maxFrameRate: 60, maxBitDepth: 10 }])
+    ).toEqual([
+      { maxHeight: 1080, maxFrameRate: 60, maxBitDepth: 10, tiers: ['MAIN', 'MAIN'] },
+      { maxHeight: 1080, maxFrameRate: 60, maxBitDepth: 10, tiers: ['HIGH', 'HIGH'] },
+    ])
   })
 
   it('shouldShowThePlaybackFailureWithoutCreatingASessionWhenTheBrowserDecodesNoVideo', async () => {

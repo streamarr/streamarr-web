@@ -98,7 +98,23 @@ function isWithinBitrateMaximum(
 }
 
 function platformFixture(overrides: Partial<PlaybackPlatform> = {}): PlaybackPlatform {
-  return playbackPlatformFixture({ decodingInfo: decodingInfoAnswering(() => true), ...overrides })
+  const platform = playbackPlatformFixture({
+    decodingInfo: decodingInfoAnswering(() => true),
+    ...overrides,
+  })
+  const { decodingInfo } = platform
+  if (!decodingInfo) {
+    return platform
+  }
+  // These scenarios supply Main-tier measurements. Unknown High-tier questions are refused;
+  // hevcHighTierCapabilities.test.ts supplies independent Main/High measurements.
+  return {
+    ...platform,
+    decodingInfo: (question) =>
+      /(?:hvc1|hev1)\.[12]\.[46]\.H/.test(codecOf(question))
+        ? Promise.resolve(answer(false))
+        : decodingInfo(question),
+  }
 }
 
 function sdrVideoEntry(entry: Partial<VideoCapabilityEntryInput>): VideoCapabilityEntryInput {
