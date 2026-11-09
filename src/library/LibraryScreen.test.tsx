@@ -428,6 +428,13 @@ describe('LibraryScreen', () => {
             edges: [
               { cursor: 'c1', node: movieNode({ id: '1', title: 'Alright' }) },
               { cursor: 'c2', node: movieNode({ id: '2', title: 'Northern Line' }) },
+              { cursor: 'c3', node: movieNode({ id: '3', title: 'Tundra' }) },
+              { cursor: 'c4', node: movieNode({ id: '4', title: 'Twilight' }) },
+            ],
+            alphabetIndex: [
+              { letter: 'A', count: 1 },
+              { letter: 'N', count: 1 },
+              { letter: 'T', count: 2 },
             ],
           }),
         })
@@ -438,7 +445,7 @@ describe('LibraryScreen', () => {
     await waitFor(() => expect(screen.getByText('A')).toHaveAttribute('aria-pressed', 'true'))
     const queriesAfterLoad = queryCount
 
-    // The second row tops the grid once the first has scrolled away.
+    // Four 300px rows leave room to scroll the second row to the top of the 800px viewport.
     const grid = libraryGrid()
     grid.scrollTop = JSDOM_ROW_HEIGHT
     fireEvent.scroll(grid)
