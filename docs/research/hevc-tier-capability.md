@@ -31,31 +31,8 @@ Chromium's clear-content MediaCapabilities performance prediction uses profile, 
 
 Independent High-tier probes can remove an artificial declaration ceiling, but browser-query limitations mean they must not be described as proof of the decoder's entire High-tier envelope. Dolby Vision compatibility remains a separate requirement; HEVC Main 10 and PQ alone do not establish support for the source's Dolby Vision profile.
 
-## Streamarr findings and reproduction
+## Implementation
 
-The inspected web checkout is `c49922a72c22e2e9ee9020fbe721a09079f96780`. Its HEVC family fixes `maxTier` to `MAIN`, constructs only `L` tier codec strings, and stops at level 5.1. The HDR entry does advertise PQ, HLG, and Dolby Vision, so the declaration is not SDR-only. [Web probe configuration](https://github.com/streamarr/streamarr-web/blob/c49922a72c22e2e9ee9020fbe721a09079f96780/src/streaming/playbackCapabilities.ts#L184-L204), [picture limits](https://github.com/streamarr/streamarr-web/blob/c49922a72c22e2e9ee9020fbe721a09079f96780/src/streaming/playbackCapabilities.ts#L92-L107)
+`src/streaming/playbackCapabilities.ts` probes HEVC Main and High tiers independently through level 6.2 at the existing picture sizes, frame rates and bitrates. Each profile and HDR base retains its own limits, and High-tier declarations require corresponding Main-tier support. Safari's support policy and the shared probe deadline remain in effect; Dolby Vision uses separate probes.
 
-The web checkout pins server `5198450c18d2bcbda533b390542e43648ffab8f0`. At that revision, `VideoCodecProfileCapability.acceptsLevelAndTier` requires both the level and tier to fit. `VideoCapabilityEntry.codecProfileRefusal` emits `VIDEO_CODEC_LEVEL_NOT_DECLARED` when a listed profile has no matching level/tier capability. The reason covers two independent mismatches:
-
-| Source | Declaration: level 5.1 / Main tier |
-| --- | --- |
-| Main 10, level 5.1, Main tier | Passes this check |
-| Main 10, level 5.1, High tier | Fails tier |
-| Main 10, level 5.2, Main tier | Fails level |
-| Main 10, level 5.2, High tier | Fails both |
-
-Other format checks still apply after this one. [Pinned server comparison](https://github.com/streamarr/streamarr-server/blob/5198450c18d2bcbda533b390542e43648ffab8f0/src/main/java/com/streamarr/server/domain/streaming/VideoCodecProfileCapability.java#L17-L25), [reason generation](https://github.com/streamarr/streamarr-server/blob/5198450c18d2bcbda533b390542e43648ffab8f0/src/main/java/com/streamarr/server/domain/streaming/VideoCapabilityEntry.java#L299-L319)
-
-The regression suite exercises the declaration builder with injected browser answers. Positive answers for High tier and higher signaled levels expose the previous declaration ceiling; refusals and unanswered queries verify that support is not inferred without evidence. These tests establish declaration behavior, not sustained decoder throughput or physical HDR presentation.
-
-## Implemented capability correction
-
-The fix belongs to **streamarr-web**, in `src/streaming/playbackCapabilities.ts`. The pinned server contract already represents HEVC tier and level; no server or transcode-worker contract change is needed for this correction.
-
-The declaration now asks Main and High tier independently through level 6.2, including 5.2, 6.0 and 6.1. These queries retain the existing picture sizes, frame rates and probe bitrates. Higher signaled levels do not imply larger pictures. Each profile and HDR base keeps its measured limits; lower-level refusals prevent wider declarations, and a High-tier entry must also fit the corresponding Main-tier answers. Safari's existing smoothness/power-efficiency policy and the shared three-second deadline remain in effect.
-
-Direct-play questions use the declared tier and level and corroborate Main-tier support for High-tier entries. Dolby Vision remains on its separate, original measured entries. A regression also covers crossing picture/level ceilings that would otherwise produce 41 entries: the final list is limited to the contract's 32, retaining the H.264 encode fallback first and omitting excess optional combinations conservatively.
-
-`src/streaming/hevcCapabilities.test.ts` covers the expanded matrix, while `Player.test.tsx` checks the capability payload submitted in `CreatePlaybackSession`. The older capability fixtures explicitly retain their original Main-tier question set; additional questions are unanswered in those fixtures rather than inheriting an unrestricted synthetic positive answer. Browser HDR and direct-play specs provide engine-level checks, not proof of physical HDR presentation.
-
-Validation passed: 1,712 unit tests with coverage, TypeScript, ESLint, Prettier, production build, and 33 HDR/direct-play browser tests across Chromium, Firefox and WebKit. The production build's PostCSS `from` and chunk-size warnings were reproduced in a separate unchanged-HEAD build. The change adds 22 focused HEVC regressions and one Player/API-payload regression.
+Direct-play checks use the declared tier and level. The declaration stays within the server contract's 32-entry limit, retaining the H.264 fallback first. The existing server contract supports these fields, so this correction requires no server or transcode-worker changes.

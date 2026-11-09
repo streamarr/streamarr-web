@@ -544,7 +544,7 @@ describe('declarePlaybackCapabilities', () => {
     ])
   })
 
-  it('shouldDeclareNoAv1WhenOnlyTheTenBitProbeKeepsUp', async () => {
+  it('shouldDeclareNoAv1WhenOnlyTheTenBitProbeIsSmooth', async () => {
     const declaration = await declarePlaybackCapabilities(
       platformFixture({
         decodingInfo: decodingInfoAnswering(
@@ -655,7 +655,7 @@ describe('declarePlaybackCapabilities', () => {
     ])
   })
 
-  it('shouldCapPowerEfficientHevcAtTheHighestTierH264KeepsUpWithWhenWebKitNeverAnswersHevcSmooth', async () => {
+  it('shouldCapPowerEfficientHevcAtTheHighestTierH264AnswersSmoothWhenWebKitNeverAnswersHevcSmooth', async () => {
     const declaration = await declarePlaybackCapabilities(
       platformFixture({
         decodingInfo: decodingInfoAnsweringHevc(() => IPHONE_SAFARI_HEVC_ANSWER, smoothUpToFullHd),
@@ -775,7 +775,7 @@ describe('declarePlaybackCapabilities', () => {
     expect(familyEntries(declaration, 'HEVC')).toEqual([UHD_AT_60_HEVC_MAIN_TEN_ENTRY])
   })
 
-  it('shouldDeclareHevcAboveTheHighestTierH264KeepsUpWithWhenWebKitAnswersHevcSmooth', async () => {
+  it('shouldDeclareHevcAboveTheHighestTierH264AnswersSmoothWhenWebKitAnswersHevcSmooth', async () => {
     const declaration = await declarePlaybackCapabilities(
       platformFixture({
         decodingInfo: decodingInfoAnsweringHevc(() => answer(true), smoothUpToFullHd),
@@ -1576,7 +1576,7 @@ describe('declarePlaybackCapabilities', () => {
     expect(declaration.video).toEqual(DECLARATION_OF_EVERY_TIER.video)
   })
 
-  it('shouldAddNoHdrEntryWhenHdrDecodesOnlyWithDroppedFramesAlthoughSdrKeepsUp', async () => {
+  it('shouldAddNoHdrEntryWhenHdrDecodesOnlyWithDroppedFramesAlthoughSdrIsSmooth', async () => {
     const browser = hdrBrowser({ dolbyVision: ['dvh1.05', 'dvh1.08', 'dav1.10'] })
     const declaration = await declarePlaybackCapabilities(
       hdrPlatformFixture({
@@ -1989,7 +1989,7 @@ describe('declarePlaybackCapabilities', () => {
       },
     )
 
-    it('shouldDeclareNoDirectPlayWhenTheFileDecodesOnlyWithDroppedFramesAlthoughMediaSourceKeepsUp', async () => {
+    it('shouldDeclareNoDirectPlayWhenTheFileDecodesOnlyWithDroppedFramesAlthoughMediaSourceIsSmooth', async () => {
       const declaration = await declarePlaybackCapabilities(
         platformFixture({
           decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) =>
@@ -2121,7 +2121,7 @@ describe('declarePlaybackCapabilities', () => {
       ).toEqual([])
     })
 
-    it('shouldDeclareNoHevcDirectPlayOnWebKitWhenTheFileAnswerIsOnlyPowerEfficientWhereMediaSourceKeepsUp', async () => {
+    it('shouldDeclareNoHevcDirectPlayOnWebKitWhenTheFileAnswerIsOnlyPowerEfficientWhereMediaSourceIsSmooth', async () => {
       const declaration = await declarePlaybackCapabilities(
         platformFixture({
           decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) =>

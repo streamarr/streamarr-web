@@ -1093,7 +1093,7 @@ describe('Player', () => {
     expect(codecFamilies(declarations)).toEqual([['H264', 'HEVC', 'AV1', 'HEVC']])
   })
 
-  it('shouldCapPowerEfficientHevcAtTheHighestTierH264KeepsUpWithWhenIphoneSafariPlays', async () => {
+  it('shouldCapPowerEfficientHevcAtTheHighestTierH264AnswersSmoothWhenIphoneSafariPlays', async () => {
     recordTimelineReports()
     const declarations = serveSessionRecordingDeclarations()
     const decodingInfo = (configuration: MediaDecodingConfiguration) => {

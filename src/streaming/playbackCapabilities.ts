@@ -34,10 +34,7 @@ export const DECLARATION_REFUSAL_TYPENAMES: ReadonlySet<string> =
     'VideoCodecTierInvalidError',
   ])
 
-/**
- * Whether the browser decodes a configuration, whether it keeps up with its frame rate, and whether
- * it decodes without draining the battery.
- */
+/** The browser's reported decoding support, frame-rate smoothness, and power efficiency. */
 export interface DecodingAnswer {
   supported: boolean
   smooth: boolean
@@ -237,7 +234,7 @@ function pictureTiersFor(family: VideoFamily): readonly PictureTier[] {
 }
 
 // AV1 Main covers both bit depths, so a 10-bit maximum also accepts 8-bit (ADR 0049): the 10-bit
-// probe names no profile, and a tier declares 10-bit only beside an 8-bit answer that keeps up.
+// probe names no profile, and a tier declares 10-bit only beside a qualifying 8-bit answer.
 const AV1: VideoFamily = {
   codecFamily: 'AV1',
   maxTier: 'MAIN',
@@ -590,17 +587,19 @@ function familyEntries({
   h264Answers: readonly TierAnswers[]
   hls: boolean
 }): VideoCapabilityEntryInput[] {
-  const keepsUp = keepsUpAcrossCodecTiers({
+  const isSupported = createConfigurationSupportCheck({
     platform,
     family,
     answers,
     mainAnswers,
     h264Answers,
-    bound: keepsUpWithoutSmallerRefusal,
+    bound: withoutSmallerConfigurationRefusals,
   })
-  let tiers = widestTiers(answers.flatMap((answer) => tierThatKeepsUp({ family, answer, keepsUp })))
+  let tiers = widestTiers(
+    answers.flatMap((answer) => supportedTiers({ family, answer, isSupported })),
+  )
   if (tiers.length === 0) {
-    tiers = tiersWithoutAnswerThatKeepsUp({ platform, family, answers })
+    tiers = fallbackTiers({ platform, family, answers })
   }
   return [
     ...tiers.map((decodedTier) => videoEntry({ family, decodedTier, hls })),
@@ -614,8 +613,8 @@ interface HdrTier {
   dolbyVisionProfiles: DolbyVisionProfileCapabilityInput[]
 }
 
-// Each HDR format counts at a tier on its own answer, under the same keeps-up rules as SDR: a 10-bit
-// SDR answer that keeps up says nothing about tone mapping or a decoder's lower HDR level. HDR
+// Each HDR format counts at a tier on its own answer, under the same support rules as SDR: a 10-bit
+// SDR answer says nothing about tone mapping or a decoder's lower HDR level. HDR
 // tiers fold as SDR tiers do, so a tier stays when no wider tier accepts every format it does.
 function hdrEntries({
   platform,
@@ -636,17 +635,17 @@ function hdrEntries({
   if (!hdr) {
     return []
   }
-  const keepsUp = keepsUpAcrossCodecTiers({
+  const isSupported = createConfigurationSupportCheck({
     platform,
     family,
     answers: hdrAnswers,
     mainAnswers,
     h264Answers,
-    bound: keepsUpAtEveryAnsweredSmallerTier,
+    bound: withSupportedSmallerConfigurations,
   })
   const kept: HdrTier[] = []
   for (const answers of hdrAnswers) {
-    const candidate = hdrTier({ hdr, answers, keepsUp })
+    const candidate = hdrTier({ hdr, answers, isSupported })
     if (candidate && !kept.some((wider) => isHdrTierCoveredBy(candidate, wider))) {
       kept.push(candidate)
     }
@@ -663,40 +662,40 @@ function hdrEntries({
 }
 
 // A maximum accepts every smaller value (ADR 0049), so an HDR format counts at a tier only when
-// every smaller tier it holds keeps up too or went unanswered. A smaller tier that decodes only
-// with dropped frames would stutter without a playback error, so no format attempt recovers.
-function keepsUpAtEveryAnsweredSmallerTier<T extends { tier: PictureTier }>({
+// every smaller tier it holds also passes the support check or went unanswered. A tier that
+// decodes only with dropped frames would stutter without a playback error, so no format attempt recovers.
+function withSupportedSmallerConfigurations<T extends { tier: PictureTier }>({
   answers,
-  keepsUp,
+  isSupported,
 }: {
   answers: readonly T[]
-  keepsUp: KeepsUp<T>
-}): KeepsUp<T> {
+  isSupported: ConfigurationSupportCheck<T>
+}): ConfigurationSupportCheck<T> {
   return (answer, answerOf) =>
-    keepsUp(answer, answerOf) &&
+    isSupported(answer, answerOf) &&
     answers.every(
       (smaller) =>
         !holdsConfiguration(answer.tier, smaller.tier) ||
         answerOf(smaller) === null ||
-        keepsUp(smaller, answerOf),
+        isSupported(smaller, answerOf),
     )
 }
 
 function hdrTier({
   hdr,
   answers,
-  keepsUp,
+  isSupported,
 }: {
   hdr: HdrProbe
   answers: HdrTierAnswers
-  keepsUp: KeepsUp<HdrTierAnswers>
+  isSupported: ConfigurationSupportCheck<HdrTierAnswers>
 }): HdrTier | null {
   const { tier } = answers
   const compatibleBases = COMPATIBLE_BASE_PROBES.filter((_, index) =>
-    keepsUp(answers, (tierAnswers) => tierAnswers.bases[index]),
+    isSupported(answers, (tierAnswers) => tierAnswers.bases[index]),
   ).map(({ base }) => base)
   const dolbyVisionProfiles = hdr.dolbyVision
-    .filter((_, index) => keepsUp(answers, (tierAnswers) => tierAnswers.dolbyVision[index]))
+    .filter((_, index) => isSupported(answers, (tierAnswers) => tierAnswers.dolbyVision[index]))
     .flatMap(({ profiles }) =>
       profiles.map((profile) => ({ profile, maxLevel: tier.dolbyVisionLevel })),
     )
@@ -739,40 +738,40 @@ async function probeTier({
 }
 
 // A tier that decodes only with dropped frames stutters without a playback error, so no format
-// attempt recovers from it: only answers that keep up raise a limit. Each bit depth counts on its
-// own answer, and the tier holds only the codec profiles of the bit depths that keep up.
-function tierThatKeepsUp({
+// attempt recovers from it: only qualifying answers raise a limit. Each bit depth counts on its
+// own answer, and the tier holds only the codec profiles of the supported bit depths.
+function supportedTiers({
   family,
   answer,
-  keepsUp,
+  isSupported,
 }: {
   family: VideoFamily
   answer: TierAnswers
-  keepsUp: KeepsUp<TierAnswers>
+  isSupported: ConfigurationSupportCheck<TierAnswers>
 }): DecodedTier[] {
-  const keptUp: BitDepthProbe[] = []
-  if (keepsUp(answer, (answers) => answers.eightBit)) {
-    keptUp.push(family.eightBit)
+  const supportedProbes: BitDepthProbe[] = []
+  if (isSupported(answer, (answers) => answers.eightBit)) {
+    supportedProbes.push(family.eightBit)
   }
-  if (family.tenBit && keepsUp(answer, (answers) => answers.tenBit)) {
-    keptUp.push(family.tenBit)
+  if (family.tenBit && isSupported(answer, (answers) => answers.tenBit)) {
+    supportedProbes.push(family.tenBit)
   }
-  const profiles = keptUp.flatMap((probe) => probe.profiles)
+  const profiles = supportedProbes.flatMap((probe) => probe.profiles)
   if (profiles.length === 0) {
     return []
   }
-  const bitDepth = Math.max(...keptUp.map((probe) => probe.bitDepth))
+  const bitDepth = Math.max(...supportedProbes.map((probe) => probe.bitDepth))
   return [{ tier: answer.tier, bitDepth, profiles }]
 }
 
 // One probe's answer at a tier, such as the 10-bit answer of a family's tier.
 type AnswerOf<T> = (answers: T) => ProbeAnswer
 
-type KeepsUp<T> = (answers: T, answerOf: AnswerOf<T>) => boolean
+type ConfigurationSupportCheck<T> = (answers: T, answerOf: AnswerOf<T>) => boolean
 
 // A High-tier maximum also accepts Main-tier streams. Both answers must support the same
 // profile/base, level and picture, including each tier's lower-level and smoothness limits.
-function keepsUpAcrossCodecTiers<T extends { tier: PictureTier }>({
+function createConfigurationSupportCheck<T extends { tier: PictureTier }>({
   platform,
   family,
   answers,
@@ -785,39 +784,50 @@ function keepsUpAcrossCodecTiers<T extends { tier: PictureTier }>({
   answers: readonly T[]
   mainAnswers: readonly T[]
   h264Answers: readonly TierAnswers[]
-  bound: (options: { answers: readonly T[]; keepsUp: KeepsUp<T> }) => KeepsUp<T>
-}): KeepsUp<T> {
-  const keepsUp = bound({ answers, keepsUp: keepsUpOn({ platform, family, answers, h264Answers }) })
+  bound: (options: {
+    answers: readonly T[]
+    isSupported: ConfigurationSupportCheck<T>
+  }) => ConfigurationSupportCheck<T>
+}): ConfigurationSupportCheck<T> {
+  const isSupported = bound({
+    answers,
+    isSupported: createPlatformSupportCheck({ platform, family, answers, h264Answers }),
+  })
   if (family !== HEVC_HIGH) {
-    return keepsUp
+    return isSupported
   }
-  const mainKeepsUp = bound({
+  const isMainTierSupported = bound({
     answers: mainAnswers,
-    keepsUp: keepsUpOn({ platform, family: HEVC, answers: mainAnswers, h264Answers }),
+    isSupported: createPlatformSupportCheck({
+      platform,
+      family: HEVC,
+      answers: mainAnswers,
+      h264Answers,
+    }),
   })
   return (answer, answerOf) =>
-    keepsUp(answer, answerOf) &&
+    isSupported(answer, answerOf) &&
     mainAnswers.some(
       (main) =>
         holdsConfiguration(main.tier, answer.tier) &&
         holdsConfiguration(answer.tier, main.tier) &&
-        mainKeepsUp(main, answerOf),
+        isMainTierSupported(main, answerOf),
     )
 }
 
 // Safari on iOS 27.2, on a phone that decodes HEVC in hardware, answers HEVC Main and Main 10
 // supported and power-efficient but never smooth, at every tier from 720p30 to 2160p60. On WebKit a
-// power-efficient HEVC answer therefore keeps up, but power efficiency says which decoder runs, not
+// power-efficient HEVC answer can qualify, but power efficiency says which decoder runs, not
 // how fast: a phone that decodes 1080p in hardware may still drop frames at 2160p60. So a
-// power-efficient HEVC answer keeps up only up to the highest H.264 tier WebKit answers smooth.
+// power-efficient HEVC answer qualifies only up to the highest H.264 tier WebKit answers smooth.
 // That cap measures no decode throughput: WebKit's Cocoa decodingInfo answers H.264 smooth once
 // the codec string passes its support checks and VideoToolbox is available, whatever the picture
 // size or frame rate. The cap therefore holds power-efficient HEVC to the highest H.264
 // configuration WebKit accepts. If WebKit answers no H.264 tier smooth, power-efficient HEVC is
 // dropped and the server encodes instead. WebKit answers HEVC smooth up to the decoder's maximum
 // playback level, so once a profile answers smooth at any tier, its smooth answers are its ceiling
-// and power efficiency no longer stands in for them. Elsewhere only a smooth answer keeps up.
-function keepsUpOn<T extends { tier: PictureTier }>({
+// and power efficiency no longer stands in for them. Elsewhere only a smooth answer qualifies.
+function createPlatformSupportCheck<T extends { tier: PictureTier }>({
   platform,
   family,
   answers,
@@ -827,7 +837,7 @@ function keepsUpOn<T extends { tier: PictureTier }>({
   family: VideoFamily
   answers: readonly T[]
   h264Answers: readonly TierAnswers[]
-}): KeepsUp<T> {
+}): ConfigurationSupportCheck<T> {
   if (family.codecFamily !== 'HEVC' || !isWebKit(platform.userAgent)) {
     return (answer, answerOf) => isSmooth(answerOf(answer))
   }
@@ -848,15 +858,15 @@ function keepsUpOn<T extends { tier: PictureTier }>({
 
 // A maximum accepts every smaller value (ADR 0049), so no tier counts over a smaller tier it holds
 // that the browser refused for the same probe.
-function keepsUpWithoutSmallerRefusal<T extends { tier: PictureTier }>({
+function withoutSmallerConfigurationRefusals<T extends { tier: PictureTier }>({
   answers,
-  keepsUp,
+  isSupported,
 }: {
   answers: readonly T[]
-  keepsUp: KeepsUp<T>
-}): KeepsUp<T> {
+  isSupported: ConfigurationSupportCheck<T>
+}): ConfigurationSupportCheck<T> {
   return (answer, answerOf) =>
-    keepsUp(answer, answerOf) &&
+    isSupported(answer, answerOf) &&
     !answers.some(
       (smaller) => holdsConfiguration(answer.tier, smaller.tier) && isRefusal(answerOf(smaller)),
     )
@@ -874,12 +884,12 @@ function isRefusal(answer: ProbeAnswer): boolean {
   return answer !== null && !answer.supported
 }
 
-// H.264 is the server's encode, so without an answer that keeps up it keeps its lowest tier the
+// H.264 is the server's encode, so without a qualifying answer it keeps its lowest tier the
 // browser answered supported, at most full HD and never over a refused tier, and full HD when no
 // H.264 probe was answered at all. AV1 keeps its lowest tier only on WebKit, when every answer was a refusal and the playing path
 // corroborates it; a supported but unsmooth answer is not under-reporting, and an unanswered probe
 // is not an answer.
-function tiersWithoutAnswerThatKeepsUp({
+function fallbackTiers({
   platform,
   family,
   answers,
@@ -890,7 +900,7 @@ function tiersWithoutAnswerThatKeepsUp({
 }): DecodedTier[] {
   const answered = answers.filter((answer) => answer.eightBit !== null)
   if (family === H264) {
-    return h264TierWithoutAnswerThatKeepsUp(answered)
+    return h264FallbackTier(answered)
   }
   const isEveryAnswerARefusal =
     answered.length > 0 && answered.every((answer) => isRefusal(answer.eightBit))
@@ -900,7 +910,7 @@ function tiersWithoutAnswerThatKeepsUp({
   return []
 }
 
-function h264TierWithoutAnswerThatKeepsUp(answered: readonly TierAnswers[]): DecodedTier[] {
+function h264FallbackTier(answered: readonly TierAnswers[]): DecodedTier[] {
   if (answered.length === 0) {
     return [eightBitTier(H264, FULL_HD_AT_30)]
   }
@@ -1318,14 +1328,14 @@ async function playsEveryFile({
       return { file, hls }
     }),
   )
-  return answers.every((answer) => keepsUpFromFile({ platform, family, ...answer }))
+  return answers.every((answer) => isFileConfigurationSupported({ platform, family, ...answer }))
 }
 
-// A file answer keeps up when it is smooth. Power efficiency stands in for smoothness only for
+// A file configuration qualifies when its answer is smooth. Power efficiency stands in only for
 // HEVC on WebKit, and only where the HLS answer at the same picture was not smooth either: the
 // entry then holds the H.264 cap, which a file decoder that drops frames below the HLS one's
 // smooth ceiling would not.
-function keepsUpFromFile({
+function isFileConfigurationSupported({
   platform,
   family,
   file,
