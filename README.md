@@ -1,5 +1,13 @@
 <p align="center">
 
+<br />
+
+<img src="https://github.com/streamarr/streamarr-ux/blob/main/branding/assets/streamarr-mark-and-text-concept-d.svg" width="425" alt="Streamarr logo">
+
+<br />
+<br />
+<br />
+
 <a href="LICENSE">
 <img alt="GPL 3.0 License" src="https://img.shields.io/badge/license-GPL--3.0-orange.svg"/>
 </a>
