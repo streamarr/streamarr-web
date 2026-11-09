@@ -187,6 +187,39 @@ describe('SeasonDetailScreen', () => {
     await waitFor(() => expect(audio).toHaveAccessibleDescription('Japanese · set here'))
   })
 
+  it('shouldKeepCountsAndBulkActionsInStepWithEpisodesReturnedByTheServer', async () => {
+    const before = seasonData({
+      episodes: [episode(1, 'Pilot', { watchStatus: 'WATCHED' }), episode(3, 'Return')],
+    })
+    const after = seasonData({
+      selectedProfileState: selectedProfileState({ watchStatus: 'WATCHED' }),
+      episodes: [episode(1, 'Pilot', { watchStatus: 'WATCHED' })],
+      series: {
+        ...before.season!.series,
+        seasons: [siblingSeason(2, 'WATCHED', ['WATCHED'])],
+      },
+    })
+    serve(before)
+    server.use(
+      graphql.query('SeasonDetail', answersInTurn(answerWith(before), answerWith(after)).resolver),
+    )
+    const { user } = renderAppAt('/season/season-2')
+
+    expect(await screen.findByRole('progressbar', { name: '1 of 2 watched' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /E3 — Return/ })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Mark season watched' }))
+    expect(screen.getByText('All 2 episodes will be marked watched.')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    comeBackOnline()
+
+    expect(await screen.findByRole('progressbar', { name: '1 of 1 watched' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /E3 — Return/ })).not.toBeInTheDocument()
+    expect(screen.getByText('Seasons · 1')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Mark season unwatched' }))
+    expect(screen.getByText('All 1 episodes will be marked unwatched.')).toBeInTheDocument()
+  })
+
   it('shouldNotLabelAnEmptyUnwatchedSeasonAsWatched', async () => {
     const data = seasonData()
     data.season!.series.seasons.push(siblingSeason(4, 'UNWATCHED', []))
