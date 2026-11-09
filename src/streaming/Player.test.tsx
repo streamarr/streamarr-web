@@ -1014,7 +1014,7 @@ describe('Player', () => {
     )
     await attachedVideo()
 
-    expect(codecFamilies(declarations)).toEqual([['H264', 'HEVC']])
+    expect(codecFamilies(declarations)).toEqual([['H264', 'HEVC', 'HEVC']])
   })
 
   it('shouldDeclareTheBrowsersCurrentAnswersWhenTheViewerRetries', async () => {
@@ -1033,7 +1033,41 @@ describe('Player', () => {
     await user.click(await screen.findByRole('button', { name: 'Retry playback' }))
 
     await waitFor(() => expect(declarations).toHaveLength(2))
-    expect(codecFamilies(declarations)).toEqual([['H264'], ['H264', 'HEVC', 'AV1']])
+    expect(codecFamilies(declarations)).toEqual([['H264'], ['H264', 'HEVC', 'AV1', 'HEVC']])
+  })
+
+  it('shouldSendHighTierHevcAboveLevel51WhenSafariAcceptsIt', async () => {
+    recordTimelineReports()
+    const declarations = serveSessionRecordingDeclarations()
+    renderWithProviders(
+      <Player
+        mediaFileId="abcd"
+        playbackPlatform={() =>
+          playbackPlatformFixture({
+            userAgent: IPHONE_SAFARI_USER_AGENT,
+            displaysHighDynamicRange: true,
+            decodingInfo: () =>
+              Promise.resolve({ supported: true, smooth: true, powerEfficient: true }),
+          })
+        }
+      />,
+    )
+
+    await attachedVideo()
+
+    expect(declarations[0]?.video).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          codecFamily: 'HEVC',
+          codecProfiles: [{ profile: 'HEVC_MAIN_10', maxLevel: 62, maxTier: 'HIGH' }],
+          maxWidth: 3840,
+          maxHeight: 2160,
+          maxFrameRate: 60,
+          compatibleBases: ['PQ', 'HLG'],
+          hls: true,
+        }),
+      ]),
+    )
   })
 
   it('shouldDeclareHevcWhenIphoneSafariDecodesItPowerEfficientlyWithoutASmoothAnswer', async () => {
@@ -1056,7 +1090,7 @@ describe('Player', () => {
     )
     await attachedVideo()
 
-    expect(codecFamilies(declarations)).toEqual([['H264', 'HEVC', 'AV1']])
+    expect(codecFamilies(declarations)).toEqual([['H264', 'HEVC', 'AV1', 'HEVC']])
   })
 
   it('shouldCapPowerEfficientHevcAtTheHighestTierH264KeepsUpWithWhenIphoneSafariPlays', async () => {
@@ -1089,7 +1123,10 @@ describe('Player', () => {
             maxBitDepth,
           })),
       ),
-    ).toEqual([{ maxHeight: 1080, maxFrameRate: 60, maxBitDepth: 10 }])
+    ).toEqual([
+      { maxHeight: 1080, maxFrameRate: 60, maxBitDepth: 10 },
+      { maxHeight: 1080, maxFrameRate: 60, maxBitDepth: 10 },
+    ])
   })
 
   it('shouldShowThePlaybackFailureWithoutCreatingASessionWhenTheBrowserDecodesNoVideo', async () => {

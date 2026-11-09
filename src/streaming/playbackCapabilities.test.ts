@@ -98,7 +98,39 @@ function isWithinBitrateMaximum(
 }
 
 function platformFixture(overrides: Partial<PlaybackPlatform> = {}): PlaybackPlatform {
-  return playbackPlatformFixture({ decodingInfo: decodingInfoAnswering(() => true), ...overrides })
+  const platform = playbackPlatformFixture({
+    decodingInfo: decodingInfoAnswering(() => true),
+    ...overrides,
+  })
+  const { decodingInfo } = platform
+  if (!decodingInfo) {
+    return platform
+  }
+  return {
+    ...platform,
+    decodingInfo: (configuration) => {
+      // These fixtures describe answers to the original Main-tier picture questions. Leave
+      // other HEVC questions unanswered; hevcCapabilities.test.ts covers the expanded matrix.
+      const { video } = configuration
+      if (video && /codecs="(?:hvc1|hev1)/.test(video.contentType)) {
+        const originalLevel = originalHevcLevel(video)
+        if (!video.contentType.includes(`.L${originalLevel}.`)) {
+          return Promise.reject(new Error('No recorded answer for this HEVC tier and level'))
+        }
+      }
+      return decodingInfo(configuration)
+    },
+  }
+}
+
+function originalHevcLevel(video: VideoConfiguration): number {
+  if (video.width === 3840) {
+    return video.framerate === 60 ? 153 : 150
+  }
+  if (video.width === 1920) {
+    return video.framerate === 60 ? 123 : 120
+  }
+  return 93
 }
 
 function sdrVideoEntry(entry: Partial<VideoCapabilityEntryInput>): VideoCapabilityEntryInput {
