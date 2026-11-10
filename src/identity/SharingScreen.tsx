@@ -15,6 +15,7 @@ import {
 import { requestFailureMessage } from '../graphql/requestErrors'
 import { userErrorMessage, type UserErrorLike } from '../graphql/userErrors'
 import { FailurePanel } from '../ui/Failure'
+import { enumLabel } from './enumLabel'
 import styles from './Sharing.module.css'
 import { useMe } from './useMe'
 
@@ -343,7 +344,7 @@ function OwnShares({
               {share.householdId === householdId
                 ? 'This Household'
                 : `Household ${shortId(share.householdId)}`}
-              <span className={styles.status}>{statusLabel(share.status)}</span>
+              <span className={styles.status}>{enumLabel(share.status)}</span>
               {share.requiredByAccountMembership && <span className={styles.status}>Home</span>}
             </span>
             {canChange(share) && (
@@ -363,11 +364,6 @@ function canChange(share: ProfileShareRow): boolean {
     return false
   }
   return share.status === 'PENDING' || share.status === 'ACTIVE'
-}
-
-/** The server's status value in sentence case: ACTIVE reads Active. */
-function statusLabel(status: string): string {
-  return status.charAt(0) + status.slice(1).toLowerCase().replaceAll('_', ' ')
 }
 
 function shortId(id: string): string {
