@@ -23,7 +23,7 @@
   background: none;
   padding: 0;
   cursor: pointer;
-  font-family: var(--font-family-system);
+  font-family: var(--font-family-content);
   font-size: var(--font-size-caption);
   color: var(--text-secondary);
 }

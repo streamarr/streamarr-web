@@ -52,11 +52,9 @@
 }
 .typeField legend,
 .metadata dt {
-  font-family: var(--font-family-system);
-  font-size: var(--font-size-caption);
-  font-weight: var(--font-weight-regular);
-  text-transform: uppercase;
-  letter-spacing: var(--letter-spacing-system);
+  font-family: var(--font-family-content);
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
   color: var(--text-secondary);
 }
 .pageHeading {
@@ -82,10 +80,8 @@
   border-radius: var(--radius-sm);
   background: var(--surface-panel-strong);
   color: var(--text-secondary);
-  font-family: var(--font-family-system);
   font-size: var(--font-size-body);
   font-weight: var(--font-weight-regular);
-  letter-spacing: var(--letter-spacing-system);
 }
 .railLayout {
   display: grid;
@@ -147,11 +143,8 @@
   color: var(--text-primary);
 }
 .timestamp {
-  font-family: var(--font-family-system);
   font-size: var(--font-size-label);
   color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: var(--letter-spacing-system);
   font-variant-numeric: tabular-nums;
 }
 .splitPanel {
