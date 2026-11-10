@@ -6,6 +6,19 @@
     "labels": ["dependencies", "security"],
     "schedule": ["at any time"]
   },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Move the FFmpeg release that CI sets up together with the checksum of its x64 Linux archive",
+      "managerFilePatterns": ["/^\\.github/workflows/ci\\.yml$/"],
+      "matchStrings": [
+        "FFMPEG_RELEASE: (?<currentValue>v\\d+\\.\\d+\\.\\d+-\\d+-streamarr\\.\\d+)\\s+FFMPEG_SHA256: (?<currentDigest>[a-f0-9]{64})"
+      ],
+      "depNameTemplate": "streamarr/streamarr-ffmpeg",
+      "datasourceTemplate": "github-release-attachments",
+      "versioningTemplate": "regex:^v(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)-(?<build>\\d+)-streamarr\\.(?<revision>\\d+)$"
+    }
+  ],
   "packageRules": [
     {
       "description": "Group patch updates and automerge when CI passes",
@@ -22,6 +35,18 @@
       "description": "Keep code generators in their own PR: a new version can change the committed generated files, which then need `npm run codegen` committed on that PR",
       "matchPackageNames": ["@graphql-codegen/**", "openapi-typescript"],
       "groupName": "code generators"
+    },
+    {
+      "description": "Keep FFmpeg in its own PR and out of automerge, as the transcode worker does",
+      "matchDepNames": ["streamarr/streamarr-ffmpeg"],
+      "groupName": "FFmpeg",
+      "automerge": false
+    },
+    {
+      "description": "Require dashboard approval before proposing a new FFmpeg major",
+      "matchDepNames": ["streamarr/streamarr-ffmpeg"],
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
     }
   ],
   "prConcurrentLimit": 10
