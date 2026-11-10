@@ -1,14 +1,12 @@
 import { Alert, Button, Center, Loader, TextInput } from '@mantine/core'
 import { useMutation, useQuery } from '@apollo/client/react'
-import { useId, useState, type ReactNode } from 'react'
+import { useState } from 'react'
 import settingsStyles from '../styles/settings.module.css'
 import {
-  AcceptProfileShareDocument,
   CancelProfileShareDocument,
   EndProfileShareDocument,
   OfferProfileShareDocument,
   ProfileSharePreviewDocument,
-  RejectProfileShareDocument,
   SharingOverviewDocument,
   type SharingOverviewQuery,
 } from '../graphql/generated/graphql'
@@ -16,14 +14,15 @@ import { requestFailureMessage } from '../graphql/requestErrors'
 import { userErrorMessage, type UserErrorLike } from '../graphql/userErrors'
 import { FailurePanel } from '../ui/Failure'
 import { enumLabel } from './enumLabel'
+import { ShareOffers } from './ShareOffers'
+import { SharingSection } from './SharingSection'
+import { shortId, UPDATE_FAILED_MESSAGE } from './shareText'
 import styles from './Sharing.module.css'
 import { useMe } from './useMe'
 
-type PendingOffer = SharingOverviewQuery['pendingShareOffers']['edges'][number]['node']
 type ProfileShareRow = SharingOverviewQuery['profileShares']['edges'][number]['node']
 
 const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const UPDATE_FAILED_MESSAGE = "Couldn't update sharing."
 
 export function SharingScreen() {
   return (
@@ -96,7 +95,7 @@ function Sharing({
 
   return (
     <div className={styles.sections}>
-      <OffersIntoHousehold householdName={householdName} offers={offers} onDecided={refetch} />
+      <ShareOffers householdName={householdName} offers={offers} onDecided={refetch} />
       <OfferForm profileId={profileId} profileName={profileName} onOffered={refetch} />
       <OwnShares
         householdId={householdId}
@@ -105,28 +104,6 @@ function Sharing({
         onChanged={refetch}
       />
     </div>
-  )
-}
-
-/** One panel of the page: its title names the region, and a refusal shows under the title. */
-function SharingSection({
-  title,
-  failure,
-  children,
-}: Readonly<{ title: string; failure: string | null; children: ReactNode }>) {
-  const titleId = useId()
-  return (
-    <section className={`${settingsStyles.formPanel} ${styles.section}`} aria-labelledby={titleId}>
-      <h2 id={titleId} className={styles.sectionTitle}>
-        {title}
-      </h2>
-      {failure && (
-        <Alert color="red" role="alert">
-          {failure}
-        </Alert>
-      )}
-      {children}
-    </section>
   )
 }
 
@@ -146,85 +123,6 @@ function SharingUnavailable({
     <FailurePanel onRetry={onRetry}>
       {requestFailureMessage(error, "Couldn't load sharing.")}
     </FailurePanel>
-  )
-}
-
-function OffersIntoHousehold({
-  householdName,
-  offers,
-  onDecided,
-}: Readonly<{
-  householdName: string
-  offers: PendingOffer[]
-  onDecided: () => void
-}>) {
-  const [accept] = useMutation(AcceptProfileShareDocument)
-  const [reject] = useMutation(RejectProfileShareDocument)
-  const [failure, setFailure] = useState<string | null>(null)
-  const [busy, setBusy] = useState<string | null>(null)
-
-  async function decide(offer: PendingOffer, decision: 'accept' | 'reject') {
-    setFailure(null)
-    setBusy(offer.id)
-    try {
-      await applyDecision(offer, decision)
-    } catch (error) {
-      setFailure(requestFailureMessage(error, UPDATE_FAILED_MESSAGE))
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  async function applyDecision(offer: PendingOffer, decision: 'accept' | 'reject') {
-    const errors = await sendDecision(offer, decision)
-    if (errors?.length) {
-      setFailure(userErrorMessage(errors[0]))
-      return
-    }
-    onDecided()
-  }
-
-  async function sendDecision(
-    offer: PendingOffer,
-    decision: 'accept' | 'reject',
-  ): Promise<readonly UserErrorLike[] | undefined> {
-    const variables = { input: { shareId: offer.id } }
-    if (decision === 'accept') {
-      return (await accept({ variables })).data?.acceptProfileShare?.userErrors
-    }
-    return (await reject({ variables })).data?.rejectProfileShare?.userErrors
-  }
-
-  return (
-    <SharingSection title={`Offers into ${householdName}`} failure={failure}>
-      {offers.length === 0 && <p className={styles.note}>No pending offers.</p>}
-      <ul className={styles.rows}>
-        {offers.map((offer) => (
-          <li key={offer.id} className={styles.row}>
-            <span className={styles.rowText}>
-              Profile {shortId(offer.profileId)}
-              {offer.expiresAt && (
-                <span className={styles.status}>
-                  Expires {new Date(offer.expiresAt).toLocaleString()}
-                </span>
-              )}
-            </span>
-            <span className={styles.actions}>
-              <Button loading={busy === offer.id} onClick={() => decide(offer, 'accept')}>
-                Accept
-              </Button>
-              <Button
-                variant="default"
-                disabled={busy === offer.id}
-                onClick={() => decide(offer, 'reject')}
-              >
-                Reject
-              </Button>
-            </span>
-          </li>
-        ))}
-      </ul>
-    </SharingSection>
   )
 }
 
@@ -364,8 +262,4 @@ function canChange(share: ProfileShareRow): boolean {
     return false
   }
   return share.status === 'PENDING' || share.status === 'ACTIVE'
-}
-
-function shortId(id: string): string {
-  return id.slice(0, 8)
 }
