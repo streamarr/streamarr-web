@@ -785,21 +785,29 @@ describe('active streams', () => {
 
   it('shouldReadAgainAfterTheReadStillOutWhenTheSocketSubscribesAgainMeanwhile', async () => {
     const state = serve([MOVIE, EPISODE])
-    const read = deferred()
-    state.held = read.promise
     renderAppAt(PAGE)
+    await streamCard(MOVIE_CARD)
     await liveChanges(state)
-    await waitFor(() => expect(state.reads).toBeGreaterThan(0))
+    const read = deferred()
+    state.heldOnce = read.promise
     const readsBefore = state.reads
+    // A read in flight absorbs the network's return, so the network returns until one more is out.
+    await waitFor(() => {
+      if (state.reads === readsBefore) window.dispatchEvent(new Event('online'))
+      expect(state.reads).toBe(readsBefore + 1)
+    })
+    const subscribes = () => state.socket.state.subscribes.filter((name) => name === CHANGED)
 
     state.listed = [EPISODE]
     state.socket.closeAll(1001, 'Going away')
-    await liveChanges(state)
-    state.held = null
+    // `isLive` holds the closed socket's operation until its close event, so this counts frames.
+    await waitFor(() => expect(subscribes()).toHaveLength(2), {
+      timeout: SOCKET_RECONNECT_DEADLINE_MS,
+    })
     read.resolve()
 
     await waitFor(() => expect(cardNames()).toEqual([EPISODE_CARD]))
-    expect(state.reads).toBeGreaterThan(readsBefore)
+    expect(state.reads).toBe(readsBefore + 2)
   })
 
   it('shouldAnswerARetryWithItsOwnReadWhenAnotherReadIsStillOut', async () => {
