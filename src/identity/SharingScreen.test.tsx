@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { SharingOverviewQuery } from '../graphql/generated/graphql'
@@ -62,6 +62,40 @@ function shareRow(overrides: Partial<ShareNode> = {}): ShareNode {
 }
 
 describe('SharingScreen', () => {
+  it('shouldHeadThePageAndNameEachSectionWhenSharingLoads', async () => {
+    serverAnswersOverview()
+    renderWithProviders(<SharingScreen />)
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Sharing' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Offers into Smith Family' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('region', { name: 'Share Alex into another Household' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Where Alex is shared' })).toBeInTheDocument()
+  })
+
+  it('shouldShowAShareStatusInSentenceCaseWhenAShareIsListed', async () => {
+    serverAnswersOverview({ shares: [shareRow({ status: 'ACTIVE' })] })
+    renderWithProviders(<SharingScreen />)
+
+    const shares = await screen.findByRole('region', { name: 'Where Alex is shared' })
+    expect(within(shares).getByText('Active')).toBeInTheDocument()
+    expect(within(shares).queryByText('ACTIVE')).not.toBeInTheDocument()
+  })
+
+  it('shouldHeadThePageWhenThereIsNoProfileToShare', async () => {
+    server.use(
+      graphql.query('Me', () =>
+        HttpResponse.json({
+          data: { me: meFixture({ profiles: [profileFixture({ personal: false })] }) },
+        }),
+      ),
+    )
+    renderWithProviders(<SharingScreen />)
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Sharing' })).toBeInTheDocument()
+  })
+
   it('shouldAcceptAPendingOfferIntoTheContextHousehold', async () => {
     serverAnswersOverview({ offers: [shareRow()] })
     let accepted = false

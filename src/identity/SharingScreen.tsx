@@ -1,18 +1,7 @@
-import {
-  Alert,
-  Badge,
-  Button,
-  Card,
-  Center,
-  Group,
-  Loader,
-  Stack,
-  Text,
-  TextInput,
-  Title,
-} from '@mantine/core'
+import { Alert, Button, Center, Loader, TextInput } from '@mantine/core'
 import { useMutation, useQuery } from '@apollo/client/react'
-import { useState } from 'react'
+import { useId, useState, type ReactNode } from 'react'
+import settingsStyles from '../admin/Settings.module.css'
 import {
   AcceptProfileShareDocument,
   CancelProfileShareDocument,
@@ -26,6 +15,7 @@ import {
 import { requestFailureMessage } from '../graphql/requestErrors'
 import { userErrorMessage, type UserErrorLike } from '../graphql/userErrors'
 import { FailurePanel } from '../ui/Failure'
+import styles from './Sharing.module.css'
 import { useMe } from './useMe'
 
 type PendingOffer = SharingOverviewQuery['pendingShareOffers']['edges'][number]['node']
@@ -35,6 +25,17 @@ const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 const UPDATE_FAILED_MESSAGE = "Couldn't update sharing."
 
 export function SharingScreen() {
+  return (
+    <div className={`${settingsStyles.settings} ${styles.page}`}>
+      <div className={settingsStyles.pageHeading}>
+        <h1>Sharing</h1>
+      </div>
+      <SharingContent />
+    </div>
+  )
+}
+
+function SharingContent() {
   const { data: meData, loading: meLoading, error: meError, refetch: refetchMe } = useMe()
 
   if (meLoading && !meData) {
@@ -51,10 +52,7 @@ export function SharingScreen() {
     .find((profile) => profile.personal)
   if (!personal) {
     return (
-      <Stack>
-        <Title order={2}>Sharing</Title>
-        <Text c="dimmed">You have no Profile of your own in {household.name} to share.</Text>
-      </Stack>
+      <p className={styles.note}>You have no Profile of your own in {household.name} to share.</p>
     )
   }
 
@@ -96,8 +94,7 @@ function Sharing({
   const shares = overview.data.profileShares.edges.map((edge) => edge.node)
 
   return (
-    <Stack>
-      <Title order={2}>Sharing</Title>
+    <div className={styles.sections}>
       <OffersIntoHousehold householdName={householdName} offers={offers} onDecided={refetch} />
       <OfferForm profileId={profileId} profileName={profileName} onOffered={refetch} />
       <OwnShares
@@ -106,7 +103,29 @@ function Sharing({
         shares={shares}
         onChanged={refetch}
       />
-    </Stack>
+    </div>
+  )
+}
+
+/** One panel of the page: its title names the region, and a refusal shows under the title. */
+function SharingSection({
+  title,
+  failure,
+  children,
+}: Readonly<{ title: string; failure: string | null; children: ReactNode }>) {
+  const titleId = useId()
+  return (
+    <section className={`${settingsStyles.formPanel} ${styles.section}`} aria-labelledby={titleId}>
+      <h2 id={titleId} className={styles.sectionTitle}>
+        {title}
+      </h2>
+      {failure && (
+        <Alert color="red" role="alert">
+          {failure}
+        </Alert>
+      )}
+      {children}
+    </section>
   )
 }
 
@@ -176,39 +195,35 @@ function OffersIntoHousehold({
   }
 
   return (
-    <Card withBorder>
-      <Stack gap="xs">
-        <Text fw={600}>Offers into {householdName}</Text>
-        {failure && (
-          <Alert color="red" role="alert">
-            {failure}
-          </Alert>
-        )}
-        {offers.length === 0 && <Text c="dimmed">No pending offers.</Text>}
+    <SharingSection title={`Offers into ${householdName}`} failure={failure}>
+      {offers.length === 0 && <p className={styles.note}>No pending offers.</p>}
+      <ul className={styles.rows}>
         {offers.map((offer) => (
-          <Group key={offer.id} justify="space-between">
-            <Text size="sm">
+          <li key={offer.id} className={styles.row}>
+            <span className={styles.rowText}>
               Profile {shortId(offer.profileId)}
-              {offer.expiresAt ? ` · expires ${new Date(offer.expiresAt).toLocaleString()}` : ''}
-            </Text>
-            <Group gap="xs">
-              <Button size="xs" loading={busy === offer.id} onClick={() => decide(offer, 'accept')}>
+              {offer.expiresAt && (
+                <span className={styles.status}>
+                  Expires {new Date(offer.expiresAt).toLocaleString()}
+                </span>
+              )}
+            </span>
+            <span className={styles.actions}>
+              <Button loading={busy === offer.id} onClick={() => decide(offer, 'accept')}>
                 Accept
               </Button>
               <Button
-                size="xs"
-                variant="subtle"
-                color="red"
+                variant="default"
                 disabled={busy === offer.id}
                 onClick={() => decide(offer, 'reject')}
               >
                 Reject
               </Button>
-            </Group>
-          </Group>
+            </span>
+          </li>
         ))}
-      </Stack>
-    </Card>
+      </ul>
+    </SharingSection>
   )
 }
 
@@ -253,31 +268,23 @@ function OfferForm({
   const answers = preview.data?.profileSharePreview
 
   return (
-    <Card withBorder>
-      <Stack gap="xs">
-        <Text fw={600}>Share {profileName} into another Household</Text>
-        {failure && (
-          <Alert color="red" role="alert">
-            {failure}
-          </Alert>
-        )}
-        <TextInput
-          label="Household id"
-          description="Ask that Household's admin for it"
-          value={householdId}
-          onChange={(event) => setHouseholdId(event.currentTarget.value.trim())}
-        />
-        {answers?.wouldLock && (
-          <Alert color="yellow">{profileName} would arrive locked there until it gets a PIN.</Alert>
-        )}
-        {answers?.nameConflict && (
-          <Alert color="yellow">Another Profile there already uses this name.</Alert>
-        )}
-        <Button onClick={submit} loading={loading} disabled={!validTarget}>
-          Offer share
-        </Button>
-      </Stack>
-    </Card>
+    <SharingSection title={`Share ${profileName} into another Household`} failure={failure}>
+      <TextInput
+        label="Household id"
+        description="Ask that Household's admin for it"
+        value={householdId}
+        onChange={(event) => setHouseholdId(event.currentTarget.value.trim())}
+      />
+      {answers?.wouldLock && (
+        <Alert color="yellow">{profileName} would arrive locked there until it gets a PIN.</Alert>
+      )}
+      {answers?.nameConflict && (
+        <Alert color="yellow">Another Profile there already uses this name.</Alert>
+      )}
+      <Button className={styles.offer} onClick={submit} loading={loading} disabled={!validTarget}>
+        Offer share
+      </Button>
+    </SharingSection>
   )
 }
 
@@ -327,41 +334,27 @@ function OwnShares({
   }
 
   return (
-    <Card withBorder>
-      <Stack gap="xs">
-        <Text fw={600}>Where {profileName} is shared</Text>
-        {failure && (
-          <Alert color="red" role="alert">
-            {failure}
-          </Alert>
-        )}
-        {shares.length === 0 && <Text c="dimmed">Nowhere yet.</Text>}
+    <SharingSection title={`Where ${profileName} is shared`} failure={failure}>
+      {shares.length === 0 && <p className={styles.note}>Nowhere yet.</p>}
+      <ul className={styles.rows}>
         {shares.map((share) => (
-          <Group key={share.id} justify="space-between">
-            <Group gap="xs">
-              <Text size="sm">
-                {share.householdId === householdId
-                  ? 'This Household'
-                  : `Household ${shortId(share.householdId)}`}
-              </Text>
-              <Badge variant="light">{share.status}</Badge>
-              {share.requiredByAccountMembership && <Badge color="blue">Home</Badge>}
-            </Group>
+          <li key={share.id} className={styles.row}>
+            <span className={styles.rowText}>
+              {share.householdId === householdId
+                ? 'This Household'
+                : `Household ${shortId(share.householdId)}`}
+              <span className={styles.status}>{statusLabel(share.status)}</span>
+              {share.requiredByAccountMembership && <span className={styles.status}>Home</span>}
+            </span>
             {canChange(share) && (
-              <Button
-                size="xs"
-                variant="subtle"
-                color="red"
-                loading={busy === share.id}
-                onClick={() => change(share)}
-              >
+              <Button variant="default" loading={busy === share.id} onClick={() => change(share)}>
                 {share.status === 'PENDING' ? 'Cancel offer' : 'End share'}
               </Button>
             )}
-          </Group>
+          </li>
         ))}
-      </Stack>
-    </Card>
+      </ul>
+    </SharingSection>
   )
 }
 
@@ -370,6 +363,11 @@ function canChange(share: ProfileShareRow): boolean {
     return false
   }
   return share.status === 'PENDING' || share.status === 'ACTIVE'
+}
+
+/** The server's status value in sentence case: ACTIVE reads Active. */
+function statusLabel(status: string): string {
+  return status.charAt(0) + status.slice(1).toLowerCase().replaceAll('_', ' ')
 }
 
 function shortId(id: string): string {
