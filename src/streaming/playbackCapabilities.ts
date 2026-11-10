@@ -417,13 +417,10 @@ async function probeDeclaration({
   hls: boolean
   outputChannels: number
 }): Promise<CapabilityEntries> {
-  const { askDecodingInfo } = askers
   // A host without an audio device reports 0 channels, and every output plays stereo.
   const outputPlays = Math.max(outputChannels, STEREO)
   const [video, audio] = await Promise.all([
-    probeVideo({ platform, askDecodingInfo, hls }).then((entries) =>
-      withVideoDirectPlay({ platform, askers, entries }),
-    ),
+    probeVideo({ platform, askers, hls }),
     Promise.all(
       AUDIO_CODECS.map(({ codec, mimeCodec }) =>
         probeAudio({
@@ -451,13 +448,14 @@ function appliesToADelivery(entry: { hls: boolean; directPlayContainers?: unknow
 
 async function probeVideo({
   platform,
-  askDecodingInfo,
+  askers,
   hls,
 }: {
   platform: PlaybackPlatform
-  askDecodingInfo: AskDecodingInfo
+  askers: Askers
   hls: boolean
 }): Promise<VideoCapabilityEntryInput[]> {
+  const { askDecodingInfo } = askers
   const [h264Answers, otherFamilies] = await Promise.all([
     probeFamily({ family: H264, askDecodingInfo }),
     Promise.all(
@@ -471,9 +469,10 @@ async function probeVideo({
     ),
   ])
   const probed = [{ family: H264, answers: h264Answers, hdrAnswers: [] }, ...otherFamilies]
-  return probed.flatMap(({ family, answers, hdrAnswers }) =>
+  const entries = probed.flatMap(({ family, answers, hdrAnswers }) =>
     familyEntries({ platform, family, answers, hdrAnswers, h264Answers, hls }),
   )
+  return withVideoDirectPlay({ platform, askers, entries })
 }
 
 // HDR shows only on an HDR display, so an SDR display asks no HDR question and declares SDR alone.
