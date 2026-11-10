@@ -47,9 +47,12 @@ interface ExplainedRows {
 
 const NO_EXPLAINED_ROWS: ExplainedRows = { hovered: null, tapped: null, focused: null }
 
+type Side = 'above' | 'below'
+
 /**
  * A menu of options above the anchor that opened it, its caret pointing down at the anchor, or
- * below the anchor with the caret pointing up.
+ * below the anchor with the caret pointing up. A menu placed below opens above instead where the
+ * screen ends too close under the anchor to show a row and leaves more room above it.
  * Focus starts on the chosen row, and moves there, or else to the nearest row, when the focused row
  * goes. Choosing, Escape or Shift+Tab returns focus to the anchor. A press or focus outside the
  * menu and its anchor dismisses it.
@@ -71,7 +74,7 @@ export function CaretPopover<Id>({
   selected: Id | null
   onChoose: (id: Id) => void
   onDismiss: () => void
-  placement?: 'above' | 'below'
+  placement?: Side
 }>) {
   const surfaceRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -100,7 +103,12 @@ export function CaretPopover<Id>({
         surface,
         reservedRoom: reservedRoom.current,
       })
-      limitHeight({ surface, roomAbove: reservedRoom.current, placement })
+      limitHeight({
+        surface,
+        firstRow: rowsOf(menuRef.current)[0],
+        roomAbove: reservedRoom.current,
+        placement,
+      })
     }
     place()
     window.addEventListener('resize', place)
@@ -181,7 +189,7 @@ export function CaretPopover<Id>({
   }
 
   return (
-    <div ref={surfaceRef} className={styles.popover} data-placement={placement}>
+    <div ref={surfaceRef} className={styles.popover}>
       <div id={headingId} className={styles.heading}>
         {heading}
       </div>
@@ -311,22 +319,56 @@ function placeExplanation({
 // room kept above them, for a menu above its anchor; the bottom edge for a menu below it.
 function limitHeight({
   surface,
+  firstRow,
   roomAbove,
   placement,
 }: {
   surface: HTMLElement | null
+  firstRow: HTMLElement | undefined
   roomAbove: number
-  placement: 'above' | 'below'
+  placement: Side
 }) {
   if (!surface) {
     return
   }
-  const box = surface.getBoundingClientRect()
-  let limit = box.bottom - SCREEN_EDGE_GAP_PX - roomAbove
-  if (placement === 'below') {
-    limit = window.innerHeight - box.top - SCREEN_EDGE_GAP_PX
+  const side = sideThatShowsARow({ surface, firstRow, roomAbove, placement })
+  surface.style.maxHeight = `${limitAfterMovingTo(side, surface, roomAbove)}px`
+}
+
+// A menu placed below its anchor goes above it instead where the screen ends too close under the
+// anchor to show a row and leaves more room above it.
+function sideThatShowsARow({
+  surface,
+  firstRow,
+  roomAbove,
+  placement,
+}: {
+  surface: HTMLElement
+  firstRow: HTMLElement | undefined
+  roomAbove: number
+  placement: Side
+}): Side {
+  if (placement === 'above' || !firstRow) {
+    return placement
   }
-  surface.style.maxHeight = `${limit}px`
+  // The row's height a second time covers the surface's own edge under the rows.
+  const heightThatShowsARow = firstRow.offsetTop + 2 * firstRow.offsetHeight
+  const below = limitAfterMovingTo('below', surface, roomAbove)
+  if (below >= heightThatShowsARow) {
+    return 'below'
+  }
+  return limitAfterMovingTo('above', surface, roomAbove) > below ? 'above' : 'below'
+}
+
+// The stylesheet places the surface from this attribute, and only a surface on a side of the anchor
+// can measure the height limit there.
+function limitAfterMovingTo(side: Side, surface: HTMLElement, roomAbove: number): number {
+  surface.dataset.placement = side
+  const box = surface.getBoundingClientRect()
+  if (side === 'below') {
+    return window.innerHeight - box.top - SCREEN_EDGE_GAP_PX
+  }
+  return box.bottom - SCREEN_EDGE_GAP_PX - roomAbove
 }
 
 function alignToAnchor(surface: HTMLElement | null, anchor: HTMLElement | null) {
