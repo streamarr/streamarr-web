@@ -1,10 +1,11 @@
 import { useApolloClient, useMutation } from '@apollo/client/react'
 import { Alert, Button } from '@mantine/core'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { CreatePlaybackSessionDocument, type VideoQuality } from '../graphql/generated/graphql'
 import { DetailBackButton } from '../media/DetailBack'
 import focusStyles from '../styles/focus.module.css'
 import { BufferingRing } from './BufferingRing'
+import { PlaybackData, type PlaybackDataScreen, type PlaybackDataStream } from './PlaybackData'
 import { PlaybackNotice } from './PlaybackNotice'
 import { declarePlaybackCapabilities, type PlaybackPlatform } from './playbackCapabilities'
 import styles from './Player.module.css'
@@ -20,6 +21,7 @@ import {
   startPlayerPlayback,
   type SourcePhase,
 } from './playerPlayback'
+import { useControlsReach } from './useControlsReach'
 import { useIdle } from './useIdle'
 import { usePlaybackFallbacks } from './usePlaybackFallbacks'
 import { useStreamTracks } from './useStreamTracks'
@@ -77,6 +79,8 @@ export function Player({
   }
   const { notice, marks, followPlaybackSession, announce } = usePlaybackFallbacks(choice.start)
   const [picker, setPicker] = useState<PickerKind | null>(null)
+  // The screen as the browser reported it when the viewer opened playback data; null while closed.
+  const [playbackDataScreen, setPlaybackDataScreen] = useState<PlaybackDataScreen | null>(null)
   const tracks = sourcePhase.at === 'attached' ? sourcePhase.tracks : null
   const qualities = sourcePhase.at === 'attached' ? sourcePhase.qualities : null
   const quality = {
@@ -94,8 +98,18 @@ export function Player({
     setPicker(null)
   }
   const videoState = useVideoState(videoRef)
-  const controlsHeld = videoState.paused || sourcePhase.at === 'failed' || openPicker !== null
+  // Playback data sits above the controls and takes taps, so the controls stay while it shows.
+  const controlsHeld =
+    videoState.paused ||
+    sourcePhase.at === 'failed' ||
+    openPicker !== null ||
+    playbackDataScreen !== null
   const idle = useIdle(controlsHeld, [controlsRef, backRef])
+  const controlsReach = useControlsReach({
+    playerRef,
+    controlsRef,
+    watching: playbackDataScreen !== null,
+  })
 
   useEffect(() => {
     const video = videoRef.current
@@ -150,6 +164,31 @@ export function Player({
     playbackRef.current?.seek(seconds)
   }
 
+  const describedStream: PlaybackDataStream | null =
+    sourcePhase.at === 'attached'
+      ? {
+          playbackSessionId: sourcePhase.playbackSessionId,
+          streamSessionId: sourcePhase.streamSessionId,
+          videoRange: sourcePhase.videoRange,
+          requestedChoice: sourcePhase.qualities.requested,
+          playingChoice: sourcePhase.qualities.playing,
+          sourceContainer: sourcePhase.sourceContainer,
+          streamStats: sourcePhase.streamStats,
+        }
+      : null
+
+  const closePlaybackData = useCallback(() => setPlaybackDataScreen(null), [])
+
+  function togglePlaybackData() {
+    const video = videoRef.current
+    if (playbackDataScreen || !video) {
+      setPlaybackDataScreen(null)
+      return
+    }
+    const { screen, displaysHighDynamicRange, userAgent } = playbackPlatform(video)
+    setPlaybackDataScreen({ screen, displaysHighDynamicRange, userAgent })
+  }
+
   // The pick's resume point is long past by now, so Retry starts where playback first started.
   function retry() {
     setChoice({ start: choice.start, quality: choice.quality })
@@ -178,6 +217,16 @@ export function Player({
         </div>
         <PlaybackNotice notice={notice} />
       </div>
+      {playbackDataScreen && (
+        <PlaybackData
+          videoRef={videoRef}
+          stream={describedStream}
+          screen={playbackDataScreen}
+          controlsReach={controlsReach}
+          closesOnEscape={openPicker === null}
+          onClose={closePlaybackData}
+        />
+      )}
       <PlayerControls
         ref={controlsRef}
         className={styles.chrome}
@@ -190,6 +239,8 @@ export function Player({
         onChooseQuality={chooseQuality}
         openPicker={openPicker}
         onOpenPicker={setPicker}
+        playbackDataShown={playbackDataScreen !== null}
+        onTogglePlaybackData={togglePlaybackData}
         title={title}
       />
     </section>

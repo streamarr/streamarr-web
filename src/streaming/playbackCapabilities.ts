@@ -44,7 +44,7 @@ export interface DecodingAnswer {
   powerEfficient: boolean
 }
 
-/** The browser facts a capability declaration is built from. */
+/** The browser facts a capability declaration is built from, and that playback data shows. */
 export interface PlaybackPlatform {
   /** `MediaCapabilities.decodingInfo`, absent where the browser lacks the API. */
   decodingInfo?: (configuration: MediaDecodingConfiguration) => Promise<DecodingAnswer>
@@ -64,6 +64,8 @@ export interface PlaybackPlatform {
   audioOutputChannels: () => Promise<number>
   /** Whether the display, or the plane that video plays on, shows high dynamic range. */
   displaysHighDynamicRange: boolean
+  /** The screen's size in CSS pixels, and the device pixels per CSS pixel, as the browser reports them. */
+  screen: { width: number; height: number; pixelRatio: number }
   /** Whether the media element lists a file's audio tracks and switches among them. */
   selectsAudioTrackInDirectPlay: boolean
 }
@@ -1363,6 +1365,7 @@ export function browserPlaybackPlatform(video: HTMLVideoElement): PlaybackPlatfo
     userAgent: navigator.userAgent,
     audioOutputChannels,
     displaysHighDynamicRange: displaysHighDynamicRange(),
+    screen: { width: screen.width, height: screen.height, pixelRatio: devicePixelRatio },
     // Only WebKit lists every audio track of a file and switches among them. Chromium lists them
     // only behind an experimental flag, and Firefox, behind media.track.enabled, lists only one.
     selectsAudioTrackInDirectPlay:

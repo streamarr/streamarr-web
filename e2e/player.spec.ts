@@ -410,6 +410,7 @@ function barControls(page: Page): Locator[] {
     page.getByRole('button', { name: 'Quality: Auto' }),
     page.getByRole('button', { name: 'Audio: Audio' }),
     page.getByRole('button', { name: 'Subtitles: Off' }),
+    page.getByRole('button', { name: 'Settings' }),
     page.getByRole('button', { name: 'Full screen' }),
   ]
 }
@@ -432,6 +433,7 @@ test('keyboard focus draws the theme ring on each player control', async ({ page
     page.getByRole('button', { name: 'Quality: Auto' }),
     page.getByRole('button', { name: 'Audio: Audio' }),
     page.getByRole('button', { name: 'Subtitles: Off' }),
+    page.getByRole('button', { name: 'Settings' }),
     page.getByRole('button', { name: 'Full screen' }),
   ]
   for (const control of controls) {
@@ -1116,6 +1118,18 @@ for (const viewport of [
   })
 }
 
+// The title gives way to an ellipsis this narrow, so only the buttons must stay whole and apart.
+test('the control bar keeps its buttons apart on a small phone held sideways', async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize({ width: 568, height: 320 })
+  await openPlayer(page, request)
+
+  await expectControlsApart(page, barControls(page).slice(2))
+  await page.getByRole('button', { name: 'Forward 10 seconds' }).click({ trial: true })
+})
+
 test('the chips keep their values on a phone held upright', async ({ page, request }) => {
   await page.setViewportSize({ width: 375, height: 667 })
 
@@ -1239,5 +1253,234 @@ for (const viewport of [
     expect(popover.top).toBeGreaterThanOrEqual(0)
     expect(popover.bottom).toBeLessThan(seekBox.y)
     expect(popover.caretX).toBeCloseTo(chipBox.x + chipBox.width / 2, 0)
+  })
+}
+
+const H264_HD = {
+  __typename: 'VideoFormat',
+  codec: 'h264',
+  width: 1280,
+  height: 720,
+  frameRate: 25,
+  bitrate: 1_800_000,
+  videoRange: 'SDR',
+  dolbyVision: false,
+  details: null,
+}
+
+// The server encodes the HEVC source because the browser declares no HEVC, and copies its audio.
+const ENCODE_DECISION = {
+  PlaybackDecisions: {
+    playbackSession: {
+      __typename: 'PlaybackSession',
+      id: 'playback-1',
+      decisions: [
+        {
+          __typename: 'PlaybackDecision',
+          formatAttempt: 1,
+          streamSessionId: 'sess-1',
+          video: {
+            __typename: 'VideoDelivery',
+            delivery: 'ENCODE',
+            source: { ...H264_HD, codec: 'hevc', bitrate: 6_000_000 },
+            output: H264_HD,
+          },
+          audio: {
+            __typename: 'AudioDelivery',
+            delivery: 'COPY',
+            source: { __typename: 'AudioFormat', codec: 'aac', channels: 2, bitrate: 128_000 },
+            output: { __typename: 'AudioFormat', codec: 'aac', channels: 2, bitrate: 128_000 },
+          },
+          reasons: ['VIDEO_CODEC_NOT_DECLARED'],
+        },
+      ],
+    },
+  },
+}
+
+async function openPlaybackData(page: Page): Promise<Locator> {
+  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByRole('menuitemradio', { name: 'Playback data' }).click()
+  return page.getByRole('region', { name: 'Playback data' })
+}
+
+function factIn(panel: Locator, group: string, name: string): Locator {
+  return panel
+    .getByRole('region', { name: group })
+    .getByRole('term')
+    .filter({ hasText: new RegExp(`^${name}$`) })
+    .locator('xpath=following-sibling::dd')
+}
+
+function trackIn(panel: Locator, name: string): Locator {
+  return panel.getByRole('region', { name: 'Server' }).getByRole('region', { name })
+}
+
+test('playback data shows what hls.js reports of the playing variant and why the server encodes', async ({
+  page,
+  request,
+}) => {
+  await routePlayer(page, request, {
+    operations: { MovieDetail: MOVIE_DETAIL, ...ENCODE_DECISION },
+  })
+  await serveTheFirstMediaSegment(page)
+  await page.goto('/movie/m1')
+  await page.getByRole('link', { name: 'Play' }).click()
+  await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible()
+
+  const panel = await openPlaybackData(page)
+
+  await expect(factIn(panel, 'Player', 'Quality step')).toHaveText('720p · 2 Mb/s (1 of 1)')
+  await expect(factIn(panel, 'Player', 'Resolution')).toHaveText('1280×720')
+  await expect(factIn(panel, 'Player', 'Video codec')).toHaveText('avc1.64001f')
+  await expect(factIn(panel, 'Player', 'Audio')).toHaveText('mp4a.40.2 stereo')
+  await expect(factIn(panel, 'Player', 'HDR mode')).toHaveText('SDR')
+  await expect(factIn(panel, 'This screen', 'Screen')).toHaveText(/^\d+×\d+ at [\d.]+×$/)
+  await expect(factIn(panel, 'This screen', 'Browser')).toHaveText(/^Chrome \d+$/)
+  const video = trackIn(panel, 'Video')
+  await expect(video.getByRole('heading')).toHaveText('Video Encode')
+  await expect(video.getByRole('row', { name: /^Codec \(changed\)/ })).toHaveText(/HEVC\s*H\.264/)
+  await expect(video.getByRole('list', { name: 'Video reasons' })).toHaveText(
+    "This device can't play the video's codec (HEVC).",
+  )
+
+  await panel.getByRole('button', { name: 'Close playback data' }).click()
+
+  await expect(panel).toBeHidden()
+  await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible()
+})
+
+test('playback data keeps its secondary labels readable over a white frame', async ({
+  page,
+  request,
+}) => {
+  await openPlayer(page, request, { operations: ENCODE_DECISION })
+  const panel = await openPlaybackData(page)
+  await expect(trackIn(panel, 'Video').getByRole('heading')).toHaveText('Video Encode')
+  // A white frame behind the panel: the brightest picture the video can show.
+  await page.evaluate(() => {
+    const video = document.querySelector('video')!
+    video.style.visibility = 'hidden'
+    video.parentElement!.style.background = '#fff'
+  })
+  const box = (await panel.boundingBox())!
+
+  const fill = await averageColor(page, {
+    x: box.x + 4,
+    y: box.y + box.height / 2,
+    width: 8,
+    height: 8,
+  })
+
+  // text.secondary is white at 50% over the panel's fill.
+  const label = fill.map((channel) => channel / 2 + 255 / 2)
+  expect(contrast(label, fill)).toBeGreaterThanOrEqual(4.5)
+})
+
+// The mean color of a region of the page as it renders, read back from a screenshot.
+async function averageColor(page: Page, clip: Box): Promise<number[]> {
+  const png = (await page.screenshot({ clip })).toString('base64')
+  return page.evaluate(async (data) => {
+    const image = new Image()
+    image.src = `data:image/png;base64,${data}`
+    await image.decode()
+    const canvas = document.createElement('canvas')
+    canvas.width = image.width
+    canvas.height = image.height
+    const context = canvas.getContext('2d')!
+    context.drawImage(image, 0, 0)
+    const { data: pixels } = context.getImageData(0, 0, image.width, image.height)
+    const sums = [0, 0, 0]
+    for (let index = 0; index < pixels.length; index += 4) {
+      for (let channel = 0; channel < 3; channel++) {
+        sums[channel] += pixels[index + channel]
+      }
+    }
+    return sums.map((sum) => sum / (pixels.length / 4))
+  }, png)
+}
+
+// WCAG 2 contrast ratio between two sRGB colors with channels from 0 to 255.
+function contrast(one: number[], other: number[]): number {
+  const luminance = (color: number[]) => {
+    const [red, green, blue] = color.map((channel) => {
+      const value = channel / 255
+      return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
+    })
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue
+  }
+  const [lighter, darker] = [luminance(one), luminance(other)].sort((a, b) => b - a)
+  return (lighter + 0.05) / (darker + 0.05)
+}
+
+// One audio rendition whose name wraps the control bar onto another row on a phone.
+const MULTIVARIANT_WITH_A_LONG_AUDIO_NAME = MULTIVARIANT.replace(
+  'NAME="Audio"',
+  'NAME="English, with the director and cast commentary"',
+)
+
+for (const viewport of [
+  { name: 'a narrow phone held upright', width: 320, height: 568 },
+  { name: 'a phone held upright', width: 375, height: 667 },
+  {
+    name: 'a phone held upright with a long audio track name',
+    width: 375,
+    height: 667,
+    multivariant: MULTIVARIANT_WITH_A_LONG_AUDIO_NAME,
+  },
+  { name: 'a phone held sideways', width: 667, height: 375 },
+  { name: 'a tablet held upright', width: 768, height: 1024 },
+  { name: 'a small laptop window', width: 800, height: 600 },
+  { name: 'a laptop', width: 1280, height: 800 },
+  { name: 'a short laptop window', width: 1280, height: 600 },
+]) {
+  test(`on ${viewport.name} playback data stays on screen and leaves Back and Seek usable`, async ({
+    page,
+    request,
+  }) => {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height })
+    await openPlayer(page, request, {
+      operations: ENCODE_DECISION,
+      multivariant: viewport.multivariant,
+    })
+
+    const panel = await openPlaybackData(page)
+
+    await expect(trackIn(panel, 'Video').getByRole('heading')).toHaveText('Video Encode')
+    const back = page.getByRole('button', { name: 'Back', exact: true })
+    const panelBox = await panel.boundingBox()
+    const backBox = await back.boundingBox()
+    expect(panelBox && backBox).not.toBeNull()
+    expect(panelBox!.x).toBeGreaterThanOrEqual(16)
+    expect(panelBox!.x + panelBox!.width).toBeLessThanOrEqual(viewport.width - 16)
+    const besideBack = panelBox!.x >= backBox!.x + backBox!.width
+    const belowBack = panelBox!.y >= backBox!.y + backBox!.height
+    expect(besideBack || belowBack).toBe(true)
+    await back.click({ trial: true })
+    const head = [
+      panel.getByRole('heading', { name: 'Playback data' }),
+      panel.getByRole('region', { name: 'Summary' }),
+      panel.getByRole('button', { name: 'Close playback data' }),
+    ]
+    const headBoxes = await Promise.all(head.map((part) => part.boundingBox()))
+    for (const [index, box] of headBoxes.entries()) {
+      expect(box).not.toBeNull()
+      expect(box!.x + box!.width).toBeLessThanOrEqual(panelBox!.x + panelBox!.width)
+      for (const other of headBoxes.slice(index + 1)) {
+        expect(overlap(box!, other!)).toBe(false)
+      }
+    }
+    for (const chip of await panel
+      .getByRole('region', { name: 'Summary' })
+      .locator('dl > div')
+      .all()) {
+      const chipBox = await chip.boundingBox()
+      expect(overlap(chipBox!, headBoxes[2]!)).toBe(false)
+      expect(chipBox!.x + chipBox!.width).toBeLessThanOrEqual(panelBox!.x + panelBox!.width)
+    }
+    const seek = page.getByRole('slider', { name: 'Seek' })
+    const seekBox = await seek.boundingBox()
+    expect(panelBox!.y + panelBox!.height).toBeLessThanOrEqual(seekBox!.y)
+    await seek.click({ trial: true })
   })
 }
