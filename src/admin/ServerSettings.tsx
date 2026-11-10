@@ -16,6 +16,12 @@ const SECTIONS = [
     region: 'Library administration',
   },
   { to: '/settings/server/encoding', icon: 'encoding', label: 'Encoding', region: 'Encoding' },
+  {
+    to: '/settings/server/streams',
+    icon: 'play',
+    label: 'Active streams',
+    region: 'Active streams',
+  },
 ] as const satisfies readonly {
   to: string
   icon: IconName
@@ -66,7 +72,7 @@ function SettingsRail() {
             className={styles.section}
             aria-current={section === current ? 'page' : undefined}
           >
-            <Icon name={section.icon} />
+            <Icon name={section.icon} size={16} />
             {section.label}
           </Link>
         ))}

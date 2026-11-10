@@ -527,18 +527,26 @@ describe('/library/$libraryId', () => {
   })
 
   it('returns focus to the letter on a keyboard repeat-press, and leaves it with the pointer afterwards', async () => {
+    const data = titlePage([
+      titleCard('m-a', 'Apple'),
+      titleCard('m-n', 'Northern'),
+      titleCard('m-t1', 'Tundra'),
+      titleCard('m-t2', 'Twilight'),
+    ])
+    data.library.itemCount = 4
+    data.library.alphabetIndex = [
+      { letter: 'A', count: 1 },
+      { letter: 'N', count: 1 },
+      { letter: 'T', count: 2 },
+    ]
     server.use(
       graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
       graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
-      graphql.query('LibraryPage', () =>
-        HttpResponse.json({
-          data: titlePage([titleCard('m-a', 'Apple'), titleCard('m-n', 'Northern')]),
-        }),
-      ),
+      graphql.query('LibraryPage', () => HttpResponse.json({ data })),
     )
     const { user } = renderAppAt(`/library/${LIBRARY_ID}?by=TITLE&direction=ASC&letter=A`)
     const apple = await screen.findByRole('link', { name: /Apple/ })
-    // Scrolled to Northern's row, the rail follows the grid, and A is a letter to return to.
+    // Four 300px rows leave room to scroll Northern to the top of the 800px viewport.
     const grid = document.querySelector(`.${styles.grid}`) as HTMLElement
     grid.scrollTop = JSDOM_ROW_HEIGHT
     fireEvent.scroll(grid)

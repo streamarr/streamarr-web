@@ -50,7 +50,6 @@
     color: var(--semantic-error-text);
   }
 }
-.railTitle,
 .typeField legend,
 .metadata dt {
   font-family: var(--font-family-system);
@@ -61,7 +60,6 @@
   color: var(--text-secondary);
 }
 .pageHeading {
-  min-height: 95px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -108,29 +106,33 @@
   align-self: start;
 }
 .railTitle {
-  padding: 0 var(--spacing-12) var(--spacing-24);
+  padding: 0 var(--spacing-12) var(--spacing-14);
+  font-size: var(--font-size-emphasis);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
 }
 .section {
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: var(--spacing-10);
   width: 100%;
-  padding: var(--spacing-12);
+  min-height: 34px;
+  padding: 7px var(--spacing-10);
   background: transparent;
   color: var(--text-primary);
   border: 0;
-  border-radius: var(--radius-md);
-  font-size: var(--font-size-emphasis);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  text-decoration: none;
+}
+.section:hover {
+  background: var(--surface-panel);
 }
 .section[aria-current='page'] {
   background: var(--selection-active);
 }
 .railContent {
   min-width: 0;
-}
-.railContent .pageHeading {
-  padding-top: 0;
-  margin-top: -9px;
 }
 .typeIcon {
   display: flex;
@@ -480,14 +482,7 @@
     padding: 2px 4px 12px;
     font-size: var(--font-size-micro);
   }
-  .section {
-    padding: 9px 12px;
-  }
-  .railContent .pageHeading {
-    margin-top: 0;
-  }
   .pageHeading {
-    min-height: 45px;
     gap: var(--spacing-12);
     margin-bottom: 23px;
     flex-wrap: wrap;

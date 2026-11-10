@@ -256,7 +256,8 @@ function focusCheckedOrNearestRow(menu: HTMLElement | null, index: number) {
   target?.focus()
 }
 
-function moveBetweenRows(event: ReactKeyboardEvent<HTMLElement>) {
+/** Moves focus between a menu's radio rows with the arrow keys, Home and End. */
+export function moveBetweenRows(event: ReactKeyboardEvent<HTMLElement>) {
   const move = ROW_MOVES.get(event.key)
   if (!move) {
     return

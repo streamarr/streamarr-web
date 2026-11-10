@@ -1,5 +1,8 @@
 import type {
+  AudioFormatFieldsFragment,
+  PlaybackDecisionFieldsFragment,
   PlaybackSessionFieldsFragment,
+  VideoFormatFieldsFragment,
   DestroyPlaybackSessionMutation,
   DestroyPlaybackSessionMutationVariables,
 } from '../graphql/generated/graphql'
@@ -108,4 +111,61 @@ export function destroyedPlaybackSession(variables: Record<string, unknown>) {
   return { playbackSessionId: String(playbackSessionId), userErrors: [] } satisfies NonNullable<
     DestroyPlaybackSessionMutation['destroyPlaybackSession']
   >
+}
+
+/** A 1080p SDR H.264 video track at 8 Mb/s and 23.976 frames per second. */
+export const H264_FULL_HD: VideoFormatFieldsFragment = {
+  codec: 'h264',
+  width: 1920,
+  height: 1080,
+  frameRate: 23.976,
+  bitrate: 8_000_000,
+  videoRange: 'SDR',
+  dolbyVision: false,
+  details: null,
+}
+
+/** A stereo AAC audio track at 192 kb/s. */
+export const AAC_STEREO: AudioFormatFieldsFragment = { codec: 'aac', channels: 2, bitrate: 192_000 }
+
+/**
+ * The initial format attempt's decision for the stream session `streamSessionId`: it copies an SDR
+ * 1080p H.264 video and its stereo AAC audio as the source holds them, so it names no reason.
+ */
+export function playbackDecision({
+  streamSessionId,
+  ...overrides
+}: Pick<PlaybackDecisionFieldsFragment, 'streamSessionId'> &
+  Partial<PlaybackDecisionFieldsFragment>): PlaybackDecisionFieldsFragment {
+  return {
+    formatAttempt: 1,
+    streamSessionId,
+    video: { delivery: 'COPY', source: H264_FULL_HD, output: H264_FULL_HD },
+    audio: { delivery: 'COPY', source: AAC_STEREO, output: AAC_STEREO },
+    reasons: [],
+    ...overrides,
+  }
+}
+
+/**
+ * A decision as the server sends it: Apollo's cache matches each fragment on the __typename that
+ * the client adds to every selection.
+ */
+export function servedDecision({ video, audio, ...decision }: PlaybackDecisionFieldsFragment) {
+  return {
+    __typename: 'PlaybackDecision',
+    ...decision,
+    video: {
+      __typename: 'VideoDelivery',
+      delivery: video.delivery,
+      source: { __typename: 'VideoFormat', ...video.source },
+      output: { __typename: 'VideoFormat', ...video.output },
+    },
+    audio: audio && {
+      __typename: 'AudioDelivery',
+      delivery: audio.delivery,
+      source: { __typename: 'AudioFormat', ...audio.source },
+      output: { __typename: 'AudioFormat', ...audio.output },
+    },
+  }
 }

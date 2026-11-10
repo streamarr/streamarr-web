@@ -1,0 +1,74 @@
+query ActiveStreams {
+  activeStreams {
+    ...ActiveStreamFields
+  }
+}
+
+subscription ActiveStreamsChanged {
+  activeStreamsChanged {
+    playbackSessionId
+    activeStream {
+      ...ActiveStreamFields
+    }
+  }
+}
+
+fragment ActiveStreamFields on ActiveStream {
+  playbackSessionId
+  profile {
+    id
+    name
+  }
+  deviceName
+  mediaFileId
+  media {
+    __typename
+    ... on Movie {
+      id
+      title
+      runtime
+      images(type: POSTER) {
+        ...ActiveStreamPosterFields
+      }
+    }
+    ... on Episode {
+      id
+      title
+      episodeNumber
+      runtime
+      season {
+        id
+        seasonNumber
+        series {
+          id
+          title
+          images(type: POSTER) {
+            ...ActiveStreamPosterFields
+          }
+        }
+      }
+    }
+  }
+  positionSeconds
+  producedRange {
+    startSeconds
+    endSeconds
+  }
+  state
+  decision {
+    ...PlaybackDecisionFields
+  }
+  workers
+}
+
+fragment ActiveStreamPosterFields on Image {
+  aspectRatio
+  blurHash
+  variants {
+    id
+    size
+    width
+    height
+    url
+  }
+}

@@ -20,7 +20,7 @@ export interface PlayerTitle {
   detail?: string
 }
 
-export type PickerKind = 'quality' | 'audio' | 'subtitles'
+export type PickerKind = 'quality' | 'audio' | 'subtitles' | 'menu'
 
 /**
  * The quality menu's choices, empty while no stream is attached, the choice it shows selected, and
@@ -52,9 +52,15 @@ export type ChosenTrack =
   | { kind: 'subtitles'; language?: string }
   | { kind: 'subtitles-off' }
 
+const PLAYBACK_DATA = 'playback-data'
+const PLAYER_MENU: readonly PopoverOption<typeof PLAYBACK_DATA>[] = [
+  { id: PLAYBACK_DATA, label: 'Playback data' },
+]
+
 /**
  * Whether a picker has a choice to make: one option alone would only repeat what its chip shows.
- * The subtitles picker always offers Off beside the stream's tracks.
+ * The subtitles picker always offers Off beside the stream's tracks, and the player menu always
+ * offers its items.
  */
 export function pickerOffersChoice(
   kind: PickerKind,
@@ -67,6 +73,8 @@ export function pickerOffersChoice(
       return audio.options.length > 1
     case 'subtitles':
       return subtitles.options.length > 0
+    case 'menu':
+      return true
   }
 }
 
@@ -94,6 +102,8 @@ export function PlayerControls({
   openPicker,
   onOpenPicker,
   onTrackChosen,
+  playbackDataShown,
+  onTogglePlaybackData,
   title,
 }: Readonly<{
   ref: Ref<HTMLDivElement>
@@ -112,6 +122,8 @@ export function PlayerControls({
   onOpenPicker: (kind: PickerKind | null) => void
   /** Hears each audio or subtitle track the viewer switches to, as the stream switches. */
   onTrackChosen?: (chosen: ChosenTrack) => void
+  playbackDataShown: boolean
+  onTogglePlaybackData: () => void
   title?: PlayerTitle
 }>) {
   const [scrub, setScrub] = useState<Scrub | null>(null)
@@ -297,6 +309,17 @@ export function PlayerControls({
                   : { kind: 'subtitles', language: languageOf(subtitles.options, id) },
               )
             }}
+          />
+          <ChoicePicker
+            name="Settings"
+            icon="settings"
+            options={PLAYER_MENU}
+            selected={playbackDataShown ? PLAYBACK_DATA : null}
+            value=""
+            choosable
+            open={openPicker === 'menu'}
+            onOpenChange={(open) => onOpenPicker(open ? 'menu' : null)}
+            onChoose={onTogglePlaybackData}
           />
           <FullscreenButton targetRef={playerRef} />
         </div>

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { MediaImage } from './MediaImage'
 import type { PickedImage } from './images'
 import styles from './PosterCard.module.css'
@@ -12,6 +13,7 @@ export function PosterCard({
   badge,
   progressPercent,
   imageLoading,
+  overlay,
 }: Readonly<{
   title: string
   meta: string
@@ -20,11 +22,13 @@ export function PosterCard({
   badge?: WatchedBadgeProps
   progressPercent?: number
   imageLoading?: 'lazy' | 'eager'
+  overlay?: ReactNode
 }>) {
   return (
     <div className={styles.posterCard}>
       <div className={styles.posterArt}>
         <MediaImage image={image} blurHash={blurHash} alt={title} loading={imageLoading} />
+        {overlay}
         {badge && <WatchedBadge {...badge} />}
         {progressPercent != null && progressPercent > 0 && (
           <WatchedBadge status="in-progress" percentComplete={progressPercent} />

@@ -50,6 +50,15 @@ export const AudioCodec = {
 } as const;
 
 export type AudioCodec = typeof AudioCodec[keyof typeof AudioCodec];
+export const BitstreamRewrite = {
+  /** Removes the enhancement layer and rewrites RPUs without the FEL residual. */
+  ConvertDolbyVisionProfile_7To_8_1: 'CONVERT_DOLBY_VISION_PROFILE_7_TO_8_1',
+  NormalizeDolbyVisionRecord: 'NORMALIZE_DOLBY_VISION_RECORD',
+  StripDolbyVision: 'STRIP_DOLBY_VISION',
+  StripHdr10Plus: 'STRIP_HDR10_PLUS'
+} as const;
+
+export type BitstreamRewrite = typeof BitstreamRewrite[keyof typeof BitstreamRewrite];
 /** The delivery for which the server checked a capability entry. */
 export const CapabilityEntryDelivery = {
   /** Direct play of the source file from its source container. */
@@ -69,6 +78,24 @@ export const ChapterStatus = {
 } as const;
 
 export type ChapterStatus = typeof ChapterStatus[keyof typeof ChapterStatus];
+export const ChromaSubsampling = {
+  Chroma_420: 'CHROMA_420',
+  Chroma_422: 'CHROMA_422',
+  Chroma_444: 'CHROMA_444',
+  Monochrome: 'MONOCHROME'
+} as const;
+
+export type ChromaSubsampling = typeof ChromaSubsampling[keyof typeof ChromaSubsampling];
+/** PQ is the SMPTE ST 2084 Perceptual Quantizer transfer function; it alone does not prove HDR10. */
+export const CompatibleBase = {
+  Hlg: 'HLG',
+  None: 'NONE',
+  Pq: 'PQ',
+  Sdr: 'SDR',
+  Unspecified: 'UNSPECIFIED'
+} as const;
+
+export type CompatibleBase = typeof CompatibleBase[keyof typeof CompatibleBase];
 /**
  * Why a format attempt's output differs from its source: why the source file does not play directly, why the
  * server encodes the video or the audio, or what a copy leaves out. The stream decision names each reason as it
@@ -99,6 +126,8 @@ export const DecisionReason = {
   AudioCodecNotDeclared: 'AUDIO_CODEC_NOT_DECLARED',
   /** The probe stored no codec string for the source's audio, which a playlist needs to describe a copy. */
   AudioCodecStringUnknown: 'AUDIO_CODEC_STRING_UNKNOWN',
+  /** The audio ends at least one segment before another stream of the source, so the encode pads it with silence to the end. */
+  AudioEndsEarly: 'AUDIO_ENDS_EARLY',
   /**
    * The client's maximum bitrate takes a lower audio step. The output can still exceed a maximum below the lowest
    * audio and video rates that the server encodes.
@@ -183,6 +212,8 @@ export const DecisionReason = {
   SourceContainerUnknown: 'SOURCE_CONTAINER_UNKNOWN',
   /** The source is interlaced. HLS delivery needs progressive video, and direct play of an interlaced file is unmeasured. */
   SourceInterlaced: 'SOURCE_INTERLACED',
+  /** The probe stored no start time correction for the source's container, which a copy needs to start its segments at the source's keyframes. */
+  StartTimeCorrectionUnknown: 'START_TIME_CORRECTION_UNKNOWN',
   /** The source's bit depth is above the closest entry's maximum. */
   VideoBitDepthNotDeclared: 'VIDEO_BIT_DEPTH_NOT_DECLARED',
   /** The probe reported no bit depth for the source's video, so no entry can accept a copy. */
@@ -201,6 +232,8 @@ export const DecisionReason = {
   VideoCodecStringUnknown: 'VIDEO_CODEC_STRING_UNKNOWN',
   /** The probe reported no codec name for the source's video. */
   VideoCodecUnknown: 'VIDEO_CODEC_UNKNOWN',
+  /** The source's video ends at least one segment before another stream of the source, so the encode holds its last frame to the end. */
+  VideoEndsEarly: 'VIDEO_ENDS_EARLY',
   /** The source's frame rate is above the closest entry's maximum. */
   VideoFrameRateNotDeclared: 'VIDEO_FRAME_RATE_NOT_DECLARED',
   /** The source's picture is larger than the closest entry's maximum. */
@@ -231,6 +264,14 @@ export const DeviceRegistrationStatus = {
 } as const;
 
 export type DeviceRegistrationStatus = typeof DeviceRegistrationStatus[keyof typeof DeviceRegistrationStatus];
+export const DolbyVisionEnhancementLayer = {
+  Fel: 'FEL',
+  Mel: 'MEL',
+  None: 'NONE',
+  Unspecified: 'UNSPECIFIED'
+} as const;
+
+export type DolbyVisionEnhancementLayer = typeof DolbyVisionEnhancementLayer[keyof typeof DolbyVisionEnhancementLayer];
 /** A single-layer Dolby Vision profile. No value names profile 7, which needs dual-layer playback. */
 export const DolbyVisionProfile = {
   Profile_5: 'PROFILE_5',
@@ -729,6 +770,13 @@ export const MediaType = {
 } as const;
 
 export type MediaType = typeof MediaType[keyof typeof MediaType];
+export const MetadataPresence = {
+  Absent: 'ABSENT',
+  Present: 'PRESENT',
+  Unspecified: 'UNSPECIFIED'
+} as const;
+
+export type MetadataPresence = typeof MetadataPresence[keyof typeof MetadataPresence];
 export const OrderMediaBy = {
   Added: 'ADDED',
   LastWatched: 'LAST_WATCHED',
