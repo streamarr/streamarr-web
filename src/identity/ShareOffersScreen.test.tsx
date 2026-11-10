@@ -169,9 +169,7 @@ describe('Share offers', () => {
     await user.click(await screen.findByRole('button', { name: 'Accept Profile 33333333' }))
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Accept' }))
 
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      'Profile 33333333 accepted into Smith Family.',
-    )
+    await noticed('Profile 33333333 accepted into Smith Family.')
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(
       await screen.findByText('No one has offered a Profile to Smith Family.'),
@@ -248,9 +246,7 @@ describe('Share offers', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Decline Profile 33333333' }))
 
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      'Offer of Profile 33333333 declined.',
-    )
+    await noticed('Offer of Profile 33333333 declined.')
     expect(declined).toBe(true)
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /reject/i })).not.toBeInTheDocument()
@@ -289,3 +285,9 @@ describe('Share offers', () => {
     expect(await screen.findByText('Expires in 6 days')).toBeInTheDocument()
   })
 })
+
+// The confirmation holds a status of its own while a request is on its way, so the page's notice
+// is the one status only once the confirmation has closed.
+async function noticed(text: string) {
+  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(text))
+}
