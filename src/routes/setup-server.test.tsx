@@ -96,6 +96,7 @@ describe('/setup-server', () => {
     await completeWizard(user)
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/select-profile'))
+    expect(await screen.findByRole('heading', { name: /who's watching\?/i })).toBeInTheDocument()
   })
 
   it('shouldRetryTheServerStatusAfterAnOutage', async () => {
