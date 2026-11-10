@@ -5221,6 +5221,34 @@ describe('Player', () => {
       ])
     })
 
+    it('shouldAskForNoAudioLanguageWhenTheNextMediaFileStarts', async () => {
+      servePlaybackChoices()
+      const requested = recordRequestedOptions()
+      const { user } = renderWithProviders(<Harness />)
+      await attachedVideo(choiceStreamUrl(1))
+      offerHlsTracks(FRENCH_BESIDE_ENGLISH)
+      await screen.findByRole('button', { name: /^Audio/ })
+
+      await user.click(screen.getByRole('button', { name: 'Next' }))
+
+      await attachedVideo(choiceStreamUrl(2))
+      expect(requested).toEqual([{ quality: 'AUTO' }, { quality: 'AUTO' }])
+    })
+
+    it('shouldAskForNoAudioLanguageWhenTheStartPositionChanges', async () => {
+      servePlaybackChoices()
+      const requested = recordRequestedOptions()
+      const { user } = renderWithProviders(<StartPositionHarness />)
+      await attachedVideo(choiceStreamUrl(1))
+      offerHlsTracks(FRENCH_BESIDE_ENGLISH)
+      await screen.findByRole('button', { name: /^Audio/ })
+
+      await user.click(screen.getByRole('button', { name: 'Start at 120' }))
+
+      await attachedVideo(choiceStreamUrl(2))
+      expect(requested).toEqual([{ quality: 'AUTO' }, { quality: 'AUTO' }])
+    })
+
     it('shouldStoreTheAudioLanguageForTheMovieWhenTheViewerSwitchesAudio', async () => {
       serveSession()
       const inputs = serveOverrides()

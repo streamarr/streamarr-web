@@ -59,6 +59,13 @@ interface PlaybackStart {
   startPositionSeconds?: number
 }
 
+// A source phase with the start whose playback reported it, so a stream attached from an earlier
+// start is never taken for the current start's.
+interface ReportedPhase {
+  start: PlaybackStart
+  phase: SourcePhase
+}
+
 function playingAudio({ audio }: StreamTracks) {
   return audio.options.find((option) => option.id === audio.selected)
 }
@@ -101,7 +108,7 @@ export function Player({
     fetchPolicy: 'no-cache',
   })
   const client = useApolloClient()
-  const [sourcePhase, setSourcePhase] = useState(STARTING)
+  const [reported, setReported] = useState<ReportedPhase | null>(null)
   const [choice, setChoice] = useState(() => startingChoice({ mediaFileId, startPositionSeconds }))
   // Another media title, or a new start position, starts in Auto from that start.
   if (
@@ -110,6 +117,7 @@ export function Player({
   ) {
     setChoice(startingChoice({ mediaFileId, startPositionSeconds }))
   }
+  const sourcePhase = reported?.start === choice.start ? reported.phase : STARTING
   const { notice, marks, followPlaybackSession, announce } = usePlaybackFallbacks(choice.start)
   const [picker, setPicker] = useState<PickerKind | null>(null)
   // The screen as the browser reported it when the viewer opened playback data; null while closed.
@@ -160,7 +168,8 @@ export function Player({
     if (!video) {
       return undefined
     }
-    setSourcePhase(STARTING)
+    const reportSourcePhase = (phase: SourcePhase) => setReported({ start: choice.start, phase })
+    reportSourcePhase(STARTING)
 
     const playback = startPlayerPlayback({
       video,
@@ -182,7 +191,7 @@ export function Player({
         }),
       startPositionSeconds,
       resumeFrom: choice.resumeFrom,
-      onSourcePhase: setSourcePhase,
+      onSourcePhase: reportSourcePhase,
       onOutputShown: followPlaybackSession(),
       onNotice: announce,
     })
