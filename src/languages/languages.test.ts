@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Language } from '../graphql/generated/enumValues'
-import { LANGUAGES_BY_NAME, languageName, languageOfTrack } from './languages'
+import { LANGUAGE_LISTING, languageName, languageOfTrack } from './languages'
 
 describe('languageName', () => {
   it('shouldNameEachLanguageInEnglishWhenItIsABaseLanguage', () => {
@@ -35,11 +35,15 @@ describe('languageName', () => {
   })
 })
 
-describe('LANGUAGES_BY_NAME', () => {
-  it('shouldListEveryLanguageOnceInTheOrderOfItsName', () => {
-    const names = LANGUAGES_BY_NAME.map(languageName)
+describe('LANGUAGE_LISTING', () => {
+  it('shouldLeadWithEnglishSpanishAndFrenchWhenLanguagesAreListed', () => {
+    expect(LANGUAGE_LISTING.slice(0, 3).map(languageName)).toEqual(['English', 'Spanish', 'French'])
+  })
 
-    expect([...LANGUAGES_BY_NAME].sort()).toEqual(Object.values(Language).sort())
+  it('shouldListEveryOtherLanguageOnceInTheOrderOfItsName', () => {
+    const names = LANGUAGE_LISTING.slice(3).map(languageName)
+
+    expect([...LANGUAGE_LISTING].sort()).toEqual(Object.values(Language).sort())
     expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b, 'en')))
   })
 })

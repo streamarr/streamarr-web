@@ -13,7 +13,7 @@ import { userErrorMessage } from '../graphql/userErrors'
 import { FailureRow } from '../ui/Failure'
 import { Icon } from '../ui/Icon'
 import settingsStyles from '../styles/settings.module.css'
-import { languageName, LANGUAGES_BY_NAME } from './languages'
+import { languageName, LANGUAGE_LISTING } from './languages'
 import { SUBTITLE_MODES } from './subtitleModes'
 import styles from './LanguageSettings.module.css'
 
@@ -26,7 +26,7 @@ const STILL_READING = "Your languages were still loading, so that change wasn't 
 
 const NO_SUBTITLE_LANGUAGE = { value: 'none', label: 'None' }
 
-const LANGUAGE_OPTIONS = LANGUAGES_BY_NAME.map((language) => ({
+const LANGUAGE_OPTIONS = LANGUAGE_LISTING.map((language) => ({
   value: language,
   label: languageName(language),
 }))

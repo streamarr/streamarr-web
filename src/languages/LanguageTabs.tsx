@@ -15,7 +15,7 @@ import { requestFailureMessage } from '../graphql/requestErrors'
 import { userErrorMessage } from '../graphql/userErrors'
 import { CaretPopover, type PopoverOption } from '../ui/CaretPopover'
 import { FailureRow } from '../ui/Failure'
-import { languageName, LANGUAGES_BY_NAME } from './languages'
+import { languageName, LANGUAGE_LISTING } from './languages'
 import styles from './LanguageTabs.module.css'
 import { SUBTITLE_MODES } from './subtitleModes'
 
@@ -294,9 +294,9 @@ function Tab({
   )
 }
 
-// The Profile's own languages first, then every other language by name.
+// The Profile's own languages first, then the common ones, then every other language by name.
 function languagesListing(first: readonly Language[]): Language[] {
-  return [...first, ...LANGUAGES_BY_NAME.filter((language) => !first.includes(language))]
+  return [...first, ...LANGUAGE_LISTING.filter((language) => !first.includes(language))]
 }
 
 function audioName(language: Language | undefined): string {

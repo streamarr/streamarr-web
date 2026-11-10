@@ -147,6 +147,30 @@ describe('language settings', () => {
     )
   })
 
+  it('shouldLeadEachLanguageListWithEnglishSpanishAndFrenchWhenTheListLacksThem', async () => {
+    serve({ saved: preferences({ audioLanguages: ['JA'], subtitleLanguage: null }) })
+    const { user } = renderAppAt(LANGUAGES)
+
+    await user.click(await screen.findByRole('combobox', { name: 'Add an audio language' }))
+    const audio = within(optionsOf('Add an audio language')).getAllByRole('option', {
+      hidden: true,
+    })
+    expect(audio.slice(0, 3).map((option) => option.textContent)).toEqual([
+      'English',
+      'Spanish',
+      'French',
+    ])
+    const subtitles = within(optionsOf('Subtitle language')).getAllByRole('option', {
+      hidden: true,
+    })
+    expect(subtitles.slice(0, 4).map((option) => option.textContent)).toEqual([
+      'None',
+      'English',
+      'Spanish',
+      'French',
+    ])
+  })
+
   it('shouldOfferOnlyLanguagesTheListLacksWhenTheViewerAddsOne', async () => {
     serve()
     const { user } = renderAppAt(LANGUAGES)

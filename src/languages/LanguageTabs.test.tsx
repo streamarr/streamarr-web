@@ -168,6 +168,15 @@ describe('LanguageTabs', () => {
     expect(await tab('Subtitles')).toHaveAccessibleDescription('Other · from elsewhere')
   })
 
+  it('shouldOfferTheCommonLanguagesAfterTheProfilesWhenAudioOpens', async () => {
+    serveLanguageTabs({ profile: profileLanguagesFixture({ audioLanguages: ['JA', 'FR'] }) })
+    const { user } = renderWithProviders(<LanguageTabs item={MOVIE} />)
+
+    await user.click(await tab('Default audio'))
+
+    expect(rowNames().slice(1, 5)).toEqual(['Japanese', 'French', 'English', 'Spanish'])
+  })
+
   it('shouldOfferTheWiderChoiceThenTheProfilesLanguagesThenEveryOtherWhenAudioOpens', async () => {
     serveLanguageTabs({ profile: profileLanguagesFixture({ audioLanguages: ['EN', 'FR'] }) })
     const { user } = renderWithProviders(<LanguageTabs item={MOVIE} />)
