@@ -4,6 +4,7 @@ import { SeasonDetailDocument, type SeasonDetailQuery } from '../graphql/generat
 import { usePublishAmbientTheme } from '../media/ambientThemeContext'
 import { resolveAmbientColors } from '../media/ambientSource'
 import { keepSeriesEntry, SeriesReturnLink } from '../media/DetailBack'
+import { LanguageTabs } from '../languages/LanguageTabs'
 import { detailAction, DetailHeader } from '../media/DetailHeader'
 import { MediaTitleFallback } from '../media/MediaTitleFallback'
 import { formatRuntime, formatTimeLeft, formatYear } from '../media/formatting'
@@ -70,6 +71,7 @@ export function SeasonDetailScreen({ seasonId }: Readonly<{ seasonId: string }>)
   return (
     <>
       <DetailHeader
+        tabs={<LanguageTabs item={{ kind: 'season', id: seasonId }} />}
         titleColumn
         backdrop={{
           image: pickImageVariant(artwork, 'LARGE'),

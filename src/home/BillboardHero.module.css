@@ -51,10 +51,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--spacing-16);
-  font-family: var(--font-family-system);
-  font-size: var(--font-size-caption);
-  text-transform: uppercase;
-  letter-spacing: var(--letter-spacing-system);
+  font-size: var(--font-size-label);
   color: var(--text-secondary);
 }
 

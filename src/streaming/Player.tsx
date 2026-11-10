@@ -1,7 +1,12 @@
 import { useApolloClient, useMutation } from '@apollo/client/react'
 import { Alert, Button } from '@mantine/core'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { CreatePlaybackSessionDocument, type VideoQuality } from '../graphql/generated/graphql'
+import {
+  CreatePlaybackSessionDocument,
+  type Language,
+  type VideoQuality,
+} from '../graphql/generated/graphql'
+import { languageOfTrack } from '../languages/languages'
 import { DetailBackButton } from '../media/DetailBack'
 import focusStyles from '../styles/focus.module.css'
 import { BufferingRing } from './BufferingRing'
@@ -23,8 +28,11 @@ import {
 } from './playerPlayback'
 import { useControlsReach } from './useControlsReach'
 import { useIdle } from './useIdle'
+import { useLanguageSwitchReport } from './useLanguageSwitchReport'
 import { usePlaybackFallbacks } from './usePlaybackFallbacks'
+import type { StreamTracks } from './trackSources'
 import { useStreamTracks } from './useStreamTracks'
+import type { PlayableMediaTitle } from './usePlayerTitle'
 import { useVideoState } from './useVideoState'
 
 const STARTING: SourcePhase = { at: 'starting' }
@@ -37,10 +45,39 @@ interface ChoiceRequest {
   resumeFrom?: ResumePoint
 }
 
+// The audio language that plays from a start, which every later playback session of that start asks
+// for: the server puts the client's choice before the title's override (ADR 0043), so a switch that
+// is still storing, or whose store failed, stands across a quality pick, a Retry or a page restored.
+interface PlayingAudio {
+  start: PlaybackStart
+  language: Language | undefined
+}
+
 // Where the player was asked to start: a pick holds only until the player is asked to start anew.
 interface PlaybackStart {
   mediaFileId: string
   startPositionSeconds?: number
+}
+
+// A source phase with the start whose playback reported it, so a stream attached from an earlier
+// start is never taken for the current start's.
+interface ReportedPhase {
+  start: PlaybackStart
+  phase: SourcePhase
+}
+
+function playingAudio({ audio }: StreamTracks) {
+  return audio.options.find((option) => option.id === audio.selected)
+}
+
+function audioLanguageFrom(
+  playing: PlayingAudio | null,
+  start: PlaybackStart,
+): Language | undefined {
+  if (playing?.start !== start) {
+    return undefined
+  }
+  return playing.language
 }
 
 function startingChoice(start: PlaybackStart): ChoiceRequest {
@@ -51,11 +88,14 @@ export function Player({
   mediaFileId,
   startPositionSeconds,
   title,
+  mediaTitle,
   playbackPlatform,
 }: Readonly<{
   mediaFileId: string
   startPositionSeconds?: number
   title?: PlayerTitle
+  /** The episode or movie playing, which keeps the viewer's audio and subtitle switches. */
+  mediaTitle?: PlayableMediaTitle
   /** Binds the browser facts the capability declaration is built from to the playing element. */
   playbackPlatform: (video: HTMLVideoElement) => PlaybackPlatform
 }>) {
@@ -68,7 +108,7 @@ export function Player({
     fetchPolicy: 'no-cache',
   })
   const client = useApolloClient()
-  const [sourcePhase, setSourcePhase] = useState(STARTING)
+  const [reported, setReported] = useState<ReportedPhase | null>(null)
   const [choice, setChoice] = useState(() => startingChoice({ mediaFileId, startPositionSeconds }))
   // Another media title, or a new start position, starts in Auto from that start.
   if (
@@ -77,6 +117,7 @@ export function Player({
   ) {
     setChoice(startingChoice({ mediaFileId, startPositionSeconds }))
   }
+  const sourcePhase = reported?.start === choice.start ? reported.phase : STARTING
   const { notice, marks, followPlaybackSession, announce } = usePlaybackFallbacks(choice.start)
   const [picker, setPicker] = useState<PickerKind | null>(null)
   // The screen as the browser reported it when the viewer opened playback data; null while closed.
@@ -89,6 +130,16 @@ export function Player({
     marks,
   }
   const streamTracks = useStreamTracks(tracks)
+  const playingAudioLanguage = useRef<PlayingAudio>(null)
+  useEffect(() => {
+    const playing = playingAudio(streamTracks)
+    if (playing) {
+      playingAudioLanguage.current = {
+        start: choice.start,
+        language: languageOfTrack(playing.language),
+      }
+    }
+  }, [streamTracks, choice.start])
   const openPicker =
     picker !== null && pickerOffersChoice(picker, { ...streamTracks, qualities: quality.offered })
       ? picker
@@ -97,6 +148,7 @@ export function Player({
   if (picker !== openPicker) {
     setPicker(null)
   }
+  const reportTrackChosen = useLanguageSwitchReport(mediaTitle)
   const videoState = useVideoState(videoRef)
   // Playback data sits above the controls and takes taps, so the controls stay while it shows.
   const controlsHeld =
@@ -116,7 +168,8 @@ export function Player({
     if (!video) {
       return undefined
     }
-    setSourcePhase(STARTING)
+    const reportSourcePhase = (phase: SourcePhase) => setReported({ start: choice.start, phase })
+    reportSourcePhase(STARTING)
 
     const playback = startPlayerPlayback({
       video,
@@ -129,13 +182,16 @@ export function Player({
               mediaFileId,
               capabilities,
               startPositionSeconds,
-              options: { quality: choice.quality },
+              options: {
+                quality: choice.quality,
+                audioLanguage: audioLanguageFrom(playingAudioLanguage.current, choice.start),
+              },
             },
           },
         }),
       startPositionSeconds,
       resumeFrom: choice.resumeFrom,
-      onSourcePhase: setSourcePhase,
+      onSourcePhase: reportSourcePhase,
       onOutputShown: followPlaybackSession(),
       onNotice: announce,
     })
@@ -239,6 +295,7 @@ export function Player({
         onChooseQuality={chooseQuality}
         openPicker={openPicker}
         onOpenPicker={setPicker}
+        onTrackChosen={reportTrackChosen}
         playbackDataShown={playbackDataScreen !== null}
         onTogglePlaybackData={togglePlaybackData}
         title={title}

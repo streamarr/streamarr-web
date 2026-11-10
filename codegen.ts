@@ -21,6 +21,12 @@ const config: CodegenConfig = {
         useTypeImports: true,
       },
     },
+    // The client types enums as unions, which list no values at run time. A screen that offers
+    // every value of an enum, such as each Language, reads them from these constants.
+    'src/graphql/generated/enumValues.ts': {
+      plugins: ['typescript'],
+      config: { onlyEnums: true, enumsAsConst: true, useTypeImports: true },
+    },
     'src/graphql/generated/possibleTypes.json': {
       plugins: ['fragment-matcher'],
       config: { apolloClientVersion: 3 },

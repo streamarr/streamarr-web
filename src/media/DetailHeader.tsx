@@ -46,6 +46,7 @@ export function DetailHeader({
   synopsis,
   actions,
   aside,
+  tabs,
   titleColumn = false,
 }: Readonly<{
   backdrop: DetailBackdrop
@@ -59,6 +60,8 @@ export function DetailHeader({
   synopsis?: string | null
   actions: ReactNode
   aside?: ReactNode
+  /** Tabs that sit on the panel's top rule, such as Default audio and Subtitles. */
+  tabs?: ReactNode
   titleColumn?: boolean
 }>) {
   return (
@@ -70,7 +73,11 @@ export function DetailHeader({
         endsIn={endsIn}
         metadata={<MetadataColumns entries={metadata} />}
       />
-      <div className={titleColumn ? `${styles.panel} ${styles.split}` : styles.panel}>
+      <div
+        className={titleColumn ? `${styles.panel} ${styles.split}` : styles.panel}
+        data-testid="detail-panel"
+      >
+        {tabs && <div className={styles.tabs}>{tabs}</div>}
         <div className={styles.main}>
           <div className={styles.heading}>
             {eyebrow && <span className={styles.eyebrow}>{eyebrow}</span>}

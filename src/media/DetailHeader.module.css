@@ -12,7 +12,7 @@
   padding: 44px var(--spacing-page) 0;
 }
 
-/* The 2px rule the mocks hang the detail tabs on; the tabs wait for a persisting server default. */
+/* The 2px rule the detail tabs hang on. */
 .panel::before {
   content: '';
   position: absolute;
@@ -21,6 +21,14 @@
   top: 0;
   height: 2px;
   background: color-mix(in srgb, var(--ambient-text-primary, var(--color-white)) 22%, transparent);
+}
+
+.tabs {
+  position: absolute;
+  left: var(--spacing-page);
+  right: var(--spacing-page);
+  bottom: 100%;
+  z-index: 2;
 }
 
 .main {
@@ -46,10 +54,9 @@
 }
 
 .eyebrow {
-  font-family: var(--font-family-system);
-  font-size: 12px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font-family: var(--font-family-content);
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
   color: var(--ambient-text-secondary, var(--text-secondary));
 }
 

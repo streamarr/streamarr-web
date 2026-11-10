@@ -1,6 +1,6 @@
-/* Server-settings layout, measured from the streamarr-ux mock. */
+/* The settings layout, measured from the streamarr-ux server settings mock. */
 .settings {
-  composes: focusRing from '../styles/focus.module.css';
+  composes: focusRing from './focus.module.css';
   color: var(--text-primary);
   font-family: var(--font-family-content);
 
@@ -52,11 +52,9 @@
 }
 .typeField legend,
 .metadata dt {
-  font-family: var(--font-family-system);
-  font-size: var(--font-size-caption);
-  font-weight: var(--font-weight-regular);
-  text-transform: uppercase;
-  letter-spacing: var(--letter-spacing-system);
+  font-family: var(--font-family-content);
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
   color: var(--text-secondary);
 }
 .pageHeading {
@@ -82,10 +80,8 @@
   border-radius: var(--radius-sm);
   background: var(--surface-panel-strong);
   color: var(--text-secondary);
-  font-family: var(--font-family-system);
   font-size: var(--font-size-body);
   font-weight: var(--font-weight-regular);
-  letter-spacing: var(--letter-spacing-system);
 }
 .railLayout {
   display: grid;
@@ -96,9 +92,7 @@
   align-items: start;
 }
 .settingsRail {
-  background: var(--surface-wash);
-  border: 1px solid var(--border-hairline);
-  border-radius: var(--radius-xl);
+  composes: panel from './panel.module.css';
   padding: 23px 12px 16px;
   min-height: 425px;
   display: flex;
@@ -131,6 +125,8 @@
 .section[aria-current='page'] {
   background: var(--selection-active);
 }
+/* The page column. A settings page takes this width and sets none of its own, so the heading and
+   panels of every page in every settings area line up. */
 .railContent {
   min-width: 0;
 }
@@ -147,21 +143,16 @@
   color: var(--text-primary);
 }
 .timestamp {
-  font-family: var(--font-family-system);
   font-size: var(--font-size-label);
   color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: var(--letter-spacing-system);
   font-variant-numeric: tabular-nums;
 }
 .splitPanel {
+  composes: panel from './panel.module.css';
   display: grid;
   grid-template-columns: 245px minmax(0, 1fr);
   min-height: 405px;
-  border: 1px solid var(--border-hairline);
-  border-radius: var(--radius-xl);
   overflow: hidden;
-  background: var(--surface-wash);
 }
 .libraryList {
   padding: var(--spacing-20) var(--spacing-12);
@@ -298,11 +289,18 @@
 .popoverOption[data-disabled] {
   color: var(--text-tertiary);
 }
+/* A hairline divides one group of options from the next; the group's name is for screen readers. */
+.popoverGroup + .popoverGroup {
+  margin-top: var(--spacing-4);
+  padding-top: var(--spacing-4);
+  border-top: var(--border-width-hairline) solid var(--border-hairline);
+}
+.popoverGroupLabel {
+  display: none;
+}
 .formPanel {
+  composes: panel from './panel.module.css';
   padding: 28px 34px 34px;
-  background: var(--surface-wash);
-  border: 1px solid var(--border-hairline);
-  border-radius: var(--radius-xl);
 }
 /* Settings that share a panel are rows divided by a hairline inside the panel's padding. */
 .settingRow + .settingRow {

@@ -61,12 +61,15 @@ describe('hlsTrackSource', () => {
     expect(source.read()).toEqual({
       audio: {
         options: [
-          { id: 0, label: 'English' },
-          { id: 1, label: 'Commentary' },
+          { id: 0, label: 'English', language: 'en' },
+          { id: 1, label: 'Commentary', language: 'en' },
         ],
         selected: 1,
       },
-      subtitles: { options: [{ id: 0, label: 'English (SDH)' }], selected: null },
+      subtitles: {
+        options: [{ id: 0, label: 'English (SDH)', language: 'en' }],
+        selected: null,
+      },
     })
   })
 
@@ -85,6 +88,11 @@ describe('hlsTrackSource', () => {
       'French',
       'Track 2',
       'Track 3',
+    ])
+    expect(source.read().audio.options.map((option) => option.language)).toEqual([
+      'fr',
+      undefined,
+      'not a language',
     ])
   })
 
@@ -112,7 +120,7 @@ describe('hlsTrackSource', () => {
     expect(onChange).toHaveBeenCalledTimes(HLS_TRACK_EVENTS.length)
   })
 
-  it('shouldSwitchTheStreamsTracksThroughHls', () => {
+  it('shouldSwitchTheStreamsTracksThroughHls', async () => {
     const hls = fakeHls({
       audioTracks: [{ name: 'English' }, { name: 'Deutsch' }],
       audioTrack: 0,
@@ -120,7 +128,8 @@ describe('hlsTrackSource', () => {
     })
     const source = hlsTrackSource(hls)
 
-    source.selectAudio(1)
+    await expect(source.selectAudio(1)).resolves.toBe(true)
+    await expect(source.selectAudio(1)).resolves.toBe(false)
     source.selectSubtitles(0)
     expect([hls.audioTrack, hls.subtitleTrack]).toEqual([1, 0])
 
@@ -147,15 +156,15 @@ describe('nativeTrackSource', () => {
     expect(nativeTrackSource(video).read()).toEqual({
       audio: {
         options: [
-          { id: 0, label: 'English' },
-          { id: 1, label: 'German' },
+          { id: 0, label: 'English', language: 'en' },
+          { id: 1, label: 'German', language: 'de' },
         ],
         selected: 1,
       },
       subtitles: {
         options: [
-          { id: 0, label: 'English' },
-          { id: 1, label: 'English (SDH)' },
+          { id: 0, label: 'English', language: 'en' },
+          { id: 1, label: 'English (SDH)', language: 'en' },
         ],
         selected: 1,
       },
@@ -194,7 +203,7 @@ describe('nativeTrackSource', () => {
     expect(onChange).toHaveBeenCalledTimes(6)
   })
 
-  it('shouldSwitchTheElementsOwnTracks', () => {
+  it('shouldSwitchTheElementsOwnTracks', async () => {
     const video = document.createElement('video')
     const audio: FakeAudioTrack[] = [
       { label: 'English', language: 'en', enabled: true },
@@ -208,7 +217,8 @@ describe('nativeTrackSource', () => {
     giveElementTracks(video, { audio, text })
     const source = nativeTrackSource(video)
 
-    source.selectAudio(1)
+    await expect(source.selectAudio(1)).resolves.toBe(true)
+    await expect(source.selectAudio(1)).resolves.toBe(false)
     source.selectSubtitles(1)
     expect(audio.map((track) => track.enabled)).toEqual([false, true])
     expect(text.map((track) => track.mode)).toEqual(['disabled', 'hidden', 'showing'])
@@ -229,21 +239,33 @@ describe('listedAudioTrackSource', () => {
         { position: 3, language: null, title: null },
       ],
       playing: 1,
-      onChooseAudio: () => undefined,
+      onChooseAudio: async () => true,
     })
 
-    expect(source.read().audio).toEqual({
-      options: [
-        { id: 0, label: 'Commentary' },
-        { id: 1, label: 'French' },
-        { id: 2, label: 'Track 3' },
-        { id: 3, label: 'Track 4' },
-      ],
-      selected: 1,
-    })
+    const { options, selected } = source.read().audio
+    expect(options.map(({ id, label }) => ({ id, label }))).toEqual([
+      { id: 0, label: 'Commentary' },
+      { id: 1, label: 'French' },
+      { id: 2, label: 'Track 3' },
+      { id: 3, label: 'Track 4' },
+    ])
+    expect(selected).toBe(1)
   })
 
-  it('shouldHandOnlyAnotherTrackToTheSwitchWhenTheViewerChoosesOne', () => {
+  it('shouldTagEachListedTrackWithTheLanguageTheFileGivesIt', () => {
+    const source = listedAudioTrackSource(nativeTrackSource(document.createElement('video')), {
+      audioTracks: [
+        { position: 0, language: 'fre', title: 'Commentaire' },
+        { position: 1, language: null, title: null },
+      ],
+      playing: 0,
+      onChooseAudio: async () => true,
+    })
+
+    expect(source.read().audio.options.map((option) => option.language)).toEqual(['fre', undefined])
+  })
+
+  it('shouldHandOnlyAnotherTrackToTheSwitchWhenTheViewerChoosesOne', async () => {
     const chosen: number[] = []
     const source = listedAudioTrackSource(nativeTrackSource(document.createElement('video')), {
       audioTracks: [
@@ -251,12 +273,14 @@ describe('listedAudioTrackSource', () => {
         { position: 1, language: 'fre' },
       ],
       playing: 0,
-      onChooseAudio: (position) => chosen.push(position),
+      onChooseAudio: async (position) => {
+        chosen.push(position)
+        return true
+      },
     })
 
-    source.selectAudio(0)
-    source.selectAudio(1)
-
+    await expect(source.selectAudio(0)).resolves.toBe(false)
+    await expect(source.selectAudio(1)).resolves.toBe(true)
     expect(chosen).toEqual([1])
   })
 })

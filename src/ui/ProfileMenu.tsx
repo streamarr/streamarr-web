@@ -6,6 +6,7 @@ import type { MeQuery } from '../graphql/generated/graphql'
 import { initials, tileColor } from './ProfileTile'
 import { Icon } from './Icon'
 import { canManageServer } from '../admin/access'
+import { canManageHousehold } from '../identity/householdAccess'
 import styles from './ProfileMenu.module.css'
 
 type Me = MeQuery['me']
@@ -24,6 +25,8 @@ export function ProfileMenu({
   onSignedOut,
   onUnauthenticated,
   onServerSettings,
+  onProfileSettings,
+  onHouseholdSettings,
 }: Readonly<{
   me: Me
   onPinRequired: (profileId: string) => void
@@ -31,6 +34,10 @@ export function ProfileMenu({
   onUnauthenticated: () => void
   /** Opens the integrated settings route; only exposed for eligible account sessions. */
   onServerSettings?: () => void
+  /** Opens the selected Profile's settings; offered only while a Profile is selected. */
+  onProfileSettings?: () => void
+  /** Opens the Household's settings; offered only to its admins in an account session. */
+  onHouseholdSettings?: () => void
 }>) {
   const { selectProfile } = useAuth()
   const signOut = useSignOut(onSignedOut)
@@ -162,6 +169,32 @@ export function ProfileMenu({
             </div>
           )}
           <div className={styles.profileMenuDivider} aria-hidden />
+          {me.selectedProfile && onProfileSettings && (
+            <button
+              type="button"
+              className={styles.profileMenuRow}
+              onClick={() => {
+                close()
+                onProfileSettings()
+              }}
+            >
+              <Icon name="settings" size={20} />
+              <span>Profile settings</span>
+            </button>
+          )}
+          {canManageHousehold(me) && onHouseholdSettings && (
+            <button
+              type="button"
+              className={styles.profileMenuRow}
+              onClick={() => {
+                close()
+                onHouseholdSettings()
+              }}
+            >
+              <Icon name="settings" size={20} />
+              <span>Household settings</span>
+            </button>
+          )}
           {canManageServer(me) && onServerSettings && (
             <button
               type="button"

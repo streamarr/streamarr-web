@@ -22,7 +22,11 @@ Object.defineProperty(window, 'matchMedia', {
 })
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterEach(() => server.resetHandlers())
+afterEach(() => {
+  server.resetHandlers()
+  // A wait that a test abandoned would otherwise hear the next test's responses.
+  server.events.removeAllListeners()
+})
 afterAll(() => server.close())
 
 // jsdom lays nothing out, so the virtualized library grid would see a 0px viewport and render no

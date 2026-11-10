@@ -3,6 +3,8 @@ import Hls, { type MediaPlaylist } from 'hls.js'
 interface TrackOption {
   id: number
   label: string
+  /** The language code the stream tags the track with, such as `fr` or `fre`; none when untagged. */
+  language?: string
 }
 
 /** The tracks of one kind a stream offers, and the one in use; null when none is. */
@@ -21,7 +23,8 @@ export interface TrackSource {
   /** Returns the same object until the tracks, or the choice among them, change. */
   read: () => StreamTracks
   subscribe: (onChange: () => void) => () => void
-  selectAudio: (id: number) => void
+  /** Resolves whether the stream moved to that audio track; false when it plays it already. */
+  selectAudio: (id: number) => Promise<boolean>
   /** Null turns subtitles off. */
   selectSubtitles: (id: number | null) => void
 }
@@ -75,7 +78,9 @@ export function hlsTrackSource(hls: HlsTracks): TrackSource {
       }
     },
     selectAudio: (id) => {
+      const moves = hls.audioTrack !== id
       hls.audioTrack = id
+      return Promise.resolve(moves)
     },
     selectSubtitles: (id) => {
       hls.subtitleTrack = id ?? HLS_SUBTITLES_OFF
@@ -104,7 +109,8 @@ export function listedAudioTrackSource(
   }: {
     audioTracks: readonly ListedAudioTrack[]
     playing: number | null
-    onChooseAudio: (position: number) => void
+    /** Resolves whether playback moved to the track. */
+    onChooseAudio: (position: number) => Promise<boolean>
   },
 ): TrackSource {
   const audio = choice(
@@ -114,15 +120,14 @@ export function listedAudioTrackSource(
         { name: track.title ?? undefined, language: track.language ?? undefined },
         track.position,
       ),
+      language: track.language ?? undefined,
     })),
     playing ?? -1,
   )
   return {
     read: unchangedUntilDifferent(() => ({ audio, subtitles: elementTracks.read().subtitles })),
     subscribe: elementTracks.subscribe,
-    selectAudio: (id) => {
-      if (id !== playing) onChooseAudio(id)
-    },
+    selectAudio: (id) => (id === playing ? Promise.resolve(false) : onChooseAudio(id)),
     selectSubtitles: elementTracks.selectSubtitles,
   }
 }
@@ -162,9 +167,12 @@ export function nativeTrackSource(video: HTMLVideoElement): TrackSource {
       return () => stops.forEach((stop) => stop())
     },
     selectAudio: (id) => {
-      audioTracksOf(video).forEach((track, index) => {
+      const tracks = audioTracksOf(video)
+      const moves = tracks[id]?.enabled === false
+      tracks.forEach((track, index) => {
         track.enabled = index === id
       })
+      return Promise.resolve(moves)
     },
     selectSubtitles: (id) => {
       subtitleTracksOf(video).forEach((track, index) => {
@@ -226,11 +234,19 @@ function choice(options: TrackOption[], selectedIndex: number): TrackChoice {
 function hlsTrackOption(track: HlsTrack, index: number): TrackOption {
   // hls.js names a rendition that declares no NAME after its language code.
   const name = track.name === track.lang ? undefined : track.name
-  return { id: index, label: trackLabel({ name, language: track.lang }, index) }
+  return {
+    id: index,
+    label: trackLabel({ name, language: track.lang }, index),
+    language: track.lang || undefined,
+  }
 }
 
 function elementTrackOption(track: ElementTrack, index: number): TrackOption {
-  return { id: index, label: trackLabel({ name: track.label, language: track.language }, index) }
+  return {
+    id: index,
+    label: trackLabel({ name: track.label, language: track.language }, index),
+    language: track.language || undefined,
+  }
 }
 
 // The interface is in English, so the languages it names are too.
