@@ -15,7 +15,7 @@ import { requestFailureMessage } from '../graphql/requestErrors'
 import { userErrorMessage } from '../graphql/userErrors'
 import { CaretPopover, type PopoverOption } from '../ui/CaretPopover'
 import { FailureRow } from '../ui/Failure'
-import { languageName, LANGUAGE_LISTING } from './languages'
+import { languageListing, languageName } from './languages'
 import styles from './LanguageTabs.module.css'
 import { SUBTITLE_MODES } from './subtitleModes'
 
@@ -154,10 +154,13 @@ function Tabs({
   const subtitlesRef = useRef<HTMLButtonElement>(null)
   const busy = saving || reading
   const level = LEVEL_OF[item.kind]
-  const listing = languagesListing(first)
+  // The Profile's own languages and the common ones lead; a hairline divides them from the rest.
+  const { leading, rest } = languageListing(first)
+  const listing = [...leading, ...rest]
   const languageRows = listing.map((language) => ({
     id: LANGUAGE + language,
     label: languageName(language),
+    divided: language === rest[0],
   }))
 
   async function save(change: OverrideChange) {
@@ -292,11 +295,6 @@ function Tab({
       )}
     </div>
   )
-}
-
-// The Profile's own languages first, then the common ones, then every other language by name.
-function languagesListing(first: readonly Language[]): Language[] {
-  return [...first, ...LANGUAGE_LISTING.filter((language) => !first.includes(language))]
 }
 
 function audioName(language: Language | undefined): string {

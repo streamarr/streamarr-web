@@ -1,4 +1,5 @@
 import {
+  Fragment,
   type KeyboardEvent as ReactKeyboardEvent,
   type RefObject,
   useEffect,
@@ -32,6 +33,8 @@ export interface PopoverOption<Id> {
    * while focus is on it, or after a tap on the mark.
    */
   caution?: string
+  /** A hairline above the row sets it, and the rows after it, apart from the rows before. */
+  divided?: boolean
 }
 
 // Which row's caution shows: the hovered row first, then a tapped mark, then the focused row.
@@ -186,42 +189,44 @@ export function CaretPopover<Id>({
         {options.map((option, index) => {
           const checked = option.id === selected
           return (
-            <button
-              key={String(option.id)}
-              type="button"
-              role="menuitemradio"
-              aria-checked={checked}
-              aria-label={cautionedName(option)}
-              tabIndex={-1}
-              className={styles.row}
-              onPointerDown={(event) => {
-                pressedByTouch.current = event.pointerType === 'touch'
-              }}
-              onClick={(event) => {
-                if (pressedByTouch.current && isOnTheMark(event)) {
-                  tapMark(index)
-                  return
-                }
-                choose(option.id)
-              }}
-              onFocus={(event) => {
-                focusedRow.current = { row: event.currentTarget, index }
-                explainFocused(index)
-              }}
-              onPointerEnter={() => explainHovered(index)}
-              onPointerLeave={() => stopHovering(index)}
-              onKeyDown={handleRowKey}
-            >
-              <span className={styles.label}>
-                {option.label}
-                {option.caution && (
-                  <span className={styles.caution} data-mark>
-                    <Icon name="alert" size={14} label={option.caution} />
-                  </span>
-                )}
-              </span>
-              {checked && <Icon name="check" size={14} />}
-            </button>
+            <Fragment key={String(option.id)}>
+              {option.divided && <div role="separator" className={styles.divider} />}
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={checked}
+                aria-label={cautionedName(option)}
+                tabIndex={-1}
+                className={styles.row}
+                onPointerDown={(event) => {
+                  pressedByTouch.current = event.pointerType === 'touch'
+                }}
+                onClick={(event) => {
+                  if (pressedByTouch.current && isOnTheMark(event)) {
+                    tapMark(index)
+                    return
+                  }
+                  choose(option.id)
+                }}
+                onFocus={(event) => {
+                  focusedRow.current = { row: event.currentTarget, index }
+                  explainFocused(index)
+                }}
+                onPointerEnter={() => explainHovered(index)}
+                onPointerLeave={() => stopHovering(index)}
+                onKeyDown={handleRowKey}
+              >
+                <span className={styles.label}>
+                  {option.label}
+                  {option.caution && (
+                    <span className={styles.caution} data-mark>
+                      <Icon name="alert" size={14} label={option.caution} />
+                    </span>
+                  )}
+                </span>
+                {checked && <Icon name="check" size={14} />}
+              </button>
+            </Fragment>
           )
         })}
       </div>

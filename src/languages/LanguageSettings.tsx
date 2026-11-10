@@ -13,7 +13,7 @@ import { userErrorMessage } from '../graphql/userErrors'
 import { FailureRow } from '../ui/Failure'
 import { Icon } from '../ui/Icon'
 import settingsStyles from '../styles/settings.module.css'
-import { languageName, LANGUAGE_LISTING } from './languages'
+import { languageListing, languageName } from './languages'
 import { SUBTITLE_MODES } from './subtitleModes'
 import styles from './LanguageSettings.module.css'
 
@@ -26,10 +26,35 @@ const STILL_READING = "Your languages were still loading, so that change wasn't 
 
 const NO_SUBTITLE_LANGUAGE = { value: 'none', label: 'None' }
 
-const LANGUAGE_OPTIONS = LANGUAGE_LISTING.map((language) => ({
-  value: language,
-  label: languageName(language),
-}))
+interface LanguageOption {
+  value: Language
+  label: string
+  disabled?: boolean
+}
+
+const LISTING = languageListing()
+const COMMON_OPTIONS: LanguageOption[] = LISTING.leading.map(optionOf)
+const OTHER_OPTIONS: LanguageOption[] = LISTING.rest.map(optionOf)
+const LANGUAGE_OPTIONS = [...COMMON_OPTIONS, ...OTHER_OPTIONS]
+
+function optionOf(language: Language): LanguageOption {
+  return { value: language, label: languageName(language) }
+}
+
+// The common languages and the rest as two groups, which the list divides with a hairline.
+function grouped(common: LanguageOption[], others: LanguageOption[]) {
+  return [
+    { group: 'Common languages', items: common },
+    { group: 'All other languages', items: others },
+  ].filter(({ items }) => items.length > 0)
+}
+
+const GROUP_CLASS_NAMES = {
+  dropdown: settingsStyles.popover,
+  option: settingsStyles.popoverOption,
+  group: settingsStyles.popoverGroup,
+  groupLabel: settingsStyles.popoverGroupLabel,
+}
 
 /**
  * The selected Profile's own language preferences. Each change saves at once, and the screen shows
@@ -154,11 +179,7 @@ function LanguageSettingsContent({
           onChange={(next) => onChange({ ...current, audioLanguages: next })}
         />
         <Select
-          classNames={{
-            label: styles.settingName,
-            dropdown: settingsStyles.popover,
-            option: settingsStyles.popoverOption,
-          }}
+          classNames={{ label: styles.settingName, ...GROUP_CLASS_NAMES }}
           label="Subtitle language"
           description="Set the default subtitle language."
           searchable
@@ -264,12 +285,15 @@ function AudioLanguages({
       )}
       {languages.length < MAX_AUDIO_LANGUAGES ? (
         <Select
-          classNames={{ dropdown: settingsStyles.popover, option: settingsStyles.popoverOption }}
+          classNames={GROUP_CLASS_NAMES}
           label="Add an audio language"
           placeholder="Choose a language"
           searchable
           value={null}
-          data={LANGUAGE_OPTIONS.filter((option) => !languages.includes(option.value))}
+          data={grouped(
+            COMMON_OPTIONS.filter((option) => !languages.includes(option.value)),
+            OTHER_OPTIONS.filter((option) => !languages.includes(option.value)),
+          )}
           readOnly={busy}
           onChange={(value) => {
             if (isLanguageOption(value)) {
@@ -297,7 +321,7 @@ function isLanguageOption(value: string | null): value is Language {
 // A language newer than this client stays visible but cannot be chosen again from here.
 function optionsShowing(saved: Language | null) {
   if (saved === null || LANGUAGE_OPTIONS.some((option) => option.value === saved)) {
-    return LANGUAGE_OPTIONS
+    return grouped(COMMON_OPTIONS, OTHER_OPTIONS)
   }
-  return [...LANGUAGE_OPTIONS, { value: saved, label: languageName(saved), disabled: true }]
+  return grouped(COMMON_OPTIONS, [...OTHER_OPTIONS, { ...optionOf(saved), disabled: true }])
 }

@@ -98,15 +98,21 @@ function browserName(tag: string): string | undefined {
 // The languages most viewers pick, which lead every list so that few viewers scroll for theirs.
 const COMMON_LANGUAGES: readonly Language[] = ['EN', 'ES', 'FR']
 
-/** Every Language the pinned schema lists: the common ones first, then the rest by English name. */
-export const LANGUAGE_LISTING: readonly Language[] = [
-  ...COMMON_LANGUAGES,
-  ...Object.values(Language)
-    .filter((language) => !COMMON_LANGUAGES.includes(language))
-    .map((language) => ({ language, name: languageName(language) }))
-    .sort((a, b) => a.name.localeCompare(b.name, 'en'))
-    .map(({ language }) => language),
-]
+const LANGUAGES_BY_NAME: readonly Language[] = Object.values(Language)
+  .map((language) => ({ language, name: languageName(language) }))
+  .sort((a, b) => a.name.localeCompare(b.name, 'en'))
+  .map(({ language }) => language)
+
+/**
+ * Every Language the pinned schema lists, in two parts that a list divides: `first` and then the
+ * common languages lead, and every other language follows in the order of its English name.
+ */
+export function languageListing<First extends string = Language>(
+  first: readonly First[] = [],
+): { leading: (First | Language)[]; rest: Language[] } {
+  const leading = [...new Set<First | Language>([...first, ...COMMON_LANGUAGES])]
+  return { leading, rest: LANGUAGES_BY_NAME.filter((language) => !leading.includes(language)) }
+}
 
 // Each value by its tag in lower case, as the server's table matches a file's code.
 const BY_TAG = new Map<string, Language>(

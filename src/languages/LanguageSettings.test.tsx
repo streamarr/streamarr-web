@@ -171,6 +171,27 @@ describe('language settings', () => {
     ])
   })
 
+  it('shouldSetTheCommonLanguagesApartFromTheRestWhenALanguageListOpens', async () => {
+    serve({ saved: preferences({ audioLanguages: ['JA'], subtitleLanguage: null }) })
+    const { user } = renderAppAt(LANGUAGES)
+
+    await user.click(await screen.findByRole('combobox', { name: 'Add an audio language' }))
+    const common = within(optionsOf('Add an audio language')).getByRole('group', {
+      name: 'Common languages',
+      hidden: true,
+    })
+    const others = within(optionsOf('Add an audio language')).getByRole('group', {
+      name: 'All other languages',
+      hidden: true,
+    })
+    expect(
+      within(common)
+        .getAllByRole('option', { hidden: true })
+        .map((option) => option.textContent),
+    ).toEqual(['English', 'Spanish', 'French'])
+    expect(within(others).getByRole('option', { name: 'German', hidden: true })).toBeInTheDocument()
+  })
+
   it('shouldOfferOnlyLanguagesTheListLacksWhenTheViewerAddsOne', async () => {
     serve()
     const { user } = renderAppAt(LANGUAGES)

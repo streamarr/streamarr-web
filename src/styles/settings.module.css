@@ -289,6 +289,15 @@
 .popoverOption[data-disabled] {
   color: var(--text-tertiary);
 }
+/* A hairline divides one group of options from the next; the group's name is for screen readers. */
+.popoverGroup + .popoverGroup {
+  margin-top: var(--spacing-4);
+  padding-top: var(--spacing-4);
+  border-top: var(--border-width-hairline) solid var(--border-hairline);
+}
+.popoverGroupLabel {
+  display: none;
+}
 .formPanel {
   composes: panel from './panel.module.css';
   padding: 28px 34px 34px;

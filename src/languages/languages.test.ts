@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Language } from '../graphql/generated/enumValues'
-import { LANGUAGE_LISTING, languageName, languageOfTrack } from './languages'
+import { languageListing, languageName, languageOfTrack } from './languages'
 
 describe('languageName', () => {
   it('shouldNameEachLanguageInEnglishWhenItIsABaseLanguage', () => {
@@ -35,15 +35,25 @@ describe('languageName', () => {
   })
 })
 
-describe('LANGUAGE_LISTING', () => {
-  it('shouldLeadWithEnglishSpanishAndFrenchWhenLanguagesAreListed', () => {
-    expect(LANGUAGE_LISTING.slice(0, 3).map(languageName)).toEqual(['English', 'Spanish', 'French'])
+describe('languageListing', () => {
+  it('shouldLeadWithEnglishSpanishAndFrenchWhenNoLanguageComesFirst', () => {
+    expect(languageListing().leading.map(languageName)).toEqual(['English', 'Spanish', 'French'])
+  })
+
+  it('shouldLeadWithTheGivenLanguagesThenTheCommonOnesItLacks', () => {
+    expect(languageListing(['JA', 'FR']).leading.map(languageName)).toEqual([
+      'Japanese',
+      'French',
+      'English',
+      'Spanish',
+    ])
   })
 
   it('shouldListEveryOtherLanguageOnceInTheOrderOfItsName', () => {
-    const names = LANGUAGE_LISTING.slice(3).map(languageName)
+    const { leading, rest } = languageListing(['JA'])
+    const names = rest.map(languageName)
 
-    expect([...LANGUAGE_LISTING].sort()).toEqual(Object.values(Language).sort())
+    expect([...leading, ...rest].sort()).toEqual(Object.values(Language).sort())
     expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b, 'en')))
   })
 })

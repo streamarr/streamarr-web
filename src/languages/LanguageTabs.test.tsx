@@ -177,6 +177,21 @@ describe('LanguageTabs', () => {
     expect(rowNames().slice(1, 5)).toEqual(['Japanese', 'French', 'English', 'Spanish'])
   })
 
+  it('shouldDivideTheLeadingLanguagesFromTheRestWhenAudioOpens', async () => {
+    serveLanguageTabs({ profile: profileLanguagesFixture({ audioLanguages: ['JA'] }) })
+    const { user } = renderWithProviders(<LanguageTabs item={MOVIE} />)
+
+    await user.click(await tab('Default audio'))
+
+    const menu = screen.getByRole('menu')
+    const divider = within(menu).getByRole('separator')
+    const french = within(menu).getByRole('menuitemradio', { name: 'French' })
+    const afterDivider = within(menu).getByRole('menuitemradio', { name: 'Abkhazian' })
+    expect(french.compareDocumentPosition(divider)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+    expect(divider.compareDocumentPosition(afterDivider)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+    expect(rowNames().slice(1, 5)).toEqual(['Japanese', 'English', 'Spanish', 'French'])
+  })
+
   it('shouldOfferTheWiderChoiceThenTheProfilesLanguagesThenEveryOtherWhenAudioOpens', async () => {
     serveLanguageTabs({ profile: profileLanguagesFixture({ audioLanguages: ['EN', 'FR'] }) })
     const { user } = renderWithProviders(<LanguageTabs item={MOVIE} />)
