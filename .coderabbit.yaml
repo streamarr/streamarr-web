@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+# Without this, CodeRabbit reads this file alone and drops every setting made in its dashboard.
+inheritance: true
+
+reviews:
+  pre_merge_checks:
+    # The code style keeps TSDoc for caller-visible contracts (CLAUDE.md, "Code Style"), so a
+    # coverage target for doc comments asks for comments the project does not want.
+    docstrings:
+      mode: 'off'
