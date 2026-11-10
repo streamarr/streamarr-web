@@ -2166,6 +2166,32 @@ describe('declarePlaybackCapabilities', () => {
 
       await expect(declaration).resolves.toEqual(DECLARATION_OF_EVERY_TIER)
     })
+
+    it('shouldKeepDirectPlayForEveryOtherFamilyWhenOneHevcQuestionGoesUnansweredAtTheDeadline', async () => {
+      vi.useFakeTimers()
+      const answers = filePlayingDecodingInfo(CHROMIUM_FILE_TYPES)
+      const declaration = declarePlaybackCapabilities(
+        platformFixture({
+          decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) =>
+            configuration.type === 'media-source' &&
+            configuration.video?.contentType.includes('hvc1.2.4.L153.')
+              ? NEVER_ANSWERED
+              : answers(configuration),
+          ),
+          canPlayType: canPlayTypeOf(CHROMIUM_FILE_TYPES),
+        }),
+      )
+
+      await vi.advanceTimersByTimeAsync(3_000)
+
+      const otherFamilies = (await declaration).video.filter(
+        ({ codecFamily }) => codecFamily !== 'HEVC',
+      )
+      expect(directPlayOf(otherFamilies)).toEqual([
+        { codecFamily: 'H264', containers: ['MP4'], sampleEntries: ['AVC1', 'AVC3'] },
+        { codecFamily: 'AV1', containers: ['MP4', 'MATROSKA'], sampleEntries: ['AV01'] },
+      ])
+    })
   })
 })
 
