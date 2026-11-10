@@ -1,7 +1,8 @@
 import { screen, waitFor, within } from '@testing-library/react'
-import { graphql, HttpResponse } from 'msw'
+import { delay, graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { ShareOffersQuery } from '../graphql/generated/graphql'
+import { watchingConnection } from '../test/continueWatchingFixtures'
 import { HOUSEHOLD_ID, meFixture, PROFILE_ID } from '../test/meFixture'
 import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
@@ -72,6 +73,25 @@ function acceptedPayload() {
   }
 }
 
+type User = ReturnType<typeof renderAppAt>['user']
+
+async function leaveForHomeAndReturn(user: User) {
+  server.use(
+    graphql.query('Home', () =>
+      HttpResponse.json({ data: { continueWatching: watchingConnection([]), libraries: [] } }),
+    ),
+  )
+  await user.click(
+    within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('link', { name: 'Home' }),
+  )
+  await waitFor(() =>
+    expect(screen.queryByRole('heading', { name: 'Share offers' })).not.toBeInTheDocument(),
+  )
+  await user.click(screen.getByRole('button', { name: /^Profile menu/ }))
+  await user.click(await screen.findByRole('button', { name: 'Household settings' }))
+  await screen.findByRole('heading', { level: 1, name: 'Share offers' })
+}
+
 describe('Household settings', () => {
   it('shouldOpenShareOffersAsTheFirstSectionWhenAHouseholdAdminOpensHouseholdSettings', async () => {
     serve()
@@ -129,6 +149,43 @@ describe('Share offers', () => {
     const offered = await screen.findByRole('region', { name: 'Profiles offered to Smith Family' })
     expect(within(offered).getAllByRole('listitem')).toHaveLength(1)
     expect(within(offered).getByRole('button', { name: 'Accept Profile 33333333' })).toBeEnabled()
+  })
+
+  it('shouldListAnOfferThatArrivedWhileTheAdminWasAwayWhenTheyReturn', async () => {
+    serveInTurn([], [offer()])
+    const { user } = renderAppAt(OFFERS)
+    await screen.findByText('No one has offered a Profile to Smith Family.')
+
+    await leaveForHomeAndReturn(user)
+
+    expect(await screen.findByRole('button', { name: 'Accept Profile 33333333' })).toBeEnabled()
+  })
+
+  it('shouldDropAnOfferTheServerNoLongerListsWhenTheAdminReturns', async () => {
+    serveInTurn([offer()], [])
+    const { user } = renderAppAt(OFFERS)
+    await screen.findByRole('button', { name: 'Accept Profile 33333333' })
+
+    await leaveForHomeAndReturn(user)
+
+    expect(
+      await screen.findByText('No one has offered a Profile to Smith Family.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Accept/ })).not.toBeInTheDocument()
+  })
+
+  it('shouldShowTheOffersAsLoadingUntilTheServerAnswersWhenTheAdminReturns', async () => {
+    serve()
+    const { user } = renderAppAt(OFFERS)
+    await screen.findByText('No one has offered a Profile to Smith Family.')
+    server.use(graphql.query('ShareOffers', () => delay('infinite')))
+
+    await leaveForHomeAndReturn(user)
+
+    expect(await screen.findByRole('status', { name: 'Loading share offers' })).toBeInTheDocument()
+    expect(
+      screen.queryByText('No one has offered a Profile to Smith Family.'),
+    ).not.toBeInTheDocument()
   })
 
   it('shouldSayWhatAcceptingMeansBeforeItAcceptsAnOffer', async () => {
