@@ -3,7 +3,7 @@ import { act, screen, waitFor, within } from '@testing-library/react'
 import type { UserEvent } from '@testing-library/user-event'
 import { graphql, HttpResponse } from 'msw'
 import { useEffect, useState } from 'react'
-import { describe, expect, it } from 'vitest'
+import { assert, describe, expect, it, vi } from 'vitest'
 import type {
   Language,
   LanguagePreferenceFieldsFragment,
@@ -51,6 +51,27 @@ function checkedRow(): string | undefined {
       .getAllByRole('menuitemradio')
       .find((row) => row.getAttribute('aria-checked') === 'true')?.textContent ?? undefined
   )
+}
+
+// jsdom lays nothing out. This lays the picker out as the stylesheets do: its top edge 16px under
+// the 64px tabs, or its bottom edge 24px over them, and each row 41px down it and 38px high.
+function layOutPicker({ tabsTop, screenHeight }: { tabsTop: number; screenHeight: number }) {
+  const pinnedEdge = new Map([
+    ['below', tabsTop + 64 + 16],
+    ['above', tabsTop - 24],
+  ])
+  vi.stubGlobal('innerHeight', screenHeight)
+  vi.spyOn(HTMLElement.prototype, 'offsetTop', 'get').mockReturnValue(41)
+  vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(38)
+  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+    return DOMRect.fromRect({ y: pinnedEdge.get(this.getAttribute('data-placement') ?? '') })
+  })
+}
+
+function picker(): HTMLElement {
+  const surface = screen.getByRole('menu').parentElement
+  assert(surface, 'the menu has no picker around it')
+  return surface
 }
 
 describe('LanguageTabs', () => {
@@ -365,6 +386,31 @@ describe('LanguageTabs', () => {
     await waitFor(async () =>
       expect(await tab('Default audio')).toHaveAccessibleDescription('English · set here'),
     )
+  })
+
+  it('shouldOpenThePickerAboveItsTabWhenTheScreenEndsTooCloseUnderTheTabToShowARow', async () => {
+    serveLanguageTabs()
+    layOutPicker({ tabsTop: 580, screenHeight: 720 })
+    const { user } = renderWithProviders(<LanguageTabs item={SERIES} />)
+
+    await user.click(await tab('Default audio'))
+
+    expect(picker()).toHaveAttribute('data-placement', 'above')
+    expect(picker()).toHaveStyle({ maxHeight: '540px' })
+  })
+
+  it.each([
+    { when: 'TheScreenShowsRowsUnderIt', tabsTop: 400, screenHeight: 900, limit: '404px' },
+    { when: 'TheScreenLeavesNoMoreRoomOverIt', tabsTop: 20, screenHeight: 200, limit: '84px' },
+  ])('shouldOpenThePickerBelowItsTabWhen$when', async ({ tabsTop, screenHeight, limit }) => {
+    serveLanguageTabs()
+    layOutPicker({ tabsTop, screenHeight })
+    const { user } = renderWithProviders(<LanguageTabs item={SERIES} />)
+
+    await user.click(await tab('Default audio'))
+
+    expect(picker()).toHaveAttribute('data-placement', 'below')
+    expect(picker()).toHaveStyle({ maxHeight: limit })
   })
 
   it('shouldHoldBothTabsUntilTheServerAnswersAnOverride', async () => {

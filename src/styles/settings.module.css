@@ -448,6 +448,9 @@
     grid-template-columns: 175px minmax(0, 1fr);
     gap: 25px;
   }
+  .railTitle {
+    font-size: var(--font-size-body);
+  }
   .splitPanel {
     grid-template-columns: 215px minmax(0, 1fr);
   }

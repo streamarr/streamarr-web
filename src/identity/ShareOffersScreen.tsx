@@ -57,7 +57,11 @@ function HouseholdOffers({
   household,
   onDecided,
 }: Readonly<{ household: Household; onDecided: (notice: string) => void }>) {
-  const query = useQuery(ShareOffersDocument, { variables: { householdId: household.id } })
+  // Offers arrive, expire and are withdrawn elsewhere, so a visit shows only the server's answer.
+  const query = useQuery(ShareOffersDocument, {
+    variables: { householdId: household.id },
+    fetchPolicy: 'network-only',
+  })
   const [accept] = useMutation(AcceptProfileShareDocument)
   const [decline] = useMutation(RejectProfileShareDocument)
   /** The offer whose acceptance waits for the admin's confirmation. */

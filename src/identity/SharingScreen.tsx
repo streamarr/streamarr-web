@@ -89,7 +89,11 @@ function ProfileSharing({
   ownHouseholdName: string
   onChanged: (notice: string) => void
 }>) {
-  const query = useQuery(ProfileSharesDocument, { variables: { profileId: profile.id } })
+  // Offers are accepted, declined and expire elsewhere, so a visit shows only the server's answer.
+  const query = useQuery(ProfileSharesDocument, {
+    variables: { profileId: profile.id },
+    fetchPolicy: 'network-only',
+  })
   // A failed read keeps the list that is on screen.
   const readAgain = () => query.refetch().catch(() => undefined)
 

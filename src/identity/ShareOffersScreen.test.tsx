@@ -1,9 +1,10 @@
 import { screen, waitFor, within } from '@testing-library/react'
-import { graphql, HttpResponse } from 'msw'
+import { delay, graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { ShareOffersQuery } from '../graphql/generated/graphql'
 import { HOUSEHOLD_ID, meFixture, PROFILE_ID } from '../test/meFixture'
 import { renderAppAt } from '../test/render'
+import { leaveForHomeAndReturn, type SettingsPage } from '../test/returnVisits'
 import { server } from '../test/server'
 
 type OfferNode = ShareOffersQuery['pendingShareOffers']['edges'][number]['node'] & {
@@ -11,6 +12,7 @@ type OfferNode = ShareOffersQuery['pendingShareOffers']['edges'][number]['node']
 }
 
 const OFFERS = '/settings/household/offers'
+const SHARE_OFFERS: SettingsPage = { area: 'Household settings', heading: 'Share offers' }
 const OFFER_ID = '77777777-7777-7777-7777-777777777777'
 
 function offer(overrides: Partial<OfferNode> = {}): OfferNode {
@@ -129,6 +131,43 @@ describe('Share offers', () => {
     const offered = await screen.findByRole('region', { name: 'Profiles offered to Smith Family' })
     expect(within(offered).getAllByRole('listitem')).toHaveLength(1)
     expect(within(offered).getByRole('button', { name: 'Accept Profile 33333333' })).toBeEnabled()
+  })
+
+  it('shouldListAnOfferThatArrivedWhileTheAdminWasAwayWhenTheyReturn', async () => {
+    serveInTurn([], [offer()])
+    const { user } = renderAppAt(OFFERS)
+    await screen.findByText('No one has offered a Profile to Smith Family.')
+
+    await leaveForHomeAndReturn(user, SHARE_OFFERS)
+
+    expect(await screen.findByRole('button', { name: 'Accept Profile 33333333' })).toBeEnabled()
+  })
+
+  it('shouldDropAnOfferTheServerNoLongerListsWhenTheAdminReturns', async () => {
+    serveInTurn([offer()], [])
+    const { user } = renderAppAt(OFFERS)
+    await screen.findByRole('button', { name: 'Accept Profile 33333333' })
+
+    await leaveForHomeAndReturn(user, SHARE_OFFERS)
+
+    expect(
+      await screen.findByText('No one has offered a Profile to Smith Family.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Accept/ })).not.toBeInTheDocument()
+  })
+
+  it('shouldShowTheOffersAsLoadingUntilTheServerAnswersWhenTheAdminReturns', async () => {
+    serve()
+    const { user } = renderAppAt(OFFERS)
+    await screen.findByText('No one has offered a Profile to Smith Family.')
+    server.use(graphql.query('ShareOffers', () => delay('infinite')))
+
+    await leaveForHomeAndReturn(user, SHARE_OFFERS)
+
+    expect(await screen.findByRole('status', { name: 'Loading share offers' })).toBeInTheDocument()
+    expect(
+      screen.queryByText('No one has offered a Profile to Smith Family.'),
+    ).not.toBeInTheDocument()
   })
 
   it('shouldSayWhatAcceptingMeansBeforeItAcceptsAnOffer', async () => {

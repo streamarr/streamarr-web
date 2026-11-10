@@ -75,6 +75,30 @@ test('the language tabs sit on the rule above the title and open their picker be
   expect(inputs).toEqual([{ itemId: 'm1', audioLanguage: 'JA' }])
 })
 
+test('the picker opens above its tab on a screen that ends too close under the tab to show a language', async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 560 })
+  await openMovie(page, request)
+  const inputs = await recordOverrides(page)
+  const audio = page.getByRole('button', { name: 'Default audio' })
+  await expect(audio).toHaveAccessibleDescription('English · from Profile')
+
+  await audio.click()
+
+  const menu = page.getByRole('menu', { name: 'Default audio' })
+  const tab = (await audio.boundingBox())!
+  const opened = (await menu.boundingBox())!
+  expect(opened.y).toBeGreaterThanOrEqual(0)
+  expect(opened.y + opened.height).toBeLessThan(tab.y)
+  await expect(menu.getByRole('menuitemradio', { name: /^From Profile/ })).toBeInViewport()
+  await menu.getByRole('menuitemradio', { name: 'Japanese' }).click()
+
+  await expect(audio).toHaveAccessibleDescription('Japanese · set here')
+  expect(inputs).toEqual([{ itemId: 'm1', audioLanguage: 'JA' }])
+})
+
 test('the picker names the languages that the browser has no name for', async ({
   page,
   request,

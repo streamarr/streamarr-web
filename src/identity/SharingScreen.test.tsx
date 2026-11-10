@@ -1,5 +1,5 @@
 import { screen, waitFor, within } from '@testing-library/react'
-import { graphql, HttpResponse } from 'msw'
+import { delay, graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { ProfileSharesQuery } from '../graphql/generated/graphql'
 import {
@@ -12,8 +12,11 @@ import {
   heldAnswer,
   serverFailure,
 } from '../test/graphqlResponses'
+import { serveGraphqlSocket } from '../test/graphqlSocket'
+import { profileLanguagesFixture } from '../test/languageFixtures'
 import { HOUSEHOLD_ID, meFixture, PROFILE_ID, profileFixture } from '../test/meFixture'
 import { renderAppAt, renderWithProviders } from '../test/render'
+import { leaveForHome, returnThroughTheProfileMenu, type SettingsPage } from '../test/returnVisits'
 import { server } from '../test/server'
 import { SharingScreen } from './SharingScreen'
 
@@ -22,6 +25,11 @@ type ShareNode = ProfileSharesQuery['profileShares']['edges'][number]['node'] & 
 }
 
 const SHARING = '/settings/profile/sharing'
+const SHARING_PAGE: SettingsPage = {
+  area: 'Profile settings',
+  section: 'Sharing',
+  heading: 'Sharing',
+}
 const SHARE_ID = '77777777-7777-7777-7777-777777777777'
 const CABIN_ID = '55555555-5555-5555-5555-555555555555'
 const SMITH_FAMILY = { id: HOUSEHOLD_ID, name: 'Smith Family', membership: true }
@@ -83,6 +91,26 @@ function serveInTurn(...lists: ShareNode[][]) {
   const handler = answersInTurn(...lists.map((shares) => answerWith(sharesData(shares))))
   server.use(graphql.query('ProfileShares', handler.resolver))
   return handler
+}
+
+// A return goes through the Profile menu, which offers Profile settings only with a Profile
+// selected, and through Languages, where Profile settings open. A selected Profile also opens the
+// socket of live changes.
+function serveReturnVisits(shares: ShareNode[]) {
+  const account = meFixture({
+    scope: 'profile',
+    profiles: [profileFixture({ selected: true })],
+    usableHouseholds: [SMITH_FAMILY, CABIN],
+  })
+  serve(shares, account)
+  serveGraphqlSocket()
+  server.use(
+    graphql.query('LanguageSettings', () =>
+      HttpResponse.json({
+        data: { me: { __typename: 'Me', languagePreferences: profileLanguagesFixture() } },
+      }),
+    ),
+  )
 }
 
 function preview(answers: { wouldLock?: boolean; nameConflict?: boolean } | null = {}) {
@@ -512,6 +540,47 @@ describe('Sharing', () => {
     expect(await screen.findByRole('button', { name: /^Cancel offer/ })).toBeInTheDocument()
     expect(target).toBeInTheDocument()
     expect(target).toHaveValue('abc')
+  })
+
+  it('shouldShowAnOfferAcceptedWhileThePersonWasAwayAsAShareWhenTheyReturn', async () => {
+    serveReturnVisits([share()])
+    const { user } = renderAppAt(SHARING)
+    await screen.findByRole('button', { name: 'Cancel offer to Cabin' })
+
+    await leaveForHome(user, SHARING_PAGE)
+    const accepted = sharesData([share({ status: 'ACTIVE' })])
+    server.use(graphql.query('ProfileShares', answerWith(accepted)))
+    await returnThroughTheProfileMenu(user, SHARING_PAGE)
+
+    expect(await screen.findByRole('button', { name: 'End share with Cabin' })).toBeEnabled()
+    expect(screen.queryByText('Waiting for an admin there')).not.toBeInTheDocument()
+  })
+
+  it('shouldShowSharingAsLoadingUntilTheServerAnswersWhenThePersonReturns', async () => {
+    serveReturnVisits([share()])
+    const { user } = renderAppAt(SHARING)
+    await screen.findByRole('button', { name: 'Cancel offer to Cabin' })
+
+    await leaveForHome(user, SHARING_PAGE)
+    server.use(graphql.query('ProfileShares', () => delay('infinite')))
+    await returnThroughTheProfileMenu(user, SHARING_PAGE)
+
+    expect(await screen.findByRole('status', { name: 'Loading sharing' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Cancel offer to Cabin' })).not.toBeInTheDocument()
+  })
+
+  it('shouldSaySharingCouldNotLoadWhenReadingItFailsAsThePersonReturns', async () => {
+    serveReturnVisits([share()])
+    const { user } = renderAppAt(SHARING)
+    await screen.findByRole('button', { name: 'Cancel offer to Cabin' })
+
+    await leaveForHome(user, SHARING_PAGE)
+    server.use(graphql.query('ProfileShares', serverFailure))
+    await returnThroughTheProfileMenu(user, SHARING_PAGE)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load sharing.")
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: 'Cancel offer to Cabin' })).not.toBeInTheDocument()
   })
 
   it('shouldRetryWhenTheAccountFailsToLoad', async () => {
