@@ -230,6 +230,9 @@ async function liveChanges(state: ReturnType<typeof serve>) {
 // How long the page waits for a read of the list before it gives the read up.
 const ACTIVE_STREAMS_READ_DEADLINE_MS = 15_000
 
+// How long a test waits for a closed socket to reconnect. The socket waits up to a second first.
+const SOCKET_RECONNECT_DEADLINE_MS = 3_000
+
 describe('active streams', () => {
   it('should show the source and delivered video facts in the admin stream details', async () => {
     const decision = playbackDecision({
@@ -828,8 +831,9 @@ describe('active streams', () => {
     state.listed = [EPISODE]
     state.socket.closeAll(1001, 'Going away')
 
-    await streamCard(EPISODE_CARD)
-    expect(cardNames()).toEqual([EPISODE_CARD])
+    await waitFor(() => expect(cardNames()).toEqual([EPISODE_CARD]), {
+      timeout: SOCKET_RECONNECT_DEADLINE_MS,
+    })
     expect(state.reads).toBeGreaterThan(readsBefore)
   })
 
