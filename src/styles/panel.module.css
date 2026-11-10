@@ -1,0 +1,6 @@
+/* The panel that settings and forms sit on: a wash over the ground, edged by a hairline. */
+.panel {
+  background: var(--surface-wash);
+  border: var(--border-width-hairline) solid var(--border-hairline);
+  border-radius: var(--radius-xl);
+}

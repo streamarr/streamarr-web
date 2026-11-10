@@ -92,9 +92,7 @@
   align-items: start;
 }
 .settingsRail {
-  background: var(--surface-wash);
-  border: 1px solid var(--border-hairline);
-  border-radius: var(--radius-xl);
+  composes: panel from '../styles/panel.module.css';
   padding: 23px 12px 16px;
   min-height: 425px;
   display: flex;
@@ -148,13 +146,11 @@
   font-variant-numeric: tabular-nums;
 }
 .splitPanel {
+  composes: panel from '../styles/panel.module.css';
   display: grid;
   grid-template-columns: 245px minmax(0, 1fr);
   min-height: 405px;
-  border: 1px solid var(--border-hairline);
-  border-radius: var(--radius-xl);
   overflow: hidden;
-  background: var(--surface-wash);
 }
 .libraryList {
   padding: var(--spacing-20) var(--spacing-12);
@@ -292,10 +288,8 @@
   color: var(--text-tertiary);
 }
 .formPanel {
+  composes: panel from '../styles/panel.module.css';
   padding: 28px 34px 34px;
-  background: var(--surface-wash);
-  border: 1px solid var(--border-hairline);
-  border-radius: var(--radius-xl);
 }
 /* Settings that share a panel are rows divided by a hairline inside the panel's padding. */
 .settingRow + .settingRow {
