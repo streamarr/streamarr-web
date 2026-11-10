@@ -2,7 +2,7 @@ import { Button } from '@mantine/core'
 import { Link } from '@tanstack/react-router'
 import { useEffect, useRef } from 'react'
 import { Icon } from '../../ui/Icon'
-import styles from '../Settings.module.css'
+import styles from '../../styles/settings.module.css'
 
 /** Successful empty inventory, shared by Home and settings. Never use for a failed query. */
 export function EmptyLibraries({

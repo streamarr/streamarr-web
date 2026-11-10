@@ -1,7 +1,7 @@
 import { Alert, Button, Center, Loader, TextInput } from '@mantine/core'
 import { useMutation, useQuery } from '@apollo/client/react'
 import { useId, useState, type ReactNode } from 'react'
-import settingsStyles from '../admin/Settings.module.css'
+import settingsStyles from '../styles/settings.module.css'
 import {
   AcceptProfileShareDocument,
   CancelProfileShareDocument,

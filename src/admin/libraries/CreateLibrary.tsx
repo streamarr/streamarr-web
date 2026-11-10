@@ -6,7 +6,7 @@ import { groupByInputPath, userErrorMessage } from '../../graphql/userErrors'
 import { Icon } from '../../ui/Icon'
 import { libraryIcon, libraryTypeLabel } from './libraryModel'
 import { useLibraryCommands } from './useLibraryAdmin'
-import styles from '../Settings.module.css'
+import styles from '../../styles/settings.module.css'
 
 type LibraryType = Extract<MediaType, 'MOVIE' | 'SERIES'>
 const LIBRARY_TYPES: readonly LibraryType[] = ['MOVIE', 'SERIES']

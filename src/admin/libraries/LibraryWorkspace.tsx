@@ -28,7 +28,7 @@ import {
   useLibraryCommands,
   type LiveInventoryStop,
 } from './useLibraryAdmin'
-import styles from '../Settings.module.css'
+import styles from '../../styles/settings.module.css'
 
 const LIVE_INVENTORY_STOP_MESSAGES = {
   forbidden: NO_LONGER_PERMITTED,

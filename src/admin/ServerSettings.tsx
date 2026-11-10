@@ -6,7 +6,7 @@ import { requestFailureMessage } from '../graphql/requestErrors'
 import { FailurePanel } from '../ui/Failure'
 import { Icon, type IconName } from '../ui/Icon'
 import { canManageServer } from './access'
-import styles from './Settings.module.css'
+import styles from '../styles/settings.module.css'
 
 const SECTIONS = [
   {

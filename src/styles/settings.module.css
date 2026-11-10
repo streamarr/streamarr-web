@@ -1,6 +1,6 @@
-/* Server-settings layout, measured from the streamarr-ux mock. */
+/* The settings layout, measured from the streamarr-ux server settings mock. */
 .settings {
-  composes: focusRing from '../styles/focus.module.css';
+  composes: focusRing from './focus.module.css';
   color: var(--text-primary);
   font-family: var(--font-family-content);
 
@@ -92,7 +92,7 @@
   align-items: start;
 }
 .settingsRail {
-  composes: panel from '../styles/panel.module.css';
+  composes: panel from './panel.module.css';
   padding: 23px 12px 16px;
   min-height: 425px;
   display: flex;
@@ -146,7 +146,7 @@
   font-variant-numeric: tabular-nums;
 }
 .splitPanel {
-  composes: panel from '../styles/panel.module.css';
+  composes: panel from './panel.module.css';
   display: grid;
   grid-template-columns: 245px minmax(0, 1fr);
   min-height: 405px;
@@ -288,7 +288,7 @@
   color: var(--text-tertiary);
 }
 .formPanel {
-  composes: panel from '../styles/panel.module.css';
+  composes: panel from './panel.module.css';
   padding: 28px 34px 34px;
 }
 /* Settings that share a panel are rows divided by a hairline inside the panel's padding. */
