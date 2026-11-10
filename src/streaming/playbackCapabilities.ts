@@ -166,6 +166,9 @@ interface HdrProbe {
   // The 10-bit codec string an HDR question asks about, given the stream's transfer characteristics.
   codec: (level: number, transferCharacteristics: number) => string
   dolbyVision: readonly DolbyVisionProbe[]
+  // A Dolby Vision codec string names no tier. Above Main tier, its profiles count only beside this
+  // base, whose question asked the 10-bit base layer at the family's tier and the entry's level.
+  dolbyVisionNeedsBase?: DeclaredCompatibleBase
 }
 
 // A High decoder also decodes Main and Constrained Baseline streams, not Baseline's extra tools.
@@ -214,7 +217,8 @@ const HEVC_HIGH: VideoFamily = {
   hdr: {
     profiles: ['HEVC_MAIN_10'],
     codec: (level) => `hvc1.2.4.H${level * 3}.B0`,
-    dolbyVision: [],
+    dolbyVision: HEVC_DOLBY_VISION,
+    dolbyVisionNeedsBase: 'PQ',
   },
 }
 
@@ -568,8 +572,9 @@ function probeHdr({
           ),
         ),
         Promise.all(
-          // Dolby Vision's codec string names no HEVC tier or level. Keep its existing measured
-          // entries; an ordinary HEVC answer does not widen their Dolby Vision support.
+          // Dolby Vision's codec string names no HEVC level, so it is asked only at the lowest
+          // level that holds the picture: an ordinary HEVC answer at a higher level does not widen
+          // Dolby Vision support.
           hdr.dolbyVision.map((probe) =>
             PICTURE_TIERS.includes(tier)
               ? askDecodingInfo(videoConfiguration(tier, probe.codec(tier.dolbyVisionLevel)))
@@ -720,8 +725,13 @@ function hdrTier({
   const compatibleBases = COMPATIBLE_BASE_PROBES.filter((_, index) =>
     isSupported(answers, (tierAnswers) => tierAnswers.bases[index]),
   ).map(({ base }) => base)
+  const establishesTier =
+    !hdr.dolbyVisionNeedsBase || compatibleBases.includes(hdr.dolbyVisionNeedsBase)
   const dolbyVisionProfiles = hdr.dolbyVision
-    .filter((_, index) => isSupported(answers, (tierAnswers) => tierAnswers.dolbyVision[index]))
+    .filter(
+      (_, index) =>
+        establishesTier && isSupported(answers, (tierAnswers) => tierAnswers.dolbyVision[index]),
+    )
     .flatMap(({ profiles }) =>
       profiles.map((profile) => ({ profile, maxLevel: tier.dolbyVisionLevel })),
     )

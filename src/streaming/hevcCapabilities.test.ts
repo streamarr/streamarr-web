@@ -15,6 +15,21 @@ function entriesAtTier(declaration: ClientCapabilityDeclarationInput, tier: Vide
   )
 }
 
+function dolbyVisionEntriesAtTier(
+  declaration: ClientCapabilityDeclarationInput,
+  tier: VideoCodecTier,
+) {
+  return entriesAtTier(declaration, tier).filter(
+    ({ dolbyVisionProfiles }) => dolbyVisionProfiles.length > 0,
+  )
+}
+
+const DOLBY_VISION_PROFILES_AT_LEVEL_9 = [
+  { profile: 'PROFILE_5', maxLevel: 9 },
+  { profile: 'PROFILE_8_1', maxLevel: 9 },
+  { profile: 'PROFILE_8_4', maxLevel: 9 },
+]
+
 describe('HEVC capability declarations', () => {
   afterEach(() => vi.useRealTimers())
   it('shouldDeclareHighTierAndHigherLevelsWithoutIncreasingThePictureWhenSupported', async () => {
@@ -112,9 +127,13 @@ describe('HEVC capability declarations', () => {
     )
   })
 
-  it.each(['high-tier', 'higher-level', 'main-tier'])(
-    'shouldRequireFileSupportForTheDeclaredHevcMaximumWhenFileRefuses%s',
-    async (refusal) => {
+  it.each([
+    { refusal: 'high-tier', lowestRefusedLevel: 40 },
+    { refusal: 'higher-level', lowestRefusedLevel: 62 },
+    { refusal: 'main-tier', lowestRefusedLevel: 62 },
+  ] as const)(
+    'shouldRequireFileSupportForTheDeclaredHevcMaximumWhenFileRefuses$refusal',
+    async ({ refusal, lowestRefusedLevel }) => {
       const declaration = await declarePlaybackCapabilities(
         playbackPlatformFixture({
           displaysHighDynamicRange: true,
@@ -130,11 +149,13 @@ describe('HEVC capability declarations', () => {
           },
         }),
       )
-      const highTier = declaration.video.filter((entry) =>
-        entry.codecProfiles.some((profile) => profile.maxTier === 'HIGH'),
+      const refusedByTheFile = entriesAtTier(declaration, 'HIGH').filter(({ codecProfiles }) =>
+        codecProfiles.some(({ maxLevel }) => maxLevel >= lowestRefusedLevel),
       )
-      expect(highTier.length).toBeGreaterThan(0)
-      expect(highTier.every((entry) => entry.hls && !entry.directPlayContainers?.length)).toBe(true)
+      expect(refusedByTheFile.length).toBeGreaterThan(0)
+      expect(
+        refusedByTheFile.every((entry) => entry.hls && !entry.directPlayContainers?.length),
+      ).toBe(true)
     },
   )
 
@@ -240,7 +261,7 @@ describe('HEVC capability declarations', () => {
     expect(
       hdr
         .filter(({ compatibleBases }) => compatibleBases.includes('PQ'))
-        .every(({ codecProfiles }) => codecProfiles[0].maxLevel === 50),
+        .every(({ codecProfiles }) => codecProfiles[0].maxLevel <= 50),
     ).toBe(true)
   })
 
@@ -348,31 +369,161 @@ describe('HEVC capability declarations', () => {
     },
   )
 
-  it('shouldKeepDolbyVisionAtItsMeasuredTierAndLevel', async () => {
+  it('shouldDeclareDolbyVisionAtBothTiersWhenTheBrowserAnswersItsCodecStringAndEachTiersPqBase', async () => {
     const declaration = await declarePlaybackCapabilities(
       playbackPlatformFixture({
         displaysHighDynamicRange: true,
         decodingInfo: () => Promise.resolve(answer(true)),
       }),
     )
-    const dolbyVision = declaration.video.filter(
-      ({ codecFamily, dolbyVisionProfiles }) =>
-        codecFamily === 'HEVC' && dolbyVisionProfiles.length > 0,
-    )
-    expect(dolbyVision).toEqual([
+
+    expect(dolbyVisionEntriesAtTier(declaration, 'MAIN')).toEqual([
       expect.objectContaining({
         codecProfiles: [{ profile: 'HEVC_MAIN_10', maxLevel: 51, maxTier: 'MAIN' }],
+        dolbyVisionProfiles: DOLBY_VISION_PROFILES_AT_LEVEL_9,
+      }),
+    ])
+    expect(dolbyVisionEntriesAtTier(declaration, 'HIGH')).toEqual([
+      expect.objectContaining({
+        codecProfiles: [{ profile: 'HEVC_MAIN_10', maxLevel: 51, maxTier: 'HIGH' }],
+        maxBitDepth: 10,
+        maxWidth: 3840,
+        maxHeight: 2160,
+        maxFrameRate: 60,
+        compatibleBases: ['PQ', 'HLG'],
+        dolbyVisionProfiles: DOLBY_VISION_PROFILES_AT_LEVEL_9,
+        hls: true,
+      }),
+    ])
+  })
+
+  it('shouldDeclareNoDolbyVisionAtEitherTierWhenTheBrowserRefusesItsCodecString', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      playbackPlatformFixture({
+        displaysHighDynamicRange: true,
+        decodingInfo: ({ video }) => Promise.resolve(answer(!video?.contentType.includes('dvh1'))),
+      }),
+    )
+
+    expect(dolbyVisionEntriesAtTier(declaration, 'HIGH')).toEqual([])
+    expect(dolbyVisionEntriesAtTier(declaration, 'MAIN')).toEqual([])
+    expect(
+      entriesAtTier(declaration, 'HIGH').some(({ compatibleBases }) =>
+        compatibleBases.includes('PQ'),
+      ),
+    ).toBe(true)
+  })
+
+  it('shouldDeclareDolbyVisionAtMainTierAloneWhenTheBrowserRefusesTheHighTierPqBase', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      playbackPlatformFixture({
+        displaysHighDynamicRange: true,
+        decodingInfo: ({ video }) =>
+          Promise.resolve(
+            answer(!(video?.transferFunction === 'pq' && /\.H\d+\./.test(video.contentType))),
+          ),
+      }),
+    )
+
+    expect(dolbyVisionEntriesAtTier(declaration, 'HIGH')).toEqual([])
+    expect(dolbyVisionEntriesAtTier(declaration, 'MAIN')).toEqual([
+      expect.objectContaining({
+        codecProfiles: [{ profile: 'HEVC_MAIN_10', maxLevel: 51, maxTier: 'MAIN' }],
+        compatibleBases: ['PQ', 'HLG'],
+        dolbyVisionProfiles: DOLBY_VISION_PROFILES_AT_LEVEL_9,
+      }),
+    ])
+  })
+
+  it('shouldDeclareHighTierDolbyVisionOnlyUpToTheLevelOfTheHighTierPqBaseTheBrowserAnswers', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      playbackPlatformFixture({
+        displaysHighDynamicRange: true,
+        decodingInfo: ({ video }) => {
+          const highTierLevel = /\.H(\d+)\./.exec(video?.contentType ?? '')?.[1]
+          const refused = video?.transferFunction === 'pq' && Number(highTierLevel) > 150
+          return Promise.resolve(answer(!refused))
+        },
+      }),
+    )
+
+    expect(dolbyVisionEntriesAtTier(declaration, 'HIGH')).toEqual([
+      expect.objectContaining({
+        codecProfiles: [{ profile: 'HEVC_MAIN_10', maxLevel: 50, maxTier: 'HIGH' }],
+        maxWidth: 3840,
+        maxFrameRate: 30,
+        compatibleBases: ['PQ', 'HLG'],
         dolbyVisionProfiles: [
-          { profile: 'PROFILE_5', maxLevel: 9 },
-          { profile: 'PROFILE_8_1', maxLevel: 9 },
-          { profile: 'PROFILE_8_4', maxLevel: 9 },
+          { profile: 'PROFILE_5', maxLevel: 7 },
+          { profile: 'PROFILE_8_1', maxLevel: 7 },
+          { profile: 'PROFILE_8_4', maxLevel: 7 },
+        ],
+      }),
+      expect.objectContaining({
+        codecProfiles: [{ profile: 'HEVC_MAIN_10', maxLevel: 41, maxTier: 'HIGH' }],
+        maxWidth: 1920,
+        maxFrameRate: 60,
+        compatibleBases: ['PQ', 'HLG'],
+        dolbyVisionProfiles: [
+          { profile: 'PROFILE_5', maxLevel: 5 },
+          { profile: 'PROFILE_8_1', maxLevel: 5 },
+          { profile: 'PROFILE_8_4', maxLevel: 5 },
         ],
       }),
     ])
+    expect(dolbyVisionEntriesAtTier(declaration, 'MAIN')).toEqual([
+      expect.objectContaining({
+        codecProfiles: [{ profile: 'HEVC_MAIN_10', maxLevel: 51, maxTier: 'MAIN' }],
+        dolbyVisionProfiles: DOLBY_VISION_PROFILES_AT_LEVEL_9,
+      }),
+    ])
+  })
+
+  it('shouldHoldHighTierDolbyVisionToSafarisPowerEfficientPictureBudget', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      playbackPlatformFixture({
+        userAgent: IPHONE_SAFARI_USER_AGENT,
+        displaysHighDynamicRange: true,
+        decodingInfo: ({ video }) => {
+          if (/hvc1|dvh1/.test(video?.contentType ?? '')) {
+            return Promise.resolve(answer(true, false))
+          }
+          return Promise.resolve(answer(true, (video?.width ?? 0) <= 1920))
+        },
+      }),
+    )
+
+    expect(dolbyVisionEntriesAtTier(declaration, 'HIGH')).toEqual([
+      expect.objectContaining({
+        codecProfiles: [{ profile: 'HEVC_MAIN_10', maxLevel: 41, maxTier: 'HIGH' }],
+        maxWidth: 1920,
+        maxHeight: 1080,
+        maxFrameRate: 60,
+        dolbyVisionProfiles: [
+          { profile: 'PROFILE_5', maxLevel: 5 },
+          { profile: 'PROFILE_8_1', maxLevel: 5 },
+          { profile: 'PROFILE_8_4', maxLevel: 5 },
+        ],
+      }),
+    ])
+  })
+
+  it('shouldDeclareNoHighTierDolbyVisionWhenItsCodecStringGoesUnansweredAtTheDeadline', async () => {
+    vi.useFakeTimers()
+    const pending = new Promise<DecodingAnswer>(() => {})
+    const declaration = declarePlaybackCapabilities(
+      playbackPlatformFixture({
+        displaysHighDynamicRange: true,
+        decodingInfo: ({ video }) =>
+          video?.contentType.includes('dvh1') ? pending : Promise.resolve(answer(true)),
+      }),
+    )
+    await vi.advanceTimersByTimeAsync(3000)
+    const measured = await declaration
+
+    expect(dolbyVisionEntriesAtTier(measured, 'HIGH')).toEqual([])
     expect(
-      entriesAtTier(declaration, 'HIGH').every(
-        ({ dolbyVisionProfiles }) => dolbyVisionProfiles.length === 0,
-      ),
+      entriesAtTier(measured, 'HIGH').some(({ compatibleBases }) => compatibleBases.includes('PQ')),
     ).toBe(true)
   })
 
@@ -397,8 +548,8 @@ describe('HEVC capability declarations', () => {
       }),
     )
     expect(declaration.video.length).toBeLessThanOrEqual(32)
-    expect(declaration.video.some(({ codecFamily, hls }) => codecFamily === 'H264' && hls)).toBe(
-      true,
+    expect(declaration.video[0]).toEqual(
+      expect.objectContaining({ codecFamily: 'H264', hls: true }),
     )
   })
 })
