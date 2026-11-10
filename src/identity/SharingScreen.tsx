@@ -7,20 +7,19 @@ import {
   EndProfileShareDocument,
   OfferProfileShareDocument,
   ProfileSharePreviewDocument,
-  SharingOverviewDocument,
-  type SharingOverviewQuery,
+  ProfileSharesDocument,
+  type ProfileSharesQuery,
 } from '../graphql/generated/graphql'
 import { requestFailureMessage } from '../graphql/requestErrors'
 import { userErrorMessage, type UserErrorLike } from '../graphql/userErrors'
 import { FailurePanel } from '../ui/Failure'
 import { enumLabel } from './enumLabel'
-import { ShareOffers } from './ShareOffers'
 import { SharingSection } from './SharingSection'
 import { shortId, UPDATE_FAILED_MESSAGE } from './shareText'
 import styles from './Sharing.module.css'
 import { useMe } from './useMe'
 
-type ProfileShareRow = SharingOverviewQuery['profileShares']['edges'][number]['node']
+type ProfileShareRow = ProfileSharesQuery['profileShares']['edges'][number]['node']
 
 const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -56,30 +55,19 @@ function SharingContent() {
     )
   }
 
-  return (
-    <Sharing
-      householdId={household.id}
-      householdName={household.name}
-      profileId={personal.id}
-      profileName={personal.name}
-    />
-  )
+  return <Sharing householdId={household.id} profileId={personal.id} profileName={personal.name} />
 }
 
 function Sharing({
   householdId,
-  householdName,
   profileId,
   profileName,
 }: Readonly<{
   householdId: string
-  householdName: string
   profileId: string
   profileName: string
 }>) {
-  const overview = useQuery(SharingOverviewDocument, {
-    variables: { householdId, profileId },
-  })
+  const overview = useQuery(ProfileSharesDocument, { variables: { profileId } })
   const refetch = () => overview.refetch()
 
   if (overview.loading && !overview.data) {
@@ -90,12 +78,10 @@ function Sharing({
     return <SharingUnavailable error={overview.error} onRetry={refetch} />
   }
 
-  const offers = overview.data.pendingShareOffers.edges.map((edge) => edge.node)
   const shares = overview.data.profileShares.edges.map((edge) => edge.node)
 
   return (
     <div className={styles.sections}>
-      <ShareOffers householdName={householdName} offers={offers} onDecided={refetch} />
       <OfferForm profileId={profileId} profileName={profileName} onOffered={refetch} />
       <OwnShares
         householdId={householdId}

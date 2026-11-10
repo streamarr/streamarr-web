@@ -33,6 +33,7 @@ import {
   SlidersHorizontal,
   TriangleAlert,
   TvMinimal,
+  UsersRound,
   Volume2,
   VolumeX,
   X,
@@ -76,6 +77,7 @@ const icons = {
   encoding: Gauge,
   languages: Languages,
   sharing: Share2,
+  people: UsersRound,
   close: X,
   'ends-at': Clock,
 } as const

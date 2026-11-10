@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
-import type { SharingOverviewQuery } from '../graphql/generated/graphql'
+import type { ProfileSharesQuery } from '../graphql/generated/graphql'
 import {
   answersInTurn,
   answersThenHolds,
@@ -12,26 +12,22 @@ import {
   heldAnswer,
   serverFailure,
 } from '../test/graphqlResponses'
-import { HOUSEHOLD_ID, meFixture, PROFILE_ID, profileFixture } from '../test/meFixture'
+import { HOUSEHOLD_ID, meFixture, profileFixture } from '../test/meFixture'
 import { renderAppAt, renderWithProviders } from '../test/render'
 import { server } from '../test/server'
 import { SharingScreen } from './SharingScreen'
 
-type PendingOffer = SharingOverviewQuery['pendingShareOffers']['edges'][number]['node']
-type ProfileShareRow = SharingOverviewQuery['profileShares']['edges'][number]['node']
-type ShareNode = PendingOffer & ProfileShareRow & { __typename: 'ProfileShare' }
+type ShareNode = ProfileSharesQuery['profileShares']['edges'][number]['node'] & {
+  __typename: 'ProfileShare'
+}
 
 const OFFER_ID = '77777777-7777-7777-7777-777777777777'
 const OTHER_HOUSEHOLD_ID = '55555555-5555-5555-5555-555555555555'
 
-type OverviewRows = { offers?: ShareNode[]; shares?: ShareNode[] }
+type OverviewRows = { shares?: ShareNode[] }
 
 function overviewData(overrides: OverviewRows = {}) {
   return {
-    pendingShareOffers: {
-      __typename: 'ProfileShareConnection',
-      edges: (overrides.offers ?? []).map((node) => ({ __typename: 'ProfileShareEdge', node })),
-    },
     profileShares: {
       __typename: 'ProfileShareConnection',
       edges: (overrides.shares ?? []).map((node) => ({ __typename: 'ProfileShareEdge', node })),
@@ -44,7 +40,7 @@ function serverAnswersOverview(overrides: OverviewRows = {}) {
     graphql.query('Me', () =>
       HttpResponse.json({ data: { me: meFixture({ profiles: [profileFixture()] }) } }),
     ),
-    graphql.query('SharingOverview', () => HttpResponse.json({ data: overviewData(overrides) })),
+    graphql.query('ProfileShares', () => HttpResponse.json({ data: overviewData(overrides) })),
   )
 }
 
@@ -52,22 +48,20 @@ function shareRow(overrides: Partial<ShareNode> = {}): ShareNode {
   return {
     __typename: 'ProfileShare',
     id: OFFER_ID,
-    profileId: PROFILE_ID,
     householdId: OTHER_HOUSEHOLD_ID,
     status: 'PENDING',
     requiredByAccountMembership: false,
-    expiresAt: '2026-08-27T12:00:00Z',
     ...overrides,
   }
 }
 
 describe('SharingScreen', () => {
-  it('shouldHeadThePageAndNameEachSectionWhenSharingLoads', async () => {
+  it('shouldHeadThePageAndNameTheProfilesSectionsWhenSharingLoads', async () => {
     serverAnswersOverview()
     renderWithProviders(<SharingScreen />)
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Sharing' })).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: 'Offers into Smith Family' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: /^Offers/ })).not.toBeInTheDocument()
     expect(
       screen.getByRole('region', { name: 'Share Alex into another Household' }),
     ).toBeInTheDocument()
@@ -117,31 +111,6 @@ describe('SharingScreen', () => {
     ).toBeVisible()
   })
 
-  it('shouldAcceptAPendingOfferIntoTheContextHousehold', async () => {
-    serverAnswersOverview({ offers: [shareRow()] })
-    let accepted = false
-    server.use(
-      graphql.mutation('AcceptProfileShare', ({ variables }) => {
-        expect(variables).toEqual({ input: { shareId: OFFER_ID } })
-        accepted = true
-        return HttpResponse.json({
-          data: {
-            acceptProfileShare: {
-              __typename: 'AcceptProfileSharePayload',
-              share: { __typename: 'ProfileShare', id: OFFER_ID, status: 'ACTIVE' },
-              userErrors: [],
-            },
-          },
-        })
-      }),
-    )
-    const { user } = renderWithProviders(<SharingScreen />)
-
-    await user.click(await screen.findByRole('button', { name: 'Accept' }))
-
-    await waitFor(() => expect(accepted).toBe(true))
-  })
-
   it('shouldRenderTypedRefusalsThroughTheMessageFallback', async () => {
     serverAnswersOverview()
     server.use(
@@ -182,33 +151,6 @@ describe('SharingScreen', () => {
     expect(
       await screen.findByText('That Profile already has a live share into that Household.'),
     ).toBeInTheDocument()
-  })
-
-  it('shouldReportARejectedDecisionInsteadOfSwallowingIt', async () => {
-    serverAnswersOverview({ offers: [shareRow()] })
-    server.use(
-      graphql.mutation('AcceptProfileShare', () =>
-        HttpResponse.json({
-          errors: [{ message: 'forbidden', extensions: { code: 'FORBIDDEN' } }],
-        }),
-      ),
-    )
-    const { user } = renderWithProviders(<SharingScreen />)
-
-    await user.click(await screen.findByRole('button', { name: 'Accept' }))
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(/^forbidden$/)
-    expect(screen.getByRole('button', { name: 'Accept' })).toBeEnabled()
-  })
-
-  it('shouldExplainADecisionThatCouldNotReachTheServerWithoutAskingToTryAgain', async () => {
-    serverAnswersOverview({ offers: [shareRow()] })
-    server.use(graphql.mutation('AcceptProfileShare', () => HttpResponse.error()))
-    const { user } = renderWithProviders(<SharingScreen />)
-
-    await user.click(await screen.findByRole('button', { name: 'Accept' }))
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(/^Couldn't update sharing\.$/)
   })
 
   it('shouldReportARejectedOfferInsteadOfSwallowingIt', async () => {
@@ -282,11 +224,11 @@ describe('SharingScreen', () => {
       { me: meFixture({ profiles: [profileFixture()] }) },
       { me: meFixture({ profiles: [profileFixture()] }) },
     )
-    const overview = answersThenHolds(overviewData(), overviewData({ offers: [shareRow()] }))
+    const overview = answersThenHolds(overviewData(), overviewData({ shares: [shareRow()] }))
     server.use(
       graphql.query('Me', me.resolver),
       graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
-      graphql.query('SharingOverview', overview.resolver),
+      graphql.query('ProfileShares', overview.resolver),
     )
     const { user } = renderAppAt('/settings/profile/sharing')
     const target = await screen.findByRole('textbox', { name: 'Household id' })
@@ -298,20 +240,20 @@ describe('SharingScreen', () => {
     me.release()
     overview.release()
 
-    expect(await screen.findByRole('button', { name: 'Accept' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Cancel offer' })).toBeInTheDocument()
     expect(target).toBeInTheDocument()
     expect(target).toHaveValue('abc')
   })
 
   it('shouldKeepTheOfferBeingTypedWhenReadingSharingAgainFails', async () => {
-    const fresh = heldAnswer(overviewData({ offers: [shareRow()] }))
+    const fresh = heldAnswer(overviewData({ shares: [shareRow()] }))
     const overview = answersInTurn(answerWith(overviewData()), serverFailure, fresh.answer)
     server.use(
       graphql.query('Me', () =>
         HttpResponse.json({ data: { me: meFixture({ profiles: [profileFixture()] }) } }),
       ),
       graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
-      graphql.query('SharingOverview', overview.resolver),
+      graphql.query('ProfileShares', overview.resolver),
     )
     const { user } = renderAppAt('/settings/profile/sharing')
     const target = await screen.findByRole('textbox', { name: 'Household id' })
@@ -322,7 +264,7 @@ describe('SharingScreen', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     fresh.release()
 
-    expect(await screen.findByRole('button', { name: 'Accept' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Cancel offer' })).toBeInTheDocument()
     expect(target).toBeInTheDocument()
     expect(target).toHaveValue('abc')
   })
@@ -350,7 +292,7 @@ describe('SharingScreen', () => {
       pendingShareOffers: { __typename: 'ProfileShareConnection', edges: [] },
       profileShares: { __typename: 'ProfileShareConnection', edges: [] },
     })
-    server.use(graphql.query('SharingOverview', overview.resolver))
+    server.use(graphql.query('ProfileShares', overview.resolver))
     const { user } = renderWithProviders(<SharingScreen />)
 
     expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load sharing.")

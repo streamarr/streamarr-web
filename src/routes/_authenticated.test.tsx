@@ -197,7 +197,7 @@ describe('the authenticated layout', () => {
   it('shouldAskForAProfileWhenTheServerRequiresOneMidSession', async () => {
     server.use(
       graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
-      graphql.query('SharingOverview', () =>
+      graphql.query('ProfileShares', () =>
         HttpResponse.json({
           errors: [{ message: 'profile required', extensions: { code: 'PROFILE_REQUIRED' } }],
         }),

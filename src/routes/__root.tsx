@@ -46,6 +46,7 @@ const AMBIENT_ROUTES = new Set<FileRouteTypes['id']>([
 const SETTINGS_ROUTES = new Set<FileRouteTypes['id']>([
   '/_authenticated/settings/server',
   '/_authenticated/settings/profile',
+  '/_authenticated/settings/household',
 ])
 
 // The player fills the screen and carries its own Back.

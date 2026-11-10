@@ -57,6 +57,7 @@ function AccountTrail() {
         me={data.me}
         onServerSettings={() => navigate({ to: '/settings/server/libraries' })}
         onProfileSettings={() => navigate({ to: '/settings/profile/languages' })}
+        onHouseholdSettings={() => navigate({ to: '/settings/household/offers' })}
         onPinRequired={(profileId) =>
           navigate({ to: '/select-profile', search: { profile: profileId } })
         }

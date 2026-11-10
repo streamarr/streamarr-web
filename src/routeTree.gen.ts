@@ -22,8 +22,11 @@ import { Route as AuthenticatedMovieMovieIdRouteImport } from './routes/_authent
 import { Route as AuthenticatedPlayMediaFileIdRouteImport } from './routes/_authenticated/play.$mediaFileId'
 import { Route as AuthenticatedSeasonSeasonIdRouteImport } from './routes/_authenticated/season.$seasonId'
 import { Route as AuthenticatedSeriesSeriesIdRouteImport } from './routes/_authenticated/series.$seriesId'
+import { Route as AuthenticatedSettingsHouseholdRouteImport } from './routes/_authenticated/settings.household'
 import { Route as AuthenticatedSettingsProfileRouteImport } from './routes/_authenticated/settings.profile'
 import { Route as AuthenticatedSettingsServerRouteImport } from './routes/_authenticated/settings.server'
+import { Route as AuthenticatedSettingsHouseholdIndexRouteImport } from './routes/_authenticated/settings.household.index'
+import { Route as AuthenticatedSettingsHouseholdOffersRouteImport } from './routes/_authenticated/settings.household.offers'
 import { Route as AuthenticatedSettingsProfileIndexRouteImport } from './routes/_authenticated/settings.profile.index'
 import { Route as AuthenticatedSettingsProfileLanguagesRouteImport } from './routes/_authenticated/settings.profile.languages'
 import { Route as AuthenticatedSettingsProfileSharingRouteImport } from './routes/_authenticated/settings.profile.sharing'
@@ -103,6 +106,12 @@ const AuthenticatedSeriesSeriesIdRoute =
     path: '/series/$seriesId',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedSettingsHouseholdRoute =
+  AuthenticatedSettingsHouseholdRouteImport.update({
+    id: '/settings/household',
+    path: '/settings/household',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedSettingsProfileRoute =
   AuthenticatedSettingsProfileRouteImport.update({
     id: '/settings/profile',
@@ -114,6 +123,18 @@ const AuthenticatedSettingsServerRoute =
     id: '/settings/server',
     path: '/settings/server',
     getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedSettingsHouseholdIndexRoute =
+  AuthenticatedSettingsHouseholdIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedSettingsHouseholdRoute,
+  } as any)
+const AuthenticatedSettingsHouseholdOffersRoute =
+  AuthenticatedSettingsHouseholdOffersRouteImport.update({
+    id: '/offers',
+    path: '/offers',
+    getParentRoute: () => AuthenticatedSettingsHouseholdRoute,
   } as any)
 const AuthenticatedSettingsProfileIndexRoute =
   AuthenticatedSettingsProfileIndexRouteImport.update({
@@ -177,13 +198,16 @@ export interface FileRoutesByFullPath {
   '/play/$mediaFileId': typeof AuthenticatedPlayMediaFileIdRoute
   '/season/$seasonId': typeof AuthenticatedSeasonSeasonIdRoute
   '/series/$seriesId': typeof AuthenticatedSeriesSeriesIdRoute
+  '/settings/household': typeof AuthenticatedSettingsHouseholdRouteWithChildren
   '/settings/profile': typeof AuthenticatedSettingsProfileRouteWithChildren
   '/settings/server': typeof AuthenticatedSettingsServerRouteWithChildren
+  '/settings/household/offers': typeof AuthenticatedSettingsHouseholdOffersRoute
   '/settings/profile/languages': typeof AuthenticatedSettingsProfileLanguagesRoute
   '/settings/profile/sharing': typeof AuthenticatedSettingsProfileSharingRoute
   '/settings/server/encoding': typeof AuthenticatedSettingsServerEncodingRoute
   '/settings/server/libraries': typeof AuthenticatedSettingsServerLibrariesRoute
   '/settings/server/streams': typeof AuthenticatedSettingsServerStreamsRoute
+  '/settings/household/': typeof AuthenticatedSettingsHouseholdIndexRoute
   '/settings/profile/': typeof AuthenticatedSettingsProfileIndexRoute
   '/settings/server/': typeof AuthenticatedSettingsServerIndexRoute
   '/settings/server/libraries/new': typeof AuthenticatedSettingsServerLibrariesNewRoute
@@ -201,11 +225,13 @@ export interface FileRoutesByTo {
   '/play/$mediaFileId': typeof AuthenticatedPlayMediaFileIdRoute
   '/season/$seasonId': typeof AuthenticatedSeasonSeasonIdRoute
   '/series/$seriesId': typeof AuthenticatedSeriesSeriesIdRoute
+  '/settings/household/offers': typeof AuthenticatedSettingsHouseholdOffersRoute
   '/settings/profile/languages': typeof AuthenticatedSettingsProfileLanguagesRoute
   '/settings/profile/sharing': typeof AuthenticatedSettingsProfileSharingRoute
   '/settings/server/encoding': typeof AuthenticatedSettingsServerEncodingRoute
   '/settings/server/libraries': typeof AuthenticatedSettingsServerLibrariesRoute
   '/settings/server/streams': typeof AuthenticatedSettingsServerStreamsRoute
+  '/settings/household': typeof AuthenticatedSettingsHouseholdIndexRoute
   '/settings/profile': typeof AuthenticatedSettingsProfileIndexRoute
   '/settings/server': typeof AuthenticatedSettingsServerIndexRoute
   '/settings/server/libraries/new': typeof AuthenticatedSettingsServerLibrariesNewRoute
@@ -225,13 +251,16 @@ export interface FileRoutesById {
   '/_authenticated/play/$mediaFileId': typeof AuthenticatedPlayMediaFileIdRoute
   '/_authenticated/season/$seasonId': typeof AuthenticatedSeasonSeasonIdRoute
   '/_authenticated/series/$seriesId': typeof AuthenticatedSeriesSeriesIdRoute
+  '/_authenticated/settings/household': typeof AuthenticatedSettingsHouseholdRouteWithChildren
   '/_authenticated/settings/profile': typeof AuthenticatedSettingsProfileRouteWithChildren
   '/_authenticated/settings/server': typeof AuthenticatedSettingsServerRouteWithChildren
+  '/_authenticated/settings/household/offers': typeof AuthenticatedSettingsHouseholdOffersRoute
   '/_authenticated/settings/profile/languages': typeof AuthenticatedSettingsProfileLanguagesRoute
   '/_authenticated/settings/profile/sharing': typeof AuthenticatedSettingsProfileSharingRoute
   '/_authenticated/settings/server/encoding': typeof AuthenticatedSettingsServerEncodingRoute
   '/_authenticated/settings/server/libraries': typeof AuthenticatedSettingsServerLibrariesRoute
   '/_authenticated/settings/server/streams': typeof AuthenticatedSettingsServerStreamsRoute
+  '/_authenticated/settings/household/': typeof AuthenticatedSettingsHouseholdIndexRoute
   '/_authenticated/settings/profile/': typeof AuthenticatedSettingsProfileIndexRoute
   '/_authenticated/settings/server/': typeof AuthenticatedSettingsServerIndexRoute
   '/_authenticated/settings/server/libraries_/new': typeof AuthenticatedSettingsServerLibrariesNewRoute
@@ -251,13 +280,16 @@ export interface FileRouteTypes {
     | '/play/$mediaFileId'
     | '/season/$seasonId'
     | '/series/$seriesId'
+    | '/settings/household'
     | '/settings/profile'
     | '/settings/server'
+    | '/settings/household/offers'
     | '/settings/profile/languages'
     | '/settings/profile/sharing'
     | '/settings/server/encoding'
     | '/settings/server/libraries'
     | '/settings/server/streams'
+    | '/settings/household/'
     | '/settings/profile/'
     | '/settings/server/'
     | '/settings/server/libraries/new'
@@ -275,11 +307,13 @@ export interface FileRouteTypes {
     | '/play/$mediaFileId'
     | '/season/$seasonId'
     | '/series/$seriesId'
+    | '/settings/household/offers'
     | '/settings/profile/languages'
     | '/settings/profile/sharing'
     | '/settings/server/encoding'
     | '/settings/server/libraries'
     | '/settings/server/streams'
+    | '/settings/household'
     | '/settings/profile'
     | '/settings/server'
     | '/settings/server/libraries/new'
@@ -298,13 +332,16 @@ export interface FileRouteTypes {
     | '/_authenticated/play/$mediaFileId'
     | '/_authenticated/season/$seasonId'
     | '/_authenticated/series/$seriesId'
+    | '/_authenticated/settings/household'
     | '/_authenticated/settings/profile'
     | '/_authenticated/settings/server'
+    | '/_authenticated/settings/household/offers'
     | '/_authenticated/settings/profile/languages'
     | '/_authenticated/settings/profile/sharing'
     | '/_authenticated/settings/server/encoding'
     | '/_authenticated/settings/server/libraries'
     | '/_authenticated/settings/server/streams'
+    | '/_authenticated/settings/household/'
     | '/_authenticated/settings/profile/'
     | '/_authenticated/settings/server/'
     | '/_authenticated/settings/server/libraries_/new'
@@ -411,6 +448,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSeriesSeriesIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/settings/household': {
+      id: '/_authenticated/settings/household'
+      path: '/settings/household'
+      fullPath: '/settings/household'
+      preLoaderRoute: typeof AuthenticatedSettingsHouseholdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/settings/profile': {
       id: '/_authenticated/settings/profile'
       path: '/settings/profile'
@@ -424,6 +468,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/settings/server'
       preLoaderRoute: typeof AuthenticatedSettingsServerRouteImport
       parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/settings/household/': {
+      id: '/_authenticated/settings/household/'
+      path: '/'
+      fullPath: '/settings/household/'
+      preLoaderRoute: typeof AuthenticatedSettingsHouseholdIndexRouteImport
+      parentRoute: typeof AuthenticatedSettingsHouseholdRoute
+    }
+    '/_authenticated/settings/household/offers': {
+      id: '/_authenticated/settings/household/offers'
+      path: '/offers'
+      fullPath: '/settings/household/offers'
+      preLoaderRoute: typeof AuthenticatedSettingsHouseholdOffersRouteImport
+      parentRoute: typeof AuthenticatedSettingsHouseholdRoute
     }
     '/_authenticated/settings/profile/': {
       id: '/_authenticated/settings/profile/'
@@ -484,6 +542,24 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AuthenticatedSettingsHouseholdRouteChildren {
+  AuthenticatedSettingsHouseholdOffersRoute: typeof AuthenticatedSettingsHouseholdOffersRoute
+  AuthenticatedSettingsHouseholdIndexRoute: typeof AuthenticatedSettingsHouseholdIndexRoute
+}
+
+const AuthenticatedSettingsHouseholdRouteChildren: AuthenticatedSettingsHouseholdRouteChildren =
+  {
+    AuthenticatedSettingsHouseholdOffersRoute:
+      AuthenticatedSettingsHouseholdOffersRoute,
+    AuthenticatedSettingsHouseholdIndexRoute:
+      AuthenticatedSettingsHouseholdIndexRoute,
+  }
+
+const AuthenticatedSettingsHouseholdRouteWithChildren =
+  AuthenticatedSettingsHouseholdRoute._addFileChildren(
+    AuthenticatedSettingsHouseholdRouteChildren,
+  )
+
 interface AuthenticatedSettingsProfileRouteChildren {
   AuthenticatedSettingsProfileLanguagesRoute: typeof AuthenticatedSettingsProfileLanguagesRoute
   AuthenticatedSettingsProfileSharingRoute: typeof AuthenticatedSettingsProfileSharingRoute
@@ -541,6 +617,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedPlayMediaFileIdRoute: typeof AuthenticatedPlayMediaFileIdRoute
   AuthenticatedSeasonSeasonIdRoute: typeof AuthenticatedSeasonSeasonIdRoute
   AuthenticatedSeriesSeriesIdRoute: typeof AuthenticatedSeriesSeriesIdRoute
+  AuthenticatedSettingsHouseholdRoute: typeof AuthenticatedSettingsHouseholdRouteWithChildren
   AuthenticatedSettingsProfileRoute: typeof AuthenticatedSettingsProfileRouteWithChildren
   AuthenticatedSettingsServerRoute: typeof AuthenticatedSettingsServerRouteWithChildren
 }
@@ -554,6 +631,8 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedPlayMediaFileIdRoute: AuthenticatedPlayMediaFileIdRoute,
   AuthenticatedSeasonSeasonIdRoute: AuthenticatedSeasonSeasonIdRoute,
   AuthenticatedSeriesSeriesIdRoute: AuthenticatedSeriesSeriesIdRoute,
+  AuthenticatedSettingsHouseholdRoute:
+    AuthenticatedSettingsHouseholdRouteWithChildren,
   AuthenticatedSettingsProfileRoute:
     AuthenticatedSettingsProfileRouteWithChildren,
   AuthenticatedSettingsServerRoute:

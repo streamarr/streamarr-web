@@ -203,4 +203,26 @@ describe('ProfileMenu', () => {
     expect(await screen.findByTestId('profile-menu')).toBeVisible()
     expect(screen.queryByRole('button', { name: 'Profile settings' })).toBeNull()
   })
+
+  it('shouldOpenHouseholdSettingsWhenAHouseholdAdminChoosesThem', async () => {
+    const onHouseholdSettings = vi.fn()
+    const { user } = renderMenu({ onHouseholdSettings })
+
+    await openMenu(user)
+    await user.click(screen.getByRole('button', { name: 'Household settings' }))
+
+    expect(onHouseholdSettings).toHaveBeenCalledOnce()
+    expect(screen.queryByTestId('profile-menu')).toBeNull()
+  })
+
+  it('shouldOfferNoHouseholdSettingsWhenTheAccountIsAHouseholdMember', async () => {
+    const { user } = renderMenu({
+      me: { ...household(), householdRole: 'MEMBER' },
+      onHouseholdSettings: vi.fn(),
+    })
+
+    await openMenu(user)
+
+    expect(screen.queryByRole('button', { name: 'Household settings' })).toBeNull()
+  })
 })
