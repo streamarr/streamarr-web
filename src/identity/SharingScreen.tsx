@@ -25,12 +25,12 @@ const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 
 export function SharingScreen() {
   return (
-    <div className={styles.page}>
+    <>
       <div className={settingsStyles.pageHeading}>
         <h1>Sharing</h1>
       </div>
       <SharingContent />
-    </div>
+    </>
   )
 }
 

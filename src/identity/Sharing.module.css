@@ -10,7 +10,7 @@
   gap: var(--spacing-14);
 }
 
-.page .sectionTitle {
+.section .sectionTitle {
   font-size: var(--font-size-title);
   font-weight: var(--font-weight-semibold);
 }
@@ -67,4 +67,11 @@
 
 .offer {
   align-self: flex-start;
+}
+
+.refusal {
+  margin: 0 0 var(--spacing-16);
+  color: var(--semantic-error-text);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-prose);
 }

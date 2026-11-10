@@ -1,6 +1,6 @@
 import { Button, Center, Loader } from '@mantine/core'
 import { useMutation, useQuery } from '@apollo/client/react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   AcceptProfileShareDocument,
   RejectProfileShareDocument,
@@ -11,28 +11,50 @@ import {
 import { requestFailureMessage } from '../graphql/requestErrors'
 import { userErrorMessage, type UserErrorLike } from '../graphql/userErrors'
 import settingsStyles from '../styles/settings.module.css'
+import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { FailurePanel } from '../ui/Failure'
+import { Icon } from '../ui/Icon'
 import styles from './Sharing.module.css'
 import { SharingSection } from './SharingSection'
-import { shortId, UPDATE_FAILED_MESSAGE } from './shareText'
+import { expiryLabel, shortId, UPDATE_FAILED_MESSAGE } from './shareText'
 import { useMe } from './useMe'
 
 type PendingOffer = ShareOffersQuery['pendingShareOffers']['edges'][number]['node']
 type Household = MeQuery['me']['household']
+type Decision = 'accept' | 'decline'
 
-/** The offers of Profiles to the Account's Household, which its admins accept or reject. */
+/** The offers of Profiles to the Account's Household, which its admins accept or decline. */
 export function ShareOffersScreen() {
+  const [notice, setNotice] = useState('')
+  const heading = useRef<HTMLHeadingElement>(null)
+
+  // A decided offer's row goes, and its buttons with it, so focus returns to the page's heading.
+  function announce(text: string) {
+    setNotice(text)
+    heading.current?.focus({ preventScroll: true })
+  }
+
   return (
     <>
       <div className={settingsStyles.pageHeading}>
-        <h1>Share offers</h1>
+        <h1 ref={heading} tabIndex={-1}>
+          Share offers
+        </h1>
       </div>
-      <ShareOffersContent />
+      {notice && (
+        <output className={settingsStyles.notice}>
+          {notice}
+          <button type="button" aria-label="Dismiss notification" onClick={() => setNotice('')}>
+            <Icon name="close" size={16} />
+          </button>
+        </output>
+      )}
+      <ShareOffersContent onDecided={announce} />
     </>
   )
 }
 
-function ShareOffersContent() {
+function ShareOffersContent({ onDecided }: Readonly<{ onDecided: (notice: string) => void }>) {
   const me = useMe()
 
   if (me.loading && !me.data) {
@@ -41,25 +63,150 @@ function ShareOffersContent() {
   if (me.error || !me.data) {
     return <ShareOffersUnavailable error={me.error} onRetry={me.refetch} />
   }
-  return <HouseholdOffers household={me.data.me.household} />
+  return <HouseholdOffers household={me.data.me.household} onDecided={onDecided} />
 }
 
-function HouseholdOffers({ household }: Readonly<{ household: Household }>) {
+function HouseholdOffers({
+  household,
+  onDecided,
+}: Readonly<{ household: Household; onDecided: (notice: string) => void }>) {
   const query = useQuery(ShareOffersDocument, { variables: { householdId: household.id } })
-  const refetch = () => query.refetch()
+  const [accept] = useMutation(AcceptProfileShareDocument)
+  const [decline] = useMutation(RejectProfileShareDocument)
+  /** The offer whose acceptance waits for the admin's confirmation. */
+  const [confirming, setConfirming] = useState<PendingOffer | null>(null)
+  /** The offer whose decision is on its way; no other decision starts until it lands. */
+  const [deciding, setDeciding] = useState<string | null>(null)
+  const [refusal, setRefusal] = useState<string | null>(null)
+
+  // A failed read keeps the list that is on screen; the query's own error state reports it.
+  const readAgain = () => query.refetch().catch(() => undefined)
+
+  /** Sends the decision and reads the offers again; resolves to whether the server took it. */
+  async function decide(offer: PendingOffer, decision: Decision): Promise<boolean> {
+    setRefusal(null)
+    setDeciding(offer.id)
+    try {
+      const errors = await send(offer, decision)
+      if (errors?.length) {
+        setRefusal(errors.map(userErrorMessage).join(' '))
+      }
+      // A refused offer may have been decided or withdrawn elsewhere, so the list is read again.
+      await readAgain()
+      return !errors?.length
+    } catch (error) {
+      setRefusal(requestFailureMessage(error, UPDATE_FAILED_MESSAGE))
+      return false
+    } finally {
+      setDeciding(null)
+    }
+  }
+
+  async function send(
+    offer: PendingOffer,
+    decision: Decision,
+  ): Promise<readonly UserErrorLike[] | undefined> {
+    const variables = { input: { shareId: offer.id } }
+    if (decision === 'accept') {
+      return (await accept({ variables })).data?.acceptProfileShare?.userErrors
+    }
+    return (await decline({ variables })).data?.rejectProfileShare?.userErrors
+  }
+
+  async function confirmAccept(offer: PendingOffer) {
+    if (await decide(offer, 'accept')) {
+      setConfirming(null)
+      onDecided(`${offeredProfile(offer)} accepted into ${household.name}.`)
+    }
+  }
+
+  async function declineNow(offer: PendingOffer) {
+    if (await decide(offer, 'decline')) {
+      onDecided(`Offer of ${offeredProfile(offer)} declined.`)
+    }
+  }
 
   if (query.loading && !query.data) {
     return <ShareOffersLoading />
   }
   if (query.error || !query.data) {
-    return <ShareOffersUnavailable error={query.error} onRetry={refetch} />
+    return <ShareOffersUnavailable error={query.error} onRetry={readAgain} />
   }
 
   const offers = query.data.pendingShareOffers.edges.map((edge) => edge.node)
-  if (offers.length === 0) {
-    return <p className={styles.note}>No one has offered a Profile to {household.name}.</p>
-  }
-  return <Offers householdName={household.name} offers={offers} onDecided={refetch} />
+
+  return (
+    <>
+      {refusal && !confirming && (
+        <p className={styles.refusal} role="alert">
+          {refusal}
+        </p>
+      )}
+      {offers.length === 0 ? (
+        <p className={styles.note}>No one has offered a Profile to {household.name}.</p>
+      ) : (
+        <SharingSection title={`Profiles offered to ${household.name}`} failure={null}>
+          <ul className={styles.rows}>
+            {offers.map((offer) => (
+              <li key={offer.id} className={styles.row}>
+                <span className={styles.rowText}>
+                  {offeredProfile(offer)}
+                  {offer.expiresAt && (
+                    <span className={styles.status}>
+                      {expiryLabel(offer.expiresAt, new Date())}
+                    </span>
+                  )}
+                </span>
+                <span className={styles.actions}>
+                  <Button
+                    variant="filled"
+                    aria-label={`Accept ${offeredProfile(offer)}`}
+                    disabled={deciding !== null}
+                    onClick={() => {
+                      setRefusal(null)
+                      setConfirming(offer)
+                    }}
+                  >
+                    Accept
+                  </Button>
+                  <Button
+                    variant="default"
+                    aria-label={`Decline ${offeredProfile(offer)}`}
+                    loading={deciding === offer.id && !confirming}
+                    disabled={deciding !== null}
+                    onClick={() => void declineNow(offer)}
+                  >
+                    Decline
+                  </Button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </SharingSection>
+      )}
+      <ConfirmDialog
+        opened={confirming !== null}
+        title={`Accept this Profile into ${household.name}?`}
+        body={`If this is someone's Personal Profile, accepting admits that person to ${household.name}. They can select any Profile available here, browse its libraries and link a TV to it.`}
+        confirmLabel="Accept"
+        icon={null}
+        pending={confirming !== null && deciding === confirming.id}
+        error={refusal}
+        onClose={() => {
+          setConfirming(null)
+          setRefusal(null)
+        }}
+        onConfirm={() => {
+          if (confirming) void confirmAccept(confirming)
+        }}
+      />
+    </>
+  )
+}
+
+// The server gives a share no name for its Profile yet, so the start of its id stands for it.
+function offeredProfile(offer: PendingOffer): string {
+  return `Profile ${shortId(offer.profileId)}`
 }
 
 function ShareOffersLoading() {
@@ -78,83 +225,5 @@ function ShareOffersUnavailable({
     <FailurePanel onRetry={onRetry}>
       {requestFailureMessage(error, "Couldn't load share offers.")}
     </FailurePanel>
-  )
-}
-
-function Offers({
-  householdName,
-  offers,
-  onDecided,
-}: Readonly<{
-  householdName: string
-  offers: PendingOffer[]
-  onDecided: () => void
-}>) {
-  const [accept] = useMutation(AcceptProfileShareDocument)
-  const [reject] = useMutation(RejectProfileShareDocument)
-  const [failure, setFailure] = useState<string | null>(null)
-  const [busy, setBusy] = useState<string | null>(null)
-
-  async function decide(offer: PendingOffer, decision: 'accept' | 'reject') {
-    setFailure(null)
-    setBusy(offer.id)
-    try {
-      await applyDecision(offer, decision)
-    } catch (error) {
-      setFailure(requestFailureMessage(error, UPDATE_FAILED_MESSAGE))
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  async function applyDecision(offer: PendingOffer, decision: 'accept' | 'reject') {
-    const errors = await sendDecision(offer, decision)
-    if (errors?.length) {
-      setFailure(userErrorMessage(errors[0]))
-      return
-    }
-    onDecided()
-  }
-
-  async function sendDecision(
-    offer: PendingOffer,
-    decision: 'accept' | 'reject',
-  ): Promise<readonly UserErrorLike[] | undefined> {
-    const variables = { input: { shareId: offer.id } }
-    if (decision === 'accept') {
-      return (await accept({ variables })).data?.acceptProfileShare?.userErrors
-    }
-    return (await reject({ variables })).data?.rejectProfileShare?.userErrors
-  }
-
-  return (
-    <SharingSection title={`Profiles offered to ${householdName}`} failure={failure}>
-      <ul className={styles.rows}>
-        {offers.map((offer) => (
-          <li key={offer.id} className={styles.row}>
-            <span className={styles.rowText}>
-              Profile {shortId(offer.profileId)}
-              {offer.expiresAt && (
-                <span className={styles.status}>
-                  Expires {new Date(offer.expiresAt).toLocaleString()}
-                </span>
-              )}
-            </span>
-            <span className={styles.actions}>
-              <Button loading={busy === offer.id} onClick={() => decide(offer, 'accept')}>
-                Accept
-              </Button>
-              <Button
-                variant="default"
-                disabled={busy === offer.id}
-                onClick={() => decide(offer, 'reject')}
-              >
-                Reject
-              </Button>
-            </span>
-          </li>
-        ))}
-      </ul>
-    </SharingSection>
   )
 }
