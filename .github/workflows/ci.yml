@@ -171,10 +171,10 @@ jobs:
 
   # GitHub counts a skipped required check as passing, and it skips a job whose needs did not all
   # succeed. always() keeps this job running, so a job that failed, timed out or was cancelled fails
-  # the required check. The capability specs report beside this check and do not hold up a merge.
+  # the required check.
   build:
     name: build
-    needs: [static, contracts, unit, browser]
+    needs: [static, contracts, unit, browser, decoding-info]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
