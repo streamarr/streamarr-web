@@ -125,6 +125,8 @@
 .section[aria-current='page'] {
   background: var(--selection-active);
 }
+/* The page column. A settings page takes this width and sets none of its own, so the heading and
+   panels of every page in every settings area line up. */
 .railContent {
   min-width: 0;
 }

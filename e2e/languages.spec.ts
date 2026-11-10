@@ -146,3 +146,37 @@ test('a viewer adds an audio language from the visible list on the Languages scr
   const languages = page.getByRole('list', { name: 'Audio languages' }).getByRole('listitem')
   await expect(languages).toHaveText([/English/, /French/])
 })
+
+test('the Languages panel fills the width of its settings page, as the server settings panels do', async ({
+  page,
+  request,
+}) => {
+  await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
+  await request.post(`${STUB_URL}/api/auth/refresh`)
+  await page.route('**/graphql', async (route) => {
+    const { operationName } = route.request().postDataJSON() as { operationName?: string }
+    if (operationName !== 'LanguageSettings') return route.fallback()
+    return route.fulfill({
+      json: {
+        data: {
+          me: {
+            __typename: 'Me',
+            languagePreferences: {
+              __typename: 'ProfileLanguagePreferences',
+              audioLanguages: ['EN'],
+              subtitleLanguage: null,
+              subtitleMode: 'FORCED',
+            },
+          },
+        },
+      },
+    })
+  })
+
+  await page.goto('/settings/profile/languages')
+  const panel = page.getByTestId('language-settings-panel')
+  await expect(panel).toBeVisible()
+
+  const section = (await page.getByRole('region', { name: 'Languages' }).boundingBox())!
+  expect((await panel.boundingBox())!.width).toBe(section.width)
+})

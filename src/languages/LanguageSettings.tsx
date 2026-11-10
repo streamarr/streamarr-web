@@ -141,7 +141,7 @@ function LanguageSettingsContent({
   const { audioLanguages, subtitleLanguage, subtitleMode } = saved
   const current: Preferences = { audioLanguages, subtitleLanguage, subtitleMode }
   return (
-    <div className={settingsStyles.formPanel}>
+    <div className={settingsStyles.formPanel} data-testid="language-settings-panel">
       <div className={settingsStyles.form}>
         {refusal && (
           <p role="alert" className={styles.refusal}>

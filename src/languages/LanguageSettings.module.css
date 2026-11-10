@@ -1,9 +1,5 @@
-/* A reading width for the form, inside the settings layout's page column. */
-.page {
-  max-width: 720px;
-}
-
-/* Each setting's name heads its group; labels inside the group stay quiet field labels. */
+/* Each setting's name heads its group; labels inside the group stay quiet field labels. The page
+   sets no width of its own: the settings layout sizes every page, so their panels line up. */
 .page .settingName {
   font-size: var(--font-size-emphasis);
   font-weight: var(--font-weight-semibold);
