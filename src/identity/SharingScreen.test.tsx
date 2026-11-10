@@ -33,6 +33,7 @@ const SHARING_PAGE: SettingsPage = {
 }
 const SHARE_ID = '77777777-7777-7777-7777-777777777777'
 const CABIN_ID = '55555555-5555-5555-5555-555555555555'
+const LAKE_HOUSE_ID = '66666666-6666-6666-6666-666666666666'
 const SMITH_FAMILY = { id: HOUSEHOLD_ID, name: 'Smith Family', membership: true }
 const CABIN = { id: CABIN_ID, name: 'Cabin', membership: false }
 const DAY = 24 * 60 * 60 * 1000
@@ -320,6 +321,48 @@ describe('Sharing', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('That offer is not pending.')
   })
 
+  it('shouldTakeTheServersWordsAwayWhenTheNextCancelIsTaken', async () => {
+    serveInTurn([share()], [share()], [])
+    refuseToCancel()
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.click(await screen.findByRole('button', { name: 'Cancel offer to Cabin' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('That offer is not pending.')
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Cancel offer to Cabin' })).toBeEnabled(),
+    )
+
+    server.use(
+      graphql.mutation('CancelProfileShare', () =>
+        HttpResponse.json({ data: { cancelProfileShare: canceledPayload() } }),
+      ),
+    )
+    await user.click(screen.getByRole('button', { name: 'Cancel offer to Cabin' }))
+
+    await noticed('Offer to Cabin canceled.')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('shouldOpenTheConfirmationWithoutAnEarlierRefusalWhenThePersonAsksToEndAShare', async () => {
+    const elsewhere = share({ id: 'elsewhere', householdId: LAKE_HOUSE_ID, status: 'ACTIVE' })
+    serveInTurn([share(), elsewhere])
+    refuseToCancel()
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.click(await screen.findByRole('button', { name: 'Cancel offer to Cabin' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('That offer is not pending.')
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'End share with Household 66666666' }),
+      ).toBeEnabled(),
+    )
+
+    await user.click(screen.getByRole('button', { name: 'End share with Household 66666666' }))
+
+    expect(
+      screen.getByRole('dialog', { name: 'End sharing with Household 66666666?' }),
+    ).toBeVisible()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
   it('shouldSayWhatEndsBeforeItEndsAShare', async () => {
     serveInTurn([share({ status: 'ACTIVE' })])
     let ended = false
@@ -414,6 +457,24 @@ describe('Sharing', () => {
     const dialog = await screen.findByRole('dialog', { name: 'End sharing with Cabin?' })
     expect(within(dialog).getByRole('alert')).toHaveTextContent('That share is not active.')
     expect(within(dialog).getByRole('button', { name: 'End share' })).toBeEnabled()
+  })
+
+  it('shouldTakeTheServersWordsAwayWhenThePersonClosesTheConfirmation', async () => {
+    serveInTurn([share({ status: 'ACTIVE' })])
+    refuseToEnd()
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.click(await screen.findByRole('button', { name: 'End share with Cabin' }))
+    const dialog = screen.getByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'End share' }))
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('That share is not active.')
+    await waitFor(() =>
+      expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeEnabled(),
+    )
+
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('shouldOpenTheShareFormInPlaceWhenThePersonAsksToShare', async () => {

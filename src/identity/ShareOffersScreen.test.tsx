@@ -427,24 +427,7 @@ describe('Share offers', () => {
 
   it('shouldKeepTheConfirmationOpenWithTheServersWordsWhenAcceptingIsRefused', async () => {
     serve([offer()])
-    server.use(
-      graphql.mutation('AcceptProfileShare', () =>
-        HttpResponse.json({
-          data: {
-            acceptProfileShare: {
-              __typename: 'AcceptProfileSharePayload',
-              share: null,
-              userErrors: [
-                {
-                  __typename: 'ShareNameConflictError',
-                  message: 'Another Profile in that Household already uses this name.',
-                },
-              ],
-            },
-          },
-        }),
-      ),
-    )
+    refuseToAccept()
     const { user } = renderAppAt(OFFERS)
 
     await user.click(await screen.findByRole('button', { name: 'Accept Profile 33333333' }))
@@ -452,9 +435,29 @@ describe('Share offers', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Accept' }))
 
     expect(await within(dialog).findByRole('alert')).toHaveTextContent(
-      'Another Profile in that Household already uses this name.',
+      'That name is already in use.',
     )
     expect(within(dialog).getByRole('button', { name: 'Accept' })).toBeEnabled()
+  })
+
+  it('shouldTakeTheServersWordsAwayWhenTheAdminClosesTheConfirmation', async () => {
+    serve([offer()])
+    refuseToAccept()
+    const { user } = renderAppAt(OFFERS)
+    await user.click(await screen.findByRole('button', { name: 'Accept Profile 33333333' }))
+    const dialog = screen.getByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Accept' }))
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      'That name is already in use.',
+    )
+    await waitFor(() =>
+      expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeEnabled(),
+    )
+
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('shouldReopenTheConfirmationWithTheServersWordsWhenRetryBringsTheOffersBackAfterARefusedAccept', async () => {
@@ -582,6 +585,45 @@ describe('Share offers', () => {
 
     expect(await screen.findByRole('button', { name: 'Decline Profile 33333333' })).toBeEnabled()
     expect(screen.getByRole('alert')).toHaveTextContent('That offer is not pending.')
+  })
+
+  it('shouldTakeTheServersWordsAwayWhenTheNextDeclineIsTaken', async () => {
+    serveInTurn([offer()], [offer()], [])
+    refuseToDecline()
+    const { user } = renderAppAt(OFFERS)
+    await user.click(await screen.findByRole('button', { name: 'Decline Profile 33333333' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('That offer is not pending.')
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Decline Profile 33333333' })).toBeEnabled(),
+    )
+
+    server.use(
+      graphql.mutation('RejectProfileShare', () =>
+        HttpResponse.json({ data: { rejectProfileShare: declinedPayload() } }),
+      ),
+    )
+    await user.click(screen.getByRole('button', { name: 'Decline Profile 33333333' }))
+
+    await noticed('Offer of Profile 33333333 declined.')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('shouldOpenTheConfirmationWithoutAnEarlierRefusalWhenTheAdminAsksToAccept', async () => {
+    serve([offer()])
+    refuseToDecline()
+    const { user } = renderAppAt(OFFERS)
+    await user.click(await screen.findByRole('button', { name: 'Decline Profile 33333333' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('That offer is not pending.')
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Accept Profile 33333333' })).toBeEnabled(),
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Accept Profile 33333333' }))
+
+    expect(
+      screen.getByRole('dialog', { name: 'Accept this Profile into Smith Family?' }),
+    ).toBeVisible()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('shouldSayHowLongAnOfferHasLeftWhenItIsListed', async () => {
