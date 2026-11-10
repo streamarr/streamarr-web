@@ -1,40 +1,37 @@
-import { Alert, Button, Center, Loader, TextInput } from '@mantine/core'
-import { useMutation, useQuery } from '@apollo/client/react'
-import { useState } from 'react'
+import { Center, Loader } from '@mantine/core'
+import { useQuery } from '@apollo/client/react'
 import settingsStyles from '../styles/settings.module.css'
-import {
-  CancelProfileShareDocument,
-  EndProfileShareDocument,
-  OfferProfileShareDocument,
-  ProfileSharePreviewDocument,
-  ProfileSharesDocument,
-  type ProfileSharesQuery,
-} from '../graphql/generated/graphql'
+import { ProfileSharesDocument, type MeQuery } from '../graphql/generated/graphql'
 import { requestFailureMessage } from '../graphql/requestErrors'
-import { userErrorMessage, type UserErrorLike } from '../graphql/userErrors'
 import { FailurePanel } from '../ui/Failure'
-import { enumLabel } from './enumLabel'
-import { SharingSection } from './SharingSection'
-import { shortId, UPDATE_FAILED_MESSAGE } from './shareText'
+import { PageNotice } from '../ui/PageNotice'
+import { usePageNotice } from '../ui/usePageNotice'
+import { shortId } from './shareText'
 import styles from './Sharing.module.css'
 import { useMe } from './useMe'
+import { WhereShared } from './WhereShared'
 
-type ProfileShareRow = ProfileSharesQuery['profileShares']['edges'][number]['node']
+type Me = MeQuery['me']
+type PersonalProfile = Readonly<{ id: string; name: string }>
 
-const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-
+/** Where the Account's Personal Profile is shared, and the way to share it with another Household. */
 export function SharingScreen() {
+  const { notice, heading, announce, dismiss } = usePageNotice()
+
   return (
     <>
       <div className={settingsStyles.pageHeading}>
-        <h1>Sharing</h1>
+        <h1 ref={heading} tabIndex={-1}>
+          Sharing
+        </h1>
       </div>
-      <SharingContent />
+      <PageNotice onDismiss={dismiss}>{notice}</PageNotice>
+      <SharingContent onChanged={announce} />
     </>
   )
 }
 
-function SharingContent() {
+function SharingContent({ onChanged }: Readonly<{ onChanged: (notice: string) => void }>) {
   const { data: meData, loading: meLoading, error: meError, refetch: refetchMe } = useMe()
 
   if (meLoading && !meData) {
@@ -45,58 +42,87 @@ function SharingContent() {
     return <SharingUnavailable error={meError} onRetry={refetchMe} />
   }
 
-  const household = meData.me.contextHousehold
-  const personal = meData.me.selectableProfiles.edges
+  const me = meData.me
+  const personal = me.selectableProfiles.edges
     .map((edge) => edge.node)
     .find((profile) => profile.personal)
   if (!personal) {
     return (
-      <p className={styles.note}>You have no Profile of your own in {household.name} to share.</p>
+      <p className={styles.note}>
+        You have no Profile of your own in {me.contextHousehold.name} to share.
+      </p>
     )
   }
 
-  return <Sharing householdId={household.id} profileId={personal.id} profileName={personal.name} />
+  return (
+    <ProfileSharing
+      profile={personal}
+      householdName={householdNamer(me)}
+      ownHouseholdName={me.household.name}
+      onChanged={onChanged}
+    />
+  )
 }
 
-function Sharing({
-  householdId,
-  profileId,
-  profileName,
-}: Readonly<{
-  householdId: string
-  profileId: string
-  profileName: string
-}>) {
-  const overview = useQuery(ProfileSharesDocument, { variables: { profileId } })
-  const refetch = () => overview.refetch()
+/**
+ * Names a Household by its id. A share carries only the id, so the name is known only for a
+ * Household that the Account may use; the start of the id stands for any other.
+ */
+function householdNamer(me: Me): (householdId: string) => string {
+  const known = [
+    me.household,
+    me.contextHousehold,
+    ...me.usableHouseholds.edges.map((edge) => edge.node.household),
+  ]
+  const names = new Map(known.map((household) => [household.id, household.name]))
+  return (householdId) => names.get(householdId) ?? `Household ${shortId(householdId)}`
+}
 
-  if (overview.loading && !overview.data) {
+function ProfileSharing({
+  profile,
+  householdName,
+  ownHouseholdName,
+  onChanged,
+}: Readonly<{
+  profile: PersonalProfile
+  householdName: (householdId: string) => string
+  ownHouseholdName: string
+  onChanged: (notice: string) => void
+}>) {
+  const query = useQuery(ProfileSharesDocument, { variables: { profileId: profile.id } })
+  // A failed read keeps the list that is on screen.
+  const readAgain = () => query.refetch().catch(() => undefined)
+
+  if (query.loading && !query.data) {
     return <SharingLoading />
   }
 
-  if (overview.error || !overview.data) {
-    return <SharingUnavailable error={overview.error} onRetry={refetch} />
+  if (query.error || !query.data) {
+    return <SharingUnavailable error={query.error} onRetry={readAgain} />
   }
 
-  const shares = overview.data.profileShares.edges.map((edge) => edge.node)
+  // Every Personal Profile is shared with its Account's own Household, and that share cannot
+  // end, so it is no news here.
+  const shares = query.data.profileShares.edges
+    .map((edge) => edge.node)
+    .filter((share) => !share.requiredByAccountMembership)
 
   return (
-    <div className={styles.sections}>
-      <OfferForm profileId={profileId} profileName={profileName} onOffered={refetch} />
-      <OwnShares
-        householdId={householdId}
-        profileName={profileName}
-        shares={shares}
-        onChanged={refetch}
-      />
-    </div>
+    <WhereShared
+      profile={profile}
+      shares={shares}
+      householdName={householdName}
+      ownHouseholdName={ownHouseholdName}
+      readAgain={readAgain}
+      onChanged={onChanged}
+    />
   )
 }
 
 function SharingLoading() {
   return (
     <Center h={200}>
-      <Loader />
+      <Loader role="status" aria-label="Loading sharing" />
     </Center>
   )
 }
@@ -110,142 +136,4 @@ function SharingUnavailable({
       {requestFailureMessage(error, "Couldn't load sharing.")}
     </FailurePanel>
   )
-}
-
-function OfferForm({
-  profileId,
-  profileName,
-  onOffered,
-}: Readonly<{
-  profileId: string
-  profileName: string
-  onOffered: () => void
-}>) {
-  const [householdId, setHouseholdId] = useState('')
-  const [failure, setFailure] = useState<string | null>(null)
-  const validTarget = UUID_SHAPE.test(householdId)
-  const preview = useQuery(ProfileSharePreviewDocument, {
-    variables: { profileId, householdId },
-    skip: !validTarget,
-  })
-  const [offer, { loading }] = useMutation(OfferProfileShareDocument)
-
-  async function submit() {
-    setFailure(null)
-    try {
-      await sendOffer()
-    } catch (error) {
-      setFailure(requestFailureMessage(error, UPDATE_FAILED_MESSAGE))
-    }
-  }
-
-  async function sendOffer() {
-    const result = await offer({ variables: { input: { profileId, householdId } } })
-    const errors = result.data?.offerProfileShare?.userErrors
-    if (errors?.length) {
-      setFailure(userErrorMessage(errors[0]))
-      return
-    }
-    setHouseholdId('')
-    onOffered()
-  }
-
-  const answers = preview.data?.profileSharePreview
-
-  return (
-    <SharingSection title={`Share ${profileName} into another Household`} failure={failure}>
-      <TextInput
-        label="Household id"
-        description="Ask that Household's admin for it"
-        value={householdId}
-        onChange={(event) => setHouseholdId(event.currentTarget.value.trim())}
-      />
-      {answers?.wouldLock && (
-        <Alert color="yellow">{profileName} would arrive locked there until it gets a PIN.</Alert>
-      )}
-      {answers?.nameConflict && (
-        <Alert color="yellow">Another Profile there already uses this name.</Alert>
-      )}
-      <Button className={styles.offer} onClick={submit} loading={loading} disabled={!validTarget}>
-        Offer share
-      </Button>
-    </SharingSection>
-  )
-}
-
-function OwnShares({
-  householdId,
-  profileName,
-  shares,
-  onChanged,
-}: Readonly<{
-  householdId: string
-  profileName: string
-  shares: ProfileShareRow[]
-  onChanged: () => void
-}>) {
-  const [cancel] = useMutation(CancelProfileShareDocument)
-  const [end] = useMutation(EndProfileShareDocument)
-  const [failure, setFailure] = useState<string | null>(null)
-  const [busy, setBusy] = useState<string | null>(null)
-
-  async function change(share: ProfileShareRow) {
-    setFailure(null)
-    setBusy(share.id)
-    try {
-      await applyChange(share)
-    } catch (error) {
-      setFailure(requestFailureMessage(error, UPDATE_FAILED_MESSAGE))
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  async function applyChange(share: ProfileShareRow) {
-    const errors = await sendChange(share)
-    if (errors?.length) {
-      setFailure(userErrorMessage(errors[0]))
-      return
-    }
-    onChanged()
-  }
-
-  async function sendChange(share: ProfileShareRow): Promise<readonly UserErrorLike[] | undefined> {
-    const variables = { input: { shareId: share.id } }
-    if (share.status === 'PENDING') {
-      return (await cancel({ variables })).data?.cancelProfileShare?.userErrors
-    }
-    return (await end({ variables })).data?.endProfileShare?.userErrors
-  }
-
-  return (
-    <SharingSection title={`Where ${profileName} is shared`} failure={failure}>
-      {shares.length === 0 && <p className={styles.note}>Nowhere yet.</p>}
-      <ul className={styles.rows}>
-        {shares.map((share) => (
-          <li key={share.id} className={styles.row}>
-            <span className={styles.rowText}>
-              {share.householdId === householdId
-                ? 'This Household'
-                : `Household ${shortId(share.householdId)}`}
-              <span className={styles.status}>{enumLabel(share.status)}</span>
-              {share.requiredByAccountMembership && <span className={styles.status}>Home</span>}
-            </span>
-            {canChange(share) && (
-              <Button variant="default" loading={busy === share.id} onClick={() => change(share)}>
-                {share.status === 'PENDING' ? 'Cancel offer' : 'End share'}
-              </Button>
-            )}
-          </li>
-        ))}
-      </ul>
-    </SharingSection>
-  )
-}
-
-function canChange(share: ProfileShareRow): boolean {
-  if (share.requiredByAccountMembership) {
-    return false
-  }
-  return share.status === 'PENDING' || share.status === 'ACTIVE'
 }

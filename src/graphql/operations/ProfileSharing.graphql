@@ -20,6 +20,9 @@ query ProfileShares($profileId: ID!) {
         householdId
         status
         requiredByAccountMembership
+        expiresAt
+        endedAt
+        invalidationReason
       }
     }
   }

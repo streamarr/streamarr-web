@@ -1,9 +1,3 @@
-.sections {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-20);
-}
-
 .section {
   display: flex;
   flex-direction: column;
@@ -65,8 +59,61 @@
   gap: var(--spacing-8);
 }
 
-.offer {
+.share {
   align-self: flex-start;
+}
+
+.shareForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-14);
+  max-width: 480px;
+}
+
+.effects {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-8);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-prose);
+}
+
+.effects:empty {
+  display: none;
+}
+
+.effects p {
+  margin: 0;
+}
+
+.earlier {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-14);
+}
+
+.disclosure {
+  composes: focusRing from '../styles/focus.module.css';
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: var(--spacing-8);
+  padding: var(--spacing-8) 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+}
+
+.disclosure:hover {
+  color: var(--text-primary);
+}
+
+.section .refusal {
+  margin: 0;
 }
 
 .refusal {

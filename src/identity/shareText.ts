@@ -22,3 +22,11 @@ export function expiryLabel(expiresAt: string, now: Date): string {
   const [unit, size] = UNITS.find(([, size]) => left >= size) ?? ['minute', left]
   return `Expires ${relative.format(Math.floor(left / size), unit)}`
 }
+
+const HOUSEHOLD_ID =
+  /(?<![0-9a-f])[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![0-9a-f])/i
+
+/** The Household id that `text` holds, or null. An id is often pasted with the text around it. */
+export function householdIdIn(text: string): string | null {
+  return HOUSEHOLD_ID.exec(text)?.[0] ?? null
+}
