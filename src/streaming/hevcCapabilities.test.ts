@@ -24,6 +24,15 @@ function dolbyVisionEntriesAtTier(
   )
 }
 
+function entryCounts(declaration: ClientCapabilityDeclarationInput) {
+  const counts: Record<string, number> = {}
+  for (const { codecFamily, codecProfiles } of declaration.video) {
+    const tier = codecFamily === 'HEVC' ? ` ${codecProfiles[0].maxTier}` : ''
+    counts[`${codecFamily}${tier}`] = (counts[`${codecFamily}${tier}`] ?? 0) + 1
+  }
+  return counts
+}
+
 const DOLBY_VISION_PROFILES_AT_LEVEL_9 = [
   { profile: 'PROFILE_5', maxLevel: 9 },
   { profile: 'PROFILE_8_1', maxLevel: 9 },
@@ -577,7 +586,7 @@ describe('HEVC capability declarations', () => {
     ])
   })
 
-  it('shouldStayWithinTheContractsEntryLimitWhenLevelAndPictureCeilingsCross', async () => {
+  it('shouldDropHighTierHdrEntriesFirstWhenCrossingLevelAndPictureCeilingsExceedTheContractsEntryLimit', async () => {
     const declaration = await declarePlaybackCapabilities(
       playbackPlatformFixture({
         displaysHighDynamicRange: true,
@@ -597,9 +606,43 @@ describe('HEVC capability declarations', () => {
         },
       }),
     )
-    expect(declaration.video.length).toBeLessThanOrEqual(32)
-    expect(declaration.video[0]).toEqual(
-      expect.objectContaining({ codecFamily: 'H264', hls: true }),
+    expect(entryCounts(declaration)).toEqual({ H264: 1, 'HEVC MAIN': 19, AV1: 3, 'HEVC HIGH': 9 })
+    expect(
+      entriesAtTier(declaration, 'HIGH').every(({ compatibleBases }) =>
+        compatibleBases.includes('SDR'),
+      ),
+    ).toBe(true)
+  })
+
+  it('shouldKeepTheHighTierDolbyVisionEntryUnderTheContractsEntryLimitWhenTheBrowserAnswersEveryQuestionYes', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      playbackPlatformFixture({
+        displaysHighDynamicRange: true,
+        canPlayType: () => 'probably',
+        decodingInfo: () => Promise.resolve(answer(true)),
+      }),
     )
+
+    expect(entryCounts(declaration)).toEqual({ H264: 1, 'HEVC MAIN': 4, AV1: 3, 'HEVC HIGH': 4 })
+    expect(dolbyVisionEntriesAtTier(declaration, 'HIGH')).toHaveLength(1)
+  })
+
+  it('shouldKeepTheHighTierDolbyVisionEntryUnderTheContractsEntryLimitWhenSafariAnswersHevcPowerEfficientButNotSmooth', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      playbackPlatformFixture({
+        userAgent: IPHONE_SAFARI_USER_AGENT,
+        displaysHighDynamicRange: true,
+        canPlayType: () => 'probably',
+        decodingInfo: ({ video }) => {
+          if (/hvc1|dvh1/.test(video?.contentType ?? '')) {
+            return Promise.resolve(answer(true, false))
+          }
+          return Promise.resolve(answer(true, (video?.width ?? 0) <= 1920))
+        },
+      }),
+    )
+
+    expect(declaration.video.length).toBeLessThan(32)
+    expect(dolbyVisionEntriesAtTier(declaration, 'HIGH')).toHaveLength(1)
   })
 })
