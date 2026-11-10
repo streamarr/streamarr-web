@@ -64,6 +64,26 @@ describe('HEVC capability declarations', () => {
     }
   })
 
+  it('shouldBoundEachHighTierProfileByItsOwnMainTierLevel', async () => {
+    const declaration = await declarePlaybackCapabilities(
+      playbackPlatformFixture({
+        decodingInfo: ({ video }) => {
+          const codec = video?.contentType ?? ''
+          const mainTierLevel = /\.L(\d+)\./.exec(codec)?.[1]
+          const ceiling = codec.includes('hvc1.1') ? 186 : 153
+          return Promise.resolve(answer(!mainTierLevel || Number(mainTierLevel) <= ceiling))
+        },
+      }),
+    )
+    expect(entriesAtTier(declaration, 'HIGH').map(({ codecProfiles }) => codecProfiles)).toEqual([
+      [{ profile: 'HEVC_MAIN', maxLevel: 62, maxTier: 'HIGH' }],
+      [
+        { profile: 'HEVC_MAIN', maxLevel: 51, maxTier: 'HIGH' },
+        { profile: 'HEVC_MAIN_10', maxLevel: 51, maxTier: 'HIGH' },
+      ],
+    ])
+  })
+
   it('shouldUseSafarisExistingPowerEfficientPictureBudgetForHighTier', async () => {
     const declaration = await declarePlaybackCapabilities(
       playbackPlatformFixture({
