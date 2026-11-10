@@ -10,6 +10,7 @@ import {
   comeBackOnlineUntil,
   failsOnceThen,
   heldAnswer,
+  refusedWith,
   serverFailure,
 } from '../test/graphqlResponses'
 import { serveGraphqlSocket } from '../test/graphqlSocket'
@@ -91,6 +92,13 @@ function serveInTurn(...lists: ShareNode[][]) {
   const handler = answersInTurn(...lists.map((shares) => answerWith(sharesData(shares))))
   server.use(graphql.query('ProfileShares', handler.resolver))
   return handler
+}
+
+// Answers the first read of the shares with `shares` and fails each read after it.
+function serveOneReadThenFail(shares: ShareNode[]) {
+  serve([], me([SMITH_FAMILY, CABIN]))
+  const handler = answersInTurn(answerWith(sharesData(shares)), serverFailure)
+  server.use(graphql.query('ProfileShares', handler.resolver))
 }
 
 // A return goes through the Profile menu, which offers Profile settings only with a Profile
@@ -234,15 +242,7 @@ describe('Sharing', () => {
       graphql.mutation('CancelProfileShare', ({ variables }) => {
         expect(variables).toEqual({ input: { shareId: SHARE_ID } })
         canceled = true
-        return HttpResponse.json({
-          data: {
-            cancelProfileShare: {
-              __typename: 'CancelProfileSharePayload',
-              share: { __typename: 'ProfileShare', id: SHARE_ID, status: 'CANCELED' },
-              userErrors: [],
-            },
-          },
-        })
+        return HttpResponse.json({ data: { cancelProfileShare: canceledPayload() } })
       }),
     )
     const { user } = renderWithProviders(<SharingScreen />)
@@ -257,27 +257,45 @@ describe('Sharing', () => {
 
   it('shouldShowTheServersWordsAndReadTheSharesAgainWhenCancelingIsRefused', async () => {
     const shares = serveInTurn([share()], [share()])
-    server.use(
-      graphql.mutation('CancelProfileShare', () =>
-        HttpResponse.json({
-          data: {
-            cancelProfileShare: {
-              __typename: 'CancelProfileSharePayload',
-              share: null,
-              userErrors: [
-                { __typename: 'ShareNotPendingError', message: 'That offer is not pending.' },
-              ],
-            },
-          },
-        }),
-      ),
-    )
+    refuseToCancel()
     const { user } = renderWithProviders(<SharingScreen />)
 
     await user.click(await screen.findByRole('button', { name: 'Cancel offer to Cabin' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('That offer is not pending.')
     await waitFor(() => expect(shares.calls).toBe(2))
+  })
+
+  it('shouldNotSayTheOfferWasCanceledWhenCancelingIsRefused', async () => {
+    serveInTurn([share()])
+    refuseToCancel()
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    await user.click(await screen.findByRole('button', { name: 'Cancel offer to Cabin' }))
+
+    await screen.findByRole('alert')
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Cancel offer to Cabin' })).toBeEnabled(),
+    )
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('shouldSayTheOfferWasCanceledWhenReadingTheSharesAgainFails', async () => {
+    serveOneReadThenFail([share()])
+    server.use(
+      graphql.mutation('CancelProfileShare', () =>
+        HttpResponse.json({ data: { cancelProfileShare: canceledPayload() } }),
+      ),
+    )
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    await user.click(await screen.findByRole('button', { name: 'Cancel offer to Cabin' }))
+
+    await noticed('Offer to Cabin canceled.')
+    expect(screen.getByRole('alert')).toHaveTextContent("Couldn't load sharing.")
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: 'Cancel offer to Cabin' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Sharing' })).toHaveFocus()
   })
 
   it('shouldSayWhatEndsBeforeItEndsAShare', async () => {
@@ -322,6 +340,23 @@ describe('Sharing', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(shares.calls).toBe(2)
     expect(screen.getByRole('heading', { level: 1, name: 'Sharing' })).toHaveFocus()
+  })
+
+  it('shouldSayTheShareEndedWhenReadingTheSharesAgainFails', async () => {
+    serveOneReadThenFail([share({ status: 'ACTIVE' })])
+    server.use(
+      graphql.mutation('EndProfileShare', () =>
+        HttpResponse.json({ data: { endProfileShare: endedPayload() } }),
+      ),
+    )
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    await user.click(await screen.findByRole('button', { name: 'End share with Cabin' }))
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'End share' }))
+
+    await noticed('Sharing with Cabin ended.')
+    expect(screen.getByRole('alert')).toHaveTextContent("Couldn't load sharing.")
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('shouldKeepTheConfirmationOpenWithTheServersWordsWhenEndingIsRefused', async () => {
@@ -384,6 +419,18 @@ describe('Sharing', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Sharing' })).toHaveFocus()
   })
 
+  it('shouldSayTheOfferWasSentWhenReadingTheSharesAgainFails', async () => {
+    serveOneReadThenFail([])
+    server.use(graphql.mutation('OfferProfileShare', () => HttpResponse.json({ data: offered() })))
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    await user.type(await openShareForm(user), `${CABIN_ID}{Enter}`)
+
+    await noticed('Offer sent. An admin there must accept it.')
+    expect(screen.getByRole('alert')).toHaveTextContent("Couldn't load sharing.")
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+  })
+
   it('shouldSendTheOfferWhenEnterIsPressedInTheField', async () => {
     serve()
     let sent = false
@@ -398,6 +445,26 @@ describe('Sharing', () => {
     await user.type(await openShareForm(user), `${CABIN_ID}{Enter}`)
 
     await waitFor(() => expect(sent).toBe(true))
+  })
+
+  it('shouldAskAboutAHouseholdOnlyOnceTheTextHoldsItsId', async () => {
+    serve()
+    const asked: unknown[] = []
+    server.use(
+      graphql.query('ProfileSharePreview', ({ variables }) => {
+        asked.push(variables)
+        return HttpResponse.json({ data: preview({ wouldLock: true }) })
+      }),
+    )
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    await user.type(await openShareForm(user), 'the Smiths ')
+    await user.paste(CABIN_ID)
+
+    expect(
+      await screen.findByText('Alex would arrive locked there until it has a PIN.'),
+    ).toBeVisible()
+    expect(asked).toEqual([{ profileId: PROFILE_ID, householdId: CABIN_ID }])
   })
 
   it('shouldSayNoHouseholdHasThatIdWhenTheServerFindsNone', async () => {
@@ -583,6 +650,14 @@ describe('Sharing', () => {
     expect(screen.queryByRole('button', { name: 'Cancel offer to Cabin' })).not.toBeInTheDocument()
   })
 
+  it('shouldShowSharingAsLoadingWhileTheAccountLoads', async () => {
+    server.use(graphql.query('Me', () => delay('infinite')))
+    renderWithProviders(<SharingScreen />)
+
+    expect(await screen.findByRole('status', { name: 'Loading sharing' })).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
   it('shouldRetryWhenTheAccountFailsToLoad', async () => {
     serve()
     server.use(graphql.query('Me', failsOnceThen({ me: me() }).resolver))
@@ -609,6 +684,18 @@ describe('Sharing', () => {
     expect(shares.calls).toBe(2)
   })
 
+  it('shouldShowTheServersWordsWhenTheServerRefusesToListTheShares', async () => {
+    serve()
+    server.use(
+      graphql.query('ProfileShares', () => refusedWith('You may not see where Alex is shared.')),
+    )
+    renderWithProviders(<SharingScreen />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /^You may not see where Alex is shared\.$/,
+    )
+  })
+
   it('shouldSayThereIsNoProfileToShareWithoutOfferingRetry', async () => {
     server.use(
       graphql.query('Me', () =>
@@ -627,6 +714,32 @@ describe('Sharing', () => {
     expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
   })
 })
+
+function canceledPayload() {
+  return {
+    __typename: 'CancelProfileSharePayload',
+    share: { __typename: 'ProfileShare', id: SHARE_ID, status: 'CANCELED' },
+    userErrors: [],
+  }
+}
+
+function refuseToCancel() {
+  server.use(
+    graphql.mutation('CancelProfileShare', () =>
+      HttpResponse.json({
+        data: {
+          cancelProfileShare: {
+            __typename: 'CancelProfileSharePayload',
+            share: null,
+            userErrors: [
+              { __typename: 'ShareNotPendingError', message: 'That offer is not pending.' },
+            ],
+          },
+        },
+      }),
+    ),
+  )
+}
 
 function endedPayload() {
   return {

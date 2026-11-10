@@ -30,13 +30,18 @@ export async function leaveForHome(user: UserEvent, { heading }: SettingsPage) {
   )
 }
 
+/** Opens a settings area from the Profile menu, and waits for none of its pages. */
+export async function openFromTheProfileMenu(user: UserEvent, area: string) {
+  await user.click(screen.getByRole('button', { name: /^Profile menu/ }))
+  await user.click(await screen.findByRole('button', { name: area }))
+}
+
 /** Opens a settings page again from the Profile menu. */
 export async function returnThroughTheProfileMenu(
   user: UserEvent,
   { area, heading, section }: SettingsPage,
 ) {
-  await user.click(screen.getByRole('button', { name: /^Profile menu/ }))
-  await user.click(await screen.findByRole('button', { name: area }))
+  await openFromTheProfileMenu(user, area)
   if (section) {
     const menu = await screen.findByRole('navigation', { name: area })
     await user.click(within(menu).getByRole('link', { name: section }))
