@@ -414,28 +414,42 @@ describe('HEVC capability declarations', () => {
     ).toBe(true)
   })
 
-  it('shouldDeclareDolbyVisionAtMainTierAloneWhenTheBrowserRefusesTheHighTierPqBase', async () => {
-    const declaration = await declarePlaybackCapabilities(
-      playbackPlatformFixture({
-        displaysHighDynamicRange: true,
-        decodingInfo: ({ video }) =>
-          Promise.resolve(
-            answer(!(video?.transferFunction === 'pq' && /\.H\d+\./.test(video.contentType))),
-          ),
-      }),
-    )
+  it.each([
+    { refusedBase: 'pq', compatibleBases: ['HLG'], profiles: ['PROFILE_8_4'] },
+    { refusedBase: 'hlg', compatibleBases: ['PQ'], profiles: ['PROFILE_5', 'PROFILE_8_1'] },
+  ])(
+    'shouldDeclareAtHighTierOnlyTheDolbyVisionProfilesWhoseBaseTheBrowserAnswersWhenItRefusesHighTier$refusedBase',
+    async ({ refusedBase, compatibleBases, profiles }) => {
+      const declaration = await declarePlaybackCapabilities(
+        playbackPlatformFixture({
+          displaysHighDynamicRange: true,
+          decodingInfo: ({ video }) =>
+            Promise.resolve(
+              answer(
+                !(video?.transferFunction === refusedBase && /\.H\d+\./.test(video.contentType)),
+              ),
+            ),
+        }),
+      )
 
-    expect(dolbyVisionEntriesAtTier(declaration, 'HIGH')).toEqual([])
-    expect(dolbyVisionEntriesAtTier(declaration, 'MAIN')).toEqual([
-      expect.objectContaining({
-        codecProfiles: [{ profile: 'HEVC_MAIN_10', maxLevel: 51, maxTier: 'MAIN' }],
-        compatibleBases: ['PQ', 'HLG'],
-        dolbyVisionProfiles: DOLBY_VISION_PROFILES_AT_LEVEL_9,
-      }),
-    ])
-  })
+      expect(dolbyVisionEntriesAtTier(declaration, 'HIGH')).toEqual([
+        expect.objectContaining({
+          codecProfiles: [{ profile: 'HEVC_MAIN_10', maxLevel: 51, maxTier: 'HIGH' }],
+          compatibleBases,
+          dolbyVisionProfiles: profiles.map((profile) => ({ profile, maxLevel: 9 })),
+        }),
+      ])
+      expect(dolbyVisionEntriesAtTier(declaration, 'MAIN')).toEqual([
+        expect.objectContaining({
+          codecProfiles: [{ profile: 'HEVC_MAIN_10', maxLevel: 51, maxTier: 'MAIN' }],
+          compatibleBases: ['PQ', 'HLG'],
+          dolbyVisionProfiles: DOLBY_VISION_PROFILES_AT_LEVEL_9,
+        }),
+      ])
+    },
+  )
 
-  it('shouldDeclareHighTierDolbyVisionOnlyUpToTheLevelOfTheHighTierPqBaseTheBrowserAnswers', async () => {
+  it('shouldDeclareEachHighTierDolbyVisionProfileOnlyUpToTheLevelOfItsHighTierBaseTheBrowserAnswers', async () => {
     const declaration = await declarePlaybackCapabilities(
       playbackPlatformFixture({
         displaysHighDynamicRange: true,
@@ -448,6 +462,13 @@ describe('HEVC capability declarations', () => {
     )
 
     expect(dolbyVisionEntriesAtTier(declaration, 'HIGH')).toEqual([
+      expect.objectContaining({
+        codecProfiles: [{ profile: 'HEVC_MAIN_10', maxLevel: 51, maxTier: 'HIGH' }],
+        maxWidth: 3840,
+        maxFrameRate: 60,
+        compatibleBases: ['HLG'],
+        dolbyVisionProfiles: [{ profile: 'PROFILE_8_4', maxLevel: 9 }],
+      }),
       expect.objectContaining({
         codecProfiles: [{ profile: 'HEVC_MAIN_10', maxLevel: 50, maxTier: 'HIGH' }],
         maxWidth: 3840,
