@@ -160,7 +160,7 @@ function LanguageSettingsContent({
             option: settingsStyles.popoverOption,
           }}
           label="Subtitle language"
-          description="Subtitles that start on show in this language."
+          description="Set the default subtitle language."
           searchable
           allowDeselect={false}
           value={subtitleLanguage ?? NO_SUBTITLE_LANGUAGE.value}
@@ -215,7 +215,7 @@ function AudioLanguages({
       label="Audio languages"
       labelElement="div"
       labelProps={{ id: labelId }}
-      description="A stream plays the first of these languages that the file holds."
+      description="Set playback language defaults in priority order."
     >
       <ol aria-labelledby={labelId} className={styles.list}>
         {languages.map((language, index) => {
