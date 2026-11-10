@@ -1,6 +1,6 @@
 import { Button, Center, Loader } from '@mantine/core'
 import { useMutation, useQuery } from '@apollo/client/react'
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import {
   AcceptProfileShareDocument,
   RejectProfileShareDocument,
@@ -13,7 +13,8 @@ import { userErrorMessage, type UserErrorLike } from '../graphql/userErrors'
 import settingsStyles from '../styles/settings.module.css'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { FailurePanel } from '../ui/Failure'
-import { Icon } from '../ui/Icon'
+import { PageNotice } from '../ui/PageNotice'
+import { usePageNotice } from '../ui/usePageNotice'
 import styles from './Sharing.module.css'
 import { SharingSection } from './SharingSection'
 import { expiryLabel, shortId, UPDATE_FAILED_MESSAGE } from './shareText'
@@ -25,14 +26,7 @@ type Decision = 'accept' | 'decline'
 
 /** The offers of Profiles to the Account's Household, which its admins accept or decline. */
 export function ShareOffersScreen() {
-  const [notice, setNotice] = useState('')
-  const heading = useRef<HTMLHeadingElement>(null)
-
-  // A decided offer's row goes, and its buttons with it, so focus returns to the page's heading.
-  function announce(text: string) {
-    setNotice(text)
-    heading.current?.focus({ preventScroll: true })
-  }
+  const { notice, heading, announce, dismiss } = usePageNotice()
 
   return (
     <>
@@ -41,14 +35,7 @@ export function ShareOffersScreen() {
           Share offers
         </h1>
       </div>
-      {notice && (
-        <output className={settingsStyles.notice}>
-          {notice}
-          <button type="button" aria-label="Dismiss notification" onClick={() => setNotice('')}>
-            <Icon name="close" size={16} />
-          </button>
-        </output>
-      )}
+      <PageNotice onDismiss={dismiss}>{notice}</PageNotice>
       <ShareOffersContent onDecided={announce} />
     </>
   )
