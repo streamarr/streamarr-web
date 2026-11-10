@@ -94,7 +94,8 @@ function ProfileSharing({
     variables: { profileId: profile.id },
     fetchPolicy: 'network-only',
   })
-  // A failed read keeps the list that is on screen.
+  // The query keeps a failed read, and the page shows it in place of the list. Rejecting here
+  // would report the change that the read follows as failed.
   const readAgain = () => query.refetch().catch(() => undefined)
 
   if (query.loading && !query.data) {
