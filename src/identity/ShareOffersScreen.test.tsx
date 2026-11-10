@@ -77,6 +77,14 @@ function serveOneReadThenFail(offers: OfferNode[]) {
   server.use(graphql.query('ShareOffers', handler.resolver))
 }
 
+// Answers each read of the offers with `offers`, except the second, which fails.
+function serveSecondReadFailing(offers: OfferNode[]) {
+  serve()
+  const listed = answerWith(offersData(offers))
+  const handler = answersInTurn(listed, serverFailure, listed)
+  server.use(graphql.query('ShareOffers', handler.resolver))
+}
+
 // Opens Household settings a second time, with `account` as the server's answer to the access
 // check. The first arrival also confirms the session, and a failure there never reaches the check.
 async function returnToHouseholdSettings(account: () => Response | Promise<Response>) {
@@ -95,6 +103,24 @@ function acceptedPayload() {
     share: { __typename: 'ProfileShare', id: OFFER_ID, status: 'ACTIVE' },
     userErrors: [],
   }
+}
+
+function refuseToAccept() {
+  server.use(
+    graphql.mutation('AcceptProfileShare', () =>
+      HttpResponse.json({
+        data: {
+          acceptProfileShare: {
+            __typename: 'AcceptProfileSharePayload',
+            share: null,
+            userErrors: [
+              { __typename: 'ShareNameConflictError', message: 'That name is already in use.' },
+            ],
+          },
+        },
+      }),
+    ),
+  )
 }
 
 function declinedPayload() {
@@ -431,6 +457,24 @@ describe('Share offers', () => {
     expect(within(dialog).getByRole('button', { name: 'Accept' })).toBeEnabled()
   })
 
+  it('shouldReopenTheConfirmationWithTheServersWordsWhenRetryBringsTheOffersBackAfterARefusedAccept', async () => {
+    serveSecondReadFailing([offer()])
+    refuseToAccept()
+    const { user } = renderAppAt(OFFERS)
+
+    await user.click(await screen.findByRole('button', { name: 'Accept Profile 33333333' }))
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Accept' }))
+    expect(await screen.findByText("Couldn't load share offers.")).toBeVisible()
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Accept this Profile into Smith Family?',
+    })
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('That name is already in use.')
+    expect(within(dialog).getByRole('button', { name: 'Accept' })).toBeEnabled()
+  })
+
   it('shouldShowTheServersWordsWhenTheServerRejectsTheDecision', async () => {
     serve([offer()])
     server.use(
@@ -524,6 +568,20 @@ describe('Share offers', () => {
     expect(screen.getByRole('button', { name: 'Retry' })).toBeEnabled()
     expect(screen.queryByRole('button', { name: /^Decline/ })).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 1, name: 'Share offers' })).toHaveFocus()
+  })
+
+  it('shouldShowTheServersWordsAgainWhenRetryBringsTheOffersBackAfterARefusedDecline', async () => {
+    serveSecondReadFailing([offer()])
+    refuseToDecline()
+    const { user } = renderAppAt(OFFERS)
+
+    await user.click(await screen.findByRole('button', { name: 'Decline Profile 33333333' }))
+    expect(await screen.findByText("Couldn't load share offers.")).toBeVisible()
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByRole('button', { name: 'Decline Profile 33333333' })).toBeEnabled()
+    expect(screen.getByRole('alert')).toHaveTextContent('That offer is not pending.')
   })
 
   it('shouldSayHowLongAnOfferHasLeftWhenItIsListed', async () => {

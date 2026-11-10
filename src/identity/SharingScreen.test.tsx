@@ -101,6 +101,14 @@ function serveOneReadThenFail(shares: ShareNode[]) {
   server.use(graphql.query('ProfileShares', handler.resolver))
 }
 
+// Answers each read of the shares with `shares`, except the second, which fails.
+function serveSecondReadFailing(shares: ShareNode[]) {
+  serve([], me([SMITH_FAMILY, CABIN]))
+  const listed = answerWith(sharesData(shares))
+  const handler = answersInTurn(listed, serverFailure, listed)
+  server.use(graphql.query('ProfileShares', handler.resolver))
+}
+
 // A return goes through the Profile menu, which offers Profile settings only with a Profile
 // selected, and through Languages, where Profile settings open. A selected Profile also opens the
 // socket of live changes.
@@ -298,6 +306,20 @@ describe('Sharing', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Sharing' })).toHaveFocus()
   })
 
+  it('shouldShowTheServersWordsAgainWhenRetryBringsTheSharesBackAfterARefusedCancel', async () => {
+    serveSecondReadFailing([share()])
+    refuseToCancel()
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    await user.click(await screen.findByRole('button', { name: 'Cancel offer to Cabin' }))
+    expect(await screen.findByText("Couldn't load sharing.")).toBeVisible()
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByRole('button', { name: 'Cancel offer to Cabin' })).toBeEnabled()
+    expect(screen.getByRole('alert')).toHaveTextContent('That offer is not pending.')
+  })
+
   it('shouldSayWhatEndsBeforeItEndsAShare', async () => {
     serveInTurn([share({ status: 'ACTIVE' })])
     let ended = false
@@ -375,6 +397,22 @@ describe('Sharing', () => {
     await user.click(within(dialog).getByRole('button', { name: 'End share' }))
 
     expect(await within(dialog).findByRole('alert')).toHaveTextContent(/^forbidden$/)
+    expect(within(dialog).getByRole('button', { name: 'End share' })).toBeEnabled()
+  })
+
+  it('shouldReopenTheConfirmationWithTheServersWordsWhenRetryBringsTheSharesBackAfterARefusedEnd', async () => {
+    serveSecondReadFailing([share({ status: 'ACTIVE' })])
+    refuseToEnd()
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    await user.click(await screen.findByRole('button', { name: 'End share with Cabin' }))
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'End share' }))
+    expect(await screen.findByText("Couldn't load sharing.")).toBeVisible()
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    const dialog = await screen.findByRole('dialog', { name: 'End sharing with Cabin?' })
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('That share is not active.')
     expect(within(dialog).getByRole('button', { name: 'End share' })).toBeEnabled()
   })
 
@@ -742,6 +780,24 @@ function refuseToCancel() {
             share: null,
             userErrors: [
               { __typename: 'ShareNotPendingError', message: 'That offer is not pending.' },
+            ],
+          },
+        },
+      }),
+    ),
+  )
+}
+
+function refuseToEnd() {
+  server.use(
+    graphql.mutation('EndProfileShare', () =>
+      HttpResponse.json({
+        data: {
+          endProfileShare: {
+            __typename: 'EndProfileSharePayload',
+            share: null,
+            userErrors: [
+              { __typename: 'ShareNotActiveError', message: 'That share is not active.' },
             ],
           },
         },

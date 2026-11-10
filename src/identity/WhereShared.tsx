@@ -28,6 +28,10 @@ export function WhereShared({
   ownHouseholdName,
   readAgain,
   onChanged,
+  ending,
+  onEndingChange,
+  refusal,
+  onRefusalChange,
 }: Readonly<{
   profile: Readonly<{ id: string; name: string }>
   shares: readonly ProfileShareRow[]
@@ -36,32 +40,35 @@ export function WhereShared({
   ownHouseholdName: string
   readAgain: () => Promise<unknown>
   onChanged: (notice: string) => void
+  /** The share whose end waits for the person's confirmation. */
+  ending: ProfileShareRow | null
+  onEndingChange: (share: ProfileShareRow | null) => void
+  /** The server's words for a change that it refused. */
+  refusal: string | null
+  onRefusalChange: (refusal: string | null) => void
 }>) {
   const [cancel] = useMutation(CancelProfileShareDocument)
   const [end] = useMutation(EndProfileShareDocument)
-  /** The share whose end waits for the person's confirmation. */
-  const [ending, setEnding] = useState<ProfileShareRow | null>(null)
   /** The share whose change is on its way; no other change starts until it lands. */
   const [changing, setChanging] = useState<string | null>(null)
-  const [refusal, setRefusal] = useState<string | null>(null)
 
   const live = shares.filter(isLive)
   const earlier = shares.filter((share) => !isLive(share))
 
   /** Sends the change and reads the shares again; resolves to whether the server took it. */
   async function change(share: ProfileShareRow): Promise<boolean> {
-    setRefusal(null)
+    onRefusalChange(null)
     setChanging(share.id)
     try {
       const errors = await send(share)
       if (errors?.length) {
-        setRefusal(errors.map(userErrorMessage).join(' '))
+        onRefusalChange(errors.map(userErrorMessage).join(' '))
       }
       // A refused share may have changed elsewhere, so the list is read again.
       await readAgain()
       return !errors?.length
     } catch (error) {
-      setRefusal(requestFailureMessage(error, UPDATE_FAILED_MESSAGE))
+      onRefusalChange(requestFailureMessage(error, UPDATE_FAILED_MESSAGE))
       return false
     } finally {
       setChanging(null)
@@ -85,7 +92,7 @@ export function WhereShared({
 
   async function endShare(share: ProfileShareRow) {
     if (await change(share)) {
-      setEnding(null)
+      onEndingChange(null)
       onChanged(`Sharing with ${householdName(share.householdId)} ended.`)
     }
   }
@@ -124,8 +131,8 @@ export function WhereShared({
                   aria-label={`End share with ${household}`}
                   disabled={changing !== null}
                   onClick={() => {
-                    setRefusal(null)
-                    setEnding(share)
+                    onRefusalChange(null)
+                    onEndingChange(share)
                   }}
                 >
                   End share
@@ -151,8 +158,8 @@ export function WhereShared({
         pending={ending !== null && changing === ending.id}
         error={refusal}
         onClose={() => {
-          setEnding(null)
-          setRefusal(null)
+          onEndingChange(null)
+          onRefusalChange(null)
         }}
         onConfirm={() => {
           if (ending) void endShare(ending)
