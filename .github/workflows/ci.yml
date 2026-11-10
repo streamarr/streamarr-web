@@ -12,6 +12,11 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # The FFmpeg build that the transcode worker ships, and the checksum of its x64 Linux archive.
+  FFMPEG_RELEASE: v8.1.3-2-streamarr.1
+  FFMPEG_SHA256: 5a84a25963ef72e52aa042259b6be563abf734799556660fe1d1fc8879b15b2c
+
 # The jobs run side by side. The last one, build, is the check that main requires.
 jobs:
   static:
@@ -110,8 +115,11 @@ jobs:
       # The cache holds only the browser; the OS packages it needs are not cached.
       - if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: node_modules/.bin/playwright install-deps chromium
-      - name: Install FFmpeg, which writes the 7.1 channel-order and quality-ladder streams
-        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends ffmpeg
+      - name: Set up FFmpeg, which writes the 7.1 channel-order and quality-ladder streams
+        uses: streamarr/streamarr-workflows/.github/actions/setup-ffmpeg@76cd4dd76bce93283d0ccb7ba08429248b6f18f1
+        with:
+          release: ${{ env.FFMPEG_RELEASE }}
+          sha256: ${{ env.FFMPEG_SHA256 }}
       - run: npm run test:e2e -- --project=chromium --shard=${{ matrix.shard }}/${{ strategy.job-total }}
       - name: Upload browser test output
         if: ${{ !cancelled() }}
@@ -145,8 +153,13 @@ jobs:
         run: node_modules/.bin/playwright install --with-deps firefox webkit
       - if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: node_modules/.bin/playwright install-deps firefox webkit
-      - name: Install FFmpeg, which writes the 7.1 channel-order streams, and PulseAudio
-        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends ffmpeg pulseaudio
+      - name: Set up FFmpeg, which writes the 7.1 channel-order streams
+        uses: streamarr/streamarr-workflows/.github/actions/setup-ffmpeg@76cd4dd76bce93283d0ccb7ba08429248b6f18f1
+        with:
+          release: ${{ env.FFMPEG_RELEASE }}
+          sha256: ${{ env.FFMPEG_SHA256 }}
+      - name: Install PulseAudio
+        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends pulseaudio
       # WebKit stalled Opus streams under PulseAudio in a local container, so it runs before it starts.
       - run: npm run test:e2e -- --project=webkit --project=chrome
       # Firefox runs no audio graph without an audio server; PulseAudio gives it a null sink.
