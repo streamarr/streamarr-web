@@ -2,9 +2,9 @@ import { screen, waitFor, within } from '@testing-library/react'
 import { delay, graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { ShareOffersQuery } from '../graphql/generated/graphql'
-import { watchingConnection } from '../test/continueWatchingFixtures'
 import { HOUSEHOLD_ID, meFixture, PROFILE_ID } from '../test/meFixture'
 import { renderAppAt } from '../test/render'
+import { leaveForHomeAndReturn, type SettingsPage } from '../test/returnVisits'
 import { server } from '../test/server'
 
 type OfferNode = ShareOffersQuery['pendingShareOffers']['edges'][number]['node'] & {
@@ -12,6 +12,7 @@ type OfferNode = ShareOffersQuery['pendingShareOffers']['edges'][number]['node']
 }
 
 const OFFERS = '/settings/household/offers'
+const SHARE_OFFERS: SettingsPage = { area: 'Household settings', heading: 'Share offers' }
 const OFFER_ID = '77777777-7777-7777-7777-777777777777'
 
 function offer(overrides: Partial<OfferNode> = {}): OfferNode {
@@ -71,25 +72,6 @@ function acceptedPayload() {
     share: { __typename: 'ProfileShare', id: OFFER_ID, status: 'ACTIVE' },
     userErrors: [],
   }
-}
-
-type User = ReturnType<typeof renderAppAt>['user']
-
-async function leaveForHomeAndReturn(user: User) {
-  server.use(
-    graphql.query('Home', () =>
-      HttpResponse.json({ data: { continueWatching: watchingConnection([]), libraries: [] } }),
-    ),
-  )
-  await user.click(
-    within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('link', { name: 'Home' }),
-  )
-  await waitFor(() =>
-    expect(screen.queryByRole('heading', { name: 'Share offers' })).not.toBeInTheDocument(),
-  )
-  await user.click(screen.getByRole('button', { name: /^Profile menu/ }))
-  await user.click(await screen.findByRole('button', { name: 'Household settings' }))
-  await screen.findByRole('heading', { level: 1, name: 'Share offers' })
 }
 
 describe('Household settings', () => {
@@ -156,7 +138,7 @@ describe('Share offers', () => {
     const { user } = renderAppAt(OFFERS)
     await screen.findByText('No one has offered a Profile to Smith Family.')
 
-    await leaveForHomeAndReturn(user)
+    await leaveForHomeAndReturn(user, SHARE_OFFERS)
 
     expect(await screen.findByRole('button', { name: 'Accept Profile 33333333' })).toBeEnabled()
   })
@@ -166,7 +148,7 @@ describe('Share offers', () => {
     const { user } = renderAppAt(OFFERS)
     await screen.findByRole('button', { name: 'Accept Profile 33333333' })
 
-    await leaveForHomeAndReturn(user)
+    await leaveForHomeAndReturn(user, SHARE_OFFERS)
 
     expect(
       await screen.findByText('No one has offered a Profile to Smith Family.'),
@@ -180,7 +162,7 @@ describe('Share offers', () => {
     await screen.findByText('No one has offered a Profile to Smith Family.')
     server.use(graphql.query('ShareOffers', () => delay('infinite')))
 
-    await leaveForHomeAndReturn(user)
+    await leaveForHomeAndReturn(user, SHARE_OFFERS)
 
     expect(await screen.findByRole('status', { name: 'Loading share offers' })).toBeInTheDocument()
     expect(
