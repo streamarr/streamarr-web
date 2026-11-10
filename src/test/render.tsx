@@ -5,7 +5,7 @@ import { createMemoryHistory, RouterContextProvider, RouterProvider } from '@tan
 import { render, type RenderResult } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactElement } from 'react'
-import { vi } from 'vitest'
+import { onTestFinished, vi } from 'vitest'
 import { AuthProvider } from '../auth/AuthProvider'
 import { inactiveRenewalBridge, type RenewalBridge } from '../auth/renewalBridge'
 import { createSessionStore, type SessionStore } from '../auth/session'
@@ -15,6 +15,7 @@ import { createAppRouter } from '../router'
 import { cssVariablesResolver, theme } from '../theme'
 
 type Rendered = RenderResult & { user: ReturnType<typeof userEvent.setup> }
+type AppRouter = ReturnType<typeof createAppRouter>['router']
 
 // Mounts a component on its own. The real route tree is provided as context only, so a
 // component's <Link>s resolve without any route rendering.
@@ -40,6 +41,11 @@ export function renderAppAt(
     createMemoryHistory({ initialEntries: [path] }),
     renewal,
   )
+  onTestFinished(({ task }) => {
+    if (task.result?.state === 'pass') {
+      requireFinishedNavigation(router)
+    }
+  })
   return {
     ...renderUnderProviders({
       client: apolloClient,
@@ -51,6 +57,18 @@ export function renderAppAt(
     router,
     apolloClient,
   }
+}
+
+// A router still loading when its test ends commits later, into a React tree that is gone. Once
+// jsdom is gone as well, that update throws "window is not defined" and fails the whole run.
+function requireFinishedNavigation(router: AppRouter) {
+  if (router.state.status !== 'pending') {
+    return
+  }
+  throw new Error(
+    `The test ended while the router was still loading ${router.state.location.pathname}. ` +
+      'Wait for what that page shows before the test ends.',
+  )
 }
 
 function renderUnderProviders({
