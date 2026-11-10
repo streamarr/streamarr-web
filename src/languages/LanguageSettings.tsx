@@ -154,7 +154,11 @@ function LanguageSettingsContent({
           onChange={(next) => onChange({ ...current, audioLanguages: next })}
         />
         <Select
-          classNames={{ dropdown: settingsStyles.popover, option: settingsStyles.popoverOption }}
+          classNames={{
+            label: styles.settingName,
+            dropdown: settingsStyles.popover,
+            option: settingsStyles.popoverOption,
+          }}
           label="Subtitle language"
           description="Subtitles that start on show in this language."
           searchable
@@ -167,6 +171,7 @@ function LanguageSettingsContent({
           }
         />
         <Radio.Group
+          classNames={{ label: styles.settingName }}
           label="Show subtitles"
           value={subtitleMode}
           onChange={(value) => {
@@ -206,6 +211,7 @@ function AudioLanguages({
   return (
     <Input.Wrapper
       className={styles.audio}
+      classNames={{ label: styles.settingName, description: styles.settingDescription }}
       label="Audio languages"
       labelElement="div"
       labelProps={{ id: labelId }}
