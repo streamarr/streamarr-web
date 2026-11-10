@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { renderWithProviders } from '../test/render'
@@ -115,6 +115,24 @@ describe('InvitationScreen', () => {
       'The invitation email is already in use.',
     )
     expect(onAccepted).not.toHaveBeenCalled()
+  })
+
+  it('shouldShowTheHouseholdRoleInSentenceCaseWhenAnInvitationIsReviewed', async () => {
+    serverKnowsTheCode()
+    renderWithProviders(<InvitationScreen initialCode={CODE} onAccepted={vi.fn()} />)
+
+    const invited = await screen.findByRole('region', { name: 'Kai' })
+    expect(within(invited).getByText('Member')).toBeInTheDocument()
+    expect(within(invited).queryByText('MEMBER')).not.toBeInTheDocument()
+  })
+
+  it('shouldNameTheConnectingSectionWhenAnExistingProfileIsLinked', async () => {
+    server.use(http.post('/api/auth/invitation/lookup', () => HttpResponse.json(CONNECT_PREVIEW)))
+    renderWithProviders(<InvitationScreen initialCode={CODE} onAccepted={vi.fn()} />)
+
+    expect(
+      await screen.findByRole('region', { name: 'Connecting Grandpa Joe to your new account' }),
+    ).toBeInTheDocument()
   })
 
   it('shouldSpellOutWhatConnectingMeansBeforeConsent', async () => {
