@@ -1,4 +1,4 @@
-import { act, screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within, type waitForOptions } from '@testing-library/react'
 import { graphql, HttpResponse } from 'msw'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type {
@@ -8,7 +8,7 @@ import type {
   PlaybackState,
 } from '../../graphql/generated/graphql'
 import { deferred } from '../../test/deferred'
-import { serveGraphqlSocket } from '../../test/graphqlSocket'
+import { serveGraphqlSocket, SOCKET_RECONNECT_DEADLINE_MS } from '../../test/graphqlSocket'
 import { comeBackOnline } from '../../test/graphqlResponses'
 import { meFixture } from '../../test/meFixture'
 import {
@@ -223,15 +223,12 @@ function trackIn(details: HTMLElement, name: string) {
   }
 }
 
-async function liveChanges(state: ReturnType<typeof serve>) {
-  await waitFor(() => expect(state.socket.isLive(CHANGED)).toBe(true))
+async function liveChanges(state: ReturnType<typeof serve>, options?: waitForOptions) {
+  await waitFor(() => expect(state.socket.isLive(CHANGED)).toBe(true), options)
 }
 
 // How long the page waits for a read of the list before it gives the read up.
 const ACTIVE_STREAMS_READ_DEADLINE_MS = 15_000
-
-// How long a test waits for a closed socket to reconnect. The socket waits up to a second first.
-const SOCKET_RECONNECT_DEADLINE_MS = 3_000
 
 describe('active streams', () => {
   it('should show the source and delivered video facts in the admin stream details', async () => {
@@ -796,14 +793,10 @@ describe('active streams', () => {
       if (state.reads === readsBefore) window.dispatchEvent(new Event('online'))
       expect(state.reads).toBe(readsBefore + 1)
     })
-    const subscribes = () => state.socket.state.subscribes.filter((name) => name === CHANGED)
 
     state.listed = [EPISODE]
     state.socket.closeAll(1001, 'Going away')
-    // `isLive` holds the closed socket's operation until its close event, so this counts frames.
-    await waitFor(() => expect(subscribes()).toHaveLength(2), {
-      timeout: SOCKET_RECONNECT_DEADLINE_MS,
-    })
+    await liveChanges(state, { timeout: SOCKET_RECONNECT_DEADLINE_MS })
     read.resolve()
 
     await waitFor(() => expect(cardNames()).toEqual([EPISODE_CARD]))

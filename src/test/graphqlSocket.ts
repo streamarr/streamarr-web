@@ -4,6 +4,9 @@ import { server } from './server'
 /** The socket URL the app derives from the jsdom origin. */
 export const GRAPHQL_SOCKET_URL = 'wss://streamarr.test/graphql'
 
+/** How long a test waits for a reconnect. A closed socket waits up to a second before it tries. */
+export const SOCKET_RECONNECT_DEADLINE_MS = 3_000
+
 type SocketClient = WebSocketHandlerConnection['client']
 type PayloadError = { message: string; path?: readonly (string | number)[]; extensions?: object }
 type Payload = { data: unknown; errors?: PayloadError[] } | { errors: PayloadError[] }
@@ -28,17 +31,18 @@ export function serveGraphqlSocket() {
   const send = (client: SocketClient, frame: object) => client.send(JSON.stringify(frame))
   const live = (operationName: string) =>
     [...operations].filter(([, operation]) => operation.operationName === operationName)
+  const forget = (client: SocketClient) => {
+    clients.delete(client)
+    for (const [id, operation] of operations) {
+      if (operation.client === client) operations.delete(id)
+    }
+  }
 
   server.use(
     graphqlSocket.addEventListener('connection', ({ client }) => {
       state.connections++
       clients.add(client)
-      client.addEventListener('close', () => {
-        clients.delete(client)
-        for (const [id, operation] of operations) {
-          if (operation.client === client) operations.delete(id)
-        }
-      })
+      client.addEventListener('close', () => forget(client))
       client.addEventListener('message', ({ data }) => {
         // graphql-ws sends every frame as text.
         if (typeof data !== 'string') return
@@ -74,7 +78,12 @@ export function serveGraphqlSocket() {
       }
     },
     closeAll(code: number, reason = '') {
-      for (const client of clients) client.close(code, reason)
+      for (const client of [...clients]) {
+        client.close(code, reason)
+        // The close event arrives a microtask later, and a wait that began before it would still
+        // find the closed socket's operations live.
+        forget(client)
+      }
     },
     openSockets: () => clients.size,
   }
