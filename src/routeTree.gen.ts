@@ -17,7 +17,6 @@ import { Route as SetupServerRouteImport } from './routes/setup-server'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedLinkRouteImport } from './routes/_authenticated/link'
 import { Route as AuthenticatedSelectProfileRouteImport } from './routes/_authenticated/select-profile'
-import { Route as AuthenticatedSharingRouteImport } from './routes/_authenticated/sharing'
 import { Route as AuthenticatedLibraryLibraryIdRouteImport } from './routes/_authenticated/library.$libraryId'
 import { Route as AuthenticatedMovieMovieIdRouteImport } from './routes/_authenticated/movie.$movieId'
 import { Route as AuthenticatedPlayMediaFileIdRouteImport } from './routes/_authenticated/play.$mediaFileId'
@@ -27,6 +26,7 @@ import { Route as AuthenticatedSettingsProfileRouteImport } from './routes/_auth
 import { Route as AuthenticatedSettingsServerRouteImport } from './routes/_authenticated/settings.server'
 import { Route as AuthenticatedSettingsProfileIndexRouteImport } from './routes/_authenticated/settings.profile.index'
 import { Route as AuthenticatedSettingsProfileLanguagesRouteImport } from './routes/_authenticated/settings.profile.languages'
+import { Route as AuthenticatedSettingsProfileSharingRouteImport } from './routes/_authenticated/settings.profile.sharing'
 import { Route as AuthenticatedSettingsServerIndexRouteImport } from './routes/_authenticated/settings.server.index'
 import { Route as AuthenticatedSettingsServerEncodingRouteImport } from './routes/_authenticated/settings.server.encoding'
 import { Route as AuthenticatedSettingsServerLibrariesRouteImport } from './routes/_authenticated/settings.server.libraries'
@@ -73,11 +73,6 @@ const AuthenticatedSelectProfileRoute =
     path: '/select-profile',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedSharingRoute = AuthenticatedSharingRouteImport.update({
-  id: '/sharing',
-  path: '/sharing',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
 const AuthenticatedLibraryLibraryIdRoute =
   AuthenticatedLibraryLibraryIdRouteImport.update({
     id: '/library/$libraryId',
@@ -132,6 +127,12 @@ const AuthenticatedSettingsProfileLanguagesRoute =
     path: '/languages',
     getParentRoute: () => AuthenticatedSettingsProfileRoute,
   } as any)
+const AuthenticatedSettingsProfileSharingRoute =
+  AuthenticatedSettingsProfileSharingRouteImport.update({
+    id: '/sharing',
+    path: '/sharing',
+    getParentRoute: () => AuthenticatedSettingsProfileRoute,
+  } as any)
 const AuthenticatedSettingsServerIndexRoute =
   AuthenticatedSettingsServerIndexRouteImport.update({
     id: '/',
@@ -171,7 +172,6 @@ export interface FileRoutesByFullPath {
   '/setup-server': typeof SetupServerRoute
   '/link': typeof AuthenticatedLinkRoute
   '/select-profile': typeof AuthenticatedSelectProfileRoute
-  '/sharing': typeof AuthenticatedSharingRoute
   '/library/$libraryId': typeof AuthenticatedLibraryLibraryIdRoute
   '/movie/$movieId': typeof AuthenticatedMovieMovieIdRoute
   '/play/$mediaFileId': typeof AuthenticatedPlayMediaFileIdRoute
@@ -180,6 +180,7 @@ export interface FileRoutesByFullPath {
   '/settings/profile': typeof AuthenticatedSettingsProfileRouteWithChildren
   '/settings/server': typeof AuthenticatedSettingsServerRouteWithChildren
   '/settings/profile/languages': typeof AuthenticatedSettingsProfileLanguagesRoute
+  '/settings/profile/sharing': typeof AuthenticatedSettingsProfileSharingRoute
   '/settings/server/encoding': typeof AuthenticatedSettingsServerEncodingRoute
   '/settings/server/libraries': typeof AuthenticatedSettingsServerLibrariesRoute
   '/settings/server/streams': typeof AuthenticatedSettingsServerStreamsRoute
@@ -194,7 +195,6 @@ export interface FileRoutesByTo {
   '/setup-server': typeof SetupServerRoute
   '/link': typeof AuthenticatedLinkRoute
   '/select-profile': typeof AuthenticatedSelectProfileRoute
-  '/sharing': typeof AuthenticatedSharingRoute
   '/': typeof AuthenticatedIndexRoute
   '/library/$libraryId': typeof AuthenticatedLibraryLibraryIdRoute
   '/movie/$movieId': typeof AuthenticatedMovieMovieIdRoute
@@ -202,6 +202,7 @@ export interface FileRoutesByTo {
   '/season/$seasonId': typeof AuthenticatedSeasonSeasonIdRoute
   '/series/$seriesId': typeof AuthenticatedSeriesSeriesIdRoute
   '/settings/profile/languages': typeof AuthenticatedSettingsProfileLanguagesRoute
+  '/settings/profile/sharing': typeof AuthenticatedSettingsProfileSharingRoute
   '/settings/server/encoding': typeof AuthenticatedSettingsServerEncodingRoute
   '/settings/server/libraries': typeof AuthenticatedSettingsServerLibrariesRoute
   '/settings/server/streams': typeof AuthenticatedSettingsServerStreamsRoute
@@ -218,7 +219,6 @@ export interface FileRoutesById {
   '/setup-server': typeof SetupServerRoute
   '/_authenticated/link': typeof AuthenticatedLinkRoute
   '/_authenticated/select-profile': typeof AuthenticatedSelectProfileRoute
-  '/_authenticated/sharing': typeof AuthenticatedSharingRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/library/$libraryId': typeof AuthenticatedLibraryLibraryIdRoute
   '/_authenticated/movie/$movieId': typeof AuthenticatedMovieMovieIdRoute
@@ -228,6 +228,7 @@ export interface FileRoutesById {
   '/_authenticated/settings/profile': typeof AuthenticatedSettingsProfileRouteWithChildren
   '/_authenticated/settings/server': typeof AuthenticatedSettingsServerRouteWithChildren
   '/_authenticated/settings/profile/languages': typeof AuthenticatedSettingsProfileLanguagesRoute
+  '/_authenticated/settings/profile/sharing': typeof AuthenticatedSettingsProfileSharingRoute
   '/_authenticated/settings/server/encoding': typeof AuthenticatedSettingsServerEncodingRoute
   '/_authenticated/settings/server/libraries': typeof AuthenticatedSettingsServerLibrariesRoute
   '/_authenticated/settings/server/streams': typeof AuthenticatedSettingsServerStreamsRoute
@@ -245,7 +246,6 @@ export interface FileRouteTypes {
     | '/setup-server'
     | '/link'
     | '/select-profile'
-    | '/sharing'
     | '/library/$libraryId'
     | '/movie/$movieId'
     | '/play/$mediaFileId'
@@ -254,6 +254,7 @@ export interface FileRouteTypes {
     | '/settings/profile'
     | '/settings/server'
     | '/settings/profile/languages'
+    | '/settings/profile/sharing'
     | '/settings/server/encoding'
     | '/settings/server/libraries'
     | '/settings/server/streams'
@@ -268,7 +269,6 @@ export interface FileRouteTypes {
     | '/setup-server'
     | '/link'
     | '/select-profile'
-    | '/sharing'
     | '/'
     | '/library/$libraryId'
     | '/movie/$movieId'
@@ -276,6 +276,7 @@ export interface FileRouteTypes {
     | '/season/$seasonId'
     | '/series/$seriesId'
     | '/settings/profile/languages'
+    | '/settings/profile/sharing'
     | '/settings/server/encoding'
     | '/settings/server/libraries'
     | '/settings/server/streams'
@@ -291,7 +292,6 @@ export interface FileRouteTypes {
     | '/setup-server'
     | '/_authenticated/link'
     | '/_authenticated/select-profile'
-    | '/_authenticated/sharing'
     | '/_authenticated/'
     | '/_authenticated/library/$libraryId'
     | '/_authenticated/movie/$movieId'
@@ -301,6 +301,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/profile'
     | '/_authenticated/settings/server'
     | '/_authenticated/settings/profile/languages'
+    | '/_authenticated/settings/profile/sharing'
     | '/_authenticated/settings/server/encoding'
     | '/_authenticated/settings/server/libraries'
     | '/_authenticated/settings/server/streams'
@@ -375,13 +376,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSelectProfileRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/sharing': {
-      id: '/_authenticated/sharing'
-      path: '/sharing'
-      fullPath: '/sharing'
-      preLoaderRoute: typeof AuthenticatedSharingRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
     '/_authenticated/library/$libraryId': {
       id: '/_authenticated/library/$libraryId'
       path: '/library/$libraryId'
@@ -445,6 +439,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsProfileLanguagesRouteImport
       parentRoute: typeof AuthenticatedSettingsProfileRoute
     }
+    '/_authenticated/settings/profile/sharing': {
+      id: '/_authenticated/settings/profile/sharing'
+      path: '/sharing'
+      fullPath: '/settings/profile/sharing'
+      preLoaderRoute: typeof AuthenticatedSettingsProfileSharingRouteImport
+      parentRoute: typeof AuthenticatedSettingsProfileRoute
+    }
     '/_authenticated/settings/server/': {
       id: '/_authenticated/settings/server/'
       path: '/'
@@ -485,6 +486,7 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedSettingsProfileRouteChildren {
   AuthenticatedSettingsProfileLanguagesRoute: typeof AuthenticatedSettingsProfileLanguagesRoute
+  AuthenticatedSettingsProfileSharingRoute: typeof AuthenticatedSettingsProfileSharingRoute
   AuthenticatedSettingsProfileIndexRoute: typeof AuthenticatedSettingsProfileIndexRoute
 }
 
@@ -492,6 +494,8 @@ const AuthenticatedSettingsProfileRouteChildren: AuthenticatedSettingsProfileRou
   {
     AuthenticatedSettingsProfileLanguagesRoute:
       AuthenticatedSettingsProfileLanguagesRoute,
+    AuthenticatedSettingsProfileSharingRoute:
+      AuthenticatedSettingsProfileSharingRoute,
     AuthenticatedSettingsProfileIndexRoute:
       AuthenticatedSettingsProfileIndexRoute,
   }
@@ -531,7 +535,6 @@ const AuthenticatedSettingsServerRouteWithChildren =
 interface AuthenticatedRouteChildren {
   AuthenticatedLinkRoute: typeof AuthenticatedLinkRoute
   AuthenticatedSelectProfileRoute: typeof AuthenticatedSelectProfileRoute
-  AuthenticatedSharingRoute: typeof AuthenticatedSharingRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedLibraryLibraryIdRoute: typeof AuthenticatedLibraryLibraryIdRoute
   AuthenticatedMovieMovieIdRoute: typeof AuthenticatedMovieMovieIdRoute
@@ -545,7 +548,6 @@ interface AuthenticatedRouteChildren {
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedLinkRoute: AuthenticatedLinkRoute,
   AuthenticatedSelectProfileRoute: AuthenticatedSelectProfileRoute,
-  AuthenticatedSharingRoute: AuthenticatedSharingRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedLibraryLibraryIdRoute: AuthenticatedLibraryLibraryIdRoute,
   AuthenticatedMovieMovieIdRoute: AuthenticatedMovieMovieIdRoute,

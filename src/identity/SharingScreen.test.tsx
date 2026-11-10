@@ -96,6 +96,27 @@ describe('SharingScreen', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Sharing' })).toBeInTheDocument()
   })
 
+  it('shouldShowSharingAsASectionOfProfileSettingsWhenItsAddressOpens', async () => {
+    serverAnswersOverview()
+    server.use(graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })))
+    renderAppAt('/settings/profile/sharing')
+
+    const menu = await screen.findByRole('navigation', { name: 'Profile settings' })
+    expect(within(menu).getByRole('link', { name: 'Sharing' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    expect(within(menu).getByRole('link', { name: 'Languages' })).not.toHaveAttribute(
+      'aria-current',
+    )
+    expect(
+      await within(screen.getByRole('region', { name: 'Sharing' })).findByRole('heading', {
+        level: 1,
+        name: 'Sharing',
+      }),
+    ).toBeVisible()
+  })
+
   it('shouldAcceptAPendingOfferIntoTheContextHousehold', async () => {
     serverAnswersOverview({ offers: [shareRow()] })
     let accepted = false
@@ -267,7 +288,7 @@ describe('SharingScreen', () => {
       graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
       graphql.query('SharingOverview', overview.resolver),
     )
-    const { user } = renderAppAt('/sharing')
+    const { user } = renderAppAt('/settings/profile/sharing')
     const target = await screen.findByRole('textbox', { name: 'Household id' })
     await user.type(target, 'abc')
 
@@ -292,7 +313,7 @@ describe('SharingScreen', () => {
       graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
       graphql.query('SharingOverview', overview.resolver),
     )
-    const { user } = renderAppAt('/sharing')
+    const { user } = renderAppAt('/settings/profile/sharing')
     const target = await screen.findByRole('textbox', { name: 'Household id' })
     await user.type(target, 'abc')
 

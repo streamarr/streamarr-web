@@ -85,7 +85,7 @@ describe('the authenticated layout', () => {
 
   it.each([
     '/link?code=BCDF-GHJK',
-    '/sharing',
+    '/settings/profile/sharing',
     '/library/library-1?by=ADDED&direction=DESC',
     '/play/media-1',
     '/play/media-1?episode=episode-1',
@@ -203,7 +203,7 @@ describe('the authenticated layout', () => {
         }),
       ),
     )
-    const { router } = renderAppAt('/sharing')
+    const { router } = renderAppAt('/settings/profile/sharing')
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/select-profile'))
   })

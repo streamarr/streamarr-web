@@ -27,7 +27,7 @@ const UPDATE_FAILED_MESSAGE = "Couldn't update sharing."
 
 export function SharingScreen() {
   return (
-    <div className={`${settingsStyles.settings} ${styles.page}`}>
+    <div className={styles.page}>
       <div className={settingsStyles.pageHeading}>
         <h1>Sharing</h1>
       </div>

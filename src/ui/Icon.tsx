@@ -29,6 +29,7 @@ import {
   RotateCw,
   ScanLine,
   Settings,
+  Share2,
   SlidersHorizontal,
   TriangleAlert,
   TvMinimal,
@@ -74,6 +75,7 @@ const icons = {
   settings: Settings,
   encoding: Gauge,
   languages: Languages,
+  sharing: Share2,
   close: X,
   'ends-at': Clock,
 } as const
