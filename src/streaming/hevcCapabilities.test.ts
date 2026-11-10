@@ -527,6 +527,35 @@ describe('HEVC capability declarations', () => {
     ).toBe(true)
   })
 
+  it('shouldKeepDirectPlayForH264AndAv1WhenADolbyVisionQuestionGoesUnansweredAtTheDeadline', async () => {
+    vi.useFakeTimers()
+    const pending = new Promise<DecodingAnswer>(() => {})
+    const declaration = declarePlaybackCapabilities(
+      playbackPlatformFixture({
+        displaysHighDynamicRange: true,
+        canPlayType: () => 'probably',
+        decodingInfo: ({ video }) =>
+          video?.contentType.includes('dvh1') ? pending : Promise.resolve(answer(true)),
+      }),
+    )
+    await vi.advanceTimersByTimeAsync(3000)
+    const measured = await declaration
+
+    const otherFamilies = measured.video.filter(({ codecFamily }) => codecFamily !== 'HEVC')
+    expect(
+      otherFamilies.map(({ codecFamily, hls, directPlayContainers }) => [
+        codecFamily,
+        hls,
+        directPlayContainers,
+      ]),
+    ).toEqual([
+      ['H264', true, ['MP4']],
+      ['AV1', true, ['MP4', 'MATROSKA']],
+      ['AV1', true, undefined],
+      ['AV1', false, ['MP4', 'MATROSKA']],
+    ])
+  })
+
   it('shouldStayWithinTheContractsEntryLimitWhenLevelAndPictureCeilingsCross', async () => {
     const declaration = await declarePlaybackCapabilities(
       playbackPlatformFixture({
