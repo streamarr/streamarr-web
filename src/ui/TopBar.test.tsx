@@ -203,7 +203,7 @@ describe('TopBar', () => {
     expect(within(banner).queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument()
   })
 
-  it('shouldOpenTheLanguagesScreenFromTheProfileMenu', async () => {
+  it('shouldOpenProfileSettingsAtLanguagesFromTheProfileMenu', async () => {
     const selected = meFixture({ scope: 'profile', profiles: [profileFixture({ selected: true })] })
     serveSignIn()
     server.use(
@@ -227,7 +227,7 @@ describe('TopBar', () => {
     const { user, router } = renderAppAt('/')
 
     await user.click(await screen.findByRole('button', { name: /^Profile menu/ }))
-    await user.click(screen.getByRole('button', { name: 'Languages' }))
+    await user.click(screen.getByRole('button', { name: 'Profile settings' }))
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Languages' })).toBeVisible()
     expect(router.state.location.pathname).toBe('/settings/profile/languages')

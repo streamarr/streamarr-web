@@ -24,7 +24,7 @@ export function ProfileMenu({
   onSignedOut,
   onUnauthenticated,
   onServerSettings,
-  onLanguageSettings,
+  onProfileSettings,
 }: Readonly<{
   me: Me
   onPinRequired: (profileId: string) => void
@@ -32,8 +32,8 @@ export function ProfileMenu({
   onUnauthenticated: () => void
   /** Opens the integrated settings route; only exposed for eligible account sessions. */
   onServerSettings?: () => void
-  /** Opens the selected Profile's language preferences; offered only while a Profile is selected. */
-  onLanguageSettings?: () => void
+  /** Opens the selected Profile's settings; offered only while a Profile is selected. */
+  onProfileSettings?: () => void
 }>) {
   const { selectProfile } = useAuth()
   const signOut = useSignOut(onSignedOut)
@@ -165,17 +165,17 @@ export function ProfileMenu({
             </div>
           )}
           <div className={styles.profileMenuDivider} aria-hidden />
-          {me.selectedProfile && onLanguageSettings && (
+          {me.selectedProfile && onProfileSettings && (
             <button
               type="button"
               className={styles.profileMenuRow}
               onClick={() => {
                 close()
-                onLanguageSettings()
+                onProfileSettings()
               }}
             >
-              <Icon name="languages" size={20} />
-              <span>Languages</span>
+              <Icon name="settings" size={20} />
+              <span>Profile settings</span>
             </button>
           )}
           {canManageServer(me) && onServerSettings && (

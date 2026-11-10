@@ -139,7 +139,7 @@ test('a viewer adds an audio language from the visible list on the Languages scr
 
   await page.goto('/')
   await page.getByRole('button', { name: /^Profile menu/ }).click()
-  await page.getByRole('button', { name: 'Languages' }).click()
+  await page.getByRole('button', { name: 'Profile settings' }).click()
   await page.getByRole('combobox', { name: 'Add an audio language' }).fill('Fren')
   await page.getByRole('option', { name: 'French', exact: true }).click()
 
