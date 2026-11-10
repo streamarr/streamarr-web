@@ -732,7 +732,10 @@ function hdrTier({
   const dolbyVisionProfiles = hdr.dolbyVision
     .filter((_, index) => isSupported(answers, (tierAnswers) => tierAnswers.dolbyVision[index]))
     .flatMap(({ profiles }) => profiles)
-    .filter((profile) => !tierBases || compatibleBases.some((base) => base === tierBases[profile]))
+    .filter((profile) => {
+      const base = tierBases?.[profile]
+      return !tierBases || (base !== undefined && compatibleBases.includes(base))
+    })
     .map((profile) => ({ profile, maxLevel: tier.dolbyVisionLevel }))
   const listsBaselessProfile = dolbyVisionProfiles.some(({ profile }) =>
     BASELESS_DOLBY_VISION_PROFILES.has(profile),
