@@ -267,6 +267,36 @@ describe('HEVC capability declarations', () => {
     },
   )
 
+  it('shouldKeepDirectPlayForEveryOtherFamilyWhenAHighTierQuestionGoesUnansweredAtTheDeadline', async () => {
+    vi.useFakeTimers()
+    const pending = new Promise<DecodingAnswer>(() => {})
+    const declaration = declarePlaybackCapabilities(
+      playbackPlatformFixture({
+        canPlayType: () => 'probably',
+        decodingInfo: ({ type, video }) =>
+          type === 'media-source' && video?.contentType.includes('.H186.')
+            ? pending
+            : Promise.resolve(answer(true)),
+      }),
+    )
+    await vi.advanceTimersByTimeAsync(3000)
+    const measured = await declaration
+    const otherFamilies = measured.video.filter(
+      ({ codecProfiles }) => !codecProfiles.some(({ maxTier }) => maxTier === 'HIGH'),
+    )
+    expect(
+      otherFamilies.map(({ codecFamily, directPlayContainers }) => [
+        codecFamily,
+        directPlayContainers,
+      ]),
+    ).toEqual([
+      ['H264', ['MP4']],
+      ['HEVC', ['MP4']],
+      ['AV1', ['MP4', 'MATROSKA']],
+    ])
+    expect(entriesAtTier(measured, 'HIGH')[0].codecProfiles[0].maxLevel).toBe(61)
+  })
+
   it('shouldNotInferHighTierFromMainTierWhenHighTierGoesUnanswered', async () => {
     const declaration = await declarePlaybackCapabilities(
       playbackPlatformFixture({

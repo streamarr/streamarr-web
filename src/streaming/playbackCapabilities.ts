@@ -476,6 +476,16 @@ function appliesToADelivery(entry: { hls: boolean; directPlayContainers?: unknow
   return entry.hls || (entry.directPlayContainers?.length ?? 0) > 0
 }
 
+interface FamilyAnswers {
+  answers: TierAnswers[]
+  hdrAnswers: HdrTierAnswers[]
+}
+
+const NO_ANSWERS: FamilyAnswers = { answers: [], hdrAnswers: [] }
+
+// Each family declares from its own answers and asks its direct-play questions as soon as they
+// arrive, so a question left unanswered holds back only the families that read it: every family
+// reads H.264's answers, and HEVC High tier reads Main tier's.
 async function probeVideo({
   platform,
   askers,
@@ -486,33 +496,48 @@ async function probeVideo({
   hls: boolean
 }): Promise<VideoCapabilityEntryInput[]> {
   const { askDecodingInfo } = askers
-  const [h264Answers, otherFamilies] = await Promise.all([
-    probeFamily({ family: H264, askDecodingInfo }),
-    Promise.all(
-      VIDEO_FAMILIES_BESIDES_H264.map(async (family) => {
-        const [answers, hdrAnswers] = await Promise.all([
-          probeFamily({ family, askDecodingInfo }),
-          probeHdr({ platform, family, askDecodingInfo }),
-        ])
-        return { family, answers, hdrAnswers }
-      }),
-    ),
-  ])
-  const probed = [{ family: H264, answers: h264Answers, hdrAnswers: [] }, ...otherFamilies]
-  const mainTier = otherFamilies.find(({ family }) => family === HEVC)
-  const entries = probed.flatMap(({ family, answers, hdrAnswers }) =>
-    familyEntries({
-      platform,
-      family,
-      answers,
-      hdrAnswers,
-      h264Answers,
-      hls,
-      mainAnswers: mainTier?.answers ?? [],
-      mainHdrAnswers: mainTier?.hdrAnswers ?? [],
+  const families = [H264, ...VIDEO_FAMILIES_BESIDES_H264]
+  const probes = new Map(
+    families.map((family) => [family, probeFamilyAnswers({ platform, family, askDecodingInfo })]),
+  )
+  const answersOf = (family: VideoFamily) => probes.get(family) ?? NO_ANSWERS
+  const declared = await Promise.all(
+    families.map(async (family) => {
+      const [own, h264, mainTier] = await Promise.all([
+        answersOf(family),
+        answersOf(H264),
+        family === HEVC_HIGH ? answersOf(HEVC) : NO_ANSWERS,
+      ])
+      const entries = familyEntries({
+        platform,
+        family,
+        answers: own.answers,
+        hdrAnswers: own.hdrAnswers,
+        h264Answers: h264.answers,
+        hls,
+        mainAnswers: mainTier.answers,
+        mainHdrAnswers: mainTier.hdrAnswers,
+      })
+      return withVideoDirectPlay({ platform, askers, entries })
     }),
   )
-  return withVideoDirectPlay({ platform, askers, entries })
+  return declared.flat()
+}
+
+async function probeFamilyAnswers({
+  platform,
+  family,
+  askDecodingInfo,
+}: {
+  platform: PlaybackPlatform
+  family: VideoFamily
+  askDecodingInfo: AskDecodingInfo
+}): Promise<FamilyAnswers> {
+  const [answers, hdrAnswers] = await Promise.all([
+    probeFamily({ family, askDecodingInfo }),
+    probeHdr({ platform, family, askDecodingInfo }),
+  ])
+  return { answers, hdrAnswers }
 }
 
 // HDR shows only on an HDR display, so an SDR display asks no HDR question and declares SDR alone.
