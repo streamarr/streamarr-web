@@ -113,12 +113,21 @@ export async function comeBackOnlineUntil(handler: { calls: number }, calls: num
   })
 }
 
+// A request without a JSON body, such as a GET, has no operation name.
+async function operationNameOf(request: Request): Promise<string | undefined> {
+  try {
+    const body = (await request.clone().json()) as { operationName?: string }
+    return body.operationName
+  } catch {
+    return undefined
+  }
+}
+
 /** Settles once the server has answered the next request named `operationName`. */
 export function answerDelivered(operationName: string): Promise<void> {
   return new Promise((resolve) => {
     const delivered = async ({ request }: { request: Request }) => {
-      const body = (await request.clone().json()) as { operationName?: string }
-      if (body.operationName === operationName) {
+      if ((await operationNameOf(request)) === operationName) {
         server.events.removeListener('response:mocked', delivered)
         resolve()
       }
