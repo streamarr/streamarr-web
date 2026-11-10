@@ -178,6 +178,14 @@ const H264: VideoFamily = {
   },
 }
 
+const HEVC_DOLBY_VISION: readonly DolbyVisionProbe[] = [
+  { profiles: ['PROFILE_5'], codec: (level) => dolbyVisionCodec('dvh1.05', level) },
+  {
+    profiles: ['PROFILE_8_1', 'PROFILE_8_4'],
+    codec: (level) => dolbyVisionCodec('dvh1.08', level),
+  },
+]
+
 const HEVC: VideoFamily = {
   codecFamily: 'HEVC',
   maxTier: 'MAIN',
@@ -190,13 +198,7 @@ const HEVC: VideoFamily = {
   hdr: {
     profiles: ['HEVC_MAIN_10'],
     codec: (level) => `hvc1.2.4.L${level * 3}.B0`,
-    dolbyVision: [
-      { profiles: ['PROFILE_5'], codec: (level) => dolbyVisionCodec('dvh1.05', level) },
-      {
-        profiles: ['PROFILE_8_1', 'PROFILE_8_4'],
-        codec: (level) => dolbyVisionCodec('dvh1.08', level),
-      },
-    ],
+    dolbyVision: HEVC_DOLBY_VISION,
   },
 }
 
