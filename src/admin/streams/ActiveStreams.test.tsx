@@ -10,7 +10,7 @@ import type {
 import { deferred } from '../../test/deferred'
 import { serveGraphqlSocket, SOCKET_RECONNECT_DEADLINE_MS } from '../../test/graphqlSocket'
 import { comeBackOnline } from '../../test/graphqlResponses'
-import { meFixture } from '../../test/meFixture'
+import { meFixture, profileFixture } from '../../test/meFixture'
 import {
   AAC_STEREO,
   H264_FULL_HD,
@@ -23,6 +23,11 @@ import { server } from '../../test/server'
 import { videoFormatDetails } from '../../test/videoFormatDetails'
 
 const ADMIN = meFixture({ scope: 'profile', serverAdmin: true })
+const ADMIN_WITH_A_PROFILE = meFixture({
+  scope: 'profile',
+  serverAdmin: true,
+  profiles: [profileFixture({ selected: true })],
+})
 const PAGE = '/settings/server/streams'
 const CHANGED = 'ActiveStreamsChanged'
 
@@ -836,6 +841,27 @@ describe('active streams', () => {
       timeout: SOCKET_RECONNECT_DEADLINE_MS,
     })
     expect(state.reads).toBeGreaterThan(readsBefore)
+  })
+
+  it('shouldReadTheListAgainOnceItsChangesSubscribeWhenTheSocketIsAlreadyOpen', async () => {
+    const state = serve([MOVIE])
+    server.use(
+      // The app follows the selected Profile's watch state, which holds the socket open.
+      graphql.query('Me', () => HttpResponse.json({ data: { me: ADMIN_WITH_A_PROFILE } })),
+      ...['EncoderPresetSetting', 'IdleSegmentRetentionSetting'].map((setting) =>
+        graphql.query(setting, () =>
+          HttpResponse.json({ errors: [{ message: 'Internal failure' }] }),
+        ),
+      ),
+    )
+    const { user } = renderAppAt('/settings/server/encoding')
+    const rail = await screen.findByRole('navigation', { name: 'Server settings' })
+    await waitFor(() => expect(state.socket.isLive('WatchStateChanged')).toBe(true))
+
+    await user.click(within(rail).getByRole('link', { name: 'Active streams' }))
+    await liveChanges(state)
+
+    await waitFor(() => expect(state.reads).toBeGreaterThan(1))
   })
 
   it.each([

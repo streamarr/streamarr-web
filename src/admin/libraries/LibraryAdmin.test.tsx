@@ -74,6 +74,22 @@ function serve(libraries = [MOVIES, SHOWS], me = ADMIN) {
   return state
 }
 
+// The next read of the inventory answers, once `held` settles, with the libraries as it found them.
+function holdNextInventoryRead(state: ReturnType<typeof serve>, held: Promise<void>) {
+  server.use(
+    graphql.query(
+      'AdminLibraries',
+      async () => {
+        state.inventoryRequests++
+        const snapshot = state.libraries
+        await held
+        return HttpResponse.json({ data: { libraries: snapshot } })
+      },
+      { once: true },
+    ),
+  )
+}
+
 type User = ReturnType<typeof renderAppAt>['user']
 
 async function scanMovies(user: User) {
@@ -760,8 +776,14 @@ describe('library administration', () => {
         timeout: SOCKET_RECONNECT_DEADLINE_MS,
       })
       await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+      const readAfterTheResponse = deferred()
+      holdNextInventoryRead(state, readAfterTheResponse.promise)
       answer.resolve()
 
+      // The read after the response is still out, so only the response could have changed the status.
+      await waitFor(() => expect(state.inventoryRequests).toBe(requests + 2))
+      expect(detail).toHaveTextContent('HEALTHY')
+      readAfterTheResponse.resolve()
       const scan = within(detail).getByRole('button', { name: 'Scan library' })
       await waitFor(() => expect(scan).toBeEnabled())
       expect(detail).toHaveTextContent('HEALTHY')
@@ -822,18 +844,7 @@ describe('library administration', () => {
       await start(user)
       await requested.promise
       const requests = state.inventoryRequests
-      server.use(
-        graphql.query(
-          'AdminLibraries',
-          async () => {
-            state.inventoryRequests++
-            const snapshot = state.libraries
-            await reconnectReadHeld.promise
-            return HttpResponse.json({ data: { libraries: snapshot } })
-          },
-          { once: true },
-        ),
-      )
+      holdNextInventoryRead(state, reconnectReadHeld.promise)
 
       state.socket.closeAll(1001, 'Going away')
       await waitFor(() => expect(state.inventoryRequests).toBe(requests + 1), {
