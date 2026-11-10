@@ -230,6 +230,6 @@ describe('TopBar', () => {
     await user.click(screen.getByRole('button', { name: 'Languages' }))
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Languages' })).toBeVisible()
-    expect(router.state.location.pathname).toBe('/settings/languages')
+    expect(router.state.location.pathname).toBe('/settings/profile/languages')
   })
 })

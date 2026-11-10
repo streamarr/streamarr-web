@@ -1,7 +1,6 @@
+/* A reading width for the form, inside the settings layout's page column. */
 .page {
   max-width: 720px;
-  margin: 26px auto 0;
-  padding: 0 var(--spacing-page) var(--spacing-24);
 }
 
 .audio {

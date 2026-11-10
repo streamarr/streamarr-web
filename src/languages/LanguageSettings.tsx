@@ -85,7 +85,7 @@ export function LanguageSettings() {
   }
 
   return (
-    <div className={`${settingsStyles.settings} ${styles.page}`}>
+    <div className={styles.page}>
       <div className={settingsStyles.pageHeading}>
         <h1>Languages</h1>
       </div>

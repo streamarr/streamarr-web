@@ -21,7 +21,7 @@ import { meFixture } from '../test/meFixture'
 import { renderAppAt } from '../test/render'
 import { server } from '../test/server'
 
-const LANGUAGES = '/settings/languages'
+const LANGUAGES = '/settings/profile/languages'
 const ME = meFixture({ scope: 'profile' })
 
 function preferences(
@@ -96,6 +96,31 @@ function optionsOf(field: string): HTMLElement {
 }
 
 describe('language settings', () => {
+  it('shouldShowTheProfileSettingsMenuWithLanguagesCurrentWhenTheScreenOpens', async () => {
+    serve()
+    renderAppAt(LANGUAGES)
+
+    const menu = await screen.findByRole('navigation', { name: 'Profile settings' })
+    expect(within(menu).getByRole('link', { name: 'Languages' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    expect(
+      within(screen.getByRole('region', { name: 'Languages' })).getByRole('heading', {
+        level: 1,
+        name: 'Languages',
+      }),
+    ).toBeVisible()
+  })
+
+  it('shouldOpenLanguagesWhenProfileSettingsOpensWithoutASection', async () => {
+    serve()
+    const { router } = renderAppAt('/settings/profile')
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Languages' })).toBeVisible()
+    expect(router.state.location.pathname).toBe(LANGUAGES)
+  })
+
   it('shouldShowTheProfilesLanguagesWhenTheScreenOpens', async () => {
     serve()
     renderAppAt(LANGUAGES)

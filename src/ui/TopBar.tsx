@@ -56,7 +56,7 @@ function AccountTrail() {
       <ProfileMenu
         me={data.me}
         onServerSettings={() => navigate({ to: '/settings/server/libraries' })}
-        onLanguageSettings={() => navigate({ to: '/settings/languages' })}
+        onLanguageSettings={() => navigate({ to: '/settings/profile/languages' })}
         onPinRequired={(profileId) =>
           navigate({ to: '/select-profile', search: { profile: profileId } })
         }

@@ -43,7 +43,10 @@ const AMBIENT_ROUTES = new Set<FileRouteTypes['id']>([
 ])
 
 // Settings are neutral pages: the chrome stays, the browsing wash behind it does not.
-const SETTINGS_ROUTES = new Set<FileRouteTypes['id']>(['/_authenticated/settings/server'])
+const SETTINGS_ROUTES = new Set<FileRouteTypes['id']>([
+  '/_authenticated/settings/server',
+  '/_authenticated/settings/profile',
+])
 
 // The player fills the screen and carries its own Back.
 const PLAYER_ROUTES = new Set<FileRouteTypes['id']>(['/_authenticated/play/$mediaFileId'])
