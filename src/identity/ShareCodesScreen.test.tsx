@@ -169,9 +169,10 @@ describe('Share codes', () => {
     expect(screen.queryByText(/so they can offer a Profile/)).not.toBeInTheDocument()
   })
 
-  it('shouldListEachLiveCodeWithWhoIssuedItWhenAndTheTimeItHasLeft', async () => {
+  it('shouldListEachLiveCodeWithWhenAndByWhomItWasIssuedThenTheTimeItHasLeftWhenCodesAreLive', async () => {
     serve([
-      liveCode(),
+      // Issued a moment ago, so a little under its seven days are left.
+      liveCode({ expiresAt: new Date(Date.now() + 7 * DAY - 5000).toISOString() }),
       liveCode({
         id: 'b',
         issuedByDisplayName: null,
@@ -182,14 +183,13 @@ describe('Share codes', () => {
 
     const live = await screen.findByRole('region', { name: 'Live codes' })
     const [first, second] = await within(live).findAllByRole('listitem')
-    expect(within(first).getByText('Issued by Sam')).toBeVisible()
-    expect(within(first).getByText('Nov 11, 2026')).toBeVisible()
-    expect(within(first).getByText('Expires in 6 days')).toBeVisible()
+    expect(within(first).getByText('Issued Nov 11, 2026 by Sam')).toBeVisible()
+    expect(within(first).getByText('Expires in 7 days')).toBeVisible()
     expect(within(first).getByRole('button', { name: 'Withdraw' })).toHaveAccessibleDescription(
-      'Issued by Sam Nov 11, 2026 Expires in 6 days',
+      'Issued Nov 11, 2026 by Sam Expires in 7 days',
     )
-    expect(within(second).getByText('Issued by a deleted Account')).toBeVisible()
-    expect(within(second).getByText('Expires in 2 hours')).toBeVisible()
+    expect(within(second).getByText('Issued Nov 11, 2026 by a deleted Account')).toBeVisible()
+    expect(within(second).getByText('Expires in 3 hours')).toBeVisible()
     expect(within(live).queryByText(SHARE_CODE)).not.toBeInTheDocument()
   })
 
@@ -210,7 +210,7 @@ describe('Share codes', () => {
     expect(screen.getByRole('button', { name: 'Done' })).toBeEnabled()
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     await waitFor(() => expect(codes.calls).toBe(2))
-    expect(await screen.findByText('Issued by Sam')).toBeVisible()
+    expect(await screen.findByText('Issued Nov 11, 2026 by Sam')).toBeVisible()
   })
 
   it('shouldCopyTheCodeAndSaySoWithoutMovingFocusWhenThePersonCopiesIt', async () => {
@@ -413,7 +413,7 @@ describe('Share codes', () => {
 
     await leaveForHomeAndReturn(user, SHARE_CODES)
 
-    expect(await screen.findByText('Issued by Sam')).toBeVisible()
+    expect(await screen.findByText('Issued Nov 11, 2026 by Sam')).toBeVisible()
   })
 
   it('shouldShowTheLiveCodesAsLoadingUntilTheServerAnswersWhenTheAdminReturns', async () => {
@@ -438,7 +438,7 @@ describe('Share codes', () => {
 
     await user.click(screen.getByRole('button', { name: 'Retry' }))
 
-    expect(await screen.findByText('Issued by Sam')).toBeVisible()
+    expect(await screen.findByText('Issued Nov 11, 2026 by Sam')).toBeVisible()
     expect(codes.calls).toBe(2)
   })
 })

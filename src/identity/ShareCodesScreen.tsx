@@ -261,10 +261,9 @@ function LiveShareCodeRow({
   return (
     <li className={sharingStyles.row}>
       <span id={facts} className={sharingStyles.rowText}>
-        {code.issuedByDisplayName
-          ? `Issued by ${code.issuedByDisplayName}`
-          : 'Issued by a deleted Account'}{' '}
-        <span className={sharingStyles.status}>{ISSUED_ON.format(new Date(code.issuedAt))}</span>{' '}
+        <span>
+          {`Issued ${ISSUED_ON.format(new Date(code.issuedAt))} by ${code.issuedByDisplayName ?? 'a deleted Account'}`}
+        </span>{' '}
         <span className={sharingStyles.status}>{expiryLabel(code.expiresAt, new Date())}</span>
       </span>
       <Button
