@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from '@playwright/test'
+import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
 import {
   alexsShares,
   BOTH_WARNINGS,
@@ -105,10 +105,8 @@ test('each share of the Profile puts its action below the Household at phone wid
   await expectNoSidewaysScroll(page)
 })
 
-test('the review of an offer puts Send invitation on a line of its own, then Back and Cancel together, each whole, at phone width', async ({
-  page,
-  request,
-}) => {
+/** Opens the review of an offer of Alex to Cabin, with both warnings, and returns its actions. */
+async function openTheReview(page: Page, request: APIRequestContext) {
   await serveSharingPages(page, request, {
     ProfileShares: alexsShares,
     LookUpShareCode: CODE_FOUND,
@@ -118,11 +116,17 @@ test('the review of an offer puts Send invitation on a line of its own, then Bac
   await page.getByRole('button', { name: 'Share with another Household' }).click()
   await page.getByRole('textbox', { name: 'Share code from the other Household' }).fill(SHARE_CODE)
   await page.getByRole('button', { name: 'Continue' }).click()
-
   await expect(page.getByRole('heading', { name: 'Offer Alex to Cabin?' })).toBeVisible()
-  const actions = ['Send invitation', 'Back', 'Cancel'].map((name) =>
+  return ['Send invitation', 'Back', 'Cancel'].map((name) =>
     page.getByRole('button', { name, exact: true }),
   )
+}
+
+test('the review of an offer puts Send invitation on a line of its own, then Back and Cancel together, each whole, at phone width', async ({
+  page,
+  request,
+}) => {
+  const actions = await openTheReview(page, request)
   for (const action of actions) await expectWhole(action)
   await expectNoSidewaysScroll(page)
 
