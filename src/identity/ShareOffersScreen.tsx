@@ -1,14 +1,11 @@
 import { Button, Center, Loader } from '@mantine/core'
-import { useMutation, useQuery } from '@apollo/client/react'
+import { useMutation } from '@apollo/client/react'
 import type { Ref } from 'react'
 import {
   AcceptProfileShareDocument,
   RejectProfileShareDocument,
-  ShareOffersDocument,
   type MeQuery,
-  type ShareOffersQuery,
 } from '../graphql/generated/graphql'
-import { useLiveList } from '../graphql/liveList'
 import { requestFailureMessage } from '../graphql/requestErrors'
 import settingsStyles from '../styles/settings.module.css'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
@@ -18,24 +15,13 @@ import { useFocusFallback } from '../ui/useFocusFallback'
 import { usePageNotice } from '../ui/usePageNotice'
 import styles from './Sharing.module.css'
 import { SharedProfileText } from './SharedProfileText'
-import {
-  keepsInHouseholdShares,
-  shareIdOf,
-  statusAt,
-  withShareChange,
-  type ShareChange,
-} from './shareLists'
 import { SharingSection } from './SharingSection'
 import { expiryLabel } from './shareText'
 import { useConfirmedChange } from './useConfirmedChange'
 import { useMe } from './useMe'
-import { useNow } from './useNow'
-import { useShareChanges } from './useShareChanges'
+import { useWaitingOffers, type PendingOffer } from './useWaitingOffers'
 
-type ListedOffer = ShareOffersQuery['householdShares']['edges'][number]['node']
-type OfferedProfile = NonNullable<ListedOffer['profile']>
-/** An offer as the page lists it: one whose Profile the server names. */
-type PendingOffer = ListedOffer & { profile: OfferedProfile }
+type OfferedProfile = PendingOffer['profile']
 type Household = MeQuery['me']['household']
 
 const NO_LONGER_WAITING = 'That offer is no longer waiting.'
@@ -94,37 +80,15 @@ function HouseholdOffers({
   /** The container of the offers, where focus that a change takes away returns to the heading. */
   liveList: Ref<HTMLDivElement>
 }>) {
-  const variables = { householdId: household.id }
-  // The offers that the query asks for.
-  const list = { householdId: household.id, statuses: ['PENDING'] as const, serverAdmin }
-  const liveOffers = useLiveList({
-    query: ShareOffersDocument,
-    variables,
-    keyOf: shareIdOf,
-    apply: (data, change: ShareChange) => {
-      const edges = withShareChange(data.householdShares.edges, change, (share) =>
-        keepsInHouseholdShares(share, list, new Date()),
-      )
-      return { ...data, householdShares: { ...data.householdShares, edges } }
-    },
-  })
-  useShareChanges(liveOffers.receive)
   // Offers arrive, expire and are withdrawn elsewhere, so a visit shows only the server's answer.
-  const query = useQuery(ShareOffersDocument, {
-    variables,
-    fetchPolicy: 'network-only',
-    context: liveOffers.context,
-  })
+  const { query, offers } = useWaitingOffers(
+    { householdId: household.id, serverAdmin },
+    { fetchPolicy: 'network-only' },
+  )
   const [accept] = useMutation(AcceptProfileShareDocument)
   const [decline] = useMutation(RejectProfileShareDocument)
   // A failed read keeps the list that is on screen; the query's own error state reports it.
   const readAgain = () => query.refetch().catch(() => undefined)
-  const listed = query.data?.householdShares.edges.map((edge) => edge.node) ?? []
-  // An offer leaves the list when its time runs out, as the query would leave it out.
-  const now = useNow(listed.map((offer) => offer.expiresAt))
-  const offers = listed
-    .filter((offer) => statusAt(offer, now) === 'PENDING')
-    .filter(namesItsProfile)
   const accepting = useConfirmedChange<PendingOffer>({
     send: async (offer) =>
       (await accept({ variables: { input: { shareId: offer.id } } })).data?.acceptProfileShare
@@ -232,10 +196,6 @@ function HouseholdOffers({
       />
     </>
   )
-}
-
-function namesItsProfile(offer: ListedOffer): offer is PendingOffer {
-  return offer.profile !== null
 }
 
 function offeredProfile(offer: PendingOffer): string {
