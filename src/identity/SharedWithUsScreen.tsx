@@ -194,12 +194,11 @@ function SharedProfiles({
         </p>
       )}
       <ul ref={liveList} className={styles.rows}>
-        {shares.map((share, index) => (
+        {shares.map((share) => (
           <li key={share.id} className={styles.row}>
             <SharedProfileText
               profile={share.profile}
               byline={share.offeredByDisplayName && `Shared by ${share.offeredByDisplayName}`}
-              paletteIndex={index}
             />
             {/* Account membership keeps this share, and the server refuses to end it. */}
             {!share.requiredByAccountMembership && (

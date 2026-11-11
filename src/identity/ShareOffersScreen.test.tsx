@@ -540,6 +540,15 @@ describe('Share offers as they change elsewhere', () => {
     return { socket, ...rendered }
   }
 
+  // The colour of the mark, its initials, beside a Profile's name in its row.
+  function markColour(name: string, initials: string) {
+    const row = screen
+      .getAllByRole('listitem')
+      .find((item) => within(item).queryByText(name, { exact: true }))
+    expect(row).toBeDefined()
+    return within(row!).getByText(initials).style.background
+  }
+
   function offeredNames() {
     return screen
       .getAllByRole('button', { name: /^Accept / })
@@ -552,6 +561,16 @@ describe('Share offers as they change elsewhere', () => {
     socket.publish('ProfileShareChanged', shareChanged(robin.id, robin))
 
     await waitFor(() => expect(offeredNames()).toEqual(['Accept Robin', 'Accept Alex']))
+  })
+
+  it('shouldKeepEachProfilesColourWhenAnOfferArrivesAboveIt', async () => {
+    const { socket } = await openWithAnOfferOfAlex()
+    const before = markColour('Alex', 'AL')
+
+    socket.publish('ProfileShareChanged', shareChanged(robin.id, robin))
+
+    await waitFor(() => expect(offeredNames()).toEqual(['Accept Robin', 'Accept Alex']))
+    expect(markColour('Alex', 'AL')).toBe(before)
   })
 
   it('shouldTakeOutAnOfferWhenItIsAcceptedElsewhere', async () => {
