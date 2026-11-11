@@ -15,7 +15,7 @@ import { useLiveList } from '../graphql/liveList'
 import { requestFailureMessage } from '../graphql/requestErrors'
 import settingsStyles from '../styles/settings.module.css'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
-import { FailurePanel } from '../ui/Failure'
+import { FailurePanel, FailureRow } from '../ui/Failure'
 import { PageNotice } from '../ui/PageNotice'
 import { useFocusFallback } from '../ui/useFocusFallback'
 import { usePageNotice } from '../ui/usePageNotice'
@@ -173,11 +173,11 @@ function SharedProfiles({
   }
   if (query.error || !query.data) {
     return (
-      <ListUnavailable
-        error={query.error}
-        onRetry={readAgain}
-        fallback="Couldn't load the Profiles shared here."
-      />
+      <SharingSection title={`Profiles shared with ${household.name}`} failure={null}>
+        <FailureRow onRetry={readAgain}>
+          {requestFailureMessage(query.error, "Couldn't load the Profiles shared here.")}
+        </FailureRow>
+      </SharingSection>
     )
   }
 
@@ -257,11 +257,11 @@ function VisitorTvs({
   }
   if (query.error || !query.data) {
     return (
-      <ListUnavailable
-        error={query.error}
-        onRetry={readAgain}
-        fallback="Couldn't load the TVs linked here."
-      />
+      <SharingSection title="TVs linked by visitors" failure={null}>
+        <FailureRow onRetry={readAgain}>
+          {requestFailureMessage(query.error, "Couldn't load the TVs linked here.")}
+        </FailureRow>
+      </SharingSection>
     )
   }
 

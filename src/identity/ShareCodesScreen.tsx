@@ -13,7 +13,7 @@ import {
 import { requestFailureMessage } from '../graphql/requestErrors'
 import { userErrorMessage } from '../graphql/userErrors'
 import settingsStyles from '../styles/settings.module.css'
-import { FailurePanel } from '../ui/Failure'
+import { FailurePanel, FailureRow } from '../ui/Failure'
 import { Icon } from '../ui/Icon'
 import { PageNotice } from '../ui/PageNotice'
 import { usePageNotice } from '../ui/usePageNotice'
@@ -224,7 +224,13 @@ function LiveShareCodes({
     return <ShareCodesLoading />
   }
   if (error || !listed) {
-    return <ShareCodesUnavailable error={error} onRetry={readAgain} />
+    return (
+      <SharingSection title="Live codes" failure={null}>
+        <FailureRow onRetry={readAgain}>
+          {requestFailureMessage(error, "Couldn't load share codes.")}
+        </FailureRow>
+      </SharingSection>
+    )
   }
 
   const codes = listedCodes.filter((code) => Date.parse(code.expiresAt) > now.getTime())

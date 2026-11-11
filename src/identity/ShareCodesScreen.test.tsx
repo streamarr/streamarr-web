@@ -428,15 +428,18 @@ describe('Share codes', () => {
     expect(screen.queryByText(/^No live share codes\./)).not.toBeInTheDocument()
   })
 
-  it('shouldRetryWhenTheLiveCodesFailToLoad', async () => {
+  it('shouldSayWhyInLiveCodesAndRetryWhenTheLiveCodesFailToLoad', async () => {
     serve()
     const codes = failsOnceThen(codesData([liveCode()]))
     server.use(graphql.query('HouseholdShareCodes', codes.resolver))
     const { user } = renderAppAt(CODES)
 
-    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load share codes.")
+    const live = await screen.findByRole('region', { name: 'Live codes' })
+    expect(await within(live).findByRole('alert')).toHaveTextContent("Couldn't load share codes.")
+    expect(screen.getByRole('button', { name: 'Issue a share code' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Retry' }))
+    await user.click(within(live).getByRole('button', { name: 'Retry' }))
 
     expect(await screen.findByText('Issued Nov 11, 2026 by Sam')).toBeVisible()
     expect(codes.calls).toBe(2)
