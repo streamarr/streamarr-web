@@ -74,12 +74,14 @@ function issued({
   }
 }
 
+// The pinned schema's one IssueShareCodeError member carries any refusal: the page shows a refusal
+// in the server's words whatever its type, including the limit refusal the server adds next.
 function issueRefused(message: string) {
   return {
     issueShareCode: {
       __typename: 'IssueShareCodePayload',
       issued: null,
-      userErrors: [{ __typename: 'ShareCodeLimitReachedError', message }],
+      userErrors: [{ __typename: 'HouseholdNotFoundError', message }],
     },
   }
 }
@@ -426,11 +428,11 @@ describe('Share codes', () => {
     expect(JSON.stringify({ ...sessionStorage })).not.toContain(letters)
   })
 
-  it('shouldShowTheServersWordsWhenIssuingIsRefused', async () => {
+  it('shouldShowTheServersWordsAndKeepIssueAvailableWhenIssuingIsRefused', async () => {
     serve()
     server.use(
       graphql.mutation('IssueShareCode', () =>
-        HttpResponse.json({ data: issueRefused('Smith Family already has 10 live share codes.') }),
+        HttpResponse.json({ data: issueRefused('Withdraw a code before issuing another.') }),
       ),
     )
     const { user } = renderAppAt(CODES)
@@ -438,9 +440,10 @@ describe('Share codes', () => {
     await pressIssue(user)
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      /^Smith Family already has 10 live share codes\.$/,
+      /^Withdraw a code before issuing another\.$/,
     )
     expect(screen.queryByRole('button', { name: 'Copy code' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Issue a share code' })).toBeEnabled()
   })
 
   it('shouldShowTheServersWordsWhenTheServerRejectsTheIssue', async () => {
