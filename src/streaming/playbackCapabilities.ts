@@ -467,7 +467,7 @@ async function probeVideo({
       pendingH264Answers,
     ])
     const entries = familyEntries({ platform, family, answers, hdrAnswers, h264Answers, hls })
-    return withVideoDirectPlay({ platform, askers, entries })
+    return withVideoDirectPlay({ platform, family, askers, entries })
   }
   const declared = await Promise.all([
     declareFamily(H264, pendingH264Answers),
@@ -1113,8 +1113,6 @@ const SAMPLE_ENTRIES: Record<string, readonly { sampleEntry: VideoSampleEntry; f
     av01: [{ sampleEntry: 'AV01', fourCc: 'av01' }],
   }
 
-const VIDEO_FAMILIES: Partial<Record<VideoCodecFamily, VideoFamily>> = { H264, HEVC, AV1 }
-
 // Direct play reuses each entry's limits, so the media element must play a file at the entry's
 // widest picture for every stream the entry accepts. A sample entry counts only when the element
 // plays every such stream from it, and MP4 counts only beside a sample entry, as the server
@@ -1125,17 +1123,18 @@ const VIDEO_FAMILIES: Partial<Record<VideoCodecFamily, VideoFamily>> = { H264, H
 // separate entry without them applies to direct play.
 async function withVideoDirectPlay({
   platform,
+  family,
   askers,
   entries,
 }: {
   platform: PlaybackPlatform
+  family: VideoFamily
   askers: Askers
   entries: VideoCapabilityEntryInput[]
 }): Promise<VideoCapabilityEntryInput[]> {
   const declared = await Promise.all(
     entries.map(async (entry): Promise<VideoCapabilityEntryInput[]> => {
-      const family = VIDEO_FAMILIES[entry.codecFamily]
-      if (!family || entry.compatibleBases.length === 0) {
+      if (entry.compatibleBases.length === 0) {
         return [entry]
       }
       const directPlay = { ...entry, dolbyVisionProfiles: [] }
