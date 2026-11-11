@@ -45,6 +45,14 @@
   border-top: var(--border-width-hairline) solid var(--border-hairline);
 }
 
+/* At phone width a row's actions go under its text, so the text keeps the row's width. */
+@media (max-width: 760px) {
+  .row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
 .rowProfile {
   display: flex;
   align-items: center;
@@ -67,8 +75,10 @@
   font-weight: var(--font-weight-medium);
 }
 
+/* A group of actions wraps before any of them is squeezed narrower than its label. */
 .actions {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--spacing-8);
 }
 
