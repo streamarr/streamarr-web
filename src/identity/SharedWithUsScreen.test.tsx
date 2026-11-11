@@ -105,6 +105,12 @@ function devicesData(devices: DeviceNode[] = []) {
 // reads them again once it follows share changes, so no test counts on how often it reads.
 function serve(shares: ShareNode[] = [], devices: DeviceNode[] = []) {
   const socket = serveGraphqlSocket()
+  serveLists(shares, devices)
+  return socket
+}
+
+// The same lists with no socket of live changes, so that only the page's own reads change them.
+function serveLists(shares: ShareNode[], devices: DeviceNode[]) {
   server.use(
     graphql.query('Me', () => HttpResponse.json({ data: { me: meFixture() } })),
     graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
@@ -119,7 +125,6 @@ function serve(shares: ShareNode[] = [], devices: DeviceNode[] = []) {
       return HttpResponse.json({ data: devicesData(devices) })
     }),
   )
-  return socket
 }
 
 function sharesRegion() {
@@ -288,6 +293,28 @@ describe('Shared with us', () => {
       await screen.findByText('No Profile from another Household is shared with Smith Family.'),
     ).toBeVisible()
     expect(screen.getByRole('heading', { level: 1, name: 'Shared with us' })).toHaveFocus()
+  })
+
+  it('shouldReadTheTvsAgainWhenTheAdminEndsTheShareOfSomeonesPersonalProfile', async () => {
+    const shares = [share({ profile: sharedProfile({ personalProfile: true }) })]
+    const tvs = [device()]
+    serveLists(shares, tvs)
+    server.use(
+      graphql.mutation('EndProfileShare', () => {
+        // The server unlinks the TVs that the person linked here as it ends the share.
+        shares.splice(0)
+        tvs.splice(0)
+        return HttpResponse.json({ data: { endProfileShare: endedPayload() } })
+      }),
+    )
+    const { user } = renderAppAt(VISITORS)
+    await screen.findByRole('button', { name: 'Unlink Living room TV' })
+
+    await user.click(await screen.findByRole('button', { name: 'End share of Alex' }))
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'End share' }))
+
+    await noticed('Sharing of Alex ended.')
+    expect(await screen.findByText('No visitor has linked a TV here.')).toBeVisible()
   })
 
   it('shouldKeepTheConfirmationOpenWithTheServersWordsWhenEndingIsRefused', async () => {
@@ -533,6 +560,41 @@ describe('Shared with us as shares change elsewhere', () => {
 
     expect(await screen.findByText('No visitor has linked a TV here.')).toBeVisible()
     expect(reads.count).toBeGreaterThan(readsBeforeTheEnd)
+  })
+
+  it('shouldReadTheTvsAgainWhenAPersonalProfilesShareEndsAfterAReadTookItOut', async () => {
+    const shares = [
+      share({ profile: sharedProfile({ personalProfile: true }) }),
+      share({
+        id: 'mara',
+        profileId: 'mara',
+        profile: sharedProfile({ id: 'mara', name: 'Mara' }),
+      }),
+    ]
+    const tvs = [device()]
+    const socket = serve(shares, tvs)
+    server.use(
+      graphql.mutation('EndProfileShare', () => {
+        // Alex's share ended elsewhere too, so the read after ending Mara's leaves both out.
+        shares.splice(0)
+        tvs.splice(0)
+        return HttpResponse.json({ data: { endProfileShare: endedPayload() } })
+      }),
+    )
+    const { user } = renderAppAt(VISITORS)
+    await screen.findByRole('button', { name: 'Unlink Living room TV' })
+    await followingShareChanges(socket)
+    await user.click(await screen.findByRole('button', { name: 'End share of Mara' }))
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'End share' }))
+    await noticed('Sharing of Mara ended.')
+    expect(screen.getByRole('button', { name: 'Unlink Living room TV' })).toBeVisible()
+
+    socket.publish(
+      'ProfileShareChanged',
+      shareChanged(SHARE_ID, liveShare({ status: 'ENDED', ...HIDDEN_ONCE_OVER })),
+    )
+
+    expect(await screen.findByText('No visitor has linked a TV here.')).toBeVisible()
   })
 
   it('shouldLeaveOutAProfileOfTheHouseholdsOwnWhenItsShareChanges', async () => {
