@@ -86,14 +86,19 @@
   align-self: flex-start;
 }
 
-/* Below the list it follows, a hairline apart, as each row is from the one above it. */
+/* Below the list it follows, a hairline across the panel apart, as each row is from the one above
+   it, so the form reads as a block of its own. */
 .shareForm {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-14);
-  max-width: 480px;
   padding-top: var(--spacing-14);
   border-top: var(--border-width-hairline) solid var(--border-hairline);
+}
+
+/* The hairline spans the panel; what the form holds keeps its reading width. */
+.shareForm > * {
+  max-width: 480px;
 }
 
 .review {

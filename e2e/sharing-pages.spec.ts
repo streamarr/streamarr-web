@@ -14,10 +14,18 @@ import {
 } from './sharingPages'
 
 // The sharing pages at phone width: a row's action sits under its text rather than squeezing it,
-// and a group of actions wraps or stacks rather than leaving the page or one button behind.
+// and a group of actions wraps or stacks rather than leaving the page or one button behind. At
+// every width, the blocks of a panel and the panels of a page share their content edges.
 const PHONE = { width: 390, height: 844 }
+const DESKTOP = { width: 1440, height: 900 }
 
 test.use({ serviceWorkers: 'block', viewport: PHONE })
+
+async function boxOf(element: Locator) {
+  const box = await element.boundingBox()
+  expect(box).not.toBeNull()
+  return box!
+}
 
 async function expectNoSidewaysScroll(page: Page) {
   const root = await page.evaluate(() => ({
@@ -121,6 +129,26 @@ test('the review of an offer keeps each action whole and on the page at phone wi
     await expectWhole(action)
   }
   await expectNoSidewaysScroll(page)
+})
+
+test('the share form sits under the list a full-width hairline apart, as each row does, at desktop width', async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize(DESKTOP)
+  await serveSharingPages(page, request, { ProfileShares: alexsShares })
+  await page.goto('/settings/profile/sharing')
+  await page.getByRole('button', { name: 'Share with another Household' }).click()
+
+  const lastRow = page.getByRole('listitem').last()
+  const form = page.getByTestId('share-form')
+  await expect(form).toBeVisible()
+  const [row, formBox] = await Promise.all([boxOf(lastRow), boxOf(form)])
+  expect(formBox.x).toBeCloseTo(row.x, 0)
+  expect(formBox.width).toBeCloseTo(row.width, 0)
+  expect(formBox.y).toBeGreaterThan(row.y + row.height)
+  const divider = (element: Element) => getComputedStyle(element).borderTop
+  expect(await form.evaluate(divider)).toBe(await lastRow.evaluate(divider))
 })
 
 test('an issued code leaves no action alone on a line at phone width', async ({
