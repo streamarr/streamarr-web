@@ -22,9 +22,9 @@ An HEVC codec string writes the level as 30 times the level number, after `L` fo
 
 The linked Chromium code therefore gives no evidence about a level.
 
-## What Safari 26.6 answered
+## What Safari 26.6 on macOS answered
 
-The questions went to Safari 26.6 through `safaridriver` on 2026-11-11.
+The questions went to Safari 26.6 on macOS through `safaridriver` on 2026-11-11.
 
 - `decodingInfo` was asked about HEVC Main and HEVC Main 10 at each level. At level 6.2 the codec strings were `hvc1.1.6.L186.B0` and `hvc1.2.4.L186.B0`. Each question was asked as `media-source` and as `file`, in SDR and with PQ or HLG colour fields. Safari answered supported, smooth and power-efficient at every level from 3.1 to 6.2. Safari answered not supported at levels 6.3, 6.5, 7.0 and 8.5.
 - The picture changed no answer. A 1280×720 picture at 30 fps and a 7680×4320 picture at 120 fps got the same answers at every level.
