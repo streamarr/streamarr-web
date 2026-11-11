@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RenewalResult } from '../auth/renewalProtocol'
 import { createApolloClient } from './client'
 import { createSubscriptionTransport } from './subscriptionTransport'
+import { deferred } from '../test/deferred'
 import {
   connectAndSubscribe,
   FakeWebSocket,
@@ -165,12 +166,40 @@ describe('subscription transport', () => {
     expect(results).toHaveLength(1)
   })
 
+  it('shouldRenewOnceWhenALaterCloseFollowsTheRenewedReconnect', async () => {
+    const { subscribe, renewal } = setup()
+    const first = await connectAndSubscribe(subscribe)
+    first.serverClose(4100, 'Access token expired')
+    await vi.advanceTimersByTimeAsync(1_000)
+    const second = latestSocket()
+    second.accept()
+    await settle()
+
+    second.serverClose(1001, 'Going away')
+    await vi.advanceTimersByTimeAsync(1_000)
+
+    expect(FakeWebSocket.instances).toHaveLength(3)
+    expect(renewal).toHaveBeenCalledOnce()
+  })
+
   it('shouldRenewBeforeReconnectingWhenTheHandshakeIsRefused', async () => {
     const { subscribe, renewal } = setup()
     subscribe()
     await settle()
 
     latestSocket().refuseHandshake()
+    await vi.advanceTimersByTimeAsync(1_000)
+
+    expect(renewal).toHaveBeenCalledOnce()
+    expect(FakeWebSocket.instances).toHaveLength(2)
+  })
+
+  it('shouldRenewBeforeReconnectingWhenTheSocketClosesAbnormallyBeforeTheServerAcknowledgesIt', async () => {
+    const { subscribe, renewal } = setup()
+    subscribe()
+    await settle()
+
+    latestSocket().serverClose(1006)
     await vi.advanceTimersByTimeAsync(1_000)
 
     expect(renewal).toHaveBeenCalledOnce()
@@ -279,6 +308,26 @@ describe('subscription transport', () => {
     expect(completed).toHaveBeenCalledOnce()
   })
 
+  it('shouldKeepTheNextIdentitySignedInWhenTheEarlierSocketsRenewalIsRejected', async () => {
+    const answered = deferred()
+    const renewal = vi.fn(async (): Promise<RenewalResult> => {
+      await answered.promise
+      return { kind: 'rejected' }
+    })
+    const { subscribe, transport, onSignedOut, completed } = setup({ renewal })
+    const earlier = await connectAndSubscribe(subscribe)
+    earlier.serverClose(4100, 'Access token expired')
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(renewal).toHaveBeenCalledOnce()
+
+    transport.replaceSocket()
+    answered.resolve()
+    await settle()
+
+    expect(onSignedOut).not.toHaveBeenCalled()
+    expect(completed).not.toHaveBeenCalled()
+  })
+
   it('shouldCloseTheSocketAndEndEveryOperationWhenStopped', async () => {
     const { subscribe, transport, results, completed } = setup()
     const socket = await connectAndSubscribe(subscribe)
@@ -306,6 +355,18 @@ describe('subscription transport', () => {
 
     expect(renewal).not.toHaveBeenCalled()
     expect(FakeWebSocket.instances).toHaveLength(1)
+  })
+
+  it('shouldKeepNoTimerWhenStoppedWhileAReconnectWaits', async () => {
+    const { subscribe, transport } = setup()
+    const socket = await connectAndSubscribe(subscribe)
+    socket.serverClose(1001, 'Going away')
+    await vi.advanceTimersByTimeAsync(100)
+
+    transport.stop()
+    await settle()
+
+    expect(vi.getTimerCount()).toBe(0)
   })
 
   it('shouldOpenANewSocketForTheNextSignInAfterStopping', async () => {
@@ -363,6 +424,29 @@ describe('subscription transport', () => {
     expect(earlier.subscriptionIds()).toEqual([])
     expect(next.subscriptionIds()).toHaveLength(1)
     expect(framesAtEachReport).toEqual([1])
+  })
+
+  it('shouldSubscribeOnlyTheOperationThatFailsAfterAnIdentityChangeOnceItsOwnDelayPasses', async () => {
+    const { subscribe, subscribeToAdditions, transport } = setup()
+    subscribeToAdditions()
+    const earlier = await connectAndSubscribe(subscribe)
+    const [, statuses] = earlier.subscriptionIds()
+    earlier.deliver({ type: 'error', id: statuses, payload: errorCodes('SUBSCRIPTION_OVERFLOW') })
+    await settle()
+    transport.replaceSocket()
+    await settle()
+    const next = latestSocket()
+    next.accept()
+    await vi.advanceTimersByTimeAsync(500)
+    expect(next.subscriptionIds()).toHaveLength(2)
+
+    const [additions] = next.subscriptionIds()
+    next.deliver({ type: 'error', id: additions, payload: errorCodes('SUBSCRIPTION_OVERFLOW') })
+    await vi.advanceTimersByTimeAsync(999)
+    expect(next.subscriptionIds()).toHaveLength(2)
+    await vi.advanceTimersByTimeAsync(1)
+
+    expect(next.subscriptionIds()).toHaveLength(3)
   })
 
   it('shouldOpenNoSocketWhenTheIdentityChangesWithNothingSubscribed', async () => {
@@ -474,18 +558,73 @@ describe('subscription transport', () => {
     expect(framesAtEachReport).toEqual([1, 1])
   })
 
+  it('shouldReportNothingBeforeTheNextSocketConnectsWhenTheOnlyOperationSubscribesAgain', async () => {
+    const { subscribe, framesAtEachReport } = setup()
+    const socket = await connectAndSubscribe(subscribe)
+
+    socket.deliver({
+      type: 'error',
+      id: socket.subscriptionIds()[0],
+      payload: errorCodes('SUBSCRIPTION_OVERFLOW'),
+    })
+    await vi.advanceTimersByTimeAsync(1_000)
+    // The fake clock holds a zero-delay timer set during a tick for one millisecond.
+    await vi.advanceTimersByTimeAsync(1)
+
+    expect(latestSocket()).not.toBe(socket)
+    expect(framesAtEachReport).toEqual([1])
+  })
+
+  it('shouldSubscribeOnlyTheOperationThatFailedWhenAnotherSubscribedAgainEarlier', async () => {
+    const { subscribe, subscribeToAdditions } = setup()
+    subscribeToAdditions()
+    const socket = await connectAndSubscribe(subscribe)
+    const [additions, statuses] = socket.subscriptionIds()
+    socket.deliver({ type: 'error', id: statuses, payload: errorCodes('SUBSCRIPTION_OVERFLOW') })
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(socket.subscriptionIds()).toHaveLength(3)
+
+    socket.deliver({ type: 'error', id: additions, payload: errorCodes('SUBSCRIPTION_OVERFLOW') })
+    await vi.advanceTimersByTimeAsync(1_000)
+
+    expect(socket.subscriptionIds()).toHaveLength(4)
+  })
+
+  it('shouldMakeAnOperationWaitItsOwnDelayWhenAnotherJoinedTheWaitBeforeIt', async () => {
+    const { subscribe, subscribeToAdditions } = setup()
+    subscribeToAdditions()
+    const socket = await connectAndSubscribe(subscribe)
+    const [additions, statuses] = socket.subscriptionIds()
+    socket.deliver({ type: 'error', id: statuses, payload: errorCodes('SUBSCRIPTION_OVERFLOW') })
+    await vi.advanceTimersByTimeAsync(500)
+    socket.deliver({ type: 'error', id: additions, payload: errorCodes('SUBSCRIPTION_OVERFLOW') })
+    await vi.advanceTimersByTimeAsync(500)
+    const next = latestSocket()
+    next.accept()
+    await settle()
+    expect(next.subscriptionIds()).toHaveLength(2)
+
+    const [again] = next.subscriptionIds()
+    next.deliver({ type: 'error', id: again, payload: errorCodes('SUBSCRIPTION_OVERFLOW') })
+    await vi.advanceTimersByTimeAsync(1_999)
+    expect(next.subscriptionIds()).toHaveLength(2)
+    await vi.advanceTimersByTimeAsync(1)
+
+    expect(next.subscriptionIds()).toHaveLength(3)
+  })
+
   it('shouldSubscribeAgainWhenAuthorizationIsUnavailable', async () => {
     const { subscribe, subscribeToAdditions, results, completed } = setup()
     subscribeToAdditions()
     const socket = await connectAndSubscribe(subscribe)
-    const [first] = socket.subscriptionIds()
+    const [, statuses] = socket.subscriptionIds()
 
     socket.deliver({
       type: 'next',
-      id: first,
+      id: statuses,
       payload: { errors: errorCodes('AUTHORIZATION_UNAVAILABLE') },
     })
-    socket.deliver({ type: 'complete', id: first })
+    socket.deliver({ type: 'complete', id: statuses })
     await vi.advanceTimersByTimeAsync(1_000)
 
     expect(socket.subscriptionIds()).toHaveLength(3)
@@ -493,25 +632,39 @@ describe('subscription transport', () => {
     expect(completed).not.toHaveBeenCalled()
   })
 
-  it('shouldDoubleTheResubscribeDelayWhileTheOnlyOperationKeepsFailing', async () => {
-    const { subscribe } = setup()
-    let socket = await connectAndSubscribe(subscribe)
+  it.each([
+    {
+      ending: 'an error',
+      end(socket: FakeWebSocket, id: string) {
+        socket.deliver({ type: 'error', id, payload: errorCodes('AUTHORIZATION_UNAVAILABLE') })
+      },
+    },
+    {
+      ending: 'a refusal and a completion',
+      end(socket: FakeWebSocket, id: string) {
+        const payload = { errors: errorCodes('AUTHORIZATION_UNAVAILABLE') }
+        socket.deliver({ type: 'next', id, payload })
+        socket.deliver({ type: 'complete', id })
+      },
+    },
+  ])(
+    'shouldDoubleTheResubscribeDelayWhileTheOnlyOperationKeepsFailing(ending: $ending)',
+    async ({ end }) => {
+      const { subscribe } = setup()
+      let socket = await connectAndSubscribe(subscribe)
 
-    for (const delay of [1_000, 2_000, 4_000]) {
-      socket.deliver({
-        type: 'error',
-        id: socket.subscriptionIds()[0],
-        payload: errorCodes('AUTHORIZATION_UNAVAILABLE'),
-      })
-      await vi.advanceTimersByTimeAsync(delay - 1)
-      expect(latestSocket()).toBe(socket)
-      await vi.advanceTimersByTimeAsync(1)
-      expect(latestSocket()).not.toBe(socket)
-      socket = latestSocket()
-      socket.accept()
-      await settle()
-    }
-  })
+      for (const delay of [1_000, 2_000, 4_000]) {
+        end(socket, socket.subscriptionIds()[0])
+        await vi.advanceTimersByTimeAsync(delay - 1)
+        expect(latestSocket()).toBe(socket)
+        await vi.advanceTimersByTimeAsync(1)
+        expect(latestSocket()).not.toBe(socket)
+        socket = latestSocket()
+        socket.accept()
+        await settle()
+      }
+    },
+  )
 
   it('shouldKeepGrowingTheResubscribeDelayWhileAnotherOperationReceivesChanges', async () => {
     const { subscribe, subscribeToAdditions } = setup()
@@ -634,6 +787,28 @@ describe('subscription transport', () => {
 
     expect(socket.subscriptionIds()).toHaveLength(1)
     expect(framesAtEachReport).toEqual([1])
+  })
+
+  it('shouldLeaveOutAnOperationThatEndedWhileWaitingWhenAnotherKeepsTheSocketOpen', async () => {
+    const { subscribe, subscribeToAdditions, framesAtEachReport } = setup()
+    subscribeToAdditions()
+    const operation = subscribe()
+    await settle()
+    const socket = latestSocket()
+    socket.accept()
+    await settle()
+
+    socket.deliver({
+      type: 'error',
+      id: socket.subscriptionIds()[1],
+      payload: errorCodes('SUBSCRIPTION_OVERFLOW'),
+    })
+    await settle()
+    operation.unsubscribe()
+    await vi.advanceTimersByTimeAsync(120_000)
+
+    expect(socket.subscriptionIds()).toHaveLength(2)
+    expect(framesAtEachReport).toEqual([2])
   })
 
   it('shouldCloseTheSocketWhenTheLastOperationEnds', async () => {
