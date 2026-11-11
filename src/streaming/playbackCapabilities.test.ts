@@ -2085,6 +2085,44 @@ describe('declarePlaybackCapabilities', () => {
       },
     )
 
+    // The HEVC direct-play questions start after the HEVC level searches end. An unanswered level
+    // question therefore delays the direct-play questions past the deadline. No answer counts after
+    // the deadline.
+    it('shouldDeclareNoHevcDirectPlayButKeepTheMainTenLevelWhenWebKitLeavesTheHevcMainLevelQuestionUnansweredAtTheDeadline', async () => {
+      vi.useFakeTimers()
+      const answers = filePlayingDecodingInfo(WEBKIT_FILE_TYPES)
+      const isHevcMainLevelSixPointTwoQuestion = (configuration: MediaDecodingConfiguration) =>
+        configuration.type !== 'file' && codecOf(configuration) === hevcMainCodec(HEVC_LEVEL_6_2)
+      const declaration = declarePlaybackCapabilities(
+        platformFixture({
+          decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) =>
+            isHevcMainLevelSixPointTwoQuestion(configuration)
+              ? NEVER_ANSWERED
+              : answers(configuration),
+          ),
+          canPlayType: canPlayTypeOf(WEBKIT_FILE_TYPES),
+          userAgent: SAFARI,
+        }),
+      )
+
+      await vi.advanceTimersByTimeAsync(3_000)
+
+      expect(familyEntries(await declaration, 'HEVC')).toEqual([
+        {
+          ...UHD_AT_60_HEVC_ENTRY,
+          codecProfiles: [
+            { profile: 'HEVC_MAIN', maxLevel: HEVC_LEVEL_5_1 },
+            { profile: 'HEVC_MAIN_10', maxLevel: HEVC_LEVEL_6_2 },
+          ],
+        },
+      ])
+      expect(directPlayOf((await declaration).video)).toEqual([
+        { codecFamily: 'H264', containers: ['MP4'], sampleEntries: ['AVC1'] },
+        { codecFamily: 'HEVC', containers: [], sampleEntries: [] },
+        { codecFamily: 'AV1', containers: [], sampleEntries: [] },
+      ])
+    })
+
     it('shouldDeclareTheNeededHevcLevelWhenTheBrowserAnswersLevelsAboveItSmoothOnlyBelow2160p60', async () => {
       const declaration = await declarePlaybackCapabilities(
         platformFixture({
