@@ -11,7 +11,7 @@ import type {
   ClientCapabilityDeclarationInput,
   CreatePlaybackSessionMutationVariables,
 } from '../src/graphql/generated/graphql'
-import { paintedText, textContrast } from './contrast'
+import { contrast, paintedMark, paintedPixels, paintedText, textContrast } from './contrast'
 import { STUB_URL } from './ports'
 
 // The player gives hls.js a video preference built from its declaration. These specs play a PQ
@@ -358,24 +358,6 @@ test('the HDR toggle that Original holds on reads apart from a choice the viewer
   await expect(toggle).toHaveCSS('cursor', 'default')
 })
 
-// An icon on a selected row takes the row's own color, whether or not the viewer can change the row.
-for (const [held, playback] of [
-  ['Original holds on', ORIGINAL],
-  ['the viewer can turn off', FIXED_QUALITY_IN_HDR],
-] as const) {
-  test(`the HDR toggle that ${held} draws its check in its label's color`, async ({
-    page,
-    request,
-  }) => {
-    const { toggle } = await openQualityMenu(page, request, playback)
-    const color = (part: Locator) => part.evaluate((element) => getComputedStyle(element).color)
-
-    expect(await color(toggle.locator('svg'))).toBe(
-      await color(toggle.getByText('HDR', { exact: true })),
-    )
-  })
-}
-
 test('the HDR toggle that is off and unavailable writes its label in the disabled text color', async ({
   page,
   request,
@@ -407,20 +389,49 @@ test('the HDR toggle that is off and unavailable takes no fill under the pointer
   await expect(toggle).toHaveCSS('background-color', atRest)
 })
 
-// Forced colors remove every row's fill, so the check is the mark that is left to show HDR is on.
-test('the HDR toggle that Original holds on keeps its check when the system forces its colors', async ({
-  page,
-  request,
-}) => {
-  const { toggle } = await openQualityMenu(page, request, ORIGINAL)
-  const check = toggle.locator('svg')
+// The check is judged by the pixels the browser paints: a color or an opacity set on any part of the
+// icon changes them. At two device pixels to a CSS pixel its stroke covers whole pixels, so a
+// screenshot holds its solid color.
+test.describe(() => {
+  test.use({ deviceScaleFactor: 2 })
 
-  for (const palette of ['light', 'dark'] as const) {
-    await page.emulateMedia({ forcedColors: 'active', colorScheme: palette })
-    expect(await page.evaluate(() => matchMedia('(forced-colors: active)').matches)).toBe(true)
+  // An icon on a selected row takes the row's own color, whether or not the viewer can change the
+  // row.
+  for (const [held, playback] of [
+    ['Original holds on', ORIGINAL],
+    ['the viewer can turn off', FIXED_QUALITY_IN_HDR],
+  ] as const) {
+    test(`the HDR toggle that ${held} draws its check in its label's color`, async ({
+      page,
+      request,
+    }) => {
+      const { toggle } = await openQualityMenu(page, request, playback)
+      const label = await toggle
+        .getByText('HDR', { exact: true })
+        .evaluate((element) => getComputedStyle(element).color)
 
-    expect
-      .soft(textContrast(await paintedText(check)), `in a ${palette} forced palette`)
-      .toBeGreaterThanOrEqual(3)
+      const { mark } = paintedMark(await paintedPixels(toggle.locator('svg')))
+
+      expect(`rgb(${mark.join(', ')})`).toBe(label)
+    })
   }
+
+  // Forced colors remove every row's fill, so the check is the mark that is left to show HDR is on.
+  test('the HDR toggle that Original holds on keeps its check when the system forces its colors', async ({
+    page,
+    request,
+  }) => {
+    const { toggle } = await openQualityMenu(page, request, ORIGINAL)
+    const check = toggle.locator('svg')
+
+    for (const palette of ['light', 'dark'] as const) {
+      await page.emulateMedia({ forcedColors: 'active', colorScheme: palette })
+      expect(await page.evaluate(() => matchMedia('(forced-colors: active)').matches)).toBe(true)
+      const { mark, backdrop } = paintedMark(await paintedPixels(check))
+
+      expect
+        .soft(contrast(mark, backdrop), `in a ${palette} forced palette`)
+        .toBeGreaterThanOrEqual(3)
+    }
+  })
 })
