@@ -142,6 +142,9 @@ function pixelRate(tier: PictureTier): number {
   return tier.width * tier.height * tier.frameRate
 }
 
+// Highest first. The picture tiers already ask about level 5.1 and every level below it.
+const SEARCHED_HEVC_LEVELS: readonly number[] = [62, 61, 60, 52]
+
 interface BitDepthProbe {
   bitDepth: number
   profiles: readonly VideoCodecProfile[]
@@ -326,6 +329,16 @@ interface HdrTierAnswers {
   dolbyVision: ProbeAnswer[]
 }
 
+// The level that each level search found, or null where it found none. An SDR display searches no
+// compatible base.
+interface SearchedLevels {
+  eightBit: number | null
+  tenBit: number | null
+  bases: ReadonlyMap<DeclaredCompatibleBase, number | null>
+}
+
+const NO_SEARCHED_LEVELS: SearchedLevels = { eightBit: null, tenBit: null, bases: new Map() }
+
 // maxChannels is null when the HLS path confirmed no channel count for the codec. The direct-play
 // containers are those the media element plays the codec from, at the probed channel count.
 interface AudioAnswer {
@@ -455,12 +468,15 @@ async function probeVideo({
   // arrive, so a question left unanswered at the deadline holds back only the families that read
   // its answer.
   const declareFamily = async (family: VideoFamily, pendingAnswers: Promise<TierAnswers[]>) => {
-    const [answers, hdrAnswers, h264Answers] = await Promise.all([
+    const [answers, hdrAnswers, h264Answers, searched] = await Promise.all([
       pendingAnswers,
       probeHdr({ platform, family, askDecodingInfo }),
       isHevcOnWebKit(platform, family) ? pendingH264Answers : [],
+      searchLevels({ platform, family, askDecodingInfo }),
     ])
-    const entries = familyEntries({ platform, family, answers, hdrAnswers, h264Answers, hls })
+    const entries = familyEntries({ platform, family, answers, hdrAnswers, h264Answers, hls }).map(
+      (entry) => withSearchedLevels({ family, entry, searched }),
+    )
     return withVideoDirectPlay({ platform, family, askers, entries })
   }
   const declared = await Promise.all([
@@ -506,6 +522,59 @@ function probeHdr({
       return { tier, bases, dolbyVision: dolbyVisionAnswers }
     }),
   )
+}
+
+// WebKit on Apple platforms answers an HEVC question by comparing its level with the decoder's
+// maximum levels, and does not read the picture. Its smooth answer is therefore evidence about the
+// level itself (ADR 0049). Each search asks at the widest picture tier, so a WebKit port that reads
+// the picture cannot raise a level on the strength of a small picture.
+async function searchLevels({
+  platform,
+  family,
+  askDecodingInfo,
+}: {
+  platform: PlaybackPlatform
+  family: VideoFamily
+  askDecodingInfo: AskDecodingInfo
+}): Promise<SearchedLevels> {
+  const { eightBit, tenBit, hdr } = family
+  if (!isHevcOnWebKit(platform, family) || !tenBit || !hdr) {
+    return NO_SEARCHED_LEVELS
+  }
+  const search = (codec: (level: number) => string, color?: ColorQuestion) =>
+    searchLevel((level) => askDecodingInfo(videoConfiguration(UHD_AT_60, codec(level), color)))
+  let baseProbes: typeof COMPATIBLE_BASE_PROBES = []
+  if (platform.displaysHighDynamicRange) {
+    baseProbes = COMPATIBLE_BASE_PROBES
+  }
+  const [eightBitLevel, tenBitLevel, baseLevels] = await Promise.all([
+    search(eightBit.codec),
+    search(tenBit.codec),
+    Promise.all(
+      baseProbes.map(({ transferCharacteristics, color }) =>
+        search((level) => hdr.codec(level, transferCharacteristics), color),
+      ),
+    ),
+  ])
+  const bases = baseProbes.map(({ base }, index) => [base, baseLevels[index]] as const)
+  return { eightBit: eightBitLevel, tenBit: tenBitLevel, bases: new Map(bases) }
+}
+
+// The browser answers no faster when asked every level at once, so the search asks one level at a
+// time and stops at the first smooth answer. A missing answer is never evidence, so a question
+// that the browser rejects or leaves unanswered ends the search without a level. Power efficiency
+// never raises a level.
+async function searchLevel(ask: (level: number) => Promise<ProbeAnswer>): Promise<number | null> {
+  for (const level of SEARCHED_HEVC_LEVELS) {
+    const answer = await ask(level)
+    if (answer === null) {
+      return null
+    }
+    if (isSmooth(answer)) {
+      return level
+    }
+  }
+  return null
 }
 
 function probeFamily({
@@ -712,9 +781,11 @@ type KeepsUp<T> = (answers: T, answerOf: AnswerOf<T>) => boolean
 // the codec string passes its support checks and VideoToolbox is available, whatever the picture
 // size or frame rate. The cap therefore holds power-efficient HEVC to the highest H.264
 // configuration WebKit accepts. If WebKit answers no H.264 tier smooth, power-efficient HEVC is
-// dropped and the server encodes instead. WebKit answers HEVC smooth up to the decoder's maximum
-// playback level, so once a profile answers smooth at any tier, its smooth answers are its ceiling
-// and power efficiency no longer stands in for them. Elsewhere only a smooth answer keeps up.
+// dropped and the server encodes instead. WebKit answers an HEVC question smooth when its level is
+// at most the decoder's maximum playback level, and does not read the picture. So once a profile
+// answers smooth at any tier, its smooth answers are its ceiling and power efficiency no longer
+// stands in for them. Its level searches can then raise its level above the tiers' levels.
+// Elsewhere only a smooth answer keeps up.
 function keepsUpOn<T extends { tier: PictureTier }>({
   platform,
   family,
@@ -904,6 +975,65 @@ function videoEntry({
     hdr10Plus: false,
     hls,
   }
+}
+
+// A codec profile keeps the level that its picture needs unless a level search found a higher one.
+// A level bounds what the decoder holds, so an entry with a smaller picture keeps the level that the
+// search found.
+function withSearchedLevels({
+  family,
+  entry,
+  searched,
+}: {
+  family: VideoFamily
+  entry: VideoCapabilityEntryInput
+  searched: SearchedLevels
+}): VideoCapabilityEntryInput {
+  return {
+    ...entry,
+    codecProfiles: entry.codecProfiles.map((codecProfile) => ({
+      ...codecProfile,
+      maxLevel:
+        searchedLevel({ family, entry, profile: codecProfile.profile, searched }) ??
+        codecProfile.maxLevel,
+    })),
+  }
+}
+
+function searchedLevel({
+  family,
+  entry,
+  profile,
+  searched,
+}: {
+  family: VideoFamily
+  entry: VideoCapabilityEntryInput
+  profile: VideoCodecProfile
+  searched: SearchedLevels
+}): number | null {
+  if (!entry.compatibleBases.includes('SDR')) {
+    return lowestBaseLevel(entry, searched)
+  }
+  if (family.eightBit.profiles.includes(profile)) {
+    return searched.eightBit
+  }
+  if (family.tenBit?.profiles.includes(profile)) {
+    return searched.tenBit
+  }
+  return null
+}
+
+// An HDR entry accepts a stream in each compatible base that it lists, so it takes the lowest level
+// that their searches found. It takes none when it lists no base, or when one of its bases has none.
+function lowestBaseLevel(
+  entry: VideoCapabilityEntryInput,
+  searched: SearchedLevels,
+): number | null {
+  const levels = entry.compatibleBases.map((base) => searched.bases.get(base) ?? null)
+  if (levels.length === 0 || !levels.every((level) => level !== null)) {
+    return null
+  }
+  return Math.min(...levels)
 }
 
 // No engine's decodingInfo answer depends on the channel count (e2e/decoding-info-channels.spec.ts),
@@ -1199,7 +1329,7 @@ async function playsEveryFile({
 }
 
 // A file answer keeps up when it is smooth. Power efficiency stands in for smoothness only for
-// HEVC on WebKit, and only where the HLS answer at the same picture was not smooth either: the
+// HEVC on WebKit, and only where the HLS answer to the same question was not smooth either: the
 // entry then holds the H.264 cap, which a file decoder that drops frames below the HLS one's
 // smooth ceiling would not.
 function keepsUpFromFile({
@@ -1219,8 +1349,8 @@ function keepsUpFromFile({
   return isHevcOnWebKit(platform, family) && isPowerEfficient(file) && !isSmooth(hls)
 }
 
-// The questions whose answers made the entry: one per bit depth of its SDR profiles, or one per
-// compatible base of an HDR entry, at its widest picture.
+// One question per bit depth of an entry's SDR profiles, or per compatible base of an HDR entry, at
+// the entry's widest picture.
 function entryQuestions({
   family,
   entry,
