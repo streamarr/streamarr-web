@@ -52,7 +52,7 @@ export function ShareCodesScreen({
   /** The client's origin, which a code's link opens the Sharing page on. */
   origin: string
 }>) {
-  const { notice, heading, announce, dismiss } = usePageNotice()
+  const { notice, count, heading, announce, dismiss } = usePageNotice()
 
   return (
     <>
@@ -61,7 +61,9 @@ export function ShareCodesScreen({
           Share codes
         </h1>
       </div>
-      <PageNotice onDismiss={dismiss}>{notice}</PageNotice>
+      <PageNotice count={count} onDismiss={dismiss}>
+        {notice}
+      </PageNotice>
       <ShareCodesContent clipboard={clipboard} origin={origin} announce={announce} />
     </>
   )
