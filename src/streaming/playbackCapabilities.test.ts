@@ -146,6 +146,27 @@ function answer(supported: boolean): DecodingAnswer {
 
 const NEVER_ANSWERED = new Promise<DecodingAnswer>(() => {})
 
+type PicksQuestions = (configuration: MediaDecodingConfiguration) => boolean
+
+// Never answers a question that `unanswered` picks, and answers every other as `otherwise` does.
+function decodingInfoLeavingUnanswered({
+  unanswered,
+  otherwise,
+}: {
+  unanswered: PicksQuestions
+  otherwise: (configuration: MediaDecodingConfiguration) => Promise<DecodingAnswer>
+}) {
+  return vi.fn((configuration: MediaDecodingConfiguration) =>
+    unanswered(configuration) ? NEVER_ANSWERED : otherwise(configuration),
+  )
+}
+
+// Picks the questions about the path that plays HLS, never the file questions of direct play.
+function hlsQuestionAbout(codec: string): PicksQuestions {
+  return (configuration) =>
+    configuration.type !== 'file' && codecOf(configuration).startsWith(codec)
+}
+
 type Answers = (configuration: MediaDecodingConfiguration) => DecodingAnswer
 
 function decodingInfoAnsweringHevc(hevcAnswer: Answers, otherAnswer: Answers = () => answer(true)) {
@@ -2169,15 +2190,12 @@ describe('declarePlaybackCapabilities', () => {
 
     it('shouldKeepDirectPlayForEveryOtherFamilyWhenOneHevcQuestionGoesUnansweredAtTheDeadline', async () => {
       vi.useFakeTimers()
-      const answers = filePlayingDecodingInfo(CHROMIUM_FILE_TYPES)
       const declaration = declarePlaybackCapabilities(
         platformFixture({
-          decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) =>
-            configuration.type === 'media-source' &&
-            configuration.video?.contentType.includes('hvc1.2.4.L153.')
-              ? NEVER_ANSWERED
-              : answers(configuration),
-          ),
+          decodingInfo: decodingInfoLeavingUnanswered({
+            unanswered: hlsQuestionAbout('hvc1.2.4.L153.'),
+            otherwise: filePlayingDecodingInfo(CHROMIUM_FILE_TYPES),
+          }),
           canPlayType: canPlayTypeOf(CHROMIUM_FILE_TYPES),
         }),
       )
