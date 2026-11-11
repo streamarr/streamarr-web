@@ -1,6 +1,7 @@
 import type { ApolloClient } from '@apollo/client'
 import { createRouter, type RouterHistory } from '@tanstack/react-router'
 import { inactiveRenewalBridge, type RenewalBridge } from './auth/renewalBridge'
+import { signInResuming } from './auth/resume'
 import { createSessionStore, probeSession } from './auth/session'
 import { type AuthRoute, createApolloClient } from './graphql/client'
 import { createSubscriptionTransport } from './graphql/subscriptionTransport'
@@ -44,7 +45,7 @@ export function createAppRouter(
     // back-navigation through on a stale answer, and the bounce carries the way back.
     subscriptions.stop()
     session.markAnonymous()
-    void router.navigate({ to: route, search: { redirect: router.state.location.href } })
+    void router.navigate(signInResuming(router.state.location))
   }
   apolloClient = createApolloClient(routeAuth, subscriptions.link)
   return { router, apolloClient, session, subscriptions }
