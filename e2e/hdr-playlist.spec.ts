@@ -83,16 +83,44 @@ const PQ_SESSION = {
   },
 }
 
-// A playback session that plays Original from an HDR source, whose stream keeps the source's range.
-const ORIGINAL_PQ_SESSION = {
-  createPlaybackSession: {
-    ...PQ_SESSION.createPlaybackSession,
-    playbackSession: {
-      ...PQ_SESSION.createPlaybackSession.playbackSession,
-      playbackChoice: 'ORIGINAL',
-      decisions: [{ video: { source: { videoRange: 'PQ' } } }],
+// A playback of the PQ source whose Quality menu shows the HDR toggle.
+interface HdrSourcePlayback {
+  choice: 'ORIGINAL' | 'MEDIUM_480P'
+  /** The choice's label on the quality button. */
+  label: string
+  /** The range of the stream that plays. */
+  videoRange: 'PQ' | 'SDR'
+  displaysHdr: boolean
+  /** The toggle this playback shows. */
+  toggle: { on: boolean; unavailable: boolean }
+}
+
+// Original keeps the source's range, so the viewer cannot turn its HDR off.
+const ORIGINAL: HdrSourcePlayback = {
+  choice: 'ORIGINAL',
+  label: 'Original',
+  videoRange: 'PQ',
+  displaysHdr: true,
+  toggle: { on: true, unavailable: true },
+}
+
+function sessionOf({ choice, videoRange }: HdrSourcePlayback) {
+  const { playbackSession } = PQ_SESSION.createPlaybackSession
+  const { streamSession } = playbackSession.currentFormatAttempt
+  return {
+    createPlaybackSession: {
+      ...PQ_SESSION.createPlaybackSession,
+      playbackSession: {
+        ...playbackSession,
+        playbackChoice: choice,
+        decisions: [{ video: { source: { videoRange: 'PQ' } } }],
+        currentFormatAttempt: {
+          ...playbackSession.currentFormatAttempt,
+          streamSession: { ...streamSession, videoRange },
+        },
+      },
     },
-  },
+  }
 }
 
 const OPERATIONS: Record<string, unknown> = {
@@ -240,24 +268,28 @@ test('hls.js starts on the range the declaration prefers when a ladder lists SDR
   expect(onSdrDisplay.mediaPlaylists[0]).toBe('sdr-360.m3u8')
 })
 
-// Plays Original from the PQ source and opens the Quality menu, whose HDR toggle is on and
-// unavailable there.
-async function openQualityMenuInOriginal(
+// Plays the PQ source as `playback` says and opens the Quality menu, whose last row is the HDR
+// toggle in the state `playback` names.
+async function openQualityMenu(
   page: Page,
   request: APIRequestContext,
+  playback: HdrSourcePlayback,
 ): Promise<{ menu: Locator; toggle: Locator }> {
-  await onDisplay(page, true)
+  await onDisplay(page, playback.displaysHdr)
   await servePqStream(page, request, PQ_ONLY_MULTIVARIANT)
   await page.route('**/graphql', (route) =>
     operationName(route.request()) === 'CreatePlaybackSession'
-      ? route.fulfill({ json: { data: ORIGINAL_PQ_SESSION } })
+      ? route.fulfill({ json: { data: sessionOf(playback) } })
       : route.fallback(),
   )
   await page.goto('/play/file-1?episode=e1')
-  await page.getByRole('button', { name: 'Quality: Original' }).click()
+  await page.getByRole('button', { name: `Quality: ${playback.label}` }).click()
   const menu = page.getByRole('menu', { name: 'Quality' })
   const toggle = menu.getByRole('menuitemcheckbox', { name: /^HDR/ })
-  await expect(toggle).toHaveAttribute('aria-disabled', 'true')
+  await expect(toggle).toHaveAttribute('aria-checked', String(playback.toggle.on))
+  expect(await toggle.getAttribute('aria-disabled')).toBe(
+    playback.toggle.unavailable ? 'true' : null,
+  )
   return { menu, toggle }
 }
 
@@ -265,7 +297,7 @@ test('the HDR toggle that Original holds on keeps its highlight under the pointe
   page,
   request,
 }) => {
-  const { menu, toggle } = await openQualityMenuInOriginal(page, request)
+  const { menu, toggle } = await openQualityMenu(page, request, ORIGINAL)
   const highlight = await menu
     .getByRole('menuitemradio', { checked: true })
     .evaluate((row) => getComputedStyle(row).backgroundColor)
@@ -280,7 +312,7 @@ test('the HDR toggle that Original holds on keeps its label readable, at rest an
   page,
   request,
 }) => {
-  const { toggle } = await openQualityMenuInOriginal(page, request)
+  const { toggle } = await openQualityMenu(page, request, ORIGINAL)
   const label = toggle.getByText('HDR', { exact: true })
   const underThePointer = () => toggle.evaluate((row) => row.matches(':hover'))
   expect(await underThePointer()).toBe(false)
@@ -298,7 +330,7 @@ test('the HDR toggle that Original holds on reads apart from a choice the viewer
   page,
   request,
 }) => {
-  const { menu, toggle } = await openQualityMenuInOriginal(page, request)
+  const { menu, toggle } = await openQualityMenu(page, request, ORIGINAL)
   const original = menu.getByRole('menuitemradio', { checked: true })
   const weight = (row: Locator) =>
     row.evaluate((element) => Number(getComputedStyle(element).fontWeight))
@@ -316,7 +348,7 @@ test('the HDR toggle that Original holds on keeps its check when the system forc
   page,
   request,
 }) => {
-  const { toggle } = await openQualityMenuInOriginal(page, request)
+  const { toggle } = await openQualityMenu(page, request, ORIGINAL)
   const check = toggle.locator('svg')
 
   for (const palette of ['light', 'dark'] as const) {
