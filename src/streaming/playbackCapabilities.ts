@@ -29,7 +29,6 @@ export const DECLARATION_REFUSAL_TYPENAMES: ReadonlySet<string> =
     'CapabilityListTooLongError',
     'CapabilityMaximumInvalidError',
     'CapabilityProfileMismatchError',
-    'VideoCodecTierInvalidError',
   ])
 
 /**
