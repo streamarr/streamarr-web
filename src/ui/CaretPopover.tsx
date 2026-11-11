@@ -280,7 +280,7 @@ export function CaretPopover<Id>({
             onKeyDown={handleRowKey}
           >
             <span className={styles.label}>{toggle.label}</span>
-            {toggle.checked && <Icon name="check" size={14} className={styles.check} />}
+            {toggle.checked && <Icon name="check" size={14} />}
           </button>
         )}
       </div>

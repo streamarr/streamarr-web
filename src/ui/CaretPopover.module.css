@@ -106,17 +106,10 @@
   }
 }
 
-/* The viewer has to read an unavailable toggle that is on, so its label keeps the selected row's
-   color. Its regular weight and its quieter check tell it from a choice the viewer can change. */
+/* The viewer has to read an unavailable toggle that is on, so its label and its check keep the
+   selected row's color. Its regular weight tells it from a choice the viewer can change. */
 .toggle[aria-disabled='true'][aria-checked='true'] {
   font-weight: var(--font-weight-regular);
-
-  /* An svg keeps a color set on it when the system forces colors, and would draw this one on a
-     forced white background. `auto` lets the system's text color replace it. */
-  & .check {
-    color: var(--text-secondary);
-    forced-color-adjust: auto;
-  }
 }
 
 .label {

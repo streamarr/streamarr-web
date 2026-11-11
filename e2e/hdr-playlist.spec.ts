@@ -104,6 +104,15 @@ const ORIGINAL: HdrSourcePlayback = {
   toggle: { on: true, unavailable: true },
 }
 
+// A fixed quality takes the viewer's HDR choice.
+const FIXED_QUALITY_IN_HDR: HdrSourcePlayback = {
+  choice: 'MEDIUM_480P',
+  label: '480p',
+  videoRange: 'PQ',
+  displaysHdr: true,
+  toggle: { on: true, unavailable: false },
+}
+
 function sessionOf({ choice, videoRange }: HdrSourcePlayback) {
   const { playbackSession } = PQ_SESSION.createPlaybackSession
   const { streamSession } = playbackSession.currentFormatAttempt
@@ -334,14 +343,29 @@ test('the HDR toggle that Original holds on reads apart from a choice the viewer
   const original = menu.getByRole('menuitemradio', { checked: true })
   const weight = (row: Locator) =>
     row.evaluate((element) => Number(getComputedStyle(element).fontWeight))
-  const checkContrast = async (row: Locator) => textContrast(await paintedText(row.locator('svg')))
 
   expect(await weight(toggle)).toBeLessThan(await weight(original))
-  const check = await checkContrast(toggle)
-  expect(check).toBeLessThan(await checkContrast(original))
-  // The check is not text: it needs 3 to 1, where the label needs 4.5.
-  expect(check).toBeGreaterThanOrEqual(3)
+  await expect(original).toHaveCSS('cursor', 'pointer')
+  await expect(toggle).toHaveCSS('cursor', 'default')
 })
+
+// An icon on a selected row takes the row's own color, whether or not the viewer can change the row.
+for (const [held, playback] of [
+  ['Original holds on', ORIGINAL],
+  ['the viewer can turn off', FIXED_QUALITY_IN_HDR],
+] as const) {
+  test(`the HDR toggle that ${held} draws its check in its label's color`, async ({
+    page,
+    request,
+  }) => {
+    const { toggle } = await openQualityMenu(page, request, playback)
+    const color = (part: Locator) => part.evaluate((element) => getComputedStyle(element).color)
+
+    expect(await color(toggle.locator('svg'))).toBe(
+      await color(toggle.getByText('HDR', { exact: true })),
+    )
+  })
+}
 
 // Forced colors remove every row's fill, so the check is the mark that is left to show HDR is on.
 test('the HDR toggle that Original holds on keeps its check when the system forces its colors', async ({
