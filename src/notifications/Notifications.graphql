@@ -60,3 +60,8 @@ subscription NotificationsChanged {
     unreadNotificationCount
   }
 }
+
+# The count after the Notifications entry in the Profile menu.
+query UnreadNotificationCount {
+  unreadNotificationCount
+}

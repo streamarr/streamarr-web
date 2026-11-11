@@ -1047,11 +1047,13 @@ describe('library administration', () => {
     renderAppAt(SETTINGS)
 
     await screen.findByRole('article', { name: 'Movies settings' })
+    // The Profile menu's count follows the Account's Notifications over the same socket.
     await waitFor(() =>
       expect([...state.socket.state.subscribes].sort()).toEqual([
         'AdminLibraryAdded',
         'LibraryRemoved',
         'LibraryStatusChanged',
+        'NotificationsChanged',
       ]),
     )
     expect(state.socket.state.connections).toBe(1)

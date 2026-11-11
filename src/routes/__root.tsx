@@ -13,6 +13,7 @@ import type { FileRouteTypes } from '../routeTree.gen'
 import { AmbientScope } from '../media/AmbientScope'
 import { AmbientThemeProvider, useAmbientTheme } from '../media/ambientThemeContext'
 import { HomeShell } from '../ui/HomeShell'
+import { MenuCountsProvider } from '../ui/MenuCountsProvider'
 import { TopBar } from '../ui/TopBar'
 
 interface RouterContext {
@@ -60,13 +61,19 @@ function RootLayout() {
         (match) => match.routeId === '/_authenticated' && match.status === 'success',
       ),
   })
+  const ceremony = useRouterState({
+    select: (state) => state.matches.some((match) => CEREMONY_ROUTES.has(match.routeId)),
+  })
   const me = useQuery(MeDocument, { skip: !signedIn })
-  const profileId = (me.data ?? me.previousData)?.me.selectedProfile?.id
+  const current = (me.data ?? me.previousData)?.me
+  const profileId = current?.selectedProfile?.id
   const pathname = useLocation({ select: (location) => location.pathname })
   return (
     <AmbientThemeProvider>
       <LibraryContentsProvider profileId={profileId} pathname={pathname}>
-        <RootFrame />
+        <MenuCountsProvider me={signedIn && !ceremony ? current : undefined}>
+          <RootFrame />
+        </MenuCountsProvider>
       </LibraryContentsProvider>
     </AmbientThemeProvider>
   )

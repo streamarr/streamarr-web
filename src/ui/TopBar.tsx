@@ -4,6 +4,7 @@ import type { MeQuery } from '../graphql/generated/graphql'
 import { useMe } from '../identity/useMe'
 import { useLibraries } from '../media/useLibraries'
 import { Lockup } from './Lockup'
+import { useMenuCounts } from './MenuCountsProvider'
 import { ProfileMenu } from './ProfileMenu'
 import styles from './TopBar.module.css'
 
@@ -72,10 +73,12 @@ function AccountTrail() {
 function AccountMenu({ me, toSignIn }: Readonly<{ me: Me; toSignIn: () => void }>) {
   const { session } = useRouteContext({ from: '__root__' })
   const navigate = useNavigate()
+  const { unreadNotifications } = useMenuCounts()
 
   return (
     <ProfileMenu
       me={me}
+      unreadNotifications={unreadNotifications}
       onServerSettings={() => navigate({ to: '/settings/server/libraries' })}
       onProfileSettings={() => navigate({ to: '/settings/profile/languages' })}
       onHouseholdSettings={() => navigate({ to: '/settings/household/offers' })}

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { shareCodeLink } from '../../identity/shareCode'
 import { meFixture, profileFixture } from '../../test/meFixture'
 import { renderAppAt } from '../../test/render'
-import { server } from '../../test/server'
+import { menuCountReads, server } from '../../test/server'
 import { SENT_SHARE_CODE, serveShareCodeQuestions, SHARE_CODE } from '../../test/shareCodeFixtures'
 import { signIn } from '../../test/signIn'
 
@@ -24,6 +24,7 @@ function serveSharing() {
         data: { profileShares: { __typename: 'ProfileShareConnection', edges: [] } },
       }),
     ),
+    ...menuCountReads,
   )
   return serveShareCodeQuestions()
 }
