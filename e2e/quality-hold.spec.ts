@@ -175,33 +175,37 @@ test('Auto stays on the large variant while its segments arrive fast', async ({
   expect(new Set(fromLarge)).toEqual(new Set(['large']))
 })
 
-test('Auto drops from the large variant to the small one once its segments arrive slower than they play', async ({
-  page,
-  request,
-}) => {
-  const ladder = await serveLadder(page, request, {
-    choice: 'AUTO',
-    variants: [LARGE, SMALL],
-    fastLargeSegments: 2,
+// hls.js would otherwise start below a first-listed variant that peaks above 5 Mb/s.
+for (const large of [LARGE, { ...LARGE, bandwidth: 20_000_000 }]) {
+  test(`Auto starts on the large variant listed at ${large.bandwidth} b/s, and drops to the small one once its segments arrive slower than they play`, async ({
+    page,
+    request,
+  }) => {
+    const ladder = await serveLadder(page, request, {
+      choice: 'AUTO',
+      variants: [large, SMALL],
+      fastLargeSegments: 2,
+    })
+
+    await page.goto('/play/file-1?movie=m1')
+
+    const firstSmallAfterASlowedLarge = () => {
+      const slowed = ladder.segments.findIndex((segment) => segment.slowed)
+      return ladder.segments.find(
+        (segment, position) => slowed !== -1 && position > slowed && segment.variant === 'small',
+      )
+    }
+    await expect.poll(firstSmallAfterASlowedLarge, { timeout: 30_000 }).toBeDefined()
+    const small = firstSmallAfterASlowedLarge()!
+    // The element plays into the small variant's first segment.
+    await expect
+      .poll(() => playedSeconds(page), { timeout: 30_000 })
+      .toBeGreaterThan(small.index * SEGMENT_SECONDS + 1)
+    await expect(page.getByRole('button', { name: 'Quality: Auto' })).toBeVisible()
+    expect(ladder.segments[0].variant).toBe('large')
+    expect(ladder.mutations).toEqual(['CreatePlaybackSession'])
   })
-
-  await page.goto('/play/file-1?movie=m1')
-
-  const firstSmallAfterASlowedLarge = () => {
-    const slowed = ladder.segments.findIndex((segment) => segment.slowed)
-    return ladder.segments.find(
-      (segment, position) => slowed !== -1 && position > slowed && segment.variant === 'small',
-    )
-  }
-  await expect.poll(firstSmallAfterASlowedLarge, { timeout: 30_000 }).toBeDefined()
-  const small = firstSmallAfterASlowedLarge()!
-  // The element plays into the small variant's first segment.
-  await expect
-    .poll(() => playedSeconds(page), { timeout: 30_000 })
-    .toBeGreaterThan(small.index * SEGMENT_SECONDS + 1)
-  await expect(page.getByRole('button', { name: 'Quality: Auto' })).toBeVisible()
-  expect(ladder.mutations).toEqual(['CreatePlaybackSession'])
-})
+}
 
 for (const { choice, label } of [
   { choice: 'ORIGINAL', label: 'Original' },
