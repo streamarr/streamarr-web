@@ -161,7 +161,8 @@ function SharedProfiles({
       announce(`Sharing of ${share.profile.name} ended.`)
     },
     listed: shares,
-    onGone: (share) => announce(`${share.profile.name} is no longer shared here.`),
+    onGone: (share, refusal) =>
+      announce(refusal ?? `${share.profile.name} is no longer shared here.`),
   })
 
   useEffect(() => {
@@ -250,7 +251,7 @@ function VisitorTvs({
     readAgain,
     onDone: (tv) => announce(`${tv.displayName} unlinked.`),
     listed: tvs,
-    onGone: (tv) => announce(`${tv.displayName} is no longer linked here.`),
+    onGone: (tv, refusal) => announce(refusal ?? `${tv.displayName} is no longer linked here.`),
   })
 
   if (query.loading && !query.data) {

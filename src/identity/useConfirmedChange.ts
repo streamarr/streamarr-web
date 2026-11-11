@@ -7,8 +7,9 @@ import { UPDATE_FAILED_MESSAGE } from './shareText'
  * A change to one row that waits for the person's confirmation. Once sent, the list reads again
  * whatever the answer, because a refused row may have changed elsewhere; a refusal keeps the
  * confirmation open with the server's words. A confirmation whose row a change made elsewhere
- * takes out of the list closes, since confirming it could only fail, and `onGone` says why. A row
- * that leaves while its own request is on its way is that request's to report.
+ * takes out of the list closes, since confirming it could only fail, and `onGone` says why: in the
+ * server's words when the person's own attempt was refused before the row left. A row that leaves
+ * while its own request is on its way is that request's to report.
  */
 export function useConfirmedChange<Row extends { id: string }>({
   send,
@@ -22,22 +23,25 @@ export function useConfirmedChange<Row extends { id: string }>({
   onDone: (row: Row) => void
   /** The rows that the page lists now. */
   listed: readonly { id: string }[]
-  onGone: (row: Row) => void
+  /** Says why the confirmation closed, with the server's refusal of the person's attempt if any. */
+  onGone: (row: Row, refusal: string | null) => void
 }) {
   const [pending, setPending] = useState<Row | null>(null)
   const [sending, setSending] = useState(false)
   const [refusal, setRefusal] = useState<string | null>(null)
   /** The last row whose confirmation closed because the row left, until the page says so. */
-  const [left, setLeft] = useState<{ row: Row } | null>(null)
+  const [left, setLeft] = useState<{ row: Row; refusal: string | null } | null>(null)
   if (pending !== null && !sending && !listed.some((row) => row.id === pending.id)) {
-    setLeft({ row: pending })
+    setLeft({ row: pending, refusal })
     setPending(null)
     setRefusal(null)
   }
-  const sayWhy = useEffectEvent((row: Row) => onGone(row))
+  const sayWhy = useEffectEvent((gone: { row: Row; refusal: string | null }) =>
+    onGone(gone.row, gone.refusal),
+  )
 
   useEffect(() => {
-    if (left) sayWhy(left.row)
+    if (left) sayWhy(left)
   }, [left])
 
   async function confirm(row: Row) {

@@ -52,9 +52,10 @@ export function WhereShared({
     onDone: (share) => onChanged(`Sharing with ${householdName(share.householdId)} ended.`),
     listed: shares,
     // The share has left the list, so its name comes from the row the confirmation kept.
-    onGone: (share) =>
+    onGone: (share, refusal) =>
       onChanged(
-        `Sharing with ${share.household?.name ?? householdName(share.householdId)} has already ended.`,
+        refusal ??
+          `Sharing with ${share.household?.name ?? householdName(share.householdId)} has already ended.`,
       ),
   })
   // The offer spent its share code, which stays spent: offering again takes a new one.
@@ -65,9 +66,10 @@ export function WhereShared({
     readAgain,
     onDone: (share) => onChanged(`Offer to ${householdName(share.householdId)} canceled.`),
     listed: shares.filter(isWaiting),
-    onGone: (share) =>
+    onGone: (share, refusal) =>
       onChanged(
-        `The offer to ${share.household?.name ?? householdName(share.householdId)} is no longer waiting.`,
+        refusal ??
+          `The offer to ${share.household?.name ?? householdName(share.householdId)} is no longer waiting.`,
       ),
   })
   const changing = canceling.sending || ending.sending

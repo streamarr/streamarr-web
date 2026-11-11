@@ -311,6 +311,34 @@ describe('Share offers', () => {
     expect(within(dialog).getByRole('button', { name: 'Accept' })).toBeEnabled()
   })
 
+  it('shouldSayTheServersWordsWhenAcceptingIsRefusedAndTheOfferLeavesTheList', async () => {
+    const held = serveOffers([offer()])
+    server.use(
+      graphql.mutation('AcceptProfileShare', () => {
+        held.offers = []
+        return HttpResponse.json({
+          data: {
+            acceptProfileShare: {
+              __typename: 'AcceptProfileSharePayload',
+              share: null,
+              userErrors: [
+                { __typename: 'ShareNotPendingError', message: 'That offer is not pending.' },
+              ],
+            },
+          },
+        })
+      }),
+    )
+    const { user } = renderAppAt(OFFERS)
+
+    await user.click(await screen.findByRole('button', { name: 'Accept Alex' }))
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Accept' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await noticed('That offer is not pending.')
+    expect(screen.getByRole('status')).not.toHaveTextContent('That offer is no longer waiting.')
+  })
+
   it('shouldSayTheDecisionCouldNotBeSentWhenTheServerCannotBeReached', async () => {
     serve([offer()])
     server.use(graphql.mutation('AcceptProfileShare', () => HttpResponse.error()))

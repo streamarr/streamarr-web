@@ -132,7 +132,7 @@ function HouseholdOffers({
     readAgain,
     onDone: (offer) => onDecided(`${offeredProfile(offer)} accepted into ${household.name}.`),
     listed: offers,
-    onGone: () => onDecided(NO_LONGER_WAITING),
+    onGone: (_, refusal) => onDecided(refusal ?? NO_LONGER_WAITING),
   })
   // The offer spent its code, so offering the Profile again takes a new code from this Household.
   const declining = useConfirmedChange<PendingOffer>({
@@ -142,7 +142,7 @@ function HouseholdOffers({
     readAgain,
     onDone: (offer) => onDecided(`Offer of ${offeredProfile(offer)} declined.`),
     listed: offers,
-    onGone: () => onDecided(NO_LONGER_WAITING),
+    onGone: (_, refusal) => onDecided(refusal ?? NO_LONGER_WAITING),
   })
   const deciding = accepting.sending || declining.sending
 
