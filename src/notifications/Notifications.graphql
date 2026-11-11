@@ -1,0 +1,62 @@
+# A Notification as the Notifications page shows it.
+fragment NotificationFields on Notification {
+  __typename
+  id
+  message
+  latestEventAt
+  unread
+  ... on RequestNotification {
+    expiresAt
+    resolution
+  }
+  ... on ProfileShareOfferedNotification {
+    share {
+      id
+      status
+    }
+  }
+}
+
+# The same edge in a page of the list and in a change to it.
+fragment NotificationEdgeFields on NotificationEdge {
+  ...OrderedEdgeFields
+  node {
+    ...NotificationFields
+  }
+}
+
+query Notifications($after: String) {
+  notifications(after: $after) {
+    edges {
+      ...NotificationEdgeFields
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+  }
+}
+
+mutation MarkAllNotificationsRead($input: MarkAllNotificationsReadInput!) {
+  markAllNotificationsRead(input: $input) {
+    unreadNotificationCount
+    userErrors {
+      __typename
+      ... on MutationError {
+        message
+      }
+    }
+  }
+}
+
+subscription NotificationsChanged {
+  notificationsChanged {
+    notifications {
+      notificationId
+      edge {
+        ...NotificationEdgeFields
+      }
+    }
+    unreadNotificationCount
+  }
+}
