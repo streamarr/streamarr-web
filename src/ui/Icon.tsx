@@ -2,6 +2,7 @@ import {
   ArrowLeft,
   ArrowRight,
   AudioLines,
+  Bell,
   Captions,
   Check,
   ChevronDown,
@@ -86,6 +87,7 @@ const icons = {
   visitors: DoorOpen,
   close: X,
   'ends-at': Clock,
+  notifications: Bell,
 } as const
 
 /** Approved semantic names from streamarr-ux's ICONOGRAPHY.md. */
