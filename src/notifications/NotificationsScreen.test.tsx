@@ -19,6 +19,7 @@ import { renderAppAt } from '../test/render'
 import { leaveForHome, returnThroughTheProfileMenu, type SettingsPage } from '../test/returnVisits'
 import { server } from '../test/server'
 import homeShellStyles from '../ui/HomeShell.module.css'
+import { intersectionObserverInstances } from '../../vitest.setup'
 
 const NOTIFICATIONS = '/notifications'
 const NOTIFICATIONS_PAGE: SettingsPage = { area: 'Notifications', heading: 'Notifications' }
@@ -59,6 +60,52 @@ function serve(page: NotificationsQuery = notificationsPage([]), me = meFixture(
 
 function rows() {
   return within(screen.getByRole('list', { name: 'Notifications' })).getAllByRole('listitem')
+}
+
+function lines() {
+  return rows().map((row) => row.querySelector('p')?.textContent)
+}
+
+/** Brings the end of the list into view, as scrolling to it does. */
+async function reachTheEndOfTheList() {
+  const end = await screen.findByTestId('older-notifications')
+  const observer = intersectionObserverInstances.findLast((instance) =>
+    instance.observe.mock.calls.some(([target]) => target === end),
+  )!
+  act(() =>
+    observer.callback(
+      [{ target: end, isIntersecting: true } as unknown as IntersectionObserverEntry],
+      observer,
+    ),
+  )
+}
+
+/** News of an answer about the Profile `name`, read. */
+function answerAbout(name: string) {
+  return answerNotification({
+    id: `answer-for-${name}`,
+    message: `“Cabin” accepted the Profile “${name}”.`,
+  })
+}
+
+/** Serves the list in pages: the newest page, then each older page after the one before it. */
+function servePages(...pages: NotificationsQuery[]) {
+  const reads: (string | null)[] = []
+  server.use(
+    graphql.query('Notifications', ({ variables }) => {
+      const after = (variables as { after?: string | null }).after ?? null
+      reads.push(after)
+      const page =
+        after === null
+          ? pages[0]
+          : pages.find(
+              (_, index) =>
+                index > 0 && pages[index - 1].notifications.pageInfo.endCursor === after,
+            )
+      return HttpResponse.json({ data: page })
+    }),
+  )
+  return reads
 }
 
 describe('Notifications', () => {
@@ -252,6 +299,108 @@ describe('Reading Notifications', () => {
     expect(marks).toEqual([
       { through: 'cursor-001', visit: 1 },
       { through: 'cursor-000', visit: 2 },
+    ])
+  })
+})
+
+describe('Older Notifications', () => {
+  const NEWEST = notificationsPage([answerAbout('Alex'), answerAbout('Sam')], { hasNextPage: true })
+  const OLDER = notificationsPage([answerAbout('Mara'), answerAbout('Leo')], { from: 3 })
+
+  it('shouldLoadOlderNotificationsWhenTheEndOfTheListComesIntoView', async () => {
+    serve()
+    const reads = servePages(NEWEST, OLDER)
+    renderAppAt(NOTIFICATIONS)
+    await screen.findByText('“Cabin” accepted the Profile “Alex”.')
+
+    await reachTheEndOfTheList()
+
+    await screen.findByText('“Cabin” accepted the Profile “Leo”.')
+    expect(lines()).toEqual([
+      '“Cabin” accepted the Profile “Alex”.',
+      '“Cabin” accepted the Profile “Sam”.',
+      '“Cabin” accepted the Profile “Mara”.',
+      '“Cabin” accepted the Profile “Leo”.',
+    ])
+    expect(reads).toContain('cursor-002')
+    expect(screen.queryByTestId('older-notifications')).not.toBeInTheDocument()
+  })
+
+  it('shouldShowANotificationOnceWhenTheOlderPageRepeatsOneItShows', async () => {
+    serve()
+    servePages(NEWEST, notificationsPage([answerAbout('Sam'), answerAbout('Leo')], { from: 3 }))
+    renderAppAt(NOTIFICATIONS)
+    await screen.findByText('“Cabin” accepted the Profile “Alex”.')
+
+    await reachTheEndOfTheList()
+
+    await screen.findByText('“Cabin” accepted the Profile “Leo”.')
+    expect(lines()).toEqual([
+      '“Cabin” accepted the Profile “Alex”.',
+      '“Cabin” accepted the Profile “Sam”.',
+      '“Cabin” accepted the Profile “Leo”.',
+    ])
+  })
+
+  it('shouldOfferRetryWhenOlderNotificationsCannotLoad', async () => {
+    serve()
+    servePages(NEWEST, OLDER)
+    const older = { failures: 1 }
+    server.use(
+      graphql.query('Notifications', ({ variables }) => {
+        if (!(variables as { after?: string | null }).after || older.failures === 0) return
+        older.failures -= 1
+        return HttpResponse.json({ errors: [{ message: 'boom' }] })
+      }),
+    )
+    const { user } = renderAppAt(NOTIFICATIONS)
+    await screen.findByText('“Cabin” accepted the Profile “Alex”.')
+
+    await reachTheEndOfTheList()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load older notifications.")
+    expect(lines()).toHaveLength(2)
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(await screen.findByText('“Cabin” accepted the Profile “Leo”.')).toBeVisible()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('shouldKeepTheOlderNotificationsItLoadedWhenTheListIsReadAgain', async () => {
+    serve()
+    const reads = servePages(NEWEST, OLDER)
+    renderAppAt(NOTIFICATIONS)
+    await screen.findByText('“Cabin” accepted the Profile “Alex”.')
+    await reachTheEndOfTheList()
+    await screen.findByText('“Cabin” accepted the Profile “Leo”.')
+
+    comeBackOnline()
+
+    await waitFor(() => expect(reads.filter((after) => after === null)).toHaveLength(2))
+    await waitFor(() =>
+      expect(lines()).toEqual([
+        '“Cabin” accepted the Profile “Alex”.',
+        '“Cabin” accepted the Profile “Sam”.',
+        '“Cabin” accepted the Profile “Mara”.',
+        '“Cabin” accepted the Profile “Leo”.',
+      ]),
+    )
+  })
+
+  it('shouldShowOnlyTheNewestPageWhenThePersonReturns', async () => {
+    serve()
+    servePages(NEWEST, OLDER)
+    const { user } = renderAppAt(NOTIFICATIONS)
+    await screen.findByText('“Cabin” accepted the Profile “Alex”.')
+    await reachTheEndOfTheList()
+    await screen.findByText('“Cabin” accepted the Profile “Leo”.')
+
+    await leaveForHome(user, NOTIFICATIONS_PAGE)
+    await returnThroughTheProfileMenu(user, NOTIFICATIONS_PAGE)
+
+    await screen.findByText('“Cabin” accepted the Profile “Alex”.')
+    expect(lines()).toEqual([
+      '“Cabin” accepted the Profile “Alex”.',
+      '“Cabin” accepted the Profile “Sam”.',
     ])
   })
 })

@@ -10,11 +10,13 @@ import { requestFailureMessage } from '../graphql/requestErrors'
 import { useNow } from '../identity/useNow'
 import { definedEdges } from '../media/edges'
 import settingsStyles from '../styles/settings.module.css'
-import { FailurePanel } from '../ui/Failure'
+import { FailurePanel, FailureRow } from '../ui/Failure'
+import { useIntersectionObserver } from '../media/useIntersectionObserver'
 import styles from './Notifications.module.css'
 import { fullTime, whenLabel } from './notificationTime'
 import { expiryOfWaiting, isOfferRequest, offerRequestState } from './requestState'
 import { useMarkShownRead } from './useMarkShownRead'
+import { useOlderNotifications } from './useOlderNotifications'
 
 /** The Account's Notifications, newest first, each in the server's words. */
 export function NotificationsScreen() {
@@ -35,6 +37,8 @@ function NotificationsList() {
   const readAgain = () => query.refetch().catch(() => undefined)
   const shown = query.error ? [] : definedEdges(query.data?.notifications.edges)
   useMarkShownRead(shown[0]?.cursor ?? null)
+  const pageInfo = query.data?.notifications.pageInfo
+  const older = useOlderNotifications(pageInfo)
 
   if (query.loading && !query.data) {
     return (
@@ -54,7 +58,32 @@ function NotificationsList() {
   if (shown.length === 0) {
     return <p className={styles.empty}>No notifications.</p>
   }
-  return <NotificationRows notifications={shown.map((edge) => edge.node)} />
+  return (
+    <>
+      <NotificationRows notifications={shown.map((edge) => edge.node)} />
+      {older.failure ? (
+        <FailureRow className={styles.olderFailure} onRetry={older.load}>
+          {requestFailureMessage(older.failure, "Couldn't load older notifications.")}
+        </FailureRow>
+      ) : (
+        pageInfo?.hasNextPage && <EndOfTheList key={pageInfo.endCursor} onReached={older.load} />
+      )}
+    </>
+  )
+}
+
+/**
+ * Where the loaded list ends, which asks for the next older page as it comes near the view. Each
+ * end is a new element, so an end that is already in view when a page arrives asks again.
+ */
+function EndOfTheList({ onReached }: Readonly<{ onReached: () => void }>) {
+  const end = useIntersectionObserver(
+    (entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) onReached()
+    },
+    { rootMargin: '0px 0px 50% 0px' },
+  )
+  return <div ref={end} className={styles.end} data-testid="older-notifications" aria-hidden />
 }
 
 function NotificationRows({
