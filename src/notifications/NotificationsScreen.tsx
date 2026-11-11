@@ -15,7 +15,7 @@ import { FailurePanel, FailureRow } from '../ui/Failure'
 import { useIntersectionObserver } from '../media/useIntersectionObserver'
 import styles from './Notifications.module.css'
 import { createLoadedPages, type NotificationEntry } from './notificationList'
-import { fullTime, whenLabel } from './notificationTime'
+import { fullTime, nextLabelChange, whenLabel } from './notificationTime'
 import { expiryOfWaiting, isOfferRequest, offerRequestState } from './requestState'
 import { useMarkShownRead } from './useMarkShownRead'
 import { useNotificationChanges } from './useNotificationChanges'
@@ -55,7 +55,12 @@ function NotificationsList() {
   // A failed read reports through the query's own error state.
   const readAgain = () => query.refetch().catch(() => undefined)
   const shown = query.error ? [] : definedEdges(query.data?.notifications.edges)
-  const now = useNow(shown.map(({ node }) => expiryOfWaiting(node)))
+  const now = useNow((last) =>
+    shown.flatMap(({ node }) => [
+      expiryOfWaiting(node),
+      nextLabelChange(node.latestEventAt, last),
+    ]),
+  )
   const notifications = shown.map(({ node }) =>
     isOfferRequest(node) && offerRequestState(node, now).at === 'over'
       ? { ...node, unread: false }
