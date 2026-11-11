@@ -349,6 +349,34 @@ describe('Share codes', () => {
     expect(copy).toHaveFocus()
   })
 
+  it('shouldSayTheCopyInAStatusThatWasThereBeforeWhenThePersonCopiesTheCode', async () => {
+    serveHouseholdHolding([])
+    const { user } = renderAppAt(CODES)
+    await issue(user)
+    // A screen reader hears a status whose text changes, not one that arrives with its text.
+    const status = screen.getByRole('status')
+    expect(status).toBeEmptyDOMElement()
+
+    await user.click(screen.getByRole('button', { name: 'Copy code' }))
+
+    await waitFor(() => expect(status).toHaveTextContent(/^Code copied\.$/))
+  })
+
+  it('shouldSayTheCopyAgainWhenThePersonCopiesTheCodeTwice', async () => {
+    serveHouseholdHolding([])
+    const { user } = renderAppAt(CODES)
+    await issue(user)
+    const copy = screen.getByRole('button', { name: 'Copy code' })
+    await user.click(copy)
+    const status = screen.getByRole('status')
+    const first = await within(status).findByText('Code copied.')
+
+    await user.click(copy)
+
+    // The same words, written anew, so a screen reader says them again.
+    await waitFor(() => expect(within(status).getByText('Code copied.')).not.toBe(first))
+  })
+
   it('shouldCopyALinkThatCarriesTheCodeInItsFragmentWhenThePersonCopiesTheLink', async () => {
     serveHouseholdHolding([])
     const { user } = renderAppAt(CODES)
