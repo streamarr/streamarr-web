@@ -1,0 +1,27 @@
+fragment ShareCodeLimitSettingFields on ShareCodeLimitSetting {
+  __typename
+  id
+  codes
+  minimumCodes
+  maximumCodes
+}
+
+query ShareCodeLimitSetting {
+  shareCodeLimitSetting {
+    ...ShareCodeLimitSettingFields
+  }
+}
+
+mutation ChangeShareCodeLimit($input: ChangeShareCodeLimitInput!) {
+  changeShareCodeLimit(input: $input) {
+    shareCodeLimitSetting {
+      ...ShareCodeLimitSettingFields
+    }
+    userErrors {
+      __typename
+      ... on MutationError {
+        message
+      }
+    }
+  }
+}
