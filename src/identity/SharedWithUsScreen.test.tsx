@@ -576,26 +576,36 @@ describe('Shared with us', () => {
   })
 
   it.each([
-    ['SharedWithHousehold', "Couldn't load the Profiles shared here."],
-    ['VisitorDevices', "Couldn't load the TVs linked here."],
-  ])('shouldRetryWhenAListFailsToLoad(%s)', async (operationName, failure) => {
-    serve([share()], [device()])
-    const data =
-      operationName === 'VisitorDevices' ? devicesData([device()]) : sharesData([share()])
-    const list = failsOnceThen(data)
-    server.use(graphql.query(operationName, list.resolver))
-    // Rendered alone, so that only Retry reads the list again.
-    const { user } = renderWithProviders(<SharedWithUsScreen />)
+    [
+      'SharedWithHousehold',
+      "Couldn't load the Profiles shared here.",
+      'Profiles shared with Smith Family',
+    ],
+    ['VisitorDevices', "Couldn't load the TVs linked here.", 'TVs linked by visitors'],
+  ])(
+    'shouldSayWhyInItsSectionAndRetryWhenAListFailsToLoad(%s)',
+    async (operationName, failure, title) => {
+      serve([share()], [device()])
+      const data =
+        operationName === 'VisitorDevices' ? devicesData([device()]) : sharesData([share()])
+      const list = failsOnceThen(data)
+      server.use(graphql.query(operationName, list.resolver))
+      // Rendered alone, so that only Retry reads the list again.
+      const { user } = renderWithProviders(<SharedWithUsScreen />)
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(failure)
+      const section = await screen.findByRole('region', { name: title })
+      expect(await within(section).findByRole('alert')).toHaveTextContent(failure)
+      // The page loaded, so only the section offers a way back: Retry, and no way out.
+      expect(screen.queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Retry' }))
+      await user.click(within(section).getByRole('button', { name: 'Retry' }))
 
-    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
-    expect(list.calls).toBe(2)
-    expect(screen.getByRole('button', { name: 'End share of Alex' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Unlink Living room TV' })).toBeEnabled()
-  })
+      await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
+      expect(list.calls).toBe(2)
+      expect(screen.getByRole('button', { name: 'End share of Alex' })).toBeEnabled()
+      expect(screen.getByRole('button', { name: 'Unlink Living room TV' })).toBeEnabled()
+    },
+  )
 })
 
 describe('Shared with us as shares change elsewhere', () => {
