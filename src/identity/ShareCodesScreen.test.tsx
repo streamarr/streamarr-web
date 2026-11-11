@@ -300,20 +300,27 @@ describe('Share codes', () => {
     expect(
       await within(page).findByRole('heading', { level: 1, name: 'Share codes' }),
     ).toBeVisible()
-    expect(
-      within(page).getByText(
-        'Give a code to someone in another Household so they can offer a Profile to Smith Family. A code works once, and an admin here still decides on every offer.',
-      ),
-    ).toBeVisible()
   })
 
-  it('shouldSayThereAreNoLiveCodesWhenTheHouseholdHasNone', async () => {
+  it('shouldSayWhatACodeIsForWhenTheHouseholdHasNoLiveCodes', async () => {
     serve()
     renderAppAt(CODES)
 
     const live = await screen.findByRole('region', { name: 'Live codes' })
-    expect(within(live).getByText('No live share codes.')).toBeVisible()
+    expect(
+      within(live).getByText(
+        /^No live share codes\. Give one to someone in another Household so they can offer a Profile to Smith Family\.$/,
+      ),
+    ).toBeVisible()
     expect(within(live).queryByRole('listitem')).not.toBeInTheDocument()
+  })
+
+  it('shouldSayNothingOfWhatACodeIsForWhenTheHouseholdHasLiveCodes', async () => {
+    serve([liveCode()])
+    renderAppAt(CODES)
+
+    await screen.findByRole('listitem')
+    expect(screen.queryByText(/so they can offer a Profile/)).not.toBeInTheDocument()
   })
 
   it('shouldListEachLiveCodeWithWhoIssuedItWhenAndTheTimeItHasLeft', async () => {
@@ -534,7 +541,7 @@ describe('Share codes', () => {
 
     await act(() => vi.advanceTimersByTimeAsync(HOUR))
 
-    expect(await screen.findByText('No live share codes.')).toBeVisible()
+    expect(await screen.findByText(/^No live share codes\./)).toBeVisible()
     expect(screen.queryByRole('button', { name: 'Withdraw' })).not.toBeInTheDocument()
   })
 
@@ -554,7 +561,7 @@ describe('Share codes', () => {
       expect(screen.getByRole('status')).toHaveTextContent('Share code withdrawn.'),
     )
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(await screen.findByText('No live share codes.')).toBeVisible()
+    expect(await screen.findByText(/^No live share codes\./)).toBeVisible()
     expect(codes.calls).toBe(2)
     expect(screen.getByRole('heading', { level: 1, name: 'Share codes' })).toHaveFocus()
   })
@@ -643,7 +650,7 @@ describe('Share codes', () => {
 
     comeBackOnline()
 
-    expect(await screen.findByText('No live share codes.')).toBeVisible()
+    expect(await screen.findByText(/^No live share codes\./)).toBeVisible()
     expect(codes.calls).toBe(3)
     expect(screen.getByText(SHARE_CODE)).toBeVisible()
     expect(screen.getByRole('button', { name: 'Copy link' })).toBeEnabled()
@@ -862,7 +869,7 @@ describe('Share codes', () => {
 
     await user.click(screen.getByRole('button', { name: 'Retry' }))
 
-    expect(await screen.findByText('No live share codes.')).toBeVisible()
+    expect(await screen.findByText(/^No live share codes\./)).toBeVisible()
     expect(codes.calls).toBe(3)
     expect(screen.getByText(SHARE_CODE)).toBeVisible()
     expect(screen.getByRole('button', { name: 'Copy link' })).toBeEnabled()
@@ -978,7 +985,7 @@ describe('Share codes', () => {
     server.use(graphql.query('HouseholdShareCodes', codes.resolver))
     serveIssue()
     const { user } = renderAppAt(CODES)
-    await screen.findByText('No live share codes.')
+    await screen.findByText(/^No live share codes\./)
     comeBackOnline()
     await waitFor(() => expect(codes.calls).toBe(2))
 
@@ -1013,13 +1020,13 @@ describe('Share codes', () => {
     await waitFor(() => expect(screen.queryByText(SHARE_CODE)).not.toBeInTheDocument())
     fromBefore.release()
 
-    expect(await screen.findByText('No live share codes.')).toBeVisible()
+    expect(await screen.findByText(/^No live share codes\./)).toBeVisible()
   })
 
   it('shouldListACodeIssuedWhileTheAdminWasAwayWhenTheyReturn', async () => {
     serveInTurn([], [liveCode()])
     const { user } = renderAppAt(CODES)
-    await screen.findByText('No live share codes.')
+    await screen.findByText(/^No live share codes\./)
 
     await leaveForHomeAndReturn(user, SHARE_CODES)
 
@@ -1029,13 +1036,13 @@ describe('Share codes', () => {
   it('shouldShowTheLiveCodesAsLoadingUntilTheServerAnswersWhenTheAdminReturns', async () => {
     serve()
     const { user } = renderAppAt(CODES)
-    await screen.findByText('No live share codes.')
+    await screen.findByText(/^No live share codes\./)
     server.use(graphql.query('HouseholdShareCodes', () => delay('infinite')))
 
     await leaveForHomeAndReturn(user, SHARE_CODES)
 
     expect(await screen.findByRole('status', { name: 'Loading share codes' })).toBeInTheDocument()
-    expect(screen.queryByText('No live share codes.')).not.toBeInTheDocument()
+    expect(screen.queryByText(/^No live share codes\./)).not.toBeInTheDocument()
   })
 
   it('shouldRetryWhenTheLiveCodesFailToLoad', async () => {

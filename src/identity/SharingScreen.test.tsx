@@ -244,7 +244,7 @@ function offered() {
 
 async function openShareForm(user: ReturnType<typeof renderWithProviders>['user']) {
   await user.click(await screen.findByRole('button', { name: 'Share with another Household' }))
-  return screen.getByRole('textbox', { name: 'Share code' })
+  return screen.getByRole('textbox', { name: 'Share code from the other Household' })
 }
 
 describe('Sharing', () => {
@@ -1101,9 +1101,7 @@ describe('Sharing', () => {
     const field = await openShareForm(user)
 
     expect(field).toHaveFocus()
-    expect(field).toHaveAccessibleDescription(
-      'An admin of the other Household gives you this code.',
-    )
+    expect(field).not.toHaveAccessibleDescription()
     expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled()
     expect(screen.queryByRole('button', { name: 'Share with another Household' })).toBeNull()
 
@@ -1203,7 +1201,9 @@ describe('Sharing', () => {
     const { user } = renderWithProviders(<SharingScreen />)
     await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
     await user.click(await screen.findByRole('button', { name: 'Send invitation' }))
-    const field = await screen.findByRole('textbox', { name: 'Share code' })
+    const field = await screen.findByRole('textbox', {
+      name: 'Share code from the other Household',
+    })
     await waitFor(() => expect(field).toBeInvalid())
 
     await user.click(screen.getByRole('button', { name: 'Continue' }))
@@ -1364,7 +1364,9 @@ describe('Sharing', () => {
     expect(field).toHaveValue(SHARE_CODE)
     lookUp.release()
     await user.click(await screen.findByRole('button', { name: 'Back' }))
-    expect(screen.getByRole('textbox', { name: 'Share code' })).toHaveValue(SHARE_CODE)
+    expect(
+      screen.getByRole('textbox', { name: 'Share code from the other Household' }),
+    ).toHaveValue(SHARE_CODE)
   })
 
   it('shouldWarnInTheReviewWhenTheProfileWouldLockAndItsNameIsTaken', async () => {
@@ -1395,7 +1397,7 @@ describe('Sharing', () => {
     await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
     await user.click(await screen.findByRole('button', { name: 'Back' }))
 
-    const field = screen.getByRole('textbox', { name: 'Share code' })
+    const field = screen.getByRole('textbox', { name: 'Share code from the other Household' })
     expect(field).toHaveValue(SHARE_CODE)
     expect(field).toHaveFocus()
     expect(field).toBeValid()
@@ -1491,7 +1493,9 @@ describe('Sharing', () => {
     await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
     await user.click(await screen.findByRole('button', { name: 'Send invitation' }))
 
-    const field = await screen.findByRole('textbox', { name: 'Share code' })
+    const field = await screen.findByRole('textbox', {
+      name: 'Share code from the other Household',
+    })
     expect(field).toBeInvalid()
     expect(field).toHaveAccessibleDescription(expect.stringContaining(SHARE_CODE_REFUSED))
     expect(field).toHaveValue(SHARE_CODE)
@@ -1587,7 +1591,7 @@ describe('Sharing', () => {
     await user.click(await screen.findByRole('button', { name: 'Send invitation' }))
     await noticed(ANSWER_LOST)
     await user.click(screen.getByRole('button', { name: 'Back' }))
-    const field = screen.getByRole('textbox', { name: 'Share code' })
+    const field = screen.getByRole('textbox', { name: 'Share code from the other Household' })
     await user.clear(field)
     await user.type(field, 'BCDF-GHJL{Enter}')
     await screen.findByRole('heading', { name: 'Offer Alex to Lake House?' })
@@ -2034,8 +2038,12 @@ describe('Sharing as shares change elsewhere', () => {
     )
 
     await screen.findByRole('button', { name: 'End share with Cabin' })
-    expect(screen.getByRole('textbox', { name: 'Share code' })).toHaveValue('BCDF')
-    expect(screen.getByRole('textbox', { name: 'Share code' })).toHaveFocus()
+    expect(
+      screen.getByRole('textbox', { name: 'Share code from the other Household' }),
+    ).toHaveValue('BCDF')
+    expect(
+      screen.getByRole('textbox', { name: 'Share code from the other Household' }),
+    ).toHaveFocus()
   })
 
   it('shouldCloseTheConfirmationAndSaySoWhenTheShareEndsElsewhereMeanwhile', async () => {
