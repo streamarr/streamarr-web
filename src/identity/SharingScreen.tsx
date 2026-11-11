@@ -2,7 +2,11 @@ import { Center, Loader } from '@mantine/core'
 import { useQuery } from '@apollo/client/react'
 import { useState, type Ref } from 'react'
 import settingsStyles from '../styles/settings.module.css'
-import { ProfileSharesDocument } from '../graphql/generated/graphql'
+import {
+  ProfileSharesDocument,
+  type ProfileShareStatus,
+  type ProfileSharesQuery,
+} from '../graphql/generated/graphql'
 import { useLiveList } from '../graphql/liveList'
 import { requestFailureMessage } from '../graphql/requestErrors'
 import { FailurePanel } from '../ui/Failure'
@@ -10,6 +14,7 @@ import { PageNotice } from '../ui/PageNotice'
 import { useFocusFallback } from '../ui/useFocusFallback'
 import { usePageNotice } from '../ui/usePageNotice'
 import { ArrivingShareCodeContext } from './arrivingShareCode'
+import { EarlierShares } from './EarlierShares'
 import styles from './Sharing.module.css'
 import {
   keepsInProfileShares,
@@ -24,6 +29,17 @@ import { useShareChanges } from './useShareChanges'
 import { WhereShared, type ProfileShareRow } from './WhereShared'
 
 type PersonalProfile = Readonly<{ id: string; name: string }>
+
+/** Where the Profile is offered or shared now. */
+const LIVE_STATUSES: readonly ProfileShareStatus[] = ['PENDING', 'ACTIVE']
+/** The offers and shares that are over. */
+const OVER_STATUSES: readonly ProfileShareStatus[] = [
+  'REJECTED',
+  'CANCELED',
+  'EXPIRED',
+  'INVALIDATED',
+  'ENDED',
+]
 
 /**
  * Where the Account's Personal Profile is shared, and the way to share it with another Household.
@@ -96,57 +112,104 @@ function ProfileSharing({
   onChanged: (notice: string) => void
   liveList: Ref<HTMLUListElement>
 }>) {
-  const variables = { profileId: profile.id }
-  // The query asks for the Profile's shares at every status.
-  const liveShares = useLiveList({
+  const [earlierAsked, setEarlierAsked] = useState(false)
+  const [earlierOpen, setEarlierOpen] = useState(false)
+  const live = useShareList(profile.id, LIVE_STATUSES, false)
+  // The offers and shares that are over are read only once the person asks for them.
+  const over = useShareList(profile.id, OVER_STATUSES, !earlierAsked)
+  useShareChanges((change) => {
+    live.receive(change)
+    over.receive(change)
+  })
+  // A failed read keeps the list that is on screen.
+  const readAgain = () => live.query.refetch().catch(() => undefined)
+  const listed = nodesOf(live.query.data)
+  // An offer whose time runs out is over, as the queries would count it.
+  const now = useNow(listed.map((share) => share.expiresAt))
+
+  if (live.query.loading && !live.query.data) {
+    return <SharingLoading />
+  }
+
+  if (live.query.error || !live.query.data) {
+    return <SharingUnavailable error={live.query.error} onRetry={readAgain} />
+  }
+
+  // Every Personal Profile is shared with its Account's own Household, and that share cannot
+  // end, so it is no news here.
+  const current = listed
+    .filter((share) => !share.requiredByAccountMembership)
+    .map((share) => ({ ...share, status: statusAt(share, now) }))
+  const expired = current.filter((share) => !isLive(share))
+  const earlier = [
+    ...expired,
+    ...nodesOf(over.query.data).filter((share) => !expired.some(({ id }) => id === share.id)),
+  ]
+
+  return (
+    <WhereShared
+      profile={profile}
+      shares={current.filter(isLive)}
+      householdName={householdNamer([...current, ...earlier])}
+      ownHouseholdName={ownHouseholdName}
+      readAgain={readAgain}
+      onChanged={onChanged}
+      liveList={liveList}
+      earlier={
+        <EarlierShares
+          open={earlierOpen}
+          onToggle={() => {
+            setEarlierAsked(true)
+            setEarlierOpen(!earlierOpen)
+          }}
+          shares={earlier}
+          loading={over.query.loading && !over.query.data}
+          failure={
+            over.query.error
+              ? requestFailureMessage(over.query.error, "Couldn't load earlier offers and shares.")
+              : null
+          }
+          onRetry={() => over.query.refetch()}
+          householdName={householdNamer([...current, ...earlier])}
+        />
+      }
+    />
+  )
+}
+
+/**
+ * One of the Profile's lists of shares, in `statuses`, kept current by the changes the page
+ * hands to `receive`, and read only while not skipped.
+ */
+function useShareList(profileId: string, statuses: readonly ProfileShareStatus[], skip: boolean) {
+  const variables = { profileId, statuses: [...statuses] }
+  const list = useLiveList({
     query: ProfileSharesDocument,
     variables,
     keyOf: shareIdOf,
     apply: (data, change: ShareChange) => {
       const edges = withShareChange(data.profileShares.edges, change, (share) =>
-        keepsInProfileShares(share, variables, new Date()),
+        keepsInProfileShares(share, { profileId, statuses }, new Date()),
       )
       return { ...data, profileShares: { ...data.profileShares, edges } }
     },
   })
-  useShareChanges(liveShares.receive)
   // Offers are accepted, declined and expire elsewhere, so a visit shows only the server's answer.
   const query = useQuery(ProfileSharesDocument, {
     variables,
     fetchPolicy: 'network-only',
-    context: liveShares.context,
+    context: list.context,
+    skip,
   })
-  // A failed read keeps the list that is on screen.
-  const readAgain = () => query.refetch().catch(() => undefined)
-  const listed = query.data?.profileShares.edges.map((edge) => edge.node) ?? []
-  // An offer whose time runs out is over, as the query would count it.
-  const now = useNow(listed.map((share) => share.expiresAt))
+  return { receive: list.receive, query }
+}
 
-  if (query.loading && !query.data) {
-    return <SharingLoading />
-  }
+function nodesOf(data: ProfileSharesQuery | undefined): ProfileShareRow[] {
+  return data?.profileShares.edges.map((edge) => edge.node) ?? []
+}
 
-  if (query.error || !query.data) {
-    return <SharingUnavailable error={query.error} onRetry={readAgain} />
-  }
-
-  // Every Personal Profile is shared with its Account's own Household, and that share cannot
-  // end, so it is no news here.
-  const shares = listed
-    .filter((share) => !share.requiredByAccountMembership)
-    .map((share) => ({ ...share, status: statusAt(share, now) }))
-
-  return (
-    <WhereShared
-      profile={profile}
-      shares={shares}
-      householdName={householdNamer(shares)}
-      ownHouseholdName={ownHouseholdName}
-      readAgain={readAgain}
-      onChanged={onChanged}
-      liveList={liveList}
-    />
-  )
+function isLive(share: ProfileShareRow): boolean {
+  return LIVE_STATUSES.includes(share.status)
 }
 
 /**

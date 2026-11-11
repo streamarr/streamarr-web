@@ -1,6 +1,6 @@
 import { Button } from '@mantine/core'
 import { useMutation } from '@apollo/client/react'
-import { useState, type Ref } from 'react'
+import { useState, type ReactNode, type Ref } from 'react'
 import {
   CancelProfileShareDocument,
   EndProfileShareDocument,
@@ -9,7 +9,6 @@ import {
 import { requestFailureMessage } from '../graphql/requestErrors'
 import { userErrorMessage } from '../graphql/userErrors'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
-import { EarlierShares } from './EarlierShares'
 import { ShareWithAnotherHousehold } from './ShareWithAnotherHousehold'
 import { SharingSection } from './SharingSection'
 import { expiryLabel, UPDATE_FAILED_MESSAGE } from './shareText'
@@ -30,8 +29,10 @@ export function WhereShared({
   readAgain,
   onChanged,
   liveList,
+  earlier,
 }: Readonly<{
   profile: Readonly<{ id: string; name: string }>
+  /** The offers that wait for a decision and the active shares. */
   shares: readonly ProfileShareRow[]
   householdName: (householdId: string) => string
   /** The Household that the Account is a member of, where its sessions return. */
@@ -40,20 +41,23 @@ export function WhereShared({
   onChanged: (notice: string) => void
   /** Where focus that a change takes away from a row returns to the page's heading. */
   liveList: Ref<HTMLUListElement>
+  /** The offers and shares that are over, behind their disclosure. */
+  earlier: ReactNode
 }>) {
   const [cancel] = useMutation(CancelProfileShareDocument)
   const [end] = useMutation(EndProfileShareDocument)
-  const live = shares.filter(isLive)
-  const earlier = shares.filter((share) => !isLive(share))
   const ending = useConfirmedChange<ProfileShareRow>({
     send: async (share) =>
       (await end({ variables: { input: { shareId: share.id } } })).data?.endProfileShare
         ?.userErrors ?? [],
     readAgain,
     onDone: (share) => onChanged(`Sharing with ${householdName(share.householdId)} ended.`),
-    listed: live,
+    listed: shares,
+    // The share has left the list, so its name comes from the row the confirmation kept.
     onGone: (share) =>
-      onChanged(`Sharing with ${householdName(share.householdId)} has already ended.`),
+      onChanged(
+        `Sharing with ${share.household?.name ?? householdName(share.householdId)} has already ended.`,
+      ),
   })
   /** The offer whose cancellation is on its way; no other change starts until it lands. */
   const [canceling, setCanceling] = useState<string | null>(null)
@@ -83,11 +87,11 @@ export function WhereShared({
       title={`Where ${profile.name} is shared`}
       failure={ending.pending ? null : refusal}
     >
-      {live.length === 0 && (
+      {shares.length === 0 && (
         <p className={styles.note}>{profile.name} is not shared with another Household.</p>
       )}
       <ul ref={liveList} className={styles.rows}>
-        {live.map((share) => {
+        {shares.map((share) => {
           const household = householdName(share.householdId)
           const pending = share.status === 'PENDING'
           return (
@@ -127,7 +131,7 @@ export function WhereShared({
         })}
       </ul>
       <ShareWithAnotherHousehold profile={profile} readAgain={readAgain} onChanged={onChanged} />
-      <EarlierShares shares={earlier} householdName={householdName} />
+      {earlier}
       <ConfirmDialog
         opened={ending.pending !== null}
         title={`End sharing with ${ending.pending ? householdName(ending.pending.householdId) : ''}?`}
@@ -146,8 +150,4 @@ export function WhereShared({
       />
     </SharingSection>
   )
-}
-
-function isLive(share: ProfileShareRow): boolean {
-  return share.status === 'PENDING' || share.status === 'ACTIVE'
 }
