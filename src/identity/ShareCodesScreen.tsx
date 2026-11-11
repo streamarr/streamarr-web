@@ -329,6 +329,10 @@ function LiveShareCodes({
   refusal: string | null
   onWithdraw: (code: ShareCode) => void
 }>) {
+  const listedCodes = listed?.householdShareCodes.edges.map((edge) => edge.node) ?? []
+  // A code stops working when its time runs out, and the query leaves it out from then on.
+  const now = useNow(listedCodes.map((code) => code.expiresAt))
+
   if (loading && !listed) {
     return <ShareCodesLoading />
   }
@@ -336,7 +340,7 @@ function LiveShareCodes({
     return <ShareCodesUnavailable error={error} onRetry={readAgain} />
   }
 
-  const codes = listed.householdShareCodes.edges.map((edge) => edge.node)
+  const codes = listedCodes.filter((code) => Date.parse(code.expiresAt) > now.getTime())
 
   return (
     <SharingSection title="Live codes" failure={refusal}>
