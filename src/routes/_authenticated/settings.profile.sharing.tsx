@@ -1,6 +1,6 @@
 import { createFileRoute, useLocation, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { codeInFragment } from '../../identity/shareCode'
+import { codeInFragment } from '../../identity/fragmentCode'
 import { SharingScreen } from '../../identity/SharingScreen'
 
 export const Route = createFileRoute('/_authenticated/settings/profile/sharing')({
