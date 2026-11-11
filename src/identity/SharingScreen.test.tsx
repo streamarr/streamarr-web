@@ -1011,6 +1011,17 @@ describe('Sharing as shares change elsewhere', () => {
     expect(screen.getByRole('textbox', { name: 'Share code' })).toHaveFocus()
   })
 
+  it('shouldCloseTheConfirmationAndSaySoWhenTheShareEndsElsewhereMeanwhile', async () => {
+    const { socket, user } = await openWith([share({ status: 'ACTIVE' })])
+    await user.click(screen.getByRole('button', { name: 'End share with Cabin' }))
+
+    socket.publish('ProfileShareChanged', shareChanged(SHARE_ID, changedShare({ status: 'ENDED' })))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await noticed('Sharing with Cabin has already ended.')
+    expect(screen.getByRole('heading', { level: 1, name: 'Sharing' })).toHaveFocus()
+  })
+
   it('shouldMoveFocusToTheHeadingWhenTheShareThePersonIsOnEndsElsewhere', async () => {
     const { socket } = await openWith([share({ status: 'ACTIVE' })])
     act(() => screen.getByRole('button', { name: 'End share with Cabin' }).focus())

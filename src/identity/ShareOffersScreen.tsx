@@ -39,6 +39,8 @@ type OfferedProfile = NonNullable<ListedOffer['profile']>
 type PendingOffer = ListedOffer & { profile: OfferedProfile }
 type Household = MeQuery['me']['household']
 
+const NO_LONGER_WAITING = 'That offer is no longer waiting.'
+
 /** The offers of Profiles to the Account's Household, which its admins accept or decline. */
 export function ShareOffersScreen() {
   const { notice, heading, announce, dismiss } = usePageNotice()
@@ -116,12 +118,20 @@ function HouseholdOffers({
   const [decline] = useMutation(RejectProfileShareDocument)
   // A failed read keeps the list that is on screen; the query's own error state reports it.
   const readAgain = () => query.refetch().catch(() => undefined)
+  const listed = query.data?.householdShares.edges.map((edge) => edge.node) ?? []
+  // An offer leaves the list when its time runs out, as the query would leave it out.
+  const now = useNow(listed.map((offer) => offer.expiresAt))
+  const offers = listed
+    .filter((offer) => statusAt(offer, now) === 'PENDING')
+    .filter(namesItsProfile)
   const accepting = useConfirmedChange<PendingOffer>({
     send: async (offer) =>
       (await accept({ variables: { input: { shareId: offer.id } } })).data?.acceptProfileShare
         ?.userErrors ?? [],
     readAgain,
     onDone: (offer) => onDecided(`${offeredProfile(offer)} accepted into ${household.name}.`),
+    listed: offers,
+    onGone: () => onDecided(NO_LONGER_WAITING),
   })
   /** The offer whose decline is on its way; no other decision starts until it lands. */
   const [declining, setDeclining] = useState<string | null>(null)
@@ -145,20 +155,12 @@ function HouseholdOffers({
     }
   }
 
-  const listed = query.data?.householdShares.edges.map((edge) => edge.node) ?? []
-  // An offer leaves the list when its time runs out, as the query would leave it out.
-  const now = useNow(listed.map((offer) => offer.expiresAt))
-
   if (query.loading && !query.data) {
     return <ShareOffersLoading />
   }
   if (query.error || !query.data) {
     return <ShareOffersUnavailable error={query.error} onRetry={readAgain} />
   }
-
-  const offers = listed
-    .filter((offer) => statusAt(offer, now) === 'PENDING')
-    .filter(namesItsProfile)
 
   return (
     <>

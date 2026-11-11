@@ -548,6 +548,17 @@ describe('Share offers as they change elsewhere', () => {
     expect(decline).toHaveFocus()
   })
 
+  it('shouldCloseTheConfirmationAndSaySoWhenTheOfferIsAcceptedElsewhereMeanwhile', async () => {
+    const { socket, user } = await openWithAnOfferOfAlex()
+    await user.click(screen.getByRole('button', { name: 'Accept Alex' }))
+
+    socket.publish('ProfileShareChanged', shareChanged(OFFER_ID, liveShare({ status: 'ACTIVE' })))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await noticed('That offer is no longer waiting.')
+    expect(screen.getByRole('heading', { level: 1, name: 'Share offers' })).toHaveFocus()
+  })
+
   it('shouldMoveFocusToTheHeadingWhenTheOfferThePersonIsOnLeaves', async () => {
     const { socket } = await openWithAnOfferOfAlex()
     act(() => screen.getByRole('button', { name: 'Accept Alex' }).focus())

@@ -43,20 +43,22 @@ export function WhereShared({
 }>) {
   const [cancel] = useMutation(CancelProfileShareDocument)
   const [end] = useMutation(EndProfileShareDocument)
+  const live = shares.filter(isLive)
+  const earlier = shares.filter((share) => !isLive(share))
   const ending = useConfirmedChange<ProfileShareRow>({
     send: async (share) =>
       (await end({ variables: { input: { shareId: share.id } } })).data?.endProfileShare
         ?.userErrors ?? [],
     readAgain,
     onDone: (share) => onChanged(`Sharing with ${householdName(share.householdId)} ended.`),
+    listed: live,
+    onGone: (share) =>
+      onChanged(`Sharing with ${householdName(share.householdId)} has already ended.`),
   })
   /** The offer whose cancellation is on its way; no other change starts until it lands. */
   const [canceling, setCanceling] = useState<string | null>(null)
   const [refusal, setRefusal] = useState<string | null>(null)
   const changing = canceling !== null || ending.sending
-
-  const live = shares.filter(isLive)
-  const earlier = shares.filter((share) => !isLive(share))
 
   // Canceling an offer loses nothing that a new offer cannot bring back, so it asks nothing.
   async function cancelOffer(share: ProfileShareRow) {

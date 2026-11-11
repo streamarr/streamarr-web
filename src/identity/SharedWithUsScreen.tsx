@@ -147,6 +147,8 @@ function SharedProfiles({
   })
   const [end] = useMutation(EndProfileShareDocument)
   const readAgain = () => query.refetch().catch(() => undefined)
+  const listed = query.data?.householdShares.edges
+  const shares = listed?.map((edge) => edge.node).filter(namesItsProfile) ?? []
   const ending = useConfirmedChange<VisitorShare>({
     send: async (share) =>
       (await end({ variables: { input: { shareId: share.id } } })).data?.endProfileShare
@@ -156,9 +158,10 @@ function SharedProfiles({
       if (share.profile.personalProfile) readTheTvsAgain()
       announce(`Sharing of ${share.profile.name} ended.`)
     },
+    listed: shares,
+    onGone: (share) => announce(`${share.profile.name} is no longer shared here.`),
   })
 
-  const listed = query.data?.householdShares.edges
   useEffect(() => {
     for (const { node } of listed ?? []) {
       if (node.profile?.personalProfile) personalShares.current.add(node.id)
@@ -177,8 +180,6 @@ function SharedProfiles({
       />
     )
   }
-
-  const shares = query.data.householdShares.edges.map((edge) => edge.node).filter(namesItsProfile)
 
   return (
     <SharingSection
@@ -240,12 +241,15 @@ function VisitorTvs({
   })
   const [revoke] = useMutation(RevokeDeviceRegistrationDocument)
   const readAgain = () => query.refetch().catch(() => undefined)
+  const tvs = query.data?.householdDevices.edges.map((edge) => edge.node) ?? []
   const unlinking = useConfirmedChange<VisitorTv>({
     send: async (tv) =>
       (await revoke({ variables: { input: { registrationId: tv.id } } })).data
         ?.revokeDeviceRegistration?.userErrors ?? [],
     readAgain,
     onDone: (tv) => announce(`${tv.displayName} unlinked.`),
+    listed: tvs,
+    onGone: (tv) => announce(`${tv.displayName} is no longer linked here.`),
   })
 
   if (query.loading && !query.data) {
@@ -260,8 +264,6 @@ function VisitorTvs({
       />
     )
   }
-
-  const tvs = query.data.householdDevices.edges.map((edge) => edge.node)
 
   return (
     <SharingSection
