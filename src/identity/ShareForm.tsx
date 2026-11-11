@@ -1,6 +1,6 @@
 import { Button, TextInput } from '@mantine/core'
 import { useApolloClient, useMutation } from '@apollo/client/react'
-import { useEffect, useRef, useState, type Ref, type SubmitEvent } from 'react'
+import { useEffect, useRef, useState, type ReactNode, type Ref, type SubmitEvent } from 'react'
 import {
   LookUpShareCodeDocument,
   OfferProfileShareDocument,
@@ -9,6 +9,7 @@ import {
 } from '../graphql/generated/graphql'
 import { requestFailureMessage, serverFailureSentence } from '../graphql/requestErrors'
 import { userErrorMessage, userErrorMessageOr, type UserErrorLike } from '../graphql/userErrors'
+import { Icon } from '../ui/Icon'
 import { shareCodeIn } from './shareCode'
 import styles from './Sharing.module.css'
 
@@ -281,16 +282,28 @@ function ShareReview({
         Offer {profileName} to {householdName}?
       </h3>
       {effects.wouldLock && (
-        <p>{profileName}'s Profile would be locked there until it has a PIN.</p>
+        <ReviewWarning>
+          {profileName}'s Profile would be locked there until it has a PIN.
+        </ReviewWarning>
       )}
       {effects.nameConflict && (
-        <p>
+        <ReviewWarning>
           Another Profile there is already named {profileName}. An admin there cannot accept the
           share invitation until one of them is renamed.
-        </p>
+        </ReviewWarning>
       )}
       <p>An admin of {householdName} must accept it. The code works once.</p>
     </div>
+  )
+}
+
+/** What the offer would do that the person may not expect, marked as a caution, not a fault. */
+function ReviewWarning({ children }: Readonly<{ children: ReactNode }>) {
+  return (
+    <p className={styles.warning}>
+      <Icon name="alert" size={16} />
+      <span>{children}</span>
+    </p>
   )
 }
 
