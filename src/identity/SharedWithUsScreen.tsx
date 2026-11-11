@@ -1,7 +1,7 @@
 import { Button, Center, Loader } from '@mantine/core'
 import type { ApolloClient, DocumentNode } from '@apollo/client'
 import { useApolloClient, useMutation, useQuery } from '@apollo/client/react'
-import { useState, type Ref } from 'react'
+import { useEffect, useRef, useState, type Ref } from 'react'
 import {
   EndProfileShareDocument,
   RevokeDeviceRegistrationDocument,
@@ -118,15 +118,20 @@ function SharedProfiles({
       return { ...data, householdShares: { ...data.householdShares, edges } }
     },
   })
+  // The shares of Personal Profiles the page has listed. A change that ends one carries no
+  // Profile, and a read may already have taken it out of the list, so the page remembers them.
+  const personalShares = useRef(new Set<string>())
+  // The end of someone's Personal Profile's share unlinks the TVs that person linked here.
+  const readTheTvsAgain = () => void readQueriesAgain(client, [VisitorDevicesDocument])
   useShareChanges((change) => {
     const data = client.cache.readQuery({ query: SharedWithHouseholdDocument, variables })
     const prior = data?.householdShares.edges.find((edge) => edge.node.id === change.shareId)?.node
     liveShares.receive(change)
     const relevant = change.share === null || change.share.householdId === household.id
     // An ended share hides its Profile facts, so an unseen one may have unlinked visitor TVs too.
-    if (relevant && !change.visitorsEdge && prior?.profile?.personalProfile !== false) {
-      void readQueriesAgain(client, [VisitorDevicesDocument])
-    }
+    if (!relevant || change.visitorsEdge) return
+    const wasPersonal = personalShares.current.delete(change.shareId)
+    if (wasPersonal || prior?.profile?.personalProfile !== false) readTheTvsAgain()
   })
   // Shares start and end elsewhere, so a visit shows only the server's answer.
   const query = useQuery(SharedWithHouseholdDocument, {
@@ -144,6 +149,13 @@ function SharedProfiles({
     listsToReadAgain: [SharedWithHouseholdDocument, VisitorDevicesDocument],
     onDone: (share) => announce(`Sharing of ${share.profile.name} ended.`),
   })
+
+  const listed = query.data?.householdShares.edges
+  useEffect(() => {
+    for (const { node } of listed ?? []) {
+      if (node.profile?.personalProfile) personalShares.current.add(node.id)
+    }
+  }, [listed])
 
   if (query.loading && !query.data) {
     return <ListLoading label="Loading shared Profiles" />
