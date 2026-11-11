@@ -73,12 +73,13 @@ function AccountTrail() {
 function AccountMenu({ me, toSignIn }: Readonly<{ me: Me; toSignIn: () => void }>) {
   const { session } = useRouteContext({ from: '__root__' })
   const navigate = useNavigate()
-  const { unreadNotifications } = useMenuCounts()
+  const { unreadNotifications, waitingOffers } = useMenuCounts()
 
   return (
     <ProfileMenu
       me={me}
       unreadNotifications={unreadNotifications}
+      waitingOffers={waitingOffers}
       onServerSettings={() => navigate({ to: '/settings/server/libraries' })}
       onProfileSettings={() => navigate({ to: '/settings/profile/languages' })}
       onHouseholdSettings={() => navigate({ to: '/settings/household/offers' })}

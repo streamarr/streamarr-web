@@ -696,14 +696,6 @@ describe('Share offers as they change elsewhere', () => {
       expect(offeredNames()).toEqual(['Accept Mara'])
     })
   })
-
-  it('shouldStopFollowingShareChangesWhenTheAdminLeavesThePage', async () => {
-    const { socket, user } = await openWithAnOfferOfAlex()
-
-    await leaveForHome(user, SHARE_OFFERS)
-
-    await waitFor(() => expect(socket.isLive('ProfileShareChanged')).toBe(false))
-  })
 })
 
 // The confirmation holds a status of its own while a request is on its way, so the page's notice

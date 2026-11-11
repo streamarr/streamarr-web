@@ -36,7 +36,9 @@ export async function returnThroughTheProfileMenu(
   { area, heading, section }: SettingsPage,
 ) {
   await user.click(screen.getByRole('button', { name: /^Profile menu/ }))
-  await user.click(await screen.findByRole('button', { name: area }))
+  // An entry's count follows its label in its name: "Household settings, 1 offer waiting".
+  const entry = (name: string) => name === area || name.startsWith(`${area}, `)
+  await user.click(await screen.findByRole('button', { name: entry }))
   if (section) {
     const menu = await screen.findByRole('navigation', { name: area })
     await user.click(within(menu).getByRole('link', { name: section }))
