@@ -5,6 +5,7 @@ import { map, Observable, type Subscription, throwError } from 'rxjs'
 import { csrfHeaders, isCsrfRejection } from '../auth/csrf'
 import generatedIntrospection from './generated/possibleTypes.json'
 import { decideAuthRoute, extractAuthContext } from './errorRouting'
+import { liveListLink } from './liveList'
 
 export type AuthRoute = '/login' | '/select-profile'
 
@@ -235,6 +236,7 @@ export function createApolloClient(
     errorLink,
     gate.link,
     csrfLink,
+    liveListLink,
     httpLink,
   ])
   const link = subscriptionLink

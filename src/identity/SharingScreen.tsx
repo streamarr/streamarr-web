@@ -1,8 +1,9 @@
 import { Center, Loader } from '@mantine/core'
-import { useApolloClient, useQuery } from '@apollo/client/react'
+import { useQuery } from '@apollo/client/react'
 import { useState } from 'react'
 import settingsStyles from '../styles/settings.module.css'
 import { ProfileSharesDocument, type ProfileSharesQuery } from '../graphql/generated/graphql'
+import { useLiveList } from '../graphql/liveList'
 import { requestFailureMessage } from '../graphql/requestErrors'
 import { FailurePanel } from '../ui/Failure'
 import { PageNotice } from '../ui/PageNotice'
@@ -10,7 +11,7 @@ import { useFocusFallback } from '../ui/useFocusFallback'
 import { usePageNotice } from '../ui/usePageNotice'
 import { ArrivingShareCodeContext } from './arrivingShareCode'
 import styles from './Sharing.module.css'
-import { keepsInProfileShares, withShareChange } from './shareLists'
+import { keepsInProfileShares, shareIdOf, withShareChange, type ShareChange } from './shareLists'
 import { useMe } from './useMe'
 import { useShareChanges } from './useShareChanges'
 import { WhereShared, type ProfileShareRow } from './WhereShared'
@@ -80,20 +81,26 @@ function ProfileSharing({
   ownHouseholdName: string
   onChanged: (notice: string) => void
 }>) {
-  const { cache } = useApolloClient()
   const variables = { profileId: profile.id }
   // The query asks for the Profile's shares at every status.
-  useShareChanges((change) =>
-    cache.updateQuery({ query: ProfileSharesDocument, variables }, (data) => {
-      if (!data) return undefined
+  const liveShares = useLiveList({
+    query: ProfileSharesDocument,
+    variables,
+    keyOf: shareIdOf,
+    apply: (data, change: ShareChange) => {
       const edges = withShareChange(data.profileShares.edges, change, (share) =>
         keepsInProfileShares(share, variables, new Date()),
       )
       return { ...data, profileShares: { ...data.profileShares, edges } }
-    }),
-  )
+    },
+  })
+  useShareChanges(liveShares.receive)
   // Offers are accepted, declined and expire elsewhere, so a visit shows only the server's answer.
-  const query = useQuery(ProfileSharesDocument, { variables, fetchPolicy: 'network-only' })
+  const query = useQuery(ProfileSharesDocument, {
+    variables,
+    fetchPolicy: 'network-only',
+    context: liveShares.context,
+  })
   // A failed read reports through the query's own error. Rejecting here would report the change
   // that the read follows as failed.
   const readAgain = () => query.refetch().catch(() => undefined)

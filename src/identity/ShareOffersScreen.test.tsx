@@ -5,8 +5,10 @@ import type { ShareOffersQuery } from '../graphql/generated/graphql'
 import {
   answersInTurn,
   answerWith,
+  comeBackOnline,
   comeBackOnlineUntil,
   heldAnswer,
+  readsThatCanBeHeld,
   refusedWith,
   serverFailure,
 } from '../test/graphqlResponses'
@@ -101,14 +103,7 @@ function serveOffers(offers: OfferNode[]) {
     graphql.query('ShareOffers', () => {
       held.reads += 1
       if (held.failing) return serverFailure()
-      return HttpResponse.json({
-        data: {
-          householdShares: {
-            __typename: 'ProfileShareConnection',
-            edges: held.offers.map((node) => ({ __typename: 'ProfileShareEdge', node })),
-          },
-        },
-      })
+      return HttpResponse.json({ data: offersData(held.offers) })
     }),
   )
   return held
@@ -936,6 +931,63 @@ describe('Share offers as they change elsewhere', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { level: 1, name: 'Share invitations' })).toHaveFocus(),
     )
+  })
+
+  describe('while a read of the offers is on its way', () => {
+    const mara = offer({
+      id: 'mara',
+      profileId: 'mara',
+      expiresAt: IN_A_WEEK,
+      profile: offeredProfile({ id: 'mara', name: 'Mara' }),
+    })
+    const leo = liveShare({
+      id: 'leo',
+      profileId: 'leo',
+      profile: offeredProfile({ id: 'leo', name: 'Leo' }),
+    })
+
+    // The offers the server holds; each read answers with them as they stood when it arrived.
+    async function openWithAReadOnItsWay() {
+      const held = { offers: [offer({ expiresAt: IN_A_WEEK })] }
+      const socket = serve()
+      const reads = readsThatCanBeHeld(() => offersData(held.offers))
+      server.use(graphql.query('ShareOffers', reads.resolver))
+      renderAppAt(OFFERS)
+      await screen.findByRole('button', { name: 'Accept Alex' })
+      await followingShareChanges(socket)
+      // Mara's offer shows that the held read has answered.
+      held.offers = [mara, ...held.offers]
+      const read = reads.holdNext()
+      comeBackOnline()
+      await read.arrived
+      return { held, socket, release: read.release }
+    }
+
+    it('shouldKeepAnOfferThatArrivedWhenAReadSentBeforeItAnswers', async () => {
+      const { held, socket, release } = await openWithAReadOnItsWay()
+
+      held.offers = [leo, ...held.offers]
+      socket.publish('ProfileShareChanged', shareChanged(leo.id, leo))
+      await screen.findByRole('button', { name: 'Accept Leo' })
+      release()
+
+      await screen.findByRole('button', { name: 'Accept Mara' })
+      expect(offeredNames()).toEqual(['Accept Leo', 'Accept Mara', 'Accept Alex'])
+    })
+
+    it('shouldLeaveOutAnOfferAcceptedElsewhereWhenAReadSentBeforeTheAcceptanceAnswers', async () => {
+      const { held, socket, release } = await openWithAReadOnItsWay()
+
+      held.offers = [mara]
+      socket.publish('ProfileShareChanged', shareChanged(OFFER_ID, liveShare({ status: 'ACTIVE' })))
+      await waitFor(() =>
+        expect(screen.queryByRole('button', { name: 'Accept Alex' })).not.toBeInTheDocument(),
+      )
+      release()
+
+      await screen.findByRole('button', { name: 'Accept Mara' })
+      expect(offeredNames()).toEqual(['Accept Mara'])
+    })
   })
 
   it('shouldStopFollowingShareChangesWhenTheAdminLeavesThePage', async () => {

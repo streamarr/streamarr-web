@@ -9,6 +9,7 @@ import {
   comeBackOnlineUntil,
   failsOnceThen,
   heldAnswer,
+  readsThatCanBeHeld,
   serverFailure,
 } from '../test/graphqlResponses'
 import { serveGraphqlSocket } from '../test/graphqlSocket'
@@ -662,6 +663,66 @@ describe('Shared with us as shares change elsewhere', () => {
     socket.publish('ProfileShareChanged', shareChanged(robin.id, robin))
 
     await waitFor(() => expect(sharedNames()).toEqual(['End share of Robin', 'End share of Alex']))
+  })
+
+  describe('while a read of the shares is on its way', () => {
+    const mara = share({
+      id: 'mara',
+      profileId: 'mara',
+      profile: sharedProfile({ id: 'mara', name: 'Mara' }),
+    })
+    const leo = liveShare({
+      id: 'leo',
+      profileId: 'leo',
+      status: 'ACTIVE',
+      profile: sharedProfile({ id: 'leo', name: 'Leo' }),
+    })
+
+    // The shares the server holds; each read answers with them as they stood when it arrived.
+    async function openWithAReadOnItsWay() {
+      const held = { shares: [share()] }
+      const socket = serve()
+      const reads = readsThatCanBeHeld(() => sharesData(held.shares))
+      server.use(graphql.query('SharedWithHousehold', reads.resolver))
+      renderAppAt(VISITORS)
+      await screen.findByRole('button', { name: 'End share of Alex' })
+      await followingShareChanges(socket)
+      // Mara's share shows that the held read has answered.
+      held.shares = [mara, ...held.shares]
+      const read = reads.holdNext()
+      comeBackOnline()
+      await read.arrived
+      return { held, socket, release: read.release }
+    }
+
+    it('shouldKeepAProfileAcceptedElsewhereWhenAReadSentBeforeItAnswers', async () => {
+      const { held, socket, release } = await openWithAReadOnItsWay()
+
+      held.shares = [leo, ...held.shares]
+      socket.publish('ProfileShareChanged', shareChanged(leo.id, leo))
+      await screen.findByRole('button', { name: 'End share of Leo' })
+      release()
+
+      await screen.findByRole('button', { name: 'End share of Mara' })
+      expect(sharedNames()).toEqual(['End share of Leo', 'End share of Mara', 'End share of Alex'])
+    })
+
+    it('shouldLeaveOutAShareThatEndedElsewhereWhenAReadSentBeforeItsEndAnswers', async () => {
+      const { held, socket, release } = await openWithAReadOnItsWay()
+
+      held.shares = [mara]
+      socket.publish(
+        'ProfileShareChanged',
+        shareChanged(SHARE_ID, liveShare({ status: 'ENDED', ...HIDDEN_ONCE_OVER })),
+      )
+      await waitFor(() =>
+        expect(screen.queryByRole('button', { name: 'End share of Alex' })).not.toBeInTheDocument(),
+      )
+      release()
+
+      await screen.findByRole('button', { name: 'End share of Mara' })
+      expect(sharedNames()).toEqual(['End share of Mara'])
+    })
   })
 
   it('shouldLeaveAnOfferOutOfSharedWithUsUntilItIsAccepted', async () => {
