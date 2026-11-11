@@ -4,7 +4,9 @@ import { useAuth } from '../auth/AuthProvider'
 import { useSignOut } from '../auth/useSignOut'
 import type { MeQuery } from '../graphql/generated/graphql'
 import { initials, tileColor } from './ProfileTile'
+import { countText } from './countText'
 import { Icon, type IconName } from './Icon'
+import { UnreadCount } from './UnreadCount'
 import { canManageServer } from '../admin/access'
 import { canManageHousehold } from '../identity/householdAccess'
 import { canReadNotifications } from '../notifications/notificationAccess'
@@ -29,6 +31,7 @@ export function ProfileMenu({
   onProfileSettings,
   onHouseholdSettings,
   onNotifications,
+  unreadNotifications = 0,
 }: Readonly<{
   me: Me
   onPinRequired: (profileId: string) => void
@@ -42,6 +45,8 @@ export function ProfileMenu({
   onHouseholdSettings?: () => void
   /** Opens the Account's Notifications; offered in any account session. */
   onNotifications?: () => void
+  /** How many of the Account's Notifications are unread, counted after their entry. */
+  unreadNotifications?: number
 }>) {
   const { selectProfile } = useAuth()
   const signOut = useSignOut(onSignedOut)
@@ -201,6 +206,7 @@ export function ProfileMenu({
             <MenuEntry
               icon="notifications"
               label="Notifications"
+              count={{ value: unreadNotifications, words: (text) => `${text} unread` }}
               onChoose={closeThen(onNotifications)}
             />
           )}
@@ -211,15 +217,25 @@ export function ProfileMenu({
   )
 }
 
+/** A count after an entry's label, and how the entry's accessible name says it. */
+interface EntryCount {
+  value: number
+  words: (text: string) => string
+}
+
 function MenuEntry({
   icon,
   label,
+  count,
   onChoose,
-}: Readonly<{ icon: IconName; label: string; onChoose: () => void }>) {
+}: Readonly<{ icon: IconName; label: string; count?: EntryCount; onChoose: () => void }>) {
+  const text = countText(count?.value ?? 0)
+  const name = text && count ? `${label}, ${count.words(text)}` : undefined
   return (
-    <button type="button" className={styles.profileMenuRow} onClick={onChoose}>
+    <button type="button" className={styles.profileMenuRow} aria-label={name} onClick={onChoose}>
       <Icon name={icon} size={20} />
       <span>{label}</span>
+      {text && <UnreadCount text={text} />}
     </button>
   )
 }

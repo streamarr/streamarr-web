@@ -1,0 +1,17 @@
+/* selection.active as the ground, so the number keeps the contrast of primary copy. It never
+   animates. */
+.count {
+  margin-left: auto;
+  flex: none;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--radius-lg);
+  background: var(--selection-active);
+  color: var(--text-primary);
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  line-height: 20px;
+  text-align: center;
+}
