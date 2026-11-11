@@ -225,4 +225,30 @@ describe('ProfileMenu', () => {
 
     expect(screen.queryByRole('button', { name: 'Household settings' })).toBeNull()
   })
+
+  it('shouldOpenNotificationsWhenTheAccountChoosesThem', async () => {
+    const onNotifications = vi.fn()
+    const { user } = renderMenu({
+      me: meFixture({ scope: 'account', householdRole: 'MEMBER' }),
+      onNotifications,
+    })
+
+    await user.click(screen.getByRole('button', { name: /^Profile menu/ }))
+    await user.click(screen.getByRole('button', { name: 'Notifications' }))
+
+    expect(onNotifications).toHaveBeenCalledOnce()
+    expect(screen.queryByTestId('profile-menu')).toBeNull()
+  })
+
+  it('shouldOfferNoNotificationsWhenTheSessionIsBoundToATV', async () => {
+    const { user } = renderMenu({
+      me: { ...household(), deviceBound: true },
+      onNotifications: vi.fn(),
+    })
+
+    await openMenu(user)
+
+    expect(await screen.findByTestId('profile-menu')).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Notifications' })).toBeNull()
+  })
 })

@@ -47,6 +47,7 @@ const NEUTRAL_ROUTES = new Set<FileRouteTypes['id']>([
   '/_authenticated/settings/server',
   '/_authenticated/settings/profile',
   '/_authenticated/settings/household',
+  '/_authenticated/notifications',
 ])
 
 // The player fills the screen and carries its own Back.

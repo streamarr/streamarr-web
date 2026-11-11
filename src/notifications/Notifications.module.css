@@ -1,0 +1,47 @@
+/* One column on the neutral ground, at a reading width. */
+.page {
+  max-width: 760px;
+  margin: 26px auto 0;
+}
+
+.empty {
+  color: var(--text-secondary);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-prose);
+}
+
+.rows {
+  margin: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-12);
+}
+
+.row + .row {
+  margin-top: var(--spacing-14);
+  padding-top: var(--spacing-14);
+  border-top: var(--border-width-hairline) solid var(--border-hairline);
+}
+
+.text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--spacing-4);
+  min-width: 0;
+}
+
+.line {
+  font-size: var(--font-size-emphasis);
+  line-height: var(--line-height-prose);
+  overflow-wrap: anywhere;
+}
+
+.time {
+  color: var(--text-secondary);
+  font-size: var(--font-size-label);
+}
