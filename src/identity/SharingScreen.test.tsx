@@ -598,6 +598,27 @@ describe('Sharing', () => {
     expect(asked.previews).toEqual([])
   })
 
+  it('shouldLeaveThePreviewsAnswerOutWhenThePersonChangedTheCodeWhileItWasChecked', async () => {
+    serve()
+    serveShareCodeQuestions()
+    const previews = readsThatCanBeHeld(sharePreviewFixture)
+    const preview = previews.holdNext()
+    server.use(graphql.query('ProfileSharePreview', previews.resolver))
+    const { user } = renderWithProviders(<SharingScreen />)
+    const field = await openShareForm(user)
+    await user.type(field, SHARE_CODE)
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+    await preview.arrived
+
+    await user.type(field, 'L')
+    preview.release()
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled())
+    expect(screen.queryByRole('heading', { name: 'Offer Alex to Cabin?' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(field).toHaveValue(`${SHARE_CODE}L`)
+  })
+
   it('shouldContinueWhenEnterIsPressedInTheField', async () => {
     serve()
     const { user } = renderWithProviders(<SharingScreen />)
