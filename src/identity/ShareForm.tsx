@@ -8,13 +8,14 @@ import {
   type ProfileSharePreviewQuery,
 } from '../graphql/generated/graphql'
 import { requestFailureMessage } from '../graphql/requestErrors'
-import { userErrorMessage, type UserErrorLike } from '../graphql/userErrors'
+import { userErrorMessage, userErrorMessageOr, type UserErrorLike } from '../graphql/userErrors'
 import { shareCodeIn } from './shareCode'
 import { UPDATE_FAILED_MESSAGE } from './shareText'
 import styles from './Sharing.module.css'
 
 const NOT_A_CODE = 'A share code is 8 letters, like BCDF-GHJK.'
-const CODE_REFUSED = 'That code does not work. Ask an admin there for a new one.'
+// The server's own words, for an answer that refuses the code without any.
+const CODE_REFUSED = 'This share code does not work. Ask the Household for a new one.'
 const LOOK_UP_FAILED = "Couldn't check that code."
 
 type Effects = NonNullable<ProfileSharePreviewQuery['profileSharePreview']>
@@ -32,7 +33,7 @@ interface Review {
  */
 type Answer =
   | { kind: 'review'; review: Review }
-  | { kind: 'refused' }
+  | { kind: 'refused'; message: string }
   | { kind: 'cannot-offer' }
   | { kind: 'failed'; message: string }
   | { kind: 'outdated' }
@@ -45,7 +46,7 @@ interface LookedUp {
   previewed?: Answer
 }
 
-const REFUSED: Answer = { kind: 'refused' }
+const REFUSED: Answer = { kind: 'refused', message: CODE_REFUSED }
 const OUTDATED: Answer = { kind: 'outdated' }
 // The server answers no preview for a code that stopped working and for a Profile that the
 // Account may not offer, and does not say which.
@@ -183,7 +184,7 @@ export function ShareForm({
       case 'refused':
         // A code that no longer works is looked up afresh, should the person try it again.
         lookedUp.current = null
-        refuseText(CODE_REFUSED)
+        refuseText(answer.message)
         return
       case 'failed':
         setRefusal(answer.message)
@@ -289,6 +290,7 @@ function ShareReview({
 }
 
 function refusalOf(errors: readonly UserErrorLike[]): Answer {
-  if (errors.some((error) => error.__typename === 'ShareCodeRefusedError')) return REFUSED
+  const refused = errors.find((error) => error.__typename === 'ShareCodeRefusedError')
+  if (refused) return { kind: 'refused', message: userErrorMessageOr(refused, CODE_REFUSED) }
   return { kind: 'failed', message: errors.map(userErrorMessage).join(' ') }
 }
