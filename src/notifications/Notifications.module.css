@@ -27,6 +27,22 @@
   border-top: var(--border-width-hairline) solid var(--border-hairline);
 }
 
+/* Every row keeps the mark's place, so a row read in place keeps its text where it was. */
+.markSpace,
+.unreadMark {
+  --mark-size: 8px;
+  flex: none;
+  width: var(--mark-size);
+  height: var(--mark-size);
+  /* Centred on the line's first row of text. */
+  margin-top: calc((var(--font-size-emphasis) * var(--line-height-prose) - var(--mark-size)) / 2);
+}
+
+.unreadMark {
+  border-radius: 50%;
+  background: var(--selection-active);
+}
+
 .text {
   display: flex;
   flex: 1;

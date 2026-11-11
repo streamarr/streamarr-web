@@ -6,7 +6,7 @@ import type {
   ProfileShareStatus,
   RequestResolution,
 } from '../graphql/generated/graphql'
-import { failsOnceThen } from '../test/graphqlResponses'
+import { comeBackOnline, failsOnceThen } from '../test/graphqlResponses'
 import { serveGraphqlSocket } from '../test/graphqlSocket'
 import { meFixture } from '../test/meFixture'
 import {
@@ -16,20 +16,45 @@ import {
   offerNotification,
 } from '../test/notificationFixtures'
 import { renderAppAt } from '../test/render'
+import { leaveForHome, returnThroughTheProfileMenu, type SettingsPage } from '../test/returnVisits'
 import { server } from '../test/server'
 import homeShellStyles from '../ui/HomeShell.module.css'
 
 const NOTIFICATIONS = '/notifications'
+const NOTIFICATIONS_PAGE: SettingsPage = { area: 'Notifications', heading: 'Notifications' }
 const HOUR = 60 * 60 * 1000
+const OFFER_LINE = '“Sam” offered the Profile “Alex” to your Household.'
+const ANSWER_LINE = '“Cabin” accepted the Profile “Leo”.'
+
+/** Each time the page marked the list read: through which cursor, and on which visit. */
+interface Mark {
+  through: string
+  visit: number
+}
 
 function serve(page: NotificationsQuery = notificationsPage([]), me = meFixture()) {
   const socket = serveGraphqlSocket()
+  const marks: Mark[] = []
+  const visits = { count: 1 }
   server.use(
     graphql.query('Me', () => HttpResponse.json({ data: { me } })),
     graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
     graphql.query('Notifications', () => HttpResponse.json({ data: page })),
+    graphql.mutation('MarkAllNotificationsRead', ({ variables }) => {
+      const { through } = (variables as { input: { through: string } }).input
+      marks.push({ through, visit: visits.count })
+      return HttpResponse.json({
+        data: {
+          markAllNotificationsRead: {
+            __typename: 'MarkAllNotificationsReadPayload',
+            unreadNotificationCount: 0,
+            userErrors: [],
+          },
+        },
+      })
+    }),
   )
-  return socket
+  return { socket, marks, visits }
 }
 
 function rows() {
@@ -125,8 +150,6 @@ describe('Notifications', () => {
 })
 
 describe('Requests in Notifications', () => {
-  const OFFER_LINE = '“Sam” offered the Profile “Alex” to your Household.'
-
   it('shouldLinkAnOfferToShareOffersWhenItWaitsForADecision', async () => {
     serve(notificationsPage([offerNotification(), answerNotification()]))
     renderAppAt(NOTIFICATIONS)
@@ -181,5 +204,54 @@ describe('Requests in Notifications', () => {
 
     expect(await within(rows()[0]).findByText('Expired')).toBeVisible()
     expect(screen.queryByRole('link', { name: 'Review' })).not.toBeInTheDocument()
+  })
+})
+
+describe('Reading Notifications', () => {
+  it('shouldMarkAnUnreadNotificationWithoutColourAloneWhenItIsListed', async () => {
+    serve(notificationsPage([offerNotification({ unread: true }), answerNotification()]))
+    renderAppAt(NOTIFICATIONS)
+
+    await screen.findByText(OFFER_LINE)
+
+    const [unread, read] = rows()
+    expect(within(unread).getByText('Unread')).toBeInTheDocument()
+    expect(within(unread).getByTestId('unread-mark')).toBeVisible()
+    expect(within(read).queryByText('Unread')).not.toBeInTheDocument()
+    expect(within(read).queryByTestId('unread-mark')).not.toBeInTheDocument()
+  })
+
+  it('shouldMarkWhatThePageShowsAsReadOnceTheListHasRendered', async () => {
+    const { marks } = serve(notificationsPage([offerNotification(), answerNotification()]))
+    renderAppAt(NOTIFICATIONS)
+
+    await screen.findByText(OFFER_LINE)
+
+    await waitFor(() => expect(marks).toEqual([{ through: 'cursor-001', visit: 1 }]))
+  })
+
+  it('shouldLeaveANotificationThatArrivesAfterOpeningUnreadUntilTheNextVisit', async () => {
+    const held = { page: notificationsPage([offerNotification({ unread: false })]) }
+    const { marks, visits } = serve()
+    server.use(graphql.query('Notifications', () => HttpResponse.json({ data: held.page })))
+    const { user } = renderAppAt(NOTIFICATIONS)
+    await screen.findByText(OFFER_LINE)
+    await waitFor(() => expect(marks).toHaveLength(1))
+
+    held.page = notificationsPage(
+      [answerNotification({ unread: true }), offerNotification({ unread: false })],
+      { from: 0 },
+    )
+    comeBackOnline()
+    await screen.findByText(ANSWER_LINE)
+    await leaveForHome(user, NOTIFICATIONS_PAGE)
+    visits.count = 2
+    await returnThroughTheProfileMenu(user, NOTIFICATIONS_PAGE)
+
+    await waitFor(() => expect(marks.filter((mark) => mark.visit === 2)).toHaveLength(1))
+    expect(marks).toEqual([
+      { through: 'cursor-001', visit: 1 },
+      { through: 'cursor-000', visit: 2 },
+    ])
   })
 })
