@@ -59,14 +59,16 @@ export function PinGateAvatar({
   )
 }
 
-/** A Profile's mark beside its name in a list row; the name beside it says who it is. */
+/**
+ * A Profile's mark beside its name in a list row; the name beside it says who it is. Its colour
+ * is the Profile's own, so the Profile keeps it in whichever row and list it appears.
+ */
 export function RowAvatar({
-  name,
-  paletteIndex = 0,
-}: Readonly<{ name: string; paletteIndex?: number }>) {
+  profile,
+}: Readonly<{ profile: Readonly<{ id: string; name: string }> }>) {
   return (
-    <span className={styles.rowAvatar} style={{ background: tileColor(paletteIndex) }} aria-hidden>
-      {initials(name)}
+    <span className={styles.rowAvatar} style={{ background: profileColor(profile.id) }} aria-hidden>
+      {initials(profile.name)}
     </span>
   )
 }
@@ -85,6 +87,15 @@ const TILE_COLORS = [
   'color-mix(in srgb, var(--color-mint) 30%, #060608)',
   'color-mix(in srgb, var(--color-brand-blue) 45%, #060608)',
 ]
+
+/** The colour of the palette that a Profile's id picks, the same wherever the Profile is shown. */
+export function profileColor(profileId: string) {
+  let picked = 0
+  for (const character of profileId) {
+    picked = (picked * 31 + (character.codePointAt(0) ?? 0)) | 0
+  }
+  return tileColor(picked)
+}
 
 export function tileColor(index: number) {
   return TILE_COLORS[((index % TILE_COLORS.length) + TILE_COLORS.length) % TILE_COLORS.length]
