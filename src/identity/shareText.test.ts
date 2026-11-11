@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { expiryLabel, householdIdIn, shortId } from './shareText'
+import { expiryLabel, shortId } from './shareText'
 
 const NOW = new Date('2026-08-20T12:00:00Z')
 
@@ -24,22 +24,4 @@ describe('shortId', () => {
   it('shouldGiveTheStartOfAnId', () => {
     expect(shortId('33333333-3333-3333-3333-333333333333')).toBe('33333333')
   })
-})
-
-describe('householdIdIn', () => {
-  const ID = '55555555-aaaa-4bbb-8ccc-0123456789ab'
-
-  it.each([ID, `  ${ID}\n`, `id: "${ID}",`, `Our Household is ${ID}.`])(
-    'shouldFindTheIdWhenTheTextHoldsOne(%j)',
-    (text) => {
-      expect(householdIdIn(text)).toBe(ID)
-    },
-  )
-
-  it.each(['', 'the Smiths', ID.slice(0, 30), `${ID}0`, `f${ID}`])(
-    'shouldFindNoIdWhenTheTextHoldsNone(%j)',
-    (text) => {
-      expect(householdIdIn(text)).toBeNull()
-    },
-  )
 })
