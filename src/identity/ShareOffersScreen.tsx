@@ -1,14 +1,11 @@
 import { Button, Center, Loader } from '@mantine/core'
-import { useMutation, useQuery } from '@apollo/client/react'
+import { useMutation } from '@apollo/client/react'
 import { useEffect, useEffectEvent, useState, type Ref } from 'react'
 import {
   AcceptProfileShareDocument,
   RejectProfileShareDocument,
-  ShareOffersDocument,
   type MeQuery,
-  type ShareOffersQuery,
 } from '../graphql/generated/graphql'
-import { useLiveList } from '../graphql/liveList'
 import { requestFailureMessage } from '../graphql/requestErrors'
 import { userErrorMessage, type UserErrorLike } from '../graphql/userErrors'
 import settingsStyles from '../styles/settings.module.css'
@@ -19,23 +16,12 @@ import { useFocusFallback } from '../ui/useFocusFallback'
 import { usePageNotice } from '../ui/usePageNotice'
 import styles from './Sharing.module.css'
 import { SharedProfileText } from './SharedProfileText'
-import {
-  keepsInHouseholdShares,
-  shareIdOf,
-  statusAt,
-  withShareChange,
-  type ShareChange,
-} from './shareLists'
 import { SharingSection } from './SharingSection'
 import { expiryLabel, UPDATE_FAILED_MESSAGE } from './shareText'
 import { useMe } from './useMe'
-import { useNow } from './useNow'
-import { useShareChanges } from './useShareChanges'
+import { useWaitingOffers, type PendingOffer } from './useWaitingOffers'
 
-type ListedOffer = ShareOffersQuery['householdShares']['edges'][number]['node']
-type OfferedProfile = NonNullable<ListedOffer['profile']>
-/** An offer as the page lists it: one whose Profile the server names. */
-type PendingOffer = ListedOffer & { profile: OfferedProfile }
+type OfferedProfile = PendingOffer['profile']
 type Household = MeQuery['me']['household']
 type Decision = 'accept' | 'decline'
 /** An offer whose decision waits for the admin's confirmation. */
@@ -97,27 +83,11 @@ function HouseholdOffers({
   /** The container of the offers, where focus that a change takes away returns to the heading. */
   liveList: Ref<HTMLDivElement>
 }>) {
-  const variables = { householdId: household.id }
-  // The offers that the query asks for.
-  const list = { householdId: household.id, statuses: ['PENDING'] as const, serverAdmin }
-  const liveOffers = useLiveList({
-    query: ShareOffersDocument,
-    variables,
-    keyOf: shareIdOf,
-    apply: (data, change: ShareChange) => {
-      const edges = withShareChange(data.householdShares.edges, change, (share) =>
-        keepsInHouseholdShares(share, list, new Date()),
-      )
-      return { ...data, householdShares: { ...data.householdShares, edges } }
-    },
-  })
-  useShareChanges(liveOffers.receive)
   // Offers arrive, expire and are withdrawn elsewhere, so a visit shows only the server's answer.
-  const query = useQuery(ShareOffersDocument, {
-    variables,
-    fetchPolicy: 'network-only',
-    context: liveOffers.context,
-  })
+  const { query, offers } = useWaitingOffers(
+    { householdId: household.id, serverAdmin },
+    { fetchPolicy: 'network-only' },
+  )
   const [accept] = useMutation(AcceptProfileShareDocument)
   const [decline] = useMutation(RejectProfileShareDocument)
   /**
@@ -194,12 +164,6 @@ function HouseholdOffers({
     setConfirmation({ offerId: offer.id, decision })
   }
 
-  const listed = query.data?.householdShares.edges.map((edge) => edge.node) ?? []
-  // An offer leaves the list when its time runs out, as the query would leave it out.
-  const now = useNow(listed.map((offer) => offer.expiresAt))
-  const offers = listed
-    .filter((offer) => statusAt(offer, now) === 'PENDING')
-    .filter(namesItsProfile)
   const confirming = offers.find((offer) => offer.id === confirmation?.offerId) ?? null
   // An offer that a read or a change made elsewhere takes out of the list while its confirmation is
   // open was decided or withdrawn elsewhere, so the confirmation closes and the page says so. An
@@ -310,10 +274,6 @@ function HouseholdOffers({
       />
     </>
   )
-}
-
-function namesItsProfile(offer: ListedOffer): offer is PendingOffer {
-  return offer.profile !== null
 }
 
 function offeredProfile(offer: PendingOffer): string {
