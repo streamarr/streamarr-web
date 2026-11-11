@@ -93,13 +93,27 @@
 }
 
 .toggle[aria-disabled='true'] {
-  color: var(--text-tertiary);
   cursor: default;
 }
 
-/* An unavailable toggle does not answer the pointer, so one that is on keeps its highlight. */
-.toggle[aria-disabled='true']:not([aria-checked='true']):hover {
-  background: none;
+/* An unavailable toggle that is off takes the disabled text color and does not answer the pointer.
+   One that is on keeps its highlight there. */
+.toggle[aria-disabled='true']:not([aria-checked='true']) {
+  color: var(--text-tertiary);
+
+  &:hover {
+    background: none;
+  }
+}
+
+/* The viewer has to read an unavailable toggle that is on, so its label keeps the selected row's
+   color. Its regular weight and its quieter check tell it from a choice the viewer can change. */
+.toggle[aria-disabled='true'][aria-checked='true'] {
+  font-weight: var(--font-weight-regular);
+
+  & .check {
+    color: var(--text-secondary);
+  }
 }
 
 .label {

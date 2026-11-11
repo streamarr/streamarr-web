@@ -11,6 +11,7 @@ import type {
   ClientCapabilityDeclarationInput,
   CreatePlaybackSessionMutationVariables,
 } from '../src/graphql/generated/graphql'
+import { paintedText, textContrast } from './contrast'
 import { STUB_URL } from './ports'
 
 // The player gives hls.js a video preference built from its declaration. These specs play a PQ
@@ -273,4 +274,39 @@ test('the HDR toggle that Original holds on keeps its highlight under the pointe
   await toggle.hover()
 
   await expect(toggle).toHaveCSS('background-color', highlight)
+})
+
+test('the HDR toggle that Original holds on keeps its label readable, at rest and under the pointer', async ({
+  page,
+  request,
+}) => {
+  const { toggle } = await openQualityMenuInOriginal(page, request)
+  const label = toggle.getByText('HDR', { exact: true })
+  const underThePointer = () => toggle.evaluate((row) => row.matches(':hover'))
+  expect(await underThePointer()).toBe(false)
+
+  const atRest = textContrast(await paintedText(label))
+  await toggle.hover()
+  expect(await underThePointer()).toBe(true)
+  const hovered = textContrast(await paintedText(label))
+
+  expect.soft(atRest, 'at rest').toBeGreaterThanOrEqual(4.5)
+  expect(hovered, 'under the pointer').toBeGreaterThanOrEqual(4.5)
+})
+
+test('the HDR toggle that Original holds on reads apart from a choice the viewer can change', async ({
+  page,
+  request,
+}) => {
+  const { menu, toggle } = await openQualityMenuInOriginal(page, request)
+  const original = menu.getByRole('menuitemradio', { checked: true })
+  const weight = (row: Locator) =>
+    row.evaluate((element) => Number(getComputedStyle(element).fontWeight))
+  const checkContrast = async (row: Locator) => textContrast(await paintedText(row.locator('svg')))
+
+  expect(await weight(toggle)).toBeLessThan(await weight(original))
+  const check = await checkContrast(toggle)
+  expect(check).toBeLessThan(await checkContrast(original))
+  // The check is not text: it needs 3 to 1, where the label needs 4.5.
+  expect(check).toBeGreaterThanOrEqual(3)
 })
