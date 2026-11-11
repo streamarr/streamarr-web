@@ -11,8 +11,15 @@ import { useFocusFallback } from '../ui/useFocusFallback'
 import { usePageNotice } from '../ui/usePageNotice'
 import { ArrivingShareCodeContext } from './arrivingShareCode'
 import styles from './Sharing.module.css'
-import { keepsInProfileShares, shareIdOf, withShareChange, type ShareChange } from './shareLists'
+import {
+  keepsInProfileShares,
+  shareIdOf,
+  statusAt,
+  withShareChange,
+  type ShareChange,
+} from './shareLists'
 import { useMe } from './useMe'
+import { useNow } from './useNow'
 import { useShareChanges } from './useShareChanges'
 import { WhereShared, type ProfileShareRow } from './WhereShared'
 
@@ -111,6 +118,9 @@ function ProfileSharing({
   })
   // A failed read keeps the list that is on screen.
   const readAgain = () => query.refetch().catch(() => undefined)
+  const listed = query.data?.profileShares.edges.map((edge) => edge.node) ?? []
+  // An offer whose time runs out is over, as the query would count it.
+  const now = useNow(listed.map((share) => share.expiresAt))
 
   if (query.loading && !query.data) {
     return <SharingLoading />
@@ -122,9 +132,9 @@ function ProfileSharing({
 
   // Every Personal Profile is shared with its Account's own Household, and that share cannot
   // end, so it is no news here.
-  const shares = query.data.profileShares.edges
-    .map((edge) => edge.node)
+  const shares = listed
     .filter((share) => !share.requiredByAccountMembership)
+    .map((share) => ({ ...share, status: statusAt(share, now) }))
 
   return (
     <WhereShared

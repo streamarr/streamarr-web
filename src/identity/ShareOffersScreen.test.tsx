@@ -1,6 +1,6 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import { delay, graphql, HttpResponse } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import type { ShareOffersQuery } from '../graphql/generated/graphql'
 import { focusesOf, leaveTheConfirmation, type WayOut } from '../test/focus'
 import { comeBackOnline, readsThatCanBeHeld } from '../test/graphqlResponses'
@@ -32,6 +32,7 @@ type OfferNode = Omit<OfferFields, 'profile'> & {
 const OFFERS = '/settings/household/offers'
 const SHARE_OFFERS: SettingsPage = { area: 'Household settings', heading: 'Share offers' }
 const OFFER_ID = '77777777-7777-7777-7777-777777777777'
+const HOUR = 60 * 60 * 1000
 
 function offeredProfile(overrides: Partial<OfferedProfile> = {}): OfferedProfile {
   return {
@@ -53,7 +54,8 @@ function offer(overrides: Partial<OfferNode> = {}): OfferNode {
     profileId: PROFILE_ID,
     householdId: HOUSEHOLD_ID,
     status: 'PENDING',
-    expiresAt: '2026-08-27T12:00:00Z',
+    // A week ahead, since the server lists an offer as waiting only before its expiry.
+    expiresAt: IN_A_WEEK,
     profile: offeredProfile(),
     offeredByDisplayName: 'Sam',
     visitor: true,
@@ -436,6 +438,33 @@ describe('Share offers', () => {
     const offered = await screen.findByRole('region', { name: 'Profiles offered to Smith Family' })
     expect(within(offered).getAllByRole('listitem')).toHaveLength(1)
     expect(within(offered).getByRole('button', { name: 'Accept Sam' })).toBeEnabled()
+  })
+
+  it('shouldTakeOutAnOfferWhenItsTimeRunsOutWithThePageOpen', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'], shouldAdvanceTime: true })
+    onTestFinished(() => void vi.useRealTimers())
+    serve([
+      offer({ expiresAt: new Date(Date.now() + HOUR).toISOString() }),
+      offer({
+        id: 'mara',
+        profileId: 'mara',
+        expiresAt: new Date(Date.now() + 2 * HOUR).toISOString(),
+        profile: offeredProfile({ id: 'mara', name: 'Mara' }),
+      }),
+    ])
+    renderAppAt(OFFERS)
+    await screen.findByRole('button', { name: 'Accept Alex' })
+
+    await act(() => vi.advanceTimersByTimeAsync(HOUR))
+
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Accept Alex' })).not.toBeInTheDocument(),
+    )
+    expect(screen.getByRole('button', { name: 'Accept Mara' })).toBeEnabled()
+
+    await act(() => vi.advanceTimersByTimeAsync(HOUR))
+
+    expect(await screen.findByText('No one has offered a Profile to Smith Family.')).toBeVisible()
   })
 
   it('shouldSayHowLongAnOfferHasLeftWhenItIsListed', async () => {
