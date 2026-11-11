@@ -225,7 +225,7 @@ function failingClipboard() {
 }
 
 describe('Share codes', () => {
-  it('shouldOpenShareCodesAsASectionOfHouseholdSettingsUnderShareOffers', async () => {
+  it('shouldListShareCodesUnderShareOffersWhenHouseholdSettingsOpen', async () => {
     serve()
     renderAppAt(CODES)
 
@@ -321,7 +321,7 @@ describe('Share codes', () => {
     expect(await screen.findByText('Issued by Sam')).toBeVisible()
   })
 
-  it('shouldCopyTheCodeAndSaySoWithoutMovingFocus', async () => {
+  it('shouldCopyTheCodeAndSaySoWithoutMovingFocusWhenThePersonCopiesIt', async () => {
     serveHouseholdHolding([])
     const { user } = renderAppAt(CODES)
     await issue(user)
@@ -413,7 +413,7 @@ describe('Share codes', () => {
     expect(shareOffers).toHaveFocus()
   })
 
-  it('shouldKeepTheCodeOutOfTheCacheTheAddressAndTheBrowsersStorage', async () => {
+  it('shouldKeepTheCodeOutOfTheCacheTheAddressAndTheBrowsersStorageWhenACodeIsIssued', async () => {
     serveHouseholdHolding([])
     const { user, router, apolloClient } = renderAppAt(CODES)
 
@@ -479,7 +479,7 @@ describe('Share codes', () => {
     expect(screen.queryByRole('button', { name: 'Withdraw' })).not.toBeInTheDocument()
   })
 
-  it('shouldWithdrawACodeAtOnceAndSaySo', async () => {
+  it('shouldWithdrawTheCodeAtOnceAndSaySoWhenThePersonWithdrawsIt', async () => {
     const codes = serveInTurn([liveCode()], [])
     server.use(
       graphql.mutation('WithdrawShareCode', ({ variables }) => {

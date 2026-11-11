@@ -278,7 +278,7 @@ describe('Sharing', () => {
     expect(screen.queryByRole('region', { name: /invitations/i })).not.toBeInTheDocument()
   })
 
-  it('shouldNameTheHouseholdOfAShareByTheNameTheShareCarries', async () => {
+  it('shouldNameTheHouseholdByTheNameTheShareCarriesWhenTheAccountMayUseOnlyItsOwnHousehold', async () => {
     // The Account may use only its own Household, so the name can come from the share alone.
     serve([membershipShare(), share({ status: 'ACTIVE' })], me([SMITH_FAMILY]))
     renderWithProviders(<SharingScreen />)
@@ -1212,7 +1212,7 @@ describe('Sharing', () => {
     expect(preview.calls).toBe(2)
   })
 
-  it('shouldLookACodeUpAgainOnceThePersonChangesIt', async () => {
+  it('shouldLookTheCodeUpAgainWhenThePersonChangesIt', async () => {
     serve()
     const asked = serveShareCodeQuestions()
     server.use(graphql.query('ProfileSharePreview', failsOnceThen(sharePreviewFixture()).resolver))
@@ -1412,7 +1412,7 @@ describe('Sharing', () => {
     expect(screen.getByRole('textbox', { name: 'Share code' })).toHaveValue(SHARE_CODE)
   })
 
-  it('shouldWarnInTheReviewThatTheProfileWouldLockAndThatItsNameIsTaken', async () => {
+  it('shouldWarnInTheReviewWhenTheProfileWouldLockAndItsNameIsTaken', async () => {
     serve()
     serveShareCodeQuestions({
       preview: sharePreviewFixture({ wouldLock: true, nameConflict: true }),
@@ -1990,7 +1990,7 @@ describe('Sharing as shares change elsewhere', () => {
     return { socket, ...rendered }
   }
 
-  it('shouldListAnOfferOfTheProfileMadeElsewhereWhileThePageIsOpen', async () => {
+  it('shouldListAnOfferWhenTheProfileIsOfferedElsewhereWhileThePageIsOpen', async () => {
     const { socket } = await openWith([])
 
     socket.publish('ProfileShareChanged', shareChanged(SHARE_ID, changedShare()))
@@ -2001,7 +2001,7 @@ describe('Sharing as shares change elsewhere', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('shouldShowAnOfferAsSharedOnceItIsAcceptedElsewhere', async () => {
+  it('shouldShowAnOfferAsSharedWhenItIsAcceptedElsewhere', async () => {
     const { socket } = await openWith([share()])
     expect(screen.getByText('Waiting for an admin there')).toBeVisible()
 
