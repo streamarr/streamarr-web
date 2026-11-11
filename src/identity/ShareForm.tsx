@@ -233,7 +233,7 @@ export function ShareForm({
   }
 
   return (
-    <form className={styles.shareForm} noValidate onSubmit={submit}>
+    <form className={styles.shareForm} noValidate onSubmit={submit} data-testid="share-form">
       {review ? (
         <ShareReview profileName={profile.name} review={review} questionRef={question} />
       ) : (
