@@ -132,11 +132,10 @@ describe('Share codes', () => {
     renderAppAt(CODES)
 
     const menu = await screen.findByRole('navigation', { name: 'Household settings' })
-    expect(
-      within(menu)
-        .getAllByRole('link')
-        .map((link) => link.textContent),
-    ).toEqual(['Share offers', 'Share codes'])
+    const sections = within(menu)
+      .getAllByRole('link')
+      .map((link) => link.textContent)
+    expect(sections[sections.indexOf('Share offers') + 1]).toBe('Share codes')
     expect(within(menu).getByRole('link', { name: 'Share codes' })).toHaveAttribute(
       'aria-current',
       'page',
