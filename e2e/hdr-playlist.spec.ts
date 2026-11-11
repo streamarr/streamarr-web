@@ -113,6 +113,15 @@ const FIXED_QUALITY_IN_HDR: HdrSourcePlayback = {
   toggle: { on: true, unavailable: false },
 }
 
+// No choice shows HDR on a display without it, so the toggle stays off.
+const FIXED_QUALITY_ON_AN_SDR_DISPLAY: HdrSourcePlayback = {
+  choice: 'MEDIUM_480P',
+  label: '480p',
+  videoRange: 'SDR',
+  displaysHdr: false,
+  toggle: { on: false, unavailable: true },
+}
+
 function sessionOf({ choice, videoRange }: HdrSourcePlayback) {
   const { playbackSession } = PQ_SESSION.createPlaybackSession
   const { streamSession } = playbackSession.currentFormatAttempt
@@ -366,6 +375,37 @@ for (const [held, playback] of [
     )
   })
 }
+
+test('the HDR toggle that is off and unavailable writes its label in the disabled text color', async ({
+  page,
+  request,
+}) => {
+  const { toggle } = await openQualityMenu(page, request, FIXED_QUALITY_ON_AN_SDR_DISPLAY)
+  // text.tertiary, as the page resolves the token.
+  const disabledText = await toggle.evaluate((row) => {
+    const probe = row.appendChild(document.createElement('span'))
+    probe.style.color = 'var(--text-tertiary)'
+    const { color } = getComputedStyle(probe)
+    probe.remove()
+    return color
+  })
+
+  await expect(toggle.getByText('HDR', { exact: true })).toHaveCSS('color', disabledText)
+  await expect(toggle.locator('svg')).toHaveCount(0)
+})
+
+test('the HDR toggle that is off and unavailable takes no fill under the pointer', async ({
+  page,
+  request,
+}) => {
+  const { toggle } = await openQualityMenu(page, request, FIXED_QUALITY_ON_AN_SDR_DISPLAY)
+  const atRest = await toggle.evaluate((row) => getComputedStyle(row).backgroundColor)
+
+  await toggle.hover()
+
+  expect(await toggle.evaluate((row) => row.matches(':hover'))).toBe(true)
+  await expect(toggle).toHaveCSS('background-color', atRest)
+})
 
 // Forced colors remove every row's fill, so the check is the mark that is left to show HDR is on.
 test('the HDR toggle that Original holds on keeps its check when the system forces its colors', async ({
