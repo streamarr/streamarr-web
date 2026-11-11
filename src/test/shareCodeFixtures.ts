@@ -16,15 +16,16 @@ export function shareCodeLookUpFixture({
   }
 }
 
+/** The server's words for a code that does not work, whichever way it stopped working. */
+export const SHARE_CODE_REFUSED = 'This share code does not work. Ask the Household for a new one.'
+
 /** The answer to looking up a code that does not work, which names no Household. */
 export function refusedShareCodeFixture() {
   return {
     lookUpShareCode: {
       __typename: 'LookUpShareCodePayload',
       householdName: null,
-      userErrors: [
-        { __typename: 'ShareCodeRefusedError', message: 'That share code does not work.' },
-      ],
+      userErrors: [{ __typename: 'ShareCodeRefusedError', message: SHARE_CODE_REFUSED }],
     },
   }
 }
