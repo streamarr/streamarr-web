@@ -62,7 +62,10 @@ const RETENTION: SettingWords = {
   unitAfterNumber: true,
 }
 
-/** The server-wide rules for share codes, invitations and offers, which a ServerAdmin sets. */
+/**
+ * The server-wide rules for share codes, invitations and offers, and how long Notifications are
+ * kept, which a ServerAdmin sets.
+ */
 export function SharingAndInvitationSettings() {
   const { notice, count, announce, dismiss } = usePageNotice()
   // A save leaves the page as it was, so its notice keeps focus where the admin is.
