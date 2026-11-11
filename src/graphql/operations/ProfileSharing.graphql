@@ -2,16 +2,7 @@ query ShareOffers($householdId: ID!) {
   householdShares(householdId: $householdId, statuses: [PENDING], first: 50) {
     edges {
       node {
-        id
-        profileId
-        householdId
-        status
-        expiresAt
-        profile {
-          ...SharedProfileFields
-        }
-        offeredByDisplayName
-        visitor
+        ...ShareOfferFields
       }
     }
   }
@@ -21,17 +12,7 @@ query ProfileShares($profileId: ID!) {
   profileShares(profileId: $profileId, first: 50) {
     edges {
       node {
-        id
-        householdId
-        status
-        requiredByAccountMembership
-        expiresAt
-        endedAt
-        invalidationReason
-        household {
-          id
-          name
-        }
+        ...ProfileShareFields
       }
     }
   }
@@ -138,4 +119,33 @@ fragment SharedProfileFields on ProfileSummary {
   kind
   personalProfile
   restricted
+}
+
+# An offer as Share offers lists it.
+fragment ShareOfferFields on ProfileShare {
+  id
+  profileId
+  householdId
+  status
+  expiresAt
+  profile {
+    ...SharedProfileFields
+  }
+  offeredByDisplayName
+  visitor
+}
+
+# A share of the Account's Personal Profile as Sharing lists it.
+fragment ProfileShareFields on ProfileShare {
+  id
+  householdId
+  status
+  requiredByAccountMembership
+  expiresAt
+  endedAt
+  invalidationReason
+  household {
+    id
+    name
+  }
 }

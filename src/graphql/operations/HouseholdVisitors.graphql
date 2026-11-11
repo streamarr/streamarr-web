@@ -2,19 +2,24 @@ query SharedWithHousehold($householdId: ID!) {
   householdShares(householdId: $householdId, statuses: [ACTIVE], visitorsOnly: true, first: 50) {
     edges {
       node {
-        id
-        profileId
-        householdId
-        status
-        requiredByAccountMembership
-        profile {
-          ...SharedProfileFields
-        }
-        offeredByDisplayName
-        visitor
+        ...VisitorShareFields
       }
     }
   }
+}
+
+# A Profile shared with the Household as Shared with us lists it.
+fragment VisitorShareFields on ProfileShare {
+  id
+  profileId
+  householdId
+  status
+  requiredByAccountMembership
+  profile {
+    ...SharedProfileFields
+  }
+  offeredByDisplayName
+  visitor
 }
 
 query VisitorDevices($householdId: ID!) {
