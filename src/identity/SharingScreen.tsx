@@ -1,6 +1,6 @@
 import { Center, Loader } from '@mantine/core'
 import { useQuery } from '@apollo/client/react'
-import { useState } from 'react'
+import { useState, type Ref } from 'react'
 import settingsStyles from '../styles/settings.module.css'
 import { ProfileSharesDocument } from '../graphql/generated/graphql'
 import { useLiveList } from '../graphql/liveList'
@@ -24,7 +24,7 @@ type PersonalProfile = Readonly<{ id: string; name: string }>
  */
 export function SharingScreen({ arrivingCode = null }: Readonly<{ arrivingCode?: string | null }>) {
   const { notice, heading, announce, dismiss } = usePageNotice()
-  useFocusFallback(heading)
+  const liveList = useFocusFallback(heading)
   const [code, setCode] = useState(arrivingCode)
 
   return (
@@ -36,13 +36,16 @@ export function SharingScreen({ arrivingCode = null }: Readonly<{ arrivingCode?:
       </div>
       <PageNotice onDismiss={dismiss}>{notice}</PageNotice>
       <ArrivingShareCodeContext value={{ code, take: () => setCode(null) }}>
-        <SharingContent onChanged={announce} />
+        <SharingContent onChanged={announce} liveList={liveList} />
       </ArrivingShareCodeContext>
     </>
   )
 }
 
-function SharingContent({ onChanged }: Readonly<{ onChanged: (notice: string) => void }>) {
+function SharingContent({
+  onChanged,
+  liveList,
+}: Readonly<{ onChanged: (notice: string) => void; liveList: Ref<HTMLUListElement> }>) {
   const { data: meData, loading: meLoading, error: meError, refetch: refetchMe } = useMe()
 
   if (meLoading && !meData) {
@@ -66,7 +69,12 @@ function SharingContent({ onChanged }: Readonly<{ onChanged: (notice: string) =>
   }
 
   return (
-    <ProfileSharing profile={personal} ownHouseholdName={me.household.name} onChanged={onChanged} />
+    <ProfileSharing
+      profile={personal}
+      ownHouseholdName={me.household.name}
+      onChanged={onChanged}
+      liveList={liveList}
+    />
   )
 }
 
@@ -74,10 +82,12 @@ function ProfileSharing({
   profile,
   ownHouseholdName,
   onChanged,
+  liveList,
 }: Readonly<{
   profile: PersonalProfile
   ownHouseholdName: string
   onChanged: (notice: string) => void
+  liveList: Ref<HTMLUListElement>
 }>) {
   const variables = { profileId: profile.id }
   // The query asks for the Profile's shares at every status.
@@ -124,6 +134,7 @@ function ProfileSharing({
       ownHouseholdName={ownHouseholdName}
       readAgain={readAgain}
       onChanged={onChanged}
+      liveList={liveList}
     />
   )
 }

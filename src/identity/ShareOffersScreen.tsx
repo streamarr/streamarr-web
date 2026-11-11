@@ -1,6 +1,6 @@
 import { Button, Center, Loader } from '@mantine/core'
 import { useMutation, useQuery } from '@apollo/client/react'
-import { useState } from 'react'
+import { useState, type Ref } from 'react'
 import {
   AcceptProfileShareDocument,
   RejectProfileShareDocument,
@@ -35,7 +35,7 @@ type Decision = 'accept' | 'decline'
 /** The offers of Profiles to the Account's Household, which its admins accept or decline. */
 export function ShareOffersScreen() {
   const { notice, heading, announce, dismiss } = usePageNotice()
-  useFocusFallback(heading)
+  const liveList = useFocusFallback(heading)
 
   return (
     <>
@@ -45,12 +45,15 @@ export function ShareOffersScreen() {
         </h1>
       </div>
       <PageNotice onDismiss={dismiss}>{notice}</PageNotice>
-      <ShareOffersContent onDecided={announce} />
+      <ShareOffersContent onDecided={announce} liveList={liveList} />
     </>
   )
 }
 
-function ShareOffersContent({ onDecided }: Readonly<{ onDecided: (notice: string) => void }>) {
+function ShareOffersContent({
+  onDecided,
+  liveList,
+}: Readonly<{ onDecided: (notice: string) => void; liveList: Ref<HTMLDivElement> }>) {
   const me = useMe()
 
   if (me.loading && !me.data) {
@@ -64,6 +67,7 @@ function ShareOffersContent({ onDecided }: Readonly<{ onDecided: (notice: string
       household={me.data.me.household}
       serverAdmin={me.data.me.serverAdmin}
       onDecided={onDecided}
+      liveList={liveList}
     />
   )
 }
@@ -72,10 +76,13 @@ function HouseholdOffers({
   household,
   serverAdmin,
   onDecided,
+  liveList,
 }: Readonly<{
   household: Household
   serverAdmin: boolean
   onDecided: (notice: string) => void
+  /** The container of the offers, where focus that a change takes away returns to the heading. */
+  liveList: Ref<HTMLDivElement>
 }>) {
   const variables = { householdId: household.id }
   // The offers that the query asks for.
@@ -169,51 +176,55 @@ function HouseholdOffers({
           {refusal}
         </p>
       )}
-      {offers.length === 0 ? (
-        <p className={styles.note}>No one has offered a Profile to {household.name}.</p>
-      ) : (
-        <SharingSection title={`Profiles offered to ${household.name}`} failure={null}>
-          <ul className={styles.rows}>
-            {offers.map((offer, index) => (
-              <li key={offer.id} className={styles.row}>
-                <SharedProfileText
-                  profile={offer.profile}
-                  byline={offer.offeredByDisplayName && `Offered by ${offer.offeredByDisplayName}`}
-                  paletteIndex={index}
-                >
-                  {offer.expiresAt && (
-                    <span className={styles.status}>
-                      {expiryLabel(offer.expiresAt, new Date())}
-                    </span>
-                  )}
-                </SharedProfileText>
-                <span className={styles.actions}>
-                  <Button
-                    variant="filled"
-                    aria-label={`Accept ${offeredProfile(offer)}`}
-                    disabled={deciding !== null}
-                    onClick={() => {
-                      setRefusal(null)
-                      setConfirming(offer)
-                    }}
+      <div ref={liveList}>
+        {offers.length === 0 ? (
+          <p className={styles.note}>No one has offered a Profile to {household.name}.</p>
+        ) : (
+          <SharingSection title={`Profiles offered to ${household.name}`} failure={null}>
+            <ul className={styles.rows}>
+              {offers.map((offer, index) => (
+                <li key={offer.id} className={styles.row}>
+                  <SharedProfileText
+                    profile={offer.profile}
+                    byline={
+                      offer.offeredByDisplayName && `Offered by ${offer.offeredByDisplayName}`
+                    }
+                    paletteIndex={index}
                   >
-                    Accept
-                  </Button>
-                  <Button
-                    variant="default"
-                    aria-label={`Decline ${offeredProfile(offer)}`}
-                    loading={deciding === offer.id && !confirming}
-                    disabled={deciding !== null}
-                    onClick={() => void declineNow(offer)}
-                  >
-                    Decline
-                  </Button>
-                </span>
-              </li>
-            ))}
-          </ul>
-        </SharingSection>
-      )}
+                    {offer.expiresAt && (
+                      <span className={styles.status}>
+                        {expiryLabel(offer.expiresAt, new Date())}
+                      </span>
+                    )}
+                  </SharedProfileText>
+                  <span className={styles.actions}>
+                    <Button
+                      variant="filled"
+                      aria-label={`Accept ${offeredProfile(offer)}`}
+                      disabled={deciding !== null}
+                      onClick={() => {
+                        setRefusal(null)
+                        setConfirming(offer)
+                      }}
+                    >
+                      Accept
+                    </Button>
+                    <Button
+                      variant="default"
+                      aria-label={`Decline ${offeredProfile(offer)}`}
+                      loading={deciding === offer.id && !confirming}
+                      disabled={deciding !== null}
+                      onClick={() => void declineNow(offer)}
+                    >
+                      Decline
+                    </Button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </SharingSection>
+        )}
+      </div>
       <ConfirmDialog
         opened={confirming !== null}
         title={confirming ? `Accept ${offeredProfile(confirming)} into ${household.name}?` : ''}

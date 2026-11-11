@@ -1,7 +1,8 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import { delay, graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { SharedWithHouseholdQuery, VisitorDevicesQuery } from '../graphql/generated/graphql'
+import { focusesOf, leaveTheConfirmation, type WayOut } from '../test/focus'
 import { comeBackOnline, failsOnceThen, readsThatCanBeHeld } from '../test/graphqlResponses'
 import { serveGraphqlSocket } from '../test/graphqlSocket'
 import { HOUSEHOLD_ID, meFixture, PROFILE_ID } from '../test/meFixture'
@@ -245,6 +246,27 @@ describe('Shared with us', () => {
     )
   })
 
+  it.each<[string, WayOut]>([
+    ['End share of Alex', 'Cancel'],
+    ['End share of Alex', 'Escape'],
+    ['Unlink Living room TV', 'Cancel'],
+    ['Unlink Living room TV', 'Escape'],
+  ])(
+    'shouldReturnFocusToTheActionWhenTheAdminLeavesItsConfirmation(%s, %s)',
+    async (action, way) => {
+      serve([share()], [device()])
+      const { user } = renderAppAt(VISITORS)
+      const trigger = await screen.findByRole('button', { name: action })
+      const heading = focusesOf(screen.getByRole('heading', { level: 1, name: 'Shared with us' }))
+
+      await user.click(trigger)
+      await leaveTheConfirmation(user, way)
+
+      await waitFor(() => expect(trigger).toHaveFocus())
+      expect(heading.count).toBe(0)
+    },
+  )
+
   it('shouldEndTheShareAndSaySoWhenTheAdminConfirms', async () => {
     const shares = [share()]
     serve(shares)
@@ -468,6 +490,21 @@ describe('Shared with us as shares change elsewhere', () => {
     expect(
       await screen.findByText('No Profile from another Household is shared with Smith Family.'),
     ).toBeVisible()
+  })
+
+  it('shouldMoveFocusToTheHeadingWhenTheShareTheAdminIsOnEndsElsewhere', async () => {
+    const { socket } = await openWithAShareOfAlex()
+    act(() => screen.getByRole('button', { name: 'End share of Alex' }).focus())
+
+    socket.publish(
+      'ProfileShareChanged',
+      shareChanged(SHARE_ID, liveShare({ status: 'ENDED', ...HIDDEN_ONCE_OVER })),
+    )
+
+    await screen.findByText('No Profile from another Household is shared with Smith Family.')
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: 'Shared with us' })).toHaveFocus(),
+    )
   })
 
   it('shouldReadTheTvsAgainWhenTheShareOfSomeonesPersonalProfileEnds', async () => {

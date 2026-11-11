@@ -2,6 +2,7 @@ import { act, screen, waitFor, within } from '@testing-library/react'
 import { delay, graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { ShareOffersQuery } from '../graphql/generated/graphql'
+import { focusesOf, leaveTheConfirmation, type WayOut } from '../test/focus'
 import { comeBackOnline, readsThatCanBeHeld } from '../test/graphqlResponses'
 import { serveGraphqlSocket } from '../test/graphqlSocket'
 import { HOUSEHOLD_ID, meFixture, PROFILE_ID } from '../test/meFixture'
@@ -229,6 +230,22 @@ describe('Share offers', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(accepted).toBe(false)
   })
+
+  it.each<WayOut>(['Cancel', 'Escape'])(
+    'shouldReturnFocusToAcceptWhenTheAdminLeavesItsConfirmation(%s)',
+    async (way) => {
+      serve([offer({ expiresAt: IN_A_WEEK })])
+      const { user } = renderAppAt(OFFERS)
+      const accept = await screen.findByRole('button', { name: 'Accept Alex' })
+      const heading = focusesOf(screen.getByRole('heading', { level: 1, name: 'Share offers' }))
+
+      await user.click(accept)
+      await leaveTheConfirmation(user, way)
+
+      await waitFor(() => expect(accept).toHaveFocus())
+      expect(heading.count).toBe(0)
+    },
+  )
 
   it('shouldAcceptTheOfferAndSaySoWhenTheAdminConfirms', async () => {
     const held = serveOffers([offer()])
