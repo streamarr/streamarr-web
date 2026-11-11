@@ -1,5 +1,5 @@
 import { Button, Center, Loader } from '@mantine/core'
-import { useApolloClient, useMutation, useQuery } from '@apollo/client/react'
+import { useMutation, useQuery } from '@apollo/client/react'
 import { useState } from 'react'
 import {
   AcceptProfileShareDocument,
@@ -8,6 +8,7 @@ import {
   type MeQuery,
   type ShareOffersQuery,
 } from '../graphql/generated/graphql'
+import { useLiveList } from '../graphql/liveList'
 import { requestFailureMessage } from '../graphql/requestErrors'
 import { userErrorMessage, type UserErrorLike } from '../graphql/userErrors'
 import settingsStyles from '../styles/settings.module.css'
@@ -18,7 +19,7 @@ import { useFocusFallback } from '../ui/useFocusFallback'
 import { usePageNotice } from '../ui/usePageNotice'
 import styles from './Sharing.module.css'
 import { SharedProfileText } from './SharedProfileText'
-import { createShareListUpdater } from './shareLists'
+import { createShareListUpdater, shareIdOf, type ShareChange } from './shareLists'
 import { SharingSection } from './SharingSection'
 import { expiryLabel, UPDATE_FAILED_MESSAGE } from './shareText'
 import { useMe } from './useMe'
@@ -70,22 +71,28 @@ function HouseholdOffers({
   household: Household
   onDecided: (notice: string) => void
 }>) {
-  const { cache } = useApolloClient()
   const variables = { householdId: household.id }
   const [applyChange] = useState(createShareListUpdater)
-  useShareChanges((change) =>
-    cache.updateQuery({ query: ShareOffersDocument, variables }, (data) => {
-      if (!data) return undefined
+  const liveOffers = useLiveList({
+    query: ShareOffersDocument,
+    variables,
+    keyOf: shareIdOf,
+    apply: (data, change: ShareChange) => {
       const edge =
         change.offersEdge && change.share?.householdId === household.id
           ? { ...change.offersEdge, node: change.share }
           : null
       const edges = applyChange(data.householdShares, { shareId: change.shareId, edge })
       return { ...data, householdShares: { ...data.householdShares, edges } }
-    }),
-  )
+    },
+  })
+  useShareChanges(liveOffers.receive)
   // Offers arrive, expire and are withdrawn elsewhere, so a visit shows only the server's answer.
-  const query = useQuery(ShareOffersDocument, { variables, fetchPolicy: 'network-only' })
+  const query = useQuery(ShareOffersDocument, {
+    variables,
+    fetchPolicy: 'network-only',
+    context: liveOffers.context,
+  })
   const [accept] = useMutation(AcceptProfileShareDocument)
   const [decline] = useMutation(RejectProfileShareDocument)
   /**
