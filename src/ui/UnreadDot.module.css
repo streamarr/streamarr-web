@@ -1,0 +1,11 @@
+/* selection.active, or the title's selected slot on an ambient page, as the open chip uses. It sits
+   on the chip's corner and never animates. */
+.dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-sm);
+  background: var(--ambient-selected, var(--selection-active));
+}

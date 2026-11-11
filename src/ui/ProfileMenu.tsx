@@ -7,6 +7,7 @@ import { initials, tileColor } from './ProfileTile'
 import { countText } from './countText'
 import { Icon, type IconName } from './Icon'
 import { UnreadCount } from './UnreadCount'
+import { UnreadDot } from './UnreadDot'
 import { canManageServer } from '../admin/access'
 import { canManageHousehold } from '../identity/householdAccess'
 import { canReadNotifications } from '../notifications/notificationAccess'
@@ -85,6 +86,12 @@ export function ProfileMenu({
   const profiles = me.selectableProfiles.edges.map((edge) => edge.node)
   const current = profiles.find((profile) => profile.selected)
   const chipName = current?.name ?? me.displayName
+  // The entries the session may use, and so the counts the menu shows.
+  const householdSettings = canManageHousehold(me) ? onHouseholdSettings : undefined
+  const notifications = canReadNotifications(me) ? onNotifications : undefined
+  const hasCount =
+    (householdSettings !== undefined && waitingOffers > 0) ||
+    (notifications !== undefined && unreadNotifications > 0)
 
   // Closing from inside the panel (Escape, a choice) must not drop focus on <body>.
   function close() {
@@ -139,12 +146,13 @@ export function ProfileMenu({
         ref={chip}
         type="button"
         className={opened ? `${styles.profileChip} ${styles.profileChipOpen}` : styles.profileChip}
-        aria-label={`Profile menu (${chipName})`}
+        aria-label={`Profile menu (${chipName})${hasCount ? ', has notifications' : ''}`}
         aria-expanded={opened}
         aria-controls={opened ? panelId : undefined}
         onClick={toggle}
       >
         {initials(chipName)}
+        {hasCount && <UnreadDot />}
       </button>
       {opened && (
         <span className={styles.profileMenuNotch} data-testid="profile-menu-notch" aria-hidden />
@@ -191,12 +199,12 @@ export function ProfileMenu({
               onChoose={closeThen(onProfileSettings)}
             />
           )}
-          {canManageHousehold(me) && onHouseholdSettings && (
+          {householdSettings && (
             <MenuEntry
               icon="settings"
               label="Household settings"
               count={{ value: waitingOffers, words: offersWaiting }}
-              onChoose={closeThen(onHouseholdSettings)}
+              onChoose={closeThen(householdSettings)}
             />
           )}
           {canManageServer(me) && onServerSettings && (
@@ -206,12 +214,12 @@ export function ProfileMenu({
               onChoose={closeThen(onServerSettings)}
             />
           )}
-          {canReadNotifications(me) && onNotifications && (
+          {notifications && (
             <MenuEntry
               icon="notifications"
               label="Notifications"
               count={{ value: unreadNotifications, words: (text) => `${text} unread` }}
-              onChoose={closeThen(onNotifications)}
+              onChoose={closeThen(notifications)}
             />
           )}
           <MenuEntry icon="sign-out" label="Sign out" onChoose={closeThen(signOut)} />
