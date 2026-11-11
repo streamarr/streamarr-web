@@ -6,12 +6,20 @@ import type {
   ProfileShareStatus,
   RequestResolution,
 } from '../graphql/generated/graphql'
-import { comeBackOnline, failsOnceThen } from '../test/graphqlResponses'
+import {
+  answersInTurn,
+  answerWith,
+  comeBackOnline,
+  readsThatCanBeHeld,
+} from '../test/graphqlResponses'
 import { serveGraphqlSocket } from '../test/graphqlSocket'
 import { meFixture } from '../test/meFixture'
 import {
   answerNotification,
   hoursAgo,
+  notificationChange,
+  notificationEdge,
+  notificationsChanged,
   notificationsPage,
   offerNotification,
 } from '../test/notificationFixtures'
@@ -60,6 +68,11 @@ function serve(page: NotificationsQuery = notificationsPage([]), me = meFixture(
 
 function rows() {
   return within(screen.getByRole('list', { name: 'Notifications' })).getAllByRole('listitem')
+}
+
+/** Waits until the page follows changes, so that a change published next reaches it. */
+async function followingNotificationChanges(socket: ReturnType<typeof serveGraphqlSocket>) {
+  await waitFor(() => expect(socket.isLive('NotificationsChanged')).toBe(true))
 }
 
 function lines() {
@@ -181,17 +194,26 @@ describe('Notifications', () => {
   })
 
   it('shouldOfferRetryWhenTheListCannotLoad', async () => {
-    serve()
-    const list = failsOnceThen(notificationsPage([offerNotification()]))
-    server.use(graphql.query('Notifications', list.resolver))
+    const { socket } = serve()
+    const list = { failing: true, reads: 0 }
+    server.use(
+      graphql.query('Notifications', () => {
+        list.reads += 1
+        return list.failing
+          ? HttpResponse.json({ errors: [{ message: 'boom' }] })
+          : HttpResponse.json({ data: notificationsPage([offerNotification()]) })
+      }),
+    )
     const { user } = renderAppAt(NOTIFICATIONS)
 
     expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load notifications.")
-    await user.click(screen.getByRole('button', { name: 'Retry' }))
+    // Once it follows changes, the page reads again, and that read fails too.
+    await followingNotificationChanges(socket)
+    await waitFor(() => expect(list.reads).toBe(2))
+    list.failing = false
+    await user.click(await screen.findByRole('button', { name: 'Retry' }))
 
-    expect(
-      await screen.findByText('“Sam” offered the Profile “Alex” to your Household.'),
-    ).toBeVisible()
+    expect(await screen.findByText(OFFER_LINE)).toBeVisible()
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
   })
 })
@@ -402,5 +424,180 @@ describe('Older Notifications', () => {
       '“Cabin” accepted the Profile “Alex”.',
       '“Cabin” accepted the Profile “Sam”.',
     ])
+  })
+})
+
+describe('Notifications as they change elsewhere', () => {
+  async function openWithAnOffer(page = notificationsPage([offerNotification()])) {
+    const { socket } = serve(page)
+    const rendered = renderAppAt(NOTIFICATIONS)
+    await screen.findByText(OFFER_LINE)
+    await followingNotificationChanges(socket)
+    return { socket, ...rendered }
+  }
+
+  const leo = answerNotification({ unread: true })
+
+  it('shouldListANotificationFirstWhenItArrivesWhileThePageIsOpen', async () => {
+    const { socket } = await openWithAnOffer()
+
+    socket.publish(
+      'NotificationsChanged',
+      notificationsChanged([notificationChange(leo.id, notificationEdge(leo, 0))], 2),
+    )
+
+    await waitFor(() => expect(lines()).toEqual([ANSWER_LINE, OFFER_LINE]))
+    expect(within(rows()[0]).getByText('Unread')).toBeInTheDocument()
+  })
+
+  it('shouldKeepFocusWhereThePersonIsWhenANotificationArrives', async () => {
+    const { socket } = await openWithAnOffer()
+    const review = screen.getByRole('link', { name: 'Review' })
+    act(() => review.focus())
+
+    socket.publish(
+      'NotificationsChanged',
+      notificationsChanged([notificationChange(leo.id, notificationEdge(leo, 0))]),
+    )
+
+    await screen.findByText(ANSWER_LINE)
+    expect(review).toHaveFocus()
+  })
+
+  it('shouldSayHowARequestEndedWhenItIsDecidedElsewhere', async () => {
+    const { socket } = await openWithAnOffer()
+    const accepted = offerNotification({
+      unread: false,
+      resolution: 'DECIDED',
+      share: { __typename: 'ProfileShare', id: 'share-of-alex', status: 'ACTIVE' },
+    })
+
+    socket.publish(
+      'NotificationsChanged',
+      notificationsChanged([notificationChange(accepted.id, notificationEdge(accepted, 1))]),
+    )
+
+    expect(await within(rows()[0]).findByText('Accepted')).toBeVisible()
+    expect(screen.queryByRole('link', { name: 'Review' })).not.toBeInTheDocument()
+    expect(within(rows()[0]).queryByText('Unread')).not.toBeInTheDocument()
+  })
+
+  it('shouldTakeANotificationOutWhenItLeavesTheList', async () => {
+    const { socket } = await openWithAnOffer(
+      notificationsPage([offerNotification(), answerNotification()]),
+    )
+
+    socket.publish(
+      'NotificationsChanged',
+      notificationsChanged([notificationChange(offerNotification().id, null)]),
+    )
+
+    await waitFor(() => expect(lines()).toEqual([ANSWER_LINE]))
+  })
+
+  it('shouldKeepANotificationWhoseChangeCameWithAnError', async () => {
+    const { socket } = serve()
+    const reads = readsThatCanBeHeld(() => notificationsPage([offerNotification()]))
+    server.use(graphql.query('Notifications', reads.resolver))
+    renderAppAt(NOTIFICATIONS)
+    await screen.findByText(OFFER_LINE)
+    await followingNotificationChanges(socket)
+    // The change's error reads the list again; held, its answer cannot put back a row taken out.
+    const readAfterTheError = reads.holdNext()
+    onTestFinished(readAfterTheError.release)
+
+    socket.publish('NotificationsChanged', {
+      ...notificationsChanged([
+        notificationChange(offerNotification().id, null),
+        notificationChange(leo.id, notificationEdge(leo, 0)),
+      ]),
+      errors: [
+        {
+          message: 'The Notification could not be read.',
+          path: ['notificationsChanged', 'notifications', 0, 'edge'],
+        },
+      ],
+    })
+
+    await screen.findByText(ANSWER_LINE)
+    expect(lines()).toEqual([ANSWER_LINE, OFFER_LINE])
+  })
+
+  it('shouldLeaveOutAChangeBelowTheLoadedPages', async () => {
+    const { socket } = await openWithAnOffer(
+      notificationsPage([offerNotification()], { hasNextPage: true }),
+    )
+    const older = answerNotification({
+      id: 'older',
+      message: '“Lake House” accepted the Profile “Mara”.',
+    })
+
+    socket.publish(
+      'NotificationsChanged',
+      notificationsChanged([
+        notificationChange(older.id, notificationEdge(older, 5)),
+        notificationChange(leo.id, notificationEdge(leo, 0)),
+      ]),
+    )
+
+    await waitFor(() => expect(lines()).toEqual([ANSWER_LINE, OFFER_LINE]))
+  })
+
+  it('shouldReadTheListAgainOnceItFollowsChanges', async () => {
+    const { socket } = serve()
+    // Leo's news commits between the first read and the subscription, which misses it.
+    const reads = answersInTurn(
+      answerWith(notificationsPage([offerNotification()])),
+      answerWith(notificationsPage([leo, offerNotification()], { from: 0 })),
+    )
+    server.use(graphql.query('Notifications', reads.resolver))
+    renderAppAt(NOTIFICATIONS)
+
+    await followingNotificationChanges(socket)
+
+    await waitFor(() => expect(lines()).toEqual([ANSWER_LINE, OFFER_LINE]))
+  })
+
+  describe('while a read of the list is on its way', () => {
+    const MARA_LINE = '“Cabin” accepted the Profile “Mara”.'
+
+    // The list the server holds; each read answers with it as it stood when the read arrived.
+    async function openWithAReadOnItsWay() {
+      const held = { page: notificationsPage([offerNotification()], { from: 10 }) }
+      const { socket } = serve()
+      const reads = readsThatCanBeHeld(() => held.page)
+      server.use(graphql.query('Notifications', reads.resolver))
+      renderAppAt(NOTIFICATIONS)
+      await screen.findByText(OFFER_LINE)
+      await followingNotificationChanges(socket)
+      // Mara's news shows that the held read has answered.
+      held.page = notificationsPage([answerAbout('Mara'), offerNotification()], { from: 9 })
+      const read = reads.holdNext()
+      comeBackOnline()
+      await read.arrived
+      return { socket, release: read.release }
+    }
+
+    it('shouldKeepTheChangesThatArrivedWhenAReadSentBeforeThemAnswers', async () => {
+      const { socket, release } = await openWithAReadOnItsWay()
+
+      socket.publish(
+        'NotificationsChanged',
+        notificationsChanged([notificationChange(leo.id, notificationEdge(leo, 8))]),
+      )
+      await screen.findByText(ANSWER_LINE)
+      const withdrawn = offerNotification({ resolution: 'WITHDRAWN', unread: false })
+      socket.publish(
+        'NotificationsChanged',
+        notificationsChanged([notificationChange(withdrawn.id, notificationEdge(withdrawn, 10))]),
+      )
+      await screen.findByText('Withdrawn')
+      release()
+
+      await screen.findByText(MARA_LINE)
+      expect(lines()).toEqual([ANSWER_LINE, MARA_LINE, OFFER_LINE])
+      expect(within(rows()[2]).getByText('Withdrawn')).toBeVisible()
+      expect(screen.queryByRole('link', { name: 'Review' })).not.toBeInTheDocument()
+    })
   })
 })
