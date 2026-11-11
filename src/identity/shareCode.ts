@@ -1,5 +1,6 @@
+import { CODE_PARAMETER, codeInFragment } from './fragmentCode'
+
 const SHARING_PAGE = '/settings/profile/sharing'
-const CODE_PARAMETER = 'code'
 const EIGHT_LETTERS = /^[A-Z]{8}$/
 
 /**
@@ -20,11 +21,6 @@ export function shareCodeLink(code: string, origin: string): string {
   const link = new URL(SHARING_PAGE, origin)
   link.hash = new URLSearchParams({ [CODE_PARAMETER]: code }).toString()
   return link.href
-}
-
-/** The code that a link's fragment carries, as in `#code=BCDFGHJK`, or null. */
-export function codeInFragment(fragment: string): string | null {
-  return new URLSearchParams(fragment.replace(/^#/, '')).get(CODE_PARAMETER)
 }
 
 // A pasted link carries the code in its fragment, or in its query as an older link did.
