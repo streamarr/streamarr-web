@@ -19,6 +19,13 @@ import { HOUSEHOLD_ID, meFixture, PROFILE_ID, profileFixture } from '../test/meF
 import { renderAppAt, renderWithProviders } from '../test/render'
 import { leaveForHome, returnThroughTheProfileMenu, type SettingsPage } from '../test/returnVisits'
 import { server } from '../test/server'
+import {
+  refusedShareCodeFixture,
+  SENT_SHARE_CODE,
+  serveShareCodeQuestions,
+  SHARE_CODE,
+  sharePreviewFixture,
+} from '../test/shareCodeFixtures'
 import { SharingScreen } from './SharingScreen'
 
 type ShareNode = ProfileSharesQuery['profileShares']['edges'][number]['node'] & {
@@ -34,7 +41,6 @@ const SHARING_PAGE: SettingsPage = {
 const SHARE_ID = '77777777-7777-7777-7777-777777777777'
 const CABIN_ID = '55555555-5555-5555-5555-555555555555'
 const LAKE_HOUSE_ID = '66666666-6666-6666-6666-666666666666'
-const BEACH_HOUSE_ID = '99999999-9999-9999-9999-999999999999'
 const SMITH_FAMILY = { id: HOUSEHOLD_ID, name: 'Smith Family', membership: true }
 const CABIN = { id: CABIN_ID, name: 'Cabin', membership: false }
 const DAY = 24 * 60 * 60 * 1000
@@ -84,8 +90,8 @@ function serve(shares: ShareNode[] = [], account = me()) {
       expect(variables).toEqual({ profileId: PROFILE_ID })
       return HttpResponse.json({ data: sharesData(shares) })
     }),
-    graphql.query('ProfileSharePreview', () => HttpResponse.json({ data: preview() })),
   )
+  serveShareCodeQuestions()
 }
 
 // Answers each read of the shares with the next list, and the last list from then on.
@@ -138,17 +144,6 @@ function serveReturnVisits(shares: ShareNode[]) {
   )
 }
 
-function preview(answers: { wouldLock?: boolean; nameConflict?: boolean } | null = {}) {
-  return {
-    profileSharePreview: answers && {
-      __typename: 'ProfileSharePreview',
-      wouldLock: false,
-      nameConflict: false,
-      ...answers,
-    },
-  }
-}
-
 function offered() {
   return {
     offerProfileShare: {
@@ -161,7 +156,7 @@ function offered() {
 
 async function openShareForm(user: ReturnType<typeof renderWithProviders>['user']) {
   await user.click(await screen.findByRole('button', { name: 'Share with another Household' }))
-  return screen.getByRole('textbox', { name: 'Household ID' })
+  return screen.getByRole('textbox', { name: 'Share code' })
 }
 
 describe('Sharing', () => {
@@ -444,9 +439,10 @@ describe('Sharing', () => {
     await user.click(await screen.findByRole('button', { name: 'Cancel invitation to Cabin' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('That offer is not pending.')
 
-    await user.type(await openShareForm(user), `${CABIN_ID}{Enter}`)
+    await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
+    await user.click(await screen.findByRole('button', { name: 'Send invitation' }))
 
-    await noticed('Invitation sent. An admin there must accept it.')
+    await noticed('Invitation sent to Cabin. An admin there must accept it.')
     expect(await screen.findByRole('button', { name: 'Cancel invitation to Cabin' })).toBeVisible()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
@@ -471,9 +467,10 @@ describe('Sharing', () => {
     ).toBeVisible()
     expect(screen.getByRole('alert')).toHaveTextContent('That offer is not pending.')
 
-    await user.type(await openShareForm(user), `${CABIN_ID}{Enter}`)
+    await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
+    await user.click(await screen.findByRole('button', { name: 'Send invitation' }))
 
-    await noticed('Invitation sent. An admin there must accept it.')
+    await noticed('Invitation sent to Cabin. An admin there must accept it.')
     expect(await screen.findByRole('button', { name: 'Cancel invitation to Cabin' })).toBeVisible()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
@@ -489,27 +486,31 @@ describe('Sharing', () => {
 
     const field = await openShareForm(user)
     expect(screen.getByRole('alert')).toHaveTextContent('That offer is not pending.')
-    await user.type(field, CABIN_ID)
+    await user.type(field, `${SHARE_CODE}{Enter}`)
+    await screen.findByRole('heading', { name: 'Offer Alex to Cabin?' })
     expect(screen.getByRole('alert')).toHaveTextContent('That offer is not pending.')
 
     await user.click(screen.getByRole('button', { name: 'Send invitation' }))
 
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     offer.release()
-    await noticed('Invitation sent. An admin there must accept it.')
+    await noticed('Invitation sent to Cabin. An admin there must accept it.')
   })
 
-  it('shouldKeepTheServersWordsWhenTheTextThePersonSendsHoldsNoHouseholdId', async () => {
+  it('shouldKeepTheServersWordsWhenTheTextThePersonContinuesWithCannotBeACode', async () => {
     serveInTurn([share()])
     refuseToCancel()
     const { user } = renderWithProviders(<SharingScreen />)
     await user.click(await screen.findByRole('button', { name: 'Cancel invitation to Cabin' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('That offer is not pending.')
-    await user.type(await openShareForm(user), 'the Smiths')
+    const field = await openShareForm(user)
+    await user.type(field, 'the Smiths')
 
-    await user.click(screen.getByRole('button', { name: 'Send invitation' }))
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
 
-    expect(await screen.findByText('That is not a Household ID.')).toBeVisible()
+    expect(field).toHaveAccessibleDescription(
+      expect.stringContaining('A share code is 8 letters, like BCDF-GHJK.'),
+    )
     expect(screen.getByRole('alert')).toHaveTextContent('That offer is not pending.')
   })
 
@@ -523,7 +524,8 @@ describe('Sharing', () => {
     )
     const { user } = renderWithProviders(<SharingScreen />)
     await user.click(await screen.findByRole('button', { name: 'Cancel invitation to Cabin' }))
-    await user.type(await openShareForm(user), `${BEACH_HOUSE_ID}{Enter}`)
+    await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
+    await user.click(await screen.findByRole('button', { name: 'Send invitation' }))
     expect(await screen.findByText("Couldn't load sharing.")).toBeVisible()
 
     await user.click(screen.getByRole('button', { name: 'Retry' }))
@@ -737,7 +739,10 @@ describe('Sharing', () => {
     const field = await openShareForm(user)
 
     expect(field).toHaveFocus()
-    expect(screen.getByRole('button', { name: 'Send invitation' })).toBeDisabled()
+    expect(field).toHaveAccessibleDescription(
+      'An admin of the other Household gives you this code.',
+    )
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled()
     expect(screen.queryByRole('button', { name: 'Share with another Household' })).toBeNull()
 
     await user.click(screen.getByRole('button', { name: 'Cancel' }))
@@ -746,29 +751,65 @@ describe('Sharing', () => {
     expect(screen.getByRole('button', { name: 'Share with another Household' })).toHaveFocus()
   })
 
-  it('shouldOfferTheHouseholdWhoseIdIsPastedAmongOtherText', async () => {
-    const shares = serveInTurn([], [share()])
-    server.use(
-      graphql.query('ProfileSharePreview', ({ variables }) => {
-        expect(variables).toEqual({ profileId: PROFILE_ID, householdId: CABIN_ID })
-        return HttpResponse.json({ data: preview() })
-      }),
-      graphql.mutation('OfferProfileShare', ({ variables }) => {
-        expect(variables).toEqual({ input: { profileId: PROFILE_ID, householdId: CABIN_ID } })
-        return HttpResponse.json({ data: offered() })
-      }),
-    )
+  it.each(['the Smiths', 'BCDF-GHJ', 'BCDF-GHJ1', CABIN_ID])(
+    'shouldSayACodeIsEightLettersWithoutAskingTheServerWhenTheTextCannotBeOne(%j)',
+    async (text) => {
+      serve()
+      const asked = serveShareCodeQuestions()
+      const { user } = renderWithProviders(<SharingScreen />)
+
+      const field = await openShareForm(user)
+      await user.type(field, text)
+      await user.click(screen.getByRole('button', { name: 'Continue' }))
+
+      expect(field).toBeInvalid()
+      expect(field).toHaveAccessibleDescription(
+        expect.stringContaining('A share code is 8 letters, like BCDF-GHJK.'),
+      )
+      expect(field).toHaveValue(text)
+      expect(asked.lookUps).toEqual([])
+    },
+  )
+
+  it('shouldLookTheCodeUpOnceAndReviewTheOfferWhenTheCodeWorks', async () => {
+    serve()
+    const asked = serveShareCodeQuestions()
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    await user.type(await openShareForm(user), ' bcdf ghjk ')
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+
+    const question = await screen.findByRole('heading', { name: 'Offer Alex to Cabin?' })
+    expect(question).toHaveFocus()
+    expect(screen.getByText('An admin of Cabin must accept it. The code works once.')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Send invitation' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Back' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled()
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+    expect(asked.lookUps).toEqual([{ input: { code: SENT_SHARE_CODE } }])
+    expect(asked.previews).toEqual([{ profileId: PROFILE_ID, shareCode: SENT_SHARE_CODE }])
+  })
+
+  it('shouldContinueWhenEnterIsPressedInTheField', async () => {
+    serve()
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
+
+    expect(await screen.findByRole('heading', { name: 'Offer Alex to Cabin?' })).toBeVisible()
+  })
+
+  it('shouldTakeTheCodeOutOfALinkPastedIntoTheField', async () => {
+    serve()
+    const asked = serveShareCodeQuestions()
     const { user } = renderWithProviders(<SharingScreen />)
 
     await user.click(await openShareForm(user))
-    await user.paste(` id: "${CABIN_ID}"\n`)
-    await user.click(await screen.findByRole('button', { name: 'Send invitation' }))
+    await user.paste(`https://streamarr.example/settings/profile/sharing?code=${SHARE_CODE}`)
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
 
-    await noticed('Invitation sent. An admin there must accept it.')
-    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
-    expect(await screen.findByRole('button', { name: 'Cancel invitation to Cabin' })).toBeVisible()
-    expect(shares.calls).toBe(2)
-    expect(screen.getByRole('heading', { level: 1, name: 'Sharing' })).toHaveFocus()
+    expect(await screen.findByRole('heading', { name: 'Offer Alex to Cabin?' })).toBeVisible()
+    expect(asked.lookUps).toEqual([{ input: { code: SENT_SHARE_CODE } }])
   })
 
   it('shouldSayTheOfferWasSentWhenReadingTheSharesAgainFails', async () => {
@@ -776,61 +817,32 @@ describe('Sharing', () => {
     server.use(graphql.mutation('OfferProfileShare', () => HttpResponse.json({ data: offered() })))
     const { user } = renderWithProviders(<SharingScreen />)
 
-    await user.type(await openShareForm(user), `${CABIN_ID}{Enter}`)
+    await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
+    await user.click(await screen.findByRole('button', { name: 'Send invitation' }))
 
-    await noticed('Invitation sent. An admin there must accept it.')
+    await noticed('Invitation sent to Cabin. An admin there must accept it.')
     expect(screen.getByRole('alert')).toHaveTextContent("Couldn't load sharing.")
-    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
-  })
-
-  it('shouldSendTheOfferWhenEnterIsPressedInTheField', async () => {
-    serve()
-    let sent = false
-    server.use(
-      graphql.mutation('OfferProfileShare', () => {
-        sent = true
-        return HttpResponse.json({ data: offered() })
-      }),
-    )
-    const { user } = renderWithProviders(<SharingScreen />)
-
-    await user.type(await openShareForm(user), `${CABIN_ID}{Enter}`)
-
-    await waitFor(() => expect(sent).toBe(true))
-  })
-
-  it('shouldAskAboutAHouseholdOnlyOnceTheTextHoldsItsId', async () => {
-    serve()
-    const asked: unknown[] = []
-    server.use(
-      graphql.query('ProfileSharePreview', ({ variables }) => {
-        asked.push(variables)
-        return HttpResponse.json({ data: preview({ wouldLock: true }) })
-      }),
-    )
-    const { user } = renderWithProviders(<SharingScreen />)
-
-    await user.type(await openShareForm(user), 'the Smiths ')
-    await user.paste(CABIN_ID)
-
-    expect(
-      await screen.findByText("Alex's Profile would be locked there until it has a PIN."),
-    ).toBeVisible()
-    expect(asked).toEqual([{ profileId: PROFILE_ID, householdId: CABIN_ID }])
+    expect(screen.queryByRole('heading', { name: 'Offer Alex to Cabin?' })).not.toBeInTheDocument()
   })
 
   it('shouldMoveFocusToTheHeadingAgainWhenASecondOfferBringsTheSameNotice', async () => {
     serve()
     server.use(graphql.mutation('OfferProfileShare', () => HttpResponse.json({ data: offered() })))
     const { user } = renderWithProviders(<SharingScreen />)
-    await user.type(await openShareForm(user), `${CABIN_ID}{Enter}`)
-    await noticed('Invitation sent. An admin there must accept it.')
+    await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
+    await user.click(await screen.findByRole('button', { name: 'Send invitation' }))
+    await noticed('Invitation sent to Cabin. An admin there must accept it.')
     const field = await openShareForm(user)
     expect(field).toHaveFocus()
 
-    await user.type(field, `${BEACH_HOUSE_ID}{Enter}`)
+    await user.type(field, `${SHARE_CODE}{Enter}`)
+    await user.click(await screen.findByRole('button', { name: 'Send invitation' }))
 
-    await waitFor(() => expect(screen.queryByRole('textbox')).not.toBeInTheDocument())
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('heading', { name: 'Offer Alex to Cabin?' }),
+      ).not.toBeInTheDocument(),
+    )
     expect(screen.getByRole('heading', { level: 1, name: 'Sharing' })).toHaveFocus()
   })
 
@@ -838,57 +850,77 @@ describe('Sharing', () => {
     serve()
     server.use(graphql.mutation('OfferProfileShare', () => HttpResponse.json({ data: offered() })))
     const { user } = renderWithProviders(<SharingScreen />)
-    await user.type(await openShareForm(user), `${CABIN_ID}{Enter}`)
-    await noticed('Invitation sent. An admin there must accept it.')
+    await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
+    await user.click(await screen.findByRole('button', { name: 'Send invitation' }))
+    await noticed('Invitation sent to Cabin. An admin there must accept it.')
     const status = screen.getByRole('status')
-    const first = within(status).getByText('Invitation sent. An admin there must accept it.')
+    const first = within(status).getByText(
+      'Invitation sent to Cabin. An admin there must accept it.',
+    )
 
-    await user.type(await openShareForm(user), `${BEACH_HOUSE_ID}{Enter}`)
+    await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
+    await user.click(await screen.findByRole('button', { name: 'Send invitation' }))
 
     // The same words, written anew, so a screen reader reads them again.
     await waitFor(() =>
-      expect(within(status).getByText('Invitation sent. An admin there must accept it.')).not.toBe(
-        first,
-      ),
+      expect(
+        within(status).getByText('Invitation sent to Cabin. An admin there must accept it.'),
+      ).not.toBe(first),
     )
   })
 
-  it('shouldSayNoHouseholdHasThatIdWhenTheServerFindsNone', async () => {
+  it('shouldSayTheCodeDoesNotWorkAndKeepItWhenTheServerRefusesIt', async () => {
     serve()
-    server.use(
-      graphql.query('ProfileSharePreview', () => HttpResponse.json({ data: preview(null) })),
-    )
-    const { user } = renderWithProviders(<SharingScreen />)
-
-    await user.type(await openShareForm(user), CABIN_ID)
-
-    expect(await screen.findByText('No Household has that ID.')).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Send invitation' })).toBeDisabled()
-  })
-
-  it('shouldSayTheTextIsNotAHouseholdIdAndKeepItWhenItHoldsNone', async () => {
-    serve()
+    const asked = serveShareCodeQuestions({ lookUp: refusedShareCodeFixture() })
     const { user } = renderWithProviders(<SharingScreen />)
 
     const field = await openShareForm(user)
-    await user.type(field, 'the Smiths')
-    await user.click(screen.getByRole('button', { name: 'Send invitation' }))
+    await user.type(field, SHARE_CODE)
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
 
-    expect(await screen.findByText('That is not a Household ID.')).toBeVisible()
-    expect(field).toHaveValue('the Smiths')
-    expect(field).toBeInvalid()
+    await waitFor(() => expect(field).toBeInvalid())
+    expect(field).toHaveAccessibleDescription(
+      expect.stringContaining('That code does not work. Ask an admin there for a new one.'),
+    )
+    expect(field).toHaveValue(SHARE_CODE)
+    expect(field).toHaveFocus()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(asked.previews).toEqual([])
   })
 
-  it('shouldWarnThatTheProfileWouldLockAndThatItsNameIsTakenBeforeTheOffer', async () => {
+  it('shouldShowTheServersWordsWhenTheServerWillNotLookTheCodeUp', async () => {
     serve()
     server.use(
-      graphql.query('ProfileSharePreview', () =>
-        HttpResponse.json({ data: preview({ wouldLock: true, nameConflict: true }) }),
+      graphql.mutation('LookUpShareCode', () =>
+        HttpResponse.json({
+          errors: [
+            {
+              message: 'Too many attempts. Try again in 15 minutes.',
+              extensions: { code: 'TOO_MANY_CREDENTIAL_ATTEMPTS', retryAfterSeconds: 900 },
+            },
+          ],
+        }),
       ),
     )
     const { user } = renderWithProviders(<SharingScreen />)
 
-    await user.type(await openShareForm(user), CABIN_ID)
+    const field = await openShareForm(user)
+    await user.type(field, `${SHARE_CODE}{Enter}`)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /^Too many attempts\. Try again in 15 minutes\.$/,
+    )
+    expect(field).toHaveValue(SHARE_CODE)
+  })
+
+  it('shouldWarnInTheReviewThatTheProfileWouldLockAndThatItsNameIsTaken', async () => {
+    serve()
+    serveShareCodeQuestions({
+      preview: sharePreviewFixture({ wouldLock: true, nameConflict: true }),
+    })
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
 
     expect(
       await screen.findByText("Alex's Profile would be locked there until it has a PIN."),
@@ -901,36 +933,117 @@ describe('Sharing', () => {
     expect(screen.getByRole('button', { name: 'Send invitation' })).toBeEnabled()
   })
 
-  it('shouldShowTheServersWordsAndKeepTheDraftWhenTheOfferIsRefused', async () => {
+  it('shouldReturnToTheCodeWithItsTextAndFocusWhenThePersonGoesBack', async () => {
+    serve()
+    const asked = serveShareCodeQuestions()
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
+    await user.click(await screen.findByRole('button', { name: 'Back' }))
+
+    const field = screen.getByRole('textbox', { name: 'Share code' })
+    expect(field).toHaveValue(SHARE_CODE)
+    expect(field).toHaveFocus()
+    expect(field).toBeValid()
+    expect(screen.queryByRole('heading', { name: 'Offer Alex to Cabin?' })).not.toBeInTheDocument()
+    expect(asked.lookUps).toHaveLength(1)
+  })
+
+  it('shouldCloseTheFormFromTheReviewWhenThePersonCancels', async () => {
+    serve()
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
+    await user.click(await screen.findByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByRole('heading', { name: 'Offer Alex to Cabin?' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Share with another Household' })).toHaveFocus()
+  })
+
+  it('shouldOfferWithTheCodeAndSaySoWhenThePersonConfirmsTheReview', async () => {
+    const shares = serveInTurn([], [share()])
+    const asked = serveShareCodeQuestions()
+    server.use(
+      graphql.mutation('OfferProfileShare', ({ variables }) => {
+        expect(variables).toEqual({ input: { profileId: PROFILE_ID, shareCode: SENT_SHARE_CODE } })
+        return HttpResponse.json({ data: offered() })
+      }),
+    )
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
+    await user.click(await screen.findByRole('button', { name: 'Send invitation' }))
+
+    await noticed('Invitation sent to Cabin. An admin there must accept it.')
+    expect(screen.queryByRole('heading', { name: 'Offer Alex to Cabin?' })).not.toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Cancel invitation to Cabin' })).toBeVisible()
+    expect(shares.calls).toBe(2)
+    expect(asked.lookUps).toHaveLength(1)
+    expect(screen.getByRole('heading', { level: 1, name: 'Sharing' })).toHaveFocus()
+  })
+
+  it('shouldReturnToTheCodeWithTheRefusalWhenTheReviewFindsTheCodeNoLongerWorks', async () => {
+    serve()
+    serveShareCodeQuestions({ preview: { profileSharePreview: null } })
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    const field = await openShareForm(user)
+    await user.type(field, `${SHARE_CODE}{Enter}`)
+
+    await waitFor(() => expect(field).toBeInvalid())
+    expect(field).toHaveAccessibleDescription(
+      expect.stringContaining('That code does not work. Ask an admin there for a new one.'),
+    )
+    expect(field).toHaveValue(SHARE_CODE)
+    expect(screen.queryByRole('heading', { name: 'Offer Alex to Cabin?' })).not.toBeInTheDocument()
+  })
+
+  it('shouldReturnToTheCodeWithTheRefusalWhenTheOfferIsRefusedForItsCode', async () => {
     serve()
     server.use(
       graphql.mutation('OfferProfileShare', () =>
         HttpResponse.json({
-          data: {
-            offerProfileShare: {
-              __typename: 'OfferProfileSharePayload',
-              share: null,
-              userErrors: [
-                {
-                  __typename: 'ProfileAlreadySharedError',
-                  message: 'That Profile already has a live share into that Household.',
-                },
-              ],
-            },
-          },
+          data: offerRefused('ShareCodeRefusedError', 'That share code does not work.'),
         }),
       ),
     )
     const { user } = renderWithProviders(<SharingScreen />)
 
-    const field = await openShareForm(user)
-    await user.type(field, CABIN_ID)
-    await user.click(screen.getByRole('button', { name: 'Send invitation' }))
+    await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
+    await user.click(await screen.findByRole('button', { name: 'Send invitation' }))
+
+    const field = await screen.findByRole('textbox', { name: 'Share code' })
+    expect(field).toBeInvalid()
+    expect(field).toHaveAccessibleDescription(
+      expect.stringContaining('That code does not work. Ask an admin there for a new one.'),
+    )
+    expect(field).toHaveValue(SHARE_CODE)
+    expect(field).toHaveFocus()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('shouldShowTheServersWordsAndKeepTheReviewWhenTheOfferIsRefused', async () => {
+    serve()
+    server.use(
+      graphql.mutation('OfferProfileShare', () =>
+        HttpResponse.json({
+          data: offerRefused(
+            'ProfileAlreadySharedError',
+            'That Profile already has a live share into that Household.',
+          ),
+        }),
+      ),
+    )
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
+    await user.click(await screen.findByRole('button', { name: 'Send invitation' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'That Profile already has a live share into that Household.',
+      /^That Profile already has a live share into that Household\.$/,
     )
-    expect(field).toHaveValue(CABIN_ID)
+    expect(screen.getByRole('heading', { name: 'Offer Alex to Cabin?' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Send invitation' })).toBeEnabled()
   })
 
   it('shouldReportAnOfferTheServerRejectsInsteadOfSwallowingIt', async () => {
@@ -944,10 +1057,25 @@ describe('Sharing', () => {
     )
     const { user } = renderWithProviders(<SharingScreen />)
 
-    await user.type(await openShareForm(user), CABIN_ID)
-    await user.click(screen.getByRole('button', { name: 'Send invitation' }))
+    await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
+    await user.click(await screen.findByRole('button', { name: 'Send invitation' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/^forbidden$/)
+    expect(screen.getByRole('heading', { name: 'Offer Alex to Cabin?' })).toBeVisible()
+  })
+
+  it('shouldNotAskAboutTheCodeAgainWhenSharingIsReadAgainDuringTheReview', async () => {
+    const shares = serveInTurn([])
+    const asked = serveShareCodeQuestions()
+    const { user } = renderAppAt(SHARING)
+    await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
+    await screen.findByRole('heading', { name: 'Offer Alex to Cabin?' })
+
+    await comeBackOnlineUntil(shares, 2)
+
+    expect(screen.getByRole('heading', { name: 'Offer Alex to Cabin?' })).toBeVisible()
+    expect(asked.lookUps).toHaveLength(1)
+    expect(asked.previews).toHaveLength(1)
   })
 
   it('shouldKeepTheOfferBeingTypedWhileSharingIsReadAgain', async () => {
@@ -1166,6 +1294,16 @@ function refuseToEnd() {
       }),
     ),
   )
+}
+
+function offerRefused(typename: string, message: string) {
+  return {
+    offerProfileShare: {
+      __typename: 'OfferProfileSharePayload',
+      share: null,
+      userErrors: [{ __typename: typename, message }],
+    },
+  }
 }
 
 function endedPayload() {

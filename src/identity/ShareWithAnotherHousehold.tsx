@@ -49,10 +49,10 @@ export function ShareWithAnotherHousehold({
     <ShareForm
       profile={profile}
       onSend={onSend}
-      onOffered={async () => {
+      onOffered={async (householdName) => {
         await readAgain()
         setOpen(false)
-        onChanged('Invitation sent. An admin there must accept it.')
+        onChanged(`Invitation sent to ${householdName}. An admin there must accept it.`)
       }}
       onCancel={() => {
         returnFocus.current = true

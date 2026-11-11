@@ -15,7 +15,7 @@ test('the Household settings menu shows its title on one line where the menu is 
     if (operationName !== 'ShareOffers') return route.fallback()
     return route.fulfill({
       json: {
-        data: { pendingShareOffers: { __typename: 'ProfileShareConnection', edges: [] } },
+        data: { householdShares: { __typename: 'ProfileShareConnection', edges: [] } },
       },
     })
   })

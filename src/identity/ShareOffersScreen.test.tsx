@@ -21,7 +21,7 @@ import {
 } from '../test/returnVisits'
 import { server } from '../test/server'
 
-type OfferNode = ShareOffersQuery['pendingShareOffers']['edges'][number]['node'] & {
+type OfferNode = ShareOffersQuery['householdShares']['edges'][number]['node'] & {
   __typename: 'ProfileShare'
 }
 
@@ -44,7 +44,7 @@ function offer(overrides: Partial<OfferNode> = {}): OfferNode {
 
 function offersData(offers: OfferNode[] = []) {
   return {
-    pendingShareOffers: {
+    householdShares: {
       __typename: 'ProfileShareConnection',
       edges: offers.map((node) => ({ __typename: 'ProfileShareEdge', node })),
     },
@@ -646,7 +646,7 @@ describe('Share invitations', () => {
   it('shouldSayTheShareInvitationsCouldNotLoadAndReadThemAgainOnRetry', async () => {
     serve()
     const offers = failsOnceThen({
-      pendingShareOffers: { __typename: 'ProfileShareConnection', edges: [] },
+      householdShares: { __typename: 'ProfileShareConnection', edges: [] },
     })
     server.use(graphql.query('ShareOffers', offers.resolver))
     const { user } = renderAppAt(OFFERS)

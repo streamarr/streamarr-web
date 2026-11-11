@@ -296,6 +296,9 @@
       "RestrictedAccountCannotAdministerError",
       "RestrictedHouseholdAdminError",
       "SameHouseholdError",
+      "ShareCodeNotFoundError",
+      "ShareCodeNotLiveError",
+      "ShareCodeRefusedError",
       "ShareNotActiveError",
       "ShareNotFoundError",
       "ShareNotPendingError",
@@ -340,11 +343,17 @@
       "ReasonRequiredError",
       "ReauthenticationRequiredError"
     ],
+    "IssueShareCodeError": [
+      "HouseholdNotFoundError"
+    ],
     "LanguagePreferenceItem": [
       "Episode",
       "Movie",
       "Season",
       "Series"
+    ],
+    "LookUpShareCodeError": [
+      "ShareCodeRefusedError"
     ],
     "MarkUnwatchedError": [
       "InvalidIdError",
@@ -446,6 +455,9 @@
       "RestrictedHouseholdAdminError",
       "RestrictedProfileRequiresHouseholdAdminError",
       "SameHouseholdError",
+      "ShareCodeNotFoundError",
+      "ShareCodeNotLiveError",
+      "ShareCodeRefusedError",
       "ShareNameConflictError",
       "ShareNotActiveError",
       "ShareNotFoundError",
@@ -457,9 +469,9 @@
       "VideoCodecTierInvalidError"
     ],
     "OfferProfileShareError": [
-      "HouseholdNotFoundError",
       "ProfileAlreadySharedError",
-      "ProfileNotFoundError"
+      "ProfileNotFoundError",
+      "ShareCodeRefusedError"
     ],
     "OrderedEdge": [
       "ContinueWatchingEdge",
@@ -662,6 +674,10 @@
       "Movie",
       "Season",
       "Series"
+    ],
+    "WithdrawShareCodeError": [
+      "ShareCodeNotFoundError",
+      "ShareCodeNotLiveError"
     ]
   }
 }
