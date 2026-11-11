@@ -40,6 +40,8 @@ type Answer =
 interface LookedUp {
   code: string
   householdName: string
+  /** The review of the offer with this code, once the server has previewed it. */
+  review?: Review
 }
 
 const REFUSED: Answer = { kind: 'refused' }
@@ -72,7 +74,7 @@ export function ShareForm({
   const [text, setText] = useState(codeFromLink ?? '')
   /** The text as the person last left it, which an answer about older text no longer concerns. */
   const latestText = useRef(text)
-  /** The last code the server found, so that asking about it again costs no second lookup. */
+  /** The last code the server found, so that asking about it again costs no second attempt. */
   const lookedUp = useRef<LookedUp | null>(null)
   const [fieldError, setFieldError] = useState<string | null>(null)
   const [refusal, setRefusal] = useState<string | null>(null)
@@ -115,10 +117,12 @@ export function ShareForm({
     }
   }
 
-  // The preview is asked here, and never as a watched query: every request is an attempt.
+  // The preview is asked here, and never as a watched query: every request is an attempt. A code
+  // the server has previewed shows the same review again without asking.
   async function askAbout(code: string): Promise<Answer> {
     const found = await lookUpOnce(code)
     if ('kind' in found) return found
+    if (found.review) return { kind: 'review', review: found.review }
     if (isOutdated(code)) return OUTDATED
     const previewed = await client.query({
       query: ProfileSharePreviewDocument,
@@ -127,7 +131,9 @@ export function ShareForm({
     })
     const effects = previewed.data?.profileSharePreview
     if (!effects) return REFUSED
-    return { kind: 'review', review: { code, householdName: found.householdName, effects } }
+    const review = { code, householdName: found.householdName, effects }
+    if (lookedUp.current?.code === code) lookedUp.current = { ...lookedUp.current, review }
+    return { kind: 'review', review }
   }
 
   /** Looks a code up, unless the server already found it: a preview that failed asks only again. */
