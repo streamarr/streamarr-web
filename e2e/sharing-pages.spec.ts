@@ -177,3 +177,25 @@ test('an issued code leaves no action alone on a line at phone width', async ({
   for (const action of actions) await expectWhole(action)
   await expectNoSidewaysScroll(page)
 })
+
+test('an issued code shares its content edges with Live codes below it at phone and desktop width', async ({
+  page,
+  request,
+}) => {
+  await serveSharingPages(page, request, { HouseholdShareCodes: NO_CODES, IssueShareCode: ISSUED })
+  await page.goto('/settings/household/codes')
+  await page.getByRole('button', { name: 'Issue a share code' }).click()
+  const code = page.getByText(SHARE_CODE, { exact: true })
+  const liveCodes = page.getByRole('heading', { name: 'Live codes' })
+  await expect(code).toBeVisible()
+
+  for (const viewport of [PHONE, DESKTOP]) {
+    await page.setViewportSize(viewport)
+    const [issued, live] = await Promise.all([boxOf(code), boxOf(liveCodes)])
+    expect(issued.x, `left edge at ${viewport.width}px`).toBeCloseTo(live.x, 0)
+    expect(issued.x + issued.width, `right edge at ${viewport.width}px`).toBeCloseTo(
+      live.x + live.width,
+      0,
+    )
+  }
+})
