@@ -14,11 +14,13 @@ export interface LiveResult<TData> {
  * mounted. A page calls it before it queries what the changes apply to: it subscribes first, and
  * the active queries read again once its subscribe frame is on the socket, so the page misses no
  * change that committed between its read and the subscription. A refusal or a normal end stops the
- * changes; the page keeps what it last read and reads again on its next visit.
+ * changes; the page keeps what it last read and reads again on its next visit. While `skip` holds,
+ * as for a session that may not read the changes, it does not subscribe.
  */
 export function useLiveChanges<TData>(
   document: TypedDocumentNode<TData, Record<string, never>>,
   onResult: (result: LiveResult<TData>) => void,
+  { skip = false }: { skip?: boolean } = {},
 ) {
   const client = useApolloClient()
   // The router's own context, which a page reaches before its route has matched.
@@ -26,6 +28,7 @@ export function useLiveChanges<TData>(
   const deliver = useEffectEvent(onResult)
 
   useEffect(() => {
+    if (skip) return undefined
     let stopped = false
     // Each page applies the change to its own list, so no cache write of Apollo's comes first.
     const subscription = client
@@ -41,5 +44,5 @@ export function useLiveChanges<TData>(
       // A remount that subscribes before this task runs joins the same operation.
       setTimeout(() => subscription.unsubscribe())
     }
-  }, [client, subscriptions, document])
+  }, [client, subscriptions, document, skip])
 }
