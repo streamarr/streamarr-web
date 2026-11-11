@@ -114,24 +114,29 @@ function HouseholdShareCodes({
   async function issue() {
     setRefusal(null)
     setIssuing(true)
+    const answer = await requestCode().finally(() => setIssuing(false))
+    if (!answer) return
+    setIssued(answer)
+    // The issue is done once the code is in hand, so Done may bring back a button ready for focus
+    // while the list is still being read again.
+    await readAgain()
+  }
+
+  /** The code the server issued, or null once the refusal on the page says why there is none. */
+  async function requestCode(): Promise<Issued | null> {
     try {
       const { data } = await issueCode({ variables: { input: { householdId: household.id } } })
       const errors = data?.issueShareCode?.userErrors ?? []
       if (errors.length > 0) {
         setRefusal(errors.map(userErrorMessage).join(' '))
-        return
+        return null
       }
-      const answer = data?.issueShareCode?.issued
-      if (!answer) {
-        setRefusal(ISSUE_FAILED)
-        return
-      }
-      setIssued(answer)
-      await readAgain()
+      const answer = data?.issueShareCode?.issued ?? null
+      if (!answer) setRefusal(ISSUE_FAILED)
+      return answer
     } catch (error) {
       setRefusal(requestFailureMessage(error, ISSUE_FAILED))
-    } finally {
-      setIssuing(false)
+      return null
     }
   }
 

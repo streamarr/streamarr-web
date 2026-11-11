@@ -2,7 +2,12 @@ import { act, screen, waitFor, within } from '@testing-library/react'
 import { delay, graphql, HttpResponse } from 'msw'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import type { HouseholdShareCodesQuery } from '../graphql/generated/graphql'
-import { answersInTurn, answerWith, failsOnceThen } from '../test/graphqlResponses'
+import {
+  answersInTurn,
+  answerWith,
+  failsOnceThen,
+  readsThatCanBeHeld,
+} from '../test/graphqlResponses'
 import { HOUSEHOLD_ID, meFixture } from '../test/meFixture'
 import { renderAppAt, renderWithProviders } from '../test/render'
 import { leaveForHomeAndReturn, type SettingsPage } from '../test/returnVisits'
@@ -314,6 +319,23 @@ describe('Share codes', () => {
 
     expect(screen.queryByText(SHARE_CODE)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Issue a share code' })).toHaveFocus()
+  })
+
+  it('shouldReturnToTheIssueButtonWhenTheAdminIsDoneBeforeTheCodesAreReadAgain', async () => {
+    serve()
+    const codes = readsThatCanBeHeld(() => codesData([liveCode()]))
+    server.use(graphql.query('HouseholdShareCodes', codes.resolver))
+    serveIssue()
+    const { user } = renderAppAt(CODES)
+    await screen.findByRole('listitem')
+    const reread = codes.holdNext()
+    await issue(user)
+    await reread.arrived
+
+    await user.click(screen.getByRole('button', { name: 'Done' }))
+
+    expect(screen.getByRole('button', { name: 'Issue a share code' })).toHaveFocus()
+    reread.release()
   })
 
   it('shouldKeepTheCodeOutOfTheCacheTheAddressAndTheBrowsersStorageWhenACodeIsIssued', async () => {
