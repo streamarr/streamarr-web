@@ -417,13 +417,10 @@ async function probeDeclaration({
   hls: boolean
   outputChannels: number
 }): Promise<CapabilityEntries> {
-  const { askDecodingInfo } = askers
   // A host without an audio device reports 0 channels, and every output plays stereo.
   const outputPlays = Math.max(outputChannels, STEREO)
   const [video, audio] = await Promise.all([
-    probeVideo({ platform, askDecodingInfo, hls }).then((entries) =>
-      withVideoDirectPlay({ platform, askers, entries }),
-    ),
+    probeVideo({ platform, askers, hls }),
     Promise.all(
       AUDIO_CODECS.map(({ codec, mimeCodec }) =>
         probeAudio({
@@ -451,29 +448,34 @@ function appliesToADelivery(entry: { hls: boolean; directPlayContainers?: unknow
 
 async function probeVideo({
   platform,
-  askDecodingInfo,
+  askers,
   hls,
 }: {
   platform: PlaybackPlatform
-  askDecodingInfo: AskDecodingInfo
+  askers: Askers
   hls: boolean
 }): Promise<VideoCapabilityEntryInput[]> {
-  const [h264Answers, otherFamilies] = await Promise.all([
-    probeFamily({ family: H264, askDecodingInfo }),
-    Promise.all(
-      VIDEO_FAMILIES_BESIDES_H264.map(async (family) => {
-        const [answers, hdrAnswers] = await Promise.all([
-          probeFamily({ family, askDecodingInfo }),
-          probeHdr({ platform, family, askDecodingInfo }),
-        ])
-        return { family, answers, hdrAnswers }
-      }),
+  const { askDecodingInfo } = askers
+  const pendingH264Answers = probeFamily({ family: H264, askDecodingInfo })
+  // Each family declares from its own answers and asks its direct-play questions as soon as they
+  // arrive, so a question left unanswered at the deadline holds back only the families that read
+  // its answer.
+  const declareFamily = async (family: VideoFamily, pendingAnswers: Promise<TierAnswers[]>) => {
+    const [answers, hdrAnswers, h264Answers] = await Promise.all([
+      pendingAnswers,
+      probeHdr({ platform, family, askDecodingInfo }),
+      readsH264Answers(platform, family) ? pendingH264Answers : [],
+    ])
+    const entries = familyEntries({ platform, family, answers, hdrAnswers, h264Answers, hls })
+    return withVideoDirectPlay({ platform, family, askers, entries })
+  }
+  const declared = await Promise.all([
+    declareFamily(H264, pendingH264Answers),
+    ...VIDEO_FAMILIES_BESIDES_H264.map((family) =>
+      declareFamily(family, probeFamily({ family, askDecodingInfo })),
     ),
   ])
-  const probed = [{ family: H264, answers: h264Answers, hdrAnswers: [] }, ...otherFamilies]
-  return probed.flatMap(({ family, answers, hdrAnswers }) =>
-    familyEntries({ platform, family, answers, hdrAnswers, h264Answers, hls }),
-  )
+  return declared.flat()
 }
 
 // HDR shows only on an HDR display, so an SDR display asks no HDR question and declares SDR alone.
@@ -730,7 +732,7 @@ function keepsUpOn<T extends { tier: PictureTier }>({
   answers: readonly T[]
   h264Answers: readonly TierAnswers[]
 }): KeepsUp<T> {
-  if (family !== HEVC || !isWebKit(platform.userAgent)) {
+  if (!readsH264Answers(platform, family)) {
     return (answer, answerOf) => isSmooth(answerOf(answer))
   }
   const budget = h264Answers.filter((answer) => isSmooth(answer.eightBit))
@@ -746,6 +748,10 @@ function keepsUpOn<T extends { tier: PictureTier }>({
       budget.some((h264) => holdsPicture(h264.tier, answer.tier))
     )
   }
+}
+
+function readsH264Answers(platform: PlaybackPlatform, family: VideoFamily): boolean {
+  return family === HEVC && isWebKit(platform.userAgent)
 }
 
 // A maximum accepts every smaller value (ADR 0049), so no tier counts over a smaller tier it holds
@@ -1107,8 +1113,6 @@ const SAMPLE_ENTRIES: Record<string, readonly { sampleEntry: VideoSampleEntry; f
     av01: [{ sampleEntry: 'AV01', fourCc: 'av01' }],
   }
 
-const VIDEO_FAMILIES: Partial<Record<VideoCodecFamily, VideoFamily>> = { H264, HEVC, AV1 }
-
 // Direct play reuses each entry's limits, so the media element must play a file at the entry's
 // widest picture for every stream the entry accepts. A sample entry counts only when the element
 // plays every such stream from it, and MP4 counts only beside a sample entry, as the server
@@ -1119,17 +1123,18 @@ const VIDEO_FAMILIES: Partial<Record<VideoCodecFamily, VideoFamily>> = { H264, H
 // separate entry without them applies to direct play.
 async function withVideoDirectPlay({
   platform,
+  family,
   askers,
   entries,
 }: {
   platform: PlaybackPlatform
+  family: VideoFamily
   askers: Askers
   entries: VideoCapabilityEntryInput[]
 }): Promise<VideoCapabilityEntryInput[]> {
   const declared = await Promise.all(
     entries.map(async (entry): Promise<VideoCapabilityEntryInput[]> => {
-      const family = VIDEO_FAMILIES[entry.codecFamily]
-      if (!family || entry.compatibleBases.length === 0) {
+      if (entry.compatibleBases.length === 0) {
         return [entry]
       }
       const directPlay = { ...entry, dolbyVisionProfiles: [] }

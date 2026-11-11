@@ -125,6 +125,13 @@ function h264Profiles(maxLevel: number) {
   ]
 }
 
+function hevcProfiles(maxLevel: number) {
+  return [
+    { profile: 'HEVC_MAIN' as const, maxLevel, maxTier: 'MAIN' as const },
+    { profile: 'HEVC_MAIN_10' as const, maxLevel, maxTier: 'MAIN' as const },
+  ]
+}
+
 function familyEntries(declaration: ClientCapabilityDeclarationInput, family: string) {
   return declaration.video.filter((entry) => entry.codecFamily === family)
 }
@@ -145,6 +152,32 @@ function answer(supported: boolean): DecodingAnswer {
 }
 
 const NEVER_ANSWERED = new Promise<DecodingAnswer>(() => {})
+
+type PicksQuestions = (configuration: MediaDecodingConfiguration) => boolean
+
+// Never answers a question that `unanswered` picks, and answers every other as `otherwise` does.
+function decodingInfoLeavingUnanswered({
+  unanswered,
+  otherwise,
+}: {
+  unanswered: PicksQuestions
+  otherwise: (configuration: MediaDecodingConfiguration) => Promise<DecodingAnswer>
+}) {
+  return vi.fn((configuration: MediaDecodingConfiguration) =>
+    unanswered(configuration) ? NEVER_ANSWERED : otherwise(configuration),
+  )
+}
+
+// The codec strings of the questions about a 3840×2160 picture at 60 fps: H.264 High at level 5.2,
+// and HEVC Main 10 at level 5.1.
+const H264_AT_2160P60 = 'avc1.640034'
+const HEVC_MAIN_10_AT_2160P60 = 'hvc1.2.4.L153.'
+
+// Picks the questions about the path that plays HLS, never the file questions of direct play.
+function hlsQuestionAbout(codec: string): PicksQuestions {
+  return (configuration) =>
+    configuration.type !== 'file' && codecOf(configuration).startsWith(codec)
+}
 
 type Answers = (configuration: MediaDecodingConfiguration) => DecodingAnswer
 
@@ -638,6 +671,38 @@ describe('declarePlaybackCapabilities', () => {
           { profile: 'HEVC_MAIN', maxLevel: 41, maxTier: 'MAIN' },
           { profile: 'HEVC_MAIN_10', maxLevel: 41, maxTier: 'MAIN' },
         ],
+        maxBitDepth: 10,
+        maxFrameRate: 60,
+      }),
+    ])
+  })
+
+  it('shouldCapPowerEfficientHevcAtTheH264TiersThatAnsweredWhenWebKitLeavesTheWidestH264QuestionUnansweredAtTheDeadline', async () => {
+    vi.useFakeTimers()
+    const declaration = declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: decodingInfoLeavingUnanswered({
+          unanswered: hlsQuestionAbout(H264_AT_2160P60),
+          otherwise: decodingInfoAnsweringHevc(() => IPHONE_SAFARI_HEVC_ANSWER),
+        }),
+        userAgent: IPHONE_SAFARI_USER_AGENT,
+      }),
+    )
+
+    await vi.advanceTimersByTimeAsync(3_000)
+
+    expect(familyEntries(await declaration, 'HEVC')).toEqual([
+      sdrVideoEntry({
+        codecFamily: 'HEVC',
+        codecProfiles: hevcProfiles(50),
+        maxBitDepth: 10,
+        maxWidth: 3840,
+        maxHeight: 2160,
+        maxFrameRate: 30,
+      }),
+      sdrVideoEntry({
+        codecFamily: 'HEVC',
+        codecProfiles: hevcProfiles(41),
         maxBitDepth: 10,
         maxFrameRate: 60,
       }),
@@ -2165,6 +2230,54 @@ describe('declarePlaybackCapabilities', () => {
       await vi.advanceTimersByTimeAsync(3_000)
 
       await expect(declaration).resolves.toEqual(DECLARATION_OF_EVERY_TIER)
+    })
+
+    it('shouldKeepDirectPlayForEveryOtherFamilyWhenOneHevcQuestionGoesUnansweredAtTheDeadline', async () => {
+      vi.useFakeTimers()
+      const declaration = declarePlaybackCapabilities(
+        platformFixture({
+          decodingInfo: decodingInfoLeavingUnanswered({
+            unanswered: hlsQuestionAbout(HEVC_MAIN_10_AT_2160P60),
+            otherwise: filePlayingDecodingInfo(CHROMIUM_FILE_TYPES),
+          }),
+          canPlayType: canPlayTypeOf(CHROMIUM_FILE_TYPES),
+        }),
+      )
+
+      await vi.advanceTimersByTimeAsync(3_000)
+
+      const otherFamilies = (await declaration).video.filter(
+        ({ codecFamily }) => codecFamily !== 'HEVC',
+      )
+      expect(directPlayOf(otherFamilies)).toEqual([
+        { codecFamily: 'H264', containers: ['MP4'], sampleEntries: ['AVC1', 'AVC3'] },
+        { codecFamily: 'AV1', containers: ['MP4', 'MATROSKA'], sampleEntries: ['AV01'] },
+      ])
+    })
+
+    it('shouldKeepDirectPlayForHevcAndAv1WhenOneH264QuestionGoesUnansweredAtTheDeadlineOutsideWebKit', async () => {
+      vi.useFakeTimers()
+      const plays: FileTypes = (type) =>
+        CHROMIUM_FILE_TYPES(type) || type.startsWith('video/mp4; codecs="hvc1.')
+      const declaration = declarePlaybackCapabilities(
+        platformFixture({
+          decodingInfo: decodingInfoLeavingUnanswered({
+            unanswered: hlsQuestionAbout(H264_AT_2160P60),
+            otherwise: filePlayingDecodingInfo(plays),
+          }),
+          canPlayType: canPlayTypeOf(plays),
+        }),
+      )
+
+      await vi.advanceTimersByTimeAsync(3_000)
+
+      const otherFamilies = (await declaration).video.filter(
+        ({ codecFamily }) => codecFamily !== 'H264',
+      )
+      expect(directPlayOf(otherFamilies)).toEqual([
+        { codecFamily: 'HEVC', containers: ['MP4'], sampleEntries: ['HVC1'] },
+        { codecFamily: 'AV1', containers: ['MP4', 'MATROSKA'], sampleEntries: ['AV01'] },
+      ])
     })
   })
 })
