@@ -97,7 +97,8 @@
   cursor: default;
 }
 
-.toggle[aria-disabled='true']:hover {
+/* An unavailable toggle does not answer the pointer, so one that is on keeps its highlight. */
+.toggle[aria-disabled='true']:not([aria-checked='true']):hover {
   background: none;
 }
 

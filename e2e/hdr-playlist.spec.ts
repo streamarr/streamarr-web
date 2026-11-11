@@ -75,6 +75,18 @@ const PQ_SESSION = {
   },
 }
 
+// A playback session that plays Original from an HDR source, whose stream keeps the source's range.
+const ORIGINAL_PQ_SESSION = {
+  createPlaybackSession: {
+    ...PQ_SESSION.createPlaybackSession,
+    playbackSession: {
+      ...PQ_SESSION.createPlaybackSession.playbackSession,
+      playbackChoice: 'ORIGINAL',
+      decisions: [{ video: { source: { videoRange: 'PQ' } } }],
+    },
+  },
+}
+
 const OPERATIONS: Record<string, unknown> = {
   CreatePlaybackSession: PQ_SESSION,
   PlayerMediaTitle: {
@@ -218,4 +230,30 @@ test('hls.js starts on the range the declaration prefers when a ladder lists SDR
 
   expect(onHdrDisplay.mediaPlaylists[0]).toBe('pq-360.m3u8')
   expect(onSdrDisplay.mediaPlaylists[0]).toBe('sdr-360.m3u8')
+})
+
+test('the HDR toggle that Original holds on keeps its highlight under the pointer', async ({
+  page,
+  request,
+}) => {
+  await onDisplay(page, true)
+  await servePqStream(page, request, PQ_ONLY_MULTIVARIANT)
+  await page.route('**/graphql', (route) =>
+    operationName(route.request()) === 'CreatePlaybackSession'
+      ? route.fulfill({ json: { data: ORIGINAL_PQ_SESSION } })
+      : route.fallback(),
+  )
+  await page.goto('/play/file-1?episode=e1')
+  await page.getByRole('button', { name: 'Quality: Original' }).click()
+  const menu = page.getByRole('menu', { name: 'Quality' })
+  const toggle = menu.getByRole('menuitemcheckbox', { name: /^HDR/ })
+  await expect(toggle).toHaveAttribute('aria-disabled', 'true')
+  const highlight = await menu
+    .getByRole('menuitemradio', { checked: true })
+    .evaluate((row) => getComputedStyle(row).backgroundColor)
+  await expect(toggle).toHaveCSS('background-color', highlight)
+
+  await toggle.hover()
+
+  await expect(toggle).toHaveCSS('background-color', highlight)
 })
