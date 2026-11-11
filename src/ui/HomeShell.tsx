@@ -9,7 +9,7 @@ export function HomeShell({
 }: Readonly<{
   chrome?: ReactNode
   children: ReactNode
-  /** Neutral settings pages omit the browsing wash. */
+  /** Neutral pages, such as settings, omit the browsing wash. */
   ambient?: boolean
 }>) {
   return (
