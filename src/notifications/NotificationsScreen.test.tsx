@@ -7,9 +7,11 @@ import type {
   RequestResolution,
 } from '../graphql/generated/graphql'
 import {
+  answerDelivered,
   answersInTurn,
   answerWith,
   comeBackOnline,
+  heldAnswer,
   readsThatCanBeHeld,
 } from '../test/graphqlResponses'
 import { serveGraphqlSocket } from '../test/graphqlSocket'
@@ -420,6 +422,40 @@ describe('Older Notifications', () => {
         '“Cabin” accepted the Profile “Leo”.',
       ]),
     )
+  })
+
+  it('shouldAddNoOlderPageThatArrivesAfterThePersonLeft', async () => {
+    serve()
+    servePages(NEWEST, notificationsPage([answerAbout('Mara')], { from: 3 }))
+    const late = heldAnswer(OLDER)
+    onTestFinished(late.release)
+    const firstOlder = { calls: 0 }
+    server.use(
+      graphql.query('Notifications', ({ variables }) => {
+        if (!(variables as { after?: string | null }).after || firstOlder.calls > 0) return
+        firstOlder.calls += 1
+        return late.answer()
+      }),
+    )
+    const { user } = renderAppAt(NOTIFICATIONS)
+    await screen.findByText('“Cabin” accepted the Profile “Alex”.')
+    await reachTheEndOfTheList()
+    await waitFor(() => expect(firstOlder.calls).toBe(1))
+    await leaveForHome(user, NOTIFICATIONS_PAGE)
+    await returnThroughTheProfileMenu(user, NOTIFICATIONS_PAGE)
+    await screen.findByText('“Cabin” accepted the Profile “Alex”.')
+
+    const answered = answerDelivered('Notifications')
+    late.release()
+    await answered
+    await reachTheEndOfTheList()
+
+    await screen.findByText('“Cabin” accepted the Profile “Mara”.')
+    expect(lines()).toEqual([
+      '“Cabin” accepted the Profile “Alex”.',
+      '“Cabin” accepted the Profile “Sam”.',
+      '“Cabin” accepted the Profile “Mara”.',
+    ])
   })
 
   it('shouldShowOnlyTheNewestPageWhenThePersonReturns', async () => {

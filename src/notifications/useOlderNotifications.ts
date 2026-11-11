@@ -9,7 +9,7 @@ import { withOlderPage } from './notificationList'
  * already reading that page is not sent twice. A load that fails keeps its failure until the next
  * one starts. `context` is the list's own, so a page takes the changes that arrive on its way. The
  * loaded pages last as long as the page that shows them: the next visit reads the newest page
- * afresh.
+ * afresh, and a page still on its way when the visit ends is left out.
  */
 export function useOlderNotifications(
   pageInfo: NotificationsQuery['notifications']['pageInfo'] | undefined,
@@ -18,14 +18,17 @@ export function useOlderNotifications(
   const client = useApolloClient()
   const [failure, setFailure] = useState<unknown>(null)
   const reading = useRef<string | null>(null)
+  // A page that answers once the visit is over belongs to no list: the next visit reads its own.
+  const visiting = useRef(true)
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    visiting.current = true
+    return () => {
+      visiting.current = false
       client.cache.evict({ id: 'ROOT_QUERY', fieldName: 'notifications' })
       client.cache.gc()
-    },
-    [client],
-  )
+    }
+  }, [client])
 
   async function read(after: string) {
     const { data } = await client.query({
@@ -34,7 +37,7 @@ export function useOlderNotifications(
       fetchPolicy: 'no-cache',
       context,
     })
-    if (!data) return
+    if (!data || !visiting.current) return
     client.cache.updateQuery({ query: NotificationsDocument }, (list) =>
       list
         ? { ...list, notifications: withOlderPage(list.notifications, data.notifications, after) }
