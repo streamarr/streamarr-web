@@ -3,10 +3,14 @@ import type { UserEvent } from '@testing-library/user-event'
 import { graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type {
+  ChangeInvitationLifetimeMutation,
+  ChangeInvitationLifetimeMutationVariables,
   ChangeShareCodeLifetimeMutation,
   ChangeShareCodeLifetimeMutationVariables,
   ChangeShareCodeLimitMutation,
   ChangeShareCodeLimitMutationVariables,
+  InvitationLifetimeSettingFieldsFragment,
+  InvitationLifetimeSettingQuery,
   ShareCodeLifetimeSettingFieldsFragment,
   ShareCodeLifetimeSettingQuery,
   ShareCodeLimitSettingFieldsFragment,
@@ -48,9 +52,23 @@ function shareCodeLifetimeFixture(
   }
 }
 
+function invitationLifetimeFixture(
+  overrides: Partial<InvitationLifetimeSettingFieldsFragment> = {},
+): InvitationLifetimeSettingFieldsFragment {
+  return {
+    __typename: 'InvitationLifetimeSetting',
+    id: SETTINGS_ID,
+    hours: 168,
+    minimumHours: 1,
+    maximumHours: 720,
+    ...overrides,
+  }
+}
+
 function serve({
   limit = limitFixture(),
   shareCodeLifetime = shareCodeLifetimeFixture(),
+  invitationLifetime = invitationLifetimeFixture(),
   me = meFixture({ scope: 'profile', serverAdmin: true }),
 } = {}) {
   const state = {
@@ -59,6 +77,8 @@ function serve({
     limitReads: 0,
     shareCodeLifetime,
     shareCodeLifetimeChanges: [] as number[],
+    invitationLifetime,
+    invitationLifetimeChanges: [] as number[],
   }
   server.use(
     graphql.query('Me', () => HttpResponse.json({ data: { me } })),
@@ -96,8 +116,53 @@ function serve({
         })
       },
     ),
+    graphql.query<InvitationLifetimeSettingQuery>('InvitationLifetimeSetting', () =>
+      HttpResponse.json({ data: { invitationLifetimeSetting: state.invitationLifetime } }),
+    ),
+    graphql.mutation<ChangeInvitationLifetimeMutation, ChangeInvitationLifetimeMutationVariables>(
+      'ChangeInvitationLifetime',
+      ({ variables }) => {
+        state.invitationLifetimeChanges.push(variables.input.hours)
+        state.invitationLifetime = { ...state.invitationLifetime, hours: variables.input.hours }
+        return HttpResponse.json({
+          data: {
+            changeInvitationLifetime: {
+              invitationLifetimeSetting: state.invitationLifetime,
+              userErrors: [],
+            },
+          },
+        })
+      },
+    ),
   )
   return state
+}
+
+const LIFETIME_CHANGES = {
+  ChangeShareCodeLifetime: {
+    field: 'changeShareCodeLifetime',
+    setting: 'shareCodeLifetimeSetting',
+  },
+  ChangeInvitationLifetime: {
+    field: 'changeInvitationLifetime',
+    setting: 'invitationLifetimeSetting',
+  },
+} as const
+
+function refuseLifetimeChanges(operationName: keyof typeof LIFETIME_CHANGES, message: string) {
+  const { field, setting } = LIFETIME_CHANGES[operationName]
+  server.use(
+    graphql.mutation(operationName, () =>
+      HttpResponse.json({
+        data: {
+          [field]: {
+            [setting]: null,
+            userErrors: [{ __typename: 'LifetimeOutOfRangeError', message }],
+          },
+        },
+      }),
+    ),
+  )
 }
 
 function refuseLimitChanges(message: string) {
@@ -149,6 +214,18 @@ function saveShareCodeLifetime() {
   return screen.getByRole('button', { name: 'Save how long a share code lasts' })
 }
 
+async function invitationLifetimeField() {
+  return screen.findByRole('textbox', { name: 'An invitation or an offer waits' })
+}
+
+function invitationLifetimeUnit() {
+  return screen.getByRole('combobox', { name: 'An invitation or an offer waits, unit' })
+}
+
+function saveInvitationLifetime() {
+  return screen.getByRole('button', { name: 'Save how long an invitation or an offer waits' })
+}
+
 async function enter(user: UserEvent, field: HTMLElement, value: string) {
   await user.clear(field)
   await user.type(field, value)
@@ -156,15 +233,13 @@ async function enter(user: UserEvent, field: HTMLElement, value: string) {
 }
 
 // Under jsdom, Mantine's open dropdown keeps display: none, so its options are hidden from the
-// accessibility tree. The browser spec chooses from the visible list.
+// accessibility tree. Every unit choice keeps its list of options in the page, so the options come
+// from the list the opened one controls. The browser spec chooses from the visible list.
 async function chooseUnit(user: UserEvent, select: HTMLElement, unit: string) {
   await user.click(select)
-  await user.click(
-    within(screen.getByRole('listbox', { hidden: true })).getByRole('option', {
-      name: unit,
-      hidden: true,
-    }),
-  )
+  const options = document.getElementById(select.getAttribute('aria-controls') ?? '')
+  expect(options).toHaveAttribute('role', 'listbox')
+  await user.click(within(options!).getByRole('option', { name: unit, hidden: true }))
 }
 
 // The page notice is the one status without a name; a loading setting's status has its own.
@@ -528,20 +603,7 @@ describe('sharing and invitation settings', () => {
 
   it('shouldShowServerWordsBesideTheShareCodeLifetimeAndKeepDraftWhenServerRefusesChange', async () => {
     const state = serve()
-    server.use(
-      graphql.mutation<ChangeShareCodeLifetimeMutation>('ChangeShareCodeLifetime', () =>
-        HttpResponse.json({
-          data: {
-            changeShareCodeLifetime: {
-              shareCodeLifetimeSetting: null,
-              userErrors: [
-                { __typename: 'LifetimeOutOfRangeError', message: 'Choose from 1 to 720 hours.' },
-              ],
-            },
-          },
-        }),
-      ),
-    )
+    refuseLifetimeChanges('ChangeShareCodeLifetime', 'Choose from 1 to 720 hours.')
     const { user } = renderAppAt(SHARING)
     const field = await enter(user, await shareCodeLifetimeField(), '3')
     await user.click(saveShareCodeLifetime())
@@ -566,6 +628,68 @@ describe('sharing and invitation settings', () => {
     )
     await user.click(screen.getByRole('button', { name: 'Retry' }))
     expect(await shareCodeLifetimeField()).toHaveValue('7')
+  })
+
+  it('shouldShowHowLongAnInvitationOrAnOfferWaitsInDaysWhenItIsAWholeNumberOfDays', async () => {
+    serve({ invitationLifetime: invitationLifetimeFixture({ hours: 72 }) })
+    renderAppAt(SHARING)
+    expect(await invitationLifetimeField()).toHaveValue('3')
+    expect(invitationLifetimeUnit()).toHaveValue('days')
+    expect(saveInvitationLifetime()).toBeDisabled()
+  })
+
+  it('shouldSaveHowLongAnInvitationOrAnOfferWaitsInHoursWhenAdminCountsItInHours', async () => {
+    const state = serve()
+    const { user } = renderAppAt(SHARING)
+    const field = await invitationLifetimeField()
+    await chooseUnit(user, invitationLifetimeUnit(), 'hours')
+    await enter(user, field, '12')
+    await user.click(saveInvitationLifetime())
+    await expectNotice('Saved. An invitation or an offer waits 12 hours.')
+    expect(state.invitationLifetimeChanges).toEqual([12])
+    expect(state.shareCodeLifetimeChanges).toEqual([])
+    expect(field).toHaveValue('12')
+    expect(invitationLifetimeUnit()).toHaveValue('hours')
+    expect(field).toHaveFocus()
+  })
+
+  it('shouldRefuseBesideTheFieldWithoutAskingServerWhenTheInvitationLifetimeIsOutsideTheServerRange', async () => {
+    const state = serve()
+    const { user } = renderAppAt(SHARING)
+    const field = await enter(user, await invitationLifetimeField(), '31')
+    await user.click(saveInvitationLifetime())
+    await waitFor(() => expect(field).toHaveAccessibleDescription('Choose from 1 hour to 30 days.'))
+    expect(field).toHaveValue('31')
+    expect(state.invitationLifetimeChanges).toEqual([])
+  })
+
+  it('shouldShowServerWordsBesideTheInvitationLifetimeAndKeepDraftWhenServerRefusesChange', async () => {
+    const state = serve()
+    refuseLifetimeChanges('ChangeInvitationLifetime', 'Choose from 1 to 720 hours.')
+    const { user } = renderAppAt(SHARING)
+    const field = await enter(user, await invitationLifetimeField(), '2')
+    await user.click(saveInvitationLifetime())
+    await waitFor(() => expect(field).toHaveAccessibleDescription('Choose from 1 to 720 hours.'))
+    expect(field).toHaveValue('2')
+    expect(invitationLifetimeUnit()).toHaveValue('days')
+    expect(state.invitationLifetime.hours).toBe(168)
+  })
+
+  it('shouldOfferRetryWhenTheInvitationLifetimeCannotBeLoaded', async () => {
+    serve()
+    server.use(
+      graphql.query(
+        'InvitationLifetimeSetting',
+        () => HttpResponse.json({ errors: [{ message: 'offline' }] }),
+        { once: true },
+      ),
+    )
+    const { user } = renderAppAt(SHARING)
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "Couldn't load how long an invitation or an offer waits.",
+    )
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(await invitationLifetimeField()).toHaveValue('7')
   })
 
   it.each([
