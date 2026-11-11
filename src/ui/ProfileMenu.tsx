@@ -4,7 +4,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { useSignOut } from '../auth/useSignOut'
 import type { MeQuery } from '../graphql/generated/graphql'
 import { initials, tileColor } from './ProfileTile'
-import { Icon } from './Icon'
+import { Icon, type IconName } from './Icon'
 import { canManageServer } from '../admin/access'
 import { canManageHousehold } from '../identity/householdAccess'
 import { canReadNotifications } from '../notifications/notificationAccess'
@@ -117,9 +117,12 @@ export function ProfileMenu({
     setOpened((open) => !open)
   }
 
-  function closeAndSignOut() {
-    close()
-    signOut()
+  // An entry's choice closes the menu before it acts.
+  function closeThen(choose: () => void) {
+    return () => {
+      close()
+      choose()
+    }
   }
 
   return (
@@ -174,64 +177,50 @@ export function ProfileMenu({
           )}
           <div className={styles.profileMenuDivider} aria-hidden />
           {me.selectedProfile && onProfileSettings && (
-            <button
-              type="button"
-              className={styles.profileMenuRow}
-              onClick={() => {
-                close()
-                onProfileSettings()
-              }}
-            >
-              <Icon name="settings" size={20} />
-              <span>Profile settings</span>
-            </button>
+            <MenuEntry
+              icon="settings"
+              label="Profile settings"
+              onChoose={closeThen(onProfileSettings)}
+            />
           )}
           {canManageHousehold(me) && onHouseholdSettings && (
-            <button
-              type="button"
-              className={styles.profileMenuRow}
-              onClick={() => {
-                close()
-                onHouseholdSettings()
-              }}
-            >
-              <Icon name="settings" size={20} />
-              <span>Household settings</span>
-            </button>
+            <MenuEntry
+              icon="settings"
+              label="Household settings"
+              onChoose={closeThen(onHouseholdSettings)}
+            />
           )}
           {canManageServer(me) && onServerSettings && (
-            <button
-              type="button"
-              className={styles.profileMenuRow}
-              onClick={() => {
-                close()
-                onServerSettings()
-              }}
-            >
-              <Icon name="settings" size={20} />
-              <span>Server settings</span>
-            </button>
+            <MenuEntry
+              icon="settings"
+              label="Server settings"
+              onChoose={closeThen(onServerSettings)}
+            />
           )}
           {canReadNotifications(me) && onNotifications && (
-            <button
-              type="button"
-              className={styles.profileMenuRow}
-              onClick={() => {
-                close()
-                onNotifications()
-              }}
-            >
-              <Icon name="notifications" size={20} />
-              <span>Notifications</span>
-            </button>
+            <MenuEntry
+              icon="notifications"
+              label="Notifications"
+              onChoose={closeThen(onNotifications)}
+            />
           )}
-          <button type="button" className={styles.profileMenuRow} onClick={closeAndSignOut}>
-            <Icon name="sign-out" size={20} />
-            <span>Sign out</span>
-          </button>
+          <MenuEntry icon="sign-out" label="Sign out" onChoose={closeThen(signOut)} />
         </div>
       )}
     </div>
+  )
+}
+
+function MenuEntry({
+  icon,
+  label,
+  onChoose,
+}: Readonly<{ icon: IconName; label: string; onChoose: () => void }>) {
+  return (
+    <button type="button" className={styles.profileMenuRow} onClick={onChoose}>
+      <Icon name={icon} size={20} />
+      <span>{label}</span>
+    </button>
   )
 }
 
