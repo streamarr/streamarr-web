@@ -515,13 +515,30 @@ describe('Sharing', () => {
     )
     expect(canceled).toBe(false)
 
-    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Keep offer' }))
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(canceled).toBe(false)
   })
 
-  it.each<WayOut>(['Cancel', 'Escape'])(
+  // Cancel beside Cancel invitation would read as two ways to cancel.
+  it('shouldOfferKeepOfferInPlaceOfCancelWhenThePersonConfirmsCancelingAnInvitation', async () => {
+    serveInTurn([share()])
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    await user.click(await screen.findByRole('button', { name: 'Cancel invitation to Cabin' }))
+
+    const dialog = screen.getByRole('dialog', { name: 'Cancel the offer to Cabin?' })
+    const keep = within(dialog).getByRole('button', { name: 'Keep offer' })
+    await waitFor(() => expect(keep).toHaveFocus())
+    expect(
+      within(dialog)
+        .getAllByRole('button')
+        .map((button) => button.textContent),
+    ).toEqual(['Keep offer', 'Cancel invitation'])
+  })
+
+  it.each<WayOut>(['Keep offer', 'Escape'])(
     'shouldReturnFocusToCancelInvitationWhenThePersonLeavesItsConfirmation(%s)',
     async (way) => {
       serveInTurn([share()])
@@ -756,7 +773,7 @@ describe('Sharing', () => {
     },
   )
 
-  it.each<WayOut>(['Cancel', 'Escape'])(
+  it.each<WayOut>(['Keep offer', 'Escape'])(
     'shouldReturnFocusToCancelInvitationWhenThePersonLeavesARefusedConfirmationWhileTheSharesAreReadAgain(%s)',
     async (way) => {
       serve([], me([SMITH_FAMILY, CABIN]))
@@ -878,7 +895,7 @@ describe('Sharing', () => {
     const dialog = screen.getByRole('dialog')
     await user.click(within(dialog).getByRole('button', { name: 'Cancel invitation' }))
     expect(await within(dialog).findByRole('alert')).toHaveTextContent('That offer is not pending.')
-    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Keep offer' }))
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'End share with Lake House' })).toBeEnabled(),
     )

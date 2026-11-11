@@ -284,6 +284,7 @@ export function WhereShared({
             : ''
         }
         confirmLabel="Cancel invitation"
+        dismissLabel="Keep offer"
         destructive
         icon={null}
         pending={canceling !== null && changing === canceling.id}
