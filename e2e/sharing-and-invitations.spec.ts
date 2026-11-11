@@ -1,7 +1,9 @@
 import { expect, test, type Page } from '@playwright/test'
 import type {
+  ChangeInvitationLifetimeInput,
   ChangeShareCodeLifetimeInput,
   ChangeShareCodeLimitInput,
+  InvitationLifetimeSettingFieldsFragment,
   ShareCodeLifetimeSettingFieldsFragment,
   ShareCodeLimitSettingFieldsFragment,
 } from '../src/graphql/generated/graphql'
@@ -34,6 +36,13 @@ async function fixture(page: Page) {
       minimumHours: 1,
       maximumHours: 720,
     } as ShareCodeLifetimeSettingFieldsFragment,
+    invitationLifetime: {
+      __typename: 'InvitationLifetimeSetting',
+      id: SETTINGS_ID,
+      hours: 168,
+      minimumHours: 1,
+      maximumHours: 720,
+    } as InvitationLifetimeSettingFieldsFragment,
     socket: await routeGraphqlSocket(page),
   }
   await page.route('**/graphql', async (route) => {
@@ -63,6 +72,18 @@ async function fixture(page: Page) {
       return reply({
         changeShareCodeLifetime: {
           shareCodeLifetimeSetting: state.shareCodeLifetime,
+          userErrors: [],
+        },
+      })
+    }
+    if (operationName === 'InvitationLifetimeSetting')
+      return reply({ invitationLifetimeSetting: state.invitationLifetime })
+    if (operationName === 'ChangeInvitationLifetime') {
+      const { hours } = variables.input as ChangeInvitationLifetimeInput
+      state.invitationLifetime = { ...state.invitationLifetime, hours }
+      return reply({
+        changeInvitationLifetime: {
+          invitationLifetimeSetting: state.invitationLifetime,
           userErrors: [],
         },
       })
