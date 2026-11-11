@@ -458,7 +458,7 @@ async function probeVideo({
     const [answers, hdrAnswers, h264Answers] = await Promise.all([
       pendingAnswers,
       probeHdr({ platform, family, askDecodingInfo }),
-      readsH264Answers(platform, family) ? pendingH264Answers : [],
+      isHevcOnWebKit(platform, family) ? pendingH264Answers : [],
     ])
     const entries = familyEntries({ platform, family, answers, hdrAnswers, h264Answers, hls })
     return withVideoDirectPlay({ platform, family, askers, entries })
@@ -726,7 +726,7 @@ function keepsUpOn<T extends { tier: PictureTier }>({
   answers: readonly T[]
   h264Answers: readonly TierAnswers[]
 }): KeepsUp<T> {
-  if (!readsH264Answers(platform, family)) {
+  if (!isHevcOnWebKit(platform, family)) {
     return (answer, answerOf) => isSmooth(answerOf(answer))
   }
   const budget = h264Answers.filter((answer) => isSmooth(answer.eightBit))
@@ -744,7 +744,7 @@ function keepsUpOn<T extends { tier: PictureTier }>({
   }
 }
 
-function readsH264Answers(platform: PlaybackPlatform, family: VideoFamily): boolean {
+function isHevcOnWebKit(platform: PlaybackPlatform, family: VideoFamily): boolean {
   return family === HEVC && isWebKit(platform.userAgent)
 }
 
@@ -1216,7 +1216,7 @@ function keepsUpFromFile({
   if (isSmooth(file)) {
     return true
   }
-  return family === HEVC && isWebKit(platform.userAgent) && isPowerEfficient(file) && !isSmooth(hls)
+  return isHevcOnWebKit(platform, family) && isPowerEfficient(file) && !isSmooth(hls)
 }
 
 // The questions whose answers made the entry: one per bit depth of its SDR profiles, or one per
