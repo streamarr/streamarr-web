@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import { delay, graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { ProfileSharesQuery } from '../graphql/generated/graphql'
@@ -15,6 +15,7 @@ import {
   refusedWith,
   serverFailure,
 } from '../test/graphqlResponses'
+import { focusesOf, leaveTheConfirmation, type WayOut } from '../test/focus'
 import { serveGraphqlSocket } from '../test/graphqlSocket'
 import { profileLanguagesFixture } from '../test/languageFixtures'
 import { HOUSEHOLD_ID, meFixture, PROFILE_ID, profileFixture } from '../test/meFixture'
@@ -630,6 +631,22 @@ describe('Sharing', () => {
     expect(ended).toBe(false)
   })
 
+  it.each<WayOut>(['Cancel', 'Escape'])(
+    'shouldReturnFocusToEndShareWhenThePersonLeavesItsConfirmation(%s)',
+    async (way) => {
+      serveInTurn([share({ status: 'ACTIVE' })])
+      const { user } = renderWithProviders(<SharingScreen />)
+      const end = await screen.findByRole('button', { name: 'End share with Cabin' })
+      const heading = focusesOf(screen.getByRole('heading', { level: 1, name: 'Sharing' }))
+
+      await user.click(end)
+      await leaveTheConfirmation(user, way)
+
+      await waitFor(() => expect(end).toHaveFocus())
+      expect(heading.count).toBe(0)
+    },
+  )
+
   it('shouldEndTheShareAndSaySoWhenThePersonConfirms', async () => {
     const shares = serveInTurn([share({ status: 'ACTIVE' })], [])
     server.use(
@@ -977,6 +994,18 @@ describe('Sharing', () => {
     await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
 
     expect(await screen.findByRole('heading', { name: 'Offer Alex to Cabin?' })).toBeVisible()
+  })
+
+  it('shouldMoveFocusFromTheFieldToTheReviewWithoutThePageHeadingWhenEnterIsPressed', async () => {
+    serve()
+    const { user } = renderWithProviders(<SharingScreen />)
+    const field = await openShareForm(user)
+    const heading = focusesOf(screen.getByRole('heading', { level: 1, name: 'Sharing' }))
+
+    await user.type(field, `${SHARE_CODE}{Enter}`)
+
+    expect(await screen.findByRole('heading', { name: 'Offer Alex to Cabin?' })).toHaveFocus()
+    expect(heading.count).toBe(0)
   })
 
   it('shouldTakeTheCodeOutOfALinkPastedIntoTheField', async () => {
@@ -1752,6 +1781,18 @@ describe('Sharing as shares change elsewhere', () => {
     await screen.findByRole('button', { name: 'End share with Cabin' })
     expect(screen.getByRole('textbox', { name: 'Share code' })).toHaveValue('BCDF')
     expect(screen.getByRole('textbox', { name: 'Share code' })).toHaveFocus()
+  })
+
+  it('shouldMoveFocusToTheHeadingWhenTheShareThePersonIsOnEndsElsewhere', async () => {
+    const { socket } = await openWith([share({ status: 'ACTIVE' })])
+    act(() => screen.getByRole('button', { name: 'End share with Cabin' }).focus())
+
+    socket.publish('ProfileShareChanged', shareChanged(SHARE_ID, changedShare({ status: 'ENDED' })))
+
+    await screen.findByText("Alex's Profile isn't shared with another Household.")
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: 'Sharing' })).toHaveFocus(),
+    )
   })
 
   describe('while a read of the shares is on its way', () => {

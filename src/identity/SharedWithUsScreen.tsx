@@ -1,7 +1,7 @@
 import { Button, Center, Loader } from '@mantine/core'
 import type { ApolloClient, DocumentNode } from '@apollo/client'
 import { useApolloClient, useMutation, useQuery } from '@apollo/client/react'
-import { useState } from 'react'
+import { useState, type Ref } from 'react'
 import {
   EndProfileShareDocument,
   RevokeDeviceRegistrationDocument,
@@ -36,6 +36,8 @@ type VisitorShare = ListedShare & { profile: SharedProfileFieldsFragment }
 type VisitorTv = VisitorDevicesQuery['householdDevices']['edges'][number]['node']
 type Household = MeQuery['me']['household']
 type Announce = (notice: string) => void
+/** Where focus that a change takes away from a row returns to the page's heading. */
+type LiveList = Ref<HTMLUListElement>
 
 const DAY = new Intl.DateTimeFormat('en', { dateStyle: 'medium' })
 
@@ -45,7 +47,7 @@ const DAY = new Intl.DateTimeFormat('en', { dateStyle: 'medium' })
  */
 export function SharedWithUsScreen() {
   const { notice, heading, announce, dismiss } = usePageNotice()
-  useFocusFallback(heading)
+  const liveList = useFocusFallback(heading)
 
   return (
     <>
@@ -55,12 +57,15 @@ export function SharedWithUsScreen() {
         </h1>
       </div>
       <PageNotice onDismiss={dismiss}>{notice}</PageNotice>
-      <SharedWithUsContent announce={announce} />
+      <SharedWithUsContent announce={announce} liveList={liveList} />
     </>
   )
 }
 
-function SharedWithUsContent({ announce }: Readonly<{ announce: Announce }>) {
+function SharedWithUsContent({
+  announce,
+  liveList,
+}: Readonly<{ announce: Announce; liveList: LiveList }>) {
   const me = useMe()
 
   if (me.loading && !me.data) {
@@ -78,8 +83,13 @@ function SharedWithUsContent({ announce }: Readonly<{ announce: Announce }>) {
   const { household, serverAdmin } = me.data.me
   return (
     <div className={styles.sections}>
-      <SharedProfiles household={household} serverAdmin={serverAdmin} announce={announce} />
-      <VisitorTvs household={household} announce={announce} />
+      <SharedProfiles
+        household={household}
+        serverAdmin={serverAdmin}
+        announce={announce}
+        liveList={liveList}
+      />
+      <VisitorTvs household={household} announce={announce} liveList={liveList} />
     </div>
   )
 }
@@ -88,7 +98,13 @@ function SharedProfiles({
   household,
   serverAdmin,
   announce,
-}: Readonly<{ household: Household; serverAdmin: boolean; announce: Announce }>) {
+  liveList,
+}: Readonly<{
+  household: Household
+  serverAdmin: boolean
+  announce: Announce
+  liveList: LiveList
+}>) {
   const client = useApolloClient()
   const variables = { householdId: household.id }
   // The shares that the query asks for.
@@ -164,7 +180,7 @@ function SharedProfiles({
           No Profile from another Household is shared with {household.name}.
         </p>
       )}
-      <ul className={styles.rows}>
+      <ul ref={liveList} className={styles.rows}>
         {shares.map((share, index) => (
           <li key={share.id} className={styles.row}>
             <SharedProfileText
@@ -205,7 +221,8 @@ function SharedProfiles({
 function VisitorTvs({
   household,
   announce,
-}: Readonly<{ household: Household; announce: Announce }>) {
+  liveList,
+}: Readonly<{ household: Household; announce: Announce; liveList: LiveList }>) {
   // Visitors link TVs elsewhere, so a visit shows only the server's answer.
   const query = useQuery(VisitorDevicesDocument, {
     variables: { householdId: household.id },
@@ -242,7 +259,7 @@ function VisitorTvs({
       failure={unlinking.pending ? null : unlinking.refusal}
     >
       {tvs.length === 0 && <p className={styles.note}>No visitor has linked a TV here.</p>}
-      <ul className={styles.rows}>
+      <ul ref={liveList} className={styles.rows}>
         {tvs.map((tv) => (
           <li key={tv.id} className={styles.row}>
             <span className={styles.rowText}>

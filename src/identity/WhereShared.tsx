@@ -1,6 +1,6 @@
 import { Button } from '@mantine/core'
 import { useMutation } from '@apollo/client/react'
-import { useRef } from 'react'
+import { useRef, type Ref } from 'react'
 import {
   CancelProfileShareDocument,
   EndProfileShareDocument,
@@ -36,6 +36,7 @@ export function WhereShared({
   onEndingChange,
   refusal,
   onRefusalChange,
+  liveList,
 }: Readonly<{
   profile: Readonly<{ id: string; name: string }>
   shares: readonly ProfileShareRow[]
@@ -55,6 +56,8 @@ export function WhereShared({
   /** The server's words for a change that it refused. */
   refusal: string | null
   onRefusalChange: (refusal: string | null) => void
+  /** Where focus that a change takes away from a row returns to the page's heading. */
+  liveList: Ref<HTMLUListElement>
 }>) {
   const [cancel] = useMutation(CancelProfileShareDocument)
   const [end] = useMutation(EndProfileShareDocument)
@@ -118,7 +121,7 @@ export function WhereShared({
       {live.length === 0 && (
         <p className={styles.note}>{profile.name}'s Profile isn't shared with another Household.</p>
       )}
-      <ul className={styles.rows}>
+      <ul ref={liveList} className={styles.rows}>
         {live.map((share) => {
           const household = householdName(share.householdId)
           const pending = share.status === 'PENDING'
