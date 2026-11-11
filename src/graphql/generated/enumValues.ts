@@ -220,7 +220,7 @@ export const DecisionReason = {
   VideoBitDepthUnknown: 'VIDEO_BIT_DEPTH_UNKNOWN',
   /** The probe reported no chroma subsampling for the source's H.264 video. */
   VideoChromaSubsamplingUnknown: 'VIDEO_CHROMA_SUBSAMPLING_UNKNOWN',
-  /** The source's codec level or tier is above the closest entry's maximum for its profile. */
+  /** The source's codec level is above the closest entry's maximum for its profile. */
   VideoCodecLevelNotDeclared: 'VIDEO_CODEC_LEVEL_NOT_DECLARED',
   /** No video capability entry for HLS names the source's codec family. */
   VideoCodecNotDeclared: 'VIDEO_CODEC_NOT_DECLARED',
@@ -983,13 +983,6 @@ export const VideoCodecProfile = {
 } as const;
 
 export type VideoCodecProfile = typeof VideoCodecProfile[keyof typeof VideoCodecProfile];
-/** The tier of an HEVC or AV1 stream. The High tier is above the Main tier. */
-export const VideoCodecTier = {
-  High: 'HIGH',
-  Main: 'MAIN'
-} as const;
-
-export type VideoCodecTier = typeof VideoCodecTier[keyof typeof VideoCodecTier];
 export const VideoQuality = {
   Auto: 'AUTO',
   FullHd_1080P: 'FULL_HD_1080P',

@@ -2677,7 +2677,6 @@ describe('Player', () => {
     'CapabilityListTooLongError',
     'CapabilityMaximumInvalidError',
     'CapabilityProfileMismatchError',
-    'VideoCodecTierInvalidError',
   ])('shouldShowThePlaybackFailureWhenTheServerRefusesTheDeclarationWith%s', async (typename) => {
     server.use(
       graphql.mutation('CreatePlaybackSession', () =>
