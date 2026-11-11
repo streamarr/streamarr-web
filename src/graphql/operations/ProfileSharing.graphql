@@ -8,12 +8,7 @@ query ShareOffers($householdId: ID!) {
         status
         expiresAt
         profile {
-          id
-          name
-          picture
-          kind
-          personalProfile
-          restricted
+          ...SharedProfileFields
         }
         offeredByDisplayName
         visitor
@@ -134,4 +129,13 @@ mutation EndProfileShare($input: EndProfileShareInput!) {
       }
     }
   }
+}
+
+fragment SharedProfileFields on ProfileSummary {
+  id
+  name
+  picture
+  kind
+  personalProfile
+  restricted
 }
