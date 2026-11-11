@@ -811,7 +811,7 @@ describe('Share invitations', () => {
     },
   )
 
-  it('shouldShowWhoOfferedEachProfileAndWhatItIs', async () => {
+  it('shouldShowWhoOfferedEachProfileAndWhatItIsWhenOffersAreWaiting', async () => {
     serve([offer({ profile: offeredProfile({ personalProfile: true, restricted: true }) })])
     renderAppAt(OFFERS)
 
@@ -833,7 +833,7 @@ describe('Share invitations', () => {
     expect(within(row).queryByText('Restricted')).not.toBeInTheDocument()
   })
 
-  it('shouldLeaveOutAnOfferThatCarriesNoProfile', async () => {
+  it('shouldLeaveAnOfferOutWhenItCarriesNoProfile', async () => {
     serve([
       offer({ id: '88888888-8888-8888-8888-888888888888', profile: null }),
       offer({ profile: offeredProfile({ name: 'Sam' }) }),
@@ -923,7 +923,7 @@ describe('Share offers as they change elsewhere', () => {
       .map((accept) => accept.getAttribute('aria-label'))
   }
 
-  it('shouldListFirstAnOfferThatArrivesWhileThePageIsOpen', async () => {
+  it('shouldListAnOfferFirstWhenItArrivesWhileThePageIsOpen', async () => {
     const { socket } = await openWithAnOfferOfAlex()
 
     socket.publish('ProfileShareChanged', shareChanged(robin.id, robin))

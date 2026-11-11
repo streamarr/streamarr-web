@@ -310,7 +310,7 @@ describe('Shared with us', () => {
     expect(within(tvs).queryByRole('alert')).not.toBeInTheDocument()
   })
 
-  it('shouldOpenSharedWithUsAsASectionOfHouseholdSettingsAfterShareCodes', async () => {
+  it('shouldListSharedWithUsAfterShareCodesWhenHouseholdSettingsOpen', async () => {
     serve()
     renderAppAt(VISITORS)
 
@@ -346,7 +346,7 @@ describe('Shared with us', () => {
     ).toBeVisible()
   })
 
-  it('shouldListEachProfileSharedHereWithWhoSharedItAndWhatItIs', async () => {
+  it('shouldShowWhoSharedEachProfileAndWhatItIsWhenProfilesAreSharedHere', async () => {
     serve([
       share({ profile: sharedProfile({ personalProfile: true, restricted: true }) }),
       share({
@@ -369,7 +369,7 @@ describe('Shared with us', () => {
     expect(within(robin).queryByText('Personal Profile')).not.toBeInTheDocument()
   })
 
-  it('shouldSayWhatStopsBeforeItEndsTheShareOfAProfile', async () => {
+  it('shouldSayWhatStopsBeforeEndingTheShareWhenTheAdminEndsTheShareOfAProfile', async () => {
     serve([share()])
     let ended = false
     server.use(
@@ -570,7 +570,7 @@ describe('Shared with us', () => {
     expect(within(dialog).getByRole('button', { name: 'End share' })).toBeEnabled()
   })
 
-  it('shouldOfferNoEndForAShareThatAccountMembershipRequires', async () => {
+  it('shouldOfferNoEndWhenAccountMembershipRequiresTheShare', async () => {
     serve([share({ requiredByAccountMembership: true })])
     renderAppAt(VISITORS)
 
@@ -592,7 +592,7 @@ describe('Shared with us', () => {
     expect(within(den).getByText('Linked by a deleted Account')).toBeVisible()
   })
 
-  it('shouldSayWhatUnlinkingDoesBeforeItUnlinksATv', async () => {
+  it('shouldSayWhatUnlinkingDoesBeforeUnlinkingWhenTheAdminUnlinksATv', async () => {
     serve([], [device()])
     let revoked = false
     server.use(
@@ -887,7 +887,7 @@ describe('Shared with us as shares change elsewhere', () => {
     },
   )
 
-  it('shouldListFirstAProfileThatIsAcceptedElsewhereWhileThePageIsOpen', async () => {
+  it('shouldListAProfileFirstWhenItIsAcceptedElsewhereWhileThePageIsOpen', async () => {
     const { socket } = await openWithAShareOfAlex()
 
     socket.publish('ProfileShareChanged', shareChanged(robin.id, robin))
@@ -895,7 +895,7 @@ describe('Shared with us as shares change elsewhere', () => {
     await waitFor(() => expect(sharedNames()).toEqual(['End share of Robin', 'End share of Alex']))
   })
 
-  it('shouldTakeOutAShareThatEndsElsewhere', async () => {
+  it('shouldTakeAShareOutWhenItEndsElsewhere', async () => {
     const { socket } = await openWithAShareOfAlex()
 
     socket.publish(
@@ -1171,7 +1171,7 @@ describe('Shared with us as shares change elsewhere', () => {
     })
   })
 
-  it('shouldLeaveAnOfferOutOfSharedWithUsUntilItIsAccepted', async () => {
+  it('shouldLeaveAnOfferOutOfSharedWithUsWhenItIsNotYetAccepted', async () => {
     const { socket } = await openWithAShareOfAlex()
 
     socket.publish('ProfileShareChanged', shareChanged(robin.id, { ...robin, status: 'PENDING' }))
