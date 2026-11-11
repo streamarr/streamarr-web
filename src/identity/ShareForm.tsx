@@ -40,10 +40,15 @@ const REFUSED: Answer = { kind: 'refused' }
  */
 export function ShareForm({
   profile,
+  codeFromLink = null,
+  onCodeFromLinkTaken = () => {},
   onOffered,
   onCancel,
 }: Readonly<{
   profile: Readonly<{ id: string; name: string }>
+  /** A code that the page's link carried: the form opens with it and continues at once. */
+  codeFromLink?: string | null
+  onCodeFromLinkTaken?: () => void
   /** Runs once the server took the offer, with the name of the Household it went to. */
   onOffered: (householdName: string) => Promise<void>
   onCancel: () => void
@@ -51,19 +56,28 @@ export function ShareForm({
   const client = useApolloClient()
   const [lookUp] = useMutation(LookUpShareCodeDocument)
   const [offer] = useMutation(OfferProfileShareDocument)
-  const [text, setText] = useState('')
+  const [text, setText] = useState(codeFromLink ?? '')
   const [fieldError, setFieldError] = useState<string | null>(null)
   const [refusal, setRefusal] = useState<string | null>(null)
   const [review, setReview] = useState<Review | null>(null)
   const [sending, setSending] = useState(false)
   const field = useRef<HTMLInputElement>(null)
   const question = useRef<HTMLHeadingElement>(null)
+  /** Set once the link's code is on its way, so that no second mount asks about it again. */
+  const linkCodeTaken = useRef(false)
   const reviewing = review !== null
 
   // The code step starts in its field, and the review in its question, so a reader hears it.
   useEffect(() => {
     ;(reviewing ? question : field).current?.focus()
   }, [reviewing])
+
+  useEffect(() => {
+    if (codeFromLink === null || linkCodeTaken.current) return
+    linkCodeTaken.current = true
+    onCodeFromLinkTaken()
+    void continueWith(codeFromLink)
+  })
 
   async function continueWith(typed: string) {
     setRefusal(null)

@@ -1,3 +1,4 @@
+const SHARING_PAGE = '/settings/profile/sharing'
 const CODE_PARAMETER = 'code'
 const EIGHT_LETTERS = /^[A-Z]{8}$/
 
@@ -9,6 +10,13 @@ const EIGHT_LETTERS = /^[A-Z]{8}$/
 export function shareCodeIn(text: string): string | null {
   const letters = (codeInLink(text) ?? text).replaceAll(/[\s-]/g, '').toUpperCase()
   return EIGHT_LETTERS.test(letters) ? letters : null
+}
+
+/** The link that opens the Sharing page with `code` filled in, on the client at `origin`. */
+export function shareCodeLink(code: string, origin: string): string {
+  const link = new URL(SHARING_PAGE, origin)
+  link.searchParams.set(CODE_PARAMETER, code)
+  return link.href
 }
 
 function codeInLink(text: string): string | null {

@@ -1,11 +1,13 @@
 import { Center, Loader } from '@mantine/core'
 import { useQuery } from '@apollo/client/react'
+import { useState } from 'react'
 import settingsStyles from '../styles/settings.module.css'
 import { ProfileSharesDocument, type MeQuery } from '../graphql/generated/graphql'
 import { requestFailureMessage } from '../graphql/requestErrors'
 import { FailurePanel } from '../ui/Failure'
 import { PageNotice } from '../ui/PageNotice'
 import { usePageNotice } from '../ui/usePageNotice'
+import { ArrivingShareCodeContext } from './arrivingShareCode'
 import { shortId } from './shareText'
 import styles from './Sharing.module.css'
 import { useMe } from './useMe'
@@ -14,9 +16,13 @@ import { WhereShared } from './WhereShared'
 type Me = MeQuery['me']
 type PersonalProfile = Readonly<{ id: string; name: string }>
 
-/** Where the Account's Personal Profile is shared, and the way to share it with another Household. */
-export function SharingScreen() {
+/**
+ * Where the Account's Personal Profile is shared, and the way to share it with another Household.
+ * A share code that the page's link carried opens the share form with it, once.
+ */
+export function SharingScreen({ arrivingCode = null }: Readonly<{ arrivingCode?: string | null }>) {
   const { notice, heading, announce, dismiss } = usePageNotice()
+  const [code, setCode] = useState(arrivingCode)
 
   return (
     <>
@@ -26,7 +32,9 @@ export function SharingScreen() {
         </h1>
       </div>
       <PageNotice onDismiss={dismiss}>{notice}</PageNotice>
-      <SharingContent onChanged={announce} />
+      <ArrivingShareCodeContext value={{ code, take: () => setCode(null) }}>
+        <SharingContent onChanged={announce} />
+      </ArrivingShareCodeContext>
     </>
   )
 }
