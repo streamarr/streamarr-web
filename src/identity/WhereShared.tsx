@@ -1,17 +1,15 @@
 import { Button } from '@mantine/core'
 import { useMutation } from '@apollo/client/react'
-import { useState, type ReactNode, type Ref } from 'react'
+import type { ReactNode, Ref } from 'react'
 import {
   CancelProfileShareDocument,
   EndProfileShareDocument,
   type ProfileSharesQuery,
 } from '../graphql/generated/graphql'
-import { requestFailureMessage } from '../graphql/requestErrors'
-import { userErrorMessage } from '../graphql/userErrors'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { ShareWithAnotherHousehold } from './ShareWithAnotherHousehold'
 import { SharingSection } from './SharingSection'
-import { expiryLabel, UPDATE_FAILED_MESSAGE } from './shareText'
+import { expiryLabel } from './shareText'
 import styles from './Sharing.module.css'
 import { useConfirmedChange } from './useConfirmedChange'
 
@@ -59,41 +57,30 @@ export function WhereShared({
         `Sharing with ${share.household?.name ?? householdName(share.householdId)} has already ended.`,
       ),
   })
-  /** The offer whose cancellation is on its way; no other change starts until it lands. */
-  const [canceling, setCanceling] = useState<string | null>(null)
-  const [refusal, setRefusal] = useState<string | null>(null)
-  const changing = canceling !== null || ending.sending
-
-  // Canceling an offer loses nothing that a new offer cannot bring back, so it asks nothing.
-  async function cancelOffer(share: ProfileShareRow) {
-    setRefusal(null)
-    setCanceling(share.id)
-    try {
-      const { data } = await cancel({ variables: { input: { shareId: share.id } } })
-      const errors = data?.cancelProfileShare?.userErrors ?? []
-      if (errors.length > 0) setRefusal(errors.map(userErrorMessage).join(' '))
-      // A refused share may have changed elsewhere, so the list is read again.
-      await readAgain()
-      if (errors.length === 0) onChanged(`Offer to ${householdName(share.householdId)} canceled.`)
-    } catch (error) {
-      setRefusal(requestFailureMessage(error, UPDATE_FAILED_MESSAGE))
-    } finally {
-      setCanceling(null)
-    }
-  }
+  // The offer spent its share code, which stays spent: offering again takes a new one.
+  const canceling = useConfirmedChange<ProfileShareRow>({
+    send: async (share) =>
+      (await cancel({ variables: { input: { shareId: share.id } } })).data?.cancelProfileShare
+        ?.userErrors ?? [],
+    readAgain,
+    onDone: (share) => onChanged(`Offer to ${householdName(share.householdId)} canceled.`),
+    listed: shares.filter(isWaiting),
+    onGone: (share) =>
+      onChanged(
+        `The offer to ${share.household?.name ?? householdName(share.householdId)} is no longer waiting.`,
+      ),
+  })
+  const changing = canceling.sending || ending.sending
 
   return (
-    <SharingSection
-      title={`Where ${profile.name} is shared`}
-      failure={ending.pending ? null : refusal}
-    >
+    <SharingSection title={`Where ${profile.name} is shared`} failure={null}>
       {shares.length === 0 && (
         <p className={styles.note}>{profile.name} is not shared with another Household.</p>
       )}
       <ul ref={liveList} className={styles.rows}>
         {shares.map((share) => {
           const household = householdName(share.householdId)
-          const pending = share.status === 'PENDING'
+          const pending = isWaiting(share)
           return (
             <li key={share.id} className={styles.row}>
               <span className={styles.rowText}>
@@ -107,9 +94,8 @@ export function WhereShared({
                 <Button
                   variant="default"
                   aria-label={`Cancel offer to ${household}`}
-                  loading={canceling === share.id}
                   disabled={changing}
-                  onClick={() => void cancelOffer(share)}
+                  onClick={() => canceling.ask(share)}
                 >
                   Cancel offer
                 </Button>
@@ -118,10 +104,7 @@ export function WhereShared({
                   variant="default"
                   aria-label={`End share with ${household}`}
                   disabled={changing}
-                  onClick={() => {
-                    setRefusal(null)
-                    ending.ask(share)
-                  }}
+                  onClick={() => ending.ask(share)}
                 >
                   End share
                 </Button>
@@ -148,6 +131,27 @@ export function WhereShared({
         onClose={ending.close}
         onConfirm={ending.confirmPending}
       />
+      <ConfirmDialog
+        opened={canceling.pending !== null}
+        title={`Cancel the offer to ${canceling.pending ? householdName(canceling.pending.householdId) : ''}?`}
+        body={
+          canceling.pending
+            ? `To offer ${profile.name} again you need a new share code from ${householdName(canceling.pending.householdId)}.`
+            : ''
+        }
+        confirmLabel="Cancel offer"
+        destructive
+        icon={null}
+        pending={canceling.sending}
+        error={canceling.refusal}
+        onClose={canceling.close}
+        onConfirm={canceling.confirmPending}
+      />
     </SharingSection>
   )
+}
+
+/** An offer that waits for an admin of the Household it went to. */
+function isWaiting(share: ProfileShareRow): boolean {
+  return share.status === 'PENDING'
 }
