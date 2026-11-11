@@ -73,3 +73,46 @@ function parse(computed: string): Paint {
 function over({ channels, alpha }: Paint, below: number[]): number[] {
   return channels.map((channel, index) => alpha * channel + (1 - alpha) * below[index])
 }
+
+/** The color of each pixel in an element's box as the browser paints it, read from a screenshot. */
+export async function paintedPixels(element: Locator): Promise<number[][]> {
+  const png = (await element.screenshot()).toString('base64')
+  return element.page().evaluate(async (base64) => {
+    const image = new Image()
+    image.src = `data:image/png;base64,${base64}`
+    await image.decode()
+    const canvas = document.createElement('canvas')
+    canvas.width = image.width
+    canvas.height = image.height
+    const context = canvas.getContext('2d')
+    if (!context) {
+      throw new Error('No 2D canvas to read the screenshot')
+    }
+    context.drawImage(image, 0, 0)
+    const { data } = context.getImageData(0, 0, image.width, image.height)
+    return Array.from({ length: data.length / 4 }, (_, pixel) =>
+      Array.from(data.subarray(pixel * 4, pixel * 4 + 3)),
+    )
+  }, png)
+}
+
+/**
+ * A mark and what it is painted on, from the pixels of its box. The most common color is the
+ * backdrop, and the pixel that contrasts most with it is the mark's solid color: the pixels along
+ * the mark's edges blend the two. Throws when there are no pixels.
+ */
+export function paintedMark(pixels: number[][]): { mark: number[]; backdrop: number[] } {
+  if (pixels.length === 0) {
+    throw new Error('No pixels to read')
+  }
+  const counts = new Map<string, number>()
+  for (const color of pixels) {
+    counts.set(String(color), (counts.get(String(color)) ?? 0) + 1)
+  }
+  const count = (color: number[]) => counts.get(String(color)) ?? 0
+  const backdrop = pixels.reduce((most, next) => (count(next) > count(most) ? next : most))
+  const mark = pixels.reduce((most, next) =>
+    contrast(next, backdrop) > contrast(most, backdrop) ? next : most,
+  )
+  return { mark, backdrop }
+}

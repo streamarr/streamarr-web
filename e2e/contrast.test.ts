@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { contrast, textContrast } from './contrast'
+import { contrast, paintedMark, textContrast } from './contrast'
 
 const WHITE = [255, 255, 255]
 const BLACK = [0, 0, 0]
@@ -89,5 +89,34 @@ describe('textContrast', () => {
     }
 
     expect(() => textContrast(painted)).toThrow('color(srgb 1 1 1)')
+  })
+})
+
+const SELECTION_FILL = [18, 85, 122]
+
+function pixels(...runs: [count: number, color: number[]][]): number[][] {
+  return runs.flatMap(([count, color]) => Array.from({ length: count }, () => color))
+}
+
+describe('paintedMark', () => {
+  it('shouldTakeTheColorThatFillsMostOfTheBoxAsTheBackdrop', () => {
+    const painted = paintedMark(pixels([4, WHITE], [12, SELECTION_FILL]))
+
+    expect(painted).toEqual({ mark: WHITE, backdrop: SELECTION_FILL })
+  })
+
+  it('shouldTakeTheMarksSolidColorWhenItsEdgesBlendIntoTheBackdrop', () => {
+    // White at half coverage over #12557a is (137, 170, 189).
+    const painted = paintedMark(pixels([12, SELECTION_FILL], [3, [137, 170, 189]], [1, WHITE]))
+
+    expect(painted).toEqual({ mark: WHITE, backdrop: SELECTION_FILL })
+  })
+
+  it('shouldFindNothingApartFromTheBackdropWhenNoMarkIsPainted', () => {
+    expect(paintedMark(pixels([16, WHITE]))).toEqual({ mark: WHITE, backdrop: WHITE })
+  })
+
+  it('shouldRefuseToAnswerWhenThereAreNoPixels', () => {
+    expect(() => paintedMark([])).toThrow('No pixels')
   })
 })
