@@ -7670,6 +7670,17 @@ describe('Player', () => {
       expect(log.at(-1)).toBe('create ORIGINAL')
     })
 
+    it('shouldExplainTheUnavailableHdrToggleOnlyWhileThePointerHoversIt', async () => {
+      const { user } = await pickForAnHdrSource({ picked: 'Original' })
+      const toggle = hdrToggleIn(await openQualityMenu(user)) as HTMLElement
+
+      await user.hover(toggle)
+      expect(screen.getByText(ORIGINAL_PLAYS_AS_IT_IS)).toBeVisible()
+
+      await user.unhover(toggle)
+      expect(screen.getByText(ORIGINAL_PLAYS_AS_IT_IS)).not.toBeVisible()
+    })
+
     it('shouldChangeNothingWhenTheViewerPressesTheHdrToggleInOriginal', async () => {
       const { user, log } = await pickForAnHdrSource({ picked: 'Original' })
       const menu = await openQualityMenu(user)
