@@ -1,7 +1,42 @@
 import type { FieldPolicy, Reference } from '@apollo/client'
-import type { NotificationsQuery } from '../graphql/generated/graphql'
+import type {
+  NotificationEdgeFieldsFragment,
+  NotificationsQuery,
+} from '../graphql/generated/graphql'
+import { definedEdges, placeOrderedEdge } from '../media/edges'
 
 type NotificationList = NotificationsQuery['notifications']
+
+/** An edge whose Notification resolved, as the list shows it. */
+type ShownEdge = NotificationEdgeFieldsFragment & {
+  node: NonNullable<NotificationEdgeFieldsFragment['node']>
+}
+
+/** One Notification that a change touched: its edge in the list, or null once it left the list. */
+export interface NotificationEntry {
+  notificationId: string
+  edge: ShownEdge | null
+}
+
+/**
+ * The list once one Notification's change applies, by its id: its edge takes its place by order
+ * key, and a null edge takes it out. While older pages are still to load, an edge that sorts below
+ * the loaded list belongs to one of them, so the list lets the Notification go and that page
+ * brings it.
+ */
+export function withNotificationChange(
+  list: NotificationList,
+  { notificationId, edge }: NotificationEntry,
+): NotificationList {
+  const edges = definedEdges(list.edges)
+  const last = edges.at(-1)
+  const below =
+    edge !== null && list.pageInfo.hasNextPage && !!last && edge.orderKey > last.orderKey
+  return {
+    ...list,
+    edges: placeOrderedEdge(edges, { itemId: notificationId, edge: below ? null : edge }),
+  }
+}
 
 /**
  * The list once an older page joins it: the page's edges after the list's own, without a
