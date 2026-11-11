@@ -17,6 +17,7 @@ import settingsStyles from '../styles/settings.module.css'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { FailurePanel } from '../ui/Failure'
 import { PageNotice } from '../ui/PageNotice'
+import { useFocusFallback } from '../ui/useFocusFallback'
 import { usePageNotice } from '../ui/usePageNotice'
 import styles from './Sharing.module.css'
 import { SharedProfileText } from './SharedProfileText'
@@ -41,6 +42,7 @@ const DAY = new Intl.DateTimeFormat('en', { dateStyle: 'medium' })
  */
 export function SharedWithUsScreen() {
   const { notice, heading, announce, dismiss } = usePageNotice()
+  useFocusFallback(heading)
 
   return (
     <>

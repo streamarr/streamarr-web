@@ -6,6 +6,7 @@ import { ProfileSharesDocument } from '../graphql/generated/graphql'
 import { requestFailureMessage } from '../graphql/requestErrors'
 import { FailurePanel } from '../ui/Failure'
 import { PageNotice } from '../ui/PageNotice'
+import { useFocusFallback } from '../ui/useFocusFallback'
 import { usePageNotice } from '../ui/usePageNotice'
 import { ArrivingShareCodeContext } from './arrivingShareCode'
 import styles from './Sharing.module.css'
@@ -22,6 +23,7 @@ type PersonalProfile = Readonly<{ id: string; name: string }>
  */
 export function SharingScreen({ arrivingCode = null }: Readonly<{ arrivingCode?: string | null }>) {
   const { notice, heading, announce, dismiss } = usePageNotice()
+  useFocusFallback(heading)
   const [code, setCode] = useState(arrivingCode)
 
   return (

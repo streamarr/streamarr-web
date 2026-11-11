@@ -506,6 +506,18 @@ describe('Share offers as they change elsewhere', () => {
     expect(decline).toHaveFocus()
   })
 
+  it('shouldMoveFocusToTheHeadingWhenTheOfferThePersonIsOnLeaves', async () => {
+    const { socket } = await openWithAnOfferOfAlex()
+    act(() => screen.getByRole('button', { name: 'Accept Alex' }).focus())
+
+    socket.publish('ProfileShareChanged', shareChanged(OFFER_ID, liveShare({ status: 'ACTIVE' })))
+
+    await screen.findByText('No one has offered a Profile to Smith Family.')
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: 'Share offers' })).toHaveFocus(),
+    )
+  })
+
   it('shouldStopFollowingShareChangesWhenTheAdminLeavesThePage', async () => {
     const { socket, user } = await openWithAnOfferOfAlex()
 
