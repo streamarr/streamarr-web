@@ -7,13 +7,14 @@ import {
   type ProfileSharesQuery,
 } from '../graphql/generated/graphql'
 import { requestFailureMessage } from '../graphql/requestErrors'
-import { userErrorMessage, type UserErrorLike } from '../graphql/userErrors'
+import { userErrorMessage } from '../graphql/userErrors'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { EarlierShares } from './EarlierShares'
 import { ShareWithAnotherHousehold } from './ShareWithAnotherHousehold'
 import { SharingSection } from './SharingSection'
 import { expiryLabel, UPDATE_FAILED_MESSAGE } from './shareText'
 import styles from './Sharing.module.css'
+import { useConfirmedChange } from './useConfirmedChange'
 
 export type ProfileShareRow = ProfileSharesQuery['profileShares']['edges'][number]['node']
 
@@ -42,59 +43,44 @@ export function WhereShared({
 }>) {
   const [cancel] = useMutation(CancelProfileShareDocument)
   const [end] = useMutation(EndProfileShareDocument)
-  /** The share whose end waits for the person's confirmation. */
-  const [ending, setEnding] = useState<ProfileShareRow | null>(null)
-  /** The share whose change is on its way; no other change starts until it lands. */
-  const [changing, setChanging] = useState<string | null>(null)
+  const ending = useConfirmedChange<ProfileShareRow>({
+    send: async (share) =>
+      (await end({ variables: { input: { shareId: share.id } } })).data?.endProfileShare
+        ?.userErrors ?? [],
+    readAgain,
+    onDone: (share) => onChanged(`Sharing with ${householdName(share.householdId)} ended.`),
+  })
+  /** The offer whose cancellation is on its way; no other change starts until it lands. */
+  const [canceling, setCanceling] = useState<string | null>(null)
   const [refusal, setRefusal] = useState<string | null>(null)
+  const changing = canceling !== null || ending.sending
 
   const live = shares.filter(isLive)
   const earlier = shares.filter((share) => !isLive(share))
 
-  /** Sends the change and reads the shares again; resolves to whether the server took it. */
-  async function change(share: ProfileShareRow): Promise<boolean> {
-    setRefusal(null)
-    setChanging(share.id)
-    try {
-      const errors = await send(share)
-      if (errors?.length) {
-        setRefusal(errors.map(userErrorMessage).join(' '))
-      }
-      // A refused share may have changed elsewhere, so the list is read again.
-      await readAgain()
-      return !errors?.length
-    } catch (error) {
-      setRefusal(requestFailureMessage(error, UPDATE_FAILED_MESSAGE))
-      return false
-    } finally {
-      setChanging(null)
-    }
-  }
-
-  async function send(share: ProfileShareRow): Promise<readonly UserErrorLike[] | undefined> {
-    const variables = { input: { shareId: share.id } }
-    if (share.status === 'PENDING') {
-      return (await cancel({ variables })).data?.cancelProfileShare?.userErrors
-    }
-    return (await end({ variables })).data?.endProfileShare?.userErrors
-  }
-
   // Canceling an offer loses nothing that a new offer cannot bring back, so it asks nothing.
   async function cancelOffer(share: ProfileShareRow) {
-    if (await change(share)) {
-      onChanged(`Offer to ${householdName(share.householdId)} canceled.`)
-    }
-  }
-
-  async function endShare(share: ProfileShareRow) {
-    if (await change(share)) {
-      setEnding(null)
-      onChanged(`Sharing with ${householdName(share.householdId)} ended.`)
+    setRefusal(null)
+    setCanceling(share.id)
+    try {
+      const { data } = await cancel({ variables: { input: { shareId: share.id } } })
+      const errors = data?.cancelProfileShare?.userErrors ?? []
+      if (errors.length > 0) setRefusal(errors.map(userErrorMessage).join(' '))
+      // A refused share may have changed elsewhere, so the list is read again.
+      await readAgain()
+      if (errors.length === 0) onChanged(`Offer to ${householdName(share.householdId)} canceled.`)
+    } catch (error) {
+      setRefusal(requestFailureMessage(error, UPDATE_FAILED_MESSAGE))
+    } finally {
+      setCanceling(null)
     }
   }
 
   return (
-    <SharingSection title={`Where ${profile.name} is shared`} failure={ending ? null : refusal}>
+    <SharingSection
+      title={`Where ${profile.name} is shared`}
+      failure={ending.pending ? null : refusal}
+    >
       {live.length === 0 && (
         <p className={styles.note}>{profile.name} is not shared with another Household.</p>
       )}
@@ -115,8 +101,8 @@ export function WhereShared({
                 <Button
                   variant="default"
                   aria-label={`Cancel offer to ${household}`}
-                  loading={changing === share.id}
-                  disabled={changing !== null}
+                  loading={canceling === share.id}
+                  disabled={changing}
                   onClick={() => void cancelOffer(share)}
                 >
                   Cancel offer
@@ -125,10 +111,10 @@ export function WhereShared({
                 <Button
                   variant="default"
                   aria-label={`End share with ${household}`}
-                  disabled={changing !== null}
+                  disabled={changing}
                   onClick={() => {
                     setRefusal(null)
-                    setEnding(share)
+                    ending.ask(share)
                   }}
                 >
                   End share
@@ -141,25 +127,20 @@ export function WhereShared({
       <ShareWithAnotherHousehold profile={profile} readAgain={readAgain} onChanged={onChanged} />
       <EarlierShares shares={earlier} householdName={householdName} />
       <ConfirmDialog
-        opened={ending !== null}
-        title={`End sharing with ${ending ? householdName(ending.householdId) : ''}?`}
+        opened={ending.pending !== null}
+        title={`End sharing with ${ending.pending ? householdName(ending.pending.householdId) : ''}?`}
         body={
-          ending
-            ? `${profile.name} stops being available in ${householdName(ending.householdId)}. The TVs you linked there are unlinked, and your sessions there return to ${ownHouseholdName}. Sharing again needs a new offer and an admin there to accept it.`
+          ending.pending
+            ? `${profile.name} stops being available in ${householdName(ending.pending.householdId)}. The TVs you linked there are unlinked, and your sessions there return to ${ownHouseholdName}. Sharing again needs a new offer and an admin there to accept it.`
             : ''
         }
         confirmLabel="End share"
         destructive
         icon={null}
-        pending={ending !== null && changing === ending.id}
-        error={refusal}
-        onClose={() => {
-          setEnding(null)
-          setRefusal(null)
-        }}
-        onConfirm={() => {
-          if (ending) void endShare(ending)
-        }}
+        pending={ending.sending}
+        error={ending.refusal}
+        onClose={ending.close}
+        onConfirm={ending.confirmPending}
       />
     </SharingSection>
   )

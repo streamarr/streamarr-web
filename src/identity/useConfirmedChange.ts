@@ -4,7 +4,7 @@ import { userErrorMessage, type UserErrorLike } from '../graphql/userErrors'
 import { UPDATE_FAILED_MESSAGE } from './shareText'
 
 /**
- * A change to one row that waits for the admin's confirmation. Once sent, the list reads again
+ * A change to one row that waits for the person's confirmation. Once sent, the list reads again
  * whatever the answer, because a refused row may have changed elsewhere; a refusal keeps the
  * confirmation open with the server's words.
  */

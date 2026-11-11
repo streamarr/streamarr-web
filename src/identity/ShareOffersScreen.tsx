@@ -10,7 +10,7 @@ import {
 } from '../graphql/generated/graphql'
 import { useLiveList } from '../graphql/liveList'
 import { requestFailureMessage } from '../graphql/requestErrors'
-import { userErrorMessage, type UserErrorLike } from '../graphql/userErrors'
+import { userErrorMessage } from '../graphql/userErrors'
 import settingsStyles from '../styles/settings.module.css'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { FailurePanel } from '../ui/Failure'
@@ -28,6 +28,7 @@ import {
 } from './shareLists'
 import { SharingSection } from './SharingSection'
 import { expiryLabel, UPDATE_FAILED_MESSAGE } from './shareText'
+import { useConfirmedChange } from './useConfirmedChange'
 import { useMe } from './useMe'
 import { useNow } from './useNow'
 import { useShareChanges } from './useShareChanges'
@@ -37,7 +38,6 @@ type OfferedProfile = NonNullable<ListedOffer['profile']>
 /** An offer as the page lists it: one whose Profile the server names. */
 type PendingOffer = ListedOffer & { profile: OfferedProfile }
 type Household = MeQuery['me']['household']
-type Decision = 'accept' | 'decline'
 
 /** The offers of Profiles to the Account's Household, which its admins accept or decline. */
 export function ShareOffersScreen() {
@@ -114,56 +114,34 @@ function HouseholdOffers({
   })
   const [accept] = useMutation(AcceptProfileShareDocument)
   const [decline] = useMutation(RejectProfileShareDocument)
-  /** The offer whose acceptance waits for the admin's confirmation. */
-  const [confirming, setConfirming] = useState<PendingOffer | null>(null)
-  /** The offer whose decision is on its way; no other decision starts until it lands. */
-  const [deciding, setDeciding] = useState<string | null>(null)
-  const [refusal, setRefusal] = useState<string | null>(null)
-
   // A failed read keeps the list that is on screen; the query's own error state reports it.
   const readAgain = () => query.refetch().catch(() => undefined)
-
-  /** Sends the decision and reads the offers again; resolves to whether the server took it. */
-  async function decide(offer: PendingOffer, decision: Decision): Promise<boolean> {
-    setRefusal(null)
-    setDeciding(offer.id)
-    try {
-      const errors = await send(offer, decision)
-      if (errors?.length) {
-        setRefusal(errors.map(userErrorMessage).join(' '))
-      }
-      // A refused offer may have been decided or withdrawn elsewhere, so the list is read again.
-      await readAgain()
-      return !errors?.length
-    } catch (error) {
-      setRefusal(requestFailureMessage(error, UPDATE_FAILED_MESSAGE))
-      return false
-    } finally {
-      setDeciding(null)
-    }
-  }
-
-  async function send(
-    offer: PendingOffer,
-    decision: Decision,
-  ): Promise<readonly UserErrorLike[] | undefined> {
-    const variables = { input: { shareId: offer.id } }
-    if (decision === 'accept') {
-      return (await accept({ variables })).data?.acceptProfileShare?.userErrors
-    }
-    return (await decline({ variables })).data?.rejectProfileShare?.userErrors
-  }
-
-  async function confirmAccept(offer: PendingOffer) {
-    if (await decide(offer, 'accept')) {
-      setConfirming(null)
-      onDecided(`${offeredProfile(offer)} accepted into ${household.name}.`)
-    }
-  }
+  const accepting = useConfirmedChange<PendingOffer>({
+    send: async (offer) =>
+      (await accept({ variables: { input: { shareId: offer.id } } })).data?.acceptProfileShare
+        ?.userErrors ?? [],
+    readAgain,
+    onDone: (offer) => onDecided(`${offeredProfile(offer)} accepted into ${household.name}.`),
+  })
+  /** The offer whose decline is on its way; no other decision starts until it lands. */
+  const [declining, setDeclining] = useState<string | null>(null)
+  const [refusal, setRefusal] = useState<string | null>(null)
+  const deciding = declining !== null || accepting.sending
 
   async function declineNow(offer: PendingOffer) {
-    if (await decide(offer, 'decline')) {
-      onDecided(`Offer of ${offeredProfile(offer)} declined.`)
+    setRefusal(null)
+    setDeclining(offer.id)
+    try {
+      const { data } = await decline({ variables: { input: { shareId: offer.id } } })
+      const errors = data?.rejectProfileShare?.userErrors ?? []
+      if (errors.length > 0) setRefusal(errors.map(userErrorMessage).join(' '))
+      // A refused offer may have been decided or withdrawn elsewhere, so the list is read again.
+      await readAgain()
+      if (errors.length === 0) onDecided(`Offer of ${offeredProfile(offer)} declined.`)
+    } catch (error) {
+      setRefusal(requestFailureMessage(error, UPDATE_FAILED_MESSAGE))
+    } finally {
+      setDeclining(null)
     }
   }
 
@@ -184,7 +162,7 @@ function HouseholdOffers({
 
   return (
     <>
-      {refusal && !confirming && (
+      {refusal && !accepting.pending && (
         <p className={styles.refusal} role="alert">
           {refusal}
         </p>
@@ -214,10 +192,10 @@ function HouseholdOffers({
                     <Button
                       variant="filled"
                       aria-label={`Accept ${offeredProfile(offer)}`}
-                      disabled={deciding !== null}
+                      disabled={deciding}
                       onClick={() => {
                         setRefusal(null)
-                        setConfirming(offer)
+                        accepting.ask(offer)
                       }}
                     >
                       Accept
@@ -225,8 +203,8 @@ function HouseholdOffers({
                     <Button
                       variant="default"
                       aria-label={`Decline ${offeredProfile(offer)}`}
-                      loading={deciding === offer.id && !confirming}
-                      disabled={deciding !== null}
+                      loading={declining === offer.id}
+                      disabled={deciding}
                       onClick={() => void declineNow(offer)}
                     >
                       Decline
@@ -239,20 +217,19 @@ function HouseholdOffers({
         )}
       </div>
       <ConfirmDialog
-        opened={confirming !== null}
-        title={confirming ? `Accept ${offeredProfile(confirming)} into ${household.name}?` : ''}
-        body={confirming ? acceptance(confirming.profile, household.name) : ''}
+        opened={accepting.pending !== null}
+        title={
+          accepting.pending
+            ? `Accept ${offeredProfile(accepting.pending)} into ${household.name}?`
+            : ''
+        }
+        body={accepting.pending ? acceptance(accepting.pending.profile, household.name) : ''}
         confirmLabel="Accept"
         icon={null}
-        pending={confirming !== null && deciding === confirming.id}
-        error={refusal}
-        onClose={() => {
-          setConfirming(null)
-          setRefusal(null)
-        }}
-        onConfirm={() => {
-          if (confirming) void confirmAccept(confirming)
-        }}
+        pending={accepting.sending}
+        error={accepting.refusal}
+        onClose={accepting.close}
+        onConfirm={accepting.confirmPending}
       />
     </>
   )
