@@ -16,6 +16,7 @@ import { serveGraphqlSocket } from '../test/graphqlSocket'
 import { meFixture } from '../test/meFixture'
 import {
   answerNotification,
+  followingNotificationChanges,
   hoursAgo,
   notificationChange,
   notificationEdge,
@@ -68,11 +69,6 @@ function serve(page: NotificationsQuery = notificationsPage([]), me = meFixture(
 
 function rows() {
   return within(screen.getByRole('list', { name: 'Notifications' })).getAllByRole('listitem')
-}
-
-/** Waits until the page follows changes, so that a change published next reaches it. */
-async function followingNotificationChanges(socket: ReturnType<typeof serveGraphqlSocket>) {
-  await waitFor(() => expect(socket.isLive('NotificationsChanged')).toBe(true))
 }
 
 function lines() {
