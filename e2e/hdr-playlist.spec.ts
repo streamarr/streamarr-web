@@ -310,3 +310,21 @@ test('the HDR toggle that Original holds on reads apart from a choice the viewer
   // The check is not text: it needs 3 to 1, where the label needs 4.5.
   expect(check).toBeGreaterThanOrEqual(3)
 })
+
+// Forced colors remove every row's fill, so the check is the mark that is left to show HDR is on.
+test('the HDR toggle that Original holds on keeps its check when the system forces its colors', async ({
+  page,
+  request,
+}) => {
+  const { toggle } = await openQualityMenuInOriginal(page, request)
+  const check = toggle.locator('svg')
+
+  for (const palette of ['light', 'dark'] as const) {
+    await page.emulateMedia({ forcedColors: 'active', colorScheme: palette })
+    expect(await page.evaluate(() => matchMedia('(forced-colors: active)').matches)).toBe(true)
+
+    expect
+      .soft(textContrast(await paintedText(check)), `in a ${palette} forced palette`)
+      .toBeGreaterThanOrEqual(3)
+  }
+})

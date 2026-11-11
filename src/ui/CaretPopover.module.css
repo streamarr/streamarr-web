@@ -111,8 +111,11 @@
 .toggle[aria-disabled='true'][aria-checked='true'] {
   font-weight: var(--font-weight-regular);
 
+  /* An svg keeps a color set on it when the system forces colors, and would draw this one on a
+     forced white background. `auto` lets the system's text color replace it. */
   & .check {
     color: var(--text-secondary);
+    forced-color-adjust: auto;
   }
 }
 
