@@ -235,8 +235,7 @@ export function ShareForm({
       ) : (
         <TextInput
           ref={field}
-          label="Share code"
-          description="An admin of the other Household gives you this code."
+          label="Share code from the other Household"
           value={text}
           readOnly={sending}
           error={fieldError}
