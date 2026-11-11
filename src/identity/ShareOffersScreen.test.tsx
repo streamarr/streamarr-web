@@ -7,7 +7,7 @@ import { renderAppAt } from '../test/render'
 import { leaveForHomeAndReturn, type SettingsPage } from '../test/returnVisits'
 import { server } from '../test/server'
 
-type OfferNode = ShareOffersQuery['pendingShareOffers']['edges'][number]['node'] & {
+type OfferNode = ShareOffersQuery['householdShares']['edges'][number]['node'] & {
   __typename: 'ProfileShare'
 }
 
@@ -35,7 +35,7 @@ function serve(offers: OfferNode[] = [], me = meFixture()) {
       expect(variables).toEqual({ householdId: HOUSEHOLD_ID })
       return HttpResponse.json({
         data: {
-          pendingShareOffers: {
+          householdShares: {
             __typename: 'ProfileShareConnection',
             edges: offers.map((node) => ({ __typename: 'ProfileShareEdge', node })),
           },
@@ -55,7 +55,7 @@ function serveInTurn(...lists: OfferNode[][]) {
       handler.calls += 1
       return HttpResponse.json({
         data: {
-          pendingShareOffers: {
+          householdShares: {
             __typename: 'ProfileShareConnection',
             edges: offers.map((node) => ({ __typename: 'ProfileShareEdge', node })),
           },

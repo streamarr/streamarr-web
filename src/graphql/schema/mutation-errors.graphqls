@@ -283,6 +283,11 @@ type InvitationNotPendingError implements InputMutationError & MutationError {
     inputPath: [String!]!
 }
 
+"""
+No share with that id that the caller may see. Once an offer is declined, canceled, expired or
+withdrawn, or a share has ended, the target Household's HouseholdAdmins get this too, as for a share
+that no longer exists, unless they manage the Profile or are ServerAdmins.
+"""
 type ShareNotFoundError implements InputMutationError & MutationError {
     message: String!
     inputPath: [String!]!
@@ -293,7 +298,28 @@ type ShareNotPendingError implements InputMutationError & MutationError {
     inputPath: [String!]!
 }
 
-"The system withdrew the offer — its offerer lost the authority to make it — so it cannot be accepted; the offer's invalidationReason says why."
+"No share code has that id, or the caller may not see the share codes of its Household."
+type ShareCodeNotFoundError implements InputMutationError & MutationError {
+    message: String!
+    inputPath: [String!]!
+}
+
+"The share code no longer works: it was spent, withdrawn or invalidated, or it expired."
+type ShareCodeNotLiveError implements InputMutationError & MutationError {
+    message: String!
+    inputPath: [String!]!
+}
+
+"""
+The share code does not work. It is wrong, or it was spent, withdrawn or invalidated, or it
+expired. The error is the same for each, and it names no Household.
+"""
+type ShareCodeRefusedError implements InputMutationError & MutationError {
+    message: String!
+    inputPath: [String!]!
+}
+
+"The system withdrew the offer, so it cannot be accepted. The message does not say why: the share's invalidationReason says why to the Profile's managers and ServerAdmins."
 type OfferInvalidatedError implements InputMutationError & MutationError {
     message: String!
     inputPath: [String!]!
