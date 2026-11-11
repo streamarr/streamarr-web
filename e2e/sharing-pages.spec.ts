@@ -105,7 +105,7 @@ test('each share of the Profile puts its action below the Household at phone wid
   await expectNoSidewaysScroll(page)
 })
 
-test('the review of an offer keeps each action whole and on the page at phone width', async ({
+test('the review of an offer puts Send invitation on a line of its own, then Back and Cancel together, each whole, at phone width', async ({
   page,
   request,
 }) => {
@@ -120,15 +120,21 @@ test('the review of an offer keeps each action whole and on the page at phone wi
   await page.getByRole('button', { name: 'Continue' }).click()
 
   await expect(page.getByRole('heading', { name: 'Offer Alex to Cabin?' })).toBeVisible()
-  for (const name of ['Send invitation', 'Back', 'Cancel']) {
-    const action = page.getByRole('button', { name, exact: true })
-    const box = await action.boundingBox()
-    expect(box).not.toBeNull()
-    expect(box!.x).toBeGreaterThanOrEqual(0)
-    expect(box!.x + box!.width).toBeLessThanOrEqual(PHONE.width)
-    await expectWhole(action)
-  }
+  const actions = ['Send invitation', 'Back', 'Cancel'].map((name) =>
+    page.getByRole('button', { name, exact: true }),
+  )
+  for (const action of actions) await expectWhole(action)
   await expectNoSidewaysScroll(page)
+
+  const form = await boxOf(page.getByTestId('share-form'))
+  const [offer, back, cancel] = await Promise.all(actions.map(boxOf))
+  // Send invitation spans the form; Back and Cancel share the line under it, edge to edge.
+  expect(offer.x).toBeCloseTo(form.x, 0)
+  expect(offer.x + offer.width).toBeCloseTo(form.x + form.width, 0)
+  expect(back.y).toBeGreaterThanOrEqual(offer.y + offer.height)
+  expect(Math.round(cancel.y)).toBe(Math.round(back.y))
+  expect(back.x).toBeCloseTo(form.x, 0)
+  expect(cancel.x + cancel.width).toBeCloseTo(form.x + form.width, 0)
 })
 
 test('the share form sits under the list a full-width hairline apart, as each row does, at desktop width', async ({

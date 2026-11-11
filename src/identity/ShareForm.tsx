@@ -259,7 +259,7 @@ export function ShareForm({
           {refusal}
         </p>
       )}
-      <div className={styles.actions}>
+      <div className={review ? `${styles.actions} ${styles.reviewActions}` : styles.actions}>
         <Button type="submit" loading={sending}>
           {review ? 'Send invitation' : 'Continue'}
         </Button>

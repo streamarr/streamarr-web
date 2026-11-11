@@ -82,6 +82,19 @@
   gap: var(--spacing-8);
 }
 
+/* At phone width the review's three actions take two lines and leave none alone on one: the offer
+   across the first, Back and Cancel sharing the second. */
+@media (max-width: 760px) {
+  .reviewActions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .reviewActions > :first-child {
+    grid-column: 1 / -1;
+  }
+}
+
 .share {
   align-self: flex-start;
 }
