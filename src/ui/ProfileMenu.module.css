@@ -1,4 +1,5 @@
 .profileChip {
+  position: relative;
   width: 32px;
   height: 32px;
   border-radius: var(--radius-md);
@@ -69,7 +70,8 @@
 }
 
 .profileMenu {
-  width: 250px;
+  /* Wide enough for "Household settings" and a two-digit count on one line. */
+  width: 272px;
   border: var(--profile-menu-border) solid var(--color-alpha-16);
   border-radius: var(--profile-menu-radius);
   /* Solid on purpose: a blurred translucency stalls Chromium's compositor during captures. */
