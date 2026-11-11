@@ -344,6 +344,24 @@ describe('Older Notifications', () => {
     expect(screen.queryByTestId('older-notifications')).not.toBeInTheDocument()
   })
 
+  it('shouldLoadOlderNotificationsWhenTheNewestPageHasNoneToShow', async () => {
+    serve()
+    servePages(
+      notificationsPage([null], { hasNextPage: true }),
+      notificationsPage([answerAbout('Mara'), answerAbout('Leo')], { from: 2 }),
+    )
+    renderAppAt(NOTIFICATIONS)
+
+    await reachTheEndOfTheList()
+
+    await screen.findByText('“Cabin” accepted the Profile “Leo”.')
+    expect(lines()).toEqual([
+      '“Cabin” accepted the Profile “Mara”.',
+      '“Cabin” accepted the Profile “Leo”.',
+    ])
+    expect(screen.queryByText('No notifications.')).not.toBeInTheDocument()
+  })
+
   it('shouldShowANotificationOnceWhenTheOlderPageRepeatsOneItShows', async () => {
     serve()
     servePages(NEWEST, notificationsPage([answerAbout('Sam'), answerAbout('Leo')], { from: 3 }))
