@@ -22,9 +22,11 @@ import { PageNotice } from '../ui/PageNotice'
 import { usePageNotice } from '../ui/usePageNotice'
 import styles from './Sharing.module.css'
 import { SharedProfileText } from './SharedProfileText'
+import { keepsInHouseholdShares, withShareChange, type ShareChange } from './shareLists'
 import { SharingSection } from './SharingSection'
 import { UPDATE_FAILED_MESSAGE } from './shareText'
 import { useMe } from './useMe'
+import { useShareChanges } from './useShareChanges'
 
 type ListedShare = SharedWithHouseholdQuery['householdShares']['edges'][number]['node']
 /** A share as the page lists it: one whose Profile the server names. */
@@ -70,10 +72,10 @@ function SharedWithUsContent({ announce }: Readonly<{ announce: Announce }>) {
       />
     )
   }
-  const { household } = me.data.me
+  const { household, serverAdmin } = me.data.me
   return (
     <div className={styles.sections}>
-      <SharedProfiles household={household} announce={announce} />
+      <SharedProfiles household={household} serverAdmin={serverAdmin} announce={announce} />
       <VisitorTvs household={household} announce={announce} />
     </div>
   )
@@ -81,13 +83,38 @@ function SharedWithUsContent({ announce }: Readonly<{ announce: Announce }>) {
 
 function SharedProfiles({
   household,
+  serverAdmin,
   announce,
-}: Readonly<{ household: Household; announce: Announce }>) {
-  // Shares start and end elsewhere, so a visit shows only the server's answer.
-  const query = useQuery(SharedWithHouseholdDocument, {
-    variables: { householdId: household.id },
-    fetchPolicy: 'network-only',
+}: Readonly<{ household: Household; serverAdmin: boolean; announce: Announce }>) {
+  const client = useApolloClient()
+  const variables = { householdId: household.id }
+  // The shares that the query asks for.
+  const list = {
+    householdId: household.id,
+    statuses: ['ACTIVE'] as const,
+    visitorsOnly: true,
+    serverAdmin,
+  }
+  useShareChanges((change) => {
+    const { cache } = client
+    const data = cache.readQuery({ query: SharedWithHouseholdDocument, variables })
+    if (!data) return
+    const listed = data.householdShares.edges
+    const edges = withShareChange(listed, change, (share) =>
+      keepsInHouseholdShares(share, list, new Date()),
+    )
+    cache.writeQuery({
+      query: SharedWithHouseholdDocument,
+      variables,
+      data: { ...data, householdShares: { ...data.householdShares, edges } },
+    })
+    // The end of someone's Personal Profile's share unlinks the TVs that person linked here.
+    if (leaving(listed, edges, change)?.profile.personalProfile) {
+      void client.refetchQueries({ include: [VisitorDevicesDocument] }).catch(() => undefined)
+    }
   })
+  // Shares start and end elsewhere, so a visit shows only the server's answer.
+  const query = useQuery(SharedWithHouseholdDocument, { variables, fetchPolicy: 'network-only' })
   const [end] = useMutation(EndProfileShareDocument)
   const readAgain = () => query.refetch().catch(() => undefined)
   const ending = useConfirmedChange<VisitorShare>({
@@ -319,6 +346,17 @@ function endConsequence(profile: SharedProfileFieldsFragment, household: string)
   const stops = `${profile.name} stops being available in ${household}, and anyone using it here returns to the Profile picker.`
   if (!profile.personalProfile) return stops
   return `${stops} This is someone's Personal Profile, so that person can no longer use ${household}, and the TVs they linked here are unlinked.`
+}
+
+/** The listed share that the change takes out of the list, if any. */
+function leaving(
+  listed: readonly { node: ListedShare }[],
+  edges: readonly { node: ListedShare }[],
+  change: ShareChange,
+): VisitorShare | null {
+  if (edges.some((edge) => edge.node.id === change.shareId)) return null
+  const share = listed.find((edge) => edge.node.id === change.shareId)?.node
+  return share && namesItsProfile(share) ? share : null
 }
 
 function namesItsProfile(share: ListedShare): share is VisitorShare {
