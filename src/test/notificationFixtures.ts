@@ -1,8 +1,11 @@
+import { waitFor } from '@testing-library/react'
+import { expect } from 'vitest'
 import type {
   NotificationEdgeFieldsFragment,
   NotificationsChangedSubscription,
   NotificationsQuery,
 } from '../graphql/generated/graphql'
+import type { serveGraphqlSocket } from './graphqlSocket'
 
 type Node = NonNullable<NotificationEdgeFieldsFragment['node']>
 type OfferNode = Extract<Node, { __typename: 'ProfileShareOfferedNotification' }>
@@ -111,4 +114,12 @@ export function notificationsChanged(
 /** The entry of a change for the Notification at `edge`, or for one that left the list. */
 export function notificationChange(notificationId: string, edge: Edge | null): Entry {
   return { __typename: 'NotificationChange', notificationId, edge } as Entry
+}
+
+/**
+ * Waits until the session follows changes to the Account's Notifications, as the Profile menu's
+ * count does on every page of an account session, so that a change published next reaches it.
+ */
+export async function followingNotificationChanges(socket: ReturnType<typeof serveGraphqlSocket>) {
+  await waitFor(() => expect(socket.isLive('NotificationsChanged')).toBe(true))
 }

@@ -1,11 +1,10 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import { delay, graphql, HttpResponse } from 'msw'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
-import type { ShareOffersQuery } from '../graphql/generated/graphql'
 import { focusesOf, leaveTheConfirmation, type WayOut } from '../test/focus'
 import { comeBackOnline, readsThatCanBeHeld } from '../test/graphqlResponses'
 import { serveGraphqlSocket } from '../test/graphqlSocket'
-import { HOUSEHOLD_ID, meFixture, PROFILE_ID } from '../test/meFixture'
+import { HOUSEHOLD_ID, meFixture } from '../test/meFixture'
 import { renderAppAt } from '../test/render'
 import {
   leaveForHome,
@@ -15,6 +14,13 @@ import {
 } from '../test/returnVisits'
 import { server } from '../test/server'
 import {
+  offer,
+  OFFER_ID,
+  offeredProfile,
+  offersData,
+  type OfferNode,
+} from '../test/shareOfferFixtures'
+import {
   followingShareChanges,
   HIDDEN_ONCE_OVER,
   IN_A_WEEK,
@@ -22,55 +28,9 @@ import {
   shareChanged,
 } from '../test/shareChangeFixtures'
 
-type OfferFields = ShareOffersQuery['householdShares']['edges'][number]['node']
-type OfferedProfile = NonNullable<OfferFields['profile']> & { __typename: 'ProfileSummary' }
-type OfferNode = Omit<OfferFields, 'profile'> & {
-  __typename: 'ProfileShare'
-  profile: OfferedProfile | null
-}
-
 const OFFERS = '/settings/household/offers'
 const SHARE_OFFERS: SettingsPage = { area: 'Household settings', heading: 'Share offers' }
-const OFFER_ID = '77777777-7777-7777-7777-777777777777'
 const HOUR = 60 * 60 * 1000
-
-function offeredProfile(overrides: Partial<OfferedProfile> = {}): OfferedProfile {
-  return {
-    __typename: 'ProfileSummary',
-    id: PROFILE_ID,
-    name: 'Alex',
-    picture: null,
-    kind: 'ADULT',
-    personalProfile: false,
-    restricted: false,
-    ...overrides,
-  }
-}
-
-function offer(overrides: Partial<OfferNode> = {}): OfferNode {
-  return {
-    __typename: 'ProfileShare',
-    id: OFFER_ID,
-    profileId: PROFILE_ID,
-    householdId: HOUSEHOLD_ID,
-    status: 'PENDING',
-    // A week ahead, since the server lists an offer as waiting only before its expiry.
-    expiresAt: IN_A_WEEK,
-    profile: offeredProfile(),
-    offeredByDisplayName: 'Sam',
-    visitor: true,
-    ...overrides,
-  }
-}
-
-function offersData(offers: OfferNode[]) {
-  return {
-    householdShares: {
-      __typename: 'ProfileShareConnection',
-      edges: offers.map((node) => ({ __typename: 'ProfileShareEdge', node })),
-    },
-  }
-}
 
 function serve(offers: OfferNode[] = [], me = meFixture()) {
   const socket = serveGraphqlSocket()
