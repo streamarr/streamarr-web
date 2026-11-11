@@ -83,15 +83,17 @@
 }
 
 /* At phone width the review's three actions take two lines and leave none alone on one: the offer
-   across the first, Back and Cancel sharing the second. */
+   across the first, Back and Cancel sharing the second. Where the two no longer fit side by side,
+   they wrap rather than clip their labels. */
 @media (max-width: 760px) {
-  .reviewActions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+  .reviewActions > * {
+    flex: 1 1 0;
+    /* A button hides what overflows it, so without this it shrinks past its label, never wraps. */
+    min-width: max-content;
   }
 
   .reviewActions > :first-child {
-    grid-column: 1 / -1;
+    flex-basis: 100%;
   }
 }
 
