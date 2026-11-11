@@ -141,6 +141,23 @@ test('the review of an offer puts Offer share on a line of its own, then Back an
   expect(cancel.x + cancel.width).toBeCloseTo(form.x + form.width, 0)
 })
 
+// A 320 pixel phone zoomed to 125%: too narrow for Back and Cancel to share a line.
+test('the review of an offer keeps each action whole and inside the form at 256 pixels wide', async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize({ width: 256, height: 844 })
+  const actions = await openTheReview(page, request)
+
+  const form = await boxOf(page.getByTestId('share-form'))
+  for (const action of actions) {
+    await expectWhole(action)
+    const box = await boxOf(action)
+    expect(box.x).toBeGreaterThanOrEqual(form.x)
+    expect(box.x + box.width).toBeLessThanOrEqual(form.x + form.width)
+  }
+})
+
 test('the share form sits under the list a full-width hairline apart, as each row does, at desktop width', async ({
   page,
   request,
