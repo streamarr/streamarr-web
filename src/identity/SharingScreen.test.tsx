@@ -1285,6 +1285,23 @@ describe('Sharing', () => {
     expect(asked.lookUps).toHaveLength(1)
   })
 
+  it('shouldShowTheSameReviewWithoutAskingAgainWhenThePersonGoesBackAndContinuesWithTheSameCode', async () => {
+    serve()
+    const asked = serveShareCodeQuestions({ preview: sharePreviewFixture({ wouldLock: true }) })
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
+    await user.click(await screen.findByRole('button', { name: 'Back' }))
+
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+
+    expect(await screen.findByRole('heading', { name: 'Offer Alex to Cabin?' })).toHaveFocus()
+    expect(
+      screen.getByText("Alex's Profile would be locked there until it has a PIN."),
+    ).toBeVisible()
+    expect(asked.lookUps).toHaveLength(1)
+    expect(asked.previews).toHaveLength(1)
+  })
+
   it('shouldCloseTheFormFromTheReviewWhenThePersonCancels', async () => {
     serve()
     const { user } = renderWithProviders(<SharingScreen />)
