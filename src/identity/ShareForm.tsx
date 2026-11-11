@@ -83,7 +83,9 @@ export function ShareForm({
   const [text, setText] = useState(codeFromLink ?? '')
   /** The last code the server found, so that asking about it again costs no second attempt. */
   const lookedUp = useRef<LookedUp | null>(null)
-  const [fieldError, setFieldError] = useState<string | null>(null)
+  /** Why the text cannot go on, and which refusal this is: each is written anew, to be heard. */
+  const [fieldError, setFieldError] = useState<{ reason: string; count: number } | null>(null)
+  const refusals = useRef(0)
   const [refusal, setRefusal] = useState<string | null>(null)
   const [review, setReview] = useState<Review | null>(null)
   const [sending, setSending] = useState(false)
@@ -210,7 +212,8 @@ export function ShareForm({
   /** Back to the code step, the text kept, with the reason it cannot go on. */
   function refuseText(reason: string) {
     setReview(null)
-    setFieldError(reason)
+    refusals.current += 1
+    setFieldError({ reason, count: refusals.current })
     field.current?.focus()
   }
 
@@ -239,7 +242,9 @@ export function ShareForm({
           label="Share code from the other Household"
           value={text}
           readOnly={sending}
-          error={fieldError}
+          // Announced as it arrives: Enter leaves focus in the field, whose description is not read.
+          error={fieldError && <span key={fieldError.count}>{fieldError.reason}</span>}
+          errorProps={{ role: 'alert' }}
           autoComplete="off"
           autoCapitalize="characters"
           spellCheck={false}
