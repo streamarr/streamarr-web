@@ -234,6 +234,17 @@ function servePlaybackChoices({
   return log
 }
 
+// Records the options of each creation from here on; the handlers before it still answer.
+function recordRequestedOptions(): CreatePlaybackSessionInput['options'][] {
+  const requested: CreatePlaybackSessionInput['options'][] = []
+  server.use(
+    graphql.mutation('CreatePlaybackSession', ({ variables }) => {
+      requested.push((variables as { input: CreatePlaybackSessionInput }).input.options)
+    }),
+  )
+  return requested
+}
+
 function choiceStreamUrl(creation: number) {
   return `/api/stream/choice-${creation}/multivariant.m3u8?t=playback-token`
 }
@@ -5129,16 +5140,6 @@ describe('Player', () => {
       await waitFor(() => expect(inputs).toEqual([{ itemId: 'e1', audioLanguage: 'FR' }]))
     })
 
-    function recordRequestedOptions(): CreatePlaybackSessionInput['options'][] {
-      const requested: CreatePlaybackSessionInput['options'][] = []
-      server.use(
-        graphql.mutation('CreatePlaybackSession', ({ variables }) => {
-          requested.push((variables as { input: CreatePlaybackSessionInput }).input.options)
-        }),
-      )
-      return requested
-    }
-
     const FRENCH_BESIDE_ENGLISH = {
       audio: [
         { name: 'English', lang: 'en' },
@@ -7756,6 +7757,25 @@ describe('Player', () => {
       expect(hls.config?.videoPreference).toEqual(SDR_ONLY)
       expect(hdrToggleIn(await openQualityMenu(user))).toHaveAttribute('aria-checked', 'false')
       expect(screen.getByRole('button', { name: 'Quality: 720p' })).toBeInTheDocument()
+    })
+
+    it('shouldAskForTheOtherRangeInTheAudioLanguageThatPlaysWhenTheViewerTogglesHdr', async () => {
+      const { user } = await pickForAnHdrSource({ picked: '720p' })
+      const requested = recordRequestedOptions()
+      offerHlsTracks({
+        audio: [
+          { name: 'English', lang: 'en' },
+          { name: 'Français', lang: 'fre' },
+        ],
+        audioTrack: 1,
+      })
+
+      await user.click(hdrToggleIn(await openQualityMenu(user)) as HTMLElement)
+      await showingVideo(choiceStreamUrl(3))
+
+      expect(requested).toEqual([
+        { quality: 'HIGH_720P', dynamicRange: 'SDR', audioLanguage: 'FR' },
+      ])
     })
 
     it('shouldAskForHdrAgainWhenTheViewerTogglesHdrBackOn', async () => {
