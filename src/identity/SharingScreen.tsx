@@ -1,5 +1,5 @@
 import { Center, Loader } from '@mantine/core'
-import { useQuery } from '@apollo/client/react'
+import { useApolloClient, useQuery } from '@apollo/client/react'
 import { useState } from 'react'
 import settingsStyles from '../styles/settings.module.css'
 import { ProfileSharesDocument } from '../graphql/generated/graphql'
@@ -9,7 +9,9 @@ import { PageNotice } from '../ui/PageNotice'
 import { usePageNotice } from '../ui/usePageNotice'
 import { ArrivingShareCodeContext } from './arrivingShareCode'
 import styles from './Sharing.module.css'
+import { keepsInProfileShares, withShareChange } from './shareLists'
 import { useMe } from './useMe'
+import { useShareChanges } from './useShareChanges'
 import { WhereShared, type ProfileShareRow } from './WhereShared'
 
 type PersonalProfile = Readonly<{ id: string; name: string }>
@@ -74,11 +76,20 @@ function ProfileSharing({
   ownHouseholdName: string
   onChanged: (notice: string) => void
 }>) {
+  const { cache } = useApolloClient()
+  const variables = { profileId: profile.id }
+  // The query asks for the Profile's shares at every status.
+  useShareChanges((change) =>
+    cache.updateQuery({ query: ProfileSharesDocument, variables }, (data) => {
+      if (!data) return undefined
+      const edges = withShareChange(data.profileShares.edges, change, (share) =>
+        keepsInProfileShares(share, variables, new Date()),
+      )
+      return { ...data, profileShares: { ...data.profileShares, edges } }
+    }),
+  )
   // Offers are accepted, declined and expire elsewhere, so a visit shows only the server's answer.
-  const query = useQuery(ProfileSharesDocument, {
-    variables: { profileId: profile.id },
-    fetchPolicy: 'network-only',
-  })
+  const query = useQuery(ProfileSharesDocument, { variables, fetchPolicy: 'network-only' })
   // A failed read keeps the list that is on screen.
   const readAgain = () => query.refetch().catch(() => undefined)
 

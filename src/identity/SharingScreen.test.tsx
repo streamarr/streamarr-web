@@ -25,6 +25,7 @@ import {
   SHARE_CODE,
   sharePreviewFixture,
 } from '../test/shareCodeFixtures'
+import { followingShareChanges, liveShare, shareChanged } from '../test/shareChangeFixtures'
 import { SharingScreen } from './SharingScreen'
 
 type ShareFields = ProfileSharesQuery['profileShares']['edges'][number]['node']
@@ -85,6 +86,7 @@ function me(usableHouseholds = [SMITH_FAMILY]) {
 }
 
 function serve(shares: ShareNode[] = [], account = me()) {
+  const socket = serveGraphqlSocket()
   server.use(
     graphql.query('Me', () => HttpResponse.json({ data: { me: account } })),
     graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
@@ -94,6 +96,7 @@ function serve(shares: ShareNode[] = [], account = me()) {
     }),
   )
   serveShareCodeQuestions()
+  return socket
 }
 
 // Answers each read of the shares with the next list, and the last list from then on.
@@ -114,7 +117,6 @@ function serveReturnVisits(shares: ShareNode[]) {
     usableHouseholds: [SMITH_FAMILY, CABIN],
   })
   serve(shares, account)
-  serveGraphqlSocket()
   server.use(
     graphql.query('LanguageSettings', () =>
       HttpResponse.json({
@@ -798,3 +800,111 @@ function endedPayload() {
 async function noticed(text: string) {
   await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(text))
 }
+
+describe('Sharing as shares change elsewhere', () => {
+  // A share of Alex as the Profile's manager receives it.
+  function changedShare(overrides: Parameters<typeof liveShare>[0] = {}) {
+    return liveShare({
+      householdId: CABIN_ID,
+      household: { __typename: 'HouseholdSummary', id: CABIN_ID, name: 'Cabin' },
+      ...overrides,
+    })
+  }
+
+  async function openWith(shares: ShareNode[]) {
+    const socket = serve([membershipShare(), ...shares], me([SMITH_FAMILY, CABIN]))
+    // The whole app, whose reads after a missed change belong to its signed-in pages.
+    const rendered = renderAppAt(SHARING)
+    await screen.findByRole('region', { name: 'Where Alex is shared' })
+    await followingShareChanges(socket)
+    return { socket, ...rendered }
+  }
+
+  it('shouldListAnOfferOfTheProfileMadeElsewhereWhileThePageIsOpen', async () => {
+    const { socket } = await openWith([])
+
+    socket.publish('ProfileShareChanged', shareChanged(SHARE_ID, changedShare()))
+
+    expect(await screen.findByRole('button', { name: 'Cancel offer to Cabin' })).toBeEnabled()
+    expect(screen.queryByText('Alex is not shared with another Household.')).not.toBeInTheDocument()
+  })
+
+  it('shouldShowAnOfferAsSharedOnceItIsAcceptedElsewhere', async () => {
+    const { socket } = await openWith([share()])
+    expect(screen.getByText('Waiting for an admin there')).toBeVisible()
+
+    socket.publish(
+      'ProfileShareChanged',
+      shareChanged(SHARE_ID, changedShare({ status: 'ACTIVE' })),
+    )
+
+    expect(await screen.findByRole('button', { name: 'End share with Cabin' })).toBeEnabled()
+    expect(screen.queryByText('Waiting for an admin there')).not.toBeInTheDocument()
+  })
+
+  it('shouldTakeOutAShareThatNoLongerExistsWhenItsHouseholdIsDeleted', async () => {
+    const { socket } = await openWith([share({ status: 'ACTIVE' })])
+    await screen.findByRole('button', { name: 'End share with Cabin' })
+
+    socket.publish('ProfileShareChanged', shareChanged(SHARE_ID, null))
+
+    expect(await screen.findByText('Alex is not shared with another Household.')).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'End share with Cabin' })).not.toBeInTheDocument()
+  })
+
+  it('shouldKeepAShareWhenItsChangeArrivesWithErrors', async () => {
+    const { socket } = await openWith([share({ status: 'ACTIVE' })])
+    // The change is reported missed, so the shares read again; held, that read cannot hide what
+    // the change did to the list.
+    server.use(graphql.query('ProfileShares', () => delay('infinite')))
+
+    socket.publish('ProfileShareChanged', {
+      data: {
+        profileShareChanged: { __typename: 'ProfileShareChange', shareId: SHARE_ID, share: null },
+      },
+      errors: [{ message: 'boom', path: ['profileShareChanged', 'share'] }],
+    })
+    socket.publish(
+      'ProfileShareChanged',
+      shareChanged(
+        'lake-house',
+        changedShare({
+          id: 'lake-house',
+          householdId: 'lake-house',
+          household: { __typename: 'HouseholdSummary', id: 'lake-house', name: 'Lake House' },
+        }),
+      ),
+    )
+
+    await screen.findByRole('button', { name: 'Cancel offer to Lake House' })
+    expect(screen.getByRole('button', { name: 'End share with Cabin' })).toBeEnabled()
+  })
+
+  it('shouldLeaveOutAShareOfAnotherProfileWhenItsChangeArrives', async () => {
+    const { socket } = await openWith([])
+
+    socket.publish(
+      'ProfileShareChanged',
+      shareChanged('robin', changedShare({ id: 'robin', profileId: 'robin', status: 'ACTIVE' })),
+    )
+    socket.publish('ProfileShareChanged', shareChanged(SHARE_ID, changedShare()))
+
+    await screen.findByRole('button', { name: 'Cancel offer to Cabin' })
+    expect(screen.queryByRole('button', { name: 'End share with Cabin' })).not.toBeInTheDocument()
+  })
+
+  it('shouldKeepTheShareFormAsTypedWhenAShareChangesElsewhere', async () => {
+    const { socket, user } = await openWith([share()])
+    const field = await openShareForm(user)
+    await user.type(field, 'BCDF')
+
+    socket.publish(
+      'ProfileShareChanged',
+      shareChanged(SHARE_ID, changedShare({ status: 'ACTIVE' })),
+    )
+
+    await screen.findByRole('button', { name: 'End share with Cabin' })
+    expect(screen.getByRole('textbox', { name: 'Share code' })).toHaveValue('BCDF')
+    expect(screen.getByRole('textbox', { name: 'Share code' })).toHaveFocus()
+  })
+})

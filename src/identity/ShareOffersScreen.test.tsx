@@ -1,11 +1,24 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import { delay, graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { ShareOffersQuery } from '../graphql/generated/graphql'
+import { serveGraphqlSocket } from '../test/graphqlSocket'
 import { HOUSEHOLD_ID, meFixture, PROFILE_ID } from '../test/meFixture'
 import { renderAppAt } from '../test/render'
-import { leaveForHomeAndReturn, type SettingsPage } from '../test/returnVisits'
+import {
+  leaveForHome,
+  leaveForHomeAndReturn,
+  returnThroughTheProfileMenu,
+  type SettingsPage,
+} from '../test/returnVisits'
 import { server } from '../test/server'
+import {
+  followingShareChanges,
+  HIDDEN_ONCE_OVER,
+  IN_A_WEEK,
+  liveShare,
+  shareChanged,
+} from '../test/shareChangeFixtures'
 
 type OfferFields = ShareOffersQuery['householdShares']['edges'][number]['node']
 type OfferedProfile = NonNullable<OfferFields['profile']> & { __typename: 'ProfileSummary' }
@@ -47,6 +60,7 @@ function offer(overrides: Partial<OfferNode> = {}): OfferNode {
 }
 
 function serve(offers: OfferNode[] = [], me = meFixture()) {
+  const socket = serveGraphqlSocket()
   server.use(
     graphql.query('Me', () => HttpResponse.json({ data: { me } })),
     graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
@@ -62,27 +76,28 @@ function serve(offers: OfferNode[] = [], me = meFixture()) {
       })
     }),
   )
+  return socket
 }
 
-// Answers each read of the offers with the next list, and the last list from then on.
-function serveInTurn(...lists: OfferNode[][]) {
-  const handler = { calls: 0 }
+// The offers the server holds at each read: a test changes them where the server would. The
+// page reads them again once it follows share changes, so no test counts on how often it reads.
+function serveOffers(offers: OfferNode[]) {
+  const held = { offers, reads: 0 }
   serve()
   server.use(
     graphql.query('ShareOffers', () => {
-      const offers = lists[Math.min(handler.calls, lists.length - 1)] ?? []
-      handler.calls += 1
+      held.reads += 1
       return HttpResponse.json({
         data: {
           householdShares: {
             __typename: 'ProfileShareConnection',
-            edges: offers.map((node) => ({ __typename: 'ProfileShareEdge', node })),
+            edges: held.offers.map((node) => ({ __typename: 'ProfileShareEdge', node })),
           },
         },
       })
     }),
   )
-  return handler
+  return held
 }
 
 function acceptedPayload() {
@@ -153,21 +168,25 @@ describe('Share offers', () => {
   })
 
   it('shouldListAnOfferThatArrivedWhileTheAdminWasAwayWhenTheyReturn', async () => {
-    serveInTurn([], [offer()])
+    const held = serveOffers([])
     const { user } = renderAppAt(OFFERS)
     await screen.findByText('No one has offered a Profile to Smith Family.')
 
-    await leaveForHomeAndReturn(user, SHARE_OFFERS)
+    await leaveForHome(user, SHARE_OFFERS)
+    held.offers = [offer()]
+    await returnThroughTheProfileMenu(user, SHARE_OFFERS)
 
     expect(await screen.findByRole('button', { name: 'Accept Alex' })).toBeEnabled()
   })
 
   it('shouldDropAnOfferTheServerNoLongerListsWhenTheAdminReturns', async () => {
-    serveInTurn([offer()], [])
+    const held = serveOffers([offer()])
     const { user } = renderAppAt(OFFERS)
     await screen.findByRole('button', { name: 'Accept Alex' })
 
-    await leaveForHomeAndReturn(user, SHARE_OFFERS)
+    await leaveForHome(user, SHARE_OFFERS)
+    held.offers = []
+    await returnThroughTheProfileMenu(user, SHARE_OFFERS)
 
     expect(
       await screen.findByText('No one has offered a Profile to Smith Family.'),
@@ -216,10 +235,11 @@ describe('Share offers', () => {
   })
 
   it('shouldAcceptTheOfferAndSaySoWhenTheAdminConfirms', async () => {
-    const offers = serveInTurn([offer()], [])
+    const held = serveOffers([offer()])
     server.use(
       graphql.mutation('AcceptProfileShare', ({ variables }) => {
         expect(variables).toEqual({ input: { shareId: OFFER_ID } })
+        held.offers = []
         return HttpResponse.json({ data: { acceptProfileShare: acceptedPayload() } })
       }),
     )
@@ -233,7 +253,6 @@ describe('Share offers', () => {
     expect(
       await screen.findByText('No one has offered a Profile to Smith Family.'),
     ).toBeInTheDocument()
-    expect(offers.calls).toBe(2)
     expect(screen.getByRole('heading', { level: 1, name: 'Share offers' })).toHaveFocus()
   })
 
@@ -284,12 +303,13 @@ describe('Share offers', () => {
   })
 
   it('shouldDeclineAnOfferAtOnceAndSaySo', async () => {
-    serveInTurn([offer()], [])
+    const held = serveOffers([offer()])
     let declined = false
     server.use(
       graphql.mutation('RejectProfileShare', ({ variables }) => {
         expect(variables).toEqual({ input: { shareId: OFFER_ID } })
         declined = true
+        held.offers = []
         return HttpResponse.json({
           data: {
             rejectProfileShare: {
@@ -312,10 +332,12 @@ describe('Share offers', () => {
   })
 
   it('shouldShowTheServersWordsAndReadTheOffersAgainWhenDecliningIsRefused', async () => {
-    const offers = serveInTurn([offer()], [offer()])
+    const held = serveOffers([offer()])
+    let readsWhenRefused = Infinity
     server.use(
-      graphql.mutation('RejectProfileShare', () =>
-        HttpResponse.json({
+      graphql.mutation('RejectProfileShare', () => {
+        readsWhenRefused = held.reads
+        return HttpResponse.json({
           data: {
             rejectProfileShare: {
               __typename: 'RejectProfileSharePayload',
@@ -325,15 +347,15 @@ describe('Share offers', () => {
               ],
             },
           },
-        }),
-      ),
+        })
+      }),
     )
     const { user } = renderAppAt(OFFERS)
 
     await user.click(await screen.findByRole('button', { name: 'Decline Alex' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('That offer is not pending.')
-    await waitFor(() => expect(offers.calls).toBe(2))
+    await waitFor(() => expect(held.reads).toBeGreaterThan(readsWhenRefused))
   })
 
   it('shouldSayAcceptingAdmitsThePersonWhenTheOfferIsSomeonesPersonalProfile', async () => {
@@ -409,6 +431,87 @@ describe('Share offers', () => {
     renderAppAt(OFFERS)
 
     expect(await screen.findByText('Expires in 6 days')).toBeInTheDocument()
+  })
+})
+
+describe('Share offers as they change elsewhere', () => {
+  const robin = liveShare({
+    id: '99999999-9999-9999-9999-999999999999',
+    profileId: 'robin',
+    profile: offeredProfile({ id: 'robin', name: 'Robin' }),
+    expiresAt: IN_A_WEEK,
+  })
+
+  async function openWithAnOfferOfAlex() {
+    const socket = serve([offer({ expiresAt: IN_A_WEEK })])
+    const rendered = renderAppAt(OFFERS)
+    await screen.findByRole('button', { name: 'Accept Alex' })
+    await followingShareChanges(socket)
+    return { socket, ...rendered }
+  }
+
+  function offeredNames() {
+    return screen
+      .getAllByRole('button', { name: /^Accept / })
+      .map((accept) => accept.getAttribute('aria-label'))
+  }
+
+  it('shouldListFirstAnOfferThatArrivesWhileThePageIsOpen', async () => {
+    const { socket } = await openWithAnOfferOfAlex()
+
+    socket.publish('ProfileShareChanged', shareChanged(robin.id, robin))
+
+    await waitFor(() => expect(offeredNames()).toEqual(['Accept Robin', 'Accept Alex']))
+  })
+
+  it('shouldTakeOutAnOfferWhenItIsAcceptedElsewhere', async () => {
+    const { socket } = await openWithAnOfferOfAlex()
+
+    socket.publish('ProfileShareChanged', shareChanged(OFFER_ID, liveShare({ status: 'ACTIVE' })))
+
+    expect(await screen.findByText('No one has offered a Profile to Smith Family.')).toBeVisible()
+  })
+
+  it('shouldTakeOutAnOfferWhenItsOffererWithdrawsIt', async () => {
+    const { socket } = await openWithAnOfferOfAlex()
+
+    socket.publish(
+      'ProfileShareChanged',
+      shareChanged(OFFER_ID, liveShare({ status: 'CANCELED', ...HIDDEN_ONCE_OVER })),
+    )
+
+    expect(await screen.findByText('No one has offered a Profile to Smith Family.')).toBeVisible()
+  })
+
+  it('shouldLeaveOutAnOfferToAnotherHouseholdWhenItsChangeArrives', async () => {
+    const { socket } = await openWithAnOfferOfAlex()
+
+    socket.publish(
+      'ProfileShareChanged',
+      shareChanged('elsewhere', liveShare({ id: 'elsewhere', householdId: 'cabin' })),
+    )
+    socket.publish('ProfileShareChanged', shareChanged(robin.id, robin))
+
+    await waitFor(() => expect(offeredNames()).toEqual(['Accept Robin', 'Accept Alex']))
+  })
+
+  it('shouldKeepFocusWhereThePersonIsWhenAnOfferArrives', async () => {
+    const { socket } = await openWithAnOfferOfAlex()
+    const decline = screen.getByRole('button', { name: 'Decline Alex' })
+    act(() => decline.focus())
+
+    socket.publish('ProfileShareChanged', shareChanged(robin.id, robin))
+
+    await screen.findByRole('button', { name: 'Accept Robin' })
+    expect(decline).toHaveFocus()
+  })
+
+  it('shouldStopFollowingShareChangesWhenTheAdminLeavesThePage', async () => {
+    const { socket, user } = await openWithAnOfferOfAlex()
+
+    await leaveForHome(user, SHARE_OFFERS)
+
+    await waitFor(() => expect(socket.isLive('ProfileShareChanged')).toBe(false))
   })
 })
 

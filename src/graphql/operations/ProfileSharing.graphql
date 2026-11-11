@@ -149,3 +149,15 @@ fragment ProfileShareFields on ProfileShare {
     name
   }
 }
+
+# A share carries every field that a list of shares reads, so a change can take its place in any of them.
+subscription ProfileShareChanged {
+  profileShareChanged {
+    shareId
+    share {
+      ...ShareOfferFields
+      ...ProfileShareFields
+      ...VisitorShareFields
+    }
+  }
+}
