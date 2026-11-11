@@ -2522,6 +2522,35 @@ describe('declarePlaybackCapabilities', () => {
       expect(familyEntries(declaration, 'HEVC')).toEqual([UHD_AT_60_HEVC_ENTRY_AT_LEVEL_6_2])
     })
 
+    it('shouldDeclareNoHdrDirectPlayWhenWebKitDecodesTheHdrFileAtTheLevelTheEntryDeclaresOnlyWithDroppedFrames', async () => {
+      const answers = hdrBrowser()
+      const isHdrFileQuestionAboveLevelFivePointOne = (configuration: MediaDecodingConfiguration) =>
+        configuration.type === 'file' &&
+        configuration.video?.transferFunction !== undefined &&
+        hevcLevelOf(configuration) > HEVC_LEVEL_5_1
+
+      const declaration = await declarePlaybackCapabilities(
+        hdrPlatformFixture({
+          decodingInfo: vi.fn((configuration: MediaDecodingConfiguration) =>
+            isHdrFileQuestionAboveLevelFivePointOne(configuration)
+              ? Promise.resolve(UNSMOOTH_SOFTWARE_ANSWER)
+              : answers(configuration),
+          ),
+          canPlayType: canPlayTypeOf(WEBKIT_FILE_TYPES),
+          userAgent: SAFARI,
+        }),
+      )
+
+      expect(familyEntries(declaration, 'HEVC')).toEqual([
+        {
+          ...UHD_AT_60_HEVC_ENTRY_AT_LEVEL_6_2,
+          directPlayContainers: ['MP4'],
+          directPlaySampleEntries: ['HVC1'],
+        },
+        hdrVideoEntry({ codecProfiles: hevcMainTen(HEVC_LEVEL_6_2) }),
+      ])
+    })
+
     it('shouldDeclareADirectPlayOnlyAudioEntryWhenTheBrowserPlaysTheCodecFromAFileButNotThroughMediaSource', async () => {
       const declaration = await declarePlaybackCapabilities(
         platformFixture({
