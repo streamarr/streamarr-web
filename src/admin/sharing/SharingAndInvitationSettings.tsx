@@ -1,26 +1,46 @@
 import { useMutation, useQuery } from '@apollo/client/react'
 import {
+  ChangeShareCodeLifetimeDocument,
   ChangeShareCodeLimitDocument,
+  ShareCodeLifetimeSettingDocument,
   ShareCodeLimitSettingDocument,
 } from '../../graphql/generated/graphql'
 import styles from '../../styles/settings.module.css'
 import { PageNotice } from '../../ui/PageNotice'
 import { usePageNotice } from '../../ui/usePageNotice'
 import { AmountSetting, answerOf, type SettingWords } from './AmountSetting'
-import { countOf, type Unit } from './amounts'
+import { amountOf, countOf, type StoredAmount, type Unit, type Units } from './amounts'
 
 type OnSaved = (notice: string) => void
+
+/** A lifetime as the server keeps it, in whole hours. */
+interface HoursSetting {
+  hours: number
+  minimumHours: number
+  maximumHours: number
+}
 
 // Each visit shows what is cached at once and reads the server again.
 const READ = { fetchPolicy: 'cache-and-network', notifyOnNetworkStatusChange: true } as const
 
-const CODE: Unit = { size: 1, one: 'code', many: 'codes' }
+const CODES: Units = [{ size: 1, one: 'code', many: 'codes' }]
 const LIVE_CODE: Unit = { size: 1, one: 'live share code', many: 'live share codes' }
+// The server takes a lifetime in hours; the admin may count it in hours or in days.
+const HOURS_OR_DAYS: Units = [
+  { size: 1, one: 'hour', many: 'hours' },
+  { size: 24, one: 'day', many: 'days' },
+]
 
 const LIMIT: SettingWords = {
   label: 'Live share codes per Household',
   subject: 'the share code limit',
   saved: (codes) => `Saved. A Household may hold ${countOf(codes, LIVE_CODE)}.`,
+}
+
+const SHARE_CODE_LIFETIME: SettingWords = {
+  label: 'A share code lasts',
+  subject: 'how long a share code lasts',
+  saved: (hours) => `Saved. A share code lasts ${amountOf(hours, HOURS_OR_DAYS)}.`,
 }
 
 /** The server-wide rules for share codes, invitations and offers, which a ServerAdmin sets. */
@@ -41,6 +61,9 @@ export function SharingAndInvitationSettings() {
         <div className={styles.settingRow}>
           <ShareCodeLimit onSaved={onSaved} />
         </div>
+        <div className={styles.settingRow}>
+          <ShareCodeLifetime onSaved={onSaved} />
+        </div>
       </div>
     </>
   )
@@ -60,7 +83,7 @@ function ShareCodeLimit({ onSaved }: Readonly<{ onSaved: OnSaved }>) {
   return (
     <AmountSetting
       words={LIMIT}
-      unit={CODE}
+      units={CODES}
       stored={
         setting && {
           value: setting.codes,
@@ -74,4 +97,33 @@ function ShareCodeLimit({ onSaved }: Readonly<{ onSaved: OnSaved }>) {
       onSaved={onSaved}
     />
   )
+}
+
+function ShareCodeLifetime({ onSaved }: Readonly<{ onSaved: OnSaved }>) {
+  const query = useQuery(ShareCodeLifetimeSettingDocument, READ)
+  const [change, { loading: saving }] = useMutation(ChangeShareCodeLifetimeDocument)
+  const setting = (query.data ?? query.previousData)?.shareCodeLifetimeSetting
+
+  async function save(hours: number) {
+    const { data } = await change({ variables: { input: { hours } } })
+    const payload = data?.changeShareCodeLifetime
+    return answerOf(payload?.userErrors, payload?.shareCodeLifetimeSetting?.hours)
+  }
+
+  return (
+    <AmountSetting
+      words={SHARE_CODE_LIFETIME}
+      units={HOURS_OR_DAYS}
+      stored={storedHours(setting)}
+      read={query}
+      saving={saving}
+      save={save}
+      onSaved={onSaved}
+    />
+  )
+}
+
+function storedHours(setting: HoursSetting | undefined): StoredAmount | undefined {
+  if (!setting) return undefined
+  return { value: setting.hours, minimum: setting.minimumHours, maximum: setting.maximumHours }
 }
