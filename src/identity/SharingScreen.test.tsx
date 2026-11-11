@@ -396,13 +396,30 @@ describe('Sharing', () => {
     )
     expect(canceled).toBe(false)
 
-    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Keep offer' }))
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(canceled).toBe(false)
   })
 
-  it.each<WayOut>(['Cancel', 'Escape'])(
+  // Cancel beside Cancel offer would read as two ways to cancel.
+  it('shouldOfferKeepOfferInPlaceOfCancelWhenThePersonConfirmsCancelingAnOffer', async () => {
+    serveInTurn([share()])
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    await user.click(await screen.findByRole('button', { name: 'Cancel offer to Cabin' }))
+
+    const dialog = screen.getByRole('dialog', { name: 'Cancel the offer to Cabin?' })
+    const keep = within(dialog).getByRole('button', { name: 'Keep offer' })
+    await waitFor(() => expect(keep).toHaveFocus())
+    expect(
+      within(dialog)
+        .getAllByRole('button')
+        .map((button) => button.textContent),
+    ).toEqual(['Keep offer', 'Cancel offer'])
+  })
+
+  it.each<WayOut>(['Keep offer', 'Escape'])(
     'shouldReturnFocusToCancelOfferWhenThePersonLeavesItsConfirmation(%s)',
     async (way) => {
       serveInTurn([share()])

@@ -11,16 +11,16 @@ export function focusesOf(element: HTMLElement): { count: number } {
   return focuses
 }
 
-/** The two ways to leave a confirmation without confirming. */
-export type WayOut = 'Cancel' | 'Escape'
+/** The ways to leave a confirmation without confirming: its dismiss button, by name, or Escape. */
+export type WayOut = 'Cancel' | 'Keep offer' | 'Escape'
 
 /** Leaves the open confirmation by `way`, and waits until it has closed. */
 export async function leaveTheConfirmation(user: UserEvent, way: WayOut) {
   const dialog = screen.getByRole('dialog')
-  if (way === 'Cancel') {
-    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
-  } else {
+  if (way === 'Escape') {
     await user.keyboard('{Escape}')
+  } else {
+    await user.click(within(dialog).getByRole('button', { name: way }))
   }
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
 }

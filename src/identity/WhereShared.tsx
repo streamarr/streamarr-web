@@ -142,6 +142,7 @@ export function WhereShared({
             : ''
         }
         confirmLabel="Cancel offer"
+        dismissLabel="Keep offer"
         destructive
         icon={null}
         pending={canceling.sending}
