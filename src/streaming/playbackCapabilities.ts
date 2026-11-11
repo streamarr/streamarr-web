@@ -1235,7 +1235,6 @@ function entryQuestions({
   if (!tier) {
     return []
   }
-  const level = tier.levels[family.codecFamily]
   const { hdr } = family
   if (!entry.compatibleBases.includes('SDR') && hdr) {
     return hdrQuestions({ family, hdr, tier, entry })
@@ -1248,7 +1247,30 @@ function entryQuestions({
         probe.bitDepth <= entry.maxBitDepth &&
         (probe.profiles.length === 0 || probe.profiles.some((profile) => profiles.has(profile))),
     )
-    .map((probe) => videoConfiguration(tier, probe.codec(level)))
+    .map((probe) =>
+      videoConfiguration(
+        tier,
+        probe.codec(declaredLevel({ family, tier, entry, profiles: probe.profiles })),
+      ),
+    )
+}
+
+// Direct play accepts every stream that the entry accepts, so each question asks at the level that
+// the entry declares for the question's codec profiles. AV1's 10-bit probe names no codec profile,
+// so it asks at the level that the picture needs.
+function declaredLevel({
+  family,
+  tier,
+  entry,
+  profiles,
+}: {
+  family: VideoFamily
+  tier: PictureTier
+  entry: VideoCapabilityEntryInput
+  profiles: readonly VideoCodecProfile[]
+}): number {
+  const declared = entry.codecProfiles.find(({ profile }) => profiles.includes(profile))
+  return declared?.maxLevel ?? tier.levels[family.codecFamily]
 }
 
 function hdrQuestions({
@@ -1262,7 +1284,7 @@ function hdrQuestions({
   tier: PictureTier
   entry: VideoCapabilityEntryInput
 }): VideoQuestion[] {
-  const level = tier.levels[family.codecFamily]
+  const level = declaredLevel({ family, tier, entry, profiles: hdr.profiles })
   return COMPATIBLE_BASE_PROBES.filter(({ base }) => entry.compatibleBases.includes(base)).map(
     ({ transferCharacteristics, color }) =>
       videoConfiguration(tier, hdr.codec(level, transferCharacteristics), color),
