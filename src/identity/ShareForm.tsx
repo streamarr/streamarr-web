@@ -33,6 +33,7 @@ interface Review {
 type Answer =
   | { kind: 'review'; review: Review }
   | { kind: 'refused' }
+  | { kind: 'cannot-offer' }
   | { kind: 'failed'; message: string }
   | { kind: 'outdated' }
 
@@ -40,12 +41,15 @@ type Answer =
 interface LookedUp {
   code: string
   householdName: string
-  /** The review of the offer with this code, once the server has previewed it. */
-  review?: Review
+  /** What the server's preview of the offer with this code said, once it has answered. */
+  previewed?: Answer
 }
 
 const REFUSED: Answer = { kind: 'refused' }
 const OUTDATED: Answer = { kind: 'outdated' }
+// The server answers no preview for a code that stopped working and for a Profile that the
+// Account may not offer, and does not say which.
+const CANNOT_OFFER: Answer = { kind: 'cannot-offer' }
 
 /**
  * Offers a Profile to the Household that a share code names, in two steps: the code, then a review
@@ -118,11 +122,11 @@ export function ShareForm({
   }
 
   // The preview is asked here, and never as a watched query: every request is an attempt. A code
-  // the server has previewed shows the same review again without asking.
+  // the server has previewed gets the same answer again without asking.
   async function askAbout(code: string): Promise<Answer> {
     const found = await lookUpOnce(code)
     if ('kind' in found) return found
-    if (found.review) return { kind: 'review', review: found.review }
+    if (found.previewed) return found.previewed
     if (isOutdated(code)) return OUTDATED
     const previewed = await client.query({
       query: ProfileSharePreviewDocument,
@@ -130,10 +134,12 @@ export function ShareForm({
       fetchPolicy: 'no-cache',
     })
     const effects = previewed.data?.profileSharePreview
-    if (!effects) return REFUSED
-    const review = { code, householdName: found.householdName, effects }
-    if (lookedUp.current?.code === code) lookedUp.current = { ...lookedUp.current, review }
-    return { kind: 'review', review }
+    const answer: Answer = effects
+      ? { kind: 'review', review: { code, householdName: found.householdName, effects } }
+      : CANNOT_OFFER
+    if (lookedUp.current?.code === code)
+      lookedUp.current = { ...lookedUp.current, previewed: answer }
+    return answer
   }
 
   /** Looks a code up, unless the server already found it: a preview that failed asks only again. */
@@ -181,6 +187,11 @@ export function ShareForm({
         return
       case 'failed':
         setRefusal(answer.message)
+        return
+      case 'cannot-offer':
+        setRefusal(
+          `This offer cannot be made. The code may have stopped working, or you may not be able to share ${profile.name}.`,
+        )
         return
       case 'review':
         setReview(answer.review)

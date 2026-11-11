@@ -760,20 +760,28 @@ describe('Sharing', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Sharing' })).toHaveFocus()
   })
 
-  it('shouldReturnToTheCodeWithTheRefusalWhenTheReviewFindsTheCodeNoLongerWorks', async () => {
+  it('shouldSayTheOfferCannotBeMadeWithoutAskingAgainWhenThePreviewAnswersNothing', async () => {
     serve()
-    serveShareCodeQuestions({ preview: { profileSharePreview: null } })
+    // The server answers no preview for a code that stopped working, and for a Profile that the
+    // Account may not offer.
+    const asked = serveShareCodeQuestions({ preview: { profileSharePreview: null } })
     const { user } = renderWithProviders(<SharingScreen />)
 
     const field = await openShareForm(user)
     await user.type(field, `${SHARE_CODE}{Enter}`)
 
-    await waitFor(() => expect(field).toBeInvalid())
-    expect(field).toHaveAccessibleDescription(
-      expect.stringContaining('That code does not work. Ask an admin there for a new one.'),
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /^This offer cannot be made\. The code may have stopped working, or you may not be able to share Alex\.$/,
     )
     expect(field).toHaveValue(SHARE_CODE)
+    expect(field).toBeValid()
     expect(screen.queryByRole('heading', { name: 'Offer Alex to Cabin?' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/^This offer cannot be made\./)
+    expect(asked.lookUps).toHaveLength(1)
+    expect(asked.previews).toHaveLength(1)
   })
 
   it('shouldReturnToTheCodeWithTheRefusalWhenTheOfferIsRefusedForItsCode', async () => {
