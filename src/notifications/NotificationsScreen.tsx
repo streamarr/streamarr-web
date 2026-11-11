@@ -14,6 +14,7 @@ import { FailurePanel } from '../ui/Failure'
 import styles from './Notifications.module.css'
 import { fullTime, whenLabel } from './notificationTime'
 import { expiryOfWaiting, isOfferRequest, offerRequestState } from './requestState'
+import { useMarkShownRead } from './useMarkShownRead'
 
 /** The Account's Notifications, newest first, each in the server's words. */
 export function NotificationsScreen() {
@@ -32,6 +33,8 @@ function NotificationsList() {
   const query = useQuery(NotificationsDocument, { fetchPolicy: 'network-only' })
   // A failed read reports through the query's own error state.
   const readAgain = () => query.refetch().catch(() => undefined)
+  const shown = query.error ? [] : definedEdges(query.data?.notifications.edges)
+  useMarkShownRead(shown[0]?.cursor ?? null)
 
   if (query.loading && !query.data) {
     return (
@@ -48,11 +51,10 @@ function NotificationsList() {
     )
   }
 
-  const shown = definedEdges(query.data.notifications.edges).map((edge) => edge.node)
   if (shown.length === 0) {
     return <p className={styles.empty}>No notifications.</p>
   }
-  return <NotificationRows notifications={shown} />
+  return <NotificationRows notifications={shown.map((edge) => edge.node)} />
 }
 
 function NotificationRows({
@@ -76,7 +78,14 @@ function NotificationRow({
   const lineId = useId()
   return (
     <li className={styles.row}>
+      {/* A shape, so that unread is not told by colour alone. */}
+      {notification.unread ? (
+        <span className={styles.unreadMark} data-testid="unread-mark" aria-hidden />
+      ) : (
+        <span className={styles.markSpace} aria-hidden />
+      )}
       <div className={styles.text}>
+        {notification.unread && <VisuallyHidden>Unread</VisuallyHidden>}
         {/* The server's line is plain text, so React writes it as text, never as markup. */}
         <p id={lineId} className={styles.line}>
           {notification.message}
