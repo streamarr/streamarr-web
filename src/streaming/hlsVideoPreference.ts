@@ -48,6 +48,11 @@ export function hlsVideoPreference(
   }
 }
 
+/** Whether the declaration lists an HDR range that the player can show over HLS. */
+export function declaresHdrForHls(declaration: ClientCapabilityDeclarationInput): boolean {
+  return declaredHlsRanges(declaration).size > 0
+}
+
 function declaredHlsRanges(declaration: ClientCapabilityDeclarationInput): Set<VideoRange> {
   const ranges = declaration.video
     .filter((entry) => entry.hls)

@@ -5,6 +5,7 @@ import type {
   VideoFormatFieldsFragment,
   DestroyPlaybackSessionMutation,
   DestroyPlaybackSessionMutationVariables,
+  VideoRange,
 } from '../graphql/generated/graphql'
 
 type ReadyAttempt = Extract<
@@ -34,19 +35,25 @@ export const OFFERED_FOR_FULL_HD: PlaybackSessionFieldsFragment['offeredChoices'
   'LOW_360P',
 ]
 
-/** A playback session that plays Auto, as the viewer asked, from an SDR stream with no known end. */
+/**
+ * A playback session that plays Auto, as the viewer asked, from an SDR stream with no known end.
+ * With a `sourceRange`, its one decision names the source's dynamic range; without one, it has none.
+ */
 export function readyPlaybackSession({
   streamSession,
   id = `playback-${streamSession.id}`,
+  sourceRange,
   ...choices
 }: {
   streamSession: Pick<HlsStreamSession, 'id' | 'streamUrl' | 'transcodeMode'> &
     Partial<HlsStreamSession>
   id?: string
+  sourceRange?: VideoRange
 } & Partial<PlaybackChoices>): PlaybackSessionFieldsFragment {
   return readyOn({
     id,
     choices,
+    decisions: sourceRange ? [{ video: { source: { videoRange: sourceRange } } }] : [],
     streamSession: {
       __typename: 'HlsStreamSession',
       videoRange: 'SDR',
@@ -87,10 +94,12 @@ export function readyDirectPlaySession({
 function readyOn({
   id,
   choices,
+  decisions = [],
   streamSession,
 }: {
   id: string
   choices: Partial<PlaybackChoices>
+  decisions?: PlaybackSessionFieldsFragment['decisions']
   streamSession: ReadyAttempt['streamSession']
 }): PlaybackSessionFieldsFragment {
   return {
@@ -102,6 +111,7 @@ function readyOn({
     formatChange: null,
     offeredChoices: OFFERED_FOR_FULL_HD,
     ...choices,
+    decisions,
     currentFormatAttempt: { __typename: 'ReadyPlaybackFormatAttempt', streamSession },
   }
 }

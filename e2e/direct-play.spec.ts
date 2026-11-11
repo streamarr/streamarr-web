@@ -322,6 +322,7 @@ function readyPlaybackSession(streamSession: Record<string, unknown>) {
     playbackChoice: 'ORIGINAL',
     formatChange: null,
     offeredChoices: ['ORIGINAL', 'AUTO'],
+    decisions: [],
     currentFormatAttempt: { __typename: 'ReadyPlaybackFormatAttempt', streamSession },
   }
 }

@@ -97,6 +97,7 @@ function playbackSession(choice: string) {
     playbackChoice: choice,
     formatChange: null,
     offeredChoices: ['ORIGINAL', 'AUTO', 'HIGH_720P', 'MEDIUM_480P', 'LOW_360P'],
+    decisions: [],
     currentFormatAttempt: {
       __typename: 'ReadyPlaybackFormatAttempt',
       streamSession: {

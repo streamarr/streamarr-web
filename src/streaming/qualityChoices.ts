@@ -1,14 +1,16 @@
-import type { PlaybackFormatChange, VideoQuality } from '../graphql/generated/graphql'
+import type { PlaybackFormatChange, VideoQuality, VideoRange } from '../graphql/generated/graphql'
 
 /**
  * The playback choices the server offers for the media title, in menu order, the one the viewer
- * asked for, the one playing, and why the output differs from the one asked for, if it does.
+ * asked for, the one playing, why the output differs from the one asked for, if it does, and the
+ * dynamic range the output plays.
  */
 export interface QualityChoices {
   offered: readonly VideoQuality[]
   requested: VideoQuality
   playing: VideoQuality
   formatChange: PlaybackFormatChange | null
+  videoRange: VideoRange
 }
 
 const QUALITY_LABELS = new Map<VideoQuality, string>([

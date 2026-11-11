@@ -1,9 +1,17 @@
-import { expect, test, type APIRequestContext, type Page, type Request } from '@playwright/test'
+import {
+  expect,
+  test,
+  type APIRequestContext,
+  type Locator,
+  type Page,
+  type Request,
+} from '@playwright/test'
 import { fileURLToPath } from 'node:url'
 import type {
   ClientCapabilityDeclarationInput,
   CreatePlaybackSessionMutationVariables,
 } from '../src/graphql/generated/graphql'
+import { contrast, paintedMark, paintedPixels, paintedText, textContrast } from './contrast'
 import { STUB_URL } from './ports'
 
 // The player gives hls.js a video preference built from its declaration. These specs play a PQ
@@ -58,6 +66,7 @@ const PQ_SESSION = {
       playbackChoice: 'AUTO',
       formatChange: null,
       offeredChoices: ['ORIGINAL', 'AUTO', 'MEDIUM_480P', 'LOW_360P'],
+      decisions: [],
       currentFormatAttempt: {
         __typename: 'ReadyPlaybackFormatAttempt',
         streamSession: {
@@ -72,6 +81,64 @@ const PQ_SESSION = {
     },
     userErrors: [],
   },
+}
+
+// A playback of the PQ source whose Quality menu shows the HDR toggle.
+interface HdrSourcePlayback {
+  choice: 'ORIGINAL' | 'MEDIUM_480P'
+  /** The choice's label on the quality button. */
+  label: string
+  /** The range of the stream that plays. */
+  videoRange: 'PQ' | 'SDR'
+  displaysHdr: boolean
+  /** The toggle this playback shows. */
+  toggle: { on: boolean; unavailable: boolean }
+}
+
+// Original keeps the source's range, so the viewer cannot turn its HDR off.
+const ORIGINAL: HdrSourcePlayback = {
+  choice: 'ORIGINAL',
+  label: 'Original',
+  videoRange: 'PQ',
+  displaysHdr: true,
+  toggle: { on: true, unavailable: true },
+}
+
+// A fixed quality takes the viewer's HDR choice.
+const FIXED_QUALITY_IN_HDR: HdrSourcePlayback = {
+  choice: 'MEDIUM_480P',
+  label: '480p',
+  videoRange: 'PQ',
+  displaysHdr: true,
+  toggle: { on: true, unavailable: false },
+}
+
+// No choice shows HDR on a display without it, so the toggle stays off.
+const FIXED_QUALITY_ON_AN_SDR_DISPLAY: HdrSourcePlayback = {
+  choice: 'MEDIUM_480P',
+  label: '480p',
+  videoRange: 'SDR',
+  displaysHdr: false,
+  toggle: { on: false, unavailable: true },
+}
+
+function sessionOf({ choice, videoRange }: HdrSourcePlayback) {
+  const { playbackSession } = PQ_SESSION.createPlaybackSession
+  const { streamSession } = playbackSession.currentFormatAttempt
+  return {
+    createPlaybackSession: {
+      ...PQ_SESSION.createPlaybackSession,
+      playbackSession: {
+        ...playbackSession,
+        playbackChoice: choice,
+        decisions: [{ video: { source: { videoRange: 'PQ' } } }],
+        currentFormatAttempt: {
+          ...playbackSession.currentFormatAttempt,
+          streamSession: { ...streamSession, videoRange },
+        },
+      },
+    },
+  }
 }
 
 const OPERATIONS: Record<string, unknown> = {
@@ -217,4 +284,157 @@ test('hls.js starts on the range the declaration prefers when a ladder lists SDR
 
   expect(onHdrDisplay.mediaPlaylists[0]).toBe('pq-360.m3u8')
   expect(onSdrDisplay.mediaPlaylists[0]).toBe('sdr-360.m3u8')
+})
+
+// Plays the PQ source as `playback` says and opens the Quality menu, whose last row is the HDR
+// toggle in the state `playback` names.
+async function openQualityMenu(
+  page: Page,
+  request: APIRequestContext,
+  playback: HdrSourcePlayback,
+): Promise<{ menu: Locator; toggle: Locator }> {
+  await onDisplay(page, playback.displaysHdr)
+  await servePqStream(page, request, PQ_ONLY_MULTIVARIANT)
+  await page.route('**/graphql', (route) =>
+    operationName(route.request()) === 'CreatePlaybackSession'
+      ? route.fulfill({ json: { data: sessionOf(playback) } })
+      : route.fallback(),
+  )
+  await page.goto('/play/file-1?episode=e1')
+  await page.getByRole('button', { name: `Quality: ${playback.label}` }).click()
+  const menu = page.getByRole('menu', { name: 'Quality' })
+  const toggle = menu.getByRole('menuitemcheckbox', { name: /^HDR/ })
+  await expect(toggle).toHaveAttribute('aria-checked', String(playback.toggle.on))
+  expect(await toggle.getAttribute('aria-disabled')).toBe(
+    playback.toggle.unavailable ? 'true' : null,
+  )
+  return { menu, toggle }
+}
+
+test('the HDR toggle that Original holds on keeps its highlight under the pointer', async ({
+  page,
+  request,
+}) => {
+  const { menu, toggle } = await openQualityMenu(page, request, ORIGINAL)
+  const highlight = await menu
+    .getByRole('menuitemradio', { checked: true })
+    .evaluate((row) => getComputedStyle(row).backgroundColor)
+  await expect(toggle).toHaveCSS('background-color', highlight)
+
+  await toggle.hover()
+
+  await expect(toggle).toHaveCSS('background-color', highlight)
+})
+
+test('the HDR toggle that Original holds on keeps its label readable, at rest and under the pointer', async ({
+  page,
+  request,
+}) => {
+  const { toggle } = await openQualityMenu(page, request, ORIGINAL)
+  const label = toggle.getByText('HDR', { exact: true })
+  const underThePointer = () => toggle.evaluate((row) => row.matches(':hover'))
+  expect(await underThePointer()).toBe(false)
+
+  const atRest = textContrast(await paintedText(label))
+  await toggle.hover()
+  expect(await underThePointer()).toBe(true)
+  const hovered = textContrast(await paintedText(label))
+
+  expect.soft(atRest, 'at rest').toBeGreaterThanOrEqual(4.5)
+  expect(hovered, 'under the pointer').toBeGreaterThanOrEqual(4.5)
+})
+
+test('the HDR toggle that Original holds on reads apart from a choice the viewer can change', async ({
+  page,
+  request,
+}) => {
+  const { menu, toggle } = await openQualityMenu(page, request, ORIGINAL)
+  const original = menu.getByRole('menuitemradio', { checked: true })
+  const weight = (row: Locator) =>
+    row.evaluate((element) => Number(getComputedStyle(element).fontWeight))
+
+  expect(await weight(toggle)).toBeLessThan(await weight(original))
+  await expect(original).toHaveCSS('cursor', 'pointer')
+  await expect(toggle).toHaveCSS('cursor', 'default')
+})
+
+test('the HDR toggle that is off and unavailable writes its label in the disabled text color', async ({
+  page,
+  request,
+}) => {
+  const { toggle } = await openQualityMenu(page, request, FIXED_QUALITY_ON_AN_SDR_DISPLAY)
+  // text.tertiary, as the page resolves the token.
+  const disabledText = await toggle.evaluate((row) => {
+    const probe = row.appendChild(document.createElement('span'))
+    probe.style.color = 'var(--text-tertiary)'
+    const { color } = getComputedStyle(probe)
+    probe.remove()
+    return color
+  })
+
+  await expect(toggle.getByText('HDR', { exact: true })).toHaveCSS('color', disabledText)
+  await expect(toggle.locator('svg')).toHaveCount(0)
+})
+
+test('the HDR toggle that is off and unavailable takes no fill under the pointer', async ({
+  page,
+  request,
+}) => {
+  const { toggle } = await openQualityMenu(page, request, FIXED_QUALITY_ON_AN_SDR_DISPLAY)
+  const atRest = await toggle.evaluate((row) => getComputedStyle(row).backgroundColor)
+
+  await toggle.hover()
+
+  expect(await toggle.evaluate((row) => row.matches(':hover'))).toBe(true)
+  await expect(toggle).toHaveCSS('background-color', atRest)
+})
+
+// The check is judged by the pixels the browser paints: a color or an opacity set on any part of the
+// icon changes them. At two device pixels to a CSS pixel its stroke covers whole pixels, so a
+// screenshot holds its solid color.
+test.describe(() => {
+  test.use({ deviceScaleFactor: 2 })
+
+  // An icon on a selected row takes the row's own color, whether or not the viewer can change the
+  // row.
+  for (const [held, playback] of [
+    ['Original holds on', ORIGINAL],
+    ['the viewer can turn off', FIXED_QUALITY_IN_HDR],
+  ] as const) {
+    test(`the HDR toggle that ${held} draws its check in its label's color`, async ({
+      page,
+      request,
+    }) => {
+      const { toggle } = await openQualityMenu(page, request, playback)
+      const check = toggle.locator('svg')
+      await expect(check).toHaveCount(1)
+      const label = await toggle
+        .getByText('HDR', { exact: true })
+        .evaluate((element) => getComputedStyle(element).color)
+
+      const { mark } = paintedMark(await paintedPixels(check))
+
+      expect(`rgb(${mark.join(', ')})`).toBe(label)
+    })
+  }
+
+  // Forced colors remove every row's fill, so the check is the mark that is left to show HDR is on.
+  test('the HDR toggle that Original holds on keeps its check when the system forces its colors', async ({
+    page,
+    request,
+  }) => {
+    const { toggle } = await openQualityMenu(page, request, ORIGINAL)
+    const check = toggle.locator('svg')
+    await expect(check).toHaveCount(1)
+
+    for (const palette of ['light', 'dark'] as const) {
+      await page.emulateMedia({ forcedColors: 'active', colorScheme: palette })
+      expect(await page.evaluate(() => matchMedia('(forced-colors: active)').matches)).toBe(true)
+      const { mark, backdrop } = paintedMark(await paintedPixels(check))
+
+      expect
+        .soft(contrast(mark, backdrop), `in a ${palette} forced palette`)
+        .toBeGreaterThanOrEqual(3)
+    }
+  })
 })
