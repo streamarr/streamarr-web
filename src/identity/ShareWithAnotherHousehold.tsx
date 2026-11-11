@@ -1,6 +1,7 @@
 import { Button } from '@mantine/core'
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from '../ui/Icon'
+import { useArrivingShareCode } from './arrivingShareCode'
 import { ShareForm } from './ShareForm'
 import styles from './Sharing.module.css'
 
@@ -20,7 +21,8 @@ export function ShareWithAnotherHousehold({
   onSend: () => void
   onChanged: (notice: string) => void
 }>) {
-  const [open, setOpen] = useState(false)
+  const arriving = useArrivingShareCode()
+  const [open, setOpen] = useState(arriving.code !== null)
   const action = useRef<HTMLButtonElement>(null)
   /** Set when the person leaves the form, so that focus returns to the action they left. */
   const returnFocus = useRef(false)
@@ -49,6 +51,8 @@ export function ShareWithAnotherHousehold({
     <ShareForm
       profile={profile}
       onSend={onSend}
+      codeFromLink={arriving.code}
+      onCodeFromLinkTaken={arriving.take}
       onOffered={async (householdName) => {
         await readAgain()
         setOpen(false)

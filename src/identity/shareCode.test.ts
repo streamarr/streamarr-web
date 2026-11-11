@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { shareCodeIn } from './shareCode'
+import { shareCodeIn, shareCodeLink } from './shareCode'
 
 describe('shareCodeIn', () => {
   it.each([
@@ -26,5 +26,17 @@ describe('shareCodeIn', () => {
     'https://streamarr.example/settings/profile/sharing?code=BCDF',
   ])('shouldReadNoCodeWhenTheTextCannotBeOne(%j)', (text) => {
     expect(shareCodeIn(text)).toBeNull()
+  })
+})
+
+describe('shareCodeLink', () => {
+  it('shouldLinkToTheSharingPageWithTheCodeWhenGivenACode', () => {
+    expect(shareCodeLink('BCDF-GHJK', 'https://streamarr.example')).toBe(
+      'https://streamarr.example/settings/profile/sharing?code=BCDF-GHJK',
+    )
+  })
+
+  it('shouldGiveALinkThatTheShareFormReadsTheCodeFromWhenPasted', () => {
+    expect(shareCodeIn(shareCodeLink('BCDF-GHJK', 'http://10.0.0.5:8080'))).toBe('BCDFGHJK')
   })
 })
