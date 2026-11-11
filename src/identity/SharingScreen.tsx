@@ -11,8 +11,15 @@ import { useFocusFallback } from '../ui/useFocusFallback'
 import { usePageNotice } from '../ui/usePageNotice'
 import { ArrivingShareCodeContext } from './arrivingShareCode'
 import styles from './Sharing.module.css'
-import { keepsInProfileShares, shareIdOf, withShareChange, type ShareChange } from './shareLists'
+import {
+  keepsInProfileShares,
+  shareIdOf,
+  statusAt,
+  withShareChange,
+  type ShareChange,
+} from './shareLists'
 import { useMe } from './useMe'
+import { useNow } from './useNow'
 import { useShareChanges } from './useShareChanges'
 import { WhereShared, type ProfileShareRow } from './WhereShared'
 
@@ -121,6 +128,8 @@ function ProfileSharing({
   const [changing, setChanging] = useState<string | null>(null)
   const [ending, setEnding] = useState<ProfileShareRow | null>(null)
   const [refusal, setRefusal] = useState<string | null>(null)
+  // An offer whose time runs out is over, as the query would count it.
+  const now = useNow(data?.profileShares.edges.map((edge) => edge.node.expiresAt) ?? [])
 
   if (query.loading && !data) {
     return <SharingLoading />
@@ -130,7 +139,7 @@ function ProfileSharing({
     return <SharingUnavailable error={query.error} onRetry={readAgain} />
   }
 
-  const shares = listedShares(data)
+  const shares = listedShares(data, now)
   return (
     <WhereShared
       profile={profile}
@@ -152,11 +161,12 @@ function ProfileSharing({
 }
 
 // Every Personal Profile is shared with its Account's own Household, and that share cannot end,
-// so it is no news here.
-function listedShares(data: ProfileSharesQuery): ProfileShareRow[] {
+// so it is no news here. An offer whose time runs out is over at `now`, as the query would count it.
+function listedShares(data: ProfileSharesQuery, now: Date): ProfileShareRow[] {
   return data.profileShares.edges
     .map((edge) => edge.node)
     .filter((share) => !share.requiredByAccountMembership)
+    .map((share) => ({ ...share, status: statusAt(share, now) }))
 }
 
 /**

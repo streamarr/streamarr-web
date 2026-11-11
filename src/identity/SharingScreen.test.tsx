@@ -1,6 +1,6 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import { delay, graphql, HttpResponse } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import type { ProfileSharesQuery } from '../graphql/generated/graphql'
 import {
   answersInTurn,
@@ -269,6 +269,25 @@ describe('Sharing', () => {
     expect(within(row).getByText('Waiting for an admin there')).toBeVisible()
     expect(within(row).getByText('Expires in 6 days')).toBeVisible()
     expect(within(row).getByRole('button', { name: 'Cancel invitation to Cabin' })).toBeEnabled()
+  })
+
+  it('shouldMoveAnOfferToEarlierOffersWhenItsTimeRunsOutWithThePageOpen', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'], shouldAdvanceTime: true })
+    onTestFinished(() => void vi.useRealTimers())
+    serve([share({ expiresAt: new Date(Date.now() + DAY / 24).toISOString() })])
+    const { user } = renderWithProviders(<SharingScreen />)
+    await screen.findByRole('button', { name: 'Cancel invitation to Cabin' })
+
+    await act(() => vi.advanceTimersByTimeAsync(DAY / 24))
+
+    expect(
+      await screen.findByText("Alex's Profile isn't shared with another Household."),
+    ).toBeVisible()
+    expect(
+      screen.queryByRole('button', { name: 'Cancel invitation to Cabin' }),
+    ).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Earlier invitations and shares' }))
+    expect(screen.getByRole('listitem')).toHaveTextContent('CabinExpired')
   })
 
   it('shouldKeepEarlierOffersAndSharesOutOfTheListUntilAsked', async () => {

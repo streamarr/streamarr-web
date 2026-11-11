@@ -19,10 +19,17 @@ import { useFocusFallback } from '../ui/useFocusFallback'
 import { usePageNotice } from '../ui/usePageNotice'
 import styles from './Sharing.module.css'
 import { SharedProfileText } from './SharedProfileText'
-import { keepsInHouseholdShares, shareIdOf, withShareChange, type ShareChange } from './shareLists'
+import {
+  keepsInHouseholdShares,
+  shareIdOf,
+  statusAt,
+  withShareChange,
+  type ShareChange,
+} from './shareLists'
 import { SharingSection } from './SharingSection'
 import { expiryLabel, UPDATE_FAILED_MESSAGE } from './shareText'
 import { useMe } from './useMe'
+import { useNow } from './useNow'
 import { useShareChanges } from './useShareChanges'
 
 type ListedOffer = ShareOffersQuery['householdShares']['edges'][number]['node']
@@ -166,6 +173,10 @@ function HouseholdOffers({
     }
   }
 
+  const listed = query.data?.householdShares.edges.map((edge) => edge.node) ?? []
+  // An offer leaves the list when its time runs out, as the query would leave it out.
+  const now = useNow(listed.map((offer) => offer.expiresAt))
+
   if (query.loading && !query.data) {
     return <ShareOffersLoading />
   }
@@ -173,7 +184,9 @@ function HouseholdOffers({
     return <ShareOffersUnavailable error={query.error} onRetry={readAgain} />
   }
 
-  const offers = query.data.householdShares.edges.map((edge) => edge.node).filter(namesItsProfile)
+  const offers = listed
+    .filter((offer) => statusAt(offer, now) === 'PENDING')
+    .filter(namesItsProfile)
   const confirming = offers.find((offer) => offer.id === confirmingId) ?? null
 
   return (
