@@ -21,14 +21,30 @@ import {
 } from '../test/returnVisits'
 import { server } from '../test/server'
 
-type OfferNode = ShareOffersQuery['householdShares']['edges'][number]['node'] & {
+type OfferFields = ShareOffersQuery['householdShares']['edges'][number]['node']
+type OfferedProfile = NonNullable<OfferFields['profile']> & { __typename: 'ProfileSummary' }
+type OfferNode = Omit<OfferFields, 'profile'> & {
   __typename: 'ProfileShare'
+  profile: OfferedProfile | null
 }
 
 const OFFERS = '/settings/household/offers'
 const SHARE_OFFERS: SettingsPage = { area: 'Household settings', heading: 'Share invitations' }
 const OFFER_ID = '77777777-7777-7777-7777-777777777777'
 const CABIN_ID = '55555555-5555-5555-5555-555555555555'
+
+function offeredProfile(overrides: Partial<OfferedProfile> = {}): OfferedProfile {
+  return {
+    __typename: 'ProfileSummary',
+    id: PROFILE_ID,
+    name: 'Alex',
+    picture: null,
+    kind: 'ADULT',
+    personalProfile: false,
+    restricted: false,
+    ...overrides,
+  }
+}
 
 function offer(overrides: Partial<OfferNode> = {}): OfferNode {
   return {
@@ -38,6 +54,9 @@ function offer(overrides: Partial<OfferNode> = {}): OfferNode {
     householdId: HOUSEHOLD_ID,
     status: 'PENDING',
     expiresAt: '2026-08-27T12:00:00Z',
+    profile: offeredProfile(),
+    offeredByDisplayName: 'Sam',
+    visitor: true,
     ...overrides,
   }
 }
@@ -260,7 +279,7 @@ describe('Share invitations', () => {
       name: 'Share invitations for Smith Family',
     })
     expect(within(offered).getAllByRole('listitem')).toHaveLength(1)
-    expect(within(offered).getByRole('button', { name: 'Accept Profile 33333333' })).toBeEnabled()
+    expect(within(offered).getByRole('button', { name: 'Accept Alex' })).toBeEnabled()
   })
 
   it('shouldReadTheOffersOfTheAccountsOwnHouseholdWhenTheSessionUsesAnother', async () => {
@@ -279,13 +298,13 @@ describe('Share invitations', () => {
 
     await leaveForHomeAndReturn(user, SHARE_OFFERS)
 
-    expect(await screen.findByRole('button', { name: 'Accept Profile 33333333' })).toBeEnabled()
+    expect(await screen.findByRole('button', { name: 'Accept Alex' })).toBeEnabled()
   })
 
   it('shouldDropAnOfferTheServerNoLongerListsWhenTheAdminReturns', async () => {
     serveInTurn([offer()], [])
     const { user } = renderAppAt(OFFERS)
-    await screen.findByRole('button', { name: 'Accept Profile 33333333' })
+    await screen.findByRole('button', { name: 'Accept Alex' })
 
     await leaveForHomeAndReturn(user, SHARE_OFFERS)
 
@@ -314,7 +333,7 @@ describe('Share invitations', () => {
   it('shouldSayTheOffersCouldNotLoadWhenReadingThemFailsAsTheAdminReturns', async () => {
     serve([offer()])
     const { user } = renderAppAt(OFFERS)
-    await screen.findByRole('button', { name: 'Accept Profile 33333333' })
+    await screen.findByRole('button', { name: 'Accept Alex' })
     server.use(graphql.query('ShareOffers', serverFailure))
 
     await leaveForHomeAndReturn(user, SHARE_OFFERS)
@@ -330,10 +349,10 @@ describe('Share invitations', () => {
     const offers = answersInTurn(answerWith(offersData([offer()])), serverFailure, fresh.answer)
     server.use(graphql.query('ShareOffers', offers.resolver))
     renderAppAt(OFFERS)
-    await screen.findByRole('button', { name: 'Accept Profile 33333333' })
+    await screen.findByRole('button', { name: 'Accept Alex' })
 
     await comeBackOnlineUntil(offers, 3)
-    expect(screen.getByRole('button', { name: 'Accept Profile 33333333' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Accept Alex' })).toBeEnabled()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     fresh.release()
 
@@ -352,7 +371,7 @@ describe('Share invitations', () => {
 
     await user.click(screen.getByRole('button', { name: 'Retry' }))
 
-    expect(await screen.findByRole('button', { name: 'Accept Profile 33333333' })).toBeEnabled()
+    expect(await screen.findByRole('button', { name: 'Accept Alex' })).toBeEnabled()
     expect(offers.calls).toBe(2)
   })
 
@@ -381,12 +400,13 @@ describe('Share invitations', () => {
     )
     const { user } = renderAppAt(OFFERS)
 
-    await user.click(await screen.findByRole('button', { name: 'Accept Profile 33333333' }))
+    await user.click(await screen.findByRole('button', { name: 'Accept Alex' }))
 
-    const dialog = screen.getByRole('dialog', { name: 'Accept this Profile into Smith Family?' })
+    const dialog = screen.getByRole('dialog', { name: 'Accept Alex into Smith Family?' })
     expect(dialog).toHaveTextContent(
-      "If this is someone's Personal Profile, accepting admits that person to Smith Family.",
+      /^Accept Alex into Smith Family\?Alex becomes available in Smith Family\./,
     )
+    expect(dialog).not.toHaveTextContent("someone's Personal Profile")
     expect(accepted).toBe(false)
 
     await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
@@ -405,10 +425,10 @@ describe('Share invitations', () => {
     )
     const { user } = renderAppAt(OFFERS)
 
-    await user.click(await screen.findByRole('button', { name: 'Accept Profile 33333333' }))
+    await user.click(await screen.findByRole('button', { name: 'Accept Alex' }))
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Accept' }))
 
-    await noticed('Profile 33333333 accepted into Smith Family.')
+    await noticed('Alex accepted into Smith Family.')
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(
       await screen.findByText('No share invitations are waiting for Smith Family.'),
@@ -426,10 +446,10 @@ describe('Share invitations', () => {
     )
     const { user } = renderAppAt(OFFERS)
 
-    await user.click(await screen.findByRole('button', { name: 'Accept Profile 33333333' }))
+    await user.click(await screen.findByRole('button', { name: 'Accept Alex' }))
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Accept' }))
 
-    await noticed('Profile 33333333 accepted into Smith Family.')
+    await noticed('Alex accepted into Smith Family.')
     expect(screen.getByRole('alert')).toHaveTextContent("Couldn't load share invitations.")
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
@@ -439,7 +459,7 @@ describe('Share invitations', () => {
     refuseToAccept()
     const { user } = renderAppAt(OFFERS)
 
-    await user.click(await screen.findByRole('button', { name: 'Accept Profile 33333333' }))
+    await user.click(await screen.findByRole('button', { name: 'Accept Alex' }))
     const dialog = screen.getByRole('dialog')
     await user.click(within(dialog).getByRole('button', { name: 'Accept' }))
 
@@ -453,7 +473,7 @@ describe('Share invitations', () => {
     serve([offer()])
     refuseToAccept()
     const { user } = renderAppAt(OFFERS)
-    await user.click(await screen.findByRole('button', { name: 'Accept Profile 33333333' }))
+    await user.click(await screen.findByRole('button', { name: 'Accept Alex' }))
     const dialog = screen.getByRole('dialog')
     await user.click(within(dialog).getByRole('button', { name: 'Accept' }))
     expect(await within(dialog).findByRole('alert')).toHaveTextContent(
@@ -474,14 +494,14 @@ describe('Share invitations', () => {
     refuseToAccept()
     const { user } = renderAppAt(OFFERS)
 
-    await user.click(await screen.findByRole('button', { name: 'Accept Profile 33333333' }))
+    await user.click(await screen.findByRole('button', { name: 'Accept Alex' }))
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Accept' }))
     expect(await screen.findByText("Couldn't load share invitations.")).toBeVisible()
 
     await user.click(screen.getByRole('button', { name: 'Retry' }))
 
     const dialog = await screen.findByRole('dialog', {
-      name: 'Accept this Profile into Smith Family?',
+      name: 'Accept Alex into Smith Family?',
     })
     expect(within(dialog).getByRole('alert')).toHaveTextContent('That name is already in use.')
     expect(within(dialog).getByRole('button', { name: 'Accept' })).toBeEnabled()
@@ -496,7 +516,7 @@ describe('Share invitations', () => {
     )
     const { user } = renderAppAt(OFFERS)
 
-    await user.click(await screen.findByRole('button', { name: 'Accept Profile 33333333' }))
+    await user.click(await screen.findByRole('button', { name: 'Accept Alex' }))
     const dialog = screen.getByRole('dialog')
     await user.click(within(dialog).getByRole('button', { name: 'Accept' }))
 
@@ -510,7 +530,7 @@ describe('Share invitations', () => {
     server.use(graphql.mutation('AcceptProfileShare', () => HttpResponse.error()))
     const { user } = renderAppAt(OFFERS)
 
-    await user.click(await screen.findByRole('button', { name: 'Accept Profile 33333333' }))
+    await user.click(await screen.findByRole('button', { name: 'Accept Alex' }))
     const dialog = screen.getByRole('dialog')
     await user.click(within(dialog).getByRole('button', { name: 'Accept' }))
 
@@ -531,9 +551,9 @@ describe('Share invitations', () => {
     )
     const { user } = renderAppAt(OFFERS)
 
-    await user.click(await screen.findByRole('button', { name: 'Decline Profile 33333333' }))
+    await user.click(await screen.findByRole('button', { name: 'Decline Alex' }))
 
-    await noticed('Share invitation for Profile 33333333 declined.')
+    await noticed('Share invitation for Alex declined.')
     expect(declined).toBe(true)
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /reject/i })).not.toBeInTheDocument()
@@ -544,7 +564,7 @@ describe('Share invitations', () => {
     refuseToDecline()
     const { user } = renderAppAt(OFFERS)
 
-    await user.click(await screen.findByRole('button', { name: 'Decline Profile 33333333' }))
+    await user.click(await screen.findByRole('button', { name: 'Decline Alex' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('That offer is not pending.')
     await waitFor(() => expect(offers.calls).toBe(2))
@@ -555,12 +575,10 @@ describe('Share invitations', () => {
     refuseToDecline()
     const { user } = renderAppAt(OFFERS)
 
-    await user.click(await screen.findByRole('button', { name: 'Decline Profile 33333333' }))
+    await user.click(await screen.findByRole('button', { name: 'Decline Alex' }))
 
     await screen.findByRole('alert')
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Decline Profile 33333333' })).toBeEnabled(),
-    )
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Decline Alex' })).toBeEnabled())
     expect(screen.getByRole('status')).toBeEmptyDOMElement()
   })
 
@@ -573,9 +591,9 @@ describe('Share invitations', () => {
     )
     const { user } = renderAppAt(OFFERS)
 
-    await user.click(await screen.findByRole('button', { name: 'Decline Profile 33333333' }))
+    await user.click(await screen.findByRole('button', { name: 'Decline Alex' }))
 
-    await noticed('Share invitation for Profile 33333333 declined.')
+    await noticed('Share invitation for Alex declined.')
     expect(screen.getByRole('alert')).toHaveTextContent("Couldn't load share invitations.")
     expect(screen.getByRole('button', { name: 'Retry' })).toBeEnabled()
     expect(screen.queryByRole('button', { name: /^Decline/ })).not.toBeInTheDocument()
@@ -587,12 +605,12 @@ describe('Share invitations', () => {
     refuseToDecline()
     const { user } = renderAppAt(OFFERS)
 
-    await user.click(await screen.findByRole('button', { name: 'Decline Profile 33333333' }))
+    await user.click(await screen.findByRole('button', { name: 'Decline Alex' }))
     expect(await screen.findByText("Couldn't load share invitations.")).toBeVisible()
 
     await user.click(screen.getByRole('button', { name: 'Retry' }))
 
-    expect(await screen.findByRole('button', { name: 'Decline Profile 33333333' })).toBeEnabled()
+    expect(await screen.findByRole('button', { name: 'Decline Alex' })).toBeEnabled()
     expect(screen.getByRole('alert')).toHaveTextContent('That offer is not pending.')
   })
 
@@ -600,20 +618,18 @@ describe('Share invitations', () => {
     serveInTurn([offer()], [offer()], [])
     refuseToDecline()
     const { user } = renderAppAt(OFFERS)
-    await user.click(await screen.findByRole('button', { name: 'Decline Profile 33333333' }))
+    await user.click(await screen.findByRole('button', { name: 'Decline Alex' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('That offer is not pending.')
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Decline Profile 33333333' })).toBeEnabled(),
-    )
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Decline Alex' })).toBeEnabled())
 
     server.use(
       graphql.mutation('RejectProfileShare', () =>
         HttpResponse.json({ data: { rejectProfileShare: declinedPayload() } }),
       ),
     )
-    await user.click(screen.getByRole('button', { name: 'Decline Profile 33333333' }))
+    await user.click(screen.getByRole('button', { name: 'Decline Alex' }))
 
-    await noticed('Share invitation for Profile 33333333 declined.')
+    await noticed('Share invitation for Alex declined.')
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
@@ -621,18 +637,83 @@ describe('Share invitations', () => {
     serve([offer()])
     refuseToDecline()
     const { user } = renderAppAt(OFFERS)
-    await user.click(await screen.findByRole('button', { name: 'Decline Profile 33333333' }))
+    await user.click(await screen.findByRole('button', { name: 'Decline Alex' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('That offer is not pending.')
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Accept Profile 33333333' })).toBeEnabled(),
-    )
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Accept Alex' })).toBeEnabled())
 
-    await user.click(screen.getByRole('button', { name: 'Accept Profile 33333333' }))
+    await user.click(screen.getByRole('button', { name: 'Accept Alex' }))
+
+    expect(screen.getByRole('dialog', { name: 'Accept Alex into Smith Family?' })).toBeVisible()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('shouldSayAcceptingAdmitsThePersonWhenTheOfferIsSomeonesPersonalProfile', async () => {
+    serve([offer({ profile: offeredProfile({ personalProfile: true }) })])
+    const { user } = renderAppAt(OFFERS)
+
+    await user.click(await screen.findByRole('button', { name: 'Accept Alex' }))
 
     expect(
-      screen.getByRole('dialog', { name: 'Accept this Profile into Smith Family?' }),
-    ).toBeVisible()
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      screen.getByRole('dialog', { name: 'Accept Alex into Smith Family?' }),
+    ).toHaveTextContent(
+      "This is someone's Personal Profile. Accepting admits that person to Smith Family: they can select any Profile available here, browse its libraries and link a TV to it.",
+    )
+  })
+
+  it.each([
+    [false, 'Alex becomes available in Smith Family.'],
+    [
+      true,
+      "This is someone's Personal Profile. Accepting admits that person to Smith Family: they can select any Profile available here, browse its libraries and link a TV to it.",
+    ],
+  ])(
+    'shouldSayAdminsHereSuperviseARestrictedProfileBeforeItIsAccepted(personal: %s)',
+    async (personalProfile, before) => {
+      serve([offer({ profile: offeredProfile({ personalProfile, restricted: true }) })])
+      const { user } = renderAppAt(OFFERS)
+
+      await user.click(await screen.findByRole('button', { name: 'Accept Alex' }))
+
+      expect(screen.getByRole('dialog')).toHaveTextContent(
+        `${before} It is restricted, so admins of Smith Family supervise it here.`,
+      )
+    },
+  )
+
+  it('shouldShowWhoOfferedEachProfileAndWhatItIs', async () => {
+    serve([offer({ profile: offeredProfile({ personalProfile: true, restricted: true }) })])
+    renderAppAt(OFFERS)
+
+    const row = await screen.findByRole('listitem')
+    expect(within(row).getByText('Alex')).toBeVisible()
+    expect(within(row).getByText('Offered by Sam')).toBeVisible()
+    expect(within(row).getByText('Personal Profile')).toBeVisible()
+    expect(within(row).getByText('Restricted')).toBeVisible()
+  })
+
+  it('shouldSayOnlyWhatIsTrueOfAnOfferWhenTheServerNamesNoOfferer', async () => {
+    serve([offer({ offeredByDisplayName: null })])
+    renderAppAt(OFFERS)
+
+    const row = await screen.findByRole('listitem')
+    expect(within(row).getByText('Alex')).toBeVisible()
+    expect(within(row).queryByText(/^Offered by/)).not.toBeInTheDocument()
+    expect(within(row).queryByText('Personal Profile')).not.toBeInTheDocument()
+    expect(within(row).queryByText('Restricted')).not.toBeInTheDocument()
+  })
+
+  it('shouldLeaveOutAnOfferThatCarriesNoProfile', async () => {
+    serve([
+      offer({ id: '88888888-8888-8888-8888-888888888888', profile: null }),
+      offer({ profile: offeredProfile({ name: 'Sam' }) }),
+    ])
+    renderAppAt(OFFERS)
+
+    const offered = await screen.findByRole('region', {
+      name: 'Share invitations for Smith Family',
+    })
+    expect(within(offered).getAllByRole('listitem')).toHaveLength(1)
+    expect(within(offered).getByRole('button', { name: 'Accept Sam' })).toBeEnabled()
   })
 
   it('shouldSayHowLongAnOfferHasLeftWhenItIsListed', async () => {

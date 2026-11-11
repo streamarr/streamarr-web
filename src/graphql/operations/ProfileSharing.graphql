@@ -7,6 +7,16 @@ query ShareOffers($householdId: ID!) {
         householdId
         status
         expiresAt
+        profile {
+          id
+          name
+          picture
+          kind
+          personalProfile
+          restricted
+        }
+        offeredByDisplayName
+        visitor
       }
     }
   }
