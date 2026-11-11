@@ -332,3 +332,40 @@ describe('The count of offers waiting in the Profile menu', () => {
     expect(socket.isLive('ProfileShareChanged')).toBe(false)
   })
 })
+
+describe('The dot on the Profile menu', () => {
+  const MARKED = 'Profile menu (Owner), has notifications'
+
+  it('shouldMarkTheAvatarWithoutANumberWhenNotificationsAreUnread', async () => {
+    serveHome(meFixture(), 3)
+
+    renderAppAt('/')
+
+    const chip = await screen.findByRole('button', { name: MARKED })
+    expect(within(chip).getByTestId('unread-dot')).toBeVisible()
+    expect(chip).toHaveTextContent(/^OW$/)
+  })
+
+  it('shouldMarkTheAvatarWhenOffersWait', async () => {
+    serveHome()
+    server.use(
+      graphql.query('ShareOffers', () => HttpResponse.json({ data: offersData([offer()]) })),
+    )
+
+    renderAppAt('/')
+
+    expect(await screen.findByRole('button', { name: MARKED })).toBeVisible()
+  })
+
+  it('shouldClearTheMarkWhenNothingInsideIsCountedAnyMore', async () => {
+    const { socket } = serveHome(meFixture(), 3)
+    renderAppAt('/')
+    await screen.findByRole('button', { name: MARKED })
+    await followingNotificationChanges(socket)
+
+    socket.publish('NotificationsChanged', notificationsChanged([], 0))
+
+    const chip = await screen.findByRole('button', { name: 'Profile menu (Owner)' })
+    expect(within(chip).queryByTestId('unread-dot')).not.toBeInTheDocument()
+  })
+})
