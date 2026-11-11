@@ -125,6 +125,13 @@ function h264Profiles(maxLevel: number) {
   ]
 }
 
+function hevcProfiles(maxLevel: number) {
+  return [
+    { profile: 'HEVC_MAIN' as const, maxLevel, maxTier: 'MAIN' as const },
+    { profile: 'HEVC_MAIN_10' as const, maxLevel, maxTier: 'MAIN' as const },
+  ]
+}
+
 function familyEntries(declaration: ClientCapabilityDeclarationInput, family: string) {
   return declaration.video.filter((entry) => entry.codecFamily === family)
 }
@@ -160,6 +167,11 @@ function decodingInfoLeavingUnanswered({
     unanswered(configuration) ? NEVER_ANSWERED : otherwise(configuration),
   )
 }
+
+// The codec strings of the questions about a 3840×2160 picture at 60 fps: H.264 High at level 5.2,
+// and HEVC Main 10 at level 5.1.
+const H264_AT_2160P60 = 'avc1.640034'
+const HEVC_MAIN_10_AT_2160P60 = 'hvc1.2.4.L153.'
 
 // Picks the questions about the path that plays HLS, never the file questions of direct play.
 function hlsQuestionAbout(codec: string): PicksQuestions {
@@ -670,7 +682,7 @@ describe('declarePlaybackCapabilities', () => {
     const declaration = declarePlaybackCapabilities(
       platformFixture({
         decodingInfo: decodingInfoLeavingUnanswered({
-          unanswered: hlsQuestionAbout('avc1.640034'),
+          unanswered: hlsQuestionAbout(H264_AT_2160P60),
           otherwise: decodingInfoAnsweringHevc(() => IPHONE_SAFARI_HEVC_ANSWER),
         }),
         userAgent: IPHONE_SAFARI_USER_AGENT,
@@ -679,10 +691,6 @@ describe('declarePlaybackCapabilities', () => {
 
     await vi.advanceTimersByTimeAsync(3_000)
 
-    const hevcProfiles = (maxLevel: number) => [
-      { profile: 'HEVC_MAIN' as const, maxLevel, maxTier: 'MAIN' as const },
-      { profile: 'HEVC_MAIN_10' as const, maxLevel, maxTier: 'MAIN' as const },
-    ]
     expect(familyEntries(await declaration, 'HEVC')).toEqual([
       sdrVideoEntry({
         codecFamily: 'HEVC',
@@ -2229,7 +2237,7 @@ describe('declarePlaybackCapabilities', () => {
       const declaration = declarePlaybackCapabilities(
         platformFixture({
           decodingInfo: decodingInfoLeavingUnanswered({
-            unanswered: hlsQuestionAbout('hvc1.2.4.L153.'),
+            unanswered: hlsQuestionAbout(HEVC_MAIN_10_AT_2160P60),
             otherwise: filePlayingDecodingInfo(CHROMIUM_FILE_TYPES),
           }),
           canPlayType: canPlayTypeOf(CHROMIUM_FILE_TYPES),
@@ -2254,7 +2262,7 @@ describe('declarePlaybackCapabilities', () => {
       const declaration = declarePlaybackCapabilities(
         platformFixture({
           decodingInfo: decodingInfoLeavingUnanswered({
-            unanswered: hlsQuestionAbout('avc1.640034'),
+            unanswered: hlsQuestionAbout(H264_AT_2160P60),
             otherwise: filePlayingDecodingInfo(plays),
           }),
           canPlayType: canPlayTypeOf(plays),
