@@ -227,7 +227,7 @@ export function CaretPopover<Id>({
           const checked = option.id === selected
           return (
             <Fragment key={String(option.id)}>
-              {option.divided && <div role="separator" className={styles.divider} />}
+              {option.divided && <hr className={styles.divider} />}
               <button
                 type="button"
                 role="menuitemradio"
