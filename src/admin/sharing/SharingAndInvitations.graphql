@@ -53,3 +53,31 @@ mutation ChangeShareCodeLifetime($input: ChangeShareCodeLifetimeInput!) {
     }
   }
 }
+
+fragment InvitationLifetimeSettingFields on InvitationLifetimeSetting {
+  __typename
+  id
+  hours
+  minimumHours
+  maximumHours
+}
+
+query InvitationLifetimeSetting {
+  invitationLifetimeSetting {
+    ...InvitationLifetimeSettingFields
+  }
+}
+
+mutation ChangeInvitationLifetime($input: ChangeInvitationLifetimeInput!) {
+  changeInvitationLifetime(input: $input) {
+    invitationLifetimeSetting {
+      ...InvitationLifetimeSettingFields
+    }
+    userErrors {
+      __typename
+      ... on MutationError {
+        message
+      }
+    }
+  }
+}

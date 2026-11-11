@@ -1,7 +1,9 @@
 import { useMutation, useQuery } from '@apollo/client/react'
 import {
+  ChangeInvitationLifetimeDocument,
   ChangeShareCodeLifetimeDocument,
   ChangeShareCodeLimitDocument,
+  InvitationLifetimeSettingDocument,
   ShareCodeLifetimeSettingDocument,
   ShareCodeLimitSettingDocument,
 } from '../../graphql/generated/graphql'
@@ -43,6 +45,12 @@ const SHARE_CODE_LIFETIME: SettingWords = {
   saved: (hours) => `Saved. A share code lasts ${amountOf(hours, HOURS_OR_DAYS)}.`,
 }
 
+const INVITATION_LIFETIME: SettingWords = {
+  label: 'An invitation or an offer waits',
+  subject: 'how long an invitation or an offer waits',
+  saved: (hours) => `Saved. An invitation or an offer waits ${amountOf(hours, HOURS_OR_DAYS)}.`,
+}
+
 /** The server-wide rules for share codes, invitations and offers, which a ServerAdmin sets. */
 export function SharingAndInvitationSettings() {
   const { notice, count, announce, dismiss } = usePageNotice()
@@ -63,6 +71,9 @@ export function SharingAndInvitationSettings() {
         </div>
         <div className={styles.settingRow}>
           <ShareCodeLifetime onSaved={onSaved} />
+        </div>
+        <div className={styles.settingRow}>
+          <InvitationLifetime onSaved={onSaved} />
         </div>
       </div>
     </>
@@ -113,6 +124,31 @@ function ShareCodeLifetime({ onSaved }: Readonly<{ onSaved: OnSaved }>) {
   return (
     <AmountSetting
       words={SHARE_CODE_LIFETIME}
+      units={HOURS_OR_DAYS}
+      stored={storedHours(setting)}
+      read={query}
+      saving={saving}
+      save={save}
+      onSaved={onSaved}
+    />
+  )
+}
+
+// An Account invitation, a manager invitation and an offer of a Profile all wait this long.
+function InvitationLifetime({ onSaved }: Readonly<{ onSaved: OnSaved }>) {
+  const query = useQuery(InvitationLifetimeSettingDocument, READ)
+  const [change, { loading: saving }] = useMutation(ChangeInvitationLifetimeDocument)
+  const setting = (query.data ?? query.previousData)?.invitationLifetimeSetting
+
+  async function save(hours: number) {
+    const { data } = await change({ variables: { input: { hours } } })
+    const payload = data?.changeInvitationLifetime
+    return answerOf(payload?.userErrors, payload?.invitationLifetimeSetting?.hours)
+  }
+
+  return (
+    <AmountSetting
+      words={INVITATION_LIFETIME}
       units={HOURS_OR_DAYS}
       stored={storedHours(setting)}
       read={query}
