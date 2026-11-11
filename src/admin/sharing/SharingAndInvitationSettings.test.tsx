@@ -322,6 +322,20 @@ describe('sharing and invitation settings', () => {
     expect(saveLimit()).toBeDisabled()
   })
 
+  it('shouldSayOnceThatAChangeAppliesToWhatIsIssuedAfterItWhenAdminOpensTheSection', async () => {
+    serve()
+    renderAppAt(SHARING)
+    const fields = [
+      await limitField(),
+      await shareCodeLifetimeField(),
+      await invitationLifetimeField(),
+      await retentionField(),
+    ]
+    const fact = 'A change applies to share codes, invitations and offers issued after it.'
+    expect(screen.getAllByText(fact)).toHaveLength(1)
+    for (const field of fields) expect(field).not.toHaveAccessibleDescription(fact)
+  })
+
   it('shouldSaveLimitAndSayItWasSavedWhenAdminEntersCodesAndSaves', async () => {
     const state = serve()
     const { user } = renderAppAt(SHARING)
