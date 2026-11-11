@@ -229,14 +229,13 @@ function HouseholdOffers({
         ) : (
           <SharingSection title={`Share invitations for ${household.name}`} failure={null}>
             <ul className={styles.rows}>
-              {offers.map((offer, index) => (
+              {offers.map((offer) => (
                 <li key={offer.id} className={styles.row}>
                   <SharedProfileText
                     profile={offer.profile}
                     byline={
                       offer.offeredByDisplayName && `Offered by ${offer.offeredByDisplayName}`
                     }
-                    paletteIndex={index}
                   >
                     {offer.expiresAt && (
                       <span className={styles.status}>

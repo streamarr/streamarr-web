@@ -10,18 +10,16 @@ import styles from './Sharing.module.css'
 export function SharedProfileText({
   profile,
   byline,
-  paletteIndex,
   children,
 }: Readonly<{
   profile: SharedProfileFieldsFragment
   /** Who offered or shared the Profile, or null when the server names no one. */
   byline: string | null
-  paletteIndex: number
   children?: ReactNode
 }>) {
   return (
     <span className={styles.rowProfile}>
-      <RowAvatar name={profile.name} paletteIndex={paletteIndex} />
+      <RowAvatar profile={profile} />
       <span className={styles.rowText}>
         {profile.name}
         {byline && <span className={styles.status}>{byline}</span>}
