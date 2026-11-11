@@ -1515,7 +1515,10 @@ export type IssueShareCodeMutationVariables = Exact<{
 }>;
 
 
-export type IssueShareCodeMutation = { issueShareCode: { issued: { code: string, shareCode: { id: string, householdId: string, status: ShareCodeStatus, issuedAt: string, expiresAt: string, issuedByDisplayName: string | null } } | null, userErrors: Array<{ __typename: 'HouseholdNotFoundError', message: string }> } | null };
+export type IssueShareCodeMutation = { issueShareCode: { issued: { code: string, shareCode: { id: string, householdId: string, status: ShareCodeStatus, issuedAt: string, expiresAt: string, issuedByDisplayName: string | null } } | null, userErrors: Array<
+      | { __typename: 'HouseholdNotFoundError', message: string }
+      | { __typename: 'ShareCodeLimitReachedError', message: string }
+    > } | null };
 
 export type WithdrawShareCodeMutationVariables = Exact<{
   input: WithdrawShareCodeInput;
@@ -1713,9 +1716,12 @@ type OrderedEdgeFields_ContinueWatchingEdge_Fragment = { cursor: string, orderKe
 
 type OrderedEdgeFields_MediaEdge_Fragment = { cursor: string, orderKey: string };
 
+type OrderedEdgeFields_NotificationEdge_Fragment = { cursor: string, orderKey: string };
+
 export type OrderedEdgeFieldsFragment =
   | OrderedEdgeFields_ContinueWatchingEdge_Fragment
   | OrderedEdgeFields_MediaEdge_Fragment
+  | OrderedEdgeFields_NotificationEdge_Fragment
 ;
 
 export type WatchStateChangedSubscriptionVariables = Exact<{ [key: string]: never; }>;
