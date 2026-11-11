@@ -21,6 +21,7 @@ import { server } from '../test/server'
 import {
   refusedShareCodeFixture,
   SENT_SHARE_CODE,
+  shareCodeLookUpFixture,
   serveShareCodeQuestions,
   SHARE_CODE,
   sharePreviewFixture,
@@ -413,6 +414,63 @@ describe('Sharing', () => {
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
     expect(asked.lookUps).toEqual([{ input: { code: SENT_SHARE_CODE } }])
     expect(asked.previews).toEqual([{ profileId: PROFILE_ID, shareCode: SENT_SHARE_CODE }])
+  })
+
+  it('shouldAskOnlyForThePreviewAgainWhenThePreviewFailedAndThePersonContinues', async () => {
+    serve()
+    const asked = serveShareCodeQuestions()
+    const preview = failsOnceThen(sharePreviewFixture())
+    server.use(graphql.query('ProfileSharePreview', preview.resolver))
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.type(await openShareForm(user), SHARE_CODE)
+
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+    expect(await screen.findByRole('alert')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+
+    expect(await screen.findByRole('heading', { name: 'Offer Alex to Cabin?' })).toBeVisible()
+    expect(asked.lookUps).toHaveLength(1)
+    expect(preview.calls).toBe(2)
+  })
+
+  it('shouldLookACodeUpAgainOnceThePersonChangesIt', async () => {
+    serve()
+    const asked = serveShareCodeQuestions()
+    server.use(graphql.query('ProfileSharePreview', failsOnceThen(sharePreviewFixture()).resolver))
+    const { user } = renderWithProviders(<SharingScreen />)
+    const field = await openShareForm(user)
+    await user.type(field, SHARE_CODE)
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+    await screen.findByRole('alert')
+
+    await user.clear(field)
+    await user.type(field, 'BCDF-GHJL')
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+
+    expect(await screen.findByRole('heading', { name: 'Offer Alex to Cabin?' })).toBeVisible()
+    expect(asked.lookUps).toEqual([
+      { input: { code: SENT_SHARE_CODE } },
+      { input: { code: 'BCDFGHJL' } },
+    ])
+  })
+
+  it('shouldLeaveTheAnswerAboutACodeThePersonChangedWhileItWasChecked', async () => {
+    serve()
+    const asked = serveShareCodeQuestions()
+    const lookUp = heldAnswer(shareCodeLookUpFixture())
+    server.use(graphql.mutation('LookUpShareCode', lookUp.answer))
+    const { user } = renderWithProviders(<SharingScreen />)
+    const field = await openShareForm(user)
+    await user.type(field, SHARE_CODE)
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+
+    await user.type(field, 'L')
+    lookUp.release()
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled())
+    expect(screen.queryByRole('heading', { name: 'Offer Alex to Cabin?' })).not.toBeInTheDocument()
+    expect(field).toHaveValue(`${SHARE_CODE}L`)
+    expect(asked.previews).toEqual([])
   })
 
   it('shouldContinueWhenEnterIsPressedInTheField', async () => {
