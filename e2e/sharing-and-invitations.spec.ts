@@ -1,9 +1,11 @@
 import { expect, test, type Page } from '@playwright/test'
 import type {
   ChangeInvitationLifetimeInput,
+  ChangeNotificationRetentionInput,
   ChangeShareCodeLifetimeInput,
   ChangeShareCodeLimitInput,
   InvitationLifetimeSettingFieldsFragment,
+  NotificationRetentionSettingFieldsFragment,
   ShareCodeLifetimeSettingFieldsFragment,
   ShareCodeLimitSettingFieldsFragment,
 } from '../src/graphql/generated/graphql'
@@ -43,6 +45,13 @@ async function fixture(page: Page) {
       minimumHours: 1,
       maximumHours: 720,
     } as InvitationLifetimeSettingFieldsFragment,
+    retention: {
+      __typename: 'NotificationRetentionSetting',
+      id: SETTINGS_ID,
+      days: 90,
+      minimumDays: 1,
+      maximumDays: 365,
+    } as NotificationRetentionSettingFieldsFragment,
     socket: await routeGraphqlSocket(page),
   }
   await page.route('**/graphql', async (route) => {
@@ -84,6 +93,18 @@ async function fixture(page: Page) {
       return reply({
         changeInvitationLifetime: {
           invitationLifetimeSetting: state.invitationLifetime,
+          userErrors: [],
+        },
+      })
+    }
+    if (operationName === 'NotificationRetentionSetting')
+      return reply({ notificationRetentionSetting: state.retention })
+    if (operationName === 'ChangeNotificationRetention') {
+      const { days } = variables.input as ChangeNotificationRetentionInput
+      state.retention = { ...state.retention, days }
+      return reply({
+        changeNotificationRetention: {
+          notificationRetentionSetting: state.retention,
           userErrors: [],
         },
       })

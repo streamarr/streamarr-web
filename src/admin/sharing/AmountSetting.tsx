@@ -28,6 +28,8 @@ export interface SettingWords {
   subject: string
   /** The page notice once the server confirms a save of `value`. */
   saved: (value: number) => string
+  /** Names the one unit after the number, where the label does not say what the number counts. */
+  unitAfterNumber?: boolean
 }
 
 /** The field's number, as the admin left it, and the unit it counts. */
@@ -195,6 +197,8 @@ function AmountForm({
         ref={field}
         size="md"
         label={words.label}
+        // The unit after the number is only seen, so the field's name says it too.
+        aria-label={words.unitAfterNumber ? `${words.label}, in ${shown.unit.many}` : undefined}
         value={shown.count}
         onChange={(count) => edit({ count, unit: shown.unit })}
         min={Math.ceil(stored.minimum / shown.unit.size)}
@@ -204,6 +208,12 @@ function AmountForm({
         allowNegative={false}
         hideControls
         readOnly={saving}
+        rightSection={
+          words.unitAfterNumber && (
+            <span className={settingsStyles.fieldNote}>{unitName(shown.unit, shown.count)}</span>
+          )
+        }
+        rightSectionWidth={80}
         error={[refusal, unconfirmed && UNCONFIRMED].filter(Boolean).join(' ') || null}
         inputContainer={(input) =>
           units.length > 1 ? (
@@ -257,7 +267,7 @@ function UnitChoice({
       aria-label={`${label}, unit`}
       data={units.map((unit) => ({
         value: unit.many,
-        label: shown.count === 1 ? unit.one : unit.many,
+        label: unitName(unit, shown.count),
       }))}
       value={shown.unit.many}
       allowDeselect={false}
@@ -268,4 +278,9 @@ function UnitChoice({
       }}
     />
   )
+}
+
+/** A unit's name after a number: "day" after one, "days" after any other. */
+function unitName(unit: Unit, count: string | number): string {
+  return count === 1 ? unit.one : unit.many
 }
