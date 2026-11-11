@@ -406,11 +406,13 @@ test.describe(() => {
       request,
     }) => {
       const { toggle } = await openQualityMenu(page, request, playback)
+      const check = toggle.locator('svg')
+      await expect(check).toHaveCount(1)
       const label = await toggle
         .getByText('HDR', { exact: true })
         .evaluate((element) => getComputedStyle(element).color)
 
-      const { mark } = paintedMark(await paintedPixels(toggle.locator('svg')))
+      const { mark } = paintedMark(await paintedPixels(check))
 
       expect(`rgb(${mark.join(', ')})`).toBe(label)
     })
@@ -423,6 +425,7 @@ test.describe(() => {
   }) => {
     const { toggle } = await openQualityMenu(page, request, ORIGINAL)
     const check = toggle.locator('svg')
+    await expect(check).toHaveCount(1)
 
     for (const palette of ['light', 'dark'] as const) {
       await page.emulateMedia({ forcedColors: 'active', colorScheme: palette })
