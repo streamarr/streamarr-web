@@ -40,6 +40,7 @@ const HEVC_LEVEL_5_2 = 52
 const HEVC_LEVEL_6_0 = 60
 const HEVC_LEVEL_6_1 = 61
 const HEVC_LEVEL_6_2 = 62
+const EVERY_SEARCHED_HEVC_LEVEL = [HEVC_LEVEL_6_2, HEVC_LEVEL_6_1, HEVC_LEVEL_6_0, HEVC_LEVEL_5_2]
 
 type Decodes = (configuration: MediaDecodingConfiguration) => boolean
 
@@ -232,17 +233,42 @@ function hevcDecoderUpTo(maximum: number): Answers {
 
 type DecodingInfoFake = Mock<(configuration: MediaDecodingConfiguration) => Promise<DecodingAnswer>>
 
-// The codec strings of the HEVC questions above level 5.1 that the path playing HLS was asked.
-function hevcLevelQuestions(decodingInfo: DecodingInfoFake): string[] {
-  return decodingInfo.mock.calls
+// A level search asks about HEVC Main, about HEVC Main 10, or about one compatible base.
+type HevcLevelSearch = 'HEVC_MAIN' | 'HEVC_MAIN_10' | 'PQ' | 'HLG'
+
+function hevcLevelSearchOf(configuration: MediaDecodingConfiguration): HevcLevelSearch {
+  const transfer = configuration.video?.transferFunction
+  if (transfer === 'pq') {
+    return 'PQ'
+  }
+  if (transfer === 'hlg') {
+    return 'HLG'
+  }
+  return isHevcMain(codecOf(configuration)) ? 'HEVC_MAIN' : 'HEVC_MAIN_10'
+}
+
+// Only a level search asks the path that plays HLS about an HEVC level above 5.1.
+function isHevcLevelSearchQuestion(configuration: MediaDecodingConfiguration): boolean {
+  return (
+    configuration.type !== 'file' &&
+    codecOf(configuration).startsWith('hvc1') &&
+    hevcLevelOf(configuration) > HEVC_LEVEL_5_1
+  )
+}
+
+// The levels that each HEVC level search asked about, in the order that it asked them.
+function hevcLevelsAskedBySearch(
+  decodingInfo: DecodingInfoFake,
+): Partial<Record<HevcLevelSearch, number[]>> {
+  const asked: Partial<Record<HevcLevelSearch, number[]>> = {}
+  const questions = decodingInfo.mock.calls
     .map(([configuration]) => configuration)
-    .filter(
-      (configuration) =>
-        configuration.type !== 'file' &&
-        codecOf(configuration).startsWith('hvc1') &&
-        hevcLevelOf(configuration) > HEVC_LEVEL_5_1,
-    )
-    .map(codecOf)
+    .filter(isHevcLevelSearchQuestion)
+  for (const configuration of questions) {
+    const search = hevcLevelSearchOf(configuration)
+    asked[search] = [...(asked[search] ?? []), hevcLevelOf(configuration)]
+  }
+  return asked
 }
 
 // Each HEVC entry's compatible bases, beside the codec profiles that carry its levels.
@@ -2007,10 +2033,10 @@ describe('declarePlaybackCapabilities', () => {
 
       await declarePlaybackCapabilities(platformFixture({ decodingInfo, userAgent: SAFARI }))
 
-      expect(hevcLevelQuestions(decodingInfo).toSorted()).toEqual([
-        hevcMainCodec(HEVC_LEVEL_6_2),
-        hevcMainTenCodec(HEVC_LEVEL_6_2),
-      ])
+      expect(hevcLevelsAskedBySearch(decodingInfo)).toEqual({
+        HEVC_MAIN: [HEVC_LEVEL_6_2],
+        HEVC_MAIN_10: [HEVC_LEVEL_6_2],
+      })
     })
 
     it('shouldDeclareTheFirstSmoothHevcLevelWhenWebKitRefusesOrAnswersUnsmoothAtEachLevelAboveIt', async () => {
@@ -2031,12 +2057,10 @@ describe('declarePlaybackCapabilities', () => {
       expect(familyEntries(declaration, 'HEVC')).toEqual([
         { ...UHD_AT_60_HEVC_ENTRY, codecProfiles: hevcProfiles(HEVC_LEVEL_5_2) },
       ])
-      expect(hevcLevelQuestions(decodingInfo).filter(isHevcMain)).toEqual([
-        hevcMainCodec(HEVC_LEVEL_6_2),
-        hevcMainCodec(HEVC_LEVEL_6_1),
-        hevcMainCodec(HEVC_LEVEL_6_0),
-        hevcMainCodec(HEVC_LEVEL_5_2),
-      ])
+      expect(hevcLevelsAskedBySearch(decodingInfo)).toEqual({
+        HEVC_MAIN: EVERY_SEARCHED_HEVC_LEVEL,
+        HEVC_MAIN_10: EVERY_SEARCHED_HEVC_LEVEL,
+      })
     })
 
     it('shouldDeclareTheNeededHevcLevelWhenWebKitRefusesEveryLevelAboveIt', async () => {
@@ -2047,12 +2071,10 @@ describe('declarePlaybackCapabilities', () => {
       )
 
       expect(familyEntries(declaration, 'HEVC')).toEqual([UHD_AT_60_HEVC_ENTRY])
-      expect(hevcLevelQuestions(decodingInfo).filter(isHevcMain)).toEqual([
-        hevcMainCodec(HEVC_LEVEL_6_2),
-        hevcMainCodec(HEVC_LEVEL_6_1),
-        hevcMainCodec(HEVC_LEVEL_6_0),
-        hevcMainCodec(HEVC_LEVEL_5_2),
-      ])
+      expect(hevcLevelsAskedBySearch(decodingInfo)).toEqual({
+        HEVC_MAIN: EVERY_SEARCHED_HEVC_LEVEL,
+        HEVC_MAIN_10: EVERY_SEARCHED_HEVC_LEVEL,
+      })
     })
 
     it.each([
@@ -2081,7 +2103,10 @@ describe('declarePlaybackCapabilities', () => {
         await vi.advanceTimersByTimeAsync(3_000)
 
         expect(familyEntries(await declaration, 'HEVC')).toEqual([UHD_AT_60_HEVC_ENTRY])
-        expect(hevcLevelQuestions(decodingInfo).toSorted()).toEqual(levelSixPointTwoCodecs)
+        expect(hevcLevelsAskedBySearch(decodingInfo)).toEqual({
+          HEVC_MAIN: [HEVC_LEVEL_6_2],
+          HEVC_MAIN_10: [HEVC_LEVEL_6_2],
+        })
       },
     )
 
@@ -2252,7 +2277,7 @@ describe('declarePlaybackCapabilities', () => {
           hdrPlatformFixture({ decodingInfo, userAgent }),
         )
 
-        expect(hevcLevelQuestions(decodingInfo)).toEqual([])
+        expect(hevcLevelsAskedBySearch(decodingInfo)).toEqual({})
         expect(hevcLevelsByBases(declaration)).toEqual([
           { compatibleBases: ['SDR'], codecProfiles: hevcProfiles(HEVC_LEVEL_5_1) },
           { compatibleBases: ['PQ', 'HLG'], codecProfiles: hevcMainTen(HEVC_LEVEL_5_1) },
