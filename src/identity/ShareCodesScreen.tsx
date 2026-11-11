@@ -134,10 +134,6 @@ function HouseholdShareCodes({
 
   return (
     <div className={styles.page}>
-      <p className={styles.intro}>
-        Give a code to someone in another Household so they can offer a Profile to {household.name}.
-        A code works once, and an admin here still decides on every offer.
-      </p>
       {refusal && (
         <p className={sharingStyles.refusal} role="alert">
           {refusal}
@@ -166,6 +162,7 @@ function HouseholdShareCodes({
         />
       )}
       <LiveShareCodes
+        householdName={household.name}
         listed={query.data}
         loading={query.loading}
         error={query.error}
@@ -177,12 +174,14 @@ function HouseholdShareCodes({
 }
 
 function LiveShareCodes({
+  householdName,
   listed,
   loading,
   error,
   readAgain,
   announce,
 }: Readonly<{
+  householdName: string
   /** The last list the server gave, if any. */
   listed: HouseholdShareCodesQuery | undefined
   loading: boolean
@@ -228,7 +227,12 @@ function LiveShareCodes({
 
   return (
     <SharingSection title="Live codes" failure={refusal}>
-      {codes.length === 0 && <p className={sharingStyles.note}>No live share codes.</p>}
+      {codes.length === 0 && (
+        <p className={sharingStyles.note}>
+          No live share codes. Give one to someone in another Household so they can offer a Profile
+          to {householdName}.
+        </p>
+      )}
       <ul className={sharingStyles.rows}>
         {codes.map((code) => (
           <LiveShareCodeRow
