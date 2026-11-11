@@ -142,7 +142,8 @@ function pixelRate(tier: PictureTier): number {
   return tier.width * tier.height * tier.frameRate
 }
 
-// Highest first. The picture tiers already ask about level 5.1 and every level below it.
+// Highest first. No picture tier needs a level above 5.1, so the search asks only about levels
+// above 5.1.
 const SEARCHED_HEVC_LEVELS: readonly number[] = [62, 61, 60, 52]
 
 interface BitDepthProbe {
@@ -1386,7 +1387,7 @@ function entryQuestions({
 }
 
 // Direct play accepts every stream that the entry accepts, so each question asks at the level that
-// the entry declares for the question's codec profiles. AV1's 10-bit probe names no codec profile,
+// the entry declares for the question's codec profiles. AV1's 10-bit probe lists no codec profile,
 // so it asks at the level that the picture needs.
 function declaredLevel({
   family,
