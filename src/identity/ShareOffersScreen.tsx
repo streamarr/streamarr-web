@@ -14,6 +14,7 @@ import settingsStyles from '../styles/settings.module.css'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { FailurePanel } from '../ui/Failure'
 import { PageNotice } from '../ui/PageNotice'
+import { useFocusFallback } from '../ui/useFocusFallback'
 import { usePageNotice } from '../ui/usePageNotice'
 import styles from './Sharing.module.css'
 import { SharedProfileText } from './SharedProfileText'
@@ -33,6 +34,7 @@ type Decision = 'accept' | 'decline'
 /** The offers of Profiles to the Account's Household, which its admins accept or decline. */
 export function ShareOffersScreen() {
   const { notice, count, heading, announce, dismiss } = usePageNotice()
+  useFocusFallback(heading)
 
   return (
     <>
