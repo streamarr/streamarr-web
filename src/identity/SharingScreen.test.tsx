@@ -28,6 +28,7 @@ import { leaveForHome, returnThroughTheProfileMenu, type SettingsPage } from '..
 import { server } from '../test/server'
 import {
   refusedShareCodeFixture,
+  SHARE_CODE_REFUSED,
   SENT_SHARE_CODE,
   serveShareCodeQuestions,
   SHARE_CODE,
@@ -1362,9 +1363,7 @@ describe('Sharing', () => {
     await user.click(screen.getByRole('button', { name: 'Continue' }))
 
     await waitFor(() => expect(field).toBeInvalid())
-    expect(field).toHaveAccessibleDescription(
-      expect.stringContaining('That code does not work. Ask an admin there for a new one.'),
-    )
+    expect(field).toHaveAccessibleDescription(expect.stringContaining(SHARE_CODE_REFUSED))
     expect(field).toHaveValue(SHARE_CODE)
     expect(field).toHaveFocus()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
@@ -1527,7 +1526,7 @@ describe('Sharing', () => {
     server.use(
       graphql.mutation('OfferProfileShare', () =>
         HttpResponse.json({
-          data: offerRefused('ShareCodeRefusedError', 'That share code does not work.'),
+          data: offerRefused('ShareCodeRefusedError', SHARE_CODE_REFUSED),
         }),
       ),
     )
@@ -1538,9 +1537,7 @@ describe('Sharing', () => {
 
     const field = await screen.findByRole('textbox', { name: 'Share code' })
     expect(field).toBeInvalid()
-    expect(field).toHaveAccessibleDescription(
-      expect.stringContaining('That code does not work. Ask an admin there for a new one.'),
-    )
+    expect(field).toHaveAccessibleDescription(expect.stringContaining(SHARE_CODE_REFUSED))
     expect(field).toHaveValue(SHARE_CODE)
     expect(field).toHaveFocus()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
