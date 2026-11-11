@@ -665,6 +665,35 @@ describe('Sharing', () => {
     expect(await screen.findByRole('heading', { name: 'Offer Alex to Cabin?' })).toBeVisible()
   })
 
+  it('shouldAnnounceTheFieldsErrorWhenEnterIsPressedInTheField', async () => {
+    serve()
+    const { user } = renderWithProviders(<SharingScreen />)
+    const field = await openShareForm(user)
+
+    await user.type(field, 'hello{Enter}')
+
+    await waitFor(() => expect(field).toBeInvalid())
+    expect(field).toHaveFocus()
+    expectOnlyTheFieldsErrorAnnounced(field, 'A share code is 8 letters, like BCDF-GHJK.')
+  })
+
+  it('shouldAnnounceTheFieldsErrorAgainWhenEnterIsPressedAgainWithTheSameText', async () => {
+    serve()
+    const { user } = renderWithProviders(<SharingScreen />)
+    const field = await openShareForm(user)
+    await user.type(field, 'hello{Enter}')
+    const first = within(await screen.findByRole('alert')).getByText(/^A share code is 8 letters/)
+
+    await user.keyboard('{Enter}')
+
+    // The same words, written anew, so a screen reader says them again.
+    await waitFor(() =>
+      expect(within(screen.getByRole('alert')).getByText(/^A share code is 8 letters/)).not.toBe(
+        first,
+      ),
+    )
+  })
+
   it('shouldMoveFocusFromTheFieldToTheReviewWithoutThePageHeadingWhenEnterIsPressed', async () => {
     serve()
     const { user } = renderWithProviders(<SharingScreen />)
@@ -706,7 +735,7 @@ describe('Sharing', () => {
     expect(field).toHaveAccessibleDescription(expect.stringContaining(SHARE_CODE_REFUSED))
     expect(field).toHaveValue(SHARE_CODE)
     expect(field).toHaveFocus()
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expectOnlyTheFieldsErrorAnnounced(field, SHARE_CODE_REFUSED)
     expect(asked.previews).toEqual([])
   })
 
@@ -864,7 +893,7 @@ describe('Sharing', () => {
     expect(field).toHaveAccessibleDescription(expect.stringContaining(SHARE_CODE_REFUSED))
     expect(field).toHaveValue(SHARE_CODE)
     expect(field).toHaveFocus()
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expectOnlyTheFieldsErrorAnnounced(field, SHARE_CODE_REFUSED)
   })
 
   it('shouldShowTheServersWordsAndKeepTheReviewWhenTheOfferIsRefused', async () => {
@@ -1078,6 +1107,13 @@ function canceledPayload() {
     share: { __typename: 'ProfileShare', id: SHARE_ID, status: 'CANCELED' },
     userErrors: [],
   }
+}
+
+// The field's error is the one alert, and the field names it as its description.
+function expectOnlyTheFieldsErrorAnnounced(field: HTMLElement, error: string) {
+  const alert = screen.getByRole('alert')
+  expect(alert).toHaveTextContent(error)
+  expect(field.getAttribute('aria-describedby')?.split(' ')).toContain(alert.id)
 }
 
 // The confirmation holds a status of its own while a request is on its way, so the page's notice
