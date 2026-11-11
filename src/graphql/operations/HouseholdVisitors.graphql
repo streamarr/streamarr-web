@@ -1,0 +1,45 @@
+query SharedWithHousehold($householdId: ID!) {
+  householdShares(householdId: $householdId, statuses: [ACTIVE], visitorsOnly: true, first: 50) {
+    edges {
+      node {
+        id
+        profileId
+        householdId
+        status
+        requiredByAccountMembership
+        profile {
+          ...SharedProfileFields
+        }
+        offeredByDisplayName
+        visitor
+      }
+    }
+  }
+}
+
+query VisitorDevices($householdId: ID!) {
+  householdDevices(householdId: $householdId, visitorsOnly: true, first: 50) {
+    edges {
+      node {
+        id
+        householdId
+        displayName
+        authorizingAccountDisplayName
+        status
+        pairedAt
+      }
+    }
+  }
+}
+
+mutation RevokeDeviceRegistration($input: RevokeDeviceRegistrationInput!) {
+  revokeDeviceRegistration(input: $input) {
+    registrationId
+    userErrors {
+      __typename
+      ... on MutationError {
+        message
+      }
+    }
+  }
+}
