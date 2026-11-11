@@ -10,13 +10,13 @@ import { canManageHousehold } from './householdAccess'
 const SECTIONS = [
   {
     to: '/settings/household/offers',
-    icon: 'people',
+    icon: 'share-offers',
     label: 'Share offers',
     region: 'Share offers',
   },
   {
     to: '/settings/household/codes',
-    icon: 'sharing',
+    icon: 'share-code',
     label: 'Share codes',
     region: 'Share codes',
   },
