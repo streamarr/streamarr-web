@@ -10,6 +10,11 @@ export const menuCountReads = [
   graphql.query('UnreadNotificationCount', () =>
     HttpResponse.json({ data: { unreadNotificationCount: 0 } }),
   ),
+  graphql.query('ShareOffers', () =>
+    HttpResponse.json({
+      data: { householdShares: { __typename: 'ProfileShareConnection', edges: [] } },
+    }),
+  ),
 ]
 
 export const server = setupServer(...menuCountReads)

@@ -32,6 +32,7 @@ export function ProfileMenu({
   onHouseholdSettings,
   onNotifications,
   unreadNotifications = 0,
+  waitingOffers = 0,
 }: Readonly<{
   me: Me
   onPinRequired: (profileId: string) => void
@@ -47,6 +48,8 @@ export function ProfileMenu({
   onNotifications?: () => void
   /** How many of the Account's Notifications are unread, counted after their entry. */
   unreadNotifications?: number
+  /** How many offers wait for the Household's decision, counted after Household settings. */
+  waitingOffers?: number
 }>) {
   const { selectProfile } = useAuth()
   const signOut = useSignOut(onSignedOut)
@@ -192,6 +195,7 @@ export function ProfileMenu({
             <MenuEntry
               icon="settings"
               label="Household settings"
+              count={{ value: waitingOffers, words: offersWaiting }}
               onChoose={closeThen(onHouseholdSettings)}
             />
           )}
@@ -238,6 +242,10 @@ function MenuEntry({
       {text && <UnreadCount text={text} />}
     </button>
   )
+}
+
+function offersWaiting(text: string): string {
+  return text === '1' ? '1 offer waiting' : `${text} offers waiting`
 }
 
 function isSessionEviction(error: unknown): boolean {
