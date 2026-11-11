@@ -365,6 +365,34 @@ describe('sharing and invitation settings', () => {
     expect(field).toHaveFocus()
   })
 
+  it('shouldLeaveFocusWhereAdminPutItWhenASaveAnswersAfterTheyMovedOn', async () => {
+    const state = serve()
+    const answer = deferred()
+    server.use(
+      graphql.mutation<ChangeShareCodeLimitMutation, ChangeShareCodeLimitMutationVariables>(
+        'ChangeShareCodeLimit',
+        async ({ variables }) => {
+          await answer.promise
+          state.limit = { ...state.limit, codes: variables.input.codes }
+          return HttpResponse.json({
+            data: {
+              changeShareCodeLimit: { shareCodeLimitSetting: state.limit, userErrors: [] },
+            },
+          })
+        },
+        { once: true },
+      ),
+    )
+    const { user } = renderAppAt(SHARING)
+    await enterLimit(user, '20')
+    await user.click(saveLimit())
+    const elsewhere = await shareCodeLifetimeField()
+    await user.click(elsewhere)
+    answer.resolve()
+    await expectNotice('Saved. A Household may hold 20 live share codes.')
+    expect(elsewhere).toHaveFocus()
+  })
+
   it('shouldKeepSaveDisabledWhenLimitIsEmpty', async () => {
     serve()
     const { user } = renderAppAt(SHARING)
