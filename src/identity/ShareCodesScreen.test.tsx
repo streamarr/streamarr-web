@@ -216,10 +216,12 @@ async function issueAndHoldTheReadAfterTheIssue() {
   return { user, release: afterIssue.release }
 }
 
-// The issue button stays disabled until the read after the change on its way lands.
-async function waitForTheReadAfterTheIssue() {
-  const issueAction = screen.getByRole('button', { name: 'Issue a share code' })
-  await waitFor(() => expect(issueAction).toBeEnabled())
+// The issued code takes the issue button's place, and the code's Withdraw button stays disabled
+// until the read after the issue lands.
+async function waitForTheReadAfterTheIssueToListTheCode() {
+  const live = screen.getByRole('region', { name: 'Live codes' })
+  const withdraw = await within(live).findByRole('button', { name: 'Withdraw' })
+  await waitFor(() => expect(withdraw).toBeEnabled())
 }
 
 function failingClipboard() {
@@ -311,7 +313,7 @@ describe('Share codes', () => {
     expect(within(live).getAllByRole('listitem')).toHaveLength(MOST_LIVE_CODES - 1)
   })
 
-  it('shouldShowTheCodeOnceInThePageWhenAnAdminIssuesOne', async () => {
+  it('shouldShowTheCodeOnceInPlaceOfTheIssueButtonWhenAnAdminIssuesOne', async () => {
     const codes = serveInTurn([], [liveCode()])
     serveIssue()
     const { user } = renderAppAt(CODES)
@@ -319,6 +321,7 @@ describe('Share codes', () => {
     const code = await issue(user)
 
     expect(code).toHaveFocus()
+    expect(screen.queryByRole('button', { name: 'Issue a share code' })).not.toBeInTheDocument()
     expect(code).toHaveAccessibleDescription(
       'This is the only time the code is shown. It works until Nov 18, 2026, 9:15 AM.',
     )
@@ -400,10 +403,10 @@ describe('Share codes', () => {
 
   it('shouldReturnToTheIssueButtonWhenTheAdminIsDoneBeforeTheReadAfterTheIssueArrives', async () => {
     const { user, release } = await issueAndHoldTheReadAfterTheIssue()
-    const issueAction = screen.getByRole('button', { name: 'Issue a share code' })
-    expect(issueAction).toBeDisabled()
 
     await user.click(screen.getByRole('button', { name: 'Done' }))
+    const issueAction = screen.getByRole('button', { name: 'Issue a share code' })
+    expect(issueAction).toBeDisabled()
     release()
 
     await waitFor(() => expect(issueAction).toHaveFocus())
@@ -588,7 +591,7 @@ describe('Share codes', () => {
     serveIssue()
     const { user } = renderAppAt(CODES)
     await issue(user)
-    await waitForTheReadAfterTheIssue()
+    await waitForTheReadAfterTheIssueToListTheCode()
 
     comeBackOnline()
 
@@ -612,7 +615,8 @@ describe('Share codes', () => {
 
     afterIssue.release()
 
-    await waitForTheReadAfterTheIssue()
+    const issueAction = await screen.findByRole('button', { name: 'Issue a share code' })
+    await waitFor(() => expect(issueAction).toBeEnabled())
     expect(screen.queryByText(SHARE_CODE)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Copy link' })).not.toBeInTheDocument()
   })
@@ -622,7 +626,7 @@ describe('Share codes', () => {
     serveIssue()
     const { user } = renderAppAt(CODES)
     const code = await issue(user)
-    await waitForTheReadAfterTheIssue()
+    await waitForTheReadAfterTheIssueToListTheCode()
     expect(code).toHaveFocus()
 
     comeBackOnline()
@@ -637,7 +641,7 @@ describe('Share codes', () => {
     serveIssue()
     const { user } = renderAppAt(CODES)
     const code = await issue(user)
-    await waitForTheReadAfterTheIssue()
+    await waitForTheReadAfterTheIssueToListTheCode()
     // A click on the page outside the panel leaves focus on the page body.
     act(() => code.blur())
 
@@ -655,10 +659,8 @@ describe('Share codes', () => {
     const { user } = renderAppAt(CODES)
     await issue(user)
 
-    await waitForTheReadAfterTheIssue()
-
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load share codes.")
     expect(codes.calls).toBe(2)
-    expect(screen.getByRole('alert')).toHaveTextContent("Couldn't load share codes.")
     expect(screen.getByText(SHARE_CODE)).toBeVisible()
     expect(screen.getByRole('button', { name: 'Copy link' })).toBeEnabled()
   })
@@ -675,7 +677,7 @@ describe('Share codes', () => {
     serveIssue()
     const { user } = renderAppAt(CODES)
     await issue(user)
-    await waitForTheReadAfterTheIssue()
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load share codes.")
 
     await user.click(screen.getByRole('button', { name: 'Retry' }))
 

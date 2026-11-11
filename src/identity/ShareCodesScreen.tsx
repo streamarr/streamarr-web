@@ -220,16 +220,8 @@ function HouseholdShareCodes({
           {refusal}
         </p>
       )}
-      <Button
-        ref={issueAction}
-        leftSection={<Icon name="plus" />}
-        loading={change?.kind === 'issue'}
-        disabled={waiting}
-        onClick={() => void issue()}
-      >
-        Issue a share code
-      </Button>
-      {shown && (
+      {/* The code takes the button's place until the admin is done with it. */}
+      {shown ? (
         <IssuedShareCode
           ref={holdsFocusAsItCloses}
           key={shown.shareCode.id}
@@ -243,6 +235,16 @@ function HouseholdShareCodes({
             setShown(null)
           }}
         />
+      ) : (
+        <Button
+          ref={issueAction}
+          leftSection={<Icon name="plus" />}
+          loading={change?.kind === 'issue'}
+          disabled={waiting}
+          onClick={() => void issue()}
+        >
+          Issue a share code
+        </Button>
       )}
       <LiveShareCodes
         householdName={household.name}
