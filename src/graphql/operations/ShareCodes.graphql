@@ -1,0 +1,50 @@
+query HouseholdShareCodes($householdId: ID!) {
+  householdShareCodes(householdId: $householdId, first: 50) {
+    edges {
+      node {
+        ...ShareCodeFields
+      }
+    }
+  }
+}
+
+mutation IssueShareCode($input: IssueShareCodeInput!) {
+  issueShareCode(input: $input) {
+    issued {
+      code
+      shareCode {
+        ...ShareCodeFields
+      }
+    }
+    userErrors {
+      __typename
+      ... on MutationError {
+        message
+      }
+    }
+  }
+}
+
+mutation WithdrawShareCode($input: WithdrawShareCodeInput!) {
+  withdrawShareCode(input: $input) {
+    shareCode {
+      id
+      status
+    }
+    userErrors {
+      __typename
+      ... on MutationError {
+        message
+      }
+    }
+  }
+}
+
+fragment ShareCodeFields on ShareCode {
+  id
+  householdId
+  status
+  issuedAt
+  expiresAt
+  issuedByDisplayName
+}
