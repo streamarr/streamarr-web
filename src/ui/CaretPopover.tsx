@@ -174,16 +174,13 @@ export function CaretPopover<Id>({
   }
 
   // An unavailable toggle explains itself on any press rather than change.
-  function pressToggle(index: number) {
-    if (!toggle) {
-      return
-    }
-    if (toggle.unavailable) {
+  function pressToggle({ unavailable, onToggle }: PopoverToggle, index: number) {
+    if (unavailable) {
       tapMark(index)
       return
     }
     anchorRef.current?.focus()
-    toggle.onToggle()
+    onToggle()
   }
 
   function focusRow(row: HTMLElement, index: number) {
@@ -276,7 +273,7 @@ export function CaretPopover<Id>({
             aria-label={toggle.unavailable && `${toggle.label}. ${toggle.unavailable}`}
             tabIndex={-1}
             className={`${styles.row} ${styles.toggle}`}
-            onClick={() => pressToggle(options.length)}
+            onClick={() => pressToggle(toggle, options.length)}
             onFocus={(event) => focusRow(event.currentTarget, options.length)}
             onPointerEnter={() => explainHovered(options.length)}
             onPointerLeave={() => stopHovering(options.length)}
