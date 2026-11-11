@@ -25,6 +25,19 @@ export function whenLabel(at: string, now: Date): string {
   return relative.format(-Math.floor(ago / size), name)
 }
 
+/**
+ * When the label of something that happened at `at` next changes after `now`: once the next whole
+ * unit has passed, or once it turns into the date. Null once it already says the date.
+ */
+export function nextLabelChange(at: string, now: Date): string | null {
+  const time = new Date(at).getTime()
+  const ago = now.getTime() - time
+  if (ago >= RECENT) return null
+  const [, size] = UNITS.find(([, unit]) => ago >= unit) ?? UNITS[UNITS.length - 1]
+  const next = time + (Math.floor(Math.max(ago, 0) / size) + 1) * size
+  return new Date(Math.min(next, time + RECENT)).toISOString()
+}
+
 /** The day, date and time something happened, in the reader's time zone. */
 export function fullTime(at: string): string {
   return full.format(new Date(at))
