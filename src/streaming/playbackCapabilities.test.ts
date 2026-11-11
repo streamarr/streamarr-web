@@ -132,6 +132,10 @@ function hevcProfiles(maxLevel: number) {
   ]
 }
 
+function av1Main(maxLevel: number) {
+  return [{ profile: 'AV1_MAIN' as const, maxLevel }]
+}
+
 function familyEntries(declaration: ClientCapabilityDeclarationInput, family: string) {
   return declaration.video.filter((entry) => entry.codecFamily === family)
 }
@@ -211,7 +215,7 @@ function smoothMainTenAndPowerEfficientMain(
 
 const UHD_AT_60_HEVC_MAIN_TEN_ENTRY = sdrVideoEntry({
   codecFamily: 'HEVC',
-  codecProfiles: [{ profile: 'HEVC_MAIN_10', maxLevel: 51 }],
+  codecProfiles: hevcMainTen(51),
   maxBitDepth: 10,
   maxWidth: 3840,
   maxHeight: 2160,
@@ -227,17 +231,14 @@ const DECLARATION_OF_THE_720P_ONLY_BROWSER_WITHOUT_OPUS: ClientCapabilityDeclara
     sdrVideoEntry({ codecProfiles: h264Profiles(31), maxWidth: 1280, maxHeight: 720 }),
     sdrVideoEntry({
       codecFamily: 'HEVC',
-      codecProfiles: [
-        { profile: 'HEVC_MAIN', maxLevel: 31 },
-        { profile: 'HEVC_MAIN_10', maxLevel: 31 },
-      ],
+      codecProfiles: hevcProfiles(31),
       maxBitDepth: 10,
       maxWidth: 1280,
       maxHeight: 720,
     }),
     sdrVideoEntry({
       codecFamily: 'AV1',
-      codecProfiles: [{ profile: 'AV1_MAIN', maxLevel: 31 }],
+      codecProfiles: av1Main(31),
       maxBitDepth: 10,
       maxWidth: 1280,
       maxHeight: 720,
@@ -264,10 +265,7 @@ const DECLARATION_OF_EVERY_TIER: ClientCapabilityDeclarationInput = {
     }),
     sdrVideoEntry({
       codecFamily: 'HEVC',
-      codecProfiles: [
-        { profile: 'HEVC_MAIN', maxLevel: 51 },
-        { profile: 'HEVC_MAIN_10', maxLevel: 51 },
-      ],
+      codecProfiles: hevcProfiles(51),
       maxBitDepth: 10,
       maxWidth: 3840,
       maxHeight: 2160,
@@ -275,7 +273,7 @@ const DECLARATION_OF_EVERY_TIER: ClientCapabilityDeclarationInput = {
     }),
     sdrVideoEntry({
       codecFamily: 'AV1',
-      codecProfiles: [{ profile: 'AV1_MAIN', maxLevel: 51 }],
+      codecProfiles: av1Main(51),
       maxBitDepth: 10,
       maxWidth: 3840,
       maxHeight: 2160,
@@ -295,14 +293,9 @@ const DECLARATION_OF_EVERY_TIER: ClientCapabilityDeclarationInput = {
 
 type CompatibleBase = 'PQ' | 'HLG'
 
-const HEVC_PROFILES_AT_LEVEL_51 = [
-  { profile: 'HEVC_MAIN' as const, maxLevel: 51 },
-  { profile: 'HEVC_MAIN_10' as const, maxLevel: 51 },
-]
-
 const UHD_AT_60_HEVC_ENTRY = sdrVideoEntry({
   codecFamily: 'HEVC',
-  codecProfiles: HEVC_PROFILES_AT_LEVEL_51,
+  codecProfiles: hevcProfiles(51),
   maxBitDepth: 10,
   maxWidth: 3840,
   maxHeight: 2160,
@@ -311,7 +304,7 @@ const UHD_AT_60_HEVC_ENTRY = sdrVideoEntry({
 
 const UHD_AT_60_AV1_ENTRY = sdrVideoEntry({
   codecFamily: 'AV1',
-  codecProfiles: [{ profile: 'AV1_MAIN', maxLevel: 51 }],
+  codecProfiles: av1Main(51),
   maxBitDepth: 10,
   maxWidth: 3840,
   maxHeight: 2160,
@@ -342,7 +335,7 @@ const UHD_AT_60_HEVC_HDR_ENTRY = hdrVideoEntry({})
 
 const UHD_AT_60_AV1_HDR_ENTRY = hdrVideoEntry({
   codecFamily: 'AV1',
-  codecProfiles: [{ profile: 'AV1_MAIN', maxLevel: 51 }],
+  codecProfiles: av1Main(51),
 })
 
 // An HDR10 stream is 10-bit PQ in BT.2020 primaries with SMPTE ST 2086 static metadata, and an HLG
@@ -466,7 +459,7 @@ describe('declarePlaybackCapabilities', () => {
     expect(familyEntries(declaration, 'AV1')).toEqual([
       sdrVideoEntry({
         codecFamily: 'AV1',
-        codecProfiles: [{ profile: 'AV1_MAIN', maxLevel: 50 }],
+        codecProfiles: av1Main(50),
         maxBitDepth: 10,
         maxWidth: 3840,
         maxHeight: 2160,
@@ -503,15 +496,12 @@ describe('declarePlaybackCapabilities', () => {
       sdrVideoEntry({ codecProfiles: h264Profiles(40) }),
       sdrVideoEntry({
         codecFamily: 'HEVC',
-        codecProfiles: [
-          { profile: 'HEVC_MAIN', maxLevel: 40 },
-          { profile: 'HEVC_MAIN_10', maxLevel: 40 },
-        ],
+        codecProfiles: hevcProfiles(40),
         maxBitDepth: 10,
       }),
       sdrVideoEntry({
         codecFamily: 'AV1',
-        codecProfiles: [{ profile: 'AV1_MAIN', maxLevel: 40 }],
+        codecProfiles: av1Main(40),
         maxBitDepth: 10,
       }),
     ])
@@ -620,10 +610,7 @@ describe('declarePlaybackCapabilities', () => {
       expect(familyEntries(declaration, 'HEVC')).toEqual([
         sdrVideoEntry({
           codecFamily: 'HEVC',
-          codecProfiles: [
-            { profile: 'HEVC_MAIN', maxLevel: 51 },
-            { profile: 'HEVC_MAIN_10', maxLevel: 51 },
-          ],
+          codecProfiles: hevcProfiles(51),
           maxBitDepth: 10,
           maxWidth: 3840,
           maxHeight: 2160,
@@ -667,10 +654,7 @@ describe('declarePlaybackCapabilities', () => {
     expect(familyEntries(declaration, 'HEVC')).toEqual([
       sdrVideoEntry({
         codecFamily: 'HEVC',
-        codecProfiles: [
-          { profile: 'HEVC_MAIN', maxLevel: 41 },
-          { profile: 'HEVC_MAIN_10', maxLevel: 41 },
-        ],
+        codecProfiles: hevcProfiles(41),
         maxBitDepth: 10,
         maxFrameRate: 60,
       }),
@@ -722,10 +706,7 @@ describe('declarePlaybackCapabilities', () => {
     expect(familyEntries(declaration, 'HEVC')).toEqual([
       sdrVideoEntry({
         codecFamily: 'HEVC',
-        codecProfiles: [
-          { profile: 'HEVC_MAIN', maxLevel: 41 },
-          { profile: 'HEVC_MAIN_10', maxLevel: 41 },
-        ],
+        codecProfiles: hevcProfiles(41),
         maxBitDepth: 10,
         maxFrameRate: 60,
       }),
@@ -784,10 +765,7 @@ describe('declarePlaybackCapabilities', () => {
       UHD_AT_60_HEVC_MAIN_TEN_ENTRY,
       sdrVideoEntry({
         codecFamily: 'HEVC',
-        codecProfiles: [
-          { profile: 'HEVC_MAIN', maxLevel: 41 },
-          { profile: 'HEVC_MAIN_10', maxLevel: 41 },
-        ],
+        codecProfiles: hevcProfiles(41),
         maxBitDepth: 10,
         maxFrameRate: 60,
       }),
@@ -819,10 +797,7 @@ describe('declarePlaybackCapabilities', () => {
     expect(familyEntries(declaration, 'HEVC')).toEqual([
       sdrVideoEntry({
         codecFamily: 'HEVC',
-        codecProfiles: [
-          { profile: 'HEVC_MAIN', maxLevel: 51 },
-          { profile: 'HEVC_MAIN_10', maxLevel: 51 },
-        ],
+        codecProfiles: hevcProfiles(51),
         maxBitDepth: 10,
         maxWidth: 3840,
         maxHeight: 2160,
@@ -916,7 +891,7 @@ describe('declarePlaybackCapabilities', () => {
       }),
       sdrVideoEntry({
         codecFamily: 'AV1',
-        codecProfiles: [{ profile: 'AV1_MAIN', maxLevel: 41 }],
+        codecProfiles: av1Main(41),
         maxFrameRate: 60,
       }),
     ])
@@ -971,7 +946,7 @@ describe('declarePlaybackCapabilities', () => {
     expect(familyEntries(declaration, 'AV1')).toEqual([
       sdrVideoEntry({
         codecFamily: 'AV1',
-        codecProfiles: [{ profile: 'AV1_MAIN', maxLevel: 40 }],
+        codecProfiles: av1Main(40),
       }),
     ])
   })
@@ -992,7 +967,7 @@ describe('declarePlaybackCapabilities', () => {
     expect(familyEntries(declaration, 'AV1')).toEqual([
       sdrVideoEntry({
         codecFamily: 'AV1',
-        codecProfiles: [{ profile: 'AV1_MAIN', maxLevel: 40 }],
+        codecProfiles: av1Main(40),
       }),
     ])
   })
