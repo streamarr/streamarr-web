@@ -9,16 +9,7 @@ query SharedWithHousehold($householdId: ID!, $after: String) {
     edges {
       cursor
       node {
-        id
-        profileId
-        householdId
-        status
-        requiredByAccountMembership
-        profile {
-          ...SharedProfileFields
-        }
-        offeredByDisplayName
-        visitor
+        ...VisitorShareFields
       }
     }
     pageInfo {
@@ -26,6 +17,20 @@ query SharedWithHousehold($householdId: ID!, $after: String) {
       endCursor
     }
   }
+}
+
+# A Profile shared with the Household as Shared with us lists it.
+fragment VisitorShareFields on ProfileShare {
+  id
+  profileId
+  householdId
+  status
+  requiredByAccountMembership
+  profile {
+    ...SharedProfileFields
+  }
+  offeredByDisplayName
+  visitor
 }
 
 query VisitorDevices($householdId: ID!, $after: String) {
