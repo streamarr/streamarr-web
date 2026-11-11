@@ -22,6 +22,12 @@ function serverAcceptsCredentials(scope: 'account' | 'profile') {
   )
 }
 
+const HOME = { path: '/', shows: () => screen.findByRole('banner') }
+const PROFILE_SELECTION = {
+  path: '/select-profile',
+  shows: () => screen.findByRole('heading', { name: /who's watching\?/i }),
+}
+
 describe('/login gate', () => {
   it('shouldBounceAKnownSignedInVisitorAwayFromSignIn', async () => {
     server.use(
@@ -73,15 +79,16 @@ describe('/login resume', () => {
   })
 
   it.each([
-    ['TheResumeTargetIsExternal', 'profile', '/login?redirect=https://evil.example/phish', '/'],
-    ['TheResumeTargetIsProtocolRelative', 'profile', '/login?redirect=//evil.example/phish', '/'],
-    ['ThereIsNothingToResume', 'account', '/login', '/select-profile'],
+    ['TheResumeTargetIsExternal', 'profile', '/login?redirect=https://evil.example/phish', HOME],
+    ['TheResumeTargetIsProtocolRelative', 'profile', '/login?redirect=//evil.example/phish', HOME],
+    ['ThereIsNothingToResume', 'account', '/login', PROFILE_SELECTION],
   ] as const)('shouldLandWhereTheSessionScopeLeadsWhen%s', async (_case, scope, path, landing) => {
     serverAcceptsCredentials(scope)
     const { router, user } = renderAppAt(path)
 
     await signIn(user)
 
-    await waitFor(() => expect(router.state.location.pathname).toBe(landing))
+    await waitFor(() => expect(router.state.location.pathname).toBe(landing.path))
+    expect(await landing.shows()).toBeInTheDocument()
   })
 })

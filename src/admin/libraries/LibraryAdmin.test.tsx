@@ -3,7 +3,7 @@ import { act, screen, waitFor, within } from '@testing-library/react'
 import { delay, graphql, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { deferred } from '../../test/deferred'
-import { serveGraphqlSocket } from '../../test/graphqlSocket'
+import { serveGraphqlSocket, SOCKET_RECONNECT_DEADLINE_MS } from '../../test/graphqlSocket'
 import { comeBackOnline } from '../../test/graphqlResponses'
 import { meFixture, profileFixture } from '../../test/meFixture'
 import { renderAppAt } from '../../test/render'
@@ -72,6 +72,22 @@ function serve(libraries = [MOVIES, SHOWS], me = ADMIN) {
     ),
   )
   return state
+}
+
+// The next read of the inventory answers, once `held` settles, with the libraries as it found them.
+function holdNextInventoryRead(state: ReturnType<typeof serve>, held: Promise<void>) {
+  server.use(
+    graphql.query(
+      'AdminLibraries',
+      async () => {
+        state.inventoryRequests++
+        const snapshot = state.libraries
+        await held
+        return HttpResponse.json({ data: { libraries: snapshot } })
+      },
+      { once: true },
+    ),
+  )
 }
 
 type User = ReturnType<typeof renderAppAt>['user']
@@ -756,10 +772,18 @@ describe('library administration', () => {
       state.libraries = [managed(MOVIES, { scanCompletedOn: '2026-10-15T12:05:00Z' }), SHOWS]
 
       state.socket.closeAll(1001, 'Going away')
-      await waitFor(() => expect(state.inventoryRequests).toBe(requests + 1), { timeout: 3_000 })
+      await waitFor(() => expect(state.inventoryRequests).toBe(requests + 1), {
+        timeout: SOCKET_RECONNECT_DEADLINE_MS,
+      })
       await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
+      const readAfterTheResponse = deferred()
+      holdNextInventoryRead(state, readAfterTheResponse.promise)
       answer.resolve()
 
+      // The read after the response is still out, so only the response could have changed the status.
+      await waitFor(() => expect(state.inventoryRequests).toBe(requests + 2))
+      expect(detail).toHaveTextContent('HEALTHY')
+      readAfterTheResponse.resolve()
       const scan = within(detail).getByRole('button', { name: 'Scan library' })
       await waitFor(() => expect(scan).toBeEnabled())
       expect(detail).toHaveTextContent('HEALTHY')
@@ -787,7 +811,9 @@ describe('library administration', () => {
       const requests = state.inventoryRequests
 
       state.socket.closeAll(1001, 'Going away')
-      await waitFor(() => expect(state.inventoryRequests).toBe(requests + 1), { timeout: 3_000 })
+      await waitFor(() => expect(state.inventoryRequests).toBe(requests + 1), {
+        timeout: SOCKET_RECONNECT_DEADLINE_MS,
+      })
       await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
       state.libraries = [managed(MOVIES, { status: busy }), SHOWS]
       answer.resolve()
@@ -818,21 +844,12 @@ describe('library administration', () => {
       await start(user)
       await requested.promise
       const requests = state.inventoryRequests
-      server.use(
-        graphql.query(
-          'AdminLibraries',
-          async () => {
-            state.inventoryRequests++
-            const snapshot = state.libraries
-            await reconnectReadHeld.promise
-            return HttpResponse.json({ data: { libraries: snapshot } })
-          },
-          { once: true },
-        ),
-      )
+      holdNextInventoryRead(state, reconnectReadHeld.promise)
 
       state.socket.closeAll(1001, 'Going away')
-      await waitFor(() => expect(state.inventoryRequests).toBe(requests + 1), { timeout: 3_000 })
+      await waitFor(() => expect(state.inventoryRequests).toBe(requests + 1), {
+        timeout: SOCKET_RECONNECT_DEADLINE_MS,
+      })
       await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
       state.libraries = [managed(MOVIES, { status: busy }), SHOWS]
       const responseDelivered = new Promise<void>((resolve) => {
@@ -1355,7 +1372,9 @@ describe('library administration', () => {
 
     state.socket.closeAll(1001, 'Going away')
 
-    await waitFor(() => expect(detail).toHaveTextContent('REFRESHING'), { timeout: 3_000 })
+    await waitFor(() => expect(detail).toHaveTextContent('REFRESHING'), {
+      timeout: SOCKET_RECONNECT_DEADLINE_MS,
+    })
     await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
     expect(state.socket.state.connections).toBe(2)
     expect(state.inventoryRequests).toBe(requests + 1)
@@ -1883,7 +1902,9 @@ describe('library administration', () => {
 
       state.socket.closeAll(1012, 'Service restart')
 
-      await waitFor(() => expect(state.inventoryRequests).toBe(requests + 1), { timeout: 3_000 })
+      await waitFor(() => expect(state.inventoryRequests).toBe(requests + 1), {
+        timeout: SOCKET_RECONNECT_DEADLINE_MS,
+      })
       await waitFor(() => expect(detail).toHaveTextContent('SCANNING'))
       expect(within(detail).getByRole('button', { name: 'Stop scan' })).toBeEnabled()
       expect(detail).not.toHaveTextContent(STOPS[0].stopped)
@@ -2012,7 +2033,9 @@ describe('library administration', () => {
 
         state.socket.closeAll(1012, 'Service restart')
 
-        await waitFor(() => expect(state.inventoryRequests).toBe(requests + 1), { timeout: 3_000 })
+        await waitFor(() => expect(state.inventoryRequests).toBe(requests + 1), {
+          timeout: SOCKET_RECONNECT_DEADLINE_MS,
+        })
         await waitFor(() => expect(detail).toHaveTextContent(current))
         await waitFor(() => expect(state.socket.isLive('LibraryStatusChanged')).toBe(true))
         state.socket.publish('LibraryStatusChanged', {

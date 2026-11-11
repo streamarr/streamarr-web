@@ -1,4 +1,4 @@
-query SharingOverview($householdId: ID!, $profileId: ID!) {
+query ShareOffers($householdId: ID!) {
   pendingShareOffers(householdId: $householdId, first: 50) {
     edges {
       node {
@@ -10,6 +10,9 @@ query SharingOverview($householdId: ID!, $profileId: ID!) {
       }
     }
   }
+}
+
+query ProfileShares($profileId: ID!) {
   profileShares(profileId: $profileId, first: 50) {
     edges {
       node {
@@ -17,6 +20,9 @@ query SharingOverview($householdId: ID!, $profileId: ID!) {
         householdId
         status
         requiredByAccountMembership
+        expiresAt
+        endedAt
+        invalidationReason
       }
     }
   }

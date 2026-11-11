@@ -2,6 +2,7 @@ import { useApolloClient } from '@apollo/client/react'
 import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from 'react'
 import {
   type AcceptInvitationInput,
+  AuthApiError,
   acceptInvitation as apiAcceptInvitation,
   type AuthTokens,
   login as apiLogin,
@@ -12,6 +13,7 @@ import {
   type LoginInput,
   type SetupInput,
 } from './api'
+import { beginIdentitySwitch } from '../graphql/client'
 import type { SubscriptionTransport } from '../graphql/subscriptionTransport'
 import { postCsrfTokenToServiceWorker } from './csrf'
 import type { RenewalBridge } from './renewalBridge'
@@ -85,23 +87,49 @@ export function AuthProvider({
     [adoptNewIdentity],
   )
   // A different Household or Profile is a different identity: nothing cached survives the switch.
-  // The socket keeps the authority it opened with, so it goes first; otherwise its next frame could
-  // land in the cache the refetch is rebuilding.
+  // The new identity's cookie lands with the response, before the store resets, so the client
+  // holds every operation from the request on (beginIdentitySwitch), and only a refusal from the
+  // server proves the identity unchanged. The socket keeps the authority it opened with, so it goes
+  // first; otherwise its next frame could land in the cache the refetch is rebuilding.
+  const forgetEarlierIdentity = useCallback(async () => {
+    subscriptions.replaceSocket()
+    await apollo.resetStore()
+  }, [apollo, subscriptions])
   const switchIdentity = useCallback(
-    async (tokens: AuthTokens): Promise<AuthTokens> => {
-      subscriptions.replaceSocket()
-      await apollo.resetStore()
+    async (
+      request: (options: { mayResend: () => boolean }) => Promise<AuthTokens>,
+    ): Promise<AuthTokens> => {
+      const identitySwitch = beginIdentitySwitch(apollo)
+      let tokens: AuthTokens
+      try {
+        tokens = await request({ mayResend: identitySwitch.isCurrent })
+      } catch (error) {
+        if (error instanceof AuthApiError) {
+          identitySwitch.failed()
+          throw error
+        }
+        // An answer that could not be read may still have installed the new identity's cookie.
+        identitySwitch.succeeded()
+        await forgetEarlierIdentity().catch(() => undefined)
+        throw error
+      }
+      identitySwitch.succeeded()
+      try {
+        adopt(tokens)
+      } finally {
+        await forgetEarlierIdentity()
+      }
       return tokens
     },
-    [apollo, subscriptions],
+    [adopt, apollo, forgetEarlierIdentity],
   )
   const selectHousehold = useCallback(
-    (id: string) => apiSelectHousehold(id).then(adopt).then(switchIdentity),
-    [adopt, switchIdentity],
+    (id: string) => switchIdentity((options) => apiSelectHousehold(id, options)),
+    [switchIdentity],
   )
   const selectProfile = useCallback(
-    (id: string, pin?: string) => apiSelectProfile(id, pin).then(adopt).then(switchIdentity),
-    [adopt, switchIdentity],
+    (id: string, pin?: string) => switchIdentity((options) => apiSelectProfile(id, pin, options)),
+    [switchIdentity],
   )
   const logout = useCallback(async () => {
     sessionStore.markAnonymous()

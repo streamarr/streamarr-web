@@ -73,6 +73,16 @@ describe('revalidation', () => {
     expect(page.refetchActive).toHaveBeenCalledOnce()
   })
 
+  it('shouldRefetchOnceWhenASocketSubscribesWithNoReadOut', async () => {
+    const page = setup()
+
+    page.recover()
+    page.finishRefetch()
+    await settled()
+
+    expect(page.refetchActive).toHaveBeenCalledOnce()
+  })
+
   it('shouldRefetchOnceMoreWhenASocketSubscribesDuringAnEarlierRefetch', async () => {
     const page = setup()
     page.goOnline()
@@ -119,6 +129,15 @@ describe('revalidation', () => {
   it('shouldRefetchWhenThePageReturnsFromTheBackground', () => {
     const page = setup({ visibilityState: 'hidden' })
 
+    page.becomeVisible()
+
+    expect(page.refetchActive).toHaveBeenCalledOnce()
+  })
+
+  it('shouldRefetchWhenThePageReturnsAfterItWentToTheBackground', () => {
+    const page = setup()
+
+    page.becomeHidden()
     page.becomeVisible()
 
     expect(page.refetchActive).toHaveBeenCalledOnce()

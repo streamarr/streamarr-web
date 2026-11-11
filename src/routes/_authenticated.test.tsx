@@ -85,7 +85,7 @@ describe('the authenticated layout', () => {
 
   it.each([
     '/link?code=BCDF-GHJK',
-    '/sharing',
+    '/settings/profile/sharing',
     '/library/library-1?by=ADDED&direction=DESC',
     '/play/media-1',
     '/play/media-1?episode=episode-1',
@@ -197,13 +197,13 @@ describe('the authenticated layout', () => {
   it('shouldAskForAProfileWhenTheServerRequiresOneMidSession', async () => {
     server.use(
       graphql.query('Me', () => HttpResponse.json({ data: { me: ME } })),
-      graphql.query('SharingOverview', () =>
+      graphql.query('ProfileShares', () =>
         HttpResponse.json({
           errors: [{ message: 'profile required', extensions: { code: 'PROFILE_REQUIRED' } }],
         }),
       ),
     )
-    const { router } = renderAppAt('/sharing')
+    const { router } = renderAppAt('/settings/profile/sharing')
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/select-profile'))
   })
@@ -233,6 +233,7 @@ describe('the authenticated layout', () => {
     renderAppAt('/', renewal)
 
     await waitFor(() => expect(renewal.refreshNow).toHaveBeenCalledOnce())
+    expect(await screen.findByRole('banner')).toBeInTheDocument()
   })
 
   it('shouldLeaveSignInReachableWithoutAskingTheServer', async () => {

@@ -54,6 +54,40 @@ const me = {
   selectedProfile: profile,
 }
 
+// Every title, and the Profile, has English audio and Forced only subtitles from the Profile. A
+// season's series is series-1, the id the specs give it: another id would replace the series the
+// season page shows.
+const profileLanguages = {
+  __typename: 'ProfileLanguagePreferences',
+  audioLanguages: ['EN'],
+  subtitleLanguage: null,
+  subtitleMode: 'FORCED',
+}
+const languagePreference = {
+  __typename: 'LanguagePreference',
+  audioLanguages: ['EN'],
+  subtitleLanguage: null,
+  subtitleMode: 'FORCED',
+  audioSource: 'PROFILE',
+  subtitleSource: 'PROFILE',
+}
+
+function languageTabs({ id, movie, series, season }) {
+  const title = (typename) => ({
+    __typename: typename,
+    id,
+    selectedProfileState: { __typename: 'SelectedProfileState', languagePreference },
+  })
+  return {
+    ...(movie && { movie: title('Movie') }),
+    ...(series && { series: title('Series') }),
+    ...(season && {
+      season: { ...title('Season'), series: { ...title('Series'), id: 'series-1' } },
+    }),
+    me: { __typename: 'Me', languagePreferences: profileLanguages },
+  }
+}
+
 const libraries = [
   { __typename: 'Library', id: 'movies', name: 'Movies', type: 'MOVIE' },
   { __typename: 'Library', id: 'series', name: 'TV Series', type: 'SERIES' },
@@ -180,6 +214,9 @@ function route(request, response, raw) {
       })
     }
     if (operationName === 'Libraries') return json(response, 200, { data: { libraries } })
+    if (operationName === 'LanguageTabs') {
+      return json(response, 200, { data: languageTabs(variables) })
+    }
     if (operationName === 'Home') {
       return json(response, 200, {
         data: {

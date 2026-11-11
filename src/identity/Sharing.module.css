@@ -1,0 +1,124 @@
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-14);
+}
+
+.section .sectionTitle {
+  font-size: var(--font-size-title);
+  font-weight: var(--font-weight-semibold);
+}
+
+.note {
+  color: var(--text-secondary);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-prose);
+}
+
+.rows:empty {
+  display: none;
+}
+
+.rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-12);
+}
+
+.row + .row {
+  margin-top: var(--spacing-14);
+  padding-top: var(--spacing-14);
+  border-top: var(--border-width-hairline) solid var(--border-hairline);
+}
+
+.rowText {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--spacing-4) var(--spacing-12);
+  min-width: 0;
+  font-size: var(--font-size-emphasis);
+}
+
+.status {
+  color: var(--text-secondary);
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
+}
+
+.actions {
+  display: flex;
+  gap: var(--spacing-8);
+}
+
+.share {
+  align-self: flex-start;
+}
+
+.shareForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-14);
+  max-width: 480px;
+}
+
+.effects {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-8);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-prose);
+}
+
+.effects:empty {
+  display: none;
+}
+
+.effects p {
+  margin: 0;
+}
+
+.earlier {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-14);
+}
+
+.disclosure {
+  composes: focusRing from '../styles/focus.module.css';
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: var(--spacing-8);
+  padding: var(--spacing-8) 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+}
+
+.disclosure:hover {
+  color: var(--text-primary);
+}
+
+.section .refusal {
+  margin: 0;
+}
+
+.refusal {
+  margin: 0 0 var(--spacing-16);
+  color: var(--semantic-error-text);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-prose);
+}

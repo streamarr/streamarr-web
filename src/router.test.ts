@@ -5,7 +5,7 @@ import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { MeDocument } from './graphql/generated/graphql'
 import { createAppRouter } from './router'
-import { serveGraphqlSocket } from './test/graphqlSocket'
+import { serveGraphqlSocket, SOCKET_RECONNECT_DEADLINE_MS } from './test/graphqlSocket'
 import { server } from './test/server'
 
 const STATUS_CHANGED = gql`
@@ -60,7 +60,7 @@ describe('app composition', () => {
 
     // The renewal waits for the first retry delay, which jitters up to one second.
     await waitFor(() => expect(router.history.location.pathname).toBe('/login'), {
-      timeout: 3_000,
+      timeout: SOCKET_RECONNECT_DEADLINE_MS,
     })
     expect(renewal.refreshNow).toHaveBeenCalledOnce()
     expect(completed).toHaveBeenCalledOnce()

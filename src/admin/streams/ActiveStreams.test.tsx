@@ -1,4 +1,4 @@
-import { act, screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within, type waitForOptions } from '@testing-library/react'
 import { graphql, HttpResponse } from 'msw'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type {
@@ -8,9 +8,9 @@ import type {
   PlaybackState,
 } from '../../graphql/generated/graphql'
 import { deferred } from '../../test/deferred'
-import { serveGraphqlSocket } from '../../test/graphqlSocket'
+import { serveGraphqlSocket, SOCKET_RECONNECT_DEADLINE_MS } from '../../test/graphqlSocket'
 import { comeBackOnline } from '../../test/graphqlResponses'
-import { meFixture } from '../../test/meFixture'
+import { meFixture, profileFixture } from '../../test/meFixture'
 import {
   AAC_STEREO,
   H264_FULL_HD,
@@ -23,6 +23,11 @@ import { server } from '../../test/server'
 import { videoFormatDetails } from '../../test/videoFormatDetails'
 
 const ADMIN = meFixture({ scope: 'profile', serverAdmin: true })
+const ADMIN_WITH_A_PROFILE = meFixture({
+  scope: 'profile',
+  serverAdmin: true,
+  profiles: [profileFixture({ selected: true })],
+})
 const PAGE = '/settings/server/streams'
 const CHANGED = 'ActiveStreamsChanged'
 
@@ -223,8 +228,8 @@ function trackIn(details: HTMLElement, name: string) {
   }
 }
 
-async function liveChanges(state: ReturnType<typeof serve>) {
-  await waitFor(() => expect(state.socket.isLive(CHANGED)).toBe(true))
+async function liveChanges(state: ReturnType<typeof serve>, options?: waitForOptions) {
+  await waitFor(() => expect(state.socket.isLive(CHANGED)).toBe(true), options)
 }
 
 // How long the page waits for a read of the list before it gives the read up.
@@ -782,21 +787,25 @@ describe('active streams', () => {
 
   it('shouldReadAgainAfterTheReadStillOutWhenTheSocketSubscribesAgainMeanwhile', async () => {
     const state = serve([MOVIE, EPISODE])
-    const read = deferred()
-    state.held = read.promise
     renderAppAt(PAGE)
+    await streamCard(MOVIE_CARD)
     await liveChanges(state)
-    await waitFor(() => expect(state.reads).toBeGreaterThan(0))
+    const read = deferred()
+    state.heldOnce = read.promise
     const readsBefore = state.reads
+    // A read in flight absorbs the network's return, so the network returns until one more is out.
+    await waitFor(() => {
+      if (state.reads === readsBefore) window.dispatchEvent(new Event('online'))
+      expect(state.reads).toBe(readsBefore + 1)
+    })
 
     state.listed = [EPISODE]
     state.socket.closeAll(1001, 'Going away')
-    await liveChanges(state)
-    state.held = null
+    await liveChanges(state, { timeout: SOCKET_RECONNECT_DEADLINE_MS })
     read.resolve()
 
     await waitFor(() => expect(cardNames()).toEqual([EPISODE_CARD]))
-    expect(state.reads).toBeGreaterThan(readsBefore)
+    expect(state.reads).toBe(readsBefore + 2)
   })
 
   it('shouldAnswerARetryWithItsOwnReadWhenAnotherReadIsStillOut', async () => {
@@ -828,9 +837,31 @@ describe('active streams', () => {
     state.listed = [EPISODE]
     state.socket.closeAll(1001, 'Going away')
 
-    await streamCard(EPISODE_CARD)
-    expect(cardNames()).toEqual([EPISODE_CARD])
+    await waitFor(() => expect(cardNames()).toEqual([EPISODE_CARD]), {
+      timeout: SOCKET_RECONNECT_DEADLINE_MS,
+    })
     expect(state.reads).toBeGreaterThan(readsBefore)
+  })
+
+  it('shouldReadTheListAgainOnceItsChangesSubscribeWhenTheSocketIsAlreadyOpen', async () => {
+    const state = serve([MOVIE])
+    server.use(
+      // The app follows the selected Profile's watch state, which holds the socket open.
+      graphql.query('Me', () => HttpResponse.json({ data: { me: ADMIN_WITH_A_PROFILE } })),
+      ...['EncoderPresetSetting', 'IdleSegmentRetentionSetting'].map((setting) =>
+        graphql.query(setting, () =>
+          HttpResponse.json({ errors: [{ message: 'Internal failure' }] }),
+        ),
+      ),
+    )
+    const { user } = renderAppAt('/settings/server/encoding')
+    const rail = await screen.findByRole('navigation', { name: 'Server settings' })
+    await waitFor(() => expect(state.socket.isLive('WatchStateChanged')).toBe(true))
+
+    await user.click(within(rail).getByRole('link', { name: 'Active streams' }))
+    await liveChanges(state)
+
+    await waitFor(() => expect(state.reads).toBeGreaterThan(1))
   })
 
   it.each([

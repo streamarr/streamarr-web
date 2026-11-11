@@ -8,6 +8,7 @@ import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { DestructiveButton } from '../../ui/DestructiveButton'
 import { FailureRow } from '../../ui/Failure'
 import { Icon } from '../../ui/Icon'
+import { PageNotice } from '../../ui/PageNotice'
 import { EmptyLibraries } from './EmptyLibraries'
 import { LibraryStatus } from './LibraryStatus'
 import {
@@ -28,7 +29,7 @@ import {
   useLibraryCommands,
   type LiveInventoryStop,
 } from './useLibraryAdmin'
-import styles from '../Settings.module.css'
+import styles from '../../styles/settings.module.css'
 
 const LIVE_INVENTORY_STOP_MESSAGES = {
   forbidden: NO_LONGER_PERMITTED,
@@ -133,14 +134,7 @@ export function LibraryWorkspace({
           </Button>
         )}
       </div>
-      {notice && (
-        <output className={styles.notice}>
-          {notice}
-          <button type="button" aria-label="Dismiss notification" onClick={() => setNotice('')}>
-            <Icon name="close" size={16} />
-          </button>
-        </output>
-      )}
+      <PageNotice onDismiss={() => setNotice('')}>{notice}</PageNotice>
       {liveStop && (
         <Alert role="alert" color="red" mb="md">
           {LIVE_INVENTORY_STOP_MESSAGES[liveStop]}

@@ -9,7 +9,7 @@ import {
 import { requestFailureMessage } from '../../graphql/requestErrors'
 import { userErrorMessage } from '../../graphql/userErrors'
 import { FailureRow } from '../../ui/Failure'
-import styles from '../Settings.module.css'
+import styles from '../../styles/settings.module.css'
 
 const DESCRIPTION = "How long the server keeps a stream's segments."
 

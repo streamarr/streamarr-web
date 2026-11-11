@@ -1,5 +1,5 @@
 import type { RequestBody, Response2xx, Schema } from '../api/contract'
-import { getJson, postJson, request } from '../api/http'
+import { getJson, postJson, request, type RequestOptions } from '../api/http'
 
 export { AuthApiError } from '../api/http'
 
@@ -63,16 +63,26 @@ export function setup(input: SetupInput): Promise<AuthTokens> {
 
 // The select ceremonies infer cookie mode from the request itself; a Profile PIN rides REST
 // only, never GraphQL.
-export function selectHousehold(householdId: string): Promise<AuthTokens> {
-  return postJson<AuthTokens>('/api/auth/select-household', {
-    householdId,
-  } satisfies SelectHouseholdRequest)
+export function selectHousehold(
+  householdId: string,
+  options: RequestOptions = {},
+): Promise<AuthTokens> {
+  return postJson<AuthTokens>(
+    '/api/auth/select-household',
+    { householdId } satisfies SelectHouseholdRequest,
+    options,
+  )
 }
 
-export function selectProfile(profileId: string, pin?: string): Promise<AuthTokens> {
+export function selectProfile(
+  profileId: string,
+  pin?: string,
+  options: RequestOptions = {},
+): Promise<AuthTokens> {
   return postJson<AuthTokens>(
     '/api/auth/select-profile',
     (pin ? { profileId, pin } : { profileId }) satisfies SelectProfileRequest,
+    options,
   )
 }
 

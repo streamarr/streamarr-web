@@ -19,8 +19,7 @@
   padding: 3px 9px;
   border-radius: var(--radius-sm);
   background: rgba(0, 0, 0, 0.55);
-  font-family: var(--font-family-system);
-  font-size: 12px;
+  font-size: var(--font-size-label);
   color: var(--color-alpha-92);
 }
 

@@ -1,8 +1,6 @@
 import {
   Alert,
-  Badge,
   Button,
-  Card,
   Center,
   Group,
   Loader,
@@ -11,7 +9,7 @@ import {
   Text,
   TextInput,
 } from '@mantine/core'
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { AuthLede, AuthTitle } from '../ui/AuthShell'
 import {
   AuthApiError,
@@ -21,6 +19,8 @@ import {
   lookupInvitation,
 } from '../auth/api'
 import { useAuth } from '../auth/AuthProvider'
+import { enumLabel } from './enumLabel'
+import styles from './Invitation.module.css'
 
 const FAILURE_MESSAGE = 'Something went wrong. Please try again.'
 
@@ -129,6 +129,7 @@ function InvitationReview({
   onDeclined: () => void
 }>) {
   const { acceptInvitation } = useAuth()
+  const profileTitleId = useId()
   const [displayName, setDisplayName] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -170,20 +171,20 @@ function InvitationReview({
       <Stack maw={480}>
         <AuthTitle>Create your account</AuthTitle>
         <AuthLede>You were invited to {preview.householdName}.</AuthLede>
-        <Card withBorder>
-          <Stack gap="xs">
-            <Group>
-              <Text fw={600}>{preview.profileName}</Text>
-              {preview.profileKind === 'KID' && <Badge color="teal">Kid</Badge>}
-              <Badge variant="light">{preview.householdRole}</Badge>
-              {preview.mode === 'LINK' && <Badge color="grape">Your existing Profile</Badge>}
-            </Group>
-            <Text size="sm" c="dimmed">
-              Your account will use {preview.recipientEmail}. The invitation expires{' '}
-              {new Date(preview.expiresAt).toLocaleString()}.
-            </Text>
-          </Stack>
-        </Card>
+        <section className={styles.panel} aria-labelledby={profileTitleId}>
+          <h2 id={profileTitleId} className={styles.panelTitle}>
+            {preview.profileName}
+          </h2>
+          <p className={styles.facts}>
+            {preview.profileKind === 'KID' && <span>Kid</span>}
+            <span>{enumLabel(preview.householdRole)}</span>
+            {preview.mode === 'LINK' && <span>Your existing Profile</span>}
+          </p>
+          <p className={styles.note}>
+            Your account will use {preview.recipientEmail}. The invitation expires{' '}
+            {new Date(preview.expiresAt).toLocaleString()}.
+          </p>
+        </section>
         {preview.mode === 'LINK' && <ConnectReview preview={preview} />}
         {failure && (
           <Alert color="red" role="alert">
@@ -234,31 +235,32 @@ function InvitationReview({
 }
 
 function ConnectReview({ preview }: Readonly<{ preview: InvitationPreview }>) {
+  const titleId = useId()
   return (
-    <Card withBorder>
-      <Stack gap="xs">
-        <Text fw={600}>Connecting {preview.profileName} to your new account</Text>
-        <Text size="sm">
-          {preview.profileName} becomes your Personal Profile — its history, progress, and
-          preferences come with it.
-        </Text>
-        <ConsequenceList
-          title="These people keep managing it"
-          items={preview.remainingManagers}
-          empty="Nobody else manages it after connecting."
-        />
-        <ConsequenceList
-          title="These Households lose it when you accept"
-          items={preview.householdsLosingProfileAccess}
-          empty="It isn't visiting any other Household."
-        />
-        <ConsequenceList
-          title="These Households will be offered it afresh"
-          items={preview.profileShareOfferTargets}
-          empty="No Household will be offered it again."
-        />
-      </Stack>
-    </Card>
+    <section className={styles.panel} aria-labelledby={titleId}>
+      <h2 id={titleId} className={styles.panelTitle}>
+        Connecting {preview.profileName} to your new account
+      </h2>
+      <p className={styles.body}>
+        {preview.profileName} becomes your Personal Profile — its history, progress, and preferences
+        come with it.
+      </p>
+      <ConsequenceList
+        title="These people keep managing it"
+        items={preview.remainingManagers}
+        empty="Nobody else manages it after connecting."
+      />
+      <ConsequenceList
+        title="These Households lose it when you accept"
+        items={preview.householdsLosingProfileAccess}
+        empty="It isn't visiting any other Household."
+      />
+      <ConsequenceList
+        title="These Households will be offered it afresh"
+        items={preview.profileShareOfferTargets}
+        empty="No Household will be offered it again."
+      />
+    </section>
   )
 }
 
@@ -272,23 +274,17 @@ function ConsequenceList({
   empty: string
 }>) {
   if (items.length === 0) {
-    return (
-      <Text size="sm" c="dimmed">
-        {empty}
-      </Text>
-    )
+    return <p className={styles.note}>{empty}</p>
   }
   return (
-    <Stack gap={2}>
-      <Text size="sm" fw={600}>
-        {title}
-      </Text>
+    <div className={styles.consequences}>
+      <p className={styles.consequencesTitle}>{title}</p>
       {items.map((item) => (
-        <Text key={item} size="sm">
+        <p key={item} className={styles.body}>
           · {item}
-        </Text>
+        </p>
       ))}
-    </Stack>
+    </div>
   )
 }
 

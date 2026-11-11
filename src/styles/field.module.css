@@ -1,11 +1,9 @@
 /* Field anatomy, bound to Mantine's input slots through theme.ts. */
 .fieldLabel {
-  font-family: var(--font-family-system);
-  font-size: 12px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--color-alpha-50);
-  font-weight: 500;
+  font-family: var(--font-family-content);
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-secondary);
 }
 
 /* No asterisk; the marker stays in the DOM for the accessibility tree. */

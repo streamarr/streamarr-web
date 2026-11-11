@@ -1,0 +1,99 @@
+fragment LanguagePreferenceFields on LanguagePreference {
+  __typename
+  audioLanguages
+  subtitleLanguage
+  subtitleMode
+  audioSource
+  subtitleSource
+}
+
+query LanguageTabs($id: ID!, $movie: Boolean!, $series: Boolean!, $season: Boolean!) {
+  movie(id: $id) @include(if: $movie) {
+    __typename
+    id
+    selectedProfileState {
+      languagePreference {
+        ...LanguagePreferenceFields
+      }
+    }
+  }
+  series(id: $id) @include(if: $series) {
+    __typename
+    id
+    selectedProfileState {
+      languagePreference {
+        ...LanguagePreferenceFields
+      }
+    }
+  }
+  season(id: $id) @include(if: $season) {
+    __typename
+    id
+    selectedProfileState {
+      languagePreference {
+        ...LanguagePreferenceFields
+      }
+    }
+    series {
+      __typename
+      id
+      selectedProfileState {
+        languagePreference {
+          ...LanguagePreferenceFields
+        }
+      }
+    }
+  }
+  me {
+    __typename
+    languagePreferences {
+      ...ProfileLanguagePreferencesFields
+    }
+  }
+}
+
+mutation SetLanguageOverride($input: SetLanguageOverrideInput!) {
+  setLanguageOverride(input: $input) {
+    item {
+      __typename
+      ... on Movie {
+        id
+        selectedProfileState {
+          languagePreference {
+            ...LanguagePreferenceFields
+          }
+        }
+      }
+      ... on Series {
+        id
+        selectedProfileState {
+          languagePreference {
+            ...LanguagePreferenceFields
+          }
+        }
+      }
+      ... on Season {
+        id
+        selectedProfileState {
+          languagePreference {
+            ...LanguagePreferenceFields
+          }
+        }
+      }
+      ... on Episode {
+        id
+        selectedProfileState {
+          languagePreference {
+            ...LanguagePreferenceFields
+          }
+        }
+      }
+    }
+    userErrors {
+      __typename
+      ... on MutationError {
+        message
+      }
+    }
+  }
+}

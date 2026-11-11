@@ -2,6 +2,7 @@ import { act, waitFor } from '@testing-library/react'
 import { HttpResponse, type GraphQLQuery, type GraphQLResponseBody } from 'msw'
 import { expect } from 'vitest'
 import { deferred } from './deferred'
+import { server } from './server'
 
 /** The server's answer to an id it cannot parse, reported on the query's `rootField`. */
 export function invalidIdResponse(rootField: string) {
@@ -109,5 +110,28 @@ export async function comeBackOnlineUntil(handler: { calls: number }, calls: num
   await waitFor(() => {
     if (handler.calls < calls) window.dispatchEvent(new Event('online'))
     expect(handler.calls).toBe(calls)
+  })
+}
+
+// A request without a JSON body, such as a GET, has no operation name.
+async function operationNameOf(request: Request): Promise<string | undefined> {
+  try {
+    const body = (await request.clone().json()) as { operationName?: string }
+    return body.operationName
+  } catch {
+    return undefined
+  }
+}
+
+/** Settles once the server has answered the next request named `operationName`. */
+export function answerDelivered(operationName: string): Promise<void> {
+  return new Promise((resolve) => {
+    const delivered = async ({ request }: { request: Request }) => {
+      if ((await operationNameOf(request)) === operationName) {
+        server.events.removeListener('response:mocked', delivered)
+        resolve()
+      }
+    }
+    server.events.on('response:mocked', delivered)
   })
 }

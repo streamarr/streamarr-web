@@ -1,0 +1,64 @@
+/* Each setting's name heads its group; labels inside the group stay quiet field labels. The page
+   sets no width of its own: the settings layout sizes every page, so their panels line up. */
+.page .settingName {
+  font-size: var(--font-size-emphasis);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+/* Holds the name and its description together inside the audio group's wider gap. */
+.audio > .settingDescription {
+  margin-top: calc(-1 * var(--spacing-6));
+}
+
+.audio {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-10);
+}
+
+.description {
+  color: var(--text-secondary);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-prose);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-6);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  padding: var(--spacing-8) var(--spacing-12);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+}
+
+.rank {
+  width: 1.5em;
+  font-family: var(--font-family-system);
+  color: var(--text-secondary);
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
+}
+
+.modes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-12);
+  margin-top: var(--spacing-8);
+}
+
+.refusal {
+  color: var(--semantic-error-text);
+}

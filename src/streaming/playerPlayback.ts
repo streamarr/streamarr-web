@@ -754,7 +754,7 @@ function startSessionPlayback({
         ? attachSourceFile(video, streamSession, {
             ...options,
             selectsAudioTrack: declaration.selectsAudioTrackInDirectPlay,
-            onChooseAudio: (position) => void switchAudioTrack(position, generation),
+            onChooseAudio: (position) => switchAudioTrack(position, generation),
           })
         : attach(video, streamSession.streamUrl, options)
     const { sourceStats } = source
@@ -820,8 +820,11 @@ function startSessionPlayback({
   // A player that cannot switch the file's audio track moves to HLS for the chosen one. Direct play
   // goes on until the server has started that stream session, and goes on for good when it refuses.
   // The server ends direct play as it answers, so a failure of the file meanwhile waits for the
-  // answer, and belongs to the source it came from.
-  async function switchAudioTrack(audioTrackPosition: number, generation: number) {
+  // answer, and belongs to the source it came from. Resolves whether playback moved to the track.
+  async function switchAudioTrack(
+    audioTrackPosition: number,
+    generation: number,
+  ): Promise<boolean> {
     if (
       cancelled ||
       generation !== sourceGeneration ||
@@ -830,7 +833,7 @@ function startSessionPlayback({
       !playbackSessionId ||
       !sessionId
     )
-      return
+      return false
     const pending: PendingAudioTrackSwitch = {
       generation,
       formatFailure: null,
@@ -838,34 +841,41 @@ function startSessionPlayback({
       stalled: false,
     }
     pendingSwitch = pending
+    const directPlayStreamSessionId = sessionId
     const answer = await requestAudioTrackSwitch({
       playbackSessionId,
-      streamSessionId: sessionId,
+      streamSessionId: directPlayStreamSessionId,
       audioTrackPosition,
     })
     if (pendingSwitch === pending) pendingSwitch = null
-    if (cancelled || generation !== sourceGeneration) return
+    if (cancelled || generation !== sourceGeneration) return false
     switch (answer.kind) {
       case 'started': {
         beginHandover()
         const playback = await awaitReadyPlayback(answer.playback)
-        if (!cancelled) adoptPlayback(playback)
-        return
+        if (cancelled) return false
+        adoptPlayback(playback)
+        return playsAnotherStreamThan(directPlayStreamSessionId)
       }
       case 'refused':
         onNotice(answer.message)
         failAfterTheSwitch(pending)
-        return
+        return false
       case 'kept':
         failAfterTheSwitch(pending)
-        return
+        return false
       case 'lost':
         if (pending.formatFailure) {
           void reportFormatFailure(pending.formatFailure, generation)
-          return
+          return false
         }
         await recoverLostSwitch(pending)
+        return playsAnotherStreamThan(directPlayStreamSessionId)
     }
+  }
+
+  function playsAnotherStreamThan(streamSessionId: string): boolean {
+    return !cancelled && sessionId !== null && sessionId !== streamSessionId
   }
 
   // Only the playback status can say whether the server switched. The server may end direct play
@@ -1525,8 +1535,11 @@ interface SourceFile {
 interface SourceFileOptions extends StreamSourceOptions {
   /** Whether the element lists the file's audio tracks and switches between them itself. */
   selectsAudioTrack: boolean
-  /** Moves playback to another audio track of the file, for an element that cannot switch. */
-  onChooseAudio: (position: number) => void
+  /**
+   * Moves playback to another audio track of the file, for an element that cannot switch, and
+   * resolves whether it moved.
+   */
+  onChooseAudio: (position: number) => Promise<boolean>
 }
 
 function attachSourceFile(
@@ -1545,7 +1558,7 @@ function attachSourceFile(
   const selectNamedAudioTrack = () => {
     if (audioTrackPosition === null) return
     if (elementTracks.read().audio.options.length <= audioTrackPosition) return
-    elementTracks.selectAudio(audioTrackPosition)
+    void elementTracks.selectAudio(audioTrackPosition)
   }
   // A track the viewer picks before the first frame stands. An element that cannot switch plays
   // the track the server direct-plays the file for, so only the server's list names the others.
@@ -1554,7 +1567,7 @@ function attachSourceFile(
         ...elementTracks,
         selectAudio: (id) => {
           video.removeEventListener('loadeddata', selectNamedAudioTrack)
-          elementTracks.selectAudio(id)
+          return elementTracks.selectAudio(id)
         },
       }
     : listedAudioTrackSource(elementTracks, {
