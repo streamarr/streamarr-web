@@ -1,6 +1,6 @@
 import { Button } from '@mantine/core'
 import { useMutation } from '@apollo/client/react'
-import { useEffect, useEffectEvent, useRef, type Ref } from 'react'
+import { useEffect, useEffectEvent, useRef, type ReactNode, type Ref } from 'react'
 import {
   CancelProfileShareDocument,
   EndProfileShareDocument,
@@ -10,7 +10,6 @@ import { requestFailureMessage } from '../graphql/requestErrors'
 import { userErrorMessage, type UserErrorLike } from '../graphql/userErrors'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { FailureRow } from '../ui/Failure'
-import { EarlierShares } from './EarlierShares'
 import { ShareWithAnotherHousehold } from './ShareWithAnotherHousehold'
 import { SharingSection } from './SharingSection'
 import { expiryLabel, UPDATE_FAILED_MESSAGE } from './shareText'
@@ -37,8 +36,10 @@ export function WhereShared({
   refusal,
   onRefusalChange,
   liveList,
+  earlier,
 }: Readonly<{
   profile: Readonly<{ id: string; name: string }>
+  /** The offers that wait for a decision and the active shares. */
   shares: readonly ProfileShareRow[]
   householdName: (householdId: string) => string
   /** The Household that the Account is a member of, where its sessions return. */
@@ -58,6 +59,8 @@ export function WhereShared({
   onRefusalChange: (refusal: string | null) => void
   /** Where focus that a change takes away from a row returns to the page's heading. */
   liveList: Ref<HTMLUListElement>
+  /** The offers and shares that are over, behind their disclosure. */
+  earlier: ReactNode
 }>) {
   const [cancel] = useMutation(CancelProfileShareDocument)
   const [end] = useMutation(EndProfileShareDocument)
@@ -66,8 +69,6 @@ export function WhereShared({
   /** Where focus goes when the confirmation closes after its share's End action is gone. */
   const heading = useRef<HTMLHeadingElement>(null)
 
-  const live = shares.filter(isLive)
-  const earlier = shares.filter((share) => !isLive(share))
   // A share that a read or a change made elsewhere takes out of the list while its confirmation is
   // open has ended there, so the confirmation closes and the page says so. A share that leaves while
   // the person's own change is on its way, or after the server refused it, is that change's to report.
@@ -75,11 +76,14 @@ export function WhereShared({
     ending !== null &&
     changing === null &&
     refusal === null &&
-    !live.some((share) => share.id === ending.id)
+    !shares.some((share) => share.id === ending.id)
   const sayEnded = useEffectEvent(() => {
     if (!ending) return
     onEndingChange(null)
-    onChanged(`Sharing with ${householdName(ending.householdId)} has already ended.`)
+    // The share has left the list, so its name comes from the row the confirmation kept.
+    onChanged(
+      `Sharing with ${ending.household?.name ?? householdName(ending.householdId)} has already ended.`,
+    )
   })
 
   useEffect(() => {
@@ -135,11 +139,11 @@ export function WhereShared({
       heading={heading}
     >
       {readFailure && <FailureRow onRetry={readAgain}>{readFailure}</FailureRow>}
-      {live.length === 0 && (
+      {shares.length === 0 && (
         <p className={styles.note}>{profile.name}'s Profile isn't shared with another Household.</p>
       )}
       <ul ref={liveList} className={styles.rows}>
-        {live.map((share) => {
+        {shares.map((share) => {
           const household = householdName(share.householdId)
           const pending = share.status === 'PENDING'
           return (
@@ -190,7 +194,7 @@ export function WhereShared({
         onSend={() => onRefusalChange(null)}
         onChanged={onChanged}
       />
-      <EarlierShares shares={earlier} householdName={householdName} />
+      {earlier}
       <ConfirmDialog
         opened={ending !== null}
         title={`End sharing with ${ending ? householdName(ending.householdId) : ''}?`}
@@ -218,8 +222,4 @@ export function WhereShared({
       />
     </SharingSection>
   )
-}
-
-function isLive(share: ProfileShareRow): boolean {
-  return share.status === 'PENDING' || share.status === 'ACTIVE'
 }

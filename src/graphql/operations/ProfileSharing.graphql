@@ -14,8 +14,8 @@ query ShareOffers($householdId: ID!) {
   }
 }
 
-query ProfileShares($profileId: ID!) {
-  profileShares(profileId: $profileId, first: 50) {
+query ProfileShares($profileId: ID!, $statuses: [ProfileShareStatus!]!) {
+  profileShares(profileId: $profileId, statuses: $statuses, first: 50) {
     edges {
       cursor
       orderKey
@@ -174,7 +174,13 @@ subscription ProfileShareChanged {
       cursor
       orderKey
     }
-    profileEdge: profileSharesEdge {
+    profileLiveEdge: profileSharesEdge(statuses: [PENDING, ACTIVE]) {
+      cursor
+      orderKey
+    }
+    profileEarlierEdge: profileSharesEdge(
+      statuses: [REJECTED, CANCELED, EXPIRED, INVALIDATED, ENDED]
+    ) {
       cursor
       orderKey
     }
