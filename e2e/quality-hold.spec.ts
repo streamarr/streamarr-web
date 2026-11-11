@@ -1,10 +1,10 @@
-import { expect, test, type APIRequestContext, type Page, type Request } from '@playwright/test'
+import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 import { execFile } from 'node:child_process'
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { STUB_URL } from './ports'
+import { routeLadderPlayback } from './ladderPlayback'
 
 // Auto lets hls.js adapt among the variants the server lists, while Original and a fixed quality
 // keep the one variant the server lists for them (streamarr/streamarr-web#29). These specs play a
@@ -88,34 +88,6 @@ test.afterAll(async () => {
   await rm(streams, { recursive: true, force: true })
 })
 
-function playbackSession(choice: string) {
-  return {
-    id: 'playback-1',
-    formatAttemptCount: 1,
-    maximumFormatAttempts: 4,
-    requestedChoice: choice,
-    playbackChoice: choice,
-    formatChange: null,
-    offeredChoices: ['ORIGINAL', 'AUTO', 'HIGH_720P', 'MEDIUM_480P', 'LOW_360P'],
-    currentFormatAttempt: {
-      __typename: 'ReadyPlaybackFormatAttempt',
-      streamSession: {
-        __typename: 'HlsStreamSession',
-        id: 'sess-1',
-        streamUrl: '/api/stream/ladder/multivariant.m3u8?t=playback-token',
-        transcodeMode: choice === 'ORIGINAL' ? 'REMUX' : 'VIDEO_TRANSCODE',
-        videoRange: 'SDR',
-        mediaEndSeconds: null,
-      },
-    },
-  }
-}
-
-function operationName(call: Request): string {
-  const body = call.postDataJSON() as { operationName?: string } | null
-  return body?.operationName ?? ''
-}
-
 /** One media segment that hls.js asked for. */
 interface SegmentRequest {
   variant: Variant['name']
@@ -146,26 +118,13 @@ async function serveLadder(
   request: APIRequestContext,
   { choice, variants, fastLargeSegments }: LadderRoutes,
 ): Promise<Ladder> {
-  const ladder: Ladder = { segments: [], mutations: [] }
-  await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
-  await request.post(`${STUB_URL}/api/auth/refresh`)
-  const operations: Record<string, unknown> = {
-    CreatePlaybackSession: {
-      createPlaybackSession: { playbackSession: playbackSession(choice), userErrors: [] },
-    },
-    PlaybackSession: { playbackSession: playbackSession(choice) },
-    PlayerMediaTitle: { movie: { __typename: 'Movie', id: 'm1', title: 'Everlight' } },
-    ReportStreamSessionTimeline: { reportStreamSessionTimeline: true },
-    DestroyPlaybackSession: {
-      destroyPlaybackSession: { playbackSessionId: 'playback-1', userErrors: [] },
-    },
+  const ladder: Ladder = {
+    segments: [],
+    mutations: await routeLadderPlayback(page, request, {
+      choice,
+      transcodeMode: choice === 'ORIGINAL' ? 'REMUX' : 'VIDEO_TRANSCODE',
+    }),
   }
-  await page.route('**/graphql', async (route) => {
-    const name = operationName(route.request())
-    if (name.includes('Playback') && name !== 'PlaybackSession') ladder.mutations.push(name)
-    const data = operations[name]
-    return data ? route.fulfill({ json: { data } }) : route.continue()
-  })
   await page.route('**/api/stream/ladder/multivariant.m3u8*', (route) =>
     route.fulfill({ contentType: 'application/vnd.apple.mpegurl', body: multivariant(variants) }),
   )
