@@ -2113,27 +2113,33 @@ describe('declarePlaybackCapabilities', () => {
       expect(familyEntries(declaration, 'HEVC')).toEqual([UHD_AT_60_HEVC_ENTRY])
     })
 
-    it('shouldDeclareEachHevcProfileAtTheLevelOfItsOwnSearchWhenWebKitAnswersMainAndMainTenSmoothUpToDifferentLevels', async () => {
-      const declaration = await declarePlaybackCapabilities(
-        platformFixture({
-          decodingInfo: decodingInfoAnsweringHevc((configuration) => {
-            const maximum = isHevcMain(codecOf(configuration)) ? HEVC_LEVEL_6_0 : HEVC_LEVEL_6_2
-            return hevcDecoderUpTo(maximum)(configuration)
+    it.each([
+      ['BelowMainTen', HEVC_LEVEL_6_0, HEVC_LEVEL_6_2],
+      ['AboveMainTen', HEVC_LEVEL_6_2, HEVC_LEVEL_6_0],
+    ])(
+      'shouldDeclareEachHevcProfileAtTheLevelOfItsOwnSearchWhenWebKitAnswersMainSmoothUpToALevel%s',
+      async (_, mainMaximum, mainTenMaximum) => {
+        const declaration = await declarePlaybackCapabilities(
+          platformFixture({
+            decodingInfo: decodingInfoAnsweringHevc((configuration) => {
+              const maximum = isHevcMain(codecOf(configuration)) ? mainMaximum : mainTenMaximum
+              return hevcDecoderUpTo(maximum)(configuration)
+            }),
+            userAgent: SAFARI,
           }),
-          userAgent: SAFARI,
-        }),
-      )
+        )
 
-      expect(familyEntries(declaration, 'HEVC')).toEqual([
-        {
-          ...UHD_AT_60_HEVC_ENTRY,
-          codecProfiles: [
-            { profile: 'HEVC_MAIN', maxLevel: HEVC_LEVEL_6_0 },
-            { profile: 'HEVC_MAIN_10', maxLevel: HEVC_LEVEL_6_2 },
-          ],
-        },
-      ])
-    })
+        expect(familyEntries(declaration, 'HEVC')).toEqual([
+          {
+            ...UHD_AT_60_HEVC_ENTRY,
+            codecProfiles: [
+              { profile: 'HEVC_MAIN', maxLevel: mainMaximum },
+              { profile: 'HEVC_MAIN_10', maxLevel: mainTenMaximum },
+            ],
+          },
+        ])
+      },
+    )
 
     it('shouldDeclareTheLowerLevelOfItsCompatibleBasesForAnHdrEntryWhenWebKitAnswersPqAndHlgSmoothUpToDifferentLevels', async () => {
       const declaration = await declarePlaybackCapabilities(
