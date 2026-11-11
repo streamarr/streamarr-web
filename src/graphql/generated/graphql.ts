@@ -276,7 +276,7 @@ export type DecisionReason =
   | 'VIDEO_BIT_DEPTH_UNKNOWN'
   /** The probe reported no chroma subsampling for the source's H.264 video. */
   | 'VIDEO_CHROMA_SUBSAMPLING_UNKNOWN'
-  /** The source's codec level or tier is above the closest entry's maximum for its profile. */
+  /** The source's codec level is above the closest entry's maximum for its profile. */
   | 'VIDEO_CODEC_LEVEL_NOT_DECLARED'
   /** No video capability entry for HLS names the source's codec family. */
   | 'VIDEO_CODEC_NOT_DECLARED'
@@ -1056,7 +1056,7 @@ export type TranscodeMode =
 export type VideoCapabilityEntryInput = {
   /** The codec family that every codec profile of this entry belongs to. */
   codecFamily: VideoCodecFamily;
-  /** The codec profiles that the player decodes, each with its own maximum level and tier. The entry needs at least one. */
+  /** The codec profiles that the player decodes, each with its own maximum level. The entry needs at least one. */
   codecProfiles: Array<VideoCodecProfileCapabilityInput>;
   /** The compatible bases that the player displays. The entry needs at least one unless it lists Dolby Vision profile 5 or 10.0, whose streams have no compatible base. */
   compatibleBases: Array<DeclaredCompatibleBase>;
@@ -1106,21 +1106,13 @@ export type VideoCodecProfile =
   | 'HEVC_MAIN_STILL_PICTURE'
   | '%future added value';
 
-/** A codec profile that the player decodes, with the highest level and tier it accepts for that profile. */
+/** A codec profile that the player decodes, with the highest level it accepts for that profile. */
 export type VideoCodecProfileCapabilityInput = {
   /** The highest codec level, written as the major level × 10 plus the minor level for every codec family: level 5.1 is 51. */
   maxLevel: number;
-  /** The highest codec tier. Required for HEVC and AV1 profiles, and absent for H.264 profiles, which have no tier. */
-  maxTier?: VideoCodecTier | null | undefined;
   /** The codec profile, which must belong to the entry's codec family. */
   profile: VideoCodecProfile;
 };
-
-/** The tier of an HEVC or AV1 stream. The High tier is above the Main tier. */
-export type VideoCodecTier =
-  | 'HIGH'
-  | 'MAIN'
-  | '%future added value';
 
 export type VideoQuality =
   | 'AUTO'
@@ -1712,7 +1704,6 @@ export type CreatePlaybackSessionMutation = { createPlaybackSession: { playbackS
       | { __typename: 'PlaybackSessionClosedError', message: string }
       | { __typename: 'StartPositionOutOfRangeError', message: string }
       | { __typename: 'TranscodeCapacityUnavailableError', message: string }
-      | { __typename: 'VideoCodecTierInvalidError', message: string }
     > } | null };
 
 export type DestroyPlaybackSessionMutationVariables = Exact<{

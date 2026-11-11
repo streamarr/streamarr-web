@@ -36,7 +36,7 @@ const PQ_DECLARATION: ClientCapabilityDeclarationInput = {
     {
       ...SDR_ENTRY,
       codecFamily: 'HEVC',
-      codecProfiles: [{ profile: 'HEVC_MAIN_10', maxLevel: 51, maxTier: 'MAIN' }],
+      codecProfiles: [{ profile: 'HEVC_MAIN_10', maxLevel: 51 }],
       maxBitDepth: 10,
       compatibleBases: ['PQ'],
     },

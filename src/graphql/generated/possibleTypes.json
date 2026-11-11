@@ -149,8 +149,7 @@
       "NoEligibleVideoFormatError",
       "PlaybackSessionClosedError",
       "StartPositionOutOfRangeError",
-      "TranscodeCapacityUnavailableError",
-      "VideoCodecTierInvalidError"
+      "TranscodeCapacityUnavailableError"
     ],
     "CreateProfileError": [
       "AccountNotFoundError",
@@ -301,8 +300,7 @@
       "ShareNotPendingError",
       "StartPositionOutOfRangeError",
       "TooManyAudioLanguagesError",
-      "UnknownEncoderPresetError",
-      "VideoCodecTierInvalidError"
+      "UnknownEncoderPresetError"
     ],
     "InviteProfileManagerError": [
       "AccountNotFoundError",
@@ -453,8 +451,7 @@
       "StartPositionOutOfRangeError",
       "TooManyAudioLanguagesError",
       "TranscodeCapacityUnavailableError",
-      "UnknownEncoderPresetError",
-      "VideoCodecTierInvalidError"
+      "UnknownEncoderPresetError"
     ],
     "OfferProfileShareError": [
       "HouseholdNotFoundError",
