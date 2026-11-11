@@ -732,7 +732,7 @@ function keepsUpOn<T extends { tier: PictureTier }>({
   answers: readonly T[]
   h264Answers: readonly TierAnswers[]
 }): KeepsUp<T> {
-  if (family !== HEVC || !isWebKit(platform.userAgent)) {
+  if (!readsH264Answers(platform, family)) {
     return (answer, answerOf) => isSmooth(answerOf(answer))
   }
   const budget = h264Answers.filter((answer) => isSmooth(answer.eightBit))
@@ -748,6 +748,10 @@ function keepsUpOn<T extends { tier: PictureTier }>({
       budget.some((h264) => holdsPicture(h264.tier, answer.tier))
     )
   }
+}
+
+function readsH264Answers(platform: PlaybackPlatform, family: VideoFamily): boolean {
+  return family === HEVC && isWebKit(platform.userAgent)
 }
 
 // A maximum accepts every smaller value (ADR 0049), so no tier counts over a smaller tier it holds
