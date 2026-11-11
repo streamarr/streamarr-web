@@ -1,4 +1,11 @@
-import { expect, test, type APIRequestContext, type Page, type Request } from '@playwright/test'
+import {
+  expect,
+  test,
+  type APIRequestContext,
+  type Locator,
+  type Page,
+  type Request,
+} from '@playwright/test'
 import { fileURLToPath } from 'node:url'
 import type {
   ClientCapabilityDeclarationInput,
@@ -232,10 +239,12 @@ test('hls.js starts on the range the declaration prefers when a ladder lists SDR
   expect(onSdrDisplay.mediaPlaylists[0]).toBe('sdr-360.m3u8')
 })
 
-test('the HDR toggle that Original holds on keeps its highlight under the pointer', async ({
-  page,
-  request,
-}) => {
+// Plays Original from the PQ source and opens the Quality menu, whose HDR toggle is on and
+// unavailable there.
+async function openQualityMenuInOriginal(
+  page: Page,
+  request: APIRequestContext,
+): Promise<{ menu: Locator; toggle: Locator }> {
   await onDisplay(page, true)
   await servePqStream(page, request, PQ_ONLY_MULTIVARIANT)
   await page.route('**/graphql', (route) =>
@@ -248,6 +257,14 @@ test('the HDR toggle that Original holds on keeps its highlight under the pointe
   const menu = page.getByRole('menu', { name: 'Quality' })
   const toggle = menu.getByRole('menuitemcheckbox', { name: /^HDR/ })
   await expect(toggle).toHaveAttribute('aria-disabled', 'true')
+  return { menu, toggle }
+}
+
+test('the HDR toggle that Original holds on keeps its highlight under the pointer', async ({
+  page,
+  request,
+}) => {
+  const { menu, toggle } = await openQualityMenuInOriginal(page, request)
   const highlight = await menu
     .getByRole('menuitemradio', { checked: true })
     .evaluate((row) => getComputedStyle(row).backgroundColor)
