@@ -74,10 +74,12 @@ function EarlierList({
   onRetry: () => unknown
   householdName: (householdId: string) => string
 }>) {
-  if (failure && shares.length === 0) {
+  // A failed read says so even beside the offers that expired on the page, which it never held.
+  if (failure) {
     return (
-      <div id={id}>
+      <div id={id} className={styles.earlier}>
         <FailureRow onRetry={onRetry}>{failure}</FailureRow>
+        <EarlierRows shares={shares} householdName={householdName} />
       </div>
     )
   }
@@ -95,6 +97,18 @@ function EarlierList({
       </p>
     )
   }
+  return <EarlierRows id={id} shares={shares} householdName={householdName} />
+}
+
+function EarlierRows({
+  id,
+  shares,
+  householdName,
+}: Readonly<{
+  id?: string
+  shares: readonly ProfileShareRow[]
+  householdName: (householdId: string) => string
+}>) {
   return (
     <ul id={id} className={styles.rows}>
       {shares.map((share) => (

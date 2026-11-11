@@ -352,6 +352,31 @@ describe('Sharing', () => {
     expect(await screen.findByText('Declined')).toBeVisible()
   })
 
+  it('shouldOfferRetryBesideAnExpiredOfferWhenEarlierOffersAndSharesFailToLoad', async () => {
+    // Its time ran out before the page read it, so it shows among the earlier ones at once.
+    const expired = share({ expiresAt: new Date(Date.now() - DAY).toISOString() })
+    serve()
+    const over = failsOnceThen(sharesData([share({ id: 'declined', status: 'REJECTED' })]))
+    server.use(
+      graphql.query<GraphQLQuery, ProfileSharesQueryVariables>('ProfileShares', ({ variables }) =>
+        asksFor(variables.statuses, 'PENDING')
+          ? HttpResponse.json({ data: sharesData([expired]) })
+          : over.resolver(),
+      ),
+    )
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.click(await screen.findByRole('button', { name: 'Earlier offers and shares' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "Couldn't load earlier offers and shares.",
+    )
+    expect(screen.getByRole('listitem')).toHaveTextContent('CabinExpired')
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByText('Declined')).toBeVisible()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
   it('shouldSayWhatCancelingLosesBeforeItCancelsWhenThePersonCancelsAnOffer', async () => {
     serveInTurn([share()])
     let canceled = false
