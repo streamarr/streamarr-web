@@ -25,3 +25,31 @@ mutation ChangeShareCodeLimit($input: ChangeShareCodeLimitInput!) {
     }
   }
 }
+
+fragment ShareCodeLifetimeSettingFields on ShareCodeLifetimeSetting {
+  __typename
+  id
+  hours
+  minimumHours
+  maximumHours
+}
+
+query ShareCodeLifetimeSetting {
+  shareCodeLifetimeSetting {
+    ...ShareCodeLifetimeSettingFields
+  }
+}
+
+mutation ChangeShareCodeLifetime($input: ChangeShareCodeLifetimeInput!) {
+  changeShareCodeLifetime(input: $input) {
+    shareCodeLifetimeSetting {
+      ...ShareCodeLifetimeSettingFields
+    }
+    userErrors {
+      __typename
+      ... on MutationError {
+        message
+      }
+    }
+  }
+}

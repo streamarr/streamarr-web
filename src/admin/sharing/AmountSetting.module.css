@@ -1,0 +1,15 @@
+/* The unit follows the number on its line, as the setting reads: "A share code lasts 7 days". */
+.amount {
+  display: flex;
+  gap: var(--spacing-8);
+}
+
+.amount > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.unit {
+  flex: none;
+  width: 128px;
+}

@@ -1,10 +1,11 @@
-import { Button, Center, Loader, NumberInput } from '@mantine/core'
+import { Button, Center, Loader, NumberInput, Select } from '@mantine/core'
 import { useRef, useState } from 'react'
 import { requestFailureMessage } from '../../graphql/requestErrors'
 import { userErrorMessage, type UserErrorLike } from '../../graphql/userErrors'
-import styles from '../../styles/settings.module.css'
+import settingsStyles from '../../styles/settings.module.css'
 import { FailureRow } from '../../ui/Failure'
-import { rangeRefusal, type StoredAmount, type Unit } from './amounts'
+import styles from './AmountSetting.module.css'
+import { rangeRefusal, wholeCount, type StoredAmount, type Unit, type Units } from './amounts'
 
 const UNCONFIRMED =
   "Couldn't confirm the change. Refresh the page to check the saved setting before trying again."
@@ -29,6 +30,12 @@ export interface SettingWords {
   saved: (value: number) => string
 }
 
+/** The field's number, as the admin left it, and the unit it counts. */
+interface Draft {
+  count: string | number
+  unit: Unit
+}
+
 /** A save's answer from a change payload: its refusals, or the value the server stored. */
 export function answerOf(
   userErrors: readonly UserErrorLike[] | undefined,
@@ -42,13 +49,14 @@ export function answerOf(
 }
 
 /**
- * A server setting that a ServerAdmin sets as a whole number. The field shows what the server last
- * confirmed until the admin edits it; a refused or unconfirmed save keeps the edit and says why
+ * A server setting that a ServerAdmin sets as a whole number, in one of its `units` when it has
+ * more than one. The field shows what the server last confirmed, in the largest unit that holds it
+ * whole, until the admin edits it; a refused or unconfirmed save keeps the edit and says why
  * beside it, and a confirmed one goes to the page notice.
  */
 export function AmountSetting({
   words,
-  unit,
+  units,
   stored,
   read,
   saving,
@@ -56,7 +64,7 @@ export function AmountSetting({
   onSaved,
 }: Readonly<{
   words: SettingWords
-  unit: Unit
+  units: Units
   stored: StoredAmount | undefined
   read: SettingRead
   saving: boolean
@@ -86,13 +94,13 @@ export function AmountSetting({
   return (
     <>
       {read.error && (
-        <FailureRow className={styles.failureRow} onRetry={retry}>
+        <FailureRow className={settingsStyles.failureRow} onRetry={retry}>
           {requestFailureMessage(read.error, `Couldn't load ${words.subject} again.`)}
         </FailureRow>
       )}
       <AmountForm
         words={words}
-        unit={unit}
+        units={units}
         stored={stored}
         busy={saving || read.loading}
         saving={saving}
@@ -105,7 +113,7 @@ export function AmountSetting({
 
 function AmountForm({
   words,
-  unit,
+  units,
   stored,
   busy,
   saving,
@@ -113,26 +121,26 @@ function AmountForm({
   onSaved,
 }: Readonly<{
   words: SettingWords
-  unit: Unit
+  units: Units
   stored: StoredAmount
   busy: boolean
   saving: boolean
   save: (amount: number) => Promise<SaveAnswer>
   onSaved: (notice: string) => void
 }>) {
-  const [draft, setDraft] = useState<string | number | null>(null)
+  const [draft, setDraft] = useState<Draft | null>(null)
   const [refusal, setRefusal] = useState<string | null>(null)
   // Only a confirmed save resolves an unconfirmed one: a refusal or an edit says nothing about
   // whether the earlier change took effect.
   const [unconfirmed, setUnconfirmed] = useState(false)
   const form = useRef<HTMLFormElement>(null)
   const field = useRef<HTMLInputElement>(null)
-  const value = draft ?? stored.value
-  const amount = typeof value === 'number' ? value : null
+  const shown: Draft = draft ?? wholeCount(stored.value, units)
+  const amount = typeof shown.count === 'number' ? shown.count * shown.unit.size : null
   const changed = amount !== null && amount !== stored.value
 
   // A correction should not sit under the refusal it answers.
-  function edit(next: string | number) {
+  function edit(next: Draft) {
     setDraft(next)
     setRefusal(null)
   }
@@ -172,7 +180,7 @@ function AmountForm({
     event.preventDefault()
     if (amount === null || !changed || busy) return
     // A value too large for GraphQL's Int fails the whole request, which would read as unconfirmed.
-    const outside = rangeRefusal(amount, stored, unit)
+    const outside = rangeRefusal(amount, stored, units)
     setRefusal(outside)
     if (outside) {
       field.current?.focus()
@@ -182,23 +190,39 @@ function AmountForm({
   }
 
   return (
-    <form ref={form} className={styles.form} onSubmit={(event) => void submit(event)}>
+    <form ref={form} className={settingsStyles.form} onSubmit={(event) => void submit(event)}>
       <NumberInput
         ref={field}
         size="md"
         label={words.label}
-        value={value}
-        onChange={edit}
-        min={stored.minimum}
-        max={stored.maximum}
+        value={shown.count}
+        onChange={(count) => edit({ count, unit: shown.unit })}
+        min={Math.ceil(stored.minimum / shown.unit.size)}
+        max={Math.floor(stored.maximum / shown.unit.size)}
         clampBehavior="none"
         allowDecimal={false}
         allowNegative={false}
         hideControls
         readOnly={saving}
         error={[refusal, unconfirmed && UNCONFIRMED].filter(Boolean).join(' ') || null}
+        inputContainer={(input) =>
+          units.length > 1 ? (
+            <div className={styles.amount}>
+              {input}
+              <UnitChoice
+                label={words.label}
+                units={units}
+                shown={shown}
+                readOnly={saving}
+                onChoose={(unit) => edit({ count: shown.count, unit })}
+              />
+            </div>
+          ) : (
+            input
+          )
+        }
       />
-      <div className={styles.formActions}>
+      <div className={settingsStyles.formActions}>
         <Button
           type="submit"
           loading={saving}
@@ -209,5 +233,39 @@ function AmountForm({
         </Button>
       </div>
     </form>
+  )
+}
+
+/** The unit the field's number counts, named in the singular when the number is one. */
+function UnitChoice({
+  label,
+  units,
+  shown,
+  readOnly,
+  onChoose,
+}: Readonly<{
+  label: string
+  units: Units
+  shown: Draft
+  readOnly: boolean
+  onChoose: (unit: Unit) => void
+}>) {
+  return (
+    <Select
+      className={styles.unit}
+      classNames={{ dropdown: settingsStyles.popover, option: settingsStyles.popoverOption }}
+      aria-label={`${label}, unit`}
+      data={units.map((unit) => ({
+        value: unit.many,
+        label: shown.count === 1 ? unit.one : unit.many,
+      }))}
+      value={shown.unit.many}
+      allowDeselect={false}
+      readOnly={readOnly}
+      onChange={(value) => {
+        const unit = units.find((candidate) => candidate.many === value)
+        if (unit) onChoose(unit)
+      }}
+    />
   )
 }
