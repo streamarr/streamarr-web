@@ -1,7 +1,7 @@
 import { Button, Center, Loader } from '@mantine/core'
 import type { ApolloClient, DocumentNode } from '@apollo/client'
 import { useApolloClient, useMutation, useQuery } from '@apollo/client/react'
-import { useState, type Ref } from 'react'
+import { useEffect, useRef, useState, type Ref } from 'react'
 import {
   EndProfileShareDocument,
   RevokeDeviceRegistrationDocument,
@@ -24,7 +24,13 @@ import { useFocusFallback } from '../ui/useFocusFallback'
 import { usePageNotice } from '../ui/usePageNotice'
 import styles from './Sharing.module.css'
 import { SharedProfileText } from './SharedProfileText'
-import { keepsInHouseholdShares, shareIdOf, withShareChange, type ShareChange } from './shareLists'
+import {
+  keepsInHouseholdShares,
+  shareIdOf,
+  withShareChange,
+  type LiveShare,
+  type ShareChange,
+} from './shareLists'
 import { SharingSection } from './SharingSection'
 import { UPDATE_FAILED_MESSAGE } from './shareText'
 import { useMe } from './useMe'
@@ -114,29 +120,26 @@ function SharedProfiles({
     visitorsOnly: true,
     serverAdmin,
   }
+  const keeps = (share: LiveShare) => keepsInHouseholdShares(share, list, new Date())
   const liveShares = useLiveList({
     query: SharedWithHouseholdDocument,
     variables,
     keyOf: shareIdOf,
     apply: (data, change: ShareChange) => {
-      const edges = withShareChange(data.householdShares.edges, change, (share) =>
-        keepsInHouseholdShares(share, list, new Date()),
-      )
+      const edges = withShareChange(data.householdShares.edges, change, keeps)
       return { ...data, householdShares: { ...data.householdShares, edges } }
     },
   })
+  // The shares of Personal Profiles the page has listed. A change that ends one carries no
+  // Profile, and a read may already have taken it out of the list, so the page remembers them.
+  const personalShares = useRef(new Set<string>())
+  // The end of someone's Personal Profile's share unlinks the TVs that person linked here.
+  const readTheTvsAgain = () => void readQueriesAgain(client, [VisitorDevicesDocument])
   useShareChanges((change) => {
-    const listed = client.cache.readQuery({ query: SharedWithHouseholdDocument, variables })
     liveShares.receive(change)
-    const edges = client.cache.readQuery({ query: SharedWithHouseholdDocument, variables })
-    if (!listed || !edges) return
-    // The end of someone's Personal Profile's share unlinks the TVs that person linked here.
-    if (
-      leaving(listed.householdShares.edges, edges.householdShares.edges, change)?.profile
-        .personalProfile
-    ) {
-      void readQueriesAgain(client, [VisitorDevicesDocument])
-    }
+    if (change.share && keeps(change.share)) return
+    if (!personalShares.current.delete(change.shareId)) return
+    readTheTvsAgain()
   })
   // Shares start and end elsewhere, so a visit shows only the server's answer.
   const query = useQuery(SharedWithHouseholdDocument, {
@@ -154,6 +157,13 @@ function SharedProfiles({
     listsToReadAgain: [SharedWithHouseholdDocument, VisitorDevicesDocument],
     onDone: (share) => announce(`Sharing of ${share.profile.name} ended.`),
   })
+
+  const listed = query.data?.householdShares.edges
+  useEffect(() => {
+    for (const { node } of listed ?? []) {
+      if (node.profile?.personalProfile) personalShares.current.add(node.id)
+    }
+  }, [listed])
 
   if (query.loading && !query.data) {
     return <ListLoading label="Loading shared Profiles" />
@@ -376,17 +386,6 @@ function endConsequence(profile: SharedProfileFieldsFragment, household: string)
   const stops = `${profile.name} stops being available in ${household}, and anyone using it here returns to the Profile picker.`
   if (!profile.personalProfile) return stops
   return `${stops} This is someone's Personal Profile, so that person can no longer use ${household}, and the TVs they linked here are unlinked.`
-}
-
-/** The listed share that the change takes out of the list, if any. */
-function leaving(
-  listed: readonly { node: ListedShare }[],
-  edges: readonly { node: ListedShare }[],
-  change: ShareChange,
-): VisitorShare | null {
-  if (edges.some((edge) => edge.node.id === change.shareId)) return null
-  const share = listed.find((edge) => edge.node.id === change.shareId)?.node
-  return share && namesItsProfile(share) ? share : null
 }
 
 function namesItsProfile(share: ListedShare): share is VisitorShare {
