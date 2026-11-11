@@ -12,15 +12,25 @@ export function shareCodeIn(text: string): string | null {
   return EIGHT_LETTERS.test(letters) ? letters : null
 }
 
-/** The link that opens the Sharing page with `code` filled in, on the client at `origin`. */
+/**
+ * The link that opens the Sharing page with `code` filled in, on the client at `origin`. The code
+ * rides in the fragment, which a browser never sends to a server, so it stays out of access logs.
+ */
 export function shareCodeLink(code: string, origin: string): string {
   const link = new URL(SHARING_PAGE, origin)
-  link.searchParams.set(CODE_PARAMETER, code)
+  link.hash = new URLSearchParams({ [CODE_PARAMETER]: code }).toString()
   return link.href
 }
 
+/** The code that a link's fragment carries, as in `#code=BCDFGHJK`, or null. */
+export function codeInFragment(fragment: string): string | null {
+  return new URLSearchParams(fragment.replace(/^#/, '')).get(CODE_PARAMETER)
+}
+
+// A pasted link carries the code in its fragment, or in its query as an older link did.
 function codeInLink(text: string): string | null {
   const trimmed = text.trim()
   if (!URL.canParse(trimmed)) return null
-  return new URL(trimmed).searchParams.get(CODE_PARAMETER)
+  const link = new URL(trimmed)
+  return codeInFragment(link.hash) ?? link.searchParams.get(CODE_PARAMETER)
 }
