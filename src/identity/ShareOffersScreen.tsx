@@ -1,6 +1,6 @@
 import { Button, Center, Loader } from '@mantine/core'
 import { useMutation, useQuery } from '@apollo/client/react'
-import { useState, type Ref } from 'react'
+import type { Ref } from 'react'
 import {
   AcceptProfileShareDocument,
   RejectProfileShareDocument,
@@ -10,7 +10,6 @@ import {
 } from '../graphql/generated/graphql'
 import { useLiveList } from '../graphql/liveList'
 import { requestFailureMessage } from '../graphql/requestErrors'
-import { userErrorMessage } from '../graphql/userErrors'
 import settingsStyles from '../styles/settings.module.css'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { FailurePanel } from '../ui/Failure'
@@ -27,7 +26,7 @@ import {
   type ShareChange,
 } from './shareLists'
 import { SharingSection } from './SharingSection'
-import { expiryLabel, UPDATE_FAILED_MESSAGE } from './shareText'
+import { expiryLabel } from './shareText'
 import { useConfirmedChange } from './useConfirmedChange'
 import { useMe } from './useMe'
 import { useNow } from './useNow'
@@ -133,27 +132,17 @@ function HouseholdOffers({
     listed: offers,
     onGone: () => onDecided(NO_LONGER_WAITING),
   })
-  /** The offer whose decline is on its way; no other decision starts until it lands. */
-  const [declining, setDeclining] = useState<string | null>(null)
-  const [refusal, setRefusal] = useState<string | null>(null)
-  const deciding = declining !== null || accepting.sending
-
-  async function declineNow(offer: PendingOffer) {
-    setRefusal(null)
-    setDeclining(offer.id)
-    try {
-      const { data } = await decline({ variables: { input: { shareId: offer.id } } })
-      const errors = data?.rejectProfileShare?.userErrors ?? []
-      if (errors.length > 0) setRefusal(errors.map(userErrorMessage).join(' '))
-      // A refused offer may have been decided or withdrawn elsewhere, so the list is read again.
-      await readAgain()
-      if (errors.length === 0) onDecided(`Offer of ${offeredProfile(offer)} declined.`)
-    } catch (error) {
-      setRefusal(requestFailureMessage(error, UPDATE_FAILED_MESSAGE))
-    } finally {
-      setDeclining(null)
-    }
-  }
+  // The offer spent its code, so offering the Profile again takes a new code from this Household.
+  const declining = useConfirmedChange<PendingOffer>({
+    send: async (offer) =>
+      (await decline({ variables: { input: { shareId: offer.id } } })).data?.rejectProfileShare
+        ?.userErrors ?? [],
+    readAgain,
+    onDone: (offer) => onDecided(`Offer of ${offeredProfile(offer)} declined.`),
+    listed: offers,
+    onGone: () => onDecided(NO_LONGER_WAITING),
+  })
+  const deciding = accepting.sending || declining.sending
 
   if (query.loading && !query.data) {
     return <ShareOffersLoading />
@@ -164,11 +153,6 @@ function HouseholdOffers({
 
   return (
     <>
-      {refusal && !accepting.pending && (
-        <p className={styles.refusal} role="alert">
-          {refusal}
-        </p>
-      )}
       <div ref={liveList}>
         {offers.length === 0 ? (
           <p className={styles.note}>No one has offered a Profile to {household.name}.</p>
@@ -195,19 +179,15 @@ function HouseholdOffers({
                       variant="filled"
                       aria-label={`Accept ${offeredProfile(offer)}`}
                       disabled={deciding}
-                      onClick={() => {
-                        setRefusal(null)
-                        accepting.ask(offer)
-                      }}
+                      onClick={() => accepting.ask(offer)}
                     >
                       Accept
                     </Button>
                     <Button
                       variant="default"
                       aria-label={`Decline ${offeredProfile(offer)}`}
-                      loading={declining === offer.id}
                       disabled={deciding}
-                      onClick={() => void declineNow(offer)}
+                      onClick={() => declining.ask(offer)}
                     >
                       Decline
                     </Button>
@@ -232,6 +212,22 @@ function HouseholdOffers({
         error={accepting.refusal}
         onClose={accepting.close}
         onConfirm={accepting.confirmPending}
+      />
+      <ConfirmDialog
+        opened={declining.pending !== null}
+        title={declining.pending ? `Decline ${offeredProfile(declining.pending)}?` : ''}
+        body={
+          declining.pending
+            ? `Whoever offered ${offeredProfile(declining.pending)} needs a new share code from ${household.name} to offer again.`
+            : ''
+        }
+        confirmLabel="Decline"
+        destructive
+        icon={null}
+        pending={declining.sending}
+        error={declining.refusal}
+        onClose={declining.close}
+        onConfirm={declining.confirmPending}
       />
     </>
   )
