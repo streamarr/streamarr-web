@@ -649,14 +649,12 @@ describe('Share invitations', () => {
     )
   })
 
-  it('shouldDeclineAnOfferAtOnceAndSaySo', async () => {
-    const held = serveOffers([offer()])
+  it('shouldSayWhatDecliningLosesBeforeItDeclinesWhenTheAdminDeclinesAnOffer', async () => {
+    serve([offer()])
     let declined = false
     server.use(
-      graphql.mutation('RejectProfileShare', ({ variables }) => {
-        expect(variables).toEqual({ input: { shareId: OFFER_ID } })
+      graphql.mutation('RejectProfileShare', () => {
         declined = true
-        held.offers = []
         return HttpResponse.json({ data: { rejectProfileShare: declinedPayload() } })
       }),
     )
@@ -664,13 +662,59 @@ describe('Share invitations', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Decline Alex' }))
 
-    await noticed('Share invitation for Alex declined.')
-    expect(declined).toBe(true)
+    const dialog = screen.getByRole('dialog', { name: 'Decline Alex?' })
+    expect(dialog).toHaveTextContent(
+      /^Decline Alex\?Whoever offered Alex needs a new share code from Smith Family to offer again\./,
+    )
+    expect(declined).toBe(false)
+
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /reject/i })).not.toBeInTheDocument()
+    expect(declined).toBe(false)
   })
 
-  it('shouldShowTheServersWordsAndReadTheOffersAgainWhenDecliningIsRefused', async () => {
+  it.each<WayOut>(['Cancel', 'Escape'])(
+    'shouldReturnFocusToDeclineWhenTheAdminLeavesItsConfirmation(%s)',
+    async (way) => {
+      serve([offer()])
+      const { user } = renderAppAt(OFFERS)
+      const decline = await screen.findByRole('button', { name: 'Decline Alex' })
+      const heading = focusesOf(
+        screen.getByRole('heading', { level: 1, name: 'Share invitations' }),
+      )
+
+      await user.click(decline)
+      await leaveTheConfirmation(user, way)
+
+      await waitFor(() => expect(decline).toHaveFocus())
+      expect(heading.count).toBe(0)
+    },
+  )
+
+  it('shouldDeclineTheOfferAndSaySoWhenTheAdminConfirms', async () => {
+    const held = serveOffers([offer()])
+    server.use(
+      graphql.mutation('RejectProfileShare', ({ variables }) => {
+        expect(variables).toEqual({ input: { shareId: OFFER_ID } })
+        held.offers = []
+        return HttpResponse.json({ data: { rejectProfileShare: declinedPayload() } })
+      }),
+    )
+    const { user } = renderAppAt(OFFERS)
+
+    await user.click(await screen.findByRole('button', { name: 'Decline Alex' }))
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Decline' }))
+
+    await noticed('Share invitation for Alex declined.')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(
+      await screen.findByText('No share invitations are waiting for Smith Family.'),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Share invitations' })).toHaveFocus()
+    expect(screen.queryByRole('button', { name: /reject/i })).not.toBeInTheDocument()
+  })
+  it('shouldKeepTheConfirmationOpenWithTheServersWordsAndReadTheOffersAgainWhenDecliningIsRefused', async () => {
     const held = serveOffers([offer()])
     let readsWhenRefused = Infinity
     server.use(
@@ -682,21 +726,32 @@ describe('Share invitations', () => {
     const { user } = renderAppAt(OFFERS)
 
     await user.click(await screen.findByRole('button', { name: 'Decline Alex' }))
+    const dialog = screen.getByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Decline' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('That offer is not pending.')
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      /^That offer is not pending\.$/,
+    )
     await waitFor(() => expect(held.reads).toBeGreaterThan(readsWhenRefused))
+    expect(within(dialog).getByRole('button', { name: 'Decline' })).toBeEnabled()
   })
-
   it('shouldNotSayTheOfferWasDeclinedWhenDecliningIsRefused', async () => {
     serve([offer()])
     refuseToDecline()
     const { user } = renderAppAt(OFFERS)
 
     await user.click(await screen.findByRole('button', { name: 'Decline Alex' }))
+    const dialog = screen.getByRole('dialog')
 
-    await screen.findByRole('alert')
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Decline Alex' })).toBeEnabled())
-    expect(screen.getByRole('status')).toBeEmptyDOMElement()
+    await user.click(within(dialog).getByRole('button', { name: 'Decline' }))
+
+    await within(dialog).findByRole('alert')
+    await waitFor(() =>
+      expect(within(dialog).getByRole('button', { name: 'Decline' })).toBeEnabled(),
+    )
+    // The confirmation has a status of its own; the page's notice is the one outside it.
+    const notice = screen.getAllByRole('status').find((status) => !dialog.contains(status))
+    expect(notice).toBeEmptyDOMElement()
   })
 
   it('shouldSayTheOfferWasDeclinedWhenReadingTheOffersAgainFails', async () => {
@@ -710,6 +765,7 @@ describe('Share invitations', () => {
     const { user } = renderAppAt(OFFERS)
 
     await user.click(await screen.findByRole('button', { name: 'Decline Alex' }))
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Decline' }))
 
     await noticed('Share invitation for Alex declined.')
     expect(screen.getByRole('alert')).toHaveTextContent("Couldn't load share invitations.")
@@ -729,13 +785,15 @@ describe('Share invitations', () => {
     const { user } = renderAppAt(OFFERS)
 
     await user.click(await screen.findByRole('button', { name: 'Decline Alex' }))
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Decline' }))
     expect(await screen.findByText("Couldn't load share invitations.")).toBeVisible()
 
     held.failing = false
     await user.click(screen.getByRole('button', { name: 'Retry' }))
 
-    expect(await screen.findByRole('button', { name: 'Decline Alex' })).toBeEnabled()
-    expect(screen.getByRole('alert')).toHaveTextContent('That offer is not pending.')
+    const dialog = await screen.findByRole('dialog', { name: 'Decline Alex?' })
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('That offer is not pending.')
+    expect(within(dialog).getByRole('button', { name: 'Decline' })).toBeEnabled()
   })
 
   it('shouldTakeTheServersWordsAwayWhenTheNextDeclineIsTaken', async () => {
@@ -743,8 +801,12 @@ describe('Share invitations', () => {
     refuseToDecline()
     const { user } = renderAppAt(OFFERS)
     await user.click(await screen.findByRole('button', { name: 'Decline Alex' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('That offer is not pending.')
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Decline Alex' })).toBeEnabled())
+    const dialog = screen.getByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Decline' }))
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('That offer is not pending.')
+    await waitFor(() =>
+      expect(within(dialog).getByRole('button', { name: 'Decline' })).toBeEnabled(),
+    )
 
     server.use(
       graphql.mutation('RejectProfileShare', () => {
@@ -752,7 +814,7 @@ describe('Share invitations', () => {
         return HttpResponse.json({ data: { rejectProfileShare: declinedPayload() } })
       }),
     )
-    await user.click(screen.getByRole('button', { name: 'Decline Alex' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Decline' }))
 
     await noticed('Share invitation for Alex declined.')
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
@@ -763,7 +825,10 @@ describe('Share invitations', () => {
     refuseToDecline()
     const { user } = renderAppAt(OFFERS)
     await user.click(await screen.findByRole('button', { name: 'Decline Alex' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('That offer is not pending.')
+    const dialog = screen.getByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Decline' }))
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('That offer is not pending.')
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
     await waitFor(() => expect(screen.getByRole('button', { name: 'Accept Alex' })).toBeEnabled())
 
     await user.click(screen.getByRole('button', { name: 'Accept Alex' }))
@@ -976,6 +1041,20 @@ describe('Share offers as they change elsewhere', () => {
     await user.click(screen.getByRole('button', { name: 'Accept Alex' }))
 
     socket.publish('ProfileShareChanged', shareChanged(OFFER_ID, liveShare({ status: 'ACTIVE' })))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await noticed('That offer is no longer waiting.')
+    expect(screen.getByRole('heading', { level: 1, name: 'Share invitations' })).toHaveFocus()
+  })
+
+  it('shouldCloseTheDeclineConfirmationAndSaySoWhenTheOfferIsWithdrawnElsewhereMeanwhile', async () => {
+    const { socket, user } = await openWithAnOfferOfAlex()
+    await user.click(screen.getByRole('button', { name: 'Decline Alex' }))
+
+    socket.publish(
+      'ProfileShareChanged',
+      shareChanged(OFFER_ID, liveShare({ status: 'CANCELED', ...HIDDEN_ONCE_OVER })),
+    )
 
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     await noticed('That offer is no longer waiting.')

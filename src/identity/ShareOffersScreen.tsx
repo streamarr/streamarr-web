@@ -38,6 +38,8 @@ type OfferedProfile = NonNullable<ListedOffer['profile']>
 type PendingOffer = ListedOffer & { profile: OfferedProfile }
 type Household = MeQuery['me']['household']
 type Decision = 'accept' | 'decline'
+/** An offer whose decision waits for the admin's confirmation. */
+type Confirmation = Readonly<{ offerId: string; decision: Decision }>
 
 const NO_LONGER_WAITING = 'That offer is no longer waiting.'
 
@@ -119,10 +121,10 @@ function HouseholdOffers({
   const [accept] = useMutation(AcceptProfileShareDocument)
   const [decline] = useMutation(RejectProfileShareDocument)
   /**
-   * The id of the offer whose acceptance waits for the admin's confirmation. The confirmation shows
+   * The offer whose acceptance or decline waits for the admin's confirmation. The confirmation shows
    * the offer as the latest read lists it, and closes when that read no longer lists the offer.
    */
-  const [confirmingId, setConfirmingId] = useState<string | null>(null)
+  const [confirmation, setConfirmation] = useState<Confirmation | null>(null)
   /** The offer whose decision is on its way; no other decision starts until it lands. */
   const [deciding, setDeciding] = useState<string | null>(null)
   const [refusal, setRefusal] = useState<string | null>(null)
@@ -162,17 +164,19 @@ function HouseholdOffers({
     return (await decline({ variables })).data?.rejectProfileShare?.userErrors
   }
 
-  async function confirmAccept(offer: PendingOffer) {
-    if (await decide(offer, 'accept')) {
-      setConfirmingId(null)
-      onDecided(`${offeredProfile(offer)} accepted into ${household.name}.`)
-    }
+  async function confirmDecision(offer: PendingOffer, decision: Decision) {
+    if (!(await decide(offer, decision))) return
+    setConfirmation(null)
+    onDecided(
+      decision === 'accept'
+        ? `${offeredProfile(offer)} accepted into ${household.name}.`
+        : `Share invitation for ${offeredProfile(offer)} declined.`,
+    )
   }
 
-  async function declineNow(offer: PendingOffer) {
-    if (await decide(offer, 'decline')) {
-      onDecided(`Share invitation for ${offeredProfile(offer)} declined.`)
-    }
+  function ask(offer: PendingOffer, decision: Decision) {
+    setRefusal(null)
+    setConfirmation({ offerId: offer.id, decision })
   }
 
   const listed = query.data?.householdShares.edges.map((edge) => edge.node) ?? []
@@ -181,13 +185,13 @@ function HouseholdOffers({
   const offers = listed
     .filter((offer) => statusAt(offer, now) === 'PENDING')
     .filter(namesItsProfile)
-  const confirming = offers.find((offer) => offer.id === confirmingId) ?? null
+  const confirming = offers.find((offer) => offer.id === confirmation?.offerId) ?? null
   // An offer that a read or a change made elsewhere takes out of the list while its confirmation is
   // open was decided or withdrawn elsewhere, so the confirmation closes and the page says so. An
   // offer that leaves while the admin's own decision is on its way, or after the server refused it,
   // is that decision's to report.
   const goneElsewhere =
-    confirmingId !== null &&
+    confirmation !== null &&
     confirming === null &&
     deciding === null &&
     refusal === null &&
@@ -196,8 +200,8 @@ function HouseholdOffers({
   /** The last offer whose confirmation closed because it left the list, until the page says so. */
   const [gone, setGone] = useState<{ offerId: string } | null>(null)
   if (goneElsewhere) {
-    setGone({ offerId: confirmingId })
-    setConfirmingId(null)
+    setGone({ offerId: confirmation.offerId })
+    setConfirmation(null)
   }
   const sayGone = useEffectEvent(() => onDecided(NO_LONGER_WAITING))
 
@@ -245,19 +249,15 @@ function HouseholdOffers({
                       variant="filled"
                       aria-label={`Accept ${offeredProfile(offer)}`}
                       disabled={deciding !== null}
-                      onClick={() => {
-                        setRefusal(null)
-                        setConfirmingId(offer.id)
-                      }}
+                      onClick={() => ask(offer, 'accept')}
                     >
                       Accept
                     </Button>
                     <Button
                       variant="default"
                       aria-label={`Decline ${offeredProfile(offer)}`}
-                      loading={deciding === offer.id && !confirming}
                       disabled={deciding !== null}
-                      onClick={() => void declineNow(offer)}
+                      onClick={() => ask(offer, 'decline')}
                     >
                       Decline
                     </Button>
@@ -270,18 +270,27 @@ function HouseholdOffers({
       </div>
       <ConfirmDialog
         opened={confirming !== null}
-        title={confirming ? `Accept ${offeredProfile(confirming)} into ${household.name}?` : ''}
-        body={confirming ? acceptance(confirming.profile, household.name) : ''}
-        confirmLabel="Accept"
+        title={
+          confirming && confirmation
+            ? question(confirming, confirmation.decision, household.name)
+            : ''
+        }
+        body={
+          confirming && confirmation
+            ? consequence(confirming, confirmation.decision, household.name)
+            : ''
+        }
+        confirmLabel={confirmation?.decision === 'decline' ? 'Decline' : 'Accept'}
+        destructive={confirmation?.decision === 'decline'}
         icon={null}
         pending={confirming !== null && deciding === confirming.id}
         error={refusal}
         onClose={() => {
-          setConfirmingId(null)
+          setConfirmation(null)
           setRefusal(null)
         }}
         onConfirm={() => {
-          if (confirming) void confirmAccept(confirming)
+          if (confirming && confirmation) void confirmDecision(confirming, confirmation.decision)
         }}
       />
     </>
@@ -294,6 +303,20 @@ function namesItsProfile(offer: ListedOffer): offer is PendingOffer {
 
 function offeredProfile(offer: PendingOffer): string {
   return offer.profile.name
+}
+
+function question(offer: PendingOffer, decision: Decision, household: string): string {
+  if (decision === 'decline') return `Decline ${offeredProfile(offer)}?`
+  return `Accept ${offeredProfile(offer)} into ${household}?`
+}
+
+// A declined offer spent its code, so offering the Profile again takes a new code from this
+// Household.
+function consequence(offer: PendingOffer, decision: Decision, household: string): string {
+  if (decision === 'decline') {
+    return `Whoever offered ${offeredProfile(offer)} needs a new share code from ${household} to offer again.`
+  }
+  return acceptance(offer.profile, household)
 }
 
 /** What accepting the offer does, as is true of this Profile. */
