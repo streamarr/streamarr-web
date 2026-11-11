@@ -2,18 +2,16 @@ import { Center, Loader } from '@mantine/core'
 import { useQuery } from '@apollo/client/react'
 import { useState } from 'react'
 import settingsStyles from '../styles/settings.module.css'
-import { ProfileSharesDocument, type MeQuery } from '../graphql/generated/graphql'
+import { ProfileSharesDocument } from '../graphql/generated/graphql'
 import { requestFailureMessage } from '../graphql/requestErrors'
 import { FailurePanel } from '../ui/Failure'
 import { PageNotice } from '../ui/PageNotice'
 import { usePageNotice } from '../ui/usePageNotice'
 import { ArrivingShareCodeContext } from './arrivingShareCode'
-import { shortId } from './shareText'
 import styles from './Sharing.module.css'
 import { useMe } from './useMe'
-import { WhereShared } from './WhereShared'
+import { WhereShared, type ProfileShareRow } from './WhereShared'
 
-type Me = MeQuery['me']
 type PersonalProfile = Readonly<{ id: string; name: string }>
 
 /**
@@ -63,37 +61,16 @@ function SharingContent({ onChanged }: Readonly<{ onChanged: (notice: string) =>
   }
 
   return (
-    <ProfileSharing
-      profile={personal}
-      householdName={householdNamer(me)}
-      ownHouseholdName={me.household.name}
-      onChanged={onChanged}
-    />
+    <ProfileSharing profile={personal} ownHouseholdName={me.household.name} onChanged={onChanged} />
   )
-}
-
-/**
- * Names a Household by its id. A share carries only the id, so the name is known only for a
- * Household that the Account may use; the start of the id stands for any other.
- */
-function householdNamer(me: Me): (householdId: string) => string {
-  const known = [
-    me.household,
-    me.contextHousehold,
-    ...me.usableHouseholds.edges.map((edge) => edge.node.household),
-  ]
-  const names = new Map(known.map((household) => [household.id, household.name]))
-  return (householdId) => names.get(householdId) ?? `Household ${shortId(householdId)}`
 }
 
 function ProfileSharing({
   profile,
-  householdName,
   ownHouseholdName,
   onChanged,
 }: Readonly<{
   profile: PersonalProfile
-  householdName: (householdId: string) => string
   ownHouseholdName: string
   onChanged: (notice: string) => void
 }>) {
@@ -123,12 +100,26 @@ function ProfileSharing({
     <WhereShared
       profile={profile}
       shares={shares}
-      householdName={householdName}
+      householdName={householdNamer(shares)}
       ownHouseholdName={ownHouseholdName}
       readAgain={readAgain}
       onChanged={onChanged}
     />
   )
+}
+
+/**
+ * Names a Household by the name that its shares carry. Everyone who may read a Profile's shares
+ * may read that name, so "another Household" stands only for a share that the server sent without
+ * one.
+ */
+function householdNamer(shares: readonly ProfileShareRow[]): (householdId: string) => string {
+  const names = new Map(
+    shares.flatMap((share) =>
+      share.household ? [[share.household.id, share.household.name]] : [],
+    ),
+  )
+  return (householdId) => names.get(householdId) ?? 'another Household'
 }
 
 function SharingLoading() {

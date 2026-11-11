@@ -27,8 +27,10 @@ import {
 } from '../test/shareCodeFixtures'
 import { SharingScreen } from './SharingScreen'
 
-type ShareNode = ProfileSharesQuery['profileShares']['edges'][number]['node'] & {
+type ShareFields = ProfileSharesQuery['profileShares']['edges'][number]['node']
+type ShareNode = Omit<ShareFields, 'household'> & {
   __typename: 'ProfileShare'
+  household: (NonNullable<ShareFields['household']> & { __typename: 'HouseholdSummary' }) | null
 }
 
 const SHARING = '/settings/profile/sharing'
@@ -53,6 +55,7 @@ function share(overrides: Partial<ShareNode> = {}): ShareNode {
     expiresAt: null,
     endedAt: null,
     invalidationReason: null,
+    household: { __typename: 'HouseholdSummary', id: CABIN_ID, name: 'Cabin' },
     ...overrides,
   }
 }
@@ -64,6 +67,7 @@ function membershipShare(): ShareNode {
     householdId: HOUSEHOLD_ID,
     status: 'ACTIVE',
     requiredByAccountMembership: true,
+    household: { __typename: 'HouseholdSummary', id: HOUSEHOLD_ID, name: 'Smith Family' },
   })
 }
 
@@ -171,8 +175,9 @@ describe('Sharing', () => {
     expect(screen.queryByRole('region', { name: /^Offers/ })).not.toBeInTheDocument()
   })
 
-  it('shouldNameTheHouseholdOfAnActiveShareWhenTheAccountMayUseIt', async () => {
-    serve([membershipShare(), share({ status: 'ACTIVE' })], me([SMITH_FAMILY, CABIN]))
+  it('shouldNameTheHouseholdOfAShareByTheNameTheShareCarries', async () => {
+    // The Account may use only its own Household, so the name can come from the share alone.
+    serve([membershipShare(), share({ status: 'ACTIVE' })], me([SMITH_FAMILY]))
     renderWithProviders(<SharingScreen />)
 
     const row = await screen.findByRole('listitem')
@@ -181,18 +186,29 @@ describe('Sharing', () => {
     expect(screen.getAllByRole('listitem')).toHaveLength(1)
   })
 
+  it('shouldSayAnotherHouseholdWhenAShareCarriesNoHousehold', async () => {
+    serve([share({ status: 'ACTIVE', household: null })])
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    const row = await screen.findByRole('listitem')
+    expect(row).toHaveTextContent('another Household')
+    await user.click(within(row).getByRole('button', { name: 'End share with another Household' }))
+
+    expect(
+      screen.getByRole('dialog', { name: 'End sharing with another Household?' }),
+    ).toBeVisible()
+  })
+
   it('shouldShowAnOfferAsWaitingWithTheTimeItHasLeft', async () => {
     const inSixDays = new Date(Date.now() + 6 * DAY + DAY / 24).toISOString()
     serve([share({ expiresAt: inSixDays })])
     renderWithProviders(<SharingScreen />)
 
     const row = await screen.findByRole('listitem')
-    expect(row).toHaveTextContent('Household 55555555')
+    expect(row).toHaveTextContent('Cabin')
     expect(within(row).getByText('Waiting for an admin there')).toBeVisible()
     expect(within(row).getByText('Expires in 6 days')).toBeVisible()
-    expect(
-      within(row).getByRole('button', { name: 'Cancel offer to Household 55555555' }),
-    ).toBeEnabled()
+    expect(within(row).getByRole('button', { name: 'Cancel offer to Cabin' })).toBeEnabled()
   })
 
   it('shouldKeepEarlierOffersAndSharesOutOfTheListUntilAsked', async () => {
@@ -214,11 +230,11 @@ describe('Sharing', () => {
 
     expect(earlier).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getAllByRole('listitem').map((row) => row.textContent)).toEqual([
-      'Household 55555555Declined',
-      'Household 55555555Expired',
-      'Household 55555555Canceled',
-      'Household 55555555Ended Aug 20, 2026',
-      'Household 55555555Withdrawn: Its offerer left.',
+      'CabinDeclined',
+      'CabinExpired',
+      'CabinCanceled',
+      'CabinEnded Aug 20, 2026',
+      'CabinWithdrawn: Its offerer left.',
     ])
     expect(screen.queryByRole('button', { name: /^End share|^Cancel offer/ })).toBeNull()
   })

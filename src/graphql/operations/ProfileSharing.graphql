@@ -23,6 +23,10 @@ query ProfileShares($profileId: ID!) {
         expiresAt
         endedAt
         invalidationReason
+        household {
+          id
+          name
+        }
       }
     }
   }
