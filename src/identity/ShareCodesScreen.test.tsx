@@ -227,6 +227,36 @@ describe('Share codes', () => {
     expect(copy).toHaveFocus()
   })
 
+  it('shouldSayTheCopyInAStatusThatWasThereBeforeWhenThePersonCopiesTheCode', async () => {
+    serve()
+    serveIssue()
+    const { user } = renderAppAt(CODES)
+    await issue(user)
+    // A screen reader hears a status whose text changes, not one that arrives with its text.
+    const status = screen.getByRole('status')
+    expect(status).toBeEmptyDOMElement()
+
+    await user.click(screen.getByRole('button', { name: 'Copy code' }))
+
+    await waitFor(() => expect(status).toHaveTextContent(/^Code copied\.$/))
+  })
+
+  it('shouldSayTheCopyAgainWhenThePersonCopiesTheCodeTwice', async () => {
+    serve()
+    serveIssue()
+    const { user } = renderAppAt(CODES)
+    await issue(user)
+    const copy = screen.getByRole('button', { name: 'Copy code' })
+    await user.click(copy)
+    const status = screen.getByRole('status')
+    const first = await within(status).findByText('Code copied.')
+
+    await user.click(copy)
+
+    // The same words, written anew, so a screen reader says them again.
+    await waitFor(() => expect(within(status).getByText('Code copied.')).not.toBe(first))
+  })
+
   it('shouldCopyALinkThatCarriesTheCodeInItsFragmentWhenThePersonCopiesTheLink', async () => {
     serve()
     serveIssue()
@@ -256,7 +286,7 @@ describe('Share codes', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent(failure)
     expect(document.getSelection()?.toString()).toBe(SHARE_CODE)
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.getByRole('status')).toBeEmptyDOMElement()
   })
 
   it('shouldSayTheCodeCannotBeCopiedWhenTheBrowserHasNoClipboard', async () => {
@@ -403,7 +433,7 @@ describe('Share codes', () => {
       /^That share code no longer works\.$/,
     )
     await waitFor(() => expect(codes.calls).toBe(2))
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.getByRole('status')).toBeEmptyDOMElement()
   })
 
   it('shouldListACodeIssuedWhileTheAdminWasAwayWhenTheyReturn', async () => {

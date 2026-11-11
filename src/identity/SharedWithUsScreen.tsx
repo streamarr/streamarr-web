@@ -49,7 +49,7 @@ const DAY = new Intl.DateTimeFormat('en', { dateStyle: 'medium' })
  * admins may stop sharing, and the TVs that visitors linked here, which its admins may unlink.
  */
 export function SharedWithUsScreen() {
-  const { notice, heading, announce, dismiss } = usePageNotice()
+  const { notice, count, heading, announce, dismiss } = usePageNotice()
   const liveList = useFocusFallback(heading)
 
   return (
@@ -59,7 +59,9 @@ export function SharedWithUsScreen() {
           Shared with us
         </h1>
       </div>
-      <PageNotice onDismiss={dismiss}>{notice}</PageNotice>
+      <PageNotice count={count} onDismiss={dismiss}>
+        {notice}
+      </PageNotice>
       <SharedWithUsContent announce={announce} liveList={liveList} />
     </>
   )

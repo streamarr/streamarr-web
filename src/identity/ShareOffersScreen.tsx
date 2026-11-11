@@ -42,7 +42,7 @@ const NO_LONGER_WAITING = 'That offer is no longer waiting.'
 
 /** The offers of Profiles to the Account's Household, which its admins accept or decline. */
 export function ShareOffersScreen() {
-  const { notice, heading, announce, dismiss } = usePageNotice()
+  const { notice, count, heading, announce, dismiss } = usePageNotice()
   const liveList = useFocusFallback(heading)
 
   return (
@@ -52,7 +52,9 @@ export function ShareOffersScreen() {
           Share offers
         </h1>
       </div>
-      <PageNotice onDismiss={dismiss}>{notice}</PageNotice>
+      <PageNotice count={count} onDismiss={dismiss}>
+        {notice}
+      </PageNotice>
       <ShareOffersContent onDecided={announce} liveList={liveList} />
     </>
   )

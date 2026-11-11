@@ -6,13 +6,20 @@ import { useRef, useState } from 'react'
  * leaves the page as it was, such as a copy, is announced `inPlace` and keeps focus where it is.
  */
 export function usePageNotice() {
-  const [notice, setNotice] = useState('')
+  // Each announcement counts, so that the same words a second time are a new notice.
+  const [notice, setNotice] = useState({ text: '', count: 0 })
   const heading = useRef<HTMLHeadingElement>(null)
 
   function announce(text: string, { inPlace = false }: { inPlace?: boolean } = {}) {
-    setNotice(text)
+    setNotice((last) => ({ text, count: last.count + 1 }))
     if (!inPlace) heading.current?.focus({ preventScroll: true })
   }
 
-  return { notice, heading, announce, dismiss: () => setNotice('') }
+  return {
+    notice: notice.text,
+    count: notice.count,
+    heading,
+    announce,
+    dismiss: () => setNotice((last) => ({ ...last, text: '' })),
+  }
 }

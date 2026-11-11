@@ -46,7 +46,7 @@ const OVER_STATUSES: readonly ProfileShareStatus[] = [
  * A share code that the page's link carried opens the share form with it, once.
  */
 export function SharingScreen({ arrivingCode = null }: Readonly<{ arrivingCode?: string | null }>) {
-  const { notice, heading, announce, dismiss } = usePageNotice()
+  const { notice, count, heading, announce, dismiss } = usePageNotice()
   const liveList = useFocusFallback(heading)
   const [code, setCode] = useState(arrivingCode)
 
@@ -57,7 +57,9 @@ export function SharingScreen({ arrivingCode = null }: Readonly<{ arrivingCode?:
           Sharing
         </h1>
       </div>
-      <PageNotice onDismiss={dismiss}>{notice}</PageNotice>
+      <PageNotice count={count} onDismiss={dismiss}>
+        {notice}
+      </PageNotice>
       <ArrivingShareCodeContext value={{ code, take: () => setCode(null) }}>
         <SharingContent onChanged={announce} liveList={liveList} />
       </ArrivingShareCodeContext>
