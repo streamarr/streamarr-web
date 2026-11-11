@@ -12,6 +12,7 @@ import {
 import styles from '../../styles/settings.module.css'
 import { PageNotice } from '../../ui/PageNotice'
 import { usePageNotice } from '../../ui/usePageNotice'
+import sectionStyles from './SharingAndInvitationSettings.module.css'
 import { AmountSetting, answerOf, type SettingWords } from './AmountSetting'
 import { amountOf, countOf, type StoredAmount, type Unit, type Units } from './amounts'
 
@@ -70,7 +71,14 @@ export function SharingAndInvitationSettings() {
   return (
     <>
       <div className={styles.pageHeading}>
-        <h1>Sharing and invitations</h1>
+        <div className={sectionStyles.heading}>
+          <h1>Sharing and invitations</h1>
+          {/* The server reads a lifetime and the limit when it issues a code, an invitation or an
+              offer. Notifications are kept by the retention as it is when they are swept. */}
+          <p className={sectionStyles.fact}>
+            A change applies to share codes, invitations and offers issued after it.
+          </p>
+        </div>
       </div>
       <PageNotice count={count} onDismiss={dismiss}>
         {notice}
