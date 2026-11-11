@@ -254,6 +254,24 @@ describe('Requests in Notifications', () => {
     },
   )
 
+  it('shouldSayHowLongAgoAsTimePassesWithThePageOpen', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'], shouldAdvanceTime: true })
+    onTestFinished(() => void vi.useRealTimers())
+    serve(
+      notificationsPage([
+        answerNotification({ latestEventAt: new Date(Date.now() - 10_000).toISOString() }),
+      ]),
+    )
+    renderAppAt(NOTIFICATIONS)
+    expect(await within(await screen.findByRole('listitem')).findByText('Just now')).toBeVisible()
+
+    await act(() => vi.advanceTimersByTimeAsync(60_000))
+    expect(await within(rows()[0]).findByText('1 minute ago')).toBeVisible()
+    await act(() => vi.advanceTimersByTimeAsync(HOUR))
+
+    expect(await within(rows()[0]).findByText('1 hour ago')).toBeVisible()
+  })
+
   it('shouldSayAnOfferExpiredWhenItsTimeRunsOutWithThePageOpen', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'], shouldAdvanceTime: true })
     onTestFinished(() => void vi.useRealTimers())
