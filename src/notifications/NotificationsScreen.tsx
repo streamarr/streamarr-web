@@ -1,4 +1,4 @@
-import { useQuery } from '@apollo/client/react'
+import { useApolloClient, useQuery } from '@apollo/client/react'
 import { Button, Center, Loader, VisuallyHidden } from '@mantine/core'
 import { Link } from '@tanstack/react-router'
 import { useId } from 'react'
@@ -6,6 +6,7 @@ import {
   NotificationsDocument,
   type NotificationFieldsFragment,
 } from '../graphql/generated/graphql'
+import { useLiveList } from '../graphql/liveList'
 import { requestFailureMessage } from '../graphql/requestErrors'
 import { useNow } from '../identity/useNow'
 import { definedEdges } from '../media/edges'
@@ -13,9 +14,11 @@ import settingsStyles from '../styles/settings.module.css'
 import { FailurePanel, FailureRow } from '../ui/Failure'
 import { useIntersectionObserver } from '../media/useIntersectionObserver'
 import styles from './Notifications.module.css'
+import { withNotificationChange, type NotificationEntry } from './notificationList'
 import { fullTime, whenLabel } from './notificationTime'
 import { expiryOfWaiting, isOfferRequest, offerRequestState } from './requestState'
 import { useMarkShownRead } from './useMarkShownRead'
+import { useNotificationChanges } from './useNotificationChanges'
 import { useOlderNotifications } from './useOlderNotifications'
 
 /** The Account's Notifications, newest first, each in the server's words. */
@@ -31,14 +34,29 @@ export function NotificationsScreen() {
 }
 
 function NotificationsList() {
+  const { cache } = useApolloClient()
+  const live = useLiveList({
+    query: NotificationsDocument,
+    variables: {},
+    keyOf: (entry: NotificationEntry) => entry.notificationId,
+    apply: (data, entry: NotificationEntry) => ({
+      ...data,
+      notifications: withNotificationChange(data.notifications, entry),
+    }),
+  })
+  // One change can touch many Notifications, such as marking them read; the list shows it once.
+  useNotificationChanges((entries) => cache.batch({ update: () => entries.forEach(live.receive) }))
   // Notifications arrive and resolve elsewhere, so a visit shows only the server's answer.
-  const query = useQuery(NotificationsDocument, { fetchPolicy: 'network-only' })
+  const query = useQuery(NotificationsDocument, {
+    fetchPolicy: 'network-only',
+    context: live.context,
+  })
   // A failed read reports through the query's own error state.
   const readAgain = () => query.refetch().catch(() => undefined)
   const shown = query.error ? [] : definedEdges(query.data?.notifications.edges)
   useMarkShownRead(shown[0]?.cursor ?? null)
   const pageInfo = query.data?.notifications.pageInfo
-  const older = useOlderNotifications(pageInfo)
+  const older = useOlderNotifications(pageInfo, live.context)
 
   if (query.loading && !query.data) {
     return (
