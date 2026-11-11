@@ -40,7 +40,8 @@ describe('/settings/profile/sharing', () => {
     const { router } = renderAppAt(ARRIVAL)
 
     const question = await screen.findByRole('heading', { name: 'Offer Alex to Cabin?' })
-    expect(question).toHaveFocus()
+    // The review takes focus once it has rendered, which a loaded machine can show a moment apart.
+    await waitFor(() => expect(question).toHaveFocus())
     expect(asked.lookUps).toEqual([{ input: { code: SENT_SHARE_CODE } }])
     // Taken out through the router, so the history entry keeps its index and key.
     await waitFor(() => expect(router.state.location.hash).toBe(''))

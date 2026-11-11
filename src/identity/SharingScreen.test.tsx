@@ -593,7 +593,7 @@ describe('Sharing', () => {
     await user.click(screen.getByRole('button', { name: 'Continue' }))
 
     const question = await screen.findByRole('heading', { name: 'Offer Alex to Cabin?' })
-    expect(question).toHaveFocus()
+    await waitFor(() => expect(question).toHaveFocus())
     expect(screen.getByText('An admin of Cabin must accept it. The code works once.')).toBeVisible()
     expect(screen.getByRole('button', { name: 'Offer share' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Back' })).toBeEnabled()
@@ -727,7 +727,8 @@ describe('Sharing', () => {
 
     await user.type(field, `${SHARE_CODE}{Enter}`)
 
-    expect(await screen.findByRole('heading', { name: 'Offer Alex to Cabin?' })).toHaveFocus()
+    const question = await screen.findByRole('heading', { name: 'Offer Alex to Cabin?' })
+    await waitFor(() => expect(question).toHaveFocus())
     expect(heading.count).toBe(0)
   })
 
@@ -834,7 +835,8 @@ describe('Sharing', () => {
 
     await user.click(screen.getByRole('button', { name: 'Continue' }))
 
-    expect(await screen.findByRole('heading', { name: 'Offer Alex to Cabin?' })).toHaveFocus()
+    const question = await screen.findByRole('heading', { name: 'Offer Alex to Cabin?' })
+    await waitFor(() => expect(question).toHaveFocus())
     expect(screen.getByText('Alex would arrive locked there until it has a PIN.')).toBeVisible()
     expect(asked.lookUps).toHaveLength(1)
     expect(asked.previews).toHaveLength(1)
