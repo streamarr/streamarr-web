@@ -1,6 +1,6 @@
 import { Button } from '@mantine/core'
 import { useMutation } from '@apollo/client/react'
-import { useRef, type Ref } from 'react'
+import { useEffect, useEffectEvent, useRef, type Ref } from 'react'
 import {
   CancelProfileShareDocument,
   EndProfileShareDocument,
@@ -68,6 +68,23 @@ export function WhereShared({
 
   const live = shares.filter(isLive)
   const earlier = shares.filter((share) => !isLive(share))
+  // A share that a read or a change made elsewhere takes out of the list while its confirmation is
+  // open has ended there, so the confirmation closes and the page says so. A share that leaves while
+  // the person's own change is on its way, or after the server refused it, is that change's to report.
+  const endedElsewhere =
+    ending !== null &&
+    changing === null &&
+    refusal === null &&
+    !live.some((share) => share.id === ending.id)
+  const sayEnded = useEffectEvent(() => {
+    if (!ending) return
+    onEndingChange(null)
+    onChanged(`Sharing with ${householdName(ending.householdId)} has already ended.`)
+  })
+
+  useEffect(() => {
+    if (endedElsewhere) sayEnded()
+  }, [endedElsewhere])
 
   /** Sends the change and reads the shares again; resolves to whether the server took it. */
   async function change(share: ProfileShareRow): Promise<boolean> {

@@ -1,6 +1,6 @@
 import { Button, Center, Loader } from '@mantine/core'
 import { useMutation, useQuery } from '@apollo/client/react'
-import { useState, type Ref } from 'react'
+import { useEffect, useEffectEvent, useState, type Ref } from 'react'
 import {
   AcceptProfileShareDocument,
   RejectProfileShareDocument,
@@ -38,6 +38,8 @@ type OfferedProfile = NonNullable<ListedOffer['profile']>
 type PendingOffer = ListedOffer & { profile: OfferedProfile }
 type Household = MeQuery['me']['household']
 type Decision = 'accept' | 'decline'
+
+const NO_LONGER_WAITING = 'That offer is no longer waiting.'
 
 /** The offers of Profiles to the Account's Household, which its admins accept or decline. */
 export function ShareOffersScreen() {
@@ -176,6 +178,32 @@ function HouseholdOffers({
   const listed = query.data?.householdShares.edges.map((edge) => edge.node) ?? []
   // An offer leaves the list when its time runs out, as the query would leave it out.
   const now = useNow(listed.map((offer) => offer.expiresAt))
+  const offers = listed
+    .filter((offer) => statusAt(offer, now) === 'PENDING')
+    .filter(namesItsProfile)
+  const confirming = offers.find((offer) => offer.id === confirmingId) ?? null
+  // An offer that a read or a change made elsewhere takes out of the list while its confirmation is
+  // open was decided or withdrawn elsewhere, so the confirmation closes and the page says so. An
+  // offer that leaves while the admin's own decision is on its way, or after the server refused it,
+  // is that decision's to report.
+  const goneElsewhere =
+    confirmingId !== null &&
+    confirming === null &&
+    deciding === null &&
+    refusal === null &&
+    query.data !== undefined &&
+    !query.error
+  /** The last offer whose confirmation closed because it left the list, until the page says so. */
+  const [gone, setGone] = useState<{ offerId: string } | null>(null)
+  if (goneElsewhere) {
+    setGone({ offerId: confirmingId })
+    setConfirmingId(null)
+  }
+  const sayGone = useEffectEvent(() => onDecided(NO_LONGER_WAITING))
+
+  useEffect(() => {
+    if (gone) sayGone()
+  }, [gone])
 
   if (query.loading && !query.data) {
     return <ShareOffersLoading />
@@ -183,11 +211,6 @@ function HouseholdOffers({
   if (query.error || !query.data) {
     return <ShareOffersUnavailable error={query.error} onRetry={readAgain} />
   }
-
-  const offers = listed
-    .filter((offer) => statusAt(offer, now) === 'PENDING')
-    .filter(namesItsProfile)
-  const confirming = offers.find((offer) => offer.id === confirmingId) ?? null
 
   return (
     <>

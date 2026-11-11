@@ -638,6 +638,33 @@ describe('Shared with us as shares change elsewhere', () => {
     ).toBeVisible()
   })
 
+  it('shouldCloseTheConfirmationAndSaySoWhenTheShareEndsElsewhereMeanwhile', async () => {
+    const { socket, user } = await openWithAShareOfAlex()
+    await user.click(screen.getByRole('button', { name: 'End share of Alex' }))
+
+    socket.publish(
+      'ProfileShareChanged',
+      shareChanged(SHARE_ID, liveShare({ status: 'ENDED', ...HIDDEN_ONCE_OVER })),
+    )
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await noticed('Alex is no longer shared here.')
+    expect(screen.getByRole('heading', { level: 1, name: 'Shared with us' })).toHaveFocus()
+  })
+
+  it('shouldCloseTheConfirmationAndSaySoWhenTheTvIsUnlinkedElsewhereMeanwhile', async () => {
+    const tvs = [device()]
+    const { user } = await openWithAShareOfAlex(tvs)
+    await user.click(await screen.findByRole('button', { name: 'Unlink Living room TV' }))
+
+    tvs.splice(0)
+    comeBackOnline()
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await noticed('Living room TV is no longer linked here.')
+    expect(screen.getByRole('heading', { level: 1, name: 'Shared with us' })).toHaveFocus()
+  })
+
   it('shouldMoveFocusToTheHeadingWhenTheShareTheAdminIsOnEndsElsewhere', async () => {
     const { socket } = await openWithAShareOfAlex()
     act(() => screen.getByRole('button', { name: 'End share of Alex' }).focus())

@@ -147,6 +147,7 @@ function SharedProfiles({
   })
   const [end] = useMutation(EndProfileShareDocument)
   const readAgain = () => query.refetch().catch(() => undefined)
+  const listed = query.data?.householdShares.edges
   const ending = useConfirmedChange<VisitorShare>({
     send: async (share) =>
       (await end({ variables: { input: { shareId: share.id } } })).data?.endProfileShare
@@ -154,9 +155,10 @@ function SharedProfiles({
     // Ending the share of someone's Personal Profile also unlinks the TVs that person linked here.
     listsToReadAgain: [SharedWithHouseholdDocument, VisitorDevicesDocument],
     onDone: (share) => announce(`Sharing of ${share.profile.name} ended.`),
+    listed: query.error ? undefined : listed?.map((edge) => edge.node),
+    onGone: (share) => announce(`${share.profile.name} is no longer shared here.`),
   })
 
-  const listed = query.data?.householdShares.edges
   useEffect(() => {
     for (const { node } of listed ?? []) {
       if (node.profile?.personalProfile) personalShares.current.add(node.id)
@@ -244,6 +246,8 @@ function VisitorTvs({
         ?.revokeDeviceRegistration?.userErrors ?? [],
     listsToReadAgain: [VisitorDevicesDocument],
     onDone: (tv) => announce(`${tv.displayName} unlinked.`),
+    listed: query.error ? undefined : query.data?.householdDevices.edges.map((edge) => edge.node),
+    onGone: (tv) => announce(`${tv.displayName} is no longer linked here.`),
   })
 
   if (query.loading && !query.data) {
