@@ -68,3 +68,12 @@
   font-size: var(--font-size-label);
   font-weight: var(--font-weight-medium);
 }
+
+/* The end of the loaded list, which loads the next older page as it nears the view. */
+.end {
+  height: 1px;
+}
+
+.olderFailure {
+  margin-top: var(--spacing-16);
+}
