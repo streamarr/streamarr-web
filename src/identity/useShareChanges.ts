@@ -11,11 +11,18 @@ import type { ShareChange } from './shareLists'
  * A change whose share arrives with errors is no change to apply, not even a removal: the
  * transport reports it missed, and the active queries read again.
  */
-export function useShareChanges(onChange: (change: ShareChange) => void) {
-  useLiveChanges(ProfileShareChangedDocument, ({ data, error }) => {
-    const change = data?.profileShareChanged
-    if (!change) return
-    if (responsePathHasError(error, ['profileShareChanged', 'share'])) return
-    onChange(change)
-  })
+export function useShareChanges(
+  onChange: (change: ShareChange) => void,
+  options?: { skip?: boolean },
+) {
+  useLiveChanges(
+    ProfileShareChangedDocument,
+    ({ data, error }) => {
+      const change = data?.profileShareChanged
+      if (!change) return
+      if (responsePathHasError(error, ['profileShareChanged', 'share'])) return
+      onChange(change)
+    },
+    options,
+  )
 }
