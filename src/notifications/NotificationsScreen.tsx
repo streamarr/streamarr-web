@@ -1,16 +1,19 @@
 import { useQuery } from '@apollo/client/react'
-import { Center, Loader, VisuallyHidden } from '@mantine/core'
+import { Button, Center, Loader, VisuallyHidden } from '@mantine/core'
+import { Link } from '@tanstack/react-router'
 import { useId } from 'react'
 import {
   NotificationsDocument,
   type NotificationFieldsFragment,
 } from '../graphql/generated/graphql'
 import { requestFailureMessage } from '../graphql/requestErrors'
+import { useNow } from '../identity/useNow'
 import { definedEdges } from '../media/edges'
 import settingsStyles from '../styles/settings.module.css'
 import { FailurePanel } from '../ui/Failure'
 import styles from './Notifications.module.css'
 import { fullTime, whenLabel } from './notificationTime'
+import { expiryOfWaiting, isOfferRequest, offerRequestState } from './requestState'
 
 /** The Account's Notifications, newest first, each in the server's words. */
 export function NotificationsScreen() {
@@ -45,15 +48,22 @@ function NotificationsList() {
     )
   }
 
-  const shown = definedEdges(query.data.notifications.edges)
+  const shown = definedEdges(query.data.notifications.edges).map((edge) => edge.node)
   if (shown.length === 0) {
     return <p className={styles.empty}>No notifications.</p>
   }
-  const now = new Date()
+  return <NotificationRows notifications={shown} />
+}
+
+function NotificationRows({
+  notifications,
+}: Readonly<{ notifications: NotificationFieldsFragment[] }>) {
+  // A waiting Request turns into an expired one when its time runs out, as the server reads it.
+  const now = useNow(notifications.map(expiryOfWaiting))
   return (
     <ul className={`${settingsStyles.formPanel} ${styles.rows}`} aria-label="Notifications">
-      {shown.map(({ node }) => (
-        <NotificationRow key={node.id} notification={node} now={now} />
+      {notifications.map((notification) => (
+        <NotificationRow key={notification.id} notification={notification} now={now} />
       ))}
     </ul>
   )
@@ -73,8 +83,35 @@ function NotificationRow({
         </p>
         <WhenItHappened at={notification.latestEventAt} now={now} />
       </div>
+      <RequestAction notification={notification} now={now} lineId={lineId} />
     </li>
   )
+}
+
+/**
+ * A Request's one action: Review, where it is decided, while it waits, and how it ended once it is
+ * over. The decision is made there, so the person sees what anyone who went there directly sees.
+ */
+function RequestAction({
+  notification,
+  now,
+  lineId,
+}: Readonly<{ notification: NotificationFieldsFragment; now: Date; lineId: string }>) {
+  if (!isOfferRequest(notification)) return null
+  const state = offerRequestState(notification, now)
+  if (state.at === 'waiting') {
+    return (
+      <Button
+        component={Link}
+        to="/settings/household/offers"
+        variant="default"
+        aria-describedby={lineId}
+      >
+        Review
+      </Button>
+    )
+  }
+  return state.ending && <span className={styles.ending}>{state.ending}</span>
 }
 
 /** How long ago for the eye, and the whole time for a screen reader. */
