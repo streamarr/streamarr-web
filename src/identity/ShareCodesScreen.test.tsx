@@ -193,7 +193,7 @@ describe('Share codes', () => {
     expect(within(live).queryByText(SHARE_CODE)).not.toBeInTheDocument()
   })
 
-  it('shouldShowTheCodeOnceInThePageWhenAnAdminIssuesOne', async () => {
+  it('shouldShowTheCodeOnceInPlaceOfTheIssueButtonWhenAnAdminIssuesOne', async () => {
     const codes = serveInTurn([], [liveCode()])
     serveIssue()
     const { user } = renderAppAt(CODES)
@@ -201,6 +201,7 @@ describe('Share codes', () => {
     const code = await issue(user)
 
     expect(code).toHaveFocus()
+    expect(screen.queryByRole('button', { name: 'Issue a share code' })).not.toBeInTheDocument()
     expect(code).toHaveAccessibleDescription(
       'This is the only time the code is shown. It works until Nov 18, 2026, 9:15 AM.',
     )

@@ -1,6 +1,7 @@
 import { Button, Center, Loader } from '@mantine/core'
 import { useMutation, useQuery } from '@apollo/client/react'
 import { useId, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import {
   HouseholdShareCodesDocument,
   IssueShareCodeDocument,
@@ -139,15 +140,8 @@ function HouseholdShareCodes({
           {refusal}
         </p>
       )}
-      <Button
-        ref={issueAction}
-        leftSection={<Icon name="plus" />}
-        loading={issuing}
-        onClick={() => void issue()}
-      >
-        Issue a share code
-      </Button>
-      {issued && (
+      {/* The code takes the button's place until the admin is done with it. */}
+      {issued ? (
         <IssuedShareCode
           key={issued.shareCode.id}
           code={issued.code}
@@ -156,10 +150,20 @@ function HouseholdShareCodes({
           origin={origin}
           onCopied={(notice) => announce(notice, { inPlace: true })}
           onDone={() => {
-            setIssued(null)
+            // The button is back before it takes focus.
+            flushSync(() => setIssued(null))
             issueAction.current?.focus()
           }}
         />
+      ) : (
+        <Button
+          ref={issueAction}
+          leftSection={<Icon name="plus" />}
+          loading={issuing}
+          onClick={() => void issue()}
+        >
+          Issue a share code
+        </Button>
       )}
       <LiveShareCodes
         householdName={household.name}

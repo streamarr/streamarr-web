@@ -64,7 +64,6 @@ export function IssuedShareCode({
       )}
       <div className={styles.actions}>
         <Button
-          variant="default"
           onClick={() =>
             void copy(
               code,
@@ -87,7 +86,9 @@ export function IssuedShareCode({
         >
           Copy link
         </Button>
-        <Button onClick={onDone}>Done</Button>
+        <Button variant="default" onClick={onDone}>
+          Done
+        </Button>
       </div>
     </div>
   )
