@@ -231,7 +231,20 @@ function hevcDecoderUpTo(maximum: number): Answers {
   return (configuration) => answer(hevcLevelOf(configuration) <= maximum)
 }
 
-type DecodingInfoFake = Mock<(configuration: MediaDecodingConfiguration) => Promise<DecodingAnswer>>
+type DecodingInfo = (configuration: MediaDecodingConfiguration) => Promise<DecodingAnswer>
+
+type DecodingInfoFake = Mock<DecodingInfo>
+
+// Safari 26.6 on macOS refused HEVC Main and Main 10 at each level above 6.2 that it was asked
+// about, up to level 8.5, and refused sooner than it answered.
+function refusingHevcAboveLevelSixPointTwo(decodingInfo: DecodingInfo): DecodingInfoFake {
+  return vi.fn((configuration: MediaDecodingConfiguration) => {
+    if (codecOf(configuration).startsWith('hvc1') && hevcLevelOf(configuration) > HEVC_LEVEL_6_2) {
+      return Promise.resolve(answer(false))
+    }
+    return decodingInfo(configuration)
+  })
+}
 
 // A level search asks about HEVC Main, about HEVC Main 10, or about one compatible base.
 type HevcLevelSearch = 'HEVC_MAIN' | 'HEVC_MAIN_10' | 'PQ' | 'HLG'
@@ -839,9 +852,8 @@ describe('declarePlaybackCapabilities', () => {
   it('shouldDeclareMainTenAboveTheH264CapWhenWebKitAnswersMainTenSmoothAndMainOnlyPowerEfficient', async () => {
     const declaration = await declarePlaybackCapabilities(
       platformFixture({
-        decodingInfo: decodingInfoAnsweringHevc(
-          smoothMainTenAndPowerEfficientMain,
-          smoothUpToFullHd,
+        decodingInfo: refusingHevcAboveLevelSixPointTwo(
+          decodingInfoAnsweringHevc(smoothMainTenAndPowerEfficientMain, smoothUpToFullHd),
         ),
         userAgent: IPHONE_SAFARI_USER_AGENT,
       }),
@@ -864,9 +876,11 @@ describe('declarePlaybackCapabilities', () => {
   it('shouldDeclareSmoothMainTenAloneWhenWebKitAnswersNoH264TierSmooth', async () => {
     const declaration = await declarePlaybackCapabilities(
       platformFixture({
-        decodingInfo: decodingInfoAnsweringHevc(
-          smoothMainTenAndPowerEfficientMain,
-          () => UNSMOOTH_SOFTWARE_ANSWER,
+        decodingInfo: refusingHevcAboveLevelSixPointTwo(
+          decodingInfoAnsweringHevc(
+            smoothMainTenAndPowerEfficientMain,
+            () => UNSMOOTH_SOFTWARE_ANSWER,
+          ),
         ),
         userAgent: IPHONE_SAFARI_USER_AGENT,
       }),
@@ -878,7 +892,9 @@ describe('declarePlaybackCapabilities', () => {
   it('shouldDeclareHevcAboveTheHighestTierH264KeepsUpWithWhenWebKitAnswersHevcSmooth', async () => {
     const declaration = await declarePlaybackCapabilities(
       platformFixture({
-        decodingInfo: decodingInfoAnsweringHevc(() => answer(true), smoothUpToFullHd),
+        decodingInfo: refusingHevcAboveLevelSixPointTwo(
+          decodingInfoAnsweringHevc(() => answer(true), smoothUpToFullHd),
+        ),
         userAgent: IPHONE_SAFARI_USER_AGENT,
       }),
     )
@@ -2010,7 +2026,9 @@ describe('declarePlaybackCapabilities', () => {
     it('shouldDeclareLevelSixPointTwoForEveryHevcProfileOfEveryHevcEntryWhenWebKitAnswersItSmooth', async () => {
       const declaration = await declarePlaybackCapabilities(
         hdrPlatformFixture({
-          decodingInfo: hdrBrowser({ dolbyVision: ['dvh1.05', 'dvh1.08'] }),
+          decodingInfo: refusingHevcAboveLevelSixPointTwo(
+            hdrBrowser({ dolbyVision: ['dvh1.05', 'dvh1.08'] }),
+          ),
           userAgent: SAFARI,
         }),
       )
@@ -2045,9 +2063,11 @@ describe('declarePlaybackCapabilities', () => {
         [HEVC_LEVEL_6_1]: UNSMOOTH_SOFTWARE_ANSWER,
         [HEVC_LEVEL_6_0]: answer(false),
       }
-      const decodingInfo = decodingInfoAnsweringHevc(
-        (configuration) =>
-          answersAboveLevelFivePointTwo[hevcLevelOf(configuration)] ?? answer(true),
+      const decodingInfo = refusingHevcAboveLevelSixPointTwo(
+        decodingInfoAnsweringHevc(
+          (configuration) =>
+            answersAboveLevelFivePointTwo[hevcLevelOf(configuration)] ?? answer(true),
+        ),
       )
 
       const declaration = await declarePlaybackCapabilities(
@@ -2115,7 +2135,7 @@ describe('declarePlaybackCapabilities', () => {
     // the deadline.
     it('shouldDeclareNoHevcDirectPlayButKeepTheMainTenLevelWhenWebKitLeavesTheHevcMainLevelQuestionUnansweredAtTheDeadline', async () => {
       vi.useFakeTimers()
-      const answers = filePlayingDecodingInfo(WEBKIT_FILE_TYPES)
+      const answers = refusingHevcAboveLevelSixPointTwo(filePlayingDecodingInfo(WEBKIT_FILE_TYPES))
       const isHevcMainLevelSixPointTwoQuestion = (configuration: MediaDecodingConfiguration) =>
         configuration.type !== 'file' && codecOf(configuration) === hevcMainCodec(HEVC_LEVEL_6_2)
       const declaration = declarePlaybackCapabilities(
@@ -2163,11 +2183,15 @@ describe('declarePlaybackCapabilities', () => {
       expect(familyEntries(declaration, 'HEVC')).toEqual([UHD_AT_60_HEVC_ENTRY])
     })
 
-    it('shouldDeclareTheNeededHevcLevelWhenWebKitAnswersEveryLevelAboveItPowerEfficientButNotSmooth', async () => {
+    it('shouldDeclareTheNeededHevcLevelWhenWebKitAnswersEachSearchedLevelPowerEfficientButNotSmooth', async () => {
       const declaration = await declarePlaybackCapabilities(
         platformFixture({
-          decodingInfo: decodingInfoAnsweringHevc((configuration) =>
-            hevcLevelOf(configuration) > HEVC_LEVEL_5_1 ? IPHONE_SAFARI_HEVC_ANSWER : answer(true),
+          decodingInfo: refusingHevcAboveLevelSixPointTwo(
+            decodingInfoAnsweringHevc((configuration) =>
+              hevcLevelOf(configuration) > HEVC_LEVEL_5_1
+                ? IPHONE_SAFARI_HEVC_ANSWER
+                : answer(true),
+            ),
           ),
           userAgent: SAFARI,
         }),
@@ -2243,13 +2267,15 @@ describe('declarePlaybackCapabilities', () => {
       // needs. Their level searches still find level 6.2.
       const declaration = await declarePlaybackCapabilities(
         hdrPlatformFixture({
-          decodingInfo: decodingInfoAnsweringHevc(
-            (configuration) =>
-              answer(
-                configuration.video?.transferFunction === undefined ||
-                  hevcLevelOf(configuration) > HEVC_LEVEL_5_1,
-              ),
-            (configuration) => answer(!/^(dvh1\.08|dav1)/.test(codecOf(configuration))),
+          decodingInfo: refusingHevcAboveLevelSixPointTwo(
+            decodingInfoAnsweringHevc(
+              (configuration) =>
+                answer(
+                  configuration.video?.transferFunction === undefined ||
+                    hevcLevelOf(configuration) > HEVC_LEVEL_5_1,
+                ),
+              (configuration) => answer(!/^(dvh1\.08|dav1)/.test(codecOf(configuration))),
+            ),
           ),
           userAgent: SAFARI,
         }),
@@ -2285,8 +2311,13 @@ describe('declarePlaybackCapabilities', () => {
       },
     )
 
-    it('shouldDeclareH264AndAv1AtTheLevelsTheirPicturesNeedWhenWebKitAnswersEveryQuestionSmooth', async () => {
-      const declaration = await declarePlaybackCapabilities(platformFixture({ userAgent: SAFARI }))
+    it('shouldDeclareH264AndAv1AtTheLevelsTheirPicturesNeedWhenWebKitAnswersThemSmoothAtEveryLevel', async () => {
+      const declaration = await declarePlaybackCapabilities(
+        platformFixture({
+          decodingInfo: refusingHevcAboveLevelSixPointTwo(decodingInfoAnswering(() => true)),
+          userAgent: SAFARI,
+        }),
+      )
 
       expect(declaration.video).toEqual([
         DECLARATION_OF_EVERY_TIER.video[0],
@@ -2295,11 +2326,11 @@ describe('declarePlaybackCapabilities', () => {
       ])
     })
 
-    it('shouldDeclareLevelSixPointTwoWhenWebKitAnswersEveryQuestionJustBeforeTheDeadline', async () => {
+    it('shouldDeclareLevelSixPointTwoWhenWebKitRefusesAtOnceAndAnswersJustBeforeTheDeadline', async () => {
       vi.useFakeTimers()
       const declaration = declarePlaybackCapabilities(
         platformFixture({
-          decodingInfo: vi.fn(
+          decodingInfo: refusingHevcAboveLevelSixPointTwo(
             () =>
               new Promise<DecodingAnswer>((resolve) => {
                 setTimeout(() => resolve(answer(true)), 2_999)
@@ -2440,7 +2471,9 @@ describe('declarePlaybackCapabilities', () => {
     it('shouldDeclareHdrDirectPlayInASeparateEntryWithoutDolbyVisionWhenTheHlsEntryListsDolbyVisionProfiles', async () => {
       const declaration = await declarePlaybackCapabilities(
         hdrPlatformFixture({
-          decodingInfo: hdrBrowser({ dolbyVision: ['dvh1.05', 'dvh1.08'] }),
+          decodingInfo: refusingHevcAboveLevelSixPointTwo(
+            hdrBrowser({ dolbyVision: ['dvh1.05', 'dvh1.08'] }),
+          ),
           canPlayType: canPlayTypeOf(WEBKIT_FILE_TYPES),
           userAgent: SAFARI,
         }),
@@ -2541,7 +2574,9 @@ describe('declarePlaybackCapabilities', () => {
     })
 
     it('shouldAskTheHevcFileQuestionsAtTheLevelTheEntryDeclaresWhenWebKitDeclaresLevelSixPointTwo', async () => {
-      const decodingInfo = filePlayingDecodingInfo(WEBKIT_FILE_TYPES)
+      const decodingInfo = refusingHevcAboveLevelSixPointTwo(
+        filePlayingDecodingInfo(WEBKIT_FILE_TYPES),
+      )
 
       const declaration = await declarePlaybackCapabilities(
         platformFixture({
@@ -2568,7 +2603,7 @@ describe('declarePlaybackCapabilities', () => {
     })
 
     it('shouldDeclareNoHevcDirectPlayWhenWebKitDecodesTheFileAtTheLevelTheEntryDeclaresOnlyWithDroppedFrames', async () => {
-      const answers = filePlayingDecodingInfo(WEBKIT_FILE_TYPES)
+      const answers = refusingHevcAboveLevelSixPointTwo(filePlayingDecodingInfo(WEBKIT_FILE_TYPES))
       const isHevcFileQuestionAboveLevelFivePointOne = (
         configuration: MediaDecodingConfiguration,
       ) =>
@@ -2592,7 +2627,7 @@ describe('declarePlaybackCapabilities', () => {
     })
 
     it('shouldDeclareNoHdrDirectPlayWhenWebKitDecodesTheHdrFileAtTheLevelTheEntryDeclaresOnlyWithDroppedFrames', async () => {
-      const answers = hdrBrowser()
+      const answers = refusingHevcAboveLevelSixPointTwo(hdrBrowser())
       const isHdrFileQuestionAboveLevelFivePointOne = (configuration: MediaDecodingConfiguration) =>
         configuration.type === 'file' &&
         configuration.video?.transferFunction !== undefined &&
