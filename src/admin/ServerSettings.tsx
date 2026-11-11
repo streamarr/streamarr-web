@@ -21,6 +21,12 @@ const SECTIONS = [
     label: 'Active streams',
     region: 'Active streams',
   },
+  {
+    to: '/settings/server/sharing',
+    icon: 'sharing',
+    label: 'Sharing and invitations',
+    region: 'Sharing and invitations',
+  },
 ] as const satisfies readonly SettingsSection[]
 
 /** The settings shell: sections mount only after the server confirms the admin's access on entry. */
