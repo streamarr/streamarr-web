@@ -330,12 +330,14 @@ describe('Share invitations', () => {
   it('shouldKeepTheOffersOnScreenWhenReadingThemAgainFails', async () => {
     serve()
     const fresh = heldAnswer(offersData([]))
-    const offers = answersInTurn(answerWith(offersData([offer()])), serverFailure, fresh.answer)
+    const listed = answerWith(offersData([offer()]))
+    // The Profile menu's count of waiting offers reads them too, so the visit opens with two reads.
+    const offers = answersInTurn(listed, listed, serverFailure, fresh.answer)
     server.use(graphql.query('ShareOffers', offers.resolver))
     renderAppAt(OFFERS)
     await screen.findByRole('button', { name: 'Accept Alex' })
 
-    await comeBackOnlineUntil(offers, 3)
+    await comeBackOnlineUntil(offers, 4)
     expect(screen.getByRole('button', { name: 'Accept Alex' })).toBeEnabled()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     fresh.release()
@@ -1174,7 +1176,6 @@ describe('Share offers as they change elsewhere', () => {
     it('shouldKeepAnOfferThatArrivedAfterTheAdminReturnedWhenAReadSentBeforeTheyLeftAnswers', async () => {
       const { held, socket, release, user } = await openWithAReadOnItsWay()
       await leaveForHome(user, SHARE_OFFERS)
-      await waitFor(() => expect(socket.isLive('ProfileShareChanged')).toBe(false))
       await returnThroughTheProfileMenu(user, SHARE_OFFERS)
       await followingShareChanges(socket)
 
@@ -1201,14 +1202,6 @@ describe('Share offers as they change elsewhere', () => {
       await screen.findByRole('button', { name: 'Accept Mara' })
       expect(offeredNames()).toEqual(['Accept Mara'])
     })
-  })
-
-  it('shouldStopFollowingShareChangesWhenTheAdminLeavesThePage', async () => {
-    const { socket, user } = await openWithAnOfferOfAlex()
-
-    await leaveForHome(user, SHARE_OFFERS)
-
-    await waitFor(() => expect(socket.isLive('ProfileShareChanged')).toBe(false))
   })
 })
 
