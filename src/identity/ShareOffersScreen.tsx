@@ -14,9 +14,9 @@ import settingsStyles from '../styles/settings.module.css'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { FailurePanel } from '../ui/Failure'
 import { PageNotice } from '../ui/PageNotice'
-import { RowAvatar } from '../ui/ProfileTile'
 import { usePageNotice } from '../ui/usePageNotice'
 import styles from './Sharing.module.css'
+import { SharedProfileText } from './SharedProfileText'
 import { SharingSection } from './SharingSection'
 import { expiryLabel, UPDATE_FAILED_MESSAGE } from './shareText'
 import { useMe } from './useMe'
@@ -144,7 +144,17 @@ function HouseholdOffers({
           <ul className={styles.rows}>
             {offers.map((offer, index) => (
               <li key={offer.id} className={styles.row}>
-                <OfferedProfileText offer={offer} paletteIndex={index} />
+                <SharedProfileText
+                  profile={offer.profile}
+                  byline={offer.offeredByDisplayName && `Offered by ${offer.offeredByDisplayName}`}
+                  paletteIndex={index}
+                >
+                  {offer.expiresAt && (
+                    <span className={styles.status}>
+                      {expiryLabel(offer.expiresAt, new Date())}
+                    </span>
+                  )}
+                </SharedProfileText>
                 <span className={styles.actions}>
                   <Button
                     variant="filled"
@@ -207,30 +217,6 @@ function acceptance(profile: OfferedProfile, household: string): string {
     : `${profile.name} becomes available in ${household}.`
   if (!profile.restricted) return arrives
   return `${arrives} It is restricted, so admins of ${household} supervise it here.`
-}
-
-/** The offered Profile as a row shows it: its mark, its name, who offered it and its facts. */
-function OfferedProfileText({
-  offer,
-  paletteIndex,
-}: Readonly<{ offer: PendingOffer; paletteIndex: number }>) {
-  const { profile } = offer
-  return (
-    <span className={styles.rowProfile}>
-      <RowAvatar name={profile.name} paletteIndex={paletteIndex} />
-      <span className={styles.rowText}>
-        {profile.name}
-        {offer.offeredByDisplayName && (
-          <span className={styles.status}>Offered by {offer.offeredByDisplayName}</span>
-        )}
-        {profile.personalProfile && <span className={styles.status}>Personal Profile</span>}
-        {profile.restricted && <span className={styles.status}>Restricted</span>}
-        {offer.expiresAt && (
-          <span className={styles.status}>{expiryLabel(offer.expiresAt, new Date())}</span>
-        )}
-      </span>
-    </span>
-  )
 }
 
 function ShareOffersLoading() {
