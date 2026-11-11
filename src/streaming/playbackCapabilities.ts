@@ -459,12 +459,12 @@ async function probeVideo({
   const pendingH264Answers = probeFamily({ family: H264, askDecodingInfo })
   // Each family declares from its own answers and asks its direct-play questions as soon as they
   // arrive, so a question left unanswered at the deadline holds back only the families that read
-  // it. Every family reads H.264's answers.
+  // its answer.
   const declareFamily = async (family: VideoFamily, pendingAnswers: Promise<TierAnswers[]>) => {
     const [answers, hdrAnswers, h264Answers] = await Promise.all([
       pendingAnswers,
       probeHdr({ platform, family, askDecodingInfo }),
-      pendingH264Answers,
+      readsH264Answers(platform, family) ? pendingH264Answers : [],
     ])
     const entries = familyEntries({ platform, family, answers, hdrAnswers, h264Answers, hls })
     return withVideoDirectPlay({ platform, family, askers, entries })

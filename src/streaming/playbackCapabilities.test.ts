@@ -665,6 +665,42 @@ describe('declarePlaybackCapabilities', () => {
     ])
   })
 
+  it('shouldCapPowerEfficientHevcAtTheH264TiersThatAnsweredWhenWebKitLeavesTheWidestH264QuestionUnansweredAtTheDeadline', async () => {
+    vi.useFakeTimers()
+    const declaration = declarePlaybackCapabilities(
+      platformFixture({
+        decodingInfo: decodingInfoLeavingUnanswered({
+          unanswered: hlsQuestionAbout('avc1.640034'),
+          otherwise: decodingInfoAnsweringHevc(() => IPHONE_SAFARI_HEVC_ANSWER),
+        }),
+        userAgent: IPHONE_SAFARI_USER_AGENT,
+      }),
+    )
+
+    await vi.advanceTimersByTimeAsync(3_000)
+
+    const hevcProfiles = (maxLevel: number) => [
+      { profile: 'HEVC_MAIN' as const, maxLevel, maxTier: 'MAIN' as const },
+      { profile: 'HEVC_MAIN_10' as const, maxLevel, maxTier: 'MAIN' as const },
+    ]
+    expect(familyEntries(await declaration, 'HEVC')).toEqual([
+      sdrVideoEntry({
+        codecFamily: 'HEVC',
+        codecProfiles: hevcProfiles(50),
+        maxBitDepth: 10,
+        maxWidth: 3840,
+        maxHeight: 2160,
+        maxFrameRate: 30,
+      }),
+      sdrVideoEntry({
+        codecFamily: 'HEVC',
+        codecProfiles: hevcProfiles(41),
+        maxBitDepth: 10,
+        maxFrameRate: 60,
+      }),
+    ])
+  })
+
   it('shouldHoldHevcToItsSmoothTiersWhenWebKitAnswersHevcSmoothBelowFourKAndOnlyPowerEfficientAtFourK', async () => {
     const declaration = await declarePlaybackCapabilities(
       platformFixture({
@@ -2207,6 +2243,31 @@ describe('declarePlaybackCapabilities', () => {
       )
       expect(directPlayOf(otherFamilies)).toEqual([
         { codecFamily: 'H264', containers: ['MP4'], sampleEntries: ['AVC1', 'AVC3'] },
+        { codecFamily: 'AV1', containers: ['MP4', 'MATROSKA'], sampleEntries: ['AV01'] },
+      ])
+    })
+
+    it('shouldKeepDirectPlayForHevcAndAv1WhenOneH264QuestionGoesUnansweredAtTheDeadlineOutsideWebKit', async () => {
+      vi.useFakeTimers()
+      const plays: FileTypes = (type) =>
+        CHROMIUM_FILE_TYPES(type) || type.startsWith('video/mp4; codecs="hvc1.')
+      const declaration = declarePlaybackCapabilities(
+        platformFixture({
+          decodingInfo: decodingInfoLeavingUnanswered({
+            unanswered: hlsQuestionAbout('avc1.640034'),
+            otherwise: filePlayingDecodingInfo(plays),
+          }),
+          canPlayType: canPlayTypeOf(plays),
+        }),
+      )
+
+      await vi.advanceTimersByTimeAsync(3_000)
+
+      const otherFamilies = (await declaration).video.filter(
+        ({ codecFamily }) => codecFamily !== 'H264',
+      )
+      expect(directPlayOf(otherFamilies)).toEqual([
+        { codecFamily: 'HEVC', containers: ['MP4'], sampleEntries: ['HVC1'] },
         { codecFamily: 'AV1', containers: ['MP4', 'MATROSKA'], sampleEntries: ['AV01'] },
       ])
     })
