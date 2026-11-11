@@ -140,6 +140,7 @@ function ProfileSharing({
   // that a failed read takes off the page, so they are held here and not in the list.
   const [changing, setChanging] = useState<string | null>(null)
   const [ending, setEnding] = useState<ProfileShareRow | null>(null)
+  const [canceling, setCanceling] = useState<ProfileShareRow | null>(null)
   const [refusal, setRefusal] = useState<string | null>(null)
   // An offer whose time runs out is over, as the queries would count it.
   const now = useNow(nodesOf(data).map((share) => share.expiresAt))
@@ -172,6 +173,8 @@ function ProfileSharing({
       onChangingChange={setChanging}
       ending={ending}
       onEndingChange={setEnding}
+      canceling={canceling}
+      onCancelingChange={setCanceling}
       refusal={refusal}
       onRefusalChange={setRefusal}
       liveList={liveList}
