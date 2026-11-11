@@ -8,6 +8,11 @@ export type ShareChange = NonNullable<ProfileShareChangedSubscription['profileSh
 /** A share as a change carries it: every field that any list of shares reads. */
 export type LiveShare = NonNullable<ShareChange['share']>
 
+/** The key a change applies by: a share's later change replaces its earlier one. */
+export function shareIdOf(change: ShareChange): string {
+  return change.shareId
+}
+
 /** A profileShares list: one Profile's shares, in the statuses it asks for. */
 export interface ProfileShareList {
   profileId: string

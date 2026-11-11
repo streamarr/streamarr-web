@@ -59,6 +59,8 @@ async function readKeepingTheLastResult(
     return await client.query({
       query: query.query,
       variables: query.variables,
+      // A live list's context takes this read through the changes that arrive on its way.
+      context: query.options.context,
       fetchPolicy: 'network-only',
     })
   } catch (error) {

@@ -10,6 +10,7 @@ import {
   comeBackOnlineUntil,
   failsOnceThen,
   heldAnswer,
+  readsThatCanBeHeld,
   serverFailure,
 } from '../test/graphqlResponses'
 import { serveGraphqlSocket } from '../test/graphqlSocket'
@@ -964,5 +965,62 @@ describe('Sharing as shares change elsewhere', () => {
     await screen.findByRole('button', { name: 'End share with Cabin' })
     expect(screen.getByRole('textbox', { name: 'Share code' })).toHaveValue('BCDF')
     expect(screen.getByRole('textbox', { name: 'Share code' })).toHaveFocus()
+  })
+
+  describe('while a read of the shares is on its way', () => {
+    const LAKE_HOUSE_ID = '44444444-4444-4444-4444-444444444444'
+    const lakeHouse = share({
+      id: 'lake-house',
+      householdId: LAKE_HOUSE_ID,
+      status: 'ACTIVE',
+      household: { __typename: 'HouseholdSummary', id: LAKE_HOUSE_ID, name: 'Lake House' },
+    })
+
+    // The shares the server holds; each read answers with them as they stood when it arrived.
+    async function openWithAReadOnItsWay(shares: ShareNode[]) {
+      const held = { shares: [membershipShare(), ...shares] }
+      const socket = serve([], me([SMITH_FAMILY, CABIN]))
+      const reads = readsThatCanBeHeld(() => sharesData(held.shares))
+      server.use(graphql.query('ProfileShares', reads.resolver))
+      renderAppAt(SHARING)
+      await screen.findByRole('region', { name: 'Where Alex is shared' })
+      await followingShareChanges(socket)
+      // The share with Lake House shows that the held read has answered.
+      held.shares = [lakeHouse, ...held.shares]
+      const read = reads.holdNext()
+      comeBackOnline()
+      await read.arrived
+      return { held, socket, release: read.release }
+    }
+
+    it('shouldKeepAnOfferMadeElsewhereWhenAReadSentBeforeItAnswers', async () => {
+      const { held, socket, release } = await openWithAReadOnItsWay([])
+
+      held.shares = [share(), ...held.shares]
+      socket.publish('ProfileShareChanged', shareChanged(SHARE_ID, changedShare()))
+      await screen.findByRole('button', { name: 'Cancel offer to Cabin' })
+      release()
+
+      await screen.findByRole('button', { name: 'End share with Lake House' })
+      expect(screen.getByRole('button', { name: 'Cancel offer to Cabin' })).toBeEnabled()
+    })
+
+    it('shouldShowAnOfferAsSharedWhenAReadSentBeforeItsAcceptanceAnswers', async () => {
+      const { held, socket, release } = await openWithAReadOnItsWay([share()])
+
+      held.shares = held.shares.map((listed) =>
+        listed.id === SHARE_ID ? share({ status: 'ACTIVE' }) : listed,
+      )
+      socket.publish(
+        'ProfileShareChanged',
+        shareChanged(SHARE_ID, changedShare({ status: 'ACTIVE' })),
+      )
+      await screen.findByRole('button', { name: 'End share with Cabin' })
+      release()
+
+      await screen.findByRole('button', { name: 'End share with Lake House' })
+      expect(screen.getByRole('button', { name: 'End share with Cabin' })).toBeEnabled()
+      expect(screen.queryByRole('button', { name: 'Cancel offer to Cabin' })).toBeNull()
+    })
   })
 })
