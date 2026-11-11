@@ -1,6 +1,6 @@
 import { Button, Center, Loader } from '@mantine/core'
 import { useApolloClient, useMutation, useQuery } from '@apollo/client/react'
-import { useEffect, useRef, useState, type Ref } from 'react'
+import { useEffect, useRef, type Ref } from 'react'
 import {
   EndProfileShareDocument,
   RevokeDeviceRegistrationDocument,
@@ -13,7 +13,6 @@ import {
 } from '../graphql/generated/graphql'
 import { useLiveList } from '../graphql/liveList'
 import { requestFailureMessage } from '../graphql/requestErrors'
-import { userErrorMessage, type UserErrorLike } from '../graphql/userErrors'
 import settingsStyles from '../styles/settings.module.css'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { FailurePanel } from '../ui/Failure'
@@ -30,7 +29,7 @@ import {
   type ShareChange,
 } from './shareLists'
 import { SharingSection } from './SharingSection'
-import { UPDATE_FAILED_MESSAGE } from './shareText'
+import { useConfirmedChange } from './useConfirmedChange'
 import { useMe } from './useMe'
 import { useShareChanges } from './useShareChanges'
 
@@ -311,59 +310,6 @@ function VisitorTvs({
       />
     </SharingSection>
   )
-}
-
-/**
- * A change to one row that waits for the admin's confirmation. Once sent, the list reads again
- * whatever the answer, because a refused row may have changed elsewhere; a refusal keeps the
- * confirmation open with the server's words.
- */
-function useConfirmedChange<Row>({
-  send,
-  readAgain,
-  onDone,
-}: {
-  send: (row: Row) => Promise<readonly UserErrorLike[]>
-  readAgain: () => Promise<unknown>
-  onDone: (row: Row) => void
-}) {
-  const [pending, setPending] = useState<Row | null>(null)
-  const [sending, setSending] = useState(false)
-  const [refusal, setRefusal] = useState<string | null>(null)
-
-  async function confirm(row: Row) {
-    setRefusal(null)
-    setSending(true)
-    try {
-      const errors = await send(row)
-      if (errors.length > 0) setRefusal(errors.map(userErrorMessage).join(' '))
-      await readAgain()
-      if (errors.length > 0) return
-      setPending(null)
-      onDone(row)
-    } catch (error) {
-      setRefusal(requestFailureMessage(error, UPDATE_FAILED_MESSAGE))
-    } finally {
-      setSending(false)
-    }
-  }
-
-  return {
-    pending,
-    sending,
-    refusal,
-    ask: (row: Row) => {
-      setRefusal(null)
-      setPending(row)
-    },
-    close: () => {
-      setPending(null)
-      setRefusal(null)
-    },
-    confirmPending: () => {
-      if (pending) void confirm(pending)
-    },
-  }
 }
 
 /** What ending the share stops, as the server does it for this Profile. */
