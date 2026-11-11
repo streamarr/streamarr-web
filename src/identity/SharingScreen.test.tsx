@@ -619,13 +619,16 @@ describe('Sharing', () => {
     expect(heading.count).toBe(0)
   })
 
-  it('shouldTakeTheCodeOutOfALinkPastedIntoTheField', async () => {
+  it.each([
+    `https://streamarr.example/settings/profile/sharing#code=${SHARE_CODE}`,
+    `https://streamarr.example/settings/profile/sharing?code=${SHARE_CODE}`,
+  ])('shouldTakeTheCodeOutOfALinkWhenTheLinkIsPastedIntoTheField(%s)', async (link) => {
     serve()
     const asked = serveShareCodeQuestions()
     const { user } = renderWithProviders(<SharingScreen />)
 
     await user.click(await openShareForm(user))
-    await user.paste(`https://streamarr.example/settings/profile/sharing?code=${SHARE_CODE}`)
+    await user.paste(link)
     await user.click(screen.getByRole('button', { name: 'Continue' }))
 
     expect(await screen.findByRole('heading', { name: 'Offer Alex to Cabin?' })).toBeVisible()

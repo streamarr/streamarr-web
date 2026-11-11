@@ -8,8 +8,9 @@ import { server } from '../../test/server'
 import { SENT_SHARE_CODE, serveShareCodeQuestions, SHARE_CODE } from '../../test/shareCodeFixtures'
 import { signIn } from '../../test/signIn'
 
+const SHARING = '/settings/profile/sharing'
 const LINK = new URL(shareCodeLink(SHARE_CODE, 'https://streamarr.test'))
-const ARRIVAL = `${LINK.pathname}${LINK.search}`
+const ARRIVAL = `${LINK.pathname}${LINK.search}${LINK.hash}`
 
 // An account session with no selected Profile: a link can arrive before anyone picks one.
 function serveSharing() {
@@ -28,7 +29,13 @@ function serveSharing() {
 }
 
 describe('/settings/profile/sharing', () => {
-  it('shouldReviewTheOfferOfALinksCodeAndTakeTheCodeOutOfTheAddress', async () => {
+  it('shouldCarryTheCodeInTheAddressFragmentWhenALinkIsMade', () => {
+    expect(LINK.pathname).toBe(SHARING)
+    expect(LINK.search).toBe('')
+    expect(LINK.hash).toBe(`#code=${SHARE_CODE}`)
+  })
+
+  it('shouldReviewTheOfferOfALinksCodeAndTakeTheCodeOutOfTheAddressWhenASignedInPersonArrives', async () => {
     const asked = serveSharing()
     const { router } = renderAppAt(ARRIVAL)
 
@@ -36,9 +43,28 @@ describe('/settings/profile/sharing', () => {
     expect(question).toHaveFocus()
     expect(asked.lookUps).toEqual([{ input: { code: SENT_SHARE_CODE } }])
     // Taken out through the router, so the history entry keeps its index and key.
-    await waitFor(() => expect(router.state.location.search).toEqual({}))
-    expect(router.state.location.pathname).toBe('/settings/profile/sharing')
+    await waitFor(() => expect(router.state.location.hash).toBe(''))
+    expect(router.state.location.pathname).toBe(SHARING)
+    expect(router.state.location.searchStr).toBe('')
     expect(typeof router.state.location.state.__TSR_index).toBe('number')
+    expect(router.history.length).toBe(1)
+  })
+
+  it('shouldLookNothingUpWhenThePersonReloadsThePageTheLinkOpened', async () => {
+    const asked = serveSharing()
+    const { router, unmount } = renderAppAt(ARRIVAL)
+    await screen.findByRole('heading', { name: 'Offer Alex to Cabin?' })
+    await waitFor(() => expect(router.state.location.hash).toBe(''))
+    const reloaded = router.state.location.href
+    unmount()
+
+    renderAppAt(reloaded)
+
+    expect(
+      await screen.findByRole('button', { name: 'Share with another Household' }),
+    ).toBeVisible()
+    expect(screen.queryByRole('textbox', { name: 'Share code' })).not.toBeInTheDocument()
+    expect(asked.lookUps).toHaveLength(1)
   })
 
   it('shouldLookALinksCodeUpOnceWhenThePersonOpensTheFormAgain', async () => {
@@ -56,7 +82,7 @@ describe('/settings/profile/sharing', () => {
 
   it('shouldSayALinksCodeIsEightLettersWithoutAskingTheServerWhenItCannotBeOne', async () => {
     const asked = serveSharing()
-    renderAppAt('/settings/profile/sharing?code=hello')
+    renderAppAt(`${SHARING}#code=hello`)
 
     const field = await screen.findByRole('textbox', { name: 'Share code' })
     await waitFor(() => expect(field).toBeInvalid())
@@ -67,7 +93,7 @@ describe('/settings/profile/sharing', () => {
     expect(asked.lookUps).toEqual([])
   })
 
-  it('shouldCarryALinksCodeThroughSigningIn', async () => {
+  it('shouldCarryALinksCodeThroughSigningInWithoutPuttingItInAQueryStringWhenThePersonIsSignedOut', async () => {
     server.use(
       http.post('/graphql', () =>
         HttpResponse.json({ code: 'AUTHENTICATION_REQUIRED' }, { status: 401 }),
@@ -75,9 +101,11 @@ describe('/settings/profile/sharing', () => {
     )
     const { router, user } = renderAppAt(ARRIVAL)
     await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
-    expect(router.state.location.search).toEqual({ redirect: ARRIVAL })
+    expect(router.state.location.search).toEqual({ redirect: SHARING })
+    expect(router.state.location.searchStr).not.toContain(SENT_SHARE_CODE)
+    expect(router.state.location.hash).toBe(`code=${SHARE_CODE}`)
 
-    serveSharing()
+    const asked = serveSharing()
     server.use(
       http.post('/api/auth/login', () =>
         HttpResponse.json({ accessTokenExpiresAt: '2026-08-05T12:00:00Z', scope: 'account' }),
@@ -86,6 +114,10 @@ describe('/settings/profile/sharing', () => {
     await signIn(user)
 
     expect(await screen.findByRole('heading', { name: 'Offer Alex to Cabin?' })).toBeVisible()
-    await waitFor(() => expect(router.state.location.search).toEqual({}))
+    expect(asked.lookUps).toEqual([{ input: { code: SENT_SHARE_CODE } }])
+    await waitFor(() => expect(router.state.location.hash).toBe(''))
+    expect(router.state.location.searchStr).toBe('')
+    // The sign-in page and the arrival each took the place of the entry before them.
+    expect(router.history.length).toBe(1)
   })
 })
