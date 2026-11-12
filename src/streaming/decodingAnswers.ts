@@ -64,7 +64,7 @@ export function createDecodingAnswers({
   decodingInfo: DecodingInfo
 }): DecodingAnswers {
   const questions = new Map<string, Question>()
-  let lineEnd: Promise<void> = Promise.resolve()
+  const line = createQuestionLine()
 
   function questionAbout(configuration: MediaDecodingConfiguration): Question {
     const key = questionKey(configuration)
@@ -75,16 +75,6 @@ export function createDecodingAnswers({
     const question = unansweredQuestion()
     questions.set(key, question)
     return question
-  }
-
-  // Resolves once every question sent before has had its turn, with the function that ends this one.
-  function nextTurn(): Promise<() => void> {
-    const previousTurnEnds = lineEnd
-    let endTurn = () => {}
-    lineEnd = new Promise<void>((resolve) => {
-      endTurn = resolve
-    })
-    return previousTurnEnds.then(() => endTurn)
   }
 
   async function sendInLine(
@@ -98,14 +88,14 @@ export function createDecodingAnswers({
         question.shared = undefined
       }
     }
-    const endTurn = await nextTurn()
+    const turn = await line.takeTurn()
     if (question.answer) {
-      endTurn()
+      turn.end()
       return question.answer
     }
     const turnPasses = setTimeout(() => {
       stopSharing()
-      endTurn()
+      turn.end()
     }, QUESTION_TURN_MS)
     try {
       const answer = await decodingInfo(configuration)
@@ -122,7 +112,7 @@ export function createDecodingAnswers({
       throw error
     } finally {
       clearTimeout(turnPasses)
-      endTurn()
+      turn.end()
     }
   }
 
@@ -135,6 +125,47 @@ export function createDecodingAnswers({
       question.shared ??= Promise.race([sendInLine(question, configuration), question.answered])
       return question.shared
     },
+  }
+}
+
+interface Turn {
+  // Lets the next question in line go to the browser. Has no effect after the first call.
+  end: () => void
+}
+
+// Lets one question at a time go to the browser, in the order the questions take their turns.
+function createQuestionLine() {
+  const waiting: (() => void)[] = []
+  let held = false
+
+  function letNextGo() {
+    if (held || waiting.length === 0) {
+      return
+    }
+    held = true
+    waiting.shift()?.()
+  }
+
+  function turnHoldingTheLine(): Turn {
+    let holding = true
+    return {
+      end: () => {
+        if (!holding) {
+          return
+        }
+        holding = false
+        held = false
+        letNextGo()
+      },
+    }
+  }
+
+  return {
+    takeTurn: () =>
+      new Promise<Turn>((resolve) => {
+        waiting.push(() => resolve(turnHoldingTheLine()))
+        letNextGo()
+      }),
   }
 }
 
