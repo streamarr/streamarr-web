@@ -114,6 +114,9 @@
     "ChangeIdleSegmentRetentionError": [
       "IdleSegmentRetentionOutOfRangeError"
     ],
+    "ChangeInvitationLifetimeError": [
+      "LifetimeOutOfRangeError"
+    ],
     "ChangeNotificationRetentionError": [
       "NotificationRetentionOutOfRangeError"
     ],
@@ -124,6 +127,12 @@
       "ReauthenticationRequiredError",
       "RestrictedAccountCannotAdministerError",
       "RestrictedProfileRequiresHouseholdAdminError"
+    ],
+    "ChangeShareCodeLifetimeError": [
+      "LifetimeOutOfRangeError"
+    ],
+    "ChangeShareCodeLimitError": [
+      "ShareCodeLimitOutOfRangeError"
     ],
     "ClearLanguageOverrideError": [
       "InvalidIdError",
@@ -277,6 +286,7 @@
       "LibraryPathOverlapError",
       "LibraryPathRequiredError",
       "LibraryPathThroughSoftLinkError",
+      "LifetimeOutOfRangeError",
       "LinkProfileNotFoundError",
       "ManagerInvitationNotFoundError",
       "MaximumAllowedRatingAgeInvalidError",
@@ -301,6 +311,7 @@
       "RestrictedAccountCannotAdministerError",
       "RestrictedHouseholdAdminError",
       "SameHouseholdError",
+      "ShareCodeLimitOutOfRangeError",
       "ShareCodeNotFoundError",
       "ShareCodeNotLiveError",
       "ShareCodeRefusedError",
@@ -349,7 +360,8 @@
       "ReauthenticationRequiredError"
     ],
     "IssueShareCodeError": [
-      "HouseholdNotFoundError"
+      "HouseholdNotFoundError",
+      "ShareCodeLimitReachedError"
     ],
     "LanguagePreferenceItem": [
       "Episode",
@@ -423,6 +435,7 @@
       "LibraryPathThroughSoftLinkError",
       "LibraryRefreshNotInProgressError",
       "LibraryScanNotInProgressError",
+      "LifetimeOutOfRangeError",
       "LinkProfileNotFoundError",
       "ManagementAlreadyRemovedError",
       "ManagerInvitationNotFoundError",
@@ -466,6 +479,8 @@
       "RestrictedHouseholdAdminError",
       "RestrictedProfileRequiresHouseholdAdminError",
       "SameHouseholdError",
+      "ShareCodeLimitOutOfRangeError",
+      "ShareCodeLimitReachedError",
       "ShareCodeNotFoundError",
       "ShareCodeNotLiveError",
       "ShareCodeRefusedError",
