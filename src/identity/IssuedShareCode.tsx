@@ -2,6 +2,7 @@ import { Button } from '@mantine/core'
 import { useEffect, useId, useRef, useState } from 'react'
 import { shareCodeLink } from './shareCode'
 import styles from './ShareCodes.module.css'
+import sharingStyles from './Sharing.module.css'
 
 const UNTIL = new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' })
 
@@ -62,7 +63,8 @@ export function IssuedShareCode({
           {failure}
         </p>
       )}
-      <div className={styles.actions}>
+      {/* At phone width, as in the review of an offer: Copy code across a line, the others under it. */}
+      <div className={`${sharingStyles.actions} ${sharingStyles.leadingActions}`}>
         <Button
           onClick={() =>
             void copy(
