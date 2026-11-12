@@ -141,6 +141,44 @@ function servePages(...pages: NotificationsQuery[]) {
   return reads
 }
 
+type NotificationNode = Parameters<typeof notificationEdge>[0] & object
+
+/**
+ * Serves the list as the server holds `nodes`, newest first: `first` rows, or 20 when a read does
+ * not ask, after the place that `after` names. Each Notification keeps its place in the list. A
+ * test takes one out, or changes it, where the server would, and tells the page nothing.
+ */
+function serveTheHeldList(nodes: NotificationNode[]) {
+  const held = new Map(nodes.map((node, index) => [node.id, notificationEdge(node, index + 1)!]))
+  server.use(
+    graphql.query('Notifications', ({ variables }) => {
+      const { first, after } = variables as { first?: number | null; after?: string | null }
+      const edges = [...held.values()].filter((edge) => !after || edge.cursor > after)
+      const page = edges.slice(0, first ?? 20)
+      return HttpResponse.json({
+        data: {
+          notifications: {
+            __typename: 'NotificationConnection',
+            edges: page,
+            pageInfo: {
+              __typename: 'PageInfo',
+              hasNextPage: page.length < edges.length,
+              endCursor: page.at(-1)?.cursor ?? null,
+            },
+          },
+        },
+      })
+    }),
+  )
+  return {
+    remove: (id: string) => held.delete(id),
+    replace: (node: NotificationNode) => {
+      const at = Number(held.get(node.id)!.cursor.slice('cursor-'.length))
+      held.set(node.id, notificationEdge(node, at)!)
+    },
+  }
+}
+
 describe('Notifications', () => {
   it('shouldOpenNotificationsWhenTheAccountChoosesThemInTheProfileMenu', async () => {
     serve(notificationsPage([offerNotification()]))
@@ -627,6 +665,45 @@ describe('Older Notifications', () => {
         'The offer of “Leo” was accepted.',
       ]),
     )
+  })
+
+  // More than the newest page of the server's 20 holds, so that the list loads an older page.
+  const TWENTY_TWO = Array.from({ length: 22 }, (_, index) => answerAbout(`Profile ${index + 1}`))
+
+  it('shouldDropANotificationOfAnOlderPageWhenTheListReadAgainNoLongerHasIt', async () => {
+    serve()
+    const held = serveTheHeldList(TWENTY_TWO)
+    renderAppAt(NOTIFICATIONS)
+    await screen.findByText('The offer of “Profile 1” was accepted.')
+    await reachTheEndOfTheList()
+    await screen.findByText('The offer of “Profile 22” was accepted.')
+
+    // Retention deletes the news about Profile 21, which no change tells the page.
+    held.remove('answer-for-Profile 21')
+    comeBackOnline()
+
+    await waitFor(() =>
+      expect(lines()).toEqual(
+        TWENTY_TWO.filter(({ id }) => id !== 'answer-for-Profile 21').map(({ message }) => message),
+      ),
+    )
+  })
+
+  it('shouldSayHowAnOlderRequestEndedWhenTheListReadAgainSaysSo', async () => {
+    serve()
+    const waiting = offerNotification({ unread: false })
+    const held = serveTheHeldList([...TWENTY_TWO.slice(0, 20), waiting])
+    renderAppAt(NOTIFICATIONS)
+    await screen.findByText('The offer of “Profile 1” was accepted.')
+    await reachTheEndOfTheList()
+    await screen.findByRole('link', { name: 'Review' })
+
+    // The offer is withdrawn while the page misses changes.
+    held.replace(offerNotification({ unread: false, resolution: 'WITHDRAWN' }))
+    comeBackOnline()
+
+    expect(await within(rows()[20]).findByText('Withdrawn')).toBeVisible()
+    expect(screen.queryByRole('link', { name: 'Review' })).not.toBeInTheDocument()
   })
 
   it('shouldAddNoOlderPageWhenTheListReadAgainEndsElsewhereBeforeItArrives', async () => {

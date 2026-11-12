@@ -55,6 +55,22 @@ export function withOlderPage(
   return { ...list, edges: [...list.edges, ...older], pageInfo: page.pageInfo }
 }
 
+/** The rows of the newest page: the server's own page size. */
+const NEWEST_PAGE = 20
+
+/** The most rows the server reads in one page. */
+const MOST_ROWS_IN_A_READ = 500
+
+/**
+ * How many rows a read of the list from its start asks for: every row the list holds, older pages
+ * included, and never fewer than the newest page. A read again then answers for each row the
+ * person may be looking at, so the list drops what the server no longer has, such as what
+ * retention deleted, and shows how each request stands now.
+ */
+export function rowsToRead(list: NotificationList | undefined): number {
+  return Math.min(Math.max(list?.edges.length ?? 0, NEWEST_PAGE), MOST_ROWS_IN_A_READ)
+}
+
 /** A list as the cache stores it, whatever its edges point to. */
 interface StoredList<TEdge extends { orderKey: string }> {
   edges: readonly (TEdge | null)[]
@@ -62,10 +78,11 @@ interface StoredList<TEdge extends { orderKey: string }> {
 }
 
 /**
- * What the cache keeps when a list is written over the list it holds. A read of the newest page
- * that ends above the older pages the list has loaded refreshes the newest page and keeps the
- * older ones after it, so a list read again keeps everything the reader has scrolled through. Any
- * other write, such as a change applied to the list, holds the whole list and takes its place.
+ * What the cache keeps when a list is written over the list it holds. A read from the start that
+ * ends above the older pages the list has loaded, as when an older page joined while the read was
+ * on its way, refreshes what it read and keeps the older pages after it, so the reader keeps
+ * everything they have scrolled through. Any other write, such as a change applied to the list,
+ * holds the whole list and takes its place.
  */
 export function keepOlderPages<TEdge extends { orderKey: string }>(
   existing: StoredList<TEdge> | undefined,

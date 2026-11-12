@@ -1,7 +1,7 @@
 import { useApolloClient, useQuery } from '@apollo/client/react'
 import { Alert, Button, Center, Loader, VisuallyHidden } from '@mantine/core'
 import { Link } from '@tanstack/react-router'
-import { useId, useRef } from 'react'
+import { useId, useRef, useState } from 'react'
 import {
   NotificationsDocument,
   type NotificationFieldsFragment,
@@ -18,7 +18,7 @@ import { useFocusFallback } from '../ui/useFocusFallback'
 import { useIntersectionObserver } from '../media/useIntersectionObserver'
 import styles from './Notifications.module.css'
 import { canReadNotifications } from './notificationAccess'
-import { withNotificationChange, type NotificationEntry } from './notificationList'
+import { rowsToRead, withNotificationChange, type NotificationEntry } from './notificationList'
 import { fullTime, nextLabelChange, whenLabel } from './notificationTime'
 import { expiryOfWaiting, isOfferRequest, offerRequestState } from './requestState'
 import { useMarkShownRead } from './useMarkShownRead'
@@ -86,11 +86,18 @@ function NotificationsList() {
   })
   // One change can touch many Notifications, such as marking them read; the list shows it once.
   useNotificationChanges((entries) => cache.batch({ update: () => entries.forEach(live.receive) }))
+  const [first, setFirst] = useState(() => rowsToRead(undefined))
   // Notifications arrive and resolve elsewhere, so a visit shows only the server's answer.
   const query = useQuery(NotificationsDocument, {
+    variables: { first },
     fetchPolicy: 'network-only',
+    // The list holds the rows that `first` grows to; only a read again asks the server for them.
+    nextFetchPolicy: (policy, { reason }) =>
+      reason === 'variables-changed' ? 'cache-first' : policy,
     context: live.context,
   })
+  const rows = rowsToRead(query.data?.notifications)
+  if (rows !== first) setFirst(rows)
   // A failed read reports through the query's own error state.
   const readAgain = () => query.refetch().catch(() => undefined)
   const shown = query.error ? [] : definedEdges(query.data?.notifications.edges)
