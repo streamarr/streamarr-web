@@ -99,6 +99,29 @@ function answerTheNextSegmentWith503({ fatal }: { fatal: boolean }) {
   onError?.('hlsError', { fatal, type: 'networkError', response: { code: 503 } })
 }
 
+const REPLACEMENT = {
+  id: 'sess-replacement',
+  streamUrl: '/api/stream/replacement/multivariant.m3u8?t=playback-token',
+  transcodeMode: 'REMUX',
+} as const
+
+// The server replaces the attached stream session with `streamSession`: the playback status names
+// it, and the attached one answers its next segment request with 503.
+function replaceTheAttachedStreamSessionWith(
+  streamSession: Parameters<typeof readyPlaybackSession>[0]['streamSession'],
+) {
+  server.use(
+    graphql.query('PlaybackSession', () =>
+      HttpResponse.json({
+        data: {
+          playbackSession: readyPlaybackSession({ id: `playback-${PQ_SESSION.id}`, streamSession }),
+        },
+      }),
+    ),
+  )
+  answerTheNextSegmentWith503({ fatal: false })
+}
+
 // Holds every playback status read until the test ends, and counts them.
 function holdStatusReads(): { count: number } {
   const reads = { count: 0 }
@@ -192,30 +215,13 @@ describe('startPlayerPlayback', () => {
     })
 
     it('shouldLoadTheStreamSessionThatReplacesTheAttachedOneFromThePlayhead', async () => {
-      const replacement = {
-        id: 'sess-replacement',
-        streamUrl: '/api/stream/replacement/multivariant.m3u8?t=playback-token',
-        transcodeMode: 'REMUX',
-      } as const
       const video = fakeMedia()
       startPlaying({ video })
       await playingFrom(video, 120)
-      server.use(
-        graphql.query('PlaybackSession', () =>
-          HttpResponse.json({
-            data: {
-              playbackSession: readyPlaybackSession({
-                id: `playback-${PQ_SESSION.id}`,
-                streamSession: replacement,
-              }),
-            },
-          }),
-        ),
-      )
 
-      answerTheNextSegmentWith503({ fatal: false })
+      replaceTheAttachedStreamSessionWith(REPLACEMENT)
 
-      await vi.waitFor(() => expect(hls.loadSource).toHaveBeenLastCalledWith(replacement.streamUrl))
+      await vi.waitFor(() => expect(hls.loadSource).toHaveBeenLastCalledWith(REPLACEMENT.streamUrl))
       expect(hls.config?.startPosition).toBe(120)
     })
   })
