@@ -386,7 +386,7 @@ export async function declarePlaybackCapabilities(
 }
 
 async function declareEntries(platform: PlaybackPlatform): Promise<CapabilityEntries> {
-  const hls = platform.hlsJsSupported || platform.nativeHlsSupported
+  const hls = playsHls(platform)
   const { decodingInfo } = platform
   if (!decodingInfo) {
     return minimalDeclaration(hls)
@@ -423,6 +423,10 @@ async function declareEntries(platform: PlaybackPlatform): Promise<CapabilityEnt
   } finally {
     clearTimeout(timer)
   }
+}
+
+function playsHls(platform: PlaybackPlatform): boolean {
+  return platform.hlsJsSupported || platform.nativeHlsSupported
 }
 
 async function probeDeclaration({
