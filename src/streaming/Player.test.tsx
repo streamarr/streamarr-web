@@ -52,6 +52,7 @@ import type {
   DecisionReason,
   PlaybackDecisionFieldsFragment,
   PlaybackFormatChange,
+  PlaybackSessionFieldsFragment,
   PlayerSubtitleModesQuery,
   PlayerSubtitleModesQueryVariables,
   ReportPlaybackFormatFailureInput,
@@ -516,19 +517,23 @@ function serveAReplacementThatStartsAcrossAFailedRead(
     graphql.query('PlaybackSession', () => {
       reads += 1
       if (reads === 2) return HttpResponse.error()
-      const ready = readyPlaybackSession({ streamSession: replacement })
-      if (reads > 2) return HttpResponse.json({ data: { playbackSession: ready } })
-      const starting = {
-        ...ready,
-        currentFormatAttempt: {
-          __typename: 'PendingPlaybackFormatAttempt',
-          streamSessionId: replacement.id,
-        },
-      }
-      return HttpResponse.json({ data: { playbackSession: starting } })
+      let playbackSession = startingPlaybackSession(replacement)
+      if (reads > 2) playbackSession = readyPlaybackSession({ streamSession: replacement })
+      return HttpResponse.json({ data: { playbackSession } })
     }),
   )
   return () => reads
+}
+
+// The playback session while the server still starts `replacement`.
+function startingPlaybackSession(replacement: StatusStreamSession): PlaybackSessionFieldsFragment {
+  return {
+    ...readyPlaybackSession({ streamSession: replacement }),
+    currentFormatAttempt: {
+      __typename: 'PendingPlaybackFormatAttempt',
+      streamSessionId: replacement.id,
+    },
+  }
 }
 
 // The player attaches `streamUrl` while the fake clock stands still, so a test can time what
