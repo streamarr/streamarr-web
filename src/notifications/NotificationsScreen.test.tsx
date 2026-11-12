@@ -189,6 +189,28 @@ describe('Notifications', () => {
     expect(screen.queryByRole('list', { name: 'Notifications' })).not.toBeInTheDocument()
   })
 
+  it('shouldReadNoNotificationsWhenTheSessionIsBoundToATV', async () => {
+    const { socket } = serve(
+      notificationsPage([offerNotification()]),
+      meFixture({ deviceBound: true }),
+    )
+    const list = { reads: 0 }
+    server.use(
+      graphql.query('Notifications', () => {
+        list.reads += 1
+        return HttpResponse.json({ data: notificationsPage([offerNotification()]) })
+      }),
+    )
+    renderAppAt(NOTIFICATIONS)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Notifications are available using an account session.',
+    )
+    expect(screen.getByRole('link', { name: 'Back to Home' })).toHaveAttribute('href', '/')
+    expect(list.reads).toBe(0)
+    expect(socket.isLive('NotificationsChanged')).toBe(false)
+  })
+
   it('shouldOfferRetryWhenTheListCannotLoad', async () => {
     const { socket } = serve()
     const list = { failing: true, reads: 0 }
