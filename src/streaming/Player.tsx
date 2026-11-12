@@ -125,14 +125,8 @@ export function Player({
     setChoice(startingChoice({ mediaFileId, startPositionSeconds }))
   }
   const sourcePhase = reported?.start === choice.start ? reported.phase : STARTING
-  const {
-    marks,
-    cautions,
-    announcement,
-    followPlaybackSession,
-    refuseAudioSwitch,
-    clearAudioCaution,
-  } = usePlaybackFallbacks(choice.start)
+  const { marks, cautions, announcement, followPlaybackSession, refuseAudioSwitch, pickAudio } =
+    usePlaybackFallbacks(choice.start)
   const [picker, setPicker] = useState<PickerKind | null>(null)
   // The screen as the browser reported it when the viewer opened playback data; null while closed.
   const [playbackDataScreen, setPlaybackDataScreen] = useState<PlaybackDataScreen | null>(null)
@@ -342,7 +336,7 @@ export function Player({
         openPicker={openPicker}
         onOpenPicker={setPicker}
         audioCaution={cautions.audio}
-        onAudioPicked={clearAudioCaution}
+        onAudioPicked={pickAudio}
         onTrackChosen={reportTrackChosen}
         playbackDataShown={playbackDataScreen !== null}
         onTogglePlaybackData={togglePlaybackData}

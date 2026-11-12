@@ -65,8 +65,8 @@ export interface PlaybackFallbacks {
   followPlaybackSession: () => FollowPlayingChoices
   /** Cautions on the audio control that the server refused the viewer's audio switch. */
   refuseAudioSwitch: () => void
-  /** Takes down the audio control's caution, as the viewer picks any audio track. */
-  clearAudioCaution: () => void
+  /** Hears the viewer pick any audio track, which takes down the audio control's caution. */
+  pickAudio: () => void
 }
 
 interface ViewingCautions {
@@ -194,7 +194,7 @@ export function usePlaybackFallbacks(viewing: object): PlaybackFallbacks {
     [update],
   )
 
-  const clearAudioCaution = useCallback(
+  const pickAudio = useCallback(
     () => update((latest) => withCautions(latest, { ...latest.cautions, audio: undefined })),
     [update],
   )
@@ -205,6 +205,6 @@ export function usePlaybackFallbacks(viewing: object): PlaybackFallbacks {
     announcement: standingAnnouncement(current),
     followPlaybackSession,
     refuseAudioSwitch,
-    clearAudioCaution,
+    pickAudio,
   }
 }
