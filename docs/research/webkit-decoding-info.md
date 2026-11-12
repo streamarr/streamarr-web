@@ -12,6 +12,7 @@ Every Safari figure in this note was recorded in Safari 26.6 on macOS through `s
 - WebKit answers the questions one at a time, in its GPU process, in arrival order. Asking them all at once is no faster than asking them one after another. Each takes about 4 ms once warm. One question of a page's first declaration took 114 ms.
 - Pending questions do not block the page. A synchronous `HTMLMediaElement.canPlayType` or `MediaSource.isTypeSupported` call for a type not asked before does block it. That call waits behind every pending question: about 265 ms behind 70 pending questions, and about 5 ms (at worst 10 ms) behind one.
 - In the first declaration of a page, up to 71 questions were pending. The client's own `canPlayType` calls blocked the page for about 220 ms. The slowest single call took 204 ms.
+- A declaration asked fresh from the browser and declarations served from the kept answers came out the same. This check, not the source, covers what VideoToolbox and AVFoundation read (see "Not established").
 
 The other two browser engines were not recorded through `safaridriver`. [ADR 0049](https://github.com/streamarr/streamarr-adr/blob/main/adr/0049-capability-declarations-list-entries-and-an-output-fits-one-entry.adoc) states that their builds answered 300 HEVC questions in about 20 ms. Only WebKit has this cost.
 
