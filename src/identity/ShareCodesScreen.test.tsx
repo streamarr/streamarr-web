@@ -347,14 +347,14 @@ describe('Share codes', () => {
     expect(JSON.stringify({ ...sessionStorage })).not.toContain(letters)
   })
 
-  it('shouldShowTheServersWordsAndKeepIssueAvailableWhenIssuingIsRefused', async () => {
+  it('shouldShowTheServersWordsAndKeepIssueAvailableWhenTheHouseholdIsAtItsLiveCodeLimit', async () => {
     serve()
     server.use(
       graphql.mutation('IssueShareCode', () =>
         HttpResponse.json({
           data: issueRefused({
-            __typename: 'HouseholdNotFoundError',
-            message: 'Smith Family cannot issue a share code now.',
+            __typename: 'ShareCodeLimitReachedError',
+            message: 'Withdraw a code before issuing another.',
           }),
         }),
       ),
@@ -364,12 +364,12 @@ describe('Share codes', () => {
     await user.click(await screen.findByRole('button', { name: 'Issue a share code' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      /^Smith Family cannot issue a share code now\.$/,
+      /^Withdraw a code before issuing another\.$/,
     )
     expect(screen.queryByRole('button', { name: 'Copy code' })).not.toBeInTheDocument()
     const issue = screen.getByRole('button', { name: 'Issue a share code' })
     expect(issue).toBeEnabled()
-    expect(issue).toHaveAccessibleDescription('Smith Family cannot issue a share code now.')
+    expect(issue).toHaveAccessibleDescription('Withdraw a code before issuing another.')
   })
 
   it('shouldShowTheServersWordsWhenTheServerRejectsTheIssue', async () => {
