@@ -391,6 +391,35 @@ async function declareEntries(platform: PlaybackPlatform): Promise<CapabilityEnt
   if (!decodingInfo) {
     return minimalDeclaration(hls)
   }
+  return askWithOneDeadline({
+    platform,
+    decodingInfo,
+    ask: async ({ askers, deadline }) => {
+      // The audio probes ask at the channel count the entries declare, so the output comes first.
+      // A probe started after the deadline could not count, so an unanswered read starts none.
+      const outputChannels = await Promise.race([
+        platform.audioOutputChannels().catch(() => 0),
+        deadline,
+      ])
+      if (outputChannels === null) {
+        return minimalDeclaration(hls)
+      }
+      return probeDeclaration({ platform, askers, hls, outputChannels })
+    },
+  })
+}
+
+// Gives `ask` the askers of one declaration and the deadline that their answers share, and clears
+// the deadline once `ask` settles.
+async function askWithOneDeadline<T>({
+  platform,
+  decodingInfo,
+  ask,
+}: {
+  platform: PlaybackPlatform
+  decodingInfo: NonNullable<PlaybackPlatform['decodingInfo']>
+  ask: (questioning: { askers: Askers; deadline: Promise<null> }) => Promise<T>
+}): Promise<T> {
   let type: MediaDecodingType = 'file'
   if (platform.hlsJsSupported) {
     type = 'media-source'
@@ -410,16 +439,7 @@ async function declareEntries(platform: PlaybackPlatform): Promise<CapabilityEnt
   // Direct play hands the file to the media element, so its questions ask about file playback.
   const askers: Askers = { askDecodingInfo: askAs(type), askFileDecodingInfo: askAs('file') }
   try {
-    // The audio probes ask at the channel count the entries declare, so the output comes first.
-    // A probe started after the deadline could not count, so an unanswered read starts none.
-    const outputChannels = await Promise.race([
-      platform.audioOutputChannels().catch(() => 0),
-      deadline,
-    ])
-    if (outputChannels === null) {
-      return minimalDeclaration(hls)
-    }
-    return await probeDeclaration({ platform, askers, hls, outputChannels })
+    return await ask({ askers, deadline })
   } finally {
     clearTimeout(timer)
   }
