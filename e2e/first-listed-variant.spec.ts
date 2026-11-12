@@ -169,7 +169,8 @@ async function serveLadder(
     if (firstSegmentTransfer && isFirstSegment(segment)) {
       const transfer = firstSegmentTransfer(variantOf(variants, segment))
       if (transfer === 'never') return new Promise(() => undefined)
-      return route.continue({ url: `${trickle.url}?ms=${transfer}` })
+      const query = new URLSearchParams({ ms: String(transfer), segment })
+      return route.continue({ url: `${trickle.url}?${query}` })
     }
     if (!firstSegmentAnswered || !isFirstSegment(segment)) return new Promise(() => undefined)
     await firstSegmentAnswered
@@ -200,12 +201,17 @@ function variantOf(variants: readonly Variant[], segment: string): Variant {
 
 // Answers with the fixture's media segment: its headers at once, then its bytes in ten even chunks
 // over the `ms` that the query names, as a link slower than the segment's bit rate delivers them.
-let trickle: { url: string; server: Server }
+// Counts the chunks it has written of each `segment` that a query names.
+let trickle: { url: string; server: Server; chunksWritten: Map<string, number> }
 
 test.beforeAll(async () => {
   const segment = await readFile(fixture('media-segment.m4s'))
+  const chunksWritten = new Map<string, number>()
   const server = createServer((request, response) => {
-    const transferMs = Number(new URL(request.url ?? '', 'http://trickle').searchParams.get('ms'))
+    const query = new URL(request.url ?? '', 'http://trickle').searchParams
+    const transferMs = Number(query.get('ms'))
+    const requested = query.get('segment') ?? ''
+    chunksWritten.set(requested, 0)
     response.writeHead(200, { 'Content-Type': 'video/mp4', 'Content-Length': segment.length })
     response.flushHeaders()
     const chunks = 10
@@ -215,6 +221,7 @@ test.beforeAll(async () => {
           const start = Math.ceil((chunk * segment.length) / chunks)
           const end = Math.ceil(((chunk + 1) * segment.length) / chunks)
           response.write(segment.subarray(start, end))
+          chunksWritten.set(requested, chunk + 1)
           if (chunk === chunks - 1) response.end()
         },
         ((chunk + 1) * transferMs) / chunks,
@@ -223,7 +230,16 @@ test.beforeAll(async () => {
     response.on('close', () => timers.forEach(clearTimeout))
   })
   await new Promise<void>((listening) => server.listen(0, '127.0.0.1', listening))
-  trickle = { url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/`, server }
+  trickle = {
+    url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/`,
+    server,
+    chunksWritten,
+  }
+})
+
+// Each spec counts only the chunks of the segments that its own page asks for.
+test.beforeEach(() => {
+  trickle.chunksWritten.clear()
 })
 
 test.afterAll(async () => {
@@ -245,10 +261,6 @@ function overALink(bitsPerSecond: number): (variant: Variant) => number {
 
 // The player gives up on startup after 30 s and says so.
 const STARTUP_LIMIT_MS = 30_000
-// A first segment that receives no byte for a quarter of the startup limit gives way to the lowest
-// variant, and so does one whose bytes show it cannot arrive within the limit, by the time its
-// first tenth crosses the link.
-const SILENCE_LIMIT_MS = STARTUP_LIMIT_MS / 4
 
 // 'started' once the element has metadata. A startup that timed out names the segments that hls.js
 // asked for, so a failure shows which variant it waited on.
@@ -408,6 +420,9 @@ test('Auto keeps the first-listed copy when its first segment crosses the link w
 
 // Original and each fixed quality list one variant, and so does Auto for a copy without encodes
 // beside it. With no lower variant, the slow first segment keeps loading, as before the step down.
+// With a lower variant, a first segment that receives no byte for a quarter of the startup limit
+// gives way to the lowest variant, and so does one whose bytes show it cannot arrive within the
+// limit, by the time its first tenth crosses the link.
 for (const { listing, choice, variant, transcodeMode } of [
   {
     listing: 'Auto with the copy alone',
@@ -426,19 +441,25 @@ for (const { listing, choice, variant, transcodeMode } of [
     page,
     request,
   }) => {
+    const firstSegment = posix.join(posix.dirname(variant.playlist), 'segment0.m4s')
     const requests = await serveLadder(page, request, {
       variants: [variant],
       choice,
       transcodeMode,
       firstSegmentTransfer: () => 2 * STARTUP_LIMIT_MS,
     })
+
     await page.goto('/play/file-1?movie=m1')
-    await expect.poll(() => requests.segments).not.toHaveLength(0)
 
-    // Past the time by which Auto with a lower variant would have left the first segment.
-    await page.waitForTimeout(SILENCE_LIMIT_MS + 2_000)
-
+    // The first tenth already shows that the rest cannot arrive within the limit; the second
+    // crosses the link a tenth of the transfer later.
+    await expect
+      .poll(() => trickle.chunksWritten.get(firstSegment) ?? 0, {
+        message: `the tenths of ${firstSegment} that crossed the link`,
+        timeout: STARTUP_LIMIT_MS,
+      })
+      .toBeGreaterThanOrEqual(2)
     expect(await startup(page, requests)).toBe('starting')
-    expect(requests.segments).toEqual([posix.join(posix.dirname(variant.playlist), 'segment0.m4s')])
+    expect(requests.segments).toEqual([firstSegment])
   })
 }
