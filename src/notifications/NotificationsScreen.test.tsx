@@ -777,6 +777,47 @@ describe('Older Notifications', () => {
     ])
   })
 
+  it('shouldKeepOutANotificationDismissedWhileTheOlderPageThatHoldsItIsOnItsWay', async () => {
+    const { socket } = serve()
+    const late = heldAnswer(OLDER)
+    onTestFinished(late.release)
+    const older = { calls: 0 }
+    server.use(
+      graphql.query('Notifications', ({ variables }) => {
+        if (!(variables as { after?: string | null }).after) {
+          return HttpResponse.json({ data: NEWEST })
+        }
+        older.calls += 1
+        return late.answer()
+      }),
+    )
+    renderAppAt(NOTIFICATIONS)
+    await screen.findByText('The offer of “Alex” was accepted.')
+    await followingNotificationChanges(socket)
+    await reachTheEndOfTheList()
+    await waitFor(() => expect(older.calls).toBe(1))
+
+    // Mara's news is dismissed in the change that brings Tom's, which shows that it has arrived.
+    const tom = answerAbout('Tom')
+    socket.publish(
+      'NotificationsChanged',
+      notificationsChanged([
+        notificationChange('answer-for-Mara', null),
+        notificationChange(tom.id, notificationEdge(tom, 0)),
+      ]),
+    )
+    await screen.findByText('The offer of “Tom” was accepted.')
+    late.release()
+
+    await screen.findByText('The offer of “Leo” was accepted.')
+    expect(lines()).toEqual([
+      'The offer of “Tom” was accepted.',
+      'The offer of “Alex” was accepted.',
+      'The offer of “Sam” was accepted.',
+      'The offer of “Leo” was accepted.',
+    ])
+  })
+
   it('shouldAddNoOlderPageWhenItArrivesAfterThePersonLeft', async () => {
     serve()
     servePages(NEWEST, notificationsPage([answerAbout('Mara')], { from: 3 }))
@@ -1039,6 +1080,20 @@ describe('Notifications as they change elsewhere', () => {
       expect(lines()).toEqual([ANSWER_LINE, MARA_LINE, OFFER_LINE])
       expect(within(rows()[2]).getByText('Withdrawn')).toBeVisible()
       expect(screen.queryByRole('link', { name: 'Review' })).not.toBeInTheDocument()
+    })
+
+    it('shouldKeepOutANotificationDismissedWhileAReadSentBeforeItIsOnItsWay', async () => {
+      const { socket, release } = await openWithAReadOnItsWay()
+
+      socket.publish(
+        'NotificationsChanged',
+        notificationsChanged([notificationChange(offerNotification().id, null)]),
+      )
+      await screen.findByText('No notifications.')
+      release()
+
+      await screen.findByText(MARA_LINE)
+      expect(lines()).toEqual([MARA_LINE])
     })
   })
 })
