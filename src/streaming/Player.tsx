@@ -125,6 +125,8 @@ export function Player({
     setChoice(startingChoice({ mediaFileId, startPositionSeconds }))
   }
   const sourcePhase = reported?.start === choice.start ? reported.phase : STARTING
+  // The choice whose playback has shown a frame, which Retry no longer resumes where it was picked.
+  const playedChoice = useRef<ChoiceRequest>(null)
   const {
     marks,
     cautions,
@@ -188,6 +190,7 @@ export function Player({
     }
     const reportSourcePhase = (phase: SourcePhase) => setReported({ start: choice.start, phase })
     reportSourcePhase(STARTING)
+    const followOutput = followPlaybackSession()
 
     const playback = startPlayerPlayback({
       video,
@@ -212,7 +215,10 @@ export function Player({
       dynamicRange: choice.dynamicRange ?? 'HDR',
       resumeFrom: choice.resumeFrom,
       onSourcePhase: reportSourcePhase,
-      onOutputShown: followPlaybackSession(),
+      onOutputShown: (qualities) => {
+        playedChoice.current = choice
+        followOutput(qualities)
+      },
       onAudioSwitchRefused: refuseAudioSwitch,
     })
     playbackRef.current = playback
@@ -285,8 +291,13 @@ export function Player({
     setPlaybackDataScreen({ screen, displaysHighDynamicRange, userAgent })
   }
 
-  // The pick's resume point is long past by now, so Retry starts where playback first started.
+  // A choice that never played is asked for again as it was, from where the viewer picked it. Once
+  // it played, its resume point is long past, so Retry starts where playback first started.
   function retry() {
+    if (playedChoice.current !== choice) {
+      setChoice({ ...choice })
+      return
+    }
     setChoice({ start: choice.start, quality: choice.quality, dynamicRange: choice.dynamicRange })
   }
 

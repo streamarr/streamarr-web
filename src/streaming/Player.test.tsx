@@ -172,16 +172,29 @@ function serveSessionRecordingDeclarations(): ClientCapabilityDeclarationInput[]
   return declarations
 }
 
+// A refusal of a playback session, as the server words it.
+interface SessionRefusal {
+  __typename: string
+  message: string
+}
+
+const CAPACITY_REFUSED: SessionRefusal = {
+  __typename: 'TranscodeCapacityUnavailableError',
+  message: CAPACITY_REFUSAL,
+}
+
 // Each creation answers a new playback session that names the choice asked for, Auto when none
 // was, or the one `playing` says the server plays instead, with the format change `formatChange`
-// names, from a source of `sourceRange` whose stream plays the range `videoRange` names. Every
-// creation, with the HDR choice and start position it names, and every destruction joins the log.
+// names, from a source of `sourceRange` whose stream plays the range `videoRange` names. A creation
+// that `refuse` answers for, by its number, is refused with that answer. Every creation, with the
+// HDR choice and start position it names, and every destruction joins the log.
 function servePlaybackChoices({
   playing = (requested) => requested,
   formatChange = () => null,
   offered = OFFERED_FOR_FULL_HD,
   sourceRange,
   videoRange = () => 'SDR',
+  refuse = () => null,
 }: {
   playing?: (requested: VideoQuality) => VideoQuality
   formatChange?: (
@@ -191,6 +204,7 @@ function servePlaybackChoices({
   offered?: VideoQuality[]
   sourceRange?: VideoRange
   videoRange?: (options: StreamingOptionsInput) => VideoRange
+  refuse?: (creation: number) => SessionRefusal | null
 } = {}): string[] {
   const log: string[] = []
   server.use(
@@ -202,6 +216,12 @@ function servePlaybackChoices({
       log.push(`create ${options?.quality ?? 'without a choice'}${range}${startsAt}`)
       const requested = options?.quality ?? 'AUTO'
       const number = log.filter((entry) => entry.startsWith('create')).length
+      const refusal = refuse(number)
+      if (refusal) {
+        return HttpResponse.json({
+          data: { createPlaybackSession: { playbackSession: null, userErrors: [refusal] } },
+        })
+      }
       return HttpResponse.json({
         data: {
           createPlaybackSession: {
@@ -5983,7 +6003,7 @@ describe('Player', () => {
       expect(hls.destroy).not.toHaveBeenCalled()
     })
 
-    it('shouldRetryThePickedQualityFromTheStartPositionWhenTheViewerRetries', async () => {
+    it('shouldRetryThePickedQualityFromTheStartPositionWhenItFailsAfterItPlayed', async () => {
       const log = servePlaybackChoices()
       const { user } = renderWithProviders(
         <Player
@@ -5998,8 +6018,7 @@ describe('Player', () => {
       pressPause(video)
       hls.destroy.mockImplementation(() => video.load())
       await pickQuality(user, '720p')
-      await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(choiceStreamUrl(2)))
-      loadMetadata(video)
+      await showingVideo(choiceStreamUrl(2))
 
       raiseHlsFatalError()
       await user.click(await screen.findByRole('button', { name: 'Retry playback' }))
@@ -6014,6 +6033,56 @@ describe('Player', () => {
       expect(video.currentTime).toBe(12)
       expect(video.paused).toBe(false)
     })
+
+    it.each([
+      {
+        failure: 'the server refuses it',
+        refuse: (creation: number) => (creation === 2 ? CAPACITY_REFUSED : null),
+        fail: async () => {
+          expect(await screen.findByRole('alert')).toHaveTextContent(CAPACITY_REFUSAL)
+        },
+      },
+      {
+        failure: 'its stream fails before its first frame',
+        refuse: () => null,
+        fail: async (video: HTMLVideoElement) => {
+          await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(choiceStreamUrl(2)))
+          loadMetadata(video)
+          raiseHlsFatalError()
+        },
+      },
+    ])(
+      'shouldRetryThePickedQualityWhereTheViewerPickedItWhenItNeverPlayed(failure: $failure)',
+      async ({ refuse, fail }) => {
+        const log = servePlaybackChoices({ refuse })
+        const { user } = renderWithProviders(
+          <Player
+            playbackPlatform={withoutDecodingInfo}
+            mediaFileId="abcd"
+            startPositionSeconds={12}
+          />,
+        )
+        const video = await attachedVideo(choiceStreamUrl(1))
+        loadMetadata(video)
+        playheadAt(video, 73.25)
+        pressPause(video)
+        hls.destroy.mockImplementation(() => video.load())
+        await pickQuality(user, '720p')
+        await fail(video)
+
+        await user.click(await screen.findByRole('button', { name: 'Retry playback' }))
+
+        await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(choiceStreamUrl(3)))
+        loadMetadata(video)
+        expect(log.filter((entry) => entry.startsWith('create'))).toEqual([
+          'create AUTO at 12',
+          'create HIGH_720P at 73.25',
+          'create HIGH_720P at 73.25',
+        ])
+        expect(video.currentTime).toBe(73.25)
+        expect(video.paused).toBe(true)
+      },
+    )
 
     it('shouldStartAtTheNewStartPositionInAutoWhenTheStartPositionChangesAfterAPick', async () => {
       const log = servePlaybackChoices()
