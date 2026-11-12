@@ -219,7 +219,7 @@ function NotificationRow({
       ) : (
         <span className={styles.markSpace} aria-hidden />
       )}
-      <div className={styles.text}>
+      <div className={styles.text} data-testid="notification-text">
         {notification.unread && <VisuallyHidden>Unread</VisuallyHidden>}
         {/* The server's line is plain text, so React writes it as text, never as markup. */}
         <p id={lineId} className={styles.line}>
