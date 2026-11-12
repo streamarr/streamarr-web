@@ -10,7 +10,6 @@ import {
 import styles from '../../styles/settings.module.css'
 import { PageNotice } from '../../ui/PageNotice'
 import { usePageNotice } from '../../ui/usePageNotice'
-import { NotificationRetention } from '../notifications/NotificationRetentionSettings'
 import sectionStyles from './SharingAndInvitationSettings.module.css'
 import {
   AmountSetting,
@@ -54,10 +53,7 @@ const INVITATION_LIFETIME: SettingWords = {
   saved: (hours) => `Saved. An invitation or an offer waits ${amountOf(hours, HOURS_OR_DAYS)}.`,
 }
 
-/**
- * The server-wide rules for share codes, invitations and offers, and how long Notifications are
- * kept, which a ServerAdmin sets.
- */
+/** The server-wide rules for share codes, invitations and offers, which a ServerAdmin sets. */
 export function SharingAndInvitationSettings() {
   const { notice, count, announce, dismiss } = usePageNotice()
   // A save leaves the page as it was, so its notice keeps focus where the admin is.
@@ -69,10 +65,8 @@ export function SharingAndInvitationSettings() {
         <div className={sectionStyles.heading}>
           <h1>Sharing and invitations</h1>
           {/* The server reads a lifetime and the limit when it issues a code, an invitation or an
-              offer. Notifications are kept by the retention as it is when they are swept. */}
-          <p className={sectionStyles.fact}>
-            A change applies to share codes, invitations and offers issued after it.
-          </p>
+              offer. */}
+          <p className={sectionStyles.fact}>A change applies to what is issued after it.</p>
         </div>
       </div>
       <PageNotice count={count} onDismiss={dismiss}>
@@ -87,9 +81,6 @@ export function SharingAndInvitationSettings() {
         </div>
         <div className={styles.settingRow}>
           <InvitationLifetime onSaved={onSaved} />
-        </div>
-        <div className={styles.settingRow}>
-          <NotificationRetention onSaved={onSaved} />
         </div>
       </div>
     </>
