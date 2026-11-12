@@ -7,16 +7,9 @@ import type {
 } from '../graphql/generated/graphql'
 import type { serveGraphqlSocket } from './graphqlSocket'
 
-type Node = NonNullable<NotificationEdgeFieldsFragment['node']>
-type OfferNode = Extract<Node, { __typename: 'ProfileShareOfferedNotification' }>
-type NewsNode = Exclude<Node, OfferNode>
-
-/** A Notification of an offer, as the server answers it, with the share it is about. */
-export type OfferNotificationFixture = Omit<OfferNode, 'share'> & {
-  share: OfferNode['share'] & { __typename: 'ProfileShare' }
-}
-
-export type NotificationFixture = OfferNotificationFixture | NewsNode
+type NotificationFixture = NonNullable<NotificationEdgeFieldsFragment['node']>
+type OfferNode = Extract<NotificationFixture, { __typename: 'ProfileShareOfferedNotification' }>
+type NewsNode = Exclude<NotificationFixture, OfferNode>
 
 const HOUR = 60 * 60 * 1000
 
@@ -26,9 +19,7 @@ export function hoursAgo(hours: number): string {
 }
 
 /** An offer of Alex to the reader's Household that waits for a decision, unread. */
-export function offerNotification(
-  overrides: Partial<OfferNotificationFixture> = {},
-): OfferNotificationFixture {
+export function offerNotification(overrides: Partial<OfferNode> = {}): OfferNode {
   return {
     __typename: 'ProfileShareOfferedNotification',
     id: 'offer-of-alex',
@@ -37,7 +28,7 @@ export function offerNotification(
     unread: true,
     expiresAt: new Date(Date.now() + 7 * 24 * HOUR).toISOString(),
     resolution: null,
-    share: { __typename: 'ProfileShare', id: 'share-of-alex', status: 'PENDING' },
+    answer: null,
     ...overrides,
   }
 }

@@ -237,11 +237,11 @@ function route(request, response, raw) {
         },
       })
     }
-    if (operationName === 'MarkNotificationRead') {
+    if (operationName === 'MarkNotificationsRead') {
       return json(response, 200, {
         data: {
-          markNotificationRead: {
-            __typename: 'MarkNotificationReadPayload',
+          markNotificationsRead: {
+            __typename: 'MarkNotificationsReadPayload',
             unreadNotificationCount: 0,
             userErrors: [],
           },

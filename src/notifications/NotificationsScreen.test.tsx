@@ -3,7 +3,7 @@ import { graphql, HttpResponse } from 'msw'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import type {
   NotificationsQuery,
-  ProfileShareStatus,
+  ProfileShareAnswer,
   RequestResolution,
 } from '../graphql/generated/graphql'
 import {
@@ -37,10 +37,29 @@ const HOUR = 60 * 60 * 1000
 const OFFER_LINE = '“Alex” was offered to your Household.'
 const ANSWER_LINE = 'The offer of “Leo” was accepted.'
 
-/** Each Notification the page marked read, and on which visit. */
+/** The Notifications one mark the server took read, and on which visit. */
 interface Mark {
-  notificationId: string
+  notificationIds: string[]
   visit: number
+}
+
+/** The server's answer to a mark: it takes from 1 to 100 ids and refuses any other number. */
+function markAnswer(notificationIds: readonly string[]) {
+  const refused = notificationIds.length < 1 || notificationIds.length > 100
+  return {
+    markNotificationsRead: {
+      __typename: 'MarkNotificationsReadPayload',
+      unreadNotificationCount: refused ? null : 0,
+      userErrors: refused
+        ? [
+            {
+              __typename: 'NotificationIdCountOutOfRangeError',
+              message: 'Send from 1 to 100 Notification ids.',
+            },
+          ]
+        : [],
+    },
+  }
 }
 
 function serve(page: NotificationsQuery = notificationsPage([]), me = meFixture()) {
@@ -51,18 +70,13 @@ function serve(page: NotificationsQuery = notificationsPage([]), me = meFixture(
     graphql.query('Me', () => HttpResponse.json({ data: { me } })),
     graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
     graphql.query('Notifications', () => HttpResponse.json({ data: page })),
-    graphql.mutation('MarkNotificationRead', ({ variables }) => {
-      const { notificationId } = (variables as { input: { notificationId: string } }).input
-      marks.push({ notificationId, visit: visits.count })
-      return HttpResponse.json({
-        data: {
-          markNotificationRead: {
-            __typename: 'MarkNotificationReadPayload',
-            unreadNotificationCount: 0,
-            userErrors: [],
-          },
-        },
-      })
+    graphql.mutation('MarkNotificationsRead', ({ variables }) => {
+      const { notificationIds } = (variables as { input: { notificationIds: string[] } }).input
+      const answer = markAnswer(notificationIds)
+      if (answer.markNotificationsRead.userErrors.length === 0) {
+        marks.push({ notificationIds, visit: visits.count })
+      }
+      return HttpResponse.json({ data: answer })
     }),
   )
   return { socket, marks, visits }
@@ -250,30 +264,40 @@ describe('Requests in Notifications', () => {
     expect(screen.getAllByRole('link', { name: 'Review' })).toHaveLength(1)
   })
 
-  it.each<[RequestResolution, ProfileShareStatus, string]>([
-    ['DECIDED', 'ACTIVE', 'Accepted'],
-    ['DECIDED', 'ENDED', 'Accepted'],
+  it.each<[RequestResolution, ProfileShareAnswer | null, string]>([
+    ['DECIDED', 'ACCEPTED', 'Accepted'],
     ['DECIDED', 'REJECTED', 'Declined'],
-    ['WITHDRAWN', 'CANCELED', 'Withdrawn'],
-    ['WITHDRAWN', 'INVALIDATED', 'Withdrawn'],
-    ['EXPIRED', 'EXPIRED', 'Expired'],
+    ['WITHDRAWN', null, 'Withdrawn'],
+    ['EXPIRED', null, 'Expired'],
   ])(
-    'shouldSayHowAnOfferEndedInPlaceOfReviewWhenItResolved: %s with the share %s',
-    async (resolution, status, ending) => {
-      serve(
-        notificationsPage([
-          offerNotification({
-            unread: false,
-            resolution,
-            share: { __typename: 'ProfileShare', id: 'share-of-alex', status },
-          }),
-        ]),
-      )
+    'shouldSayHowAnOfferEndedInPlaceOfReviewWhenItResolved: %s with the answer %s',
+    async (resolution, answer, ending) => {
+      serve(notificationsPage([offerNotification({ unread: false, resolution, answer })]))
       renderAppAt(NOTIFICATIONS)
 
       await screen.findByText(OFFER_LINE)
 
       expect(within(rows()[0]).getByText(ending)).toBeVisible()
+      expect(screen.queryByRole('link', { name: 'Review' })).not.toBeInTheDocument()
+    },
+  )
+
+  it.each<[string, ProfileShareAnswer | null]>([
+    ['none', null],
+    ['one added after this client', 'POSTPONED' as ProfileShareAnswer],
+  ])(
+    'shouldSayNothingOfHowAnOfferWasDecidedWhenItCarriesNoAnswerThisClientKnows: %s',
+    async (_, answer) => {
+      serve(
+        notificationsPage([offerNotification({ unread: false, resolution: 'DECIDED', answer })]),
+      )
+      renderAppAt(NOTIFICATIONS)
+
+      await screen.findByText(OFFER_LINE)
+
+      expect(
+        within(rows()[0]).queryByText(/^(Accepted|Declined|Withdrawn|Expired)$/),
+      ).not.toBeInTheDocument()
       expect(screen.queryByRole('link', { name: 'Review' })).not.toBeInTheDocument()
     },
   )
@@ -347,7 +371,7 @@ describe('Reading Notifications', () => {
     expect(within(read).queryByTestId('unread-mark')).not.toBeInTheDocument()
   })
 
-  it('shouldMarkReadByIdOnlyTheUnreadNotificationsThePageShowsWhenTheListHasRendered', async () => {
+  it('shouldMarkReadInOneCallTheUnreadNotificationsThePageShowsWhenTheListHasRendered', async () => {
     const mara = answerNotification({
       id: 'answer-for-mara',
       message: 'The offer of “Mara” was accepted.',
@@ -361,10 +385,25 @@ describe('Reading Notifications', () => {
     await screen.findByText(OFFER_LINE)
 
     await waitFor(() =>
-      expect(marks).toEqual([
-        { notificationId: 'offer-of-alex', visit: 1 },
-        { notificationId: 'answer-for-mara', visit: 1 },
-      ]),
+      expect(marks).toEqual([{ notificationIds: ['offer-of-alex', 'answer-for-mara'], visit: 1 }]),
+    )
+  })
+
+  it('shouldMarkEveryUnreadNotificationWhenAPageShowsMoreThanAHundred', async () => {
+    const unread = Array.from({ length: 101 }, (_, index) =>
+      answerNotification({
+        id: `answer-${index}`,
+        message: `The offer of “Profile ${index}” was accepted.`,
+        unread: true,
+      }),
+    )
+    const { marks } = serve(notificationsPage(unread))
+    renderAppAt(NOTIFICATIONS)
+
+    await screen.findByText('The offer of “Profile 100” was accepted.')
+
+    await waitFor(() =>
+      expect(marks.flatMap((mark) => mark.notificationIds)).toEqual(unread.map(({ id }) => id)),
     )
   })
 
@@ -423,8 +462,8 @@ describe('Reading Notifications', () => {
 
     await waitFor(() => expect(marks.filter((mark) => mark.visit === 2)).toHaveLength(1))
     expect(marks).toEqual([
-      { notificationId: 'offer-of-alex', visit: 1 },
-      { notificationId: 'answer-for-leo', visit: 2 },
+      { notificationIds: ['offer-of-alex'], visit: 1 },
+      { notificationIds: ['answer-for-leo'], visit: 2 },
     ])
   })
 })
@@ -466,7 +505,7 @@ describe('Older Notifications', () => {
     await reachTheEndOfTheList()
 
     await screen.findByText('The offer of “Mara” was accepted.')
-    await waitFor(() => expect(marks).toEqual([{ notificationId: 'answer-for-mara', visit: 1 }]))
+    await waitFor(() => expect(marks).toEqual([{ notificationIds: ['answer-for-mara'], visit: 1 }]))
   })
 
   it('shouldMarkNothingOfAnOlderPageWhenItRepeatsANotificationThePageAlreadyShows', async () => {
@@ -491,7 +530,7 @@ describe('Older Notifications', () => {
     await reachTheEndOfTheList()
 
     await screen.findByText(ANSWER_LINE)
-    await waitFor(() => expect(marks).toEqual([{ notificationId: 'answer-for-leo', visit: 1 }]))
+    await waitFor(() => expect(marks).toEqual([{ notificationIds: ['answer-for-leo'], visit: 1 }]))
   })
 
   it('shouldLoadOlderNotificationsWhenTheNewestPageHasNoneToShow', async () => {
@@ -720,7 +759,7 @@ describe('Notifications as they change elsewhere', () => {
     const accepted = offerNotification({
       unread: false,
       resolution: 'DECIDED',
-      share: { __typename: 'ProfileShare', id: 'share-of-alex', status: 'ACTIVE' },
+      answer: 'ACCEPTED',
     })
 
     socket.publish(
@@ -750,7 +789,7 @@ describe('Notifications as they change elsewhere', () => {
     const accepted = offerNotification({
       unread: false,
       resolution: 'DECIDED',
-      share: { __typename: 'ProfileShare', id: 'share-of-alex', status: 'ACTIVE' },
+      answer: 'ACCEPTED',
     })
 
     socket.publish(

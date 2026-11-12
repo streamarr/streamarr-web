@@ -57,12 +57,13 @@ test('the unread count and the dot clear once the Notifications page has been op
         pageInfo: { __typename: 'PageInfo', hasNextPage: false, endCursor: 'cursor-002' },
       },
     },
-    MarkNotificationRead: (variables) => {
-      server.marked.push((variables.input as { notificationId: string }).notificationId)
-      server.unread -= 1
+    MarkNotificationsRead: (variables) => {
+      const { notificationIds } = variables.input as { notificationIds: string[] }
+      server.marked.push(...notificationIds)
+      server.unread -= notificationIds.length
       return {
-        markNotificationRead: {
-          __typename: 'MarkNotificationReadPayload',
+        markNotificationsRead: {
+          __typename: 'MarkNotificationsReadPayload',
           unreadNotificationCount: server.unread,
           userErrors: [],
         },
@@ -150,12 +151,12 @@ test('a count after a menu entry is a plain number in the primary text colour', 
   await expect(count).toHaveCSS('border-radius', '0px')
 })
 
-/** A Request of an offer at position `at`: waiting, or over as `resolution` and `status` say. */
+/** A Request of an offer at position `at`: waiting, or over as `resolution` and `answer` say. */
 function offerRequest(
   id: string,
   message: string,
   at: number,
-  over?: { resolution: string; status: string },
+  over?: { resolution: string; answer: string | null },
 ) {
   const position = String(at).padStart(3, '0')
   return {
@@ -170,7 +171,7 @@ function offerRequest(
       unread: false,
       expiresAt: new Date(Date.now() + 72 * HOUR).toISOString(),
       resolution: over?.resolution ?? null,
-      share: { __typename: 'ProfileShare', id: `share-${id}`, status: over?.status ?? 'PENDING' },
+      answer: over?.answer ?? null,
     },
   }
 }
@@ -179,7 +180,7 @@ const REQUESTS = [
   offerRequest('offer-of-mara', '“Mara” was offered to your Household.', 1),
   offerRequest('offer-of-leo', 'The offer of “Leo” to your Household was accepted.', 2, {
     resolution: 'DECIDED',
-    status: 'ACTIVE',
+    answer: 'ACCEPTED',
   }),
 ]
 

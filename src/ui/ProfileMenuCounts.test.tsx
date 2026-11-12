@@ -201,10 +201,10 @@ describe('The unread count in the Profile menu', () => {
           data: notificationsPage([answerNotification({ message: MARA_LINE, unread: true })]),
         }),
       ),
-      graphql.mutation('MarkNotificationRead', () => {
+      graphql.mutation('MarkNotificationsRead', () => {
         held.unread = 0
         return HttpResponse.json({
-          data: { markNotificationRead: { unreadNotificationCount: 0, userErrors: [] } },
+          data: { markNotificationsRead: { unreadNotificationCount: 0, userErrors: [] } },
         })
       }),
     )
@@ -221,42 +221,50 @@ describe('The unread count in the Profile menu', () => {
   })
 
   it('shouldKeepTheCountOfALaterChangeWhenAMarkSentBeforeItAnswersAfterIt', async () => {
-    const { socket } = serveHome(meFixture(), 2)
-    const leo = answerNotification({ id: 'answer-for-leo', unread: true })
+    const { socket } = serveHome(meFixture(), 101)
+    // A page that shows more than 100 is marked in two calls: the first 100, then Mara's.
+    const first = Array.from({ length: 100 }, (_, index) =>
+      answerNotification({
+        id: `answer-${index}`,
+        message: `The offer of “Profile ${index}” was accepted.`,
+        unread: true,
+      }),
+    )
     const mara = answerNotification({ id: 'answer-for-mara', message: MARA_LINE, unread: true })
-    // Leo's mark answers late, with the count as it stood after it: Mara is still unread. Mara's
-    // mark answers only once the test has looked.
-    const leosAnswer = deferred()
+    // The first mark answers late, with the count as it stood after it: Mara is still unread.
+    // Mara's mark answers only once the test has looked.
+    const firstAnswer = deferred()
     const marasAnswer = deferred()
-    onTestFinished(leosAnswer.resolve)
+    onTestFinished(firstAnswer.resolve)
     onTestFinished(marasAnswer.resolve)
-    const marks: string[] = []
+    const marks: string[][] = []
     server.use(
       graphql.query('Notifications', () =>
-        HttpResponse.json({ data: notificationsPage([leo, mara]) }),
+        HttpResponse.json({ data: notificationsPage([...first, mara]) }),
       ),
-      graphql.mutation('MarkNotificationRead', async ({ variables }) => {
-        const { notificationId } = (variables as { input: { notificationId: string } }).input
-        marks.push(notificationId)
-        await (notificationId === leo.id ? leosAnswer : marasAnswer).promise
-        const unreadNotificationCount = notificationId === leo.id ? 1 : 0
+      graphql.mutation('MarkNotificationsRead', async ({ variables }) => {
+        const { notificationIds } = (variables as { input: { notificationIds: string[] } }).input
+        marks.push(notificationIds)
+        const marksMara = notificationIds.includes(mara.id)
+        await (marksMara ? marasAnswer : firstAnswer).promise
+        const unreadNotificationCount = marksMara ? 0 : 1
         return HttpResponse.json({
-          data: { markNotificationRead: { unreadNotificationCount, userErrors: [] } },
+          data: { markNotificationsRead: { unreadNotificationCount, userErrors: [] } },
         })
       }),
     )
     const { user } = renderAppAt('/notifications')
     await screen.findByText(MARA_LINE)
     await followingNotificationChanges(socket)
-    await waitFor(() => expect(marks).toEqual([leo.id]))
+    await waitFor(() => expect(marks).toHaveLength(1))
 
-    // Another session marks Mara read: the server tells this one, before Leo's mark answers.
+    // Another session marks Mara read: the server tells this one, before the first mark answers.
     socket.publish('NotificationsChanged', notificationsChanged([], 1))
     socket.publish('NotificationsChanged', notificationsChanged([], 0))
     const chip = await screen.findByRole('button', { name: 'Profile menu (Owner)' })
-    leosAnswer.resolve()
-    // The page marks Mara only once Leo's mark has answered.
-    await waitFor(() => expect(marks).toEqual([leo.id, mara.id]))
+    firstAnswer.resolve()
+    // The page marks Mara only once the first mark has answered.
+    await waitFor(() => expect(marks).toEqual([first.map(({ id }) => id), [mara.id]]))
     await user.click(chip)
 
     const menu = within(await screen.findByTestId('profile-menu'))
