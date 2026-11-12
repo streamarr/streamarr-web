@@ -1,14 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { browseIn, CHROME_USER_AGENT, IPHONE_SAFARI_USER_AGENT } from '../test/playbackCapabilities'
+import {
+  browseIn,
+  CHROME_USER_AGENT,
+  type DecodingInfo,
+  FIREFOX_USER_AGENT,
+  IPHONE_CHROME_USER_AGENT,
+  IPHONE_SAFARI_USER_AGENT,
+  MAC_SAFARI_USER_AGENT,
+} from '../test/playbackCapabilities'
 import { browserDecodingAnswers, createDecodingAnswers } from './decodingAnswers'
 import type { DecodingAnswer } from './playbackCapabilities'
-
-const SAFARI_ON_A_MAC =
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6 Safari/605.1.15'
-const CHROME_ON_THE_IPHONE =
-  'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/141.0.0.0 Mobile/15E148 Safari/604.1'
-const FIREFOX =
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:144.0) Gecko/20100101 Firefox/144.0'
 
 const SUPPORTED: DecodingAnswer = { supported: true, smooth: true, powerEfficient: true }
 const SUPPORTED_BUT_NOT_SMOOTH: DecodingAnswer = {
@@ -60,8 +61,6 @@ const STEREO_AAC: MediaDecodingConfiguration = {
     samplerate: 48_000,
   },
 }
-
-type DecodingInfo = (configuration: MediaDecodingConfiguration) => Promise<DecodingAnswer>
 
 interface SentQuestion {
   resolve: (answer: DecodingAnswer) => void
@@ -508,9 +507,9 @@ describe('createDecodingAnswers', () => {
 
 describe('browserDecodingAnswers', () => {
   it.each([
-    ['SafariOnAMac', SAFARI_ON_A_MAC, 'MacIntel'],
+    ['SafariOnAMac', MAC_SAFARI_USER_AGENT, 'MacIntel'],
     ['SafariOnTheIphone', IPHONE_SAFARI_USER_AGENT, 'iPhone'],
-    ['ChromeOnTheIphone', CHROME_ON_THE_IPHONE, 'iPhone'],
+    ['ChromeOnTheIphone', IPHONE_CHROME_USER_AGENT, 'iPhone'],
   ])(
     'shouldAskTheBrowserOnceForARepeatedQuestionWhen%sOpensThePage',
     async (_, userAgent, platform) => {
@@ -527,9 +526,9 @@ describe('browserDecodingAnswers', () => {
 
   it.each([
     ['Chromium', CHROME_USER_AGENT, 'MacIntel'],
-    ['Firefox', FIREFOX, 'MacIntel'],
-    ['WebKitOnLinux', SAFARI_ON_A_MAC, 'Linux x86_64'],
-    ['WebKitOnWindows', SAFARI_ON_A_MAC, 'Win32'],
+    ['Firefox', FIREFOX_USER_AGENT, 'MacIntel'],
+    ['WebKitOnLinux', MAC_SAFARI_USER_AGENT, 'Linux x86_64'],
+    ['WebKitOnWindows', MAC_SAFARI_USER_AGENT, 'Win32'],
   ])('shouldKeepNoAnswersWhen%sOpensThePage', (_, userAgent, platform) => {
     browseIn({ userAgent, platform, decodingInfo: vi.fn<DecodingInfo>() })
 
@@ -537,7 +536,7 @@ describe('browserDecodingAnswers', () => {
   })
 
   it('shouldKeepNoAnswersWhenSafariOffersNoMediaCapabilities', () => {
-    browseIn({ userAgent: SAFARI_ON_A_MAC, platform: 'MacIntel' })
+    browseIn({ userAgent: MAC_SAFARI_USER_AGENT, platform: 'MacIntel' })
 
     expect(browserDecodingAnswers()).toBeUndefined()
   })

@@ -2,16 +2,16 @@ import { watchingConnection } from '../../test/continueWatchingFixtures'
 import { readyPlaybackSession, destroyedPlaybackSession } from '../../test/playbackSession'
 import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
 import { HttpResponse, graphql } from 'msw'
-import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   ClientCapabilityDeclarationInput,
   CreatePlaybackSessionInput,
 } from '../../graphql/generated/graphql'
 import { createDecodingAnswers, type DecodingAnswers } from '../../streaming/decodingAnswers'
-import type { DecodingAnswer } from '../../streaming/playbackCapabilities'
 import { deferred } from '../../test/deferred'
 import { hls } from '../../test/fakeHls'
 import { meFixture } from '../../test/meFixture'
+import { browseIn, type DecodingInfo, MAC_SAFARI_USER_AGENT } from '../../test/playbackCapabilities'
 import { renderAppAt } from '../../test/render'
 import { server } from '../../test/server'
 
@@ -88,21 +88,8 @@ function serveMediaTitles(): unknown[] {
   return requests
 }
 
-const SAFARI_ON_A_MAC =
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6 Safari/605.1.15'
-
-function browseInSafariOnAMac(
-  decodingInfo: (configuration: MediaDecodingConfiguration) => Promise<DecodingAnswer>,
-): DecodingAnswers {
-  vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(SAFARI_ON_A_MAC)
-  vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel')
-  Object.defineProperty(navigator, 'mediaCapabilities', {
-    configurable: true,
-    value: { decodingInfo },
-  })
-  onTestFinished(() => {
-    Reflect.deleteProperty(navigator, 'mediaCapabilities')
-  })
+function browseInSafariOnAMac(decodingInfo: DecodingInfo): DecodingAnswers {
+  browseIn({ userAgent: MAC_SAFARI_USER_AGENT, platform: 'MacIntel', decodingInfo })
   return createDecodingAnswers({ decodingInfo })
 }
 

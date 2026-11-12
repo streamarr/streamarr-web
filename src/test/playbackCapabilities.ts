@@ -8,6 +8,17 @@ export const CHROME_USER_AGENT =
 export const IPHONE_SAFARI_USER_AGENT =
   'Mozilla/5.0 (iPhone; CPU iPhone OS 27_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.2 Mobile/15E148 Safari/604.1'
 
+export const MAC_SAFARI_USER_AGENT =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6 Safari/605.1.15'
+
+export const IPHONE_CHROME_USER_AGENT =
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/141.0.0.0 Mobile/15E148 Safari/604.1'
+
+export const FIREFOX_USER_AGENT =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:144.0) Gecko/20100101 Firefox/144.0'
+
+export type DecodingInfo = NonNullable<PlaybackPlatform['decodingInfo']>
+
 /**
  * Replaces the navigator, for the rest of the test, with a browser of this user agent and platform.
  * Its MediaCapabilities answers through `decodingInfo`, and it has none without one.
@@ -19,7 +30,7 @@ export function browseIn({
 }: {
   userAgent: string
   platform: string
-  decodingInfo?: (configuration: MediaDecodingConfiguration) => Promise<DecodingAnswer>
+  decodingInfo?: DecodingInfo
 }): void {
   vi.stubGlobal('navigator', {
     userAgent,

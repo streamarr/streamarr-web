@@ -7,6 +7,9 @@ import type {
 import {
   browseIn,
   CHROME_USER_AGENT,
+  type DecodingInfo,
+  FIREFOX_USER_AGENT,
+  IPHONE_CHROME_USER_AGENT,
   IPHONE_SAFARI_HEVC_ANSWER,
   IPHONE_SAFARI_USER_AGENT,
   MINIMAL_DECLARATION,
@@ -24,10 +27,6 @@ import {
 
 const SAFARI =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15'
-const IPHONE_CHROME =
-  'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/141.0.0.0 Mobile/15E148 Safari/604.1'
-const FIREFOX =
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:144.0) Gecko/20100101 Firefox/144.0'
 const LINUX_CHROME =
   'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36'
 const ANDROID_CHROME =
@@ -248,8 +247,6 @@ function hevcLevelOf(configuration: MediaDecodingConfiguration): number {
 function hevcDecoderUpTo(maximum: number): Answers {
   return (configuration) => answer(hevcLevelOf(configuration) <= maximum)
 }
-
-type DecodingInfo = (configuration: MediaDecodingConfiguration) => Promise<DecodingAnswer>
 
 type DecodingInfoFake = Mock<DecodingInfo>
 
@@ -960,7 +957,7 @@ describe('declarePlaybackCapabilities', () => {
 
   it.each([
     ['Chrome', CHROME_USER_AGENT],
-    ['Firefox', FIREFOX],
+    ['Firefox', FIREFOX_USER_AGENT],
   ])('shouldDropHevcWhen%sAnswersItPowerEfficientButNotSmooth', async (_, userAgent) => {
     const declaration = await declarePlaybackCapabilities(
       platformFixture({
@@ -1131,7 +1128,7 @@ describe('declarePlaybackCapabilities', () => {
 
   it.each([
     ['Chrome', CHROME_USER_AGENT],
-    ['Firefox', FIREFOX],
+    ['Firefox', FIREFOX_USER_AGENT],
   ])('shouldDropAv1When%sRefusesItEvenWhenMediaSourceAcceptsIt', async (_, userAgent) => {
     const declaration = await declarePlaybackCapabilities(
       platformFixture({
@@ -1244,8 +1241,8 @@ describe('declarePlaybackCapabilities', () => {
     const ANDROID_CHROME_156 = ANDROID_CHROME.replace('Chrome/141', 'Chrome/156')
     const CHROME_OS_156 =
       'Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36'
-    const MAC_FIREFOX_157 = FIREFOX.replaceAll('144.0', '157.0')
-    const MAC_FIREFOX_156 = FIREFOX.replaceAll('144.0', '156.0')
+    const MAC_FIREFOX_157 = FIREFOX_USER_AGENT.replaceAll('144.0', '157.0')
+    const MAC_FIREFOX_156 = FIREFOX_USER_AGENT.replaceAll('144.0', '156.0')
     const LINUX_FIREFOX_157 =
       'Mozilla/5.0 (X11; Linux x86_64; rv:157.0) Gecko/20100101 Firefox/157.0'
     const LINUX_WEBKIT =
@@ -1398,7 +1395,7 @@ describe('declarePlaybackCapabilities', () => {
 
   it.each([
     ['Safari', SAFARI],
-    ['ChromeOnTheIphone', IPHONE_CHROME],
+    ['ChromeOnTheIphone', IPHONE_CHROME_USER_AGENT],
   ])('shouldDeclareStereoOpusWhen%sConfirmsSurroundOpus', async (_, userAgent) => {
     const declaration = await declarePlaybackCapabilities(platformFixture({ userAgent }))
 
@@ -2492,7 +2489,7 @@ describe('declarePlaybackCapabilities', () => {
 
     it.each([
       ['Chrome', CHROME_USER_AGENT],
-      ['Firefox', FIREFOX],
+      ['Firefox', FIREFOX_USER_AGENT],
     ])(
       'shouldAskNoHevcLevelAboveTheNeededLevelWhen%sAnswersEveryLevelSmooth',
       async (_, userAgent) => {
@@ -3402,7 +3399,7 @@ describe('browserPlaybackPlatform', () => {
 
   // Chrome's user agent names AppleWebKit too, and Android reports a Linux platform.
   it.each([
-    ['Firefox', FIREFOX, 'Linux x86_64'],
+    ['Firefox', FIREFOX_USER_AGENT, 'Linux x86_64'],
     ['Chrome', LINUX_CHROME, 'Linux x86_64'],
     ['ChromeOnAndroid', ANDROID_CHROME, 'Linux armv81'],
   ])(
@@ -3461,7 +3458,7 @@ describe('browserPlaybackPlatform', () => {
   // Firefox lists audio tracks behind media.track.enabled, but only one of a file's tracks, and
   // Chromium lists them behind an experimental flag.
   it.each([
-    ['Firefox', FIREFOX],
+    ['Firefox', FIREFOX_USER_AGENT],
     ['Chrome', LINUX_CHROME],
   ])('shouldSelectNoAudioTrackInDirectPlayWhen%sListsAudioTracks', (_, userAgent) => {
     vi.stubGlobal('navigator', { userAgent })
@@ -3485,7 +3482,7 @@ describe('browserPlaybackPlatform', () => {
 
   it('shouldSendTheBrowserEachQuestionOnceWhenTwoDeclarationsAskThroughThePagesAnswers', async () => {
     const decodingInfo = decodingInfoAnswering(() => true)
-    browseIn({ userAgent: FIREFOX, platform: 'MacIntel', decodingInfo })
+    browseIn({ userAgent: FIREFOX_USER_AGENT, platform: 'MacIntel', decodingInfo })
     const pageAnswers = createDecodingAnswers({ decodingInfo: browserDecodingInfo })
     await declarePlaybackCapabilities(
       browserPlaybackPlatform(document.createElement('video'), pageAnswers),
@@ -3504,7 +3501,7 @@ describe('browserPlaybackPlatform', () => {
     ['SafariOnAMac', SAFARI, 'MacIntel'],
     ['SafariOnTheIphone', IPHONE_SAFARI_USER_AGENT, 'iPhone'],
     ['ChromeOnAMac', CHROME_USER_AGENT, 'MacIntel'],
-    ['Firefox', FIREFOX, 'MacIntel'],
+    ['Firefox', FIREFOX_USER_AGENT, 'MacIntel'],
     ['WebKitOnLinux', SAFARI, 'Linux x86_64'],
   ])(
     'shouldAskTheBrowserEveryQuestionOfEveryDeclarationWhen%sPlaysWithoutThePagesAnswers',
