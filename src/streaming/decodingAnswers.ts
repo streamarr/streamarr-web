@@ -8,9 +8,9 @@ export interface DecodingAnswers {
   /**
    * Answers as the browser's decodingInfo does. A question that the browser answered as supported
    * gets that answer without another call. The browser gets one question at a time, in the order of
-   * the asks. While the browser leaves a question unsettled after its turn of 250 ms, every question
-   * goes to the browser at once. Refuses or rejects when the browser does, and keeps neither: the
-   * next ask of that question goes to the browser again.
+   * the asks, and each question has a turn of 250 ms. While a question is unsettled past its turn,
+   * no question waits: each goes to the browser at once. A refusal or a rejection is not kept, so
+   * the next ask of that question goes to the browser again.
    */
   ask: DecodingInfo
 }
