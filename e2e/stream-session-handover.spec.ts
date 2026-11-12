@@ -122,12 +122,13 @@ interface TimelineReport {
   state: string
 }
 
-// Signs the viewer in and answers the player's operations with `playback()`, read each time the
-// player creates or reads the playback session. Returns the timeline reports the player sends.
+// Signs the viewer in and answers the player's operations with `playback(operation)`, read each
+// time the player creates or reads the playback session. Returns the timeline reports the player
+// sends.
 async function serveThePlaybackSession(
   page: Page,
   request: APIRequestContext,
-  playback: () => PlaybackSession,
+  playback: (operation: 'CreatePlaybackSession' | 'PlaybackSession') => PlaybackSession,
 ): Promise<TimelineReport[]> {
   const reports: TimelineReport[] = []
   await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
@@ -139,9 +140,12 @@ async function serveThePlaybackSession(
     }
     const operations: Record<string, unknown> = {
       CreatePlaybackSession: {
-        createPlaybackSession: { playbackSession: playback(), userErrors: [] },
+        createPlaybackSession: {
+          playbackSession: playback('CreatePlaybackSession'),
+          userErrors: [],
+        },
       },
-      PlaybackSession: { playbackSession: playback() },
+      PlaybackSession: { playbackSession: playback('PlaybackSession') },
       PlayerMediaTitle: { movie: { __typename: 'Movie', id: 'm1', title: 'Everlight' } },
       ReportStreamSessionTimeline: { reportStreamSessionTimeline: true },
       DestroyPlaybackSession: {
