@@ -95,12 +95,9 @@ function NotificationsList() {
   const readAgain = () => query.refetch().catch(() => undefined)
   const shown = query.error ? [] : definedEdges(query.data?.notifications.edges)
   const { markSent } = useMenuCounts()
-  const { marked, markRead } = useMarkShownRead(
-    query.data && !query.error ? shown.map((edge) => edge.node) : null,
-    markSent,
-  )
+  const markRead = useMarkShownRead(markSent)
   const pageInfo = query.data?.notifications.pageInfo
-  const older = useOlderNotifications(pageInfo, live.context, markRead)
+  const older = useOlderNotifications(pageInfo, live.context)
 
   if (query.loading && !query.data) return <ListLoading />
   if (query.error || !query.data) {
@@ -115,10 +112,21 @@ function NotificationsList() {
   if (shown.length === 0 && !pageInfo?.hasNextPage) {
     return <p className={styles.empty}>No notifications.</p>
   }
+  const notifications = shown.map((edge) => edge.node)
   return (
     <>
-      {shown.length > 0 && (
-        <NotificationRows notifications={shown.map((edge) => edge.node)} markedThisVisit={marked} />
+      {notifications.some((notification) => notification.unread) && (
+        <div className={styles.listActions}>
+          <Button variant="default" onClick={() => markRead(notifications)}>
+            Mark all as read
+          </Button>
+        </div>
+      )}
+      {notifications.length > 0 && (
+        <NotificationRows
+          notifications={notifications}
+          onOpen={(notification) => markRead([notification])}
+        />
       )}
       {older.failure ? (
         <FailureRow className={styles.olderFailure} onRetry={older.load}>
@@ -147,11 +155,11 @@ function EndOfTheList({ onReached }: Readonly<{ onReached: () => void }>) {
 
 function NotificationRows({
   notifications,
-  markedThisVisit,
+  onOpen,
 }: Readonly<{
   notifications: NotificationFieldsFragment[]
-  /** The Notifications this visit marked read, which it still shows as unread. */
-  markedThisVisit: ReadonlySet<string>
+  /** Called as the person opens a Notification, which marks it read. */
+  onOpen: (notification: NotificationFieldsFragment) => void
 }>) {
   // A waiting Request turns into an expired one when its time runs out, as the server reads it,
   // and each row says how long ago as each whole minute, hour or day passes.
@@ -167,8 +175,8 @@ function NotificationRows({
         <NotificationRow
           key={notification.id}
           notification={notification}
-          unread={notification.unread || markedThisVisit.has(notification.id)}
           now={now}
+          onOpen={() => onOpen(notification)}
         />
       ))}
     </ul>
@@ -177,27 +185,27 @@ function NotificationRows({
 
 function NotificationRow({
   notification,
-  unread,
   now,
-}: Readonly<{ notification: NotificationFieldsFragment; unread: boolean; now: Date }>) {
+  onOpen,
+}: Readonly<{ notification: NotificationFieldsFragment; now: Date; onOpen: () => void }>) {
   const lineId = useId()
   return (
     <li className={styles.row}>
       {/* A shape, so that unread is not told by colour alone. */}
-      {unread ? (
+      {notification.unread ? (
         <span className={styles.unreadMark} data-testid="unread-mark" aria-hidden />
       ) : (
         <span className={styles.markSpace} aria-hidden />
       )}
       <div className={styles.text} data-testid="notification-text">
-        {unread && <VisuallyHidden>Unread</VisuallyHidden>}
+        {notification.unread && <VisuallyHidden>Unread</VisuallyHidden>}
         {/* The server's line is plain text, so React writes it as text, never as markup. */}
         <p id={lineId} className={styles.line}>
           {notification.message}
         </p>
         <WhenItHappened at={notification.latestEventAt} now={now} />
       </div>
-      <RequestAction notification={notification} now={now} lineId={lineId} />
+      <RequestAction notification={notification} now={now} lineId={lineId} onOpen={onOpen} />
     </li>
   )
 }
@@ -205,12 +213,19 @@ function NotificationRow({
 /**
  * A Request's one action: Review, where it is decided, while it waits, and how it ended once it is
  * over. The decision is made there, so the person sees what anyone who went there directly sees.
+ * Review opens the Request.
  */
 function RequestAction({
   notification,
   now,
   lineId,
-}: Readonly<{ notification: NotificationFieldsFragment; now: Date; lineId: string }>) {
+  onOpen,
+}: Readonly<{
+  notification: NotificationFieldsFragment
+  now: Date
+  lineId: string
+  onOpen: () => void
+}>) {
   if (!isOfferRequest(notification)) return null
   const state = offerRequestState(notification, now)
   if (state.at === 'waiting') {
@@ -218,6 +233,7 @@ function RequestAction({
       <Button
         component={Link}
         to="/settings/household/offers"
+        onClick={onOpen}
         variant="default"
         className={styles.action}
         aria-describedby={lineId}

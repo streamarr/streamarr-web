@@ -10,6 +10,13 @@
   line-height: var(--line-height-prose);
 }
 
+/* Mark all as read, at the end of the line above the list. */
+.listActions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: var(--spacing-12);
+}
+
 .rows {
   margin: 0;
   list-style: none;

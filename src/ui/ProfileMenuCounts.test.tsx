@@ -51,7 +51,7 @@ function serveHome(me: MeFixture = meFixture(), unread = 0) {
   return { socket, reads }
 }
 
-/** The Notifications page with no Notifications, which marks nothing read. */
+/** The Notifications page with no Notifications. */
 function serveNotifications() {
   server.use(
     graphql.query('Notifications', () => HttpResponse.json({ data: notificationsPage([]) })),
@@ -211,6 +211,7 @@ describe('The unread count in the Profile menu', () => {
     )
     const { user } = renderAppAt('/notifications')
     await screen.findByText(MARA_LINE)
+    await user.click(screen.getByRole('button', { name: 'Mark all as read' }))
 
     const chip = await screen.findByRole('button', { name: 'Profile menu (Owner)' })
     later.resolve()
@@ -223,7 +224,7 @@ describe('The unread count in the Profile menu', () => {
 
   it('shouldKeepTheCountOfALaterChangeWhenAMarkSentBeforeItAnswersAfterIt', async () => {
     const { socket } = serveHome(meFixture(), 101)
-    // A page that shows more than 100 is marked in two calls: the first 100, then Mara's.
+    // Marking all of a page that shows more than 100 takes two calls: the first 100, then Mara's.
     const first = Array.from({ length: 100 }, (_, index) =>
       answerNotification({
         id: `answer-${index}`,
@@ -257,6 +258,7 @@ describe('The unread count in the Profile menu', () => {
     const { user } = renderAppAt('/notifications')
     await screen.findByText(MARA_LINE)
     await followingNotificationChanges(socket)
+    await user.click(screen.getByRole('button', { name: 'Mark all as read' }))
     await waitFor(() => expect(marks).toHaveLength(1))
 
     // Another session marks Mara read: the server tells this one, before the first mark answers.
@@ -496,20 +498,10 @@ describe('The dot on the Profile menu', () => {
   it('shouldTakeADismissedRequestOutOfTheListTheCountAndTheDotInOneChange', async () => {
     const { socket } = serveHome(meFixture(), 1)
     const waiting = offerNotification()
-    // The page's mark of the offer answers only once the test has looked, so that only the
-    // dismissal can clear the count.
-    const markAnswer = deferred()
-    onTestFinished(markAnswer.resolve)
     server.use(
       graphql.query('Notifications', () =>
         HttpResponse.json({ data: notificationsPage([waiting]) }),
       ),
-      graphql.mutation('MarkNotificationsRead', async () => {
-        await markAnswer.promise
-        return HttpResponse.json({
-          data: { markNotificationsRead: { unreadNotificationCount: 0, userErrors: [] } },
-        })
-      }),
     )
     const { user } = renderAppAt('/notifications')
     await screen.findByText(waiting.message)

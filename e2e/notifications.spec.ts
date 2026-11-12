@@ -42,7 +42,7 @@ const UNREAD = [
   news('answer-for-mara', 'The offer of “Mara” was accepted.', 2),
 ]
 
-test('the unread count and the dot clear once the Notifications page has been opened', async ({
+test('the unread count and the dot clear once the person marks all Notifications read', async ({
   page,
   request,
 }) => {
@@ -79,6 +79,7 @@ test('the unread count and the dot clear once the Notifications page has been op
   await expect(entry).toHaveText('Notifications2')
   await entry.click()
   await expect(page.getByRole('heading', { level: 1, name: 'Notifications' })).toBeVisible()
+  await page.getByRole('button', { name: 'Mark all as read' }).click()
   await expect.poll(() => server.marked).toEqual(['answer-for-leo', 'answer-for-mara'])
   // The server tells every session of the Account about each Notification that a mark changed.
   await expect.poll(() => socket.isLive('NotificationsChanged')).toBe(true)
