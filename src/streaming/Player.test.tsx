@@ -88,6 +88,8 @@ const HDR_NOT_KEPT_EXPLANATION =
   "This video couldn't stay in HDR at this quality, so it's playing in SDR."
 const AUTO_HDR_NOT_KEPT_EXPLANATION = "This video couldn't stay in HDR, so it's playing in SDR."
 const AUDIO_SWITCH_REFUSED = "The audio track you chose couldn't play, so the audio didn't change."
+const SDR_REFUSED_EXPLANATION =
+  "This video couldn't play in SDR at this quality, so it's playing in HDR."
 const ORIGINAL_CHANGED_TO_AUTO: Partial<PlaybackChoices> = {
   requestedChoice: 'ORIGINAL',
   playbackChoice: 'AUTO',
@@ -7855,6 +7857,7 @@ describe('Player', () => {
       videoRange = playsHdrUnlessSdrIsChosen,
       playing,
       formatChange,
+      refuse,
     }: {
       picked: string
       platform?: () => PlaybackPlatform
@@ -7864,8 +7867,15 @@ describe('Player', () => {
         requested: VideoQuality,
         options: StreamingOptionsInput,
       ) => PlaybackFormatChange | null
+      refuse?: (creation: number) => SessionRefusal | null
     }) {
-      const log = servePlaybackChoices({ sourceRange: 'PQ', videoRange, playing, formatChange })
+      const log = servePlaybackChoices({
+        sourceRange: 'PQ',
+        videoRange,
+        playing,
+        formatChange,
+        refuse,
+      })
       const { user } = renderWithProviders(
         <Player playbackPlatform={platform} mediaFileId="abcd" />,
       )
@@ -8239,6 +8249,132 @@ describe('Player', () => {
       await showingVideo(choiceStreamUrl(3))
 
       expectNoCaution(qualityChip())
+    })
+
+    describe('when the server refuses the range the toggle asks for', () => {
+      // A refusal the server lifts once it has capacity again, and one that stands for the file.
+      const FRAME_RATE_REFUSED: SessionRefusal = {
+        __typename: 'MediaFileFrameRateUnknownError',
+        message:
+          "This video needs converting, but the server can't find its frame rate. Ask your server admin to check the file.",
+      }
+      // Auto plays SDR, so a fixed quality asks for SDR too, and HDR plays only once it is asked for.
+      const sdrUntilHdrIsAsked = ({ quality, dynamicRange }: StreamingOptionsInput): VideoRange =>
+        quality === 'AUTO' || dynamicRange === 'SDR' ? 'SDR' : 'PQ'
+
+      const refusingCreations =
+        (creations: number[], refusal = CAPACITY_REFUSED) =>
+        (creation: number) =>
+          creations.includes(creation) ? refusal : null
+
+      async function toggleHdrAt(user: UserEvent, video: HTMLVideoElement, seconds: number) {
+        playheadAt(video, seconds)
+        await user.click(hdrToggleIn(await openQualityMenu(user)) as HTMLElement)
+      }
+
+      it.each([CAPACITY_REFUSED, FRAME_RATE_REFUSED])(
+        'shouldGoOnInHdrWhereTheViewerWasWithACautionOnQualityWhenSdrIsRefused(refusal: $__typename)',
+        async (refusal) => {
+          const { user, log, video } = await pickForAnHdrSource({
+            picked: '720p',
+            refuse: refusingCreations([3], refusal),
+          })
+
+          await toggleHdrAt(user, video, 120)
+
+          await showingVideo(choiceStreamUrl(4))
+          expect(log.slice(3)).toEqual([
+            'destroy playback-2',
+            'create HIGH_720P SDR at 120',
+            'create HIGH_720P HDR at 120',
+          ])
+          expect(video.currentTime).toBe(120)
+          expect(video.paused).toBe(false)
+          expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+          const chip = screen.getByRole('button', { name: 'Quality: 720p' })
+          expect(chip).not.toHaveAttribute('aria-disabled')
+          expectCaution(chip, SDR_REFUSED_EXPLANATION)
+          const menu = await openQualityMenu(user)
+          expectMessageIn(menu, SDR_REFUSED_EXPLANATION)
+          expect(marksIn(menu)).toEqual([])
+          expect(hdrToggleIn(menu)).toHaveAttribute('aria-checked', 'true')
+        },
+      )
+
+      it('shouldGoOnInSdrWhereTheViewerWasWithACautionOnQualityWhenHdrIsRefused', async () => {
+        const { user, log, video } = await pickForAnHdrSource({
+          picked: '720p',
+          videoRange: sdrUntilHdrIsAsked,
+          refuse: refusingCreations([3]),
+        })
+
+        await toggleHdrAt(user, video, 120)
+
+        await showingVideo(choiceStreamUrl(4))
+        expect(log.slice(2)).toEqual([
+          'create HIGH_720P SDR',
+          'destroy playback-2',
+          'create HIGH_720P HDR at 120',
+          'create HIGH_720P SDR at 120',
+        ])
+        expect(video.currentTime).toBe(120)
+        expectCaution(
+          screen.getByRole('button', { name: 'Quality: 720p' }),
+          HDR_NOT_PLAYED_EXPLANATION,
+        )
+        const menu = await openQualityMenu(user)
+        expectMessageIn(menu, HDR_NOT_PLAYED_EXPLANATION)
+        expect(hdrToggleIn(menu)).toHaveAttribute('aria-checked', 'false')
+      })
+
+      it('shouldClearTheCautionWhenTheViewerTogglesAgainAndTheRangePlays', async () => {
+        const { user, log, video } = await pickForAnHdrSource({
+          picked: '720p',
+          refuse: refusingCreations([3]),
+        })
+        await toggleHdrAt(user, video, 120)
+        await showingVideo(choiceStreamUrl(4))
+
+        await toggleHdrAt(user, video, 150)
+
+        await showingVideo(choiceStreamUrl(5))
+        expect(log.at(-1)).toBe('create HIGH_720P SDR at 150')
+        expectNoCaution(qualityChip())
+        expect(hdrToggleIn(await openQualityMenu(user))).toHaveAttribute('aria-checked', 'false')
+      })
+
+      it('shouldShowTheFormatChangeInsteadOfTheRefusalWhenTheRangeThatGoesOnPlaysConverted', async () => {
+        const { user, video } = await pickForAnHdrSource({
+          picked: '720p',
+          refuse: refusingCreations([3]),
+          formatChange: (requested) => (requested === 'HIGH_720P' ? 'COPY_FAILED' : null),
+        })
+
+        await toggleHdrAt(user, video, 120)
+
+        await showingVideo(choiceStreamUrl(4))
+        expectCaution(qualityChip(), FIXED_QUALITY_EXPLANATION)
+      })
+
+      it('shouldRetryTheRangeThatPlayedWhereTheViewerToggledWhenTheServerRefusesItToo', async () => {
+        const { user, log, video } = await pickForAnHdrSource({
+          picked: '720p',
+          refuse: refusingCreations([3, 4]),
+        })
+        await toggleHdrAt(user, video, 120)
+        expect(await screen.findByRole('alert')).toHaveTextContent(CAPACITY_REFUSAL)
+
+        await user.click(screen.getByRole('button', { name: 'Retry playback' }))
+
+        await showingVideo(choiceStreamUrl(5))
+        expect(log.slice(4)).toEqual([
+          'create HIGH_720P SDR at 120',
+          'create HIGH_720P HDR at 120',
+          'create HIGH_720P HDR at 120',
+        ])
+        expect(video.currentTime).toBe(120)
+        expectCaution(qualityChip(), SDR_REFUSED_EXPLANATION)
+      })
     })
   })
 

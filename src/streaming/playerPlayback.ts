@@ -182,6 +182,12 @@ interface PlayerPlaybackOptions {
   onOutputShown: (qualities: QualityChoices) => void
   /** Hears that the server refused the viewer's audio switch, and the track that played goes on. */
   onAudioSwitchRefused: () => void
+  /**
+   * Takes over when the server refuses to start the playback session, with where a playback that
+   * replaces it should resume; playback then shows no failure. Without it, the refusal fails
+   * playback with the server's words.
+   */
+  onRefused?: (resumeFrom: ResumePoint) => void
 }
 
 interface SessionPlayback extends PlayerPlayback {
@@ -230,6 +236,7 @@ function startSessionPlayback({
   onSourcePhase,
   onOutputShown,
   onAudioSwitchRefused,
+  onRefused,
   resumeFrom,
   dynamicRange,
 }: PlayerPlaybackOptions): SessionPlayback {
@@ -655,7 +662,7 @@ function startSessionPlayback({
         return
       }
       if (!initialPlayback) {
-        showFailure(refusalMessage(payload))
+        answerRefusal(payload)
         return
       }
       const playback = await awaitReadyPlayback(initialPlayback)
@@ -669,6 +676,14 @@ function startSessionPlayback({
         showFailure(PLAYBACK_FAILURE_MESSAGE)
       }
     })
+
+  function answerRefusal(payload: PlaybackSessionPayload | undefined) {
+    if (onRefused) {
+      onRefused(resumePoint())
+      return
+    }
+    showFailure(refusalMessage(payload))
+  }
 
   function startFromTheBeginning() {
     startAt = undefined

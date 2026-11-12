@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react'
 import type { VideoQuality } from '../graphql/generated/graphql'
+import type { DynamicRangeChoice } from './hlsVideoPreference'
 import type { QualityChoices } from './qualityChoices'
 
 type Fallback =
@@ -26,6 +27,12 @@ const EXPLANATIONS: Record<Fallback, string> = {
 
 const AUDIO_SWITCH_REFUSED = "The audio track you chose couldn't play, so the audio didn't change."
 
+// The range that went on after the server refused the other range the HDR toggle asked for.
+const RANGE_KEPT: Record<DynamicRangeChoice, string> = {
+  HDR: "This video couldn't play in SDR at this quality, so it's playing in HDR.",
+  SDR: EXPLANATIONS['hdr-not-played'],
+}
+
 /** The explanation beside each playback choice whose output differed from it during the viewing. */
 export type QualityMarks = ReadonlyMap<VideoQuality, string>
 
@@ -37,7 +44,8 @@ export interface QualityCaution {
 
 /**
  * The cautions on the player's controls while what plays differs from what the viewer chose: on
- * the quality control after a format change, and on the audio control after a refused switch.
+ * the quality control after a format change or a refused range change, and on the audio control
+ * after a refused switch.
  */
 export interface PlaybackCautions {
   quality?: QualityCaution
@@ -60,9 +68,10 @@ export interface PlaybackFallbacks {
   announcement: CautionAnnouncement | null
   /**
    * Starts following a new playback session, which takes down the quality caution of the one
-   * before, and returns what to tell about each stream it shows.
+   * before, and returns what to tell about each stream it shows. A session that goes on in
+   * `rangeKept` after the server refused the other range cautions so on the quality control.
    */
-  followPlaybackSession: () => FollowPlayingChoices
+  followPlaybackSession: (rangeKept?: DynamicRangeChoice) => FollowPlayingChoices
   /** Cautions on the audio control that the server refused the viewer's audio switch. */
   refuseAudioSwitch: () => void
   /** Takes down the audio control's caution, as the viewer picks any audio track. */
@@ -137,15 +146,24 @@ function withCautions(state: ViewingCautions, cautions: PlaybackCautions): Viewi
   return { ...state, cautions, announcement: { text: appeared, serial } }
 }
 
-// The output that a stream shows sets the quality caution and the requested choice's mark.
+interface ShownOutput {
+  requested: VideoQuality
+  /** Why the output differs from the requested choice, when a format change says. */
+  explanation: string | undefined
+  /** The caution of a refused range change, which the requested choice plays on after. */
+  refusal: string | undefined
+}
+
+// The output that a stream shows sets the quality caution and the requested choice's mark. A format
+// change explains what plays before a refused range change does, and the refusal marks no row.
 function afterOutputShown(
   state: ViewingCautions,
-  requested: VideoQuality,
-  explanation: string | undefined,
+  { requested, explanation, refusal }: ShownOutput,
 ): ViewingCautions {
+  const message = explanation ?? refusal
   let quality: QualityCaution | undefined
-  if (explanation) {
-    quality = { message: explanation, choice: requested }
+  if (message) {
+    quality = { message, choice: requested }
   }
   return {
     ...withCautions(state, { ...state.cautions, quality }),
@@ -176,17 +194,24 @@ export function usePlaybackFallbacks(viewing: object): PlaybackFallbacks {
     [viewing],
   )
 
-  const followPlaybackSession = useCallback(() => {
-    update((latest) => withCautions(latest, { ...latest.cautions, quality: undefined }))
-    let shownHdr = false
-    return (qualities: QualityChoices) => {
-      const fallback = fallbackOf(qualities, shownHdr)
-      shownHdr ||= qualities.videoRange !== 'SDR'
-      update((latest) =>
-        afterOutputShown(latest, qualities.requested, fallback && EXPLANATIONS[fallback]),
-      )
-    }
-  }, [update])
+  const followPlaybackSession = useCallback(
+    (rangeKept?: DynamicRangeChoice) => {
+      update((latest) => withCautions(latest, { ...latest.cautions, quality: undefined }))
+      let shownHdr = false
+      return (qualities: QualityChoices) => {
+        const fallback = fallbackOf(qualities, shownHdr)
+        shownHdr ||= qualities.videoRange !== 'SDR'
+        update((latest) =>
+          afterOutputShown(latest, {
+            requested: qualities.requested,
+            explanation: fallback && EXPLANATIONS[fallback],
+            refusal: rangeKept && RANGE_KEPT[rangeKept],
+          }),
+        )
+      }
+    },
+    [update],
+  )
 
   const refuseAudioSwitch = useCallback(
     () =>

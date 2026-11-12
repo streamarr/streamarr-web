@@ -41,6 +41,11 @@ interface ChoiceRequest {
   /** The viewer's HDR choice, which only a fixed quality takes. */
   dynamicRange?: DynamicRangeChoice
   resumeFrom?: ResumePoint
+  /**
+   * An HDR toggle's change of range: `asked` goes back to the range that played when the server
+   * refuses it, and `refused` is that range going on, with a caution.
+   */
+  rangeChange?: 'asked' | 'refused'
 }
 
 // The audio language that plays from a start, which every later playback session of that start asks
@@ -80,6 +85,17 @@ function audioLanguageFrom(
 
 function startingChoice(start: PlaybackStart): ChoiceRequest {
   return { start, quality: 'AUTO' }
+}
+
+// Any range is better than no video, so when the server refuses the range the toggle asked for, the
+// range that played before goes on in the same quality, where the refused playback would resume.
+function rangeThatPlayed(asked: ChoiceRequest, resumeFrom: ResumePoint): ChoiceRequest {
+  return {
+    ...asked,
+    dynamicRange: asked.dynamicRange === 'SDR' ? 'HDR' : 'SDR',
+    resumeFrom,
+    rangeChange: 'refused',
+  }
 }
 
 function playingRanges(phase: Extract<SourcePhase, { at: 'attached' }>): PlayingRanges {
@@ -190,7 +206,9 @@ export function Player({
     }
     const reportSourcePhase = (phase: SourcePhase) => setReported({ start: choice.start, phase })
     reportSourcePhase(STARTING)
-    const followOutput = followPlaybackSession()
+    const followOutput = followPlaybackSession(
+      choice.rangeChange === 'refused' ? choice.dynamicRange : undefined,
+    )
 
     const playback = startPlayerPlayback({
       video,
@@ -220,6 +238,10 @@ export function Player({
         followOutput(qualities)
       },
       onAudioSwitchRefused: refuseAudioSwitch,
+      onRefused:
+        choice.rangeChange === 'asked'
+          ? (resumeFrom) => setChoice(rangeThatPlayed(choice, resumeFrom))
+          : undefined,
     })
     playbackRef.current = playback
     return playback.stop
@@ -259,6 +281,7 @@ export function Player({
       quality: quality.selected,
       dynamicRange: hdr.on ? 'SDR' : 'HDR',
       resumeFrom: playback.resumePoint(),
+      rangeChange: 'asked',
     })
   }
 
