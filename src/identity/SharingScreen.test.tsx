@@ -831,20 +831,18 @@ function canceledPayload() {
   }
 }
 
+function notPendingPayload() {
+  return {
+    __typename: 'CancelProfileSharePayload',
+    share: null,
+    userErrors: [{ __typename: 'ShareNotPendingError', message: 'That offer is not pending.' }],
+  }
+}
+
 function refuseToCancel() {
   server.use(
     graphql.mutation('CancelProfileShare', () =>
-      HttpResponse.json({
-        data: {
-          cancelProfileShare: {
-            __typename: 'CancelProfileSharePayload',
-            share: null,
-            userErrors: [
-              { __typename: 'ShareNotPendingError', message: 'That offer is not pending.' },
-            ],
-          },
-        },
-      }),
+      HttpResponse.json({ data: { cancelProfileShare: notPendingPayload() } }),
     ),
   )
 }
