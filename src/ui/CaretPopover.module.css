@@ -128,21 +128,18 @@
   gap: var(--spacing-6);
 }
 
-/* Never the error red: the mark explains a fallback, not a fault, and its shape carries that. */
+/* The caution yellow on every row, never the error red: the mark explains a fallback, not a
+   fault, and its shape carries that. The color sits on this element, not on the svg, so forced
+   colors replace it. */
 .caution {
   display: inline-flex;
-  color: var(--text-secondary);
+  color: var(--semantic-caution);
 
   /* Nothing hovers a touch screen, so the mark takes a 44px target there without moving the row. */
   @media (pointer: coarse) {
     margin: -15px;
     padding: 15px;
   }
-}
-
-.row[aria-checked='true'] .caution,
-.row:focus .caution {
-  color: inherit;
 }
 
 /* The side and the top come from the row it explains; the explanation never takes a tap. */

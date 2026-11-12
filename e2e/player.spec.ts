@@ -834,6 +834,8 @@ async function openPlayerShowingMedia(page: Page, request: APIRequestContext): P
 
 const ORIGINAL_EXPLANATION =
   "This video couldn't play in its original form, so Quality changed to Auto."
+const FIXED_QUALITY_EXPLANATION =
+  "This video couldn't play in its original form at this quality, so a converted version is playing."
 
 // What the server answers a pick of `quality` with: a playback session that plays `playbackChoice`
 // after `formatChange`.
@@ -1081,6 +1083,64 @@ test.describe(() => {
 
     expect.soft(onChip, 'on the chip').toBeGreaterThanOrEqual(3)
     expect(behind, 'behind the symbol').toBeGreaterThanOrEqual(3)
+  })
+
+  // The mark in the menu shares the symbol's yellow on every row, the selected one included.
+  test('the quality mark is the caution yellow at 3:1 or more on a resting, a hovered and a selected row', async ({
+    page,
+    request,
+  }) => {
+    await openPlayerShowingMedia(page, request)
+    await answerPick(page, {
+      quality: 'HIGH_720P',
+      playbackChoice: 'HIGH_720P',
+      formatChange: 'COPY_FAILED',
+    })
+    const chip = await startOriginalWithAnEncode(page)
+    const yellow = await cautionYellow(page)
+    const markOn = async (row: Locator) => {
+      const { mark, backdrop } = paintedMark(await paintedPixels(row.getByTestId('mark')))
+      return { mark, contrast: contrast(mark, backdrop) }
+    }
+    await chip.click()
+    const menu = page.getByRole('menu', { name: 'Quality' })
+    const original = menu.getByRole('menuitemradio', { name: /^Original/ })
+
+    const resting = await markOn(original)
+    await original.hover()
+    const hovered = await markOn(original)
+    await menu.getByRole('menuitemradio', { name: '720p' }).click()
+    const fixed = page.getByRole('button', { name: /^Quality: 720p/ })
+    await expect(fixed).toHaveAccessibleDescription(FIXED_QUALITY_EXPLANATION)
+    await fixed.click()
+    const selectedRow = menu.getByRole('menuitemradio', { checked: true })
+    await expect(selectedRow).toHaveText('720p')
+    const selected = await markOn(selectedRow)
+
+    for (const [row, measured] of Object.entries({ resting, hovered, selected })) {
+      expect.soft(measured.mark, `${row}: the yellow`).toEqual(yellow)
+      expect.soft(measured.contrast, `${row}: against the row`).toBeGreaterThanOrEqual(3)
+    }
+  })
+
+  test('the quality mark keeps 3:1 or more when the system forces its colors', async ({
+    page,
+    request,
+  }) => {
+    await openPlayerShowingMedia(page, request)
+    const chip = await startOriginalWithAnEncode(page)
+    await chip.click()
+    const mark = page.getByRole('menuitemradio', { name: /^Original/ }).getByTestId('mark')
+
+    for (const palette of ['light', 'dark'] as const) {
+      await page.emulateMedia({ forcedColors: 'active', colorScheme: palette })
+      expect(await page.evaluate(() => matchMedia('(forced-colors: active)').matches)).toBe(true)
+      const { mark: painted, backdrop } = paintedMark(await paintedPixels(mark))
+
+      expect
+        .soft(contrast(painted, backdrop), `in a ${palette} forced palette`)
+        .toBeGreaterThanOrEqual(3)
+    }
   })
 
   // Forced colors remove the yellow; the triangle's shape, in the chip's text color, is left.
