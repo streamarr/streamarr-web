@@ -7665,6 +7665,7 @@ describe('Player', () => {
       await showingVideo(choiceStreamUrl(3))
 
       expectNoCaution(screen.getByRole('button', { name: 'Quality: 720p' }))
+      expect(screen.getByRole('status')).toBeEmptyDOMElement()
     })
 
     it('shouldClearTheCautionWhenTheNextMediaFileStarts', async () => {
@@ -8511,6 +8512,60 @@ describe('Player', () => {
         expectNoCaution(audioChip())
         await attachedVideo(replacementStream(1).streamUrl)
         expectNoCaution(audioChip())
+      })
+
+      it('shouldKeepTheAudioCautionWhenTheViewerPicksSubtitlesAfterARefusal', async () => {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        serveAudioTrackSwitch({ answer: refusedSwitch })
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        const text: FakeTextTrack[] = [
+          { kind: 'subtitles', label: 'English', language: 'en', mode: 'disabled' },
+        ]
+        giveElementTracks(renderedVideo(), { text })
+        await directPlayAt(0)
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+        await waitFor(() => expectCaution(audioChip(), AUDIO_SWITCH_REFUSED))
+
+        await user.click(screen.getByRole('button', { name: 'Subtitles: Off' }))
+        await user.click(screen.getByRole('menuitemradio', { name: 'English' }))
+
+        expect(text.map((track) => track.mode)).toEqual(['showing'])
+        expectCaution(audioChip(), AUDIO_SWITCH_REFUSED)
+      })
+
+      it('shouldAnnounceTheAudioCautionOnceWhenTheServerRefusesTheSwitch', async () => {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        serveAudioTrackSwitch({ answer: refusedSwitch })
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        const announced = watchAnnouncements()
+        await directPlayAt(0)
+
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+
+        await waitFor(() => expectCaution(audioChip(), AUDIO_SWITCH_REFUSED))
+        expect(await settledAnnouncements(announced)).toEqual([AUDIO_SWITCH_REFUSED])
+      })
+
+      it('shouldOpenTheAudioPickerThatCarriesACautionWhenTheNextStreamOffersOneTrack', async () => {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        serveAudioTrackSwitch({ answer: refusedSwitch })
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        const video = await directPlayAt(42)
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+        await waitFor(() => expectCaution(audioChip(), AUDIO_SWITCH_REFUSED))
+        failTheSourceFile(video, 3)
+        await attachedVideo(replacementStream(1).streamUrl)
+        offerHlsTracks({ audio: [{ name: 'English' }], audioTrack: 0 })
+
+        const menu = await openPicker(user, audioChip())
+
+        expectMessageIn(menu, AUDIO_SWITCH_REFUSED)
       })
 
       it('shouldStoreOnlyTheTrackTheServerMovesToWhenTheViewerPicksAnotherBeforeItAnswers', async () => {
