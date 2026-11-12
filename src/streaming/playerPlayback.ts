@@ -159,6 +159,9 @@ interface PlaybackStatusCheck {
   // A slow startup's check ends once the element loads its metadata. A stream error that joins
   // the check keeps it running past the metadata.
   endsAtMetadata: boolean
+  // A slow startup reads through the check until the element loads its metadata, whoever else
+  // joins it.
+  readsForSlowStartup: boolean
   settled: Promise<void>
   // Aborts the check PLAYBACK_START_TIMEOUT_MS after it starts, or after it hands over.
   deadline?: ReturnType<typeof setTimeout>
@@ -1039,7 +1042,9 @@ function startSessionPlayback({
 
   function stopSlowStartupReads() {
     clearTimeout(slowStartup)
-    if (statusCheck?.endsAtMetadata) stopStatusCheck()
+    if (!statusCheck) return
+    statusCheck.readsForSlowStartup = false
+    if (statusCheck.endsAtMetadata) stopStatusCheck()
   }
 
   // A caller that joins a running check waits for that check to settle. A check begun for a stream
@@ -1064,6 +1069,7 @@ function startSessionPlayback({
     if (statusCheck?.generation === generation) {
       statusCheck.fatal ||= fatal
       statusCheck.endsAtMetadata &&= forSlowStartup
+      statusCheck.readsForSlowStartup ||= forSlowStartup
       return statusCheck.settled
     }
     stopStatusCheck()
@@ -1072,6 +1078,7 @@ function startSessionPlayback({
       generation,
       fatal,
       endsAtMetadata: forSlowStartup,
+      readsForSlowStartup: forSlowStartup,
       settled: Promise.resolve(),
     }
     statusCheck = check
@@ -1142,13 +1149,13 @@ function startSessionPlayback({
     adoptPlayback(resolved)
   }
 
-  // A failed read rejects, except in a slow startup's check: nothing else asks for that status
-  // again.
+  // A failed read rejects, except while a slow startup reads through a check that no fatal stream
+  // error joined: nothing else asks for that status again.
   function readTheStatus(id: string, check?: PlaybackStatusCheck) {
     return readPlaybackSession(id, check?.controller.signal ?? statusCancellation.signal).then(
       (playback) => ({ read: true as const, playback }),
       (error: unknown) => {
-        if (!check?.endsAtMetadata) throw error
+        if (!check?.readsForSlowStartup || check.fatal) throw error
         return { read: false as const }
       },
     )

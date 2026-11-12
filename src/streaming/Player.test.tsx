@@ -506,6 +506,30 @@ function serveStatusReads(
 
 type StatusStreamSession = Parameters<typeof readyPlaybackSession>[0]['streamSession']
 
+// Each status read names the attached stream with no real end until `failTheNextRead` is called.
+// The read after that fails as when the connection drops, and every later read names
+// `afterTheFailure`.
+function serveAFailedReadOnCue(afterTheFailure: StatusStreamSession) {
+  let reads = 0
+  let failedRead = Number.POSITIVE_INFINITY
+  server.use(
+    graphql.query('PlaybackSession', () => {
+      reads += 1
+      if (reads === failedRead) return HttpResponse.error()
+      const streamSession = reads > failedRead ? afterTheFailure : SESSION
+      return HttpResponse.json({
+        data: { playbackSession: readyPlaybackSession({ streamSession }) },
+      })
+    }),
+  )
+  return {
+    statusReads: () => reads,
+    failTheNextRead: () => {
+      failedRead = reads + 1
+    },
+  }
+}
+
 // The first status read finds the server still starting `replacement`, the second fails as when
 // the connection drops, and every later read finds `replacement` ready; returns how often the
 // status was read.
@@ -7131,6 +7155,78 @@ describe('Player', () => {
         )
       },
     )
+
+    // hls.js retries a segment that the server answered with 503 on its own, so the stream error
+    // asks nothing more of the status.
+    it.each([
+      { joined: 'before the first read', errorAfter: 0, readsAfter: SLOW_STARTUP_MS },
+      { joined: 'after the first read', errorAfter: SLOW_STARTUP_MS, readsAfter: 0 },
+    ])(
+      'shouldReadTheStatusAgainAfterAFailedReadWhenAStreamErrorJoinedASlowStartupsReads(error $joined)',
+      async ({ errorAfter, readsAfter }) => {
+        const reports = serveSession()
+        const { failTheNextRead } = serveAFailedReadOnCue({
+          ...SESSION,
+          mediaEndSeconds: REAL_END_SECONDS,
+        })
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        await startAFirstLoadPastTheRealEnd()
+        await act(async () => vi.advanceTimersByTimeAsync(errorAfter))
+        answerTheNextSegmentWith503({ fatal: false })
+        await act(async () => vi.advanceTimersByTimeAsync(readsAfter))
+        const stopped = () => reports.filter((report) => report.state === 'STOPPED')
+
+        failTheNextRead()
+        await act(async () => vi.advanceTimersByTimeAsync(2 * PLAYBACK_STATUS_INTERVAL_MS))
+
+        await vi.waitFor(() =>
+          expect(stopped()).toEqual([
+            { sessionId: SESSION.id, positionSeconds: REAL_END_SECONDS, state: 'STOPPED' },
+          ]),
+        )
+        await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_START_TIMEOUT_MS))
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      },
+    )
+
+    // A stream that stopped for good fails at a read that cannot say what replaced it, as it does
+    // without a slow startup.
+    it('shouldShowFailureAtTheFailedReadWhenAFatalStreamErrorJoinedASlowStartupsReads', async () => {
+      serveSession()
+      const { statusReads, failTheNextRead } = serveAFailedReadOnCue(SESSION)
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+      await attachedWithTheClockStill()
+      await act(async () => vi.advanceTimersByTimeAsync(SLOW_STARTUP_MS))
+      answerTheNextSegmentWith503({ fatal: true })
+
+      failTheNextRead()
+      await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_STATUS_INTERVAL_MS))
+
+      await vi.waitFor(() =>
+        expect(screen.getByRole('alert')).toHaveTextContent("Playback couldn't start."),
+      )
+      expect(statusReads()).toBe(2)
+    })
+
+    // The metadata ends the slow startup's claim on the reads. The stream error's check then ends
+    // at a failed read, as it does without a slow startup: hls.js retries the segment itself.
+    it('shouldReadTheStatusNoMoreAfterAFailedReadWhenAStreamErrorKeptASlowStartupsReadsPastTheMetadata', async () => {
+      serveSession()
+      const { statusReads, failTheNextRead } = serveAFailedReadOnCue(SESSION)
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+      const video = await attachedWithTheClockStill()
+      await act(async () => vi.advanceTimersByTimeAsync(SLOW_STARTUP_MS))
+      answerTheNextSegmentWith503({ fatal: false })
+      loadMetadata(video)
+
+      failTheNextRead()
+      await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_START_TIMEOUT_MS))
+
+      expect(statusReads()).toBe(2)
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
   })
 
   describe('stalled playback', () => {
