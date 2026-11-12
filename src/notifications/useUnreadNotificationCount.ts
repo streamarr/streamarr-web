@@ -1,5 +1,5 @@
 import { useApolloClient, useQuery } from '@apollo/client/react'
-import { useCallback } from 'react'
+import { useCallback, useRef } from 'react'
 import {
   NotificationsChangedDocument,
   UnreadNotificationCountDocument,
@@ -13,13 +13,19 @@ import { useLiveChanges } from '../graphql/useLiveChanges'
  * count again, since the change is newer (`useLiveList`). A change that could not count keeps the
  * last count, as does a read again that fails. Zero until the count is first read, and while it
  * cannot be: the count is a hint, never a failure of its own. `skip` reads nothing and follows
- * nothing. `receive` takes a count the server answered outside a change, such as a mark's.
+ * nothing.
+ *
+ * `markSent` is called as a mark goes out, and the function it returns takes the count the mark
+ * answers. A change that arrives in between means the server is delivering changes, this mark's
+ * own among them, and it may be newer than the mark, such as another session's mark; the mark's
+ * count then stands aside.
  */
 export function useUnreadNotificationCount({ skip }: { skip: boolean }): {
   count: number
-  receive: (count: number) => void
+  markSent: () => (count: number) => void
 } {
   const { cache } = useApolloClient()
+  const changes = useRef(0)
   const live = useLiveList({
     query: UnreadNotificationCountDocument,
     variables: {},
@@ -41,14 +47,22 @@ export function useUnreadNotificationCount({ skip }: { skip: boolean }): {
     },
     [skip, live, cache],
   )
+  const markSent = useCallback(() => {
+    const changesBefore = changes.current
+    return (count: number) => {
+      if (changes.current === changesBefore) receive(count)
+    }
+  }, [receive])
   useLiveChanges(
     NotificationsChangedDocument,
     ({ data }) => {
       const count = data?.notificationsChanged?.unreadNotificationCount
-      if (typeof count === 'number') receive(count)
+      if (typeof count !== 'number') return
+      changes.current += 1
+      receive(count)
     },
     { skip },
   )
   const { data } = useQuery(UnreadNotificationCountDocument, { skip, context: live.context })
-  return { count: data?.unreadNotificationCount ?? 0, receive }
+  return { count: data?.unreadNotificationCount ?? 0, markSent }
 }

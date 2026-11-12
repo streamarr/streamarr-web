@@ -12,14 +12,17 @@ export interface MenuCounts {
   unreadNotifications: number
   /** The offers of Profiles to the Account's Household that wait for its admins' decision. */
   waitingOffers: number
-  /** Takes the unread count that the server answered outside a change, such as a mark's. */
-  receiveUnreadCount: (count: number) => void
+  /**
+   * Called as a Notification's mark goes out: the function it returns takes the unread count that
+   * the mark answers, unless a change has brought one since (`useUnreadNotificationCount`).
+   */
+  markSent: () => (count: number) => void
 }
 
 const MenuCountsContext = createContext<MenuCounts>({
   unreadNotifications: 0,
   waitingOffers: 0,
-  receiveUnreadCount: () => undefined,
+  markSent: () => () => undefined,
 })
 
 /**
@@ -39,9 +42,9 @@ export function MenuCountsProvider({
     () => ({
       unreadNotifications: unread.count,
       waitingOffers,
-      receiveUnreadCount: unread.receive,
+      markSent: unread.markSent,
     }),
-    [unread.count, unread.receive, waitingOffers],
+    [unread.count, unread.markSent, waitingOffers],
   )
   return <MenuCountsContext value={counts}>{children}</MenuCountsContext>
 }
