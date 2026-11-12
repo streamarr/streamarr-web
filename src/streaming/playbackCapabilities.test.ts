@@ -295,6 +295,17 @@ function hevcLevelsAskedBySearch(
   return asked
 }
 
+// AV1 writes its level as seq_level_idx: level 5.1, the highest level that a picture tier needs, is
+// 13.
+const AV1_LEVEL_5_1_INDEX = 13
+
+function av1LevelIndexesAsked(decodingInfo: DecodingInfoFake): number[] {
+  return decodingInfo.mock.calls
+    .map(([configuration]) => /^av01\.\d\.(\d{2})M\./.exec(codecOf(configuration))?.[1])
+    .filter((index) => index !== undefined)
+    .map((index) => Number(index))
+}
+
 // Each HEVC entry's compatible bases, beside the codec profiles that carry its levels.
 function hevcLevelsByBases(declaration: ClientCapabilityDeclarationInput) {
   return familyEntries(declaration, 'HEVC').map(({ compatibleBases, codecProfiles }) => ({
@@ -2432,12 +2443,11 @@ describe('declarePlaybackCapabilities', () => {
       },
     )
 
-    it('shouldDeclareH264AndAv1AtTheLevelsTheirPicturesNeedWhenWebKitAnswersThemSmoothAtEveryLevel', async () => {
+    it('shouldDeclareH264AndAv1AtTheLevelsTheirPicturesNeedAndAskAv1AboutNoHigherLevelWhenWebKitAnswersThemSmoothAtEveryLevel', async () => {
+      const decodingInfo = refusingHevcAboveLevelSixPointTwo(decodingInfoAnswering(() => true))
+
       const declaration = await declarePlaybackCapabilities(
-        platformFixture({
-          decodingInfo: refusingHevcAboveLevelSixPointTwo(decodingInfoAnswering(() => true)),
-          userAgent: SAFARI,
-        }),
+        platformFixture({ decodingInfo, userAgent: SAFARI }),
       )
 
       expect(declaration.video).toEqual([
@@ -2445,6 +2455,7 @@ describe('declarePlaybackCapabilities', () => {
         UHD_AT_60_HEVC_ENTRY_AT_LEVEL_6_2,
         DECLARATION_OF_EVERY_TIER.video[2],
       ])
+      expect(Math.max(...av1LevelIndexesAsked(decodingInfo))).toBe(AV1_LEVEL_5_1_INDEX)
     })
 
     it('shouldDeclareLevelSixPointTwoWhenWebKitRefusesAtOnceAndAnswersJustBeforeTheDeadline', async () => {
