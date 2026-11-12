@@ -2431,6 +2431,20 @@ describe('declarePlaybackCapabilities', () => {
       ])
     })
 
+    it('shouldDeclareTheLevelOfThePqSearchForAnHdrEntryThatListsOnlyPqWhenWebKitPlaysNoHlg', async () => {
+      const declaration = await declarePlaybackCapabilities(
+        hdrPlatformFixture({
+          decodingInfo: refusingHevcAboveLevelSixPointTwo(hdrBrowser({ bases: ['PQ'] })),
+          userAgent: SAFARI,
+        }),
+      )
+
+      expect(hevcLevelsByBases(declaration)).toEqual([
+        { compatibleBases: ['SDR'], codecProfiles: hevcProfiles(HEVC_LEVEL_6_2) },
+        { compatibleBases: ['PQ'], codecProfiles: hevcMainTen(HEVC_LEVEL_6_2) },
+      ])
+    })
+
     it('shouldDeclareTheNeededLevelForAnHdrEntryThatListsOnlyDolbyVisionWhenWebKitAnswersEveryBaseSmoothAboveIt', async () => {
       // No entry lists PQ or HLG, because the browser refuses both at every level that a picture
       // needs. Their level searches still find level 6.2.
