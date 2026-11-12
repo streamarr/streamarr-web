@@ -13,11 +13,17 @@ import { postCsrfTokenToServiceWorker } from './auth/csrf'
 import { inactiveRenewalBridge } from './auth/renewalBridge'
 import { createBrowserRenewalBridge } from './auth/renewalBrowser'
 import { createAppRouter } from './router'
+import { browserDecodingAnswers } from './streaming/decodingAnswers'
 import { decideRegistration } from './sw/registration'
 import { cssVariablesResolver, theme } from './theme'
 
 const renewal = 'serviceWorker' in navigator ? createBrowserRenewalBridge() : inactiveRenewalBridge
-const { router, apolloClient, session, subscriptions } = createAppRouter(undefined, renewal)
+const decodingAnswers = browserDecodingAnswers()
+const { router, apolloClient, session, subscriptions } = createAppRouter(
+  undefined,
+  renewal,
+  decodingAnswers,
+)
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

@@ -1,4 +1,5 @@
 import { createFileRoute, type SearchSchemaInput } from '@tanstack/react-router'
+import { useCallback } from 'react'
 import { browserPlaybackPlatform } from '../../streaming/playbackCapabilities'
 import { Player } from '../../streaming/Player'
 import {
@@ -21,6 +22,12 @@ export const Route = createFileRoute('/_authenticated/play/$mediaFileId')({
 function Play() {
   const { mediaFileId } = Route.useParams()
   const { position, movie, episode } = Route.useSearch()
+  const { decodingAnswers } = Route.useRouteContext()
+  // The player starts a new playback session whenever its binding changes.
+  const playbackPlatform = useCallback(
+    (video: HTMLVideoElement) => browserPlaybackPlatform(video, decodingAnswers),
+    [decodingAnswers],
+  )
   const mediaTitle = parseMediaTitle({ movie, episode })
   const title = usePlayerTitle(mediaTitle)
   return (
@@ -29,7 +36,7 @@ function Play() {
       startPositionSeconds={position}
       title={title}
       mediaTitle={mediaTitle}
-      playbackPlatform={browserPlaybackPlatform}
+      playbackPlatform={playbackPlatform}
     />
   )
 }

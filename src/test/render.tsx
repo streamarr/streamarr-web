@@ -12,6 +12,7 @@ import { createSessionStore, type SessionStore } from '../auth/session'
 import { createApolloClient } from '../graphql/client'
 import type { SubscriptionTransport } from '../graphql/subscriptionTransport'
 import { createAppRouter } from '../router'
+import type { DecodingAnswers } from '../streaming/decodingAnswers'
 import { cssVariablesResolver, theme } from '../theme'
 
 type Rendered = RenderResult & { user: ReturnType<typeof userEvent.setup> }
@@ -36,10 +37,12 @@ export function renderWithProviders(ui: ReactElement): Rendered {
 export function renderAppAt(
   path: string,
   renewal: RenewalBridge = inactiveRenewalBridge,
+  decodingAnswers?: DecodingAnswers,
 ): Rendered & Pick<ReturnType<typeof createAppRouter>, 'router' | 'apolloClient'> {
   const { router, apolloClient, session, subscriptions } = createAppRouter(
     createMemoryHistory({ initialEntries: [path] }),
     renewal,
+    decodingAnswers,
   )
   onTestFinished(({ task }) => {
     if (task.result?.state === 'pass') {

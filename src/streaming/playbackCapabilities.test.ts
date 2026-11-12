@@ -5,6 +5,7 @@ import type {
   VideoCapabilityEntryInput,
 } from '../graphql/generated/graphql'
 import {
+  browseIn,
   CHROME_USER_AGENT,
   IPHONE_SAFARI_HEVC_ANSWER,
   IPHONE_SAFARI_USER_AGENT,
@@ -13,6 +14,7 @@ import {
   smoothUpToFullHd,
 } from '../test/playbackCapabilities'
 import { giveElementTracks } from '../test/mediaTracks'
+import { browserDecodingInfo, createDecodingAnswers } from './decodingAnswers'
 import {
   browserPlaybackPlatform,
   declarePlaybackCapabilities,
@@ -2976,7 +2978,122 @@ describe('declarePlaybackCapabilities', () => {
       ])
     })
   })
+
+  describe('answers kept for the page', () => {
+    it('shouldSendTheBrowserNoQuestionThatTheFirstDeclarationGotAnsweredWhenItDeclaresAgain', async () => {
+      const browser = hdrBrowser({ dolbyVision: ['dvh1.05', 'dvh1.08', 'dav1.10'] })
+      const { ask } = createDecodingAnswers({ decodingInfo: browser })
+      const platform = hdrPlatformFixture({
+        decodingInfo: ask,
+        userAgent: SAFARI,
+        canPlayType: () => 'probably',
+      })
+      const first = await declarePlaybackCapabilities(platform)
+      const askedForTheFirst = browser.mock.calls.length
+
+      const second = await declarePlaybackCapabilities(platform)
+
+      expect(browser).toHaveBeenCalledTimes(askedForTheFirst)
+      expect(second).toEqual(first)
+    })
+
+    it('shouldAnswerAQuestionLeftUnansweredAtTheFirstDeadlineFromItsLateAnswerWhenItDeclaresAgain', async () => {
+      vi.useFakeTimers()
+      const isLate = hlsQuestionAbout(H264_AT_2160P60)
+      const browser = vi.fn((configuration: MediaDecodingConfiguration) => {
+        if (isLate(configuration)) {
+          return new Promise<DecodingAnswer>((resolve) => {
+            setTimeout(() => resolve(answer(true)), 3_500)
+          })
+        }
+        return Promise.resolve(answer(true))
+      })
+      const { ask } = createDecodingAnswers({ decodingInfo: browser })
+      const platform = platformFixture({ decodingInfo: ask, userAgent: SAFARI })
+      const first = declarePlaybackCapabilities(platform)
+      await vi.advanceTimersByTimeAsync(3_000)
+      expect(
+        familyEntries(await first, 'H264').map(({ maxHeight, maxFrameRate }) => ({
+          maxHeight,
+          maxFrameRate,
+        })),
+      ).toEqual([
+        { maxHeight: 2160, maxFrameRate: 30 },
+        { maxHeight: 1080, maxFrameRate: 60 },
+      ])
+      await vi.advanceTimersByTimeAsync(500)
+
+      const second = declarePlaybackCapabilities(platform)
+      await vi.advanceTimersByTimeAsync(3_000)
+
+      expect(familyEntries(await second, 'H264')).toEqual([
+        sdrVideoEntry({
+          codecProfiles: h264Profiles(52),
+          maxWidth: 3840,
+          maxHeight: 2160,
+          maxFrameRate: 60,
+        }),
+      ])
+      expect(browser.mock.calls.filter(([configuration]) => isLate(configuration))).toHaveLength(1)
+    })
+
+    it('shouldAskOnlyTheHdrQuestionsWhenTheDisplayShowsHdrAtALaterDeclaration', async () => {
+      const browser = hdrBrowser()
+      const { ask } = createDecodingAnswers({ decodingInfo: browser })
+      await declarePlaybackCapabilities(platformFixture({ decodingInfo: ask, userAgent: SAFARI }))
+      browser.mockClear()
+
+      const declaration = await declarePlaybackCapabilities(
+        hdrPlatformFixture({ decodingInfo: ask, userAgent: SAFARI }),
+      )
+
+      const asked = browser.mock.calls.map(([configuration]) => configuration)
+      expect(asked).not.toEqual([])
+      expect(asked.filter((configuration) => !isHdrQuestion(configuration))).toEqual([])
+      expect(declaration).toEqual(
+        await declarePlaybackCapabilities(hdrPlatformFixture({ userAgent: SAFARI })),
+      )
+    })
+
+    it('shouldAskOnlyTheAudioQuestionsAtTheNewChannelCountWhenTheOutputPlaysMoreChannelsAtALaterDeclaration', async () => {
+      const browser = decodingInfoAnswering(() => true)
+      const { ask } = createDecodingAnswers({ decodingInfo: browser })
+      await declarePlaybackCapabilities(
+        platformFixture({
+          decodingInfo: ask,
+          userAgent: SAFARI,
+          audioOutputChannels: () => Promise.resolve(2),
+        }),
+      )
+      browser.mockClear()
+
+      const declaration = await declarePlaybackCapabilities(
+        platformFixture({
+          decodingInfo: ask,
+          userAgent: SAFARI,
+          audioOutputChannels: () => Promise.resolve(6),
+        }),
+      )
+
+      expect(browser.mock.calls.map(([configuration]) => configuration.audio?.channels)).toEqual([
+        '6',
+        '6',
+        '6',
+        '6',
+        '6',
+        '6',
+      ])
+      expect(audioEntry(declaration, 'AAC')?.maxChannels).toBe(6)
+    })
+  })
 })
+
+function isHdrQuestion(configuration: MediaDecodingConfiguration): boolean {
+  return (
+    configuration.video?.transferFunction !== undefined ||
+    /^(dvh1|dav1)/.test(codecOf(configuration))
+  )
+}
 
 // The content types that Chromium's video element plays as files, as Playwright's Chromium 156
 // answered canPlayType and decodingInfo: H.264 as avc1 and avc3, AV1 in MP4 and Matroska, and AAC,
@@ -3293,6 +3410,45 @@ describe('browserPlaybackPlatform', () => {
 
     expect(platform.selectsAudioTrackInDirectPlay).toBe(false)
   })
+
+  it('shouldSendTheBrowserEachQuestionOnceWhenTwoDeclarationsAskThroughThePagesAnswers', async () => {
+    const decodingInfo = decodingInfoAnswering(() => true)
+    browseIn({ userAgent: FIREFOX, platform: 'MacIntel', decodingInfo })
+    const pageAnswers = createDecodingAnswers({ decodingInfo: browserDecodingInfo })
+    await declarePlaybackCapabilities(
+      browserPlaybackPlatform(document.createElement('video'), pageAnswers),
+    )
+    const askedForTheFirst = decodingInfo.mock.calls.length
+
+    await declarePlaybackCapabilities(
+      browserPlaybackPlatform(document.createElement('video'), pageAnswers),
+    )
+
+    expect(askedForTheFirst).toBeGreaterThan(0)
+    expect(decodingInfo).toHaveBeenCalledTimes(askedForTheFirst)
+  })
+
+  it.each([
+    ['SafariOnAMac', SAFARI, 'MacIntel'],
+    ['SafariOnTheIphone', IPHONE_SAFARI_USER_AGENT, 'iPhone'],
+    ['ChromeOnAMac', CHROME_USER_AGENT, 'MacIntel'],
+    ['Firefox', FIREFOX, 'MacIntel'],
+    ['WebKitOnLinux', SAFARI, 'Linux x86_64'],
+  ])(
+    'shouldAskTheBrowserEveryQuestionOfEveryDeclarationWhen%sPlaysWithoutThePagesAnswers',
+    async (_, userAgent, platform) => {
+      const decodingInfo = decodingInfoAnswering(() => true)
+      browseIn({ userAgent, platform, decodingInfo })
+      const binding = browserPlaybackPlatform(document.createElement('video'))
+      await declarePlaybackCapabilities(binding)
+      const askedForTheFirst = decodingInfo.mock.calls.length
+
+      await declarePlaybackCapabilities(binding)
+
+      expect(askedForTheFirst).toBeGreaterThan(0)
+      expect(decodingInfo).toHaveBeenCalledTimes(2 * askedForTheFirst)
+    },
+  )
 
   it('shouldLeaveDecodingInfoAbsentWhenTheBrowserOffersNoMediaCapabilities', () => {
     vi.stubGlobal('navigator', { userAgent: SAFARI, platform: 'MacIntel' })
