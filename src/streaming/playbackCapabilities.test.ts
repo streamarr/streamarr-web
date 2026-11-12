@@ -2079,7 +2079,7 @@ describe('declarePlaybackCapabilities', () => {
       })
     })
 
-    it('shouldAskTheControlQuestionBeforeTheFirstLevelOfEachHevcLevelSearchWhenWebKitRefusesIt', async () => {
+    it('shouldAskTheControlQuestionAt2160p60BeforeTheFirstLevelOfEachHevcLevelSearchWhenWebKitRefusesIt', async () => {
       const decodingInfo = refusingHevcAboveLevelSixPointTwo(hdrBrowser())
 
       await declarePlaybackCapabilities(hdrPlatformFixture({ decodingInfo, userAgent: SAFARI }))
@@ -2091,6 +2091,20 @@ describe('declarePlaybackCapabilities', () => {
         PQ: controlThenLevelSixPointTwo,
         HLG: controlThenLevelSixPointTwo,
       })
+      const controlPictures = decodingInfo.mock.calls
+        .map(([configuration]) => configuration)
+        .filter(
+          (configuration) =>
+            isHevcLevelSearchQuestion(configuration) &&
+            hevcLevelOf(configuration) === HEVC_LEVEL_8_5,
+        )
+        .map(({ video }) => ({
+          width: video?.width,
+          height: video?.height,
+          framerate: video?.framerate,
+        }))
+      const uhdAtSixty = { width: 3840, height: 2160, framerate: 60 }
+      expect(controlPictures).toEqual([uhdAtSixty, uhdAtSixty, uhdAtSixty, uhdAtSixty])
     })
 
     it('shouldAskNoHevcLevelAndDeclareTheNeededLevelsWhenWebKitAnswersEveryHevcQuestionSmooth', async () => {
