@@ -1,7 +1,7 @@
 import { useApolloClient, useQuery } from '@apollo/client/react'
 import { Button, Center, Loader, VisuallyHidden } from '@mantine/core'
 import { Link } from '@tanstack/react-router'
-import { useId } from 'react'
+import { useId, useRef } from 'react'
 import {
   NotificationsDocument,
   type NotificationFieldsFragment,
@@ -13,6 +13,7 @@ import { definedEdges } from '../media/edges'
 import settingsStyles from '../styles/settings.module.css'
 import { FailurePanel, FailureRow } from '../ui/Failure'
 import { useMenuCounts } from '../ui/MenuCountsProvider'
+import { useFocusFallback } from '../ui/useFocusFallback'
 import { useIntersectionObserver } from '../media/useIntersectionObserver'
 import styles from './Notifications.module.css'
 import { withNotificationChange, type NotificationEntry } from './notificationList'
@@ -24,12 +25,20 @@ import { useOlderNotifications } from './useOlderNotifications'
 
 /** The Account's Notifications, newest first, each in the server's words. */
 export function NotificationsScreen() {
+  const heading = useRef<HTMLHeadingElement>(null)
+  // A change can take away the row, or the Review, that has focus; focus then goes to the heading.
+  const liveList = useFocusFallback(heading)
   return (
     <div className={`${settingsStyles.settings} ${styles.page}`}>
       <div className={settingsStyles.pageHeading}>
-        <h1>Notifications</h1>
+        <h1 ref={heading} tabIndex={-1}>
+          Notifications
+        </h1>
       </div>
-      <NotificationsList />
+      {/* Holds every state of the list, so that focus in a row that leaves is never lost. */}
+      <div ref={liveList}>
+        <NotificationsList />
+      </div>
     </div>
   )
 }

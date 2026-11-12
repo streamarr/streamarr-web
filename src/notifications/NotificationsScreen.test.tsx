@@ -290,6 +290,25 @@ describe('Requests in Notifications', () => {
     expect(await within(rows()[0]).findByText('Expired')).toBeVisible()
     expect(screen.queryByRole('link', { name: 'Review' })).not.toBeInTheDocument()
   })
+  it('shouldMoveFocusToTheHeadingWhenTheOfferThePersonIsOnExpiresWithThePageOpen', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'], shouldAdvanceTime: true })
+    onTestFinished(() => void vi.useRealTimers())
+    serve(
+      notificationsPage([
+        offerNotification({ expiresAt: new Date(Date.now() + HOUR).toISOString() }),
+      ]),
+    )
+    renderAppAt(NOTIFICATIONS)
+    const review = await screen.findByRole('link', { name: 'Review' })
+    act(() => review.focus())
+
+    await act(() => vi.advanceTimersByTimeAsync(HOUR))
+
+    expect(await within(rows()[0]).findByText('Expired')).toBeVisible()
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: 'Notifications' })).toHaveFocus(),
+    )
+  })
 })
 
 describe('Reading Notifications', () => {
@@ -594,6 +613,43 @@ describe('Notifications as they change elsewhere', () => {
 
     await screen.findByText(ANSWER_LINE)
     expect(review).toHaveFocus()
+  })
+
+  function expectFocusOnTheHeading() {
+    return waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: 'Notifications' })).toHaveFocus(),
+    )
+  }
+
+  it('shouldMoveFocusToTheHeadingWhenTheReviewThePersonIsOnIsDecidedElsewhere', async () => {
+    const { socket } = await openWithAnOffer()
+    act(() => screen.getByRole('link', { name: 'Review' }).focus())
+    const accepted = offerNotification({
+      unread: false,
+      resolution: 'DECIDED',
+      share: { __typename: 'ProfileShare', id: 'share-of-alex', status: 'ACTIVE' },
+    })
+
+    socket.publish(
+      'NotificationsChanged',
+      notificationsChanged([notificationChange(accepted.id, notificationEdge(accepted, 1))]),
+    )
+
+    await within(rows()[0]).findByText('Accepted')
+    await expectFocusOnTheHeading()
+  })
+
+  it('shouldMoveFocusToTheHeadingWhenTheNotificationThePersonIsOnLeavesTheList', async () => {
+    const { socket } = await openWithAnOffer()
+    act(() => screen.getByRole('link', { name: 'Review' }).focus())
+
+    socket.publish(
+      'NotificationsChanged',
+      notificationsChanged([notificationChange(offerNotification().id, null)]),
+    )
+
+    await screen.findByText('No notifications.')
+    await expectFocusOnTheHeading()
   })
 
   it('shouldSayHowARequestEndedWhenItIsDecidedElsewhere', async () => {
