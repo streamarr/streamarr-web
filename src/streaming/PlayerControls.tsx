@@ -68,10 +68,10 @@ const PLAYER_MENU: readonly PopoverOption<typeof PLAYBACK_DATA>[] = [
 ]
 
 /**
- * Whether a picker opens: when its control carries a caution, whose message the picker shows, or
- * when it has a choice to make, as one option alone would only repeat what its chip shows. The
- * subtitles picker always offers Off beside the stream's tracks, and the player menu always offers
- * its items.
+ * Whether a picker opens: when it has a choice to make, as one option alone would only repeat what
+ * its chip shows, or when its control carries a caution, whose message the picker shows above its
+ * one option. A picker with no options, as while no stream is attached, never opens. The subtitles
+ * picker always offers Off beside the stream's tracks, and the player menu always offers its items.
  */
 export function pickerOpens(
   kind: PickerKind,
@@ -79,14 +79,18 @@ export function pickerOpens(
 ): boolean {
   switch (kind) {
     case 'quality':
-      return cautions.quality !== undefined || qualityOptions(qualities).length > 1
+      return opensWith(qualityOptions(qualities).length, cautions.quality !== undefined)
     case 'audio':
-      return cautions.audio !== undefined || audio.options.length > 1
+      return opensWith(audio.options.length, cautions.audio !== undefined)
     case 'subtitles':
       return subtitles.options.length > 0
     case 'menu':
       return true
   }
+}
+
+function opensWith(options: number, cautioned: boolean): boolean {
+  return options > 1 || (options === 1 && cautioned)
 }
 
 // A choice the server added after this client has no name here, so the menu leaves it out. The

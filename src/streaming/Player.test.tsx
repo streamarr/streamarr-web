@@ -300,6 +300,27 @@ function moveToAnotherStream(
   act(() => onError?.('hlsError', { fatal: false, type: 'networkError', response: { code: 503 } }))
 }
 
+// The status read after a failed segment answers the playback session `id`, with `choices`, while
+// its next stream is still pending: the player releases the failed stream and waits.
+function holdTheNextStreamPending(id: string, choices: Partial<PlaybackChoices>) {
+  const next = replacementStream(2)
+  server.use(
+    graphql.query('PlaybackSession', () =>
+      HttpResponse.json({
+        data: {
+          playbackSession: {
+            ...readyPlaybackSession({ id, streamSession: next, ...choices }),
+            currentFormatAttempt: {
+              __typename: 'PendingPlaybackFormatAttempt',
+              streamSessionId: next.id,
+            },
+          },
+        },
+      }),
+    ),
+  )
+}
+
 // What a player raises when the browser cannot play the stream's codecs, on the latest stream.
 function refuseTheStreamsFormat() {
   const onError = hls.on.mock.calls.findLast(([event]) => event === 'hlsError')?.[1]
@@ -7457,6 +7478,20 @@ describe('Player', () => {
       expect(marksIn(menu)).toEqual(['Auto: the message'])
     })
 
+    it('shouldOpenNoMenuWhenTheQualityChipCarriesACautionWhileTheNextStreamStarts', async () => {
+      const { user } = await watchAFallback('720p', FIXED_QUALITY_CONVERTED)
+      holdTheNextStreamPending('playback-2', FIXED_QUALITY_CONVERTED)
+      const released = hls.destroy.mock.calls.length + 1
+      answerTheNextSegmentWith503({ fatal: false })
+      await waitFor(() => expect(hls.destroy).toHaveBeenCalledTimes(released))
+
+      await user.click(qualityChip())
+
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+      expect(qualityChip()).toHaveAttribute('aria-disabled', 'true')
+      expectCaution(qualityChip(), FIXED_QUALITY_EXPLANATION)
+    })
+
     it('shouldReplaceTheMarksExplanationWhenTheCopyWithoutDolbyVisionAlsoFallsBack', async () => {
       const { user } = await watchAFallback('Original', {
         requestedChoice: 'ORIGINAL',
@@ -8566,6 +8601,25 @@ describe('Player', () => {
         const menu = await openPicker(user, audioChip())
 
         expectMessageIn(menu, AUDIO_SWITCH_REFUSED)
+      })
+
+      it('shouldOpenNoMenuWhenTheAudioChipCarriesACautionWhileTheNextStreamStarts', async () => {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        serveAudioTrackSwitch({ answer: refusedSwitch })
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        const video = await directPlayAt(42)
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+        await waitFor(() => expectCaution(audioChip(), AUDIO_SWITCH_REFUSED))
+        failTheSourceFile(video, 3)
+        await attachedVideo(replacementStream(1).streamUrl)
+
+        await user.click(audioChip())
+
+        expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+        expect(audioChip()).toHaveAttribute('aria-disabled', 'true')
+        expectCaution(audioChip(), AUDIO_SWITCH_REFUSED)
       })
 
       it('shouldStoreOnlyTheTrackTheServerMovesToWhenTheViewerPicksAnotherBeforeItAnswers', async () => {
