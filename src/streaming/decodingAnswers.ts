@@ -6,9 +6,10 @@ type DecodingInfo = NonNullable<PlaybackPlatform['decodingInfo']>
 /** The answers a browser gave to decodingInfo while the page stays open. */
 export interface DecodingAnswers {
   /**
-   * Answers as the browser's decodingInfo does. A question the browser answered before gets that
-   * answer without another call. The browser gets one question at a time, in the order of the asks.
-   * Rejects when the browser rejects the question, and keeps no rejection.
+   * Answers as the browser's decodingInfo does. A question that the browser answered as supported
+   * gets that answer without another call. The browser gets one question at a time, in the order of
+   * the asks. Refuses or rejects when the browser does, and keeps neither: the next ask of that
+   * question goes to the browser again.
    */
   ask: DecodingInfo
 }
@@ -21,7 +22,7 @@ const QUESTION_TURN_MS = 250
 
 interface Question {
   answer?: DecodingAnswer
-  // Settles with the browser's first answer, whichever sending of the question it answers.
+  // Settles with the browser's first supported answer, whichever sending of the question it answers.
   answered: Promise<DecodingAnswer>
   keep: (answer: DecodingAnswer) => void
   // The sending that another ask shares while it waits in line or is within its turn.
@@ -53,8 +54,9 @@ export function browserDecodingAnswers(): DecodingAnswers | undefined {
 }
 
 /**
- * Keeps the answers that `decodingInfo` gives for as long as the returned object lives. A page
- * creates at most one, and nothing reaches storage, so the answers end when the page closes.
+ * Keeps each answer of `decodingInfo` that says supported, for as long as the returned object
+ * lives. A page creates at most one, and nothing reaches storage, so the answers end when the page
+ * closes.
  */
 export function createDecodingAnswers({
   decodingInfo,
@@ -107,6 +109,12 @@ export function createDecodingAnswers({
     }, QUESTION_TURN_MS)
     try {
       const answer = await decodingInfo(configuration)
+      // WebKit resolves a question whose reply it cancelled with the values of a refusal
+      // (docs/research/webkit-decoding-info.md), so a refusal may be no answer at all.
+      if (!answer.supported) {
+        stopSharing()
+        return answer
+      }
       question.keep(answer)
       return answer
     } catch (error) {

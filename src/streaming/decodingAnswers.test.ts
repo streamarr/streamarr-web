@@ -11,6 +11,12 @@ const FIREFOX =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:144.0) Gecko/20100101 Firefox/144.0'
 
 const SUPPORTED: DecodingAnswer = { supported: true, smooth: true, powerEfficient: true }
+const SUPPORTED_BUT_NOT_SMOOTH: DecodingAnswer = {
+  supported: true,
+  smooth: false,
+  powerEfficient: false,
+}
+const REFUSED: DecodingAnswer = { supported: false, smooth: false, powerEfficient: false }
 
 const HEVC_AT_2160P60: MediaDecodingConfiguration = {
   type: 'media-source',
@@ -80,15 +86,66 @@ describe('createDecodingAnswers', () => {
     vi.useRealTimers()
   })
 
-  it('shouldAnswerALaterAskWithoutTheBrowserWhenTheBrowserAnsweredTheQuestion', async () => {
-    const decodingInfo = vi.fn<DecodingInfo>(() => Promise.resolve(SUPPORTED))
+  it.each([
+    ['Smooth', SUPPORTED],
+    ['NotSmooth', SUPPORTED_BUT_NOT_SMOOTH],
+  ])(
+    'shouldAnswerALaterAskWithoutTheBrowserWhenTheBrowserAnsweredSupportedAnd%s',
+    async (_, supported) => {
+      const decodingInfo = vi.fn<DecodingInfo>(() => Promise.resolve(supported))
+      const { ask } = createDecodingAnswers({ decodingInfo })
+      await ask(HEVC_AT_2160P60)
+
+      const later = ask(HEVC_AT_2160P60)
+
+      await expect(later).resolves.toEqual(supported)
+      expect(decodingInfo).toHaveBeenCalledOnce()
+    },
+  )
+
+  it('shouldGiveEachAskTheAnswerOfItsOwnSendingWhenTheBrowserRefusedTheQuestion', async () => {
+    const decodingInfo = vi
+      .fn<DecodingInfo>()
+      .mockResolvedValueOnce(REFUSED)
+      .mockResolvedValueOnce(SUPPORTED)
+    const { ask } = createDecodingAnswers({ decodingInfo })
+    const first = await ask(HEVC_AT_2160P60)
+
+    const again = await ask(HEVC_AT_2160P60)
+
+    expect([first, again]).toEqual([REFUSED, SUPPORTED])
+    expect(decodingInfo).toHaveBeenCalledTimes(2)
+  })
+
+  it('shouldAnswerFromTheSupportedAnswerWithoutTheBrowserWhenTheBrowserRefusedTheQuestionBeforeIt', async () => {
+    const decodingInfo = vi
+      .fn<DecodingInfo>()
+      .mockResolvedValueOnce(REFUSED)
+      .mockResolvedValueOnce(SUPPORTED)
     const { ask } = createDecodingAnswers({ decodingInfo })
     await ask(HEVC_AT_2160P60)
+    await ask(HEVC_AT_2160P60)
 
-    const later = ask(HEVC_AT_2160P60)
+    const third = ask(HEVC_AT_2160P60)
 
-    await expect(later).resolves.toEqual(SUPPORTED)
-    expect(decodingInfo).toHaveBeenCalledOnce()
+    await expect(third).resolves.toEqual(SUPPORTED)
+    expect(decodingInfo).toHaveBeenCalledTimes(2)
+  })
+
+  it('shouldSendAQuestionOnceForTwoAsksMadeWhileItIsPendingWhenTheBrowserRefusesIt', async () => {
+    const browser = browserAnsweringByHand()
+    const { ask } = createDecodingAnswers({ decodingInfo: browser.decodingInfo })
+    const first = ask(HEVC_AT_2160P60)
+    await letTurnsPass(100)
+    const second = ask(HEVC_AT_2160P60)
+
+    browser.sent[0].resolve(REFUSED)
+
+    await expect(first).resolves.toEqual(REFUSED)
+    await expect(second).resolves.toEqual(REFUSED)
+    void ask(HEVC_AT_2160P60)
+    await letTurnsPass(0)
+    expect(askedConfigurations(browser.decodingInfo)).toEqual([HEVC_AT_2160P60, HEVC_AT_2160P60])
   })
 
   it('shouldAnswerFromTheBrowsersAnswerWhenALaterConfigurationListsItsFieldsInAnotherOrder', async () => {
@@ -306,6 +363,35 @@ describe('createDecodingAnswers', () => {
     browser.sent[0].resolve(SUPPORTED)
 
     await expect(first).resolves.toEqual(SUPPORTED)
+    await expect(sentAgain).resolves.toEqual(SUPPORTED)
+  })
+
+  it('shouldSettleTheAskWithTheRefusalAndAskTheBrowserAgainWhenTheRefusalArrivesAfterItsTurn', async () => {
+    const browser = browserAnsweringByHand()
+    const { ask } = createDecodingAnswers({ decodingInfo: browser.decodingInfo })
+    const first = ask(HEVC_AT_2160P60)
+    await letTurnsPass(250)
+
+    browser.sent[0].resolve(REFUSED)
+
+    await expect(first).resolves.toEqual(REFUSED)
+    void ask(HEVC_AT_2160P60)
+    await letTurnsPass(0)
+    expect(askedConfigurations(browser.decodingInfo)).toEqual([HEVC_AT_2160P60, HEVC_AT_2160P60])
+  })
+
+  it('shouldSettleTheQuestionSentAgainWithItsOwnAnswerWhenTheFirstSendingIsRefusedLate', async () => {
+    const browser = browserAnsweringByHand()
+    const { ask } = createDecodingAnswers({ decodingInfo: browser.decodingInfo })
+    const first = ask(HEVC_AT_2160P60)
+    await letTurnsPass(250)
+    const sentAgain = ask(HEVC_AT_2160P60)
+    await letTurnsPass(0)
+
+    browser.sent[0].resolve(REFUSED)
+    browser.sent[1].resolve(SUPPORTED)
+
+    await expect(first).resolves.toEqual(REFUSED)
     await expect(sentAgain).resolves.toEqual(SUPPORTED)
   })
 

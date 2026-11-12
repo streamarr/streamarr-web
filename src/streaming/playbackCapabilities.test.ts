@@ -189,11 +189,25 @@ function decodingInfoLeavingUnanswered({
 // and HEVC Main 10 at level 5.1.
 const H264_AT_2160P60 = 'avc1.640034'
 const HEVC_MAIN_10_AT_2160P60 = 'hvc1.2.4.L153.'
+// H.264 High at level 3.1, the codec string of the question about a 1280×720 picture at 30 fps.
+const H264_AT_720P30 = 'avc1.64001F'
 
 // Picks the questions about the path that plays HLS, never the file questions of direct play.
 function hlsQuestionAbout(codec: string): PicksQuestions {
   return (configuration) =>
     configuration.type !== 'file' && codecOf(configuration).startsWith(codec)
+}
+
+// Refuses the first question that `refused` picks, and answers every other question as supported.
+function refusingOnce(refused: PicksQuestions) {
+  let hasRefused = false
+  return vi.fn((configuration: MediaDecodingConfiguration) => {
+    if (hasRefused || !refused(configuration)) {
+      return Promise.resolve(answer(true))
+    }
+    hasRefused = true
+    return Promise.resolve(answer(false))
+  })
 }
 
 type Answers = (configuration: MediaDecodingConfiguration) => DecodingAnswer
@@ -2980,7 +2994,7 @@ describe('declarePlaybackCapabilities', () => {
   })
 
   describe('answers kept for the page', () => {
-    it('shouldSendTheBrowserNoQuestionThatTheFirstDeclarationGotAnsweredWhenItDeclaresAgain', async () => {
+    it('shouldSendTheBrowserNoQuestionThatItAnsweredAsSupportedWhenItDeclaresAgain', async () => {
       const browser = hdrBrowser({ dolbyVision: ['dvh1.05', 'dvh1.08', 'dav1.10'] })
       const { ask } = createDecodingAnswers({ decodingInfo: browser })
       const platform = hdrPlatformFixture({
@@ -2989,12 +3003,32 @@ describe('declarePlaybackCapabilities', () => {
         canPlayType: () => 'probably',
       })
       const first = await declarePlaybackCapabilities(platform)
-      const askedForTheFirst = browser.mock.calls.length
+      const answeredAsSupported = questionsAnsweredAsSupported(browser)
+      browser.mockClear()
 
       const second = await declarePlaybackCapabilities(platform)
 
-      expect(browser).toHaveBeenCalledTimes(askedForTheFirst)
+      expect(answeredAsSupported).not.toEqual([])
+      for (const [askedAgain] of browser.mock.calls) {
+        expect(answeredAsSupported).not.toContainEqual(askedAgain)
+      }
       expect(second).toEqual(first)
+    })
+
+    it('shouldDeclareH264AsABrowserThatNeverRefusedWhenTheBrowserRefusedAnH264QuestionAtTheFirstDeclarationOnly', async () => {
+      const browser = refusingOnce(hlsQuestionAbout(H264_AT_720P30))
+      const { ask } = createDecodingAnswers({ decodingInfo: browser })
+      const platform = platformFixture({ decodingInfo: ask, userAgent: SAFARI })
+      const neverRefused = familyEntries(
+        await declarePlaybackCapabilities(platformFixture({ userAgent: SAFARI })),
+        'H264',
+      )
+      const first = await declarePlaybackCapabilities(platform)
+      expect(familyEntries(first, 'H264')).not.toEqual(neverRefused)
+
+      const second = await declarePlaybackCapabilities(platform)
+
+      expect(familyEntries(second, 'H264')).toEqual(neverRefused)
     })
 
     it('shouldAnswerAQuestionLeftUnansweredAtTheFirstDeadlineFromItsLateAnswerWhenItDeclaresAgain', async () => {
@@ -3087,6 +3121,15 @@ describe('declarePlaybackCapabilities', () => {
     })
   })
 })
+
+function questionsAnsweredAsSupported(browser: DecodingInfoFake): MediaDecodingConfiguration[] {
+  return browser.mock.calls
+    .filter((_, index) => {
+      const settled = browser.mock.settledResults[index]
+      return settled.type === 'fulfilled' && settled.value.supported
+    })
+    .map(([configuration]) => configuration)
+}
 
 function isHdrQuestion(configuration: MediaDecodingConfiguration): boolean {
   return (
