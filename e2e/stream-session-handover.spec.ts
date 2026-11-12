@@ -59,6 +59,12 @@ test.beforeAll(async () => {
   ])
 })
 
+// hls.js can still wait on a segment when a test ends, and answering it then reads a stream file
+// that afterAll may have removed.
+test.afterEach(async ({ page }) => {
+  await page.unrouteAll({ behavior: 'ignoreErrors' })
+})
+
 test.afterAll(async () => {
   await rm(streamDirectory, { recursive: true, force: true })
 })
