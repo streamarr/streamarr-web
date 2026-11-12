@@ -7703,6 +7703,19 @@ describe('Player', () => {
       expect(screen.getByRole('status')).toBeEmptyDOMElement()
     })
 
+    it('shouldKeepTheCautionAndThePlaybackSessionWhenTheViewerPicksTheAutoThatOriginalChangedTo', async () => {
+      const { user, log } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      const sessions = [...log]
+      const released = hls.destroy.mock.calls.length
+
+      await pickQuality(user, 'Auto')
+
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+      expect(log).toEqual(sessions)
+      expect(hls.destroy).toHaveBeenCalledTimes(released)
+      expectCaution(qualityChip(), ORIGINAL_EXPLANATION)
+    })
+
     it('shouldClearTheCautionWhenTheNextMediaFileStarts', async () => {
       servePlaybackChoices({
         playing: (requested) => (requested === 'ORIGINAL' ? 'AUTO' : requested),
