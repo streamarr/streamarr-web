@@ -91,13 +91,14 @@ export function stepDownFromASlowFirstSegment({
   hls.on(Hls.Events.DESTROYING, stopWatching)
 }
 
-// hls.js switches only between variants with the same codecs and video range.
+// hls.js switches only between variants with the same codecs and video range, and not to a variant
+// that failed while its penalty lasts. The player's penalty outlasts the startup limit.
 function lowestVariantBeneath(levels: readonly Level[], index: number): number | undefined {
   const loading = levels[index]
   const lowest = levels
     .filter(
-      ({ codecSet, videoRange }) =>
-        codecSet === loading.codecSet && videoRange === loading.videoRange,
+      ({ codecSet, videoRange, loadError }) =>
+        codecSet === loading.codecSet && videoRange === loading.videoRange && loadError === 0,
     )
     .reduce((low, level) => (level.bitrate < low.bitrate ? level : low), loading)
   return lowest === loading ? undefined : levels.indexOf(lowest)

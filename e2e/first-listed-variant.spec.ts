@@ -116,6 +116,8 @@ interface LadderRoutes {
   choice?: string
   transcodeMode: string
   startPositionSeconds?: number
+  /** Variants whose media playlist is answered with 404. */
+  missingPlaylists?: readonly Variant[]
   /** Once it settles, each variant's first media segment is answered; until then it is held. */
   firstSegmentAnswered?: Promise<void>
   /**
@@ -142,6 +144,7 @@ async function serveLadder(
     choice = 'AUTO',
     transcodeMode,
     startPositionSeconds,
+    missingPlaylists = [],
     firstSegmentAnswered,
     firstSegmentTransfer,
   }: LadderRoutes,
@@ -155,7 +158,11 @@ async function serveLadder(
     }),
   )
   await page.route(/\/api\/stream\/ladder\/(?:\w+\/)?stream\.m3u8/, (route) => {
-    requests.mediaPlaylists.push(underStream(route.request()))
+    const playlist = underStream(route.request())
+    requests.mediaPlaylists.push(playlist)
+    if (missingPlaylists.some((missing) => missing.playlist === playlist)) {
+      return route.fulfill({ status: 404 })
+    }
     return route.fulfill({ contentType: 'application/vnd.apple.mpegurl', body: mediaPlaylist() })
   })
   // hls.js asks for a media segment only once it holds the initialization segment. The fixtures are
@@ -397,6 +404,27 @@ test('Auto starts on the lowest variant within the startup limit when the first-
   expect(afterMs).toBeLessThan(STARTUP_LIMIT_MS)
   expect(requests.segments.filter(isFirstSegment)).toEqual(['segment0.m4s', '360p/segment0.m4s'])
   await expect.poll(() => requests.segments).toContain('segment1.m4s')
+})
+
+// hls.js leaves a variant whose playlist failed out of its choices and goes back to the copy. When
+// the copy's first segment again cannot start, the player starts on the lowest variant left, and
+// asks the failed one no more.
+test('Auto starts on the lowest variant left within the startup limit when the lowest variant fails', async ({
+  page,
+  request,
+}) => {
+  const requests = await serveLadder(page, request, {
+    variants: COPY_LADDER,
+    transcodeMode: 'REMUX',
+    missingPlaylists: [ENCODED_360P],
+    firstSegmentTransfer: (variant) => (variant === COPY_LADDER[0] ? 'never' : 0),
+  })
+
+  const { outcome, afterMs } = await playUntilStartupEnds(page, requests)
+
+  expect(outcome).toBe('started')
+  expect(afterMs).toBeLessThan(STARTUP_LIMIT_MS)
+  expect(requests.mediaPlaylists).toEqual(['stream.m3u8', '360p/stream.m3u8', '720p/stream.m3u8'])
 })
 
 // Once it has measured the first segment, hls.js adapts as usual, so only the first segments that

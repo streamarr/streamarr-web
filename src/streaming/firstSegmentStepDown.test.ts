@@ -1,6 +1,8 @@
 import Hls, { Events, Fragment, PlaylistLevelType, type VideoSelectionOption } from 'hls.js'
+import { HttpResponse, http } from 'msw'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { COPY_LADDER, LADDER_URL, type ListedVariant, loadLadder } from '../test/hlsLadder'
+import { server } from '../test/server'
 import { stepDownFromASlowFirstSegment } from './firstSegmentStepDown'
 import { hlsPlaybackConfig } from './hlsPlaybackConfig'
 
@@ -177,6 +179,22 @@ describe('stepDownFromASlowFirstSegment', () => {
     await deliver(segment, { bitsPerSecond: 2_000_000, forMs: 3_100 })
 
     expect(loadingHeight(hls)).toBe(360)
+  })
+
+  // hls.js goes back to the copy when the lowest variant fails, and keeps that variant out of its
+  // choices.
+  it('shouldStartOnTheLowestVariantLeftWhenTheLowestVariantFailed', async () => {
+    const { hls, mediaPlaylists } = await startPlayer()
+    server.use(
+      http.get(`${LADDER_URL}360p/stream.m3u8`, () => new HttpResponse(null, { status: 404 })),
+    )
+    await deliver(loadFirstSegment(hls), { bitsPerSecond: 2_000_000, forMs: 3_100 })
+    await vi.waitFor(() => expect(loadingHeight(hls)).toBe(1080))
+
+    await deliver(loadFirstSegment(hls), { bitsPerSecond: 2_000_000, forMs: 3_100 })
+
+    expect(loadingHeight(hls)).toBe(720)
+    await vi.waitFor(() => expect(mediaPlaylists).toEqual(['stream.m3u8', '720p/stream.m3u8']))
   })
 
   it.each([
