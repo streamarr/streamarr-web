@@ -1518,7 +1518,8 @@ interface MediaSourceType {
 }
 
 /**
- * Binds the platform facts to this browser and the element that plays the stream. Where the browser
+ * Binds the platform facts to this browser and a video element. Any video element of the page gives
+ * the same facts, so the element need not be the one that plays the stream. Where the browser
  * offers decodingInfo, the binding asks through `pageAnswers` when the page keeps them, and sends
  * the browser every question otherwise.
  */
