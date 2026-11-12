@@ -179,28 +179,24 @@ describe('createDecodingAnswers', () => {
     expect(decodingInfo).toHaveBeenCalledOnce()
   })
 
-  it.each<{ field: string; asked: MediaDecodingConfiguration; then: MediaDecodingConfiguration }>([
-    {
-      field: 'TheType',
-      asked: HEVC_AT_2160P60,
-      then: { ...HEVC_AT_2160P60, type: 'file' },
-    },
-    {
-      field: 'TheVideoBitrate',
-      asked: HEVC_AT_2160P60,
-      then: { ...HEVC_AT_2160P60, video: { ...HEVC_AT_2160P60.video!, bitrate: 20_000_000 } },
-    },
-    {
-      field: 'TheVideoTransferFunction',
-      asked: HEVC_AT_2160P60,
-      then: { ...HEVC_AT_2160P60, video: { ...HEVC_AT_2160P60.video!, transferFunction: 'pq' } },
-    },
-    {
-      field: 'TheAudioChannelCount',
-      asked: STEREO_AAC,
-      then: { ...STEREO_AAC, audio: { ...STEREO_AAC.audio!, channels: '6' } },
-    },
-  ])('shouldAskTheBrowserAgainWhen$fieldDiffers', async ({ asked, then }) => {
+  it.each<[string, MediaDecodingConfiguration, MediaDecodingConfiguration]>([
+    ['TheType', HEVC_AT_2160P60, { ...HEVC_AT_2160P60, type: 'file' }],
+    [
+      'TheVideoBitrate',
+      HEVC_AT_2160P60,
+      { ...HEVC_AT_2160P60, video: { ...HEVC_AT_2160P60.video!, bitrate: 20_000_000 } },
+    ],
+    [
+      'TheVideoTransferFunction',
+      HEVC_AT_2160P60,
+      { ...HEVC_AT_2160P60, video: { ...HEVC_AT_2160P60.video!, transferFunction: 'pq' } },
+    ],
+    [
+      'TheAudioChannelCount',
+      STEREO_AAC,
+      { ...STEREO_AAC, audio: { ...STEREO_AAC.audio!, channels: '6' } },
+    ],
+  ])('shouldAskTheBrowserAgainWhen%sDiffers', async (_, asked, then) => {
     const decodingInfo = vi.fn<DecodingInfo>(() => Promise.resolve(SUPPORTED))
     const { ask } = createDecodingAnswers({ decodingInfo })
     await ask(asked)
