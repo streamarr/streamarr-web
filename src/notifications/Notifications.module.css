@@ -77,11 +77,13 @@
   font-size: var(--font-size-label);
 }
 
-/* How a Request ended, where its Review was: a quiet label in the content voice. */
+/* How a Request ended, where its Review was: a quiet label in the content voice. It takes the
+   line's line box, so that it centres on the line's first row as the unread mark does. */
 .ending {
   color: var(--text-secondary);
   font-size: var(--font-size-label);
   font-weight: var(--font-weight-medium);
+  line-height: calc(var(--font-size-emphasis) * var(--line-height-prose));
 }
 
 /* The end of the loaded list, which loads the next older page as it nears the view. */

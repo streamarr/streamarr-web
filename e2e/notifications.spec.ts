@@ -229,3 +229,19 @@ test('each Request puts Review or how it ended under its line at phone width', a
     expect(action.left).toBeGreaterThanOrEqual(text.right)
   }
 })
+
+test('how a Request ended sits on the line of its first row of text', async ({ page, request }) => {
+  await page.setViewportSize(DESKTOP)
+  const rows = await openRequests(page, request)
+
+  const ended = rows.nth(1)
+  await expect(ended.getByText('Accepted')).toBeVisible()
+  const { ending, line } = await ended.evaluate((item) => {
+    const paragraph = item.querySelector('p')!
+    const lineHeight = Number.parseFloat(getComputedStyle(paragraph).lineHeight)
+    const first = paragraph.getBoundingClientRect().top + lineHeight / 2
+    const label = item.lastElementChild!.getBoundingClientRect()
+    return { ending: label.top + label.height / 2, line: first }
+  })
+  expect(ending).toBeCloseTo(line, 0)
+})
