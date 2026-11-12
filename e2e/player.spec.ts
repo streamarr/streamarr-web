@@ -1024,13 +1024,23 @@ test.describe(() => {
   test.use({ deviceScaleFactor: 2 })
 
   // What the symbol is painted on: the chip under the part of it on the chip, which is lighter
-  // than the bar, and whatever else lies most under the symbol's box.
+  // than the bar, and whatever else lies most under the symbol's box. `solid` counts the pixels
+  // painted in the symbol's own color, which a thinner or fainter stroke lowers.
   async function cautionContrast(chip: Locator) {
-    const badge = chip.getByTestId('caution-badge')
-    const { mark, backdrop } = paintedMark(await paintedPixels(badge))
+    const pixels = await paintedPixels(chip.getByTestId('caution-badge'))
+    const { mark, backdrop } = paintedMark(pixels)
     const chipFill = paintedMark(await paintedPixels(chip)).backdrop
-    return { mark, onChip: contrast(mark, chipFill), behind: contrast(mark, backdrop) }
+    return {
+      mark,
+      solid: pixels.filter((pixel) => String(pixel) === String(mark)).length,
+      onChip: contrast(mark, chipFill),
+      behind: contrast(mark, backdrop),
+    }
   }
+
+  // The token's 1.75px stroke paints 192 pixels of solid yellow here in Chromium, and a 1.25px
+  // stroke 98. Three quarters of 192 leaves room for another rasterizer and fails a thinner stroke.
+  const SOLID_PIXELS_AT_REST = 144
 
   async function cautionYellow(page: Page): Promise<number[]> {
     return page.evaluate(() => {
@@ -1061,6 +1071,9 @@ test.describe(() => {
 
     // The open menu's shadow falls over the chip, the symbol included.
     expect.soft(atRest.mark, 'the yellow at rest').toEqual(yellow)
+    expect
+      .soft(atRest.solid, 'the solid yellow at rest')
+      .toBeGreaterThanOrEqual(SOLID_PIXELS_AT_REST)
     expect.soft(hovered.mark, 'the yellow under the pointer').toEqual(yellow)
     for (const [state, measured] of Object.entries({ atRest, hovered, open })) {
       expect.soft(measured.onChip, `${state}: on the chip`).toBeGreaterThanOrEqual(3)
