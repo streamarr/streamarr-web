@@ -1,5 +1,6 @@
 import { Button } from '@mantine/core'
 import { useMutation } from '@apollo/client/react'
+import { useRef } from 'react'
 import {
   CancelProfileShareDocument,
   EndProfileShareDocument,
@@ -53,6 +54,8 @@ export function WhereShared({
 }>) {
   const [cancel] = useMutation(CancelProfileShareDocument)
   const [end] = useMutation(EndProfileShareDocument)
+  /** Each live share's End action, where focus returns when its confirmation closes. */
+  const endActions = useRef(new Map<string, HTMLButtonElement | null>())
 
   const live = shares.filter(isLive)
   const earlier = shares.filter((share) => !isLive(share))
@@ -129,6 +132,12 @@ export function WhereShared({
                 </Button>
               ) : (
                 <Button
+                  ref={(button) => {
+                    endActions.current.set(share.id, button)
+                    return () => {
+                      endActions.current.delete(share.id)
+                    }
+                  }}
                   variant="default"
                   aria-label={`End share with ${household}`}
                   disabled={changing !== null}
@@ -160,6 +169,9 @@ export function WhereShared({
         pending={ending !== null && changing === ending.id}
         error={refusal}
         onClose={() => {
+          // A confirmation that Retry brought back opened without the person's click, so the
+          // dialog knows nothing to return focus to.
+          if (ending) endActions.current.get(ending.id)?.focus()
           onEndingChange(null)
           onRefusalChange(null)
         }}

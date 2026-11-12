@@ -484,6 +484,22 @@ describe('Sharing', () => {
     expect(within(dialog).getByRole('button', { name: 'End share' })).toBeEnabled()
   })
 
+  it('shouldReturnFocusToTheShareWhenThePersonClosesAConfirmationThatRetryBroughtBack', async () => {
+    serveSecondReadFailing([share({ status: 'ACTIVE' })])
+    refuseToEnd()
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.click(await screen.findByRole('button', { name: 'End share with Cabin' }))
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'End share' }))
+    expect(await screen.findByText("Couldn't load sharing.")).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+    const dialog = await screen.findByRole('dialog', { name: 'End sharing with Cabin?' })
+
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'End share with Cabin' })).toHaveFocus()
+  })
+
   it('shouldTakeTheServersWordsAwayWhenThePersonClosesTheConfirmation', async () => {
     serveInTurn([share({ status: 'ACTIVE' })])
     refuseToEnd()
