@@ -280,6 +280,43 @@ describe('The unread count in the Profile menu', () => {
     expect(menu.getByRole('button', { name: 'Notifications' })).toBeVisible()
   })
 
+  it('shouldKeepTheCountOfALaterChangeWhenAMarkSentBeforeItAnswersAfterIt', async () => {
+    const { socket } = serveHome(meFixture(), 2)
+    const leo = answerNotification({ id: 'answer-for-leo', unread: true })
+    const mara = answerNotification({ id: 'answer-for-mara', message: MARA_LINE, unread: true })
+    const markAnswer = deferred()
+    onTestFinished(markAnswer.resolve)
+    const marks: string[][] = []
+    server.use(
+      graphql.query('Notifications', () =>
+        HttpResponse.json({ data: notificationsPage([leo, mara]) }),
+      ),
+      graphql.mutation('MarkNotificationsRead', async ({ variables }) => {
+        const { notificationIds } = (variables as { input: { notificationIds: string[] } }).input
+        marks.push(notificationIds)
+        await markAnswer.promise
+        return HttpResponse.json({
+          data: { markNotificationsRead: { unreadNotificationCount: 1, userErrors: [] } },
+        })
+      }),
+    )
+    const { user } = renderAppAt('/notifications')
+    await screen.findByText(MARA_LINE)
+    await followingNotificationChanges(socket)
+    await user.click(screen.getByRole('button', { name: 'Mark all as read' }))
+    await waitFor(() => expect(marks).toEqual([[leo.id, mara.id]]))
+
+    // Another session's change arrives before this mark's older count.
+    socket.publish('NotificationsChanged', notificationsChanged([], 0))
+    const chip = await screen.findByRole('button', { name: 'Profile menu (Owner)' })
+    markAnswer.resolve()
+    await waitFor(() => expect(screen.queryByText('Unread')).not.toBeInTheDocument())
+    await user.click(chip)
+
+    const menu = within(await screen.findByTestId('profile-menu'))
+    expect(menu.getByRole('button', { name: 'Notifications' })).toBeVisible()
+  })
+
   it('shouldReadNoCountWhenTheSessionIsBoundToATV', async () => {
     const { socket, reads } = serveHome(meFixture({ deviceBound: true }), 3)
 

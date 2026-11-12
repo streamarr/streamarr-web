@@ -12,7 +12,7 @@ type Shown = Pick<NotificationFieldsFragment, '__typename' | 'id' | 'unread'>
 const MAXIMUM_IDS_PER_MARK = 100
 
 /** Marks the supplied unread Notifications when the reader explicitly chooses to read them. */
-export function useMarkShownRead(onCount: (count: number) => void) {
+export function useMarkShownRead(markSent: () => (count: number) => void) {
   const [markShown] = useMutation(MarkNotificationsReadDocument)
 
   return useCallback(
@@ -21,6 +21,7 @@ export function useMarkShownRead(onCount: (count: number) => void) {
       let failure: string | null = null
       for (let start = 0; start < unread.length; start += MAXIMUM_IDS_PER_MARK) {
         const marked = unread.slice(start, start + MAXIMUM_IDS_PER_MARK)
+        const answered = markSent()
         try {
           const { data } = await markShown({
             variables: { input: { notificationIds: marked.map(({ id }) => id) } },
@@ -32,7 +33,7 @@ export function useMarkShownRead(onCount: (count: number) => void) {
             },
           })
           const count = data?.markNotificationsRead?.unreadNotificationCount
-          if (typeof count === 'number') onCount(count)
+          if (typeof count === 'number') answered(count)
           const refusal = data?.markNotificationsRead?.userErrors[0]
           failure ??= refusal ? userErrorMessage(refusal) : null
         } catch (error: unknown) {
@@ -41,6 +42,6 @@ export function useMarkShownRead(onCount: (count: number) => void) {
       }
       return failure
     },
-    [markShown, onCount],
+    [markShown, markSent],
   )
 }

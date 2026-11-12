@@ -103,8 +103,8 @@ function NotificationsList() {
       ? { ...node, unread: false }
       : node,
   )
-  const { receiveUnreadCount } = useMenuCounts()
-  const markRead = useMarkShownRead(receiveUnreadCount)
+  const { markSent } = useMenuCounts()
+  const markRead = useMarkShownRead(markSent)
   const pageInfo = query.data?.notifications.pageInfo
   const older = useOlderNotifications(pageInfo, live.context)
 
