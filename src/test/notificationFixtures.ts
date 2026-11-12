@@ -7,16 +7,9 @@ import type {
 } from '../graphql/generated/graphql'
 import type { serveGraphqlSocket } from './graphqlSocket'
 
-type Node = NonNullable<NotificationEdgeFieldsFragment['node']>
-type OfferNode = Extract<Node, { __typename: 'ProfileShareOfferedNotification' }>
-type NewsNode = Exclude<Node, OfferNode>
-
-/** A Notification of an offer, as the server answers it, with the share it is about. */
-export type OfferNotificationFixture = Omit<OfferNode, 'share'> & {
-  share: OfferNode['share'] & { __typename: 'ProfileShare' }
-}
-
-export type NotificationFixture = OfferNotificationFixture | NewsNode
+type NotificationFixture = NonNullable<NotificationEdgeFieldsFragment['node']>
+type OfferNode = Extract<NotificationFixture, { __typename: 'ProfileShareOfferedNotification' }>
+type NewsNode = Exclude<NotificationFixture, OfferNode>
 
 const HOUR = 60 * 60 * 1000
 
@@ -25,29 +18,47 @@ export function hoursAgo(hours: number): string {
   return new Date(Date.now() - hours * HOUR).toISOString()
 }
 
-/** An offer of Alex to the reader's Household that waits for a decision, unread. */
-export function offerNotification(
-  overrides: Partial<OfferNotificationFixture> = {},
-): OfferNotificationFixture {
+/**
+ * An offer of Alex to the reader's Household that waits for a decision, unread. Given how it
+ * resolved, it is read and its line says so, as the server words it.
+ */
+export function offerNotification(overrides: Partial<OfferNode> = {}): OfferNode {
+  const { resolution = null, answer = null } = overrides
   return {
     __typename: 'ProfileShareOfferedNotification',
     id: 'offer-of-alex',
-    message: '“Sam” offered the Profile “Alex” to your Household.',
+    message: offerLine(resolution, answer),
     latestEventAt: hoursAgo(1),
-    unread: true,
+    unread: resolution === null,
     expiresAt: new Date(Date.now() + 7 * 24 * HOUR).toISOString(),
-    resolution: null,
-    share: { __typename: 'ProfileShare', id: 'share-of-alex', status: 'PENDING' },
+    resolution,
+    answer,
     ...overrides,
   }
 }
 
-/** News that Cabin accepted the offer of Leo, read. */
+const ANSWERED: Partial<Record<string, string>> = { ACCEPTED: 'accepted', REJECTED: 'declined' }
+
+function offerLine(resolution: OfferNode['resolution'], answer: OfferNode['answer']): string {
+  const offer = 'The offer of “Alex” to your Household'
+  switch (resolution) {
+    case null:
+      return '“Alex” was offered to your Household.'
+    case 'DECIDED':
+      return `${offer} was ${(answer && ANSWERED[answer]) ?? 'decided'}.`
+    case 'WITHDRAWN':
+      return `${offer} was withdrawn.`
+    default:
+      return `${offer} expired.`
+  }
+}
+
+/** News that the offer of Leo was accepted, read. */
 export function answerNotification(overrides: Partial<NewsNode> = {}): NewsNode {
   return {
     __typename: 'ProfileShareAnsweredNotification',
     id: 'answer-for-leo',
-    message: '“Cabin” accepted the Profile “Leo”.',
+    message: 'The offer of “Leo” was accepted.',
     latestEventAt: hoursAgo(2),
     unread: false,
     ...overrides,
@@ -111,7 +122,7 @@ export function notificationsChanged(
   }
 }
 
-/** The entry of a change for the Notification at `edge`, or for one that left the list. */
+/** The entry of a change for the Notification at `edge`, or for one that was dismissed. */
 export function notificationChange(notificationId: string, edge: Edge | null): Entry {
   return { __typename: 'NotificationChange', notificationId, edge } as Entry
 }

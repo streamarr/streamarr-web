@@ -862,16 +862,12 @@ export const ProfileManagerInvitationStatus = {
 } as const;
 
 export type ProfileManagerInvitationStatus = typeof ProfileManagerInvitationStatus[keyof typeof ProfileManagerInvitationStatus];
-/** How a Household answered an offer of a Profile. */
 export const ProfileShareAnswer = {
-  /** The Household accepted the offer, and the share became active. */
   Accepted: 'ACCEPTED',
-  /** The Household declined the offer. */
   Rejected: 'REJECTED'
 } as const;
 
 export type ProfileShareAnswer = typeof ProfileShareAnswer[keyof typeof ProfileShareAnswer];
-/** Which side ended a share. */
 export const ProfileShareEndedBy = {
   /** A HouseholdAdmin of the Household ended the share. */
   HouseholdSide: 'HOUSEHOLD_SIDE',
@@ -900,9 +896,8 @@ export const ProfileShareStatus = {
 } as const;
 
 export type ProfileShareStatus = typeof ProfileShareStatus[keyof typeof ProfileShareStatus];
-/** How a request resolved. */
 export const RequestResolution = {
-  /** Someone with the authority accepted or declined the subject. */
+  /** Someone with the authority accepted, rejected or declined the subject. */
   Decided: 'DECIDED',
   /** The subject's expiry passed with no decision. */
   Expired: 'EXPIRED',

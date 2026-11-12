@@ -38,11 +38,11 @@ function tokenColour(page: Page, token: string) {
 }
 
 const UNREAD = [
-  news('answer-for-leo', '“Cabin” accepted the Profile “Leo”.', 1),
-  news('answer-for-mara', '“Lake House” accepted the Profile “Mara”.', 2),
+  news('answer-for-leo', 'The offer of “Leo” was accepted.', 1),
+  news('answer-for-mara', 'The offer of “Mara” was accepted.', 2),
 ]
 
-test('the unread count and the dot clear once the Notifications page has been opened', async ({
+test('the unread count and the dot clear once the person marks all Notifications read', async ({
   page,
   request,
 }) => {
@@ -57,12 +57,13 @@ test('the unread count and the dot clear once the Notifications page has been op
         pageInfo: { __typename: 'PageInfo', hasNextPage: false, endCursor: 'cursor-002' },
       },
     },
-    MarkNotificationRead: (variables) => {
-      server.marked.push((variables.input as { notificationId: string }).notificationId)
-      server.unread -= 1
+    MarkNotificationsRead: (variables) => {
+      const { notificationIds } = variables.input as { notificationIds: string[] }
+      server.marked.push(...notificationIds)
+      server.unread -= notificationIds.length
       return {
-        markNotificationRead: {
-          __typename: 'MarkNotificationReadPayload',
+        markNotificationsRead: {
+          __typename: 'MarkNotificationsReadPayload',
           unreadNotificationCount: server.unread,
           userErrors: [],
         },
@@ -78,6 +79,7 @@ test('the unread count and the dot clear once the Notifications page has been op
   await expect(entry).toHaveText('Notifications2')
   await entry.click()
   await expect(page.getByRole('heading', { level: 1, name: 'Notifications' })).toBeVisible()
+  await page.getByRole('button', { name: 'Mark all as read' }).click()
   await expect.poll(() => server.marked).toEqual(['answer-for-leo', 'answer-for-mara'])
   // The server tells every session of the Account about each Notification that a mark changed.
   await expect.poll(() => socket.isLive('NotificationsChanged')).toBe(true)
@@ -150,12 +152,12 @@ test('a count after a menu entry is a plain number in the primary text colour', 
   await expect(count).toHaveCSS('border-radius', '0px')
 })
 
-/** A Request of an offer at position `at`: waiting, or over as `resolution` and `status` say. */
+/** A Request of an offer at position `at`: waiting, or over as `resolution` and `answer` say. */
 function offerRequest(
   id: string,
   message: string,
   at: number,
-  over?: { resolution: string; status: string },
+  over?: { resolution: string; answer: string | null },
 ) {
   const position = String(at).padStart(3, '0')
   return {
@@ -170,16 +172,16 @@ function offerRequest(
       unread: false,
       expiresAt: new Date(Date.now() + 72 * HOUR).toISOString(),
       resolution: over?.resolution ?? null,
-      share: { __typename: 'ProfileShare', id: `share-${id}`, status: over?.status ?? 'PENDING' },
+      answer: over?.answer ?? null,
     },
   }
 }
 
 const REQUESTS = [
-  offerRequest('offer-of-mara', '“Sam” offered the Profile “Mara” to your Household.', 1),
-  offerRequest('offer-of-leo', '“Alex” offered the Profile “Leo” to your Household.', 2, {
+  offerRequest('offer-of-mara', '“Mara” was offered to your Household.', 1),
+  offerRequest('offer-of-leo', 'The offer of “Leo” to your Household was accepted.', 2, {
     resolution: 'DECIDED',
-    status: 'ACTIVE',
+    answer: 'ACCEPTED',
   }),
 ]
 
@@ -243,7 +245,7 @@ test('how a Request ended sits on the line of its first row of text', async ({ p
 
   const ended = rows.nth(1)
   const label = ended.getByText('Accepted', { exact: true })
-  const line = ended.getByText('“Alex” offered the Profile “Leo” to your Household.')
+  const line = ended.getByText('The offer of “Leo” to your Household was accepted.')
   await expect(label).toBeVisible()
   const lineHeight = await line.evaluate((text) =>
     Number.parseFloat(getComputedStyle(text).lineHeight),

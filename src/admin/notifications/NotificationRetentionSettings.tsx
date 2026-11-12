@@ -14,8 +14,8 @@ import { amountOf, type Units } from '../sharing/amounts'
 
 const DAYS: Units = [{ size: 1, one: 'day', many: 'days' }]
 
-// The server keeps unread news that its reader may see, and requests that still wait, whatever the
-// retention; it deletes read news and resolved requests, which count as read.
+// The server keeps unread news and requests that still wait, whatever the retention; it deletes
+// read news and resolved requests, which count as read.
 const RETENTION: SettingWords = {
   label: 'Read notifications are kept',
   subject: 'how long read notifications are kept',

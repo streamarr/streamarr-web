@@ -19,6 +19,7 @@ import {
   followingNotificationChanges,
   notificationsChanged,
   notificationsPage,
+  offerNotification,
 } from '../test/notificationFixtures'
 import { renderAppAt } from '../test/render'
 import { leaveForHome } from '../test/returnVisits'
@@ -50,7 +51,7 @@ function serveHome(me: MeFixture = meFixture(), unread = 0) {
   return { socket, reads }
 }
 
-/** The Notifications page with no Notifications, which marks nothing read. */
+/** The Notifications page with no Notifications. */
 function serveNotifications() {
   server.use(
     graphql.query('Notifications', () => HttpResponse.json({ data: notificationsPage([]) })),
@@ -63,7 +64,7 @@ async function openTheProfileMenu() {
   return within(await screen.findByTestId('profile-menu'))
 }
 
-const MARA_LINE = '“Cabin” accepted the Profile “Mara”.'
+const MARA_LINE = 'The offer of “Mara” was accepted.'
 
 describe('The unread count in the Profile menu', () => {
   it('shouldCountTheUnreadNotificationsAfterTheirEntryWhenSomeAreUnread', async () => {
@@ -201,15 +202,16 @@ describe('The unread count in the Profile menu', () => {
           data: notificationsPage([answerNotification({ message: MARA_LINE, unread: true })]),
         }),
       ),
-      graphql.mutation('MarkNotificationRead', () => {
+      graphql.mutation('MarkNotificationsRead', () => {
         held.unread = 0
         return HttpResponse.json({
-          data: { markNotificationRead: { unreadNotificationCount: 0, userErrors: [] } },
+          data: { markNotificationsRead: { unreadNotificationCount: 0, userErrors: [] } },
         })
       }),
     )
     const { user } = renderAppAt('/notifications')
     await screen.findByText(MARA_LINE)
+    await user.click(screen.getByRole('button', { name: 'Mark all as read' }))
 
     const chip = await screen.findByRole('button', { name: 'Profile menu (Owner)' })
     later.resolve()
@@ -221,46 +223,94 @@ describe('The unread count in the Profile menu', () => {
   })
 
   it('shouldKeepTheCountOfALaterChangeWhenAMarkSentBeforeItAnswersAfterIt', async () => {
-    const { socket } = serveHome(meFixture(), 2)
-    const leo = answerNotification({ id: 'answer-for-leo', unread: true })
+    const { socket } = serveHome(meFixture(), 101)
+    // Marking all of a page that shows more than 100 takes two calls: the first 100, then Mara's.
+    const first = Array.from({ length: 100 }, (_, index) =>
+      answerNotification({
+        id: `answer-${index}`,
+        message: `The offer of “Profile ${index}” was accepted.`,
+        unread: true,
+      }),
+    )
     const mara = answerNotification({ id: 'answer-for-mara', message: MARA_LINE, unread: true })
-    // Leo's mark answers late, with the count as it stood after it: Mara is still unread. Mara's
-    // mark answers only once the test has looked.
-    const leosAnswer = deferred()
+    // The first mark answers late, with the count as it stood after it: Mara is still unread.
+    // Mara's mark answers only once the test has looked.
+    const firstAnswer = deferred()
     const marasAnswer = deferred()
-    onTestFinished(leosAnswer.resolve)
+    onTestFinished(firstAnswer.resolve)
     onTestFinished(marasAnswer.resolve)
-    const marks: string[] = []
+    const marks: string[][] = []
     server.use(
       graphql.query('Notifications', () =>
-        HttpResponse.json({ data: notificationsPage([leo, mara]) }),
+        HttpResponse.json({ data: notificationsPage([...first, mara]) }),
       ),
-      graphql.mutation('MarkNotificationRead', async ({ variables }) => {
-        const { notificationId } = (variables as { input: { notificationId: string } }).input
-        marks.push(notificationId)
-        await (notificationId === leo.id ? leosAnswer : marasAnswer).promise
-        const unreadNotificationCount = notificationId === leo.id ? 1 : 0
+      graphql.mutation('MarkNotificationsRead', async ({ variables }) => {
+        const { notificationIds } = (variables as { input: { notificationIds: string[] } }).input
+        marks.push(notificationIds)
+        const marksMara = notificationIds.includes(mara.id)
+        await (marksMara ? marasAnswer : firstAnswer).promise
+        const unreadNotificationCount = marksMara ? 0 : 1
         return HttpResponse.json({
-          data: { markNotificationRead: { unreadNotificationCount, userErrors: [] } },
+          data: { markNotificationsRead: { unreadNotificationCount, userErrors: [] } },
         })
       }),
     )
     const { user } = renderAppAt('/notifications')
     await screen.findByText(MARA_LINE)
     await followingNotificationChanges(socket)
-    await waitFor(() => expect(marks).toEqual([leo.id]))
+    await user.click(screen.getByRole('button', { name: 'Mark all as read' }))
+    await waitFor(() => expect(marks).toHaveLength(1))
 
-    // Another session marks Mara read: the server tells this one, before Leo's mark answers.
+    // Another session marks Mara read: the server tells this one, before the first mark answers.
     socket.publish('NotificationsChanged', notificationsChanged([], 1))
     socket.publish('NotificationsChanged', notificationsChanged([], 0))
     const chip = await screen.findByRole('button', { name: 'Profile menu (Owner)' })
-    leosAnswer.resolve()
-    // The page marks Mara only once Leo's mark has answered.
-    await waitFor(() => expect(marks).toEqual([leo.id, mara.id]))
+    firstAnswer.resolve()
+    // The page marks Mara only once the first mark has answered.
+    await waitFor(() => expect(marks).toEqual([first.map(({ id }) => id), [mara.id]]))
     await user.click(chip)
 
     const menu = within(await screen.findByTestId('profile-menu'))
     expect(menu.getByRole('button', { name: 'Notifications' })).toBeVisible()
+  })
+
+  it('shouldKeepTheCountAndMarkThemAgainWhenAMarkFails', async () => {
+    serveHome(meFixture(), 2)
+    const unread = [
+      answerNotification({ id: 'answer-for-mara', message: MARA_LINE, unread: true }),
+      answerNotification({ unread: true }),
+    ]
+    // The second mark answers only once the test has looked.
+    const secondAnswer = deferred()
+    onTestFinished(secondAnswer.resolve)
+    const marks: string[][] = []
+    server.use(
+      graphql.query('Notifications', () => HttpResponse.json({ data: notificationsPage(unread) })),
+      graphql.mutation('MarkNotificationsRead', async ({ variables }) => {
+        marks.push((variables as { input: { notificationIds: string[] } }).input.notificationIds)
+        if (marks.length === 1) {
+          return HttpResponse.json({ errors: [{ message: 'The Notifications were not marked.' }] })
+        }
+        await secondAnswer.promise
+        return HttpResponse.json({
+          data: { markNotificationsRead: { unreadNotificationCount: 0, userErrors: [] } },
+        })
+      }),
+    )
+    const { user } = renderAppAt('/notifications')
+    await screen.findByText(MARA_LINE)
+    const markAll = screen.getByRole('button', { name: 'Mark all as read' })
+
+    await user.click(markAll)
+    await user.click(markAll)
+
+    // The second mark goes out only once the failed one has settled.
+    await waitFor(() => expect(marks).toHaveLength(2))
+    expect(marks[1]).toEqual(['answer-for-mara', 'answer-for-leo'])
+    expect(marks[0]).toEqual(marks[1])
+    await user.click(screen.getByRole('button', { name: /^Profile menu/ }))
+    const menu = within(await screen.findByTestId('profile-menu'))
+    expect(menu.getByRole('button', { name: 'Notifications, 2 unread' })).toBeVisible()
   })
 
   it('shouldCountFromAChangeWhenTheCountCouldNotBeRead', async () => {
@@ -482,5 +532,32 @@ describe('The dot on the Profile menu', () => {
 
     const chip = await screen.findByRole('button', { name: 'Profile menu (Owner)' })
     expect(within(chip).queryByTestId('unread-dot')).not.toBeInTheDocument()
+  })
+
+  it('shouldTakeADismissedRequestOutOfTheListTheCountAndTheDotInOneChange', async () => {
+    const { socket } = serveHome(meFixture(), 1)
+    const waiting = offerNotification()
+    server.use(
+      graphql.query('Notifications', () =>
+        HttpResponse.json({ data: notificationsPage([waiting]) }),
+      ),
+    )
+    const { user } = renderAppAt('/notifications')
+    await screen.findByText(waiting.message)
+    await screen.findByRole('button', { name: MARKED })
+    await followingNotificationChanges(socket)
+
+    // The Account is no longer the Household's admin: its request about the offer is dismissed.
+    socket.publish(
+      'NotificationsChanged',
+      notificationsChanged([notificationChange(waiting.id, null)], 0),
+    )
+
+    expect(await screen.findByText('No notifications.')).toBeVisible()
+    const chip = await screen.findByRole('button', { name: 'Profile menu (Owner)' })
+    expect(within(chip).queryByTestId('unread-dot')).not.toBeInTheDocument()
+    await user.click(chip)
+    const menu = within(await screen.findByTestId('profile-menu'))
+    expect(menu.getByRole('button', { name: 'Notifications' })).toHaveTextContent(/^Notifications$/)
   })
 })

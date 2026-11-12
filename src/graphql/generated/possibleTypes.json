@@ -272,7 +272,6 @@
       "HouseholdNameRequiredError",
       "HouseholdNotFoundError",
       "IdleSegmentRetentionOutOfRangeError",
-      "InvalidCursorError",
       "InvalidIdError",
       "InvalidProfilePinError",
       "InvitationNotPendingError",
@@ -293,7 +292,7 @@
       "MaximumAllowedRatingAgeInvalidError",
       "MediaFileNotFoundError",
       "NotAManagerError",
-      "NotificationNotFoundError",
+      "NotificationIdCountOutOfRangeError",
       "NotificationRetentionOutOfRangeError",
       "OfferInvalidatedError",
       "ProfileAlreadyLinkedError",
@@ -373,12 +372,9 @@
     "LookUpShareCodeError": [
       "ShareCodeRefusedError"
     ],
-    "MarkAllNotificationsReadError": [
-      "InvalidCursorError"
-    ],
-    "MarkNotificationReadError": [
+    "MarkNotificationsReadError": [
       "InvalidIdError",
-      "NotificationNotFoundError"
+      "NotificationIdCountOutOfRangeError"
     ],
     "MarkUnwatchedError": [
       "InvalidIdError",
@@ -417,7 +413,6 @@
       "HouseholdNameRequiredError",
       "HouseholdNotFoundError",
       "IdleSegmentRetentionOutOfRangeError",
-      "InvalidCursorError",
       "InvalidIdError",
       "InvalidMediaFileError",
       "InvalidProfilePinError",
@@ -452,7 +447,7 @@
       "MembershipShareCannotEndError",
       "NoEligibleVideoFormatError",
       "NotAManagerError",
-      "NotificationNotFoundError",
+      "NotificationIdCountOutOfRangeError",
       "NotificationRetentionOutOfRangeError",
       "OfferInvalidatedError",
       "PlaybackFormatAttemptsExhaustedError",

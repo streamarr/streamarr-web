@@ -1,9 +1,10 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
+import type { UserEvent } from '@testing-library/user-event'
 import { graphql, HttpResponse } from 'msw'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import type {
   NotificationsQuery,
-  ProfileShareStatus,
+  ProfileShareAnswer,
   RequestResolution,
 } from '../graphql/generated/graphql'
 import {
@@ -34,38 +35,60 @@ import { intersectionObserverInstances } from '../../vitest.setup'
 const NOTIFICATIONS = '/notifications'
 const NOTIFICATIONS_PAGE: SettingsPage = { area: 'Notifications', heading: 'Notifications' }
 const HOUR = 60 * 60 * 1000
-const OFFER_LINE = '“Sam” offered the Profile “Alex” to your Household.'
-const ANSWER_LINE = '“Cabin” accepted the Profile “Leo”.'
+const OFFER_LINE = '“Alex” was offered to your Household.'
+const ANSWER_LINE = 'The offer of “Leo” was accepted.'
 
-/** Each Notification the page marked read, and on which visit. */
+/** The Notifications one mark the server took read, and on which visit. */
 interface Mark {
-  notificationId: string
+  notificationIds: string[]
   visit: number
+}
+
+/** The server's answer to a mark: it takes from 1 to 100 ids and refuses any other number. */
+function markAnswer(notificationIds: readonly string[]) {
+  const refused = notificationIds.length < 1 || notificationIds.length > 100
+  return {
+    markNotificationsRead: {
+      __typename: 'MarkNotificationsReadPayload',
+      unreadNotificationCount: refused ? null : 0,
+      userErrors: refused
+        ? [
+            {
+              __typename: 'NotificationIdCountOutOfRangeError',
+              message: 'Send from 1 to 100 Notification ids.',
+            },
+          ]
+        : [],
+    },
+  }
 }
 
 function serve(page: NotificationsQuery = notificationsPage([]), me = meFixture()) {
   const socket = serveGraphqlSocket()
   const marks: Mark[] = []
   const visits = { count: 1 }
+  const list = { reads: 0 }
   server.use(
     graphql.query('Me', () => HttpResponse.json({ data: { me } })),
     graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
-    graphql.query('Notifications', () => HttpResponse.json({ data: page })),
-    graphql.mutation('MarkNotificationRead', ({ variables }) => {
-      const { notificationId } = (variables as { input: { notificationId: string } }).input
-      marks.push({ notificationId, visit: visits.count })
-      return HttpResponse.json({
-        data: {
-          markNotificationRead: {
-            __typename: 'MarkNotificationReadPayload',
-            unreadNotificationCount: 0,
-            userErrors: [],
-          },
-        },
-      })
+    graphql.query('Notifications', () => {
+      list.reads += 1
+      return HttpResponse.json({ data: page })
+    }),
+    graphql.mutation('MarkNotificationsRead', ({ variables }) => {
+      const { notificationIds } = (variables as { input: { notificationIds: string[] } }).input
+      const answer = markAnswer(notificationIds)
+      if (answer.markNotificationsRead.userErrors.length === 0) {
+        marks.push({ notificationIds, visit: visits.count })
+      }
+      return HttpResponse.json({ data: answer })
     }),
   )
-  return { socket, marks, visits }
+  return { socket, marks, visits, list }
+}
+
+function markAllRead(user: UserEvent) {
+  return user.click(screen.getByRole('button', { name: 'Mark all as read' }))
 }
 
 function rows() {
@@ -94,7 +117,7 @@ async function reachTheEndOfTheList() {
 function answerAbout(name: string) {
   return answerNotification({
     id: `answer-for-${name}`,
-    message: `“Cabin” accepted the Profile “${name}”.`,
+    message: `The offer of “${name}” was accepted.`,
   })
 }
 
@@ -116,6 +139,44 @@ function servePages(...pages: NotificationsQuery[]) {
     }),
   )
   return reads
+}
+
+type NotificationNode = Parameters<typeof notificationEdge>[0] & object
+
+/**
+ * Serves the list as the server holds `nodes`, newest first: `first` rows, or 20 when a read does
+ * not ask, after the place that `after` names. Each Notification keeps its place in the list. A
+ * test takes one out, or changes it, where the server would, and tells the page nothing.
+ */
+function serveTheHeldList(nodes: NotificationNode[]) {
+  const held = new Map(nodes.map((node, index) => [node.id, notificationEdge(node, index + 1)!]))
+  server.use(
+    graphql.query('Notifications', ({ variables }) => {
+      const { first, after } = variables as { first?: number | null; after?: string | null }
+      const edges = [...held.values()].filter((edge) => !after || edge.cursor > after)
+      const page = edges.slice(0, first ?? 20)
+      return HttpResponse.json({
+        data: {
+          notifications: {
+            __typename: 'NotificationConnection',
+            edges: page,
+            pageInfo: {
+              __typename: 'PageInfo',
+              hasNextPage: page.length < edges.length,
+              endCursor: page.at(-1)?.cursor ?? null,
+            },
+          },
+        },
+      })
+    }),
+  )
+  return {
+    remove: (id: string) => held.delete(id),
+    replace: (node: NotificationNode) => {
+      const at = Number(held.get(node.id)!.cursor.slice('cursor-'.length))
+      held.set(node.id, notificationEdge(node, at)!)
+    },
+  }
 }
 
 describe('Notifications', () => {
@@ -150,16 +211,16 @@ describe('Notifications', () => {
     serve(
       notificationsPage([
         offerNotification(),
-        answerNotification({ message: '“<b>Cabin</b>” accepted the Profile “Leo”.' }),
+        answerNotification({ message: 'The offer of “<b>Leo</b>” was accepted.' }),
       ]),
     )
     renderAppAt(NOTIFICATIONS)
 
-    await screen.findByText('“Sam” offered the Profile “Alex” to your Household.')
+    await screen.findByText('“Alex” was offered to your Household.')
 
     expect(rows().map((row) => row.querySelector('p')?.textContent)).toEqual([
-      '“Sam” offered the Profile “Alex” to your Household.',
-      '“<b>Cabin</b>” accepted the Profile “Leo”.',
+      '“Alex” was offered to your Household.',
+      'The offer of “<b>Leo</b>” was accepted.',
     ])
     expect(document.querySelector('b')).toBeNull()
   })
@@ -250,30 +311,38 @@ describe('Requests in Notifications', () => {
     expect(screen.getAllByRole('link', { name: 'Review' })).toHaveLength(1)
   })
 
-  it.each<[RequestResolution, ProfileShareStatus, string]>([
-    ['DECIDED', 'ACTIVE', 'Accepted'],
-    ['DECIDED', 'ENDED', 'Accepted'],
-    ['DECIDED', 'REJECTED', 'Declined'],
-    ['WITHDRAWN', 'CANCELED', 'Withdrawn'],
-    ['WITHDRAWN', 'INVALIDATED', 'Withdrawn'],
-    ['EXPIRED', 'EXPIRED', 'Expired'],
+  it.each<[RequestResolution, ProfileShareAnswer | null, string, string]>([
+    ['DECIDED', 'ACCEPTED', 'The offer of “Alex” to your Household was accepted.', 'Accepted'],
+    ['DECIDED', 'REJECTED', 'The offer of “Alex” to your Household was declined.', 'Declined'],
+    ['WITHDRAWN', null, 'The offer of “Alex” to your Household was withdrawn.', 'Withdrawn'],
+    ['EXPIRED', null, 'The offer of “Alex” to your Household expired.', 'Expired'],
   ])(
-    'shouldSayHowAnOfferEndedInPlaceOfReviewWhenItResolved: %s with the share %s',
-    async (resolution, status, ending) => {
-      serve(
-        notificationsPage([
-          offerNotification({
-            unread: false,
-            resolution,
-            share: { __typename: 'ProfileShare', id: 'share-of-alex', status },
-          }),
-        ]),
-      )
+    'shouldSayHowAnOfferEndedInPlaceOfReviewWhenItResolved: %s with the answer %s',
+    async (resolution, answer, line, ending) => {
+      serve(notificationsPage([offerNotification({ resolution, answer })]))
       renderAppAt(NOTIFICATIONS)
 
-      await screen.findByText(OFFER_LINE)
+      await screen.findByText(line)
 
       expect(within(rows()[0]).getByText(ending)).toBeVisible()
+      expect(screen.queryByRole('link', { name: 'Review' })).not.toBeInTheDocument()
+    },
+  )
+
+  it.each<[string, ProfileShareAnswer | null]>([
+    ['none', null],
+    ['one added after this client', 'POSTPONED' as ProfileShareAnswer],
+  ])(
+    'shouldSayNothingOfHowAnOfferWasDecidedWhenItCarriesNoAnswerThisClientKnows: %s',
+    async (_, answer) => {
+      serve(notificationsPage([offerNotification({ resolution: 'DECIDED', answer })]))
+      renderAppAt(NOTIFICATIONS)
+
+      await screen.findByRole('list', { name: 'Notifications' })
+
+      expect(
+        within(rows()[0]).queryByText(/^(Accepted|Declined|Withdrawn|Expired)$/),
+      ).not.toBeInTheDocument()
       expect(screen.queryByRole('link', { name: 'Review' })).not.toBeInTheDocument()
     },
   )
@@ -331,6 +400,29 @@ describe('Requests in Notifications', () => {
       expect(screen.getByRole('heading', { level: 1, name: 'Notifications' })).toHaveFocus(),
     )
   })
+
+  it('shouldSayHowAnOfferWasDecidedWhenTheDecisionArrivesAfterItShowedExpired', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'], shouldAdvanceTime: true })
+    onTestFinished(() => void vi.useRealTimers())
+    const expiresAt = new Date(Date.now() + HOUR).toISOString()
+    const { socket } = serve(notificationsPage([offerNotification({ expiresAt })]))
+    renderAppAt(NOTIFICATIONS)
+    await screen.findByRole('link', { name: 'Review' })
+    await followingNotificationChanges(socket)
+    await act(() => vi.advanceTimersByTimeAsync(HOUR))
+    await within(rows()[0]).findByText('Expired')
+
+    // The offer was accepted before its expiry, and the change arrives after it.
+    const accepted = offerNotification({ expiresAt, resolution: 'DECIDED', answer: 'ACCEPTED' })
+    socket.publish(
+      'NotificationsChanged',
+      notificationsChanged([notificationChange(accepted.id, notificationEdge(accepted, 1))]),
+    )
+
+    expect(await within(rows()[0]).findByText('Accepted')).toBeVisible()
+    expect(within(rows()[0]).queryByText('Expired')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Review' })).not.toBeInTheDocument()
+  })
 })
 
 describe('Reading Notifications', () => {
@@ -347,85 +439,182 @@ describe('Reading Notifications', () => {
     expect(within(read).queryByTestId('unread-mark')).not.toBeInTheDocument()
   })
 
-  it('shouldMarkReadByIdOnlyTheUnreadNotificationsThePageShowsWhenTheListHasRendered', async () => {
+  it('shouldMarkNothingReadWhenTheListOpens', async () => {
+    const { socket, marks, list } = serve(
+      notificationsPage([offerNotification(), answerNotification({ unread: true })]),
+    )
+    renderAppAt(NOTIFICATIONS)
+    await screen.findByText(OFFER_LINE)
+    await followingNotificationChanges(socket)
+
+    // Once it follows changes, the page reads the list again: a mark sent on opening went before.
+    await waitFor(() => expect(list.reads).toBe(2))
+    expect(marks).toEqual([])
+    expect(rows().map((row) => within(row).queryByTestId('unread-mark') !== null)).toEqual([
+      true,
+      true,
+    ])
+  })
+
+  it('shouldMarkReadEveryUnreadNotificationThePageShowsWhenThePersonMarksThemAll', async () => {
     const mara = answerNotification({
       id: 'answer-for-mara',
-      message: '“Lake House” accepted the Profile “Mara”.',
+      message: 'The offer of “Mara” was accepted.',
       unread: true,
     })
     const { marks } = serve(
       notificationsPage([offerNotification(), answerNotification(), mara], { hasNextPage: true }),
     )
-    renderAppAt(NOTIFICATIONS)
-
+    const { user } = renderAppAt(NOTIFICATIONS)
     await screen.findByText(OFFER_LINE)
 
+    await markAllRead(user)
+
     await waitFor(() =>
-      expect(marks).toEqual([
-        { notificationId: 'offer-of-alex', visit: 1 },
-        { notificationId: 'answer-for-mara', visit: 1 },
-      ]),
+      expect(marks).toEqual([{ notificationIds: ['offer-of-alex', 'answer-for-mara'], visit: 1 }]),
     )
   })
 
-  it('shouldKeepTheUnreadMarkUntilTheNextVisitWhenTheServerSaysTheMarkReadIt', async () => {
-    const held = { page: notificationsPage([offerNotification()]) }
+  it('shouldMarkEveryUnreadNotificationWhenThePersonMarksAllOfMoreThanAHundred', async () => {
+    const unread = Array.from({ length: 101 }, (_, index) =>
+      answerNotification({
+        id: `answer-${index}`,
+        message: `The offer of “Profile ${index}” was accepted.`,
+        unread: true,
+      }),
+    )
+    const { marks } = serve(notificationsPage(unread))
+    const { user } = renderAppAt(NOTIFICATIONS)
+    await screen.findByText('The offer of “Profile 100” was accepted.')
+
+    await markAllRead(user)
+
+    await waitFor(() =>
+      expect(marks.flatMap((mark) => mark.notificationIds)).toEqual(unread.map(({ id }) => id)),
+    )
+  })
+
+  it('shouldSendTheNextCallOfMarkingAllWhenAnEarlierOneFails', async () => {
+    const unread = Array.from({ length: 101 }, (_, index) =>
+      answerNotification({
+        id: `answer-${index}`,
+        message: `The offer of “Profile ${index}” was accepted.`,
+        unread: true,
+      }),
+    )
+    const { marks } = serve(notificationsPage(unread))
+    const calls = { count: 0 }
+    server.use(
+      graphql.mutation('MarkNotificationsRead', () => {
+        calls.count += 1
+        // The first call, of the first 100, never reaches the server.
+        return calls.count === 1 ? HttpResponse.error() : undefined
+      }),
+    )
+    const { user } = renderAppAt(NOTIFICATIONS)
+    await screen.findByText('The offer of “Profile 100” was accepted.')
+
+    await markAllRead(user)
+
+    await waitFor(() => expect(marks).toEqual([{ notificationIds: ['answer-100'], visit: 1 }]))
+  })
+
+  it.each([
+    ['cannot reach the server', () => HttpResponse.error(), "Couldn't mark notifications as read."],
+    [
+      'refuses the ids',
+      () =>
+        HttpResponse.json({
+          data: {
+            markNotificationsRead: {
+              __typename: 'MarkNotificationsReadPayload',
+              unreadNotificationCount: null,
+              userErrors: [{ __typename: 'InvalidIdError', message: 'The id is not valid.' }],
+            },
+          },
+        }),
+      'The id is not valid.',
+    ],
+  ])('shouldSayWhyUnderMarkAllAsReadWhenTheMark %s', async (_, answer, words) => {
+    serve(notificationsPage([offerNotification(), answerNotification({ unread: true })]))
+    server.use(graphql.mutation('MarkNotificationsRead', answer))
+    const { user } = renderAppAt(NOTIFICATIONS)
+    await screen.findByText(OFFER_LINE)
+
+    await markAllRead(user)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(words)
+    expect(screen.getByRole('button', { name: 'Mark all as read' })).toHaveAccessibleDescription(
+      words,
+    )
+    expect(screen.getAllByTestId('unread-mark')).toHaveLength(2)
+  })
+
+  it('shouldClearTheReasonWhenThePersonMarksThemAllAgain', async () => {
+    const { marks } = serve(
+      notificationsPage([offerNotification(), answerNotification({ unread: true })]),
+    )
+    const calls = { count: 0 }
+    server.use(
+      graphql.mutation('MarkNotificationsRead', () => {
+        calls.count += 1
+        return calls.count === 1 ? HttpResponse.error() : undefined
+      }),
+    )
+    const { user } = renderAppAt(NOTIFICATIONS)
+    await screen.findByText(OFFER_LINE)
+    await markAllRead(user)
+    await screen.findByRole('alert')
+
+    await markAllRead(user)
+
+    await waitFor(() => expect(marks).toHaveLength(1))
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
+  })
+
+  it('shouldClearTheUnreadMarksWhenTheServerSaysTheMarkReadThem', async () => {
+    const held = {
+      page: notificationsPage([offerNotification(), answerNotification({ unread: true })]),
+    }
     const { socket, marks } = serve()
     server.use(graphql.query('Notifications', () => HttpResponse.json({ data: held.page })))
     const { user } = renderAppAt(NOTIFICATIONS)
     await screen.findByText(OFFER_LINE)
     await followingNotificationChanges(socket)
+    await markAllRead(user)
     await waitFor(() => expect(marks).toHaveLength(1))
 
-    // The server tells every socket that the mark read it; Leo's news shows the change applied.
-    const read = offerNotification({ unread: false })
-    const leo = answerNotification()
-    held.page = notificationsPage([leo, read], { from: 0 })
+    // The server tells every socket, this page's too, that the mark read them.
+    const offer = offerNotification({ unread: false })
+    const leo = answerNotification({ unread: false })
+    held.page = notificationsPage([offer, leo])
     socket.publish(
       'NotificationsChanged',
       notificationsChanged([
-        notificationChange(read.id, notificationEdge(read, 1)),
-        notificationChange(leo.id, notificationEdge(leo, 0)),
+        notificationChange(offer.id, notificationEdge(offer, 1)),
+        notificationChange(leo.id, notificationEdge(leo, 2)),
       ]),
     )
-    await screen.findByText(ANSWER_LINE)
 
-    const offerRow = rows()[1]
-    expect(within(offerRow).getByText('Unread')).toBeInTheDocument()
-    expect(within(offerRow).getByTestId('unread-mark')).toBeVisible()
-    await leaveForHome(user, NOTIFICATIONS_PAGE)
-    await returnThroughTheProfileMenu(user, NOTIFICATIONS_PAGE)
-    await screen.findByText(OFFER_LINE)
-    expect(within(rows()[1]).queryByText('Unread')).not.toBeInTheDocument()
-    expect(within(rows()[1]).queryByTestId('unread-mark')).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByTestId('unread-mark')).not.toBeInTheDocument())
+    expect(screen.queryByText('Unread')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Mark all as read' })).not.toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: 'Notifications' })).toHaveFocus(),
+    )
   })
 
-  it('shouldLeaveUnreadUntilTheNextVisitANotificationThatArrivesWhenThePageIsOpen', async () => {
-    const held = { page: notificationsPage([offerNotification()], { from: 1 }) }
-    const { socket, marks, visits } = serve()
-    server.use(graphql.query('Notifications', () => HttpResponse.json({ data: held.page })))
-    const { user } = renderAppAt(NOTIFICATIONS)
-    await screen.findByText(OFFER_LINE)
-    await followingNotificationChanges(socket)
-    await waitFor(() => expect(marks).toHaveLength(1))
-
-    // Leo's news commits late: it sorts below the row the page showed first.
-    const leo = answerNotification({ unread: true, latestEventAt: hoursAgo(5) })
-    held.page = notificationsPage([offerNotification({ unread: false }), leo], { from: 1 })
-    socket.publish(
-      'NotificationsChanged',
-      notificationsChanged([notificationChange(leo.id, notificationEdge(leo, 2))]),
+  it('shouldMarkARequestReadWhenThePersonOpensItToReview', async () => {
+    const { marks } = serve(
+      notificationsPage([offerNotification(), answerNotification({ unread: true })]),
     )
-    await screen.findByText(ANSWER_LINE)
-    await leaveForHome(user, NOTIFICATIONS_PAGE)
-    visits.count = 2
-    await returnThroughTheProfileMenu(user, NOTIFICATIONS_PAGE)
+    const { user, router } = renderAppAt(NOTIFICATIONS)
 
-    await waitFor(() => expect(marks.filter((mark) => mark.visit === 2)).toHaveLength(1))
-    expect(marks).toEqual([
-      { notificationId: 'offer-of-alex', visit: 1 },
-      { notificationId: 'answer-for-leo', visit: 2 },
-    ])
+    await user.click(await screen.findByRole('link', { name: 'Review' }))
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Share offers' })).toBeVisible()
+    expect(router.state.location.pathname).toBe('/settings/household/offers')
+    await waitFor(() => expect(marks).toEqual([{ notificationIds: ['offer-of-alex'], visit: 1 }]))
   })
 })
 
@@ -437,61 +626,37 @@ describe('Older Notifications', () => {
     serve()
     const reads = servePages(NEWEST, OLDER)
     renderAppAt(NOTIFICATIONS)
-    await screen.findByText('“Cabin” accepted the Profile “Alex”.')
+    await screen.findByText('The offer of “Alex” was accepted.')
 
     await reachTheEndOfTheList()
 
-    await screen.findByText('“Cabin” accepted the Profile “Leo”.')
+    await screen.findByText('The offer of “Leo” was accepted.')
     expect(lines()).toEqual([
-      '“Cabin” accepted the Profile “Alex”.',
-      '“Cabin” accepted the Profile “Sam”.',
-      '“Cabin” accepted the Profile “Mara”.',
-      '“Cabin” accepted the Profile “Leo”.',
+      'The offer of “Alex” was accepted.',
+      'The offer of “Sam” was accepted.',
+      'The offer of “Mara” was accepted.',
+      'The offer of “Leo” was accepted.',
     ])
     expect(reads).toContain('cursor-002')
     expect(screen.queryByTestId('older-notifications')).not.toBeInTheDocument()
   })
 
-  it('shouldMarkReadTheUnreadNotificationsOfAnOlderPageWhenItJoinsTheList', async () => {
+  it('shouldMarkReadTheUnreadNotificationsOfAnOlderPageWhenThePersonMarksAllAfterItJoined', async () => {
     const { marks } = serve()
     const mara = answerNotification({
       id: 'answer-for-mara',
-      message: '“Cabin” accepted the Profile “Mara”.',
+      message: 'The offer of “Mara” was accepted.',
       unread: true,
     })
     servePages(NEWEST, notificationsPage([mara, answerAbout('Leo')], { from: 3 }))
-    renderAppAt(NOTIFICATIONS)
-    await screen.findByText('“Cabin” accepted the Profile “Alex”.')
-
+    const { user } = renderAppAt(NOTIFICATIONS)
+    await screen.findByText('The offer of “Alex” was accepted.')
     await reachTheEndOfTheList()
+    await screen.findByText('The offer of “Mara” was accepted.')
 
-    await screen.findByText('“Cabin” accepted the Profile “Mara”.')
-    await waitFor(() => expect(marks).toEqual([{ notificationId: 'answer-for-mara', visit: 1 }]))
-  })
+    await markAllRead(user)
 
-  it('shouldMarkNothingOfAnOlderPageWhenItRepeatsANotificationThePageAlreadyShows', async () => {
-    const { socket, marks } = serve()
-    const mara = answerNotification({
-      id: 'answer-for-mara',
-      message: '“Cabin” accepted the Profile “Mara”.',
-      unread: true,
-    })
-    const leo = answerNotification({ id: 'answer-for-leo', unread: true })
-    servePages(NEWEST, notificationsPage([mara, leo], { from: 3 }))
-    renderAppAt(NOTIFICATIONS)
-    await screen.findByText('“Cabin” accepted the Profile “Alex”.')
-    await followingNotificationChanges(socket)
-    // Mara's news arrives live, so the page leaves it unread; the older page brings it again.
-    socket.publish(
-      'NotificationsChanged',
-      notificationsChanged([notificationChange(mara.id, notificationEdge(mara, 0))]),
-    )
-    await screen.findByText('“Cabin” accepted the Profile “Mara”.')
-
-    await reachTheEndOfTheList()
-
-    await screen.findByText(ANSWER_LINE)
-    await waitFor(() => expect(marks).toEqual([{ notificationId: 'answer-for-leo', visit: 1 }]))
+    await waitFor(() => expect(marks).toEqual([{ notificationIds: ['answer-for-mara'], visit: 1 }]))
   })
 
   it('shouldLoadOlderNotificationsWhenTheNewestPageHasNoneToShow', async () => {
@@ -504,10 +669,10 @@ describe('Older Notifications', () => {
 
     await reachTheEndOfTheList()
 
-    await screen.findByText('“Cabin” accepted the Profile “Leo”.')
+    await screen.findByText('The offer of “Leo” was accepted.')
     expect(lines()).toEqual([
-      '“Cabin” accepted the Profile “Mara”.',
-      '“Cabin” accepted the Profile “Leo”.',
+      'The offer of “Mara” was accepted.',
+      'The offer of “Leo” was accepted.',
     ])
     expect(screen.queryByText('No notifications.')).not.toBeInTheDocument()
   })
@@ -516,15 +681,15 @@ describe('Older Notifications', () => {
     serve()
     servePages(NEWEST, notificationsPage([answerAbout('Sam'), answerAbout('Leo')], { from: 3 }))
     renderAppAt(NOTIFICATIONS)
-    await screen.findByText('“Cabin” accepted the Profile “Alex”.')
+    await screen.findByText('The offer of “Alex” was accepted.')
 
     await reachTheEndOfTheList()
 
-    await screen.findByText('“Cabin” accepted the Profile “Leo”.')
+    await screen.findByText('The offer of “Leo” was accepted.')
     expect(lines()).toEqual([
-      '“Cabin” accepted the Profile “Alex”.',
-      '“Cabin” accepted the Profile “Sam”.',
-      '“Cabin” accepted the Profile “Leo”.',
+      'The offer of “Alex” was accepted.',
+      'The offer of “Sam” was accepted.',
+      'The offer of “Leo” was accepted.',
     ])
   })
 
@@ -540,14 +705,14 @@ describe('Older Notifications', () => {
       }),
     )
     const { user } = renderAppAt(NOTIFICATIONS)
-    await screen.findByText('“Cabin” accepted the Profile “Alex”.')
+    await screen.findByText('The offer of “Alex” was accepted.')
 
     await reachTheEndOfTheList()
 
     expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load older notifications.")
     expect(lines()).toHaveLength(2)
     await user.click(screen.getByRole('button', { name: 'Retry' }))
-    expect(await screen.findByText('“Cabin” accepted the Profile “Leo”.')).toBeVisible()
+    expect(await screen.findByText('The offer of “Leo” was accepted.')).toBeVisible()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
@@ -555,21 +720,60 @@ describe('Older Notifications', () => {
     serve()
     const reads = servePages(NEWEST, OLDER)
     renderAppAt(NOTIFICATIONS)
-    await screen.findByText('“Cabin” accepted the Profile “Alex”.')
+    await screen.findByText('The offer of “Alex” was accepted.')
     await reachTheEndOfTheList()
-    await screen.findByText('“Cabin” accepted the Profile “Leo”.')
+    await screen.findByText('The offer of “Leo” was accepted.')
 
     comeBackOnline()
 
     await waitFor(() => expect(reads.filter((after) => after === null)).toHaveLength(2))
     await waitFor(() =>
       expect(lines()).toEqual([
-        '“Cabin” accepted the Profile “Alex”.',
-        '“Cabin” accepted the Profile “Sam”.',
-        '“Cabin” accepted the Profile “Mara”.',
-        '“Cabin” accepted the Profile “Leo”.',
+        'The offer of “Alex” was accepted.',
+        'The offer of “Sam” was accepted.',
+        'The offer of “Mara” was accepted.',
+        'The offer of “Leo” was accepted.',
       ]),
     )
+  })
+
+  // More than the newest page of the server's 20 holds, so that the list loads an older page.
+  const TWENTY_TWO = Array.from({ length: 22 }, (_, index) => answerAbout(`Profile ${index + 1}`))
+
+  it('shouldDropANotificationOfAnOlderPageWhenTheListReadAgainNoLongerHasIt', async () => {
+    serve()
+    const held = serveTheHeldList(TWENTY_TWO)
+    renderAppAt(NOTIFICATIONS)
+    await screen.findByText('The offer of “Profile 1” was accepted.')
+    await reachTheEndOfTheList()
+    await screen.findByText('The offer of “Profile 22” was accepted.')
+
+    // Retention deletes the news about Profile 21, which no change tells the page.
+    held.remove('answer-for-Profile 21')
+    comeBackOnline()
+
+    await waitFor(() =>
+      expect(lines()).toEqual(
+        TWENTY_TWO.filter(({ id }) => id !== 'answer-for-Profile 21').map(({ message }) => message),
+      ),
+    )
+  })
+
+  it('shouldSayHowAnOlderRequestEndedWhenTheListReadAgainSaysSo', async () => {
+    serve()
+    const waiting = offerNotification({ unread: false })
+    const held = serveTheHeldList([...TWENTY_TWO.slice(0, 20), waiting])
+    renderAppAt(NOTIFICATIONS)
+    await screen.findByText('The offer of “Profile 1” was accepted.')
+    await reachTheEndOfTheList()
+    await screen.findByRole('link', { name: 'Review' })
+
+    // The offer is withdrawn while the page misses changes.
+    held.replace(offerNotification({ resolution: 'WITHDRAWN' }))
+    comeBackOnline()
+
+    expect(await within(rows()[20]).findByText('Withdrawn')).toBeVisible()
+    expect(screen.queryByRole('link', { name: 'Review' })).not.toBeInTheDocument()
   })
 
   it('shouldAddNoOlderPageWhenTheListReadAgainEndsElsewhereBeforeItArrives', async () => {
@@ -588,7 +792,7 @@ describe('Older Notifications', () => {
       }),
     )
     renderAppAt(NOTIFICATIONS)
-    await screen.findByText('“Cabin” accepted the Profile “Alex”.')
+    await screen.findByText('The offer of “Alex” was accepted.')
     await followingNotificationChanges(socket)
     await reachTheEndOfTheList()
     await waitFor(() => expect(older.calls).toBe(1))
@@ -597,24 +801,65 @@ describe('Older Notifications', () => {
     // at Alex, and only then does the older page asked for after Sam answer.
     newest.page = notificationsPage([answerAbout('Alex')])
     comeBackOnline()
-    await waitFor(() => expect(lines()).toEqual(['“Cabin” accepted the Profile “Alex”.']))
+    await waitFor(() => expect(lines()).toEqual(['The offer of “Alex” was accepted.']))
     const answered = answerDelivered('Notifications')
     late.release()
     await answered
     // News that arrives after the older page answered: once it shows, that answer was handled.
     const sentinel = answerNotification({
       id: 'answer-for-sam',
-      message: '“Lake House” accepted the Profile “Sam”.',
+      message: 'The offer of “Sam” was declined.',
     })
     socket.publish(
       'NotificationsChanged',
       notificationsChanged([notificationChange(sentinel.id, notificationEdge(sentinel, 0))]),
     )
-    await screen.findByText('“Lake House” accepted the Profile “Sam”.')
+    await screen.findByText('The offer of “Sam” was declined.')
 
     expect(lines()).toEqual([
-      '“Lake House” accepted the Profile “Sam”.',
-      '“Cabin” accepted the Profile “Alex”.',
+      'The offer of “Sam” was declined.',
+      'The offer of “Alex” was accepted.',
+    ])
+  })
+
+  it('shouldKeepOutANotificationDismissedWhileTheOlderPageThatHoldsItIsOnItsWay', async () => {
+    const { socket } = serve()
+    const late = heldAnswer(OLDER)
+    onTestFinished(late.release)
+    const older = { calls: 0 }
+    server.use(
+      graphql.query('Notifications', ({ variables }) => {
+        if (!(variables as { after?: string | null }).after) {
+          return HttpResponse.json({ data: NEWEST })
+        }
+        older.calls += 1
+        return late.answer()
+      }),
+    )
+    renderAppAt(NOTIFICATIONS)
+    await screen.findByText('The offer of “Alex” was accepted.')
+    await followingNotificationChanges(socket)
+    await reachTheEndOfTheList()
+    await waitFor(() => expect(older.calls).toBe(1))
+
+    // Mara's news is dismissed in the change that brings Tom's, which shows that it has arrived.
+    const tom = answerAbout('Tom')
+    socket.publish(
+      'NotificationsChanged',
+      notificationsChanged([
+        notificationChange('answer-for-Mara', null),
+        notificationChange(tom.id, notificationEdge(tom, 0)),
+      ]),
+    )
+    await screen.findByText('The offer of “Tom” was accepted.')
+    late.release()
+
+    await screen.findByText('The offer of “Leo” was accepted.')
+    expect(lines()).toEqual([
+      'The offer of “Tom” was accepted.',
+      'The offer of “Alex” was accepted.',
+      'The offer of “Sam” was accepted.',
+      'The offer of “Leo” was accepted.',
     ])
   })
 
@@ -632,23 +877,23 @@ describe('Older Notifications', () => {
       }),
     )
     const { user } = renderAppAt(NOTIFICATIONS)
-    await screen.findByText('“Cabin” accepted the Profile “Alex”.')
+    await screen.findByText('The offer of “Alex” was accepted.')
     await reachTheEndOfTheList()
     await waitFor(() => expect(firstOlder.calls).toBe(1))
     await leaveForHome(user, NOTIFICATIONS_PAGE)
     await returnThroughTheProfileMenu(user, NOTIFICATIONS_PAGE)
-    await screen.findByText('“Cabin” accepted the Profile “Alex”.')
+    await screen.findByText('The offer of “Alex” was accepted.')
 
     const answered = answerDelivered('Notifications')
     late.release()
     await answered
     await reachTheEndOfTheList()
 
-    await screen.findByText('“Cabin” accepted the Profile “Mara”.')
+    await screen.findByText('The offer of “Mara” was accepted.')
     expect(lines()).toEqual([
-      '“Cabin” accepted the Profile “Alex”.',
-      '“Cabin” accepted the Profile “Sam”.',
-      '“Cabin” accepted the Profile “Mara”.',
+      'The offer of “Alex” was accepted.',
+      'The offer of “Sam” was accepted.',
+      'The offer of “Mara” was accepted.',
     ])
   })
 
@@ -656,17 +901,17 @@ describe('Older Notifications', () => {
     serve()
     servePages(NEWEST, OLDER)
     const { user } = renderAppAt(NOTIFICATIONS)
-    await screen.findByText('“Cabin” accepted the Profile “Alex”.')
+    await screen.findByText('The offer of “Alex” was accepted.')
     await reachTheEndOfTheList()
-    await screen.findByText('“Cabin” accepted the Profile “Leo”.')
+    await screen.findByText('The offer of “Leo” was accepted.')
 
     await leaveForHome(user, NOTIFICATIONS_PAGE)
     await returnThroughTheProfileMenu(user, NOTIFICATIONS_PAGE)
 
-    await screen.findByText('“Cabin” accepted the Profile “Alex”.')
+    await screen.findByText('The offer of “Alex” was accepted.')
     expect(lines()).toEqual([
-      '“Cabin” accepted the Profile “Alex”.',
-      '“Cabin” accepted the Profile “Sam”.',
+      'The offer of “Alex” was accepted.',
+      'The offer of “Sam” was accepted.',
     ])
   })
 })
@@ -694,6 +939,28 @@ describe('Notifications as they change elsewhere', () => {
     expect(within(rows()[0]).getByText('Unread')).toBeInTheDocument()
   })
 
+  it('shouldListANotificationFirstOnceWithItsNewLineWhenItIsUpdatedInPlace', async () => {
+    const { socket, user } = await openWithAnOffer(notificationsPage([offerNotification(), leo]))
+
+    // No sharing kind is told twice about one subject, so news of an answer stands in for a kind
+    // that is: the change keeps the Notification's id and gives it a new line and a newer time.
+    const updated = answerNotification({
+      unread: true,
+      message: 'The offer of “Leon” was accepted.',
+      latestEventAt: new Date().toISOString(),
+    })
+    socket.publish(
+      'NotificationsChanged',
+      notificationsChanged([notificationChange(leo.id, notificationEdge(updated, 0))], 3),
+    )
+
+    await waitFor(() => expect(lines()).toEqual(['The offer of “Leon” was accepted.', OFFER_LINE]))
+    expect(within(rows()[0]).getByText('Just now')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: /^Profile menu/ }))
+    const menu = within(await screen.findByTestId('profile-menu'))
+    expect(menu.getByRole('button', { name: 'Notifications, 3 unread' })).toBeVisible()
+  })
+
   it('shouldKeepFocusWhereThePersonIsWhenANotificationArrives', async () => {
     const { socket } = await openWithAnOffer()
     const review = screen.getByRole('link', { name: 'Review' })
@@ -717,11 +984,7 @@ describe('Notifications as they change elsewhere', () => {
   it('shouldMoveFocusToTheHeadingWhenTheReviewThePersonIsOnIsDecidedElsewhere', async () => {
     const { socket } = await openWithAnOffer()
     act(() => screen.getByRole('link', { name: 'Review' }).focus())
-    const accepted = offerNotification({
-      unread: false,
-      resolution: 'DECIDED',
-      share: { __typename: 'ProfileShare', id: 'share-of-alex', status: 'ACTIVE' },
-    })
+    const accepted = offerNotification({ resolution: 'DECIDED', answer: 'ACCEPTED' })
 
     socket.publish(
       'NotificationsChanged',
@@ -732,7 +995,7 @@ describe('Notifications as they change elsewhere', () => {
     await expectFocusOnTheHeading()
   })
 
-  it('shouldMoveFocusToTheHeadingWhenTheNotificationThePersonIsOnLeavesTheList', async () => {
+  it('shouldMoveFocusToTheHeadingWhenTheNotificationThePersonIsOnIsDismissed', async () => {
     const { socket } = await openWithAnOffer()
     act(() => screen.getByRole('link', { name: 'Review' }).focus())
 
@@ -747,11 +1010,7 @@ describe('Notifications as they change elsewhere', () => {
 
   it('shouldSayHowARequestEndedWhenItIsDecidedElsewhere', async () => {
     const { socket } = await openWithAnOffer()
-    const accepted = offerNotification({
-      unread: false,
-      resolution: 'DECIDED',
-      share: { __typename: 'ProfileShare', id: 'share-of-alex', status: 'ACTIVE' },
-    })
+    const accepted = offerNotification({ resolution: 'DECIDED', answer: 'ACCEPTED' })
 
     socket.publish(
       'NotificationsChanged',
@@ -760,11 +1019,11 @@ describe('Notifications as they change elsewhere', () => {
 
     expect(await within(rows()[0]).findByText('Accepted')).toBeVisible()
     expect(screen.queryByRole('link', { name: 'Review' })).not.toBeInTheDocument()
-    // It was unread when the page opened, so it stays marked until the next visit.
-    expect(within(rows()[0]).getByText('Unread')).toBeInTheDocument()
+    // A request that resolved counts as read.
+    expect(within(rows()[0]).queryByText('Unread')).not.toBeInTheDocument()
   })
 
-  it('shouldTakeANotificationOutWhenItLeavesTheList', async () => {
+  it('shouldTakeANotificationOutWhenItIsDismissed', async () => {
     const { socket } = await openWithAnOffer(
       notificationsPage([offerNotification(), answerNotification()]),
     )
@@ -811,7 +1070,7 @@ describe('Notifications as they change elsewhere', () => {
     )
     const older = answerNotification({
       id: 'older',
-      message: '“Lake House” accepted the Profile “Mara”.',
+      message: 'The offer of “Mara” was accepted.',
     })
 
     socket.publish(
@@ -841,7 +1100,7 @@ describe('Notifications as they change elsewhere', () => {
   })
 
   describe('while a read of the list is on its way', () => {
-    const MARA_LINE = '“Cabin” accepted the Profile “Mara”.'
+    const MARA_LINE = 'The offer of “Mara” was accepted.'
 
     // The list the server holds; each read answers with it as it stood when the read arrived.
     async function openWithAReadOnItsWay() {
@@ -868,7 +1127,7 @@ describe('Notifications as they change elsewhere', () => {
         notificationsChanged([notificationChange(leo.id, notificationEdge(leo, 8))]),
       )
       await screen.findByText(ANSWER_LINE)
-      const withdrawn = offerNotification({ resolution: 'WITHDRAWN', unread: false })
+      const withdrawn = offerNotification({ resolution: 'WITHDRAWN' })
       socket.publish(
         'NotificationsChanged',
         notificationsChanged([notificationChange(withdrawn.id, notificationEdge(withdrawn, 10))]),
@@ -877,9 +1136,23 @@ describe('Notifications as they change elsewhere', () => {
       release()
 
       await screen.findByText(MARA_LINE)
-      expect(lines()).toEqual([ANSWER_LINE, MARA_LINE, OFFER_LINE])
+      expect(lines()).toEqual([ANSWER_LINE, MARA_LINE, withdrawn.message])
       expect(within(rows()[2]).getByText('Withdrawn')).toBeVisible()
       expect(screen.queryByRole('link', { name: 'Review' })).not.toBeInTheDocument()
+    })
+
+    it('shouldKeepOutANotificationDismissedWhileAReadSentBeforeItIsOnItsWay', async () => {
+      const { socket, release } = await openWithAReadOnItsWay()
+
+      socket.publish(
+        'NotificationsChanged',
+        notificationsChanged([notificationChange(offerNotification().id, null)]),
+      )
+      await screen.findByText('No notifications.')
+      release()
+
+      await screen.findByText(MARA_LINE)
+      expect(lines()).toEqual([MARA_LINE])
     })
   })
 })

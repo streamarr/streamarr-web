@@ -1,7 +1,7 @@
 import { useApolloClient, useQuery } from '@apollo/client/react'
 import { Alert, Button, Center, Loader, VisuallyHidden } from '@mantine/core'
 import { Link } from '@tanstack/react-router'
-import { useId, useRef } from 'react'
+import { useId, useRef, useState } from 'react'
 import {
   NotificationsDocument,
   type NotificationFieldsFragment,
@@ -18,7 +18,7 @@ import { useFocusFallback } from '../ui/useFocusFallback'
 import { useIntersectionObserver } from '../media/useIntersectionObserver'
 import styles from './Notifications.module.css'
 import { canReadNotifications } from './notificationAccess'
-import { withNotificationChange, type NotificationEntry } from './notificationList'
+import { rowsToRead, withNotificationChange, type NotificationEntry } from './notificationList'
 import { fullTime, nextLabelChange, whenLabel } from './notificationTime'
 import { expiryOfWaiting, isOfferRequest, offerRequestState } from './requestState'
 import { useMarkShownRead } from './useMarkShownRead'
@@ -86,21 +86,25 @@ function NotificationsList() {
   })
   // One change can touch many Notifications, such as marking them read; the list shows it once.
   useNotificationChanges((entries) => cache.batch({ update: () => entries.forEach(live.receive) }))
+  const [first, setFirst] = useState(() => rowsToRead(undefined))
   // Notifications arrive and resolve elsewhere, so a visit shows only the server's answer.
   const query = useQuery(NotificationsDocument, {
+    variables: { first },
     fetchPolicy: 'network-only',
+    // The list holds the rows that `first` grows to; only a read again asks the server for them.
+    nextFetchPolicy: (policy, { reason }) =>
+      reason === 'variables-changed' ? 'cache-first' : policy,
     context: live.context,
   })
+  const rows = rowsToRead(query.data?.notifications)
+  if (rows !== first) setFirst(rows)
   // A failed read reports through the query's own error state.
   const readAgain = () => query.refetch().catch(() => undefined)
   const shown = query.error ? [] : definedEdges(query.data?.notifications.edges)
   const { markSent } = useMenuCounts()
-  const { marked, markRead } = useMarkShownRead(
-    query.data && !query.error ? shown.map((edge) => edge.node) : null,
-    markSent,
-  )
+  const markRead = useMarkShownRead(markSent)
   const pageInfo = query.data?.notifications.pageInfo
-  const older = useOlderNotifications(pageInfo, live.context, markRead)
+  const older = useOlderNotifications(pageInfo, live.context)
 
   if (query.loading && !query.data) return <ListLoading />
   if (query.error || !query.data) {
@@ -115,10 +119,17 @@ function NotificationsList() {
   if (shown.length === 0 && !pageInfo?.hasNextPage) {
     return <p className={styles.empty}>No notifications.</p>
   }
+  const notifications = shown.map((edge) => edge.node)
   return (
     <>
-      {shown.length > 0 && (
-        <NotificationRows notifications={shown.map((edge) => edge.node)} markedThisVisit={marked} />
+      {notifications.some((notification) => notification.unread) && (
+        <MarkAllRead onMark={() => markRead(notifications)} />
+      )}
+      {notifications.length > 0 && (
+        <NotificationRows
+          notifications={notifications}
+          onOpen={(notification) => void markRead([notification])}
+        />
       )}
       {older.failure ? (
         <FailureRow className={styles.olderFailure} onRetry={older.load}>
@@ -128,6 +139,31 @@ function NotificationsList() {
         pageInfo?.hasNextPage && <EndOfTheList key={pageInfo.endCursor} onReached={older.load} />
       )}
     </>
+  )
+}
+
+/**
+ * Marks read every unread row the page shows. When a mark fails, why follows the button, which
+ * stays where it was clicked and stays the retry.
+ */
+function MarkAllRead({ onMark }: Readonly<{ onMark: () => Promise<string | null> }>) {
+  const [refusal, setRefusal] = useState<string | null>(null)
+  const refusalId = useId()
+  const mark = () => {
+    setRefusal(null)
+    void onMark().then(setRefusal)
+  }
+  return (
+    <div className={styles.listActions}>
+      <Button variant="default" aria-describedby={refusal ? refusalId : undefined} onClick={mark}>
+        Mark all as read
+      </Button>
+      {refusal && (
+        <p id={refusalId} className={styles.refusal} role="alert">
+          {refusal}
+        </p>
+      )}
+    </div>
   )
 }
 
@@ -147,11 +183,11 @@ function EndOfTheList({ onReached }: Readonly<{ onReached: () => void }>) {
 
 function NotificationRows({
   notifications,
-  markedThisVisit,
+  onOpen,
 }: Readonly<{
   notifications: NotificationFieldsFragment[]
-  /** The Notifications this visit marked read, which it still shows as unread. */
-  markedThisVisit: ReadonlySet<string>
+  /** Called as the person opens a Notification, which marks it read. */
+  onOpen: (notification: NotificationFieldsFragment) => void
 }>) {
   // A waiting Request turns into an expired one when its time runs out, as the server reads it,
   // and each row says how long ago as each whole minute, hour or day passes.
@@ -167,8 +203,8 @@ function NotificationRows({
         <NotificationRow
           key={notification.id}
           notification={notification}
-          unread={notification.unread || markedThisVisit.has(notification.id)}
           now={now}
+          onOpen={() => onOpen(notification)}
         />
       ))}
     </ul>
@@ -177,27 +213,27 @@ function NotificationRows({
 
 function NotificationRow({
   notification,
-  unread,
   now,
-}: Readonly<{ notification: NotificationFieldsFragment; unread: boolean; now: Date }>) {
+  onOpen,
+}: Readonly<{ notification: NotificationFieldsFragment; now: Date; onOpen: () => void }>) {
   const lineId = useId()
   return (
     <li className={styles.row}>
       {/* A shape, so that unread is not told by colour alone. */}
-      {unread ? (
+      {notification.unread ? (
         <span className={styles.unreadMark} data-testid="unread-mark" aria-hidden />
       ) : (
         <span className={styles.markSpace} aria-hidden />
       )}
       <div className={styles.text} data-testid="notification-text">
-        {unread && <VisuallyHidden>Unread</VisuallyHidden>}
+        {notification.unread && <VisuallyHidden>Unread</VisuallyHidden>}
         {/* The server's line is plain text, so React writes it as text, never as markup. */}
         <p id={lineId} className={styles.line}>
           {notification.message}
         </p>
         <WhenItHappened at={notification.latestEventAt} now={now} />
       </div>
-      <RequestAction notification={notification} now={now} lineId={lineId} />
+      <RequestAction notification={notification} now={now} lineId={lineId} onOpen={onOpen} />
     </li>
   )
 }
@@ -205,12 +241,19 @@ function NotificationRow({
 /**
  * A Request's one action: Review, where it is decided, while it waits, and how it ended once it is
  * over. The decision is made there, so the person sees what anyone who went there directly sees.
+ * Review opens the Request.
  */
 function RequestAction({
   notification,
   now,
   lineId,
-}: Readonly<{ notification: NotificationFieldsFragment; now: Date; lineId: string }>) {
+  onOpen,
+}: Readonly<{
+  notification: NotificationFieldsFragment
+  now: Date
+  lineId: string
+  onOpen: () => void
+}>) {
   if (!isOfferRequest(notification)) return null
   const state = offerRequestState(notification, now)
   if (state.at === 'waiting') {
@@ -218,6 +261,7 @@ function RequestAction({
       <Button
         component={Link}
         to="/settings/household/offers"
+        onClick={onOpen}
         variant="default"
         className={styles.action}
         aria-describedby={lineId}

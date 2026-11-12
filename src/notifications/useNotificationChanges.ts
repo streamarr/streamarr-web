@@ -13,12 +13,12 @@ type Entry = NonNullable<
 
 /**
  * Hands the Notifications that each committed change touched to `onEntries` while the calling
- * component is mounted, each with the edge the list shows it by, or with none when it left the
- * list. A page calls it before it queries the list, so the list misses no change
+ * component is mounted, each with the edge the list shows it by, or with none when it was
+ * dismissed. A page calls it before it queries the list, so the list misses no change
  * (`useLiveChanges`).
  *
  * An entry that came with an error keeps the Notification as it was: a null edge there is no
- * removal, and the transport reports the change missed, so the list reads again. So does an edge
+ * dismissal, and the transport reports the change missed, so the list reads again. So does an edge
  * whose Notification failed to resolve.
  */
 export function useNotificationChanges(onEntries: (entries: NotificationEntry[]) => void) {

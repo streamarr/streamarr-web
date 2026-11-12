@@ -10,10 +10,7 @@ fragment NotificationFields on Notification {
     resolution
   }
   ... on ProfileShareOfferedNotification {
-    share {
-      id
-      status
-    }
+    answer
   }
 }
 
@@ -25,8 +22,8 @@ fragment NotificationEdgeFields on NotificationEdge {
   }
 }
 
-query Notifications($after: String) {
-  notifications(after: $after) {
+query Notifications($first: Int, $after: String) {
+  notifications(first: $first, after: $after) {
     edges {
       ...NotificationEdgeFields
     }
@@ -37,8 +34,8 @@ query Notifications($after: String) {
   }
 }
 
-mutation MarkNotificationRead($input: MarkNotificationReadInput!) {
-  markNotificationRead(input: $input) {
+mutation MarkNotificationsRead($input: MarkNotificationsReadInput!) {
+  markNotificationsRead(input: $input) {
     unreadNotificationCount
     userErrors {
       __typename
