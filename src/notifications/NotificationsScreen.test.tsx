@@ -502,6 +502,31 @@ describe('Reading Notifications', () => {
     )
   })
 
+  it('shouldSendTheNextCallOfMarkingAllWhenAnEarlierOneFails', async () => {
+    const unread = Array.from({ length: 101 }, (_, index) =>
+      answerNotification({
+        id: `answer-${index}`,
+        message: `The offer of “Profile ${index}” was accepted.`,
+        unread: true,
+      }),
+    )
+    const { marks } = serve(notificationsPage(unread))
+    const calls = { count: 0 }
+    server.use(
+      graphql.mutation('MarkNotificationsRead', () => {
+        calls.count += 1
+        // The first call, of the first 100, never reaches the server.
+        return calls.count === 1 ? HttpResponse.error() : undefined
+      }),
+    )
+    const { user } = renderAppAt(NOTIFICATIONS)
+    await screen.findByText('The offer of “Profile 100” was accepted.')
+
+    await markAllRead(user)
+
+    await waitFor(() => expect(marks).toEqual([{ notificationIds: ['answer-100'], visit: 1 }]))
+  })
+
   it('shouldClearTheUnreadMarksWhenTheServerSaysTheMarkReadThem', async () => {
     const held = {
       page: notificationsPage([offerNotification(), answerNotification({ unread: true })]),

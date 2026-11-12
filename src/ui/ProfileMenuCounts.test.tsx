@@ -274,6 +274,45 @@ describe('The unread count in the Profile menu', () => {
     expect(menu.getByRole('button', { name: 'Notifications' })).toBeVisible()
   })
 
+  it('shouldKeepTheCountAndMarkThemAgainWhenAMarkFails', async () => {
+    serveHome(meFixture(), 2)
+    const unread = [
+      answerNotification({ id: 'answer-for-mara', message: MARA_LINE, unread: true }),
+      answerNotification({ unread: true }),
+    ]
+    // The second mark answers only once the test has looked.
+    const secondAnswer = deferred()
+    onTestFinished(secondAnswer.resolve)
+    const marks: string[][] = []
+    server.use(
+      graphql.query('Notifications', () => HttpResponse.json({ data: notificationsPage(unread) })),
+      graphql.mutation('MarkNotificationsRead', async ({ variables }) => {
+        marks.push((variables as { input: { notificationIds: string[] } }).input.notificationIds)
+        if (marks.length === 1) {
+          return HttpResponse.json({ errors: [{ message: 'The Notifications were not marked.' }] })
+        }
+        await secondAnswer.promise
+        return HttpResponse.json({
+          data: { markNotificationsRead: { unreadNotificationCount: 0, userErrors: [] } },
+        })
+      }),
+    )
+    const { user } = renderAppAt('/notifications')
+    await screen.findByText(MARA_LINE)
+    const markAll = screen.getByRole('button', { name: 'Mark all as read' })
+
+    await user.click(markAll)
+    await user.click(markAll)
+
+    // The second mark goes out only once the failed one has settled.
+    await waitFor(() => expect(marks).toHaveLength(2))
+    expect(marks[1]).toEqual(['answer-for-mara', 'answer-for-leo'])
+    expect(marks[0]).toEqual(marks[1])
+    await user.click(screen.getByRole('button', { name: /^Profile menu/ }))
+    const menu = within(await screen.findByTestId('profile-menu'))
+    expect(menu.getByRole('button', { name: 'Notifications, 2 unread' })).toBeVisible()
+  })
+
   it('shouldCountFromAChangeWhenTheCountCouldNotBeRead', async () => {
     const { socket } = serveHome()
     server.use(
