@@ -547,6 +547,52 @@ describe('Older Notifications', () => {
     )
   })
 
+  it('shouldAddNoOlderPageWhenTheListReadAgainEndsElsewhereBeforeItArrives', async () => {
+    const { socket } = serve()
+    const late = heldAnswer(OLDER)
+    onTestFinished(late.release)
+    const older = { calls: 0 }
+    const newest = { page: NEWEST }
+    server.use(
+      graphql.query('Notifications', ({ variables }) => {
+        if (!(variables as { after?: string | null }).after) {
+          return HttpResponse.json({ data: newest.page })
+        }
+        older.calls += 1
+        return late.answer()
+      }),
+    )
+    renderAppAt(NOTIFICATIONS)
+    await screen.findByText('“Cabin” accepted the Profile “Alex”.')
+    await followingNotificationChanges(socket)
+    await reachTheEndOfTheList()
+    await waitFor(() => expect(older.calls).toBe(1))
+
+    // Sam's news and everything older were deleted, which no change says: the list read again ends
+    // at Alex, and only then does the older page asked for after Sam answer.
+    newest.page = notificationsPage([answerAbout('Alex')])
+    comeBackOnline()
+    await waitFor(() => expect(lines()).toEqual(['“Cabin” accepted the Profile “Alex”.']))
+    const answered = answerDelivered('Notifications')
+    late.release()
+    await answered
+    // News that arrives after the older page answered: once it shows, that answer was handled.
+    const sentinel = answerNotification({
+      id: 'answer-for-sam',
+      message: '“Lake House” accepted the Profile “Sam”.',
+    })
+    socket.publish(
+      'NotificationsChanged',
+      notificationsChanged([notificationChange(sentinel.id, notificationEdge(sentinel, 0))]),
+    )
+    await screen.findByText('“Lake House” accepted the Profile “Sam”.')
+
+    expect(lines()).toEqual([
+      '“Lake House” accepted the Profile “Sam”.',
+      '“Cabin” accepted the Profile “Alex”.',
+    ])
+  })
+
   it('shouldAddNoOlderPageWhenItArrivesAfterThePersonLeft', async () => {
     serve()
     servePages(NEWEST, notificationsPage([answerAbout('Mara')], { from: 3 }))
