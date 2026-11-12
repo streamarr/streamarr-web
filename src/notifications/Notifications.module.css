@@ -38,9 +38,10 @@
   margin-top: calc((var(--font-size-emphasis) * var(--line-height-prose) - var(--mark-size)) / 2);
 }
 
+/* The same mark as the avatar's dot, so that unread reads alike in the menu and on the page. */
 .unreadMark {
   border-radius: 50%;
-  background: var(--selection-active);
+  background: var(--indicator-active-track);
 }
 
 .text {
