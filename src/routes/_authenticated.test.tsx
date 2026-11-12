@@ -230,7 +230,7 @@ describe('the authenticated layout', () => {
       stop: vi.fn(),
     }
 
-    renderAppAt('/', renewal)
+    renderAppAt('/', { renewal })
 
     await waitFor(() => expect(renewal.refreshNow).toHaveBeenCalledOnce())
     expect(await screen.findByRole('banner')).toBeInTheDocument()

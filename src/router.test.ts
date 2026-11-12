@@ -3,6 +3,7 @@ import { createMemoryHistory } from '@tanstack/react-router'
 import { waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
+import type { RenewalBridge } from './auth/renewalBridge'
 import { MeDocument } from './graphql/generated/graphql'
 import { createAppRouter } from './router'
 import { serveGraphqlSocket, SOCKET_RECONNECT_DEADLINE_MS } from './test/graphqlSocket'
@@ -17,8 +18,8 @@ const STATUS_CHANGED = gql`
   }
 `
 
-function subscribeAt(path: string, renewal?: Parameters<typeof createAppRouter>[1]) {
-  const app = createAppRouter(createMemoryHistory({ initialEntries: [path] }), renewal)
+function subscribeAt(path: string, renewal?: Pick<RenewalBridge, 'refreshNow'>) {
+  const app = createAppRouter({ history: createMemoryHistory({ initialEntries: [path] }), renewal })
   const completed = vi.fn()
   app.apolloClient.subscribe({ query: STATUS_CHANGED }).subscribe({ complete: completed })
   return { ...app, completed }

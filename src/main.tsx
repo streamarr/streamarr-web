@@ -19,11 +19,10 @@ import { cssVariablesResolver, theme } from './theme'
 
 const renewal = 'serviceWorker' in navigator ? createBrowserRenewalBridge() : inactiveRenewalBridge
 const decodingAnswers = browserDecodingAnswers()
-const { router, apolloClient, session, subscriptions } = createAppRouter(
-  undefined,
+const { router, apolloClient, session, subscriptions } = createAppRouter({
   renewal,
   decodingAnswers,
-)
+})
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

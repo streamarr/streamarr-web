@@ -7,7 +7,6 @@ import type {
   ClientCapabilityDeclarationInput,
   CreatePlaybackSessionInput,
 } from '../../graphql/generated/graphql'
-import { inactiveRenewalBridge } from '../../auth/renewalBridge'
 import { createDecodingAnswers, type DecodingAnswers } from '../../streaming/decodingAnswers'
 import type { DecodingAnswer } from '../../streaming/playbackCapabilities'
 import { deferred } from '../../test/deferred'
@@ -221,7 +220,7 @@ describe('/play/$mediaFileId', () => {
       Promise.resolve({ supported: true, smooth: true, powerEfficient: true }),
     )
     const pageAnswers = browseInSafariOnAMac(decodingInfo)
-    const { router } = renderAppAt('/play/file-1', inactiveRenewalBridge, pageAnswers)
+    const { router } = renderAppAt('/play/file-1', { decodingAnswers: pageAnswers })
     await attachedVideoAt('/api/stream/sess-1.m3u8')
     const askedForTheFirst = decodingInfo.mock.calls.length
 

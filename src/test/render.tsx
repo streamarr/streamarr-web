@@ -24,7 +24,9 @@ export function renderWithProviders(ui: ReactElement): Rendered {
   const session = createSessionStore(() =>
     Promise.reject(new Error('component tests must not probe the session')),
   )
-  const { router, subscriptions } = createAppRouter(createMemoryHistory({ initialEntries: ['/'] }))
+  const { router, subscriptions } = createAppRouter({
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+  })
   return renderUnderProviders({
     client: createApolloClient(vi.fn(), subscriptions.link),
     session,
@@ -36,14 +38,16 @@ export function renderWithProviders(ui: ReactElement): Rendered {
 
 export function renderAppAt(
   path: string,
-  renewal: RenewalBridge = inactiveRenewalBridge,
-  decodingAnswers?: DecodingAnswers,
+  {
+    renewal = inactiveRenewalBridge,
+    decodingAnswers,
+  }: { renewal?: RenewalBridge; decodingAnswers?: DecodingAnswers } = {},
 ): Rendered & Pick<ReturnType<typeof createAppRouter>, 'router' | 'apolloClient'> {
-  const { router, apolloClient, session, subscriptions } = createAppRouter(
-    createMemoryHistory({ initialEntries: [path] }),
+  const { router, apolloClient, session, subscriptions } = createAppRouter({
+    history: createMemoryHistory({ initialEntries: [path] }),
     renewal,
     decodingAnswers,
-  )
+  })
   onTestFinished(({ task }) => {
     if (task.result?.state === 'pass') {
       requireFinishedNavigation(router)

@@ -13,11 +13,15 @@ import type { DecodingAnswers } from './streaming/decodingAnswers'
  * them, serve every playback session of the page. Without them, each playback session sends the
  * browser every question.
  */
-export function createAppRouter(
-  history?: RouterHistory,
-  renewal: Pick<RenewalBridge, 'refreshNow'> = inactiveRenewalBridge,
-  decodingAnswers?: DecodingAnswers,
-) {
+export function createAppRouter({
+  history,
+  renewal = inactiveRenewalBridge,
+  decodingAnswers,
+}: {
+  history?: RouterHistory
+  renewal?: Pick<RenewalBridge, 'refreshNow'>
+  decodingAnswers?: DecodingAnswers
+} = {}) {
   // The probe closes over the client assigned below: the only order the circular wiring allows.
   let apolloClient: ApolloClient
   const session = createSessionStore(async () => {
