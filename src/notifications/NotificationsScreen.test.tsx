@@ -469,6 +469,31 @@ describe('Older Notifications', () => {
     await waitFor(() => expect(marks).toEqual([{ notificationId: 'answer-for-mara', visit: 1 }]))
   })
 
+  it('shouldMarkNothingOfAnOlderPageWhenItRepeatsANotificationThePageAlreadyShows', async () => {
+    const { socket, marks } = serve()
+    const mara = answerNotification({
+      id: 'answer-for-mara',
+      message: '“Cabin” accepted the Profile “Mara”.',
+      unread: true,
+    })
+    const leo = answerNotification({ id: 'answer-for-leo', unread: true })
+    servePages(NEWEST, notificationsPage([mara, leo], { from: 3 }))
+    renderAppAt(NOTIFICATIONS)
+    await screen.findByText('“Cabin” accepted the Profile “Alex”.')
+    await followingNotificationChanges(socket)
+    // Mara's news arrives live, so the page leaves it unread; the older page brings it again.
+    socket.publish(
+      'NotificationsChanged',
+      notificationsChanged([notificationChange(mara.id, notificationEdge(mara, 0))]),
+    )
+    await screen.findByText('“Cabin” accepted the Profile “Mara”.')
+
+    await reachTheEndOfTheList()
+
+    await screen.findByText(ANSWER_LINE)
+    await waitFor(() => expect(marks).toEqual([{ notificationId: 'answer-for-leo', visit: 1 }]))
+  })
+
   it('shouldLoadOlderNotificationsWhenTheNewestPageHasNoneToShow', async () => {
     serve()
     servePages(
