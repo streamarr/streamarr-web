@@ -53,11 +53,6 @@ function serveHome(me: MeFixture = meFixture(), unread = 0) {
 function serveNotifications() {
   server.use(
     graphql.query('Notifications', () => HttpResponse.json({ data: notificationsPage([]) })),
-    graphql.mutation('MarkAllNotificationsRead', () =>
-      HttpResponse.json({
-        data: { markAllNotificationsRead: { unreadNotificationCount: 0, userErrors: [] } },
-      }),
-    ),
   )
 }
 
