@@ -123,16 +123,12 @@ function NotificationsList() {
   return (
     <>
       {notifications.some((notification) => notification.unread) && (
-        <div className={styles.listActions}>
-          <Button variant="default" onClick={() => markRead(notifications)}>
-            Mark all as read
-          </Button>
-        </div>
+        <MarkAllRead onMark={() => markRead(notifications)} />
       )}
       {notifications.length > 0 && (
         <NotificationRows
           notifications={notifications}
-          onOpen={(notification) => markRead([notification])}
+          onOpen={(notification) => void markRead([notification])}
         />
       )}
       {older.failure ? (
@@ -143,6 +139,31 @@ function NotificationsList() {
         pageInfo?.hasNextPage && <EndOfTheList key={pageInfo.endCursor} onReached={older.load} />
       )}
     </>
+  )
+}
+
+/**
+ * Marks read every unread row the page shows. When a mark fails, why follows the button, which
+ * stays where it was clicked and stays the retry.
+ */
+function MarkAllRead({ onMark }: Readonly<{ onMark: () => Promise<string | null> }>) {
+  const [refusal, setRefusal] = useState<string | null>(null)
+  const refusalId = useId()
+  const mark = () => {
+    setRefusal(null)
+    void onMark().then(setRefusal)
+  }
+  return (
+    <div className={styles.listActions}>
+      <Button variant="default" aria-describedby={refusal ? refusalId : undefined} onClick={mark}>
+        Mark all as read
+      </Button>
+      {refusal && (
+        <p id={refusalId} className={styles.refusal} role="alert">
+          {refusal}
+        </p>
+      )}
+    </div>
   )
 }
 

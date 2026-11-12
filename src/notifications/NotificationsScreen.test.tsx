@@ -519,6 +519,59 @@ describe('Reading Notifications', () => {
     await waitFor(() => expect(marks).toEqual([{ notificationIds: ['answer-100'], visit: 1 }]))
   })
 
+  it.each([
+    ['cannot reach the server', () => HttpResponse.error(), "Couldn't mark notifications as read."],
+    [
+      'refuses the ids',
+      () =>
+        HttpResponse.json({
+          data: {
+            markNotificationsRead: {
+              __typename: 'MarkNotificationsReadPayload',
+              unreadNotificationCount: null,
+              userErrors: [{ __typename: 'InvalidIdError', message: 'The id is not valid.' }],
+            },
+          },
+        }),
+      'The id is not valid.',
+    ],
+  ])('shouldSayWhyUnderMarkAllAsReadWhenTheMark %s', async (_, answer, words) => {
+    serve(notificationsPage([offerNotification(), answerNotification({ unread: true })]))
+    server.use(graphql.mutation('MarkNotificationsRead', answer))
+    const { user } = renderAppAt(NOTIFICATIONS)
+    await screen.findByText(OFFER_LINE)
+
+    await markAllRead(user)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(words)
+    expect(screen.getByRole('button', { name: 'Mark all as read' })).toHaveAccessibleDescription(
+      words,
+    )
+    expect(screen.getAllByTestId('unread-mark')).toHaveLength(2)
+  })
+
+  it('shouldClearTheReasonWhenThePersonMarksThemAllAgain', async () => {
+    const { marks } = serve(
+      notificationsPage([offerNotification(), answerNotification({ unread: true })]),
+    )
+    const calls = { count: 0 }
+    server.use(
+      graphql.mutation('MarkNotificationsRead', () => {
+        calls.count += 1
+        return calls.count === 1 ? HttpResponse.error() : undefined
+      }),
+    )
+    const { user } = renderAppAt(NOTIFICATIONS)
+    await screen.findByText(OFFER_LINE)
+    await markAllRead(user)
+    await screen.findByRole('alert')
+
+    await markAllRead(user)
+
+    await waitFor(() => expect(marks).toHaveLength(1))
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
+  })
+
   it('shouldClearTheUnreadMarksWhenTheServerSaysTheMarkReadThem', async () => {
     const held = {
       page: notificationsPage([offerNotification(), answerNotification({ unread: true })]),
