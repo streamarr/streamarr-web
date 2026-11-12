@@ -378,7 +378,7 @@ describe('createDecodingAnswers', () => {
     await letTurnsPass(0)
 
     browser.sent[0].resolve(SUPPORTED)
-    await letTurnsPass(0)
+    await letTurnsPass(250)
     browser.sent[1].resolve(SUPPORTED)
 
     await expect(first).resolves.toEqual(SUPPORTED)
@@ -393,6 +393,7 @@ describe('createDecodingAnswers', () => {
     await letTurnsPass(249)
 
     const second = ask(HEVC_AT_2160P60)
+    await letTurnsPass(251)
     browser.sent[0].resolve(SUPPORTED)
 
     await expect(first).resolves.toEqual(SUPPORTED)
