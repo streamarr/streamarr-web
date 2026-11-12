@@ -2300,14 +2300,16 @@ describe('declarePlaybackCapabilities', () => {
       ])
     })
 
-    it('shouldDeclareTheNeededHevcLevelWhenTheBrowserAnswersLevelsAboveItSmoothOnlyBelow2160p60', async () => {
+    it('shouldDeclareTheNeededHevcLevelWhenTheBrowserAnswersEachSearchedLevelSmoothOnlyBelow2160p60', async () => {
       const declaration = await declarePlaybackCapabilities(
         platformFixture({
-          decodingInfo: decodingInfoAnsweringHevc((configuration) => {
-            const isLevelAboveTheTiers = hevcLevelOf(configuration) > HEVC_LEVEL_5_1
-            const is2160p60 = isUhd(configuration) && configuration.video?.framerate === 60
-            return answer(!(isLevelAboveTheTiers && is2160p60))
-          }),
+          decodingInfo: refusingHevcAboveLevelSixPointTwo(
+            decodingInfoAnsweringHevc((configuration) => {
+              const isLevelAboveTheTiers = hevcLevelOf(configuration) > HEVC_LEVEL_5_1
+              const is2160p60 = isUhd(configuration) && configuration.video?.framerate === 60
+              return answer(!(isLevelAboveTheTiers && is2160p60))
+            }),
+          ),
           userAgent: SAFARI,
         }),
       )
