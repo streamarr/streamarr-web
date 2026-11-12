@@ -515,6 +515,7 @@ function startSessionPlayback({
     // Playback that ended has started; only attaching the stream again starts it anew.
     startupDeadline.end()
     stopStatusCheck()
+    if (video.readyState < HTMLMediaElement.HAVE_METADATA) source?.stopLoading?.()
     video.pause()
     endedPosition = video.currentTime
     reportEnd(realEnd)
@@ -1491,6 +1492,11 @@ function ignoreTimelineReportFailure() {
 
 interface StreamSource {
   detach: () => void
+  /**
+   * Stops loading the stream and leaves the element where it stands. Only hls.js needs the stop:
+   * hls.js moves the element to the start position once hls.js has buffered the segment there.
+   */
+  stopLoading?: () => void
   /** Whether attaching the stream again with another video preference can change its range. */
   followsVideoPreference: boolean
   tracks: TrackSource
@@ -1558,6 +1564,7 @@ function attach(video: HTMLVideoElement, url: string, options: StreamSourceOptio
       video.removeEventListener('error', onVideoError)
       hls.destroy()
     },
+    stopLoading: () => hls.stopLoad(),
     followsVideoPreference: true,
     tracks: hlsTrackSource(hls),
     segmentSeconds: () => hls.latestLevelDetails?.targetduration,

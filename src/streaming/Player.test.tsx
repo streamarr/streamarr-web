@@ -871,6 +871,18 @@ function loadMetadata(video: HTMLVideoElement) {
   fireEvent(video, new Event('loadedmetadata'))
 }
 
+// The first segment that hls.js loads arrives, and the element loads its metadata. hls.js 1.7.4
+// then moves an element that stands before the start position to it (`seekToStartPos`), unless
+// loading stopped before hls.js buffered the segment.
+function bufferTheFirstSegment(video: HTMLVideoElement) {
+  loadMetadata(video)
+  const startPosition = hls.config?.startPosition ?? -1
+  if (!hls.loading || startPosition < 0 || video.currentTime >= startPosition) return
+  video.currentTime = startPosition
+  fireEvent(video, new Event('seeking'))
+  fireEvent(video, new Event('timeupdate'))
+}
+
 function loadFirstFrame(video: HTMLVideoElement) {
   setReadyState(video, HTMLMediaElement.HAVE_CURRENT_DATA)
   fireEvent(video, new Event('loadeddata'))
@@ -6946,6 +6958,97 @@ describe('Player', () => {
         expect(video.paused).toBe(true)
       },
     )
+
+    // hls.js still loads the segment that holds the start position, which the server answers here
+    // after the status read has ended playback.
+    it('shouldPlayFromTheTopWhenTheViewerPlaysAfterTheStartSegmentOfASlowStartupThatEndedArrives', async () => {
+      const reports = serveSession()
+      serveStatusReads(() => ({ ...SESSION, mediaEndSeconds: REAL_END_SECONDS }))
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      const video = await startAFirstLoadPastTheRealEnd()
+      expect(hls.config?.startPosition).toBe(PAST_THE_REAL_END_SECONDS)
+      hls.destroy.mockImplementation(() => video.load())
+      await act(async () => vi.advanceTimersByTimeAsync(SLOW_STARTUP_MS))
+      const stopped = () => reports.filter((report) => report.state === 'STOPPED')
+      await vi.waitFor(() => expect(stopped()).toHaveLength(1))
+      bufferTheFirstSegment(video)
+
+      await act(() => video.play())
+      await vi.waitFor(() => expect(hls.loadSource).toHaveBeenCalledTimes(2))
+      bufferTheFirstSegment(video)
+      fireEvent(video, new Event('timeupdate'))
+      await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_START_TIMEOUT_MS))
+
+      expect(video.currentTime).toBe(0)
+      expect(video.paused).toBe(false)
+      expect(stopped()).toHaveLength(1)
+    })
+
+    it('shouldLeaveNoTimerOrListenerBehindWhenTheViewerLeavesAfterASlowStartupEndedAtTheRealEnd', async () => {
+      const reports = serveSession()
+      serveStatusReads(() => ({ ...SESSION, mediaEndSeconds: REAL_END_SECONDS }))
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      const { unmount } = renderWithProviders(
+        <Player
+          playbackPlatform={withoutDecodingInfo}
+          mediaFileId="abcd"
+          startPositionSeconds={PAST_THE_REAL_END_SECONDS}
+        />,
+      )
+      const video = await attachedWithTheClockStill()
+      await act(async () => vi.advanceTimersByTimeAsync(SLOW_STARTUP_MS))
+      await vi.waitFor(() => expect(reports.at(-1)?.state).toBe('STOPPED'))
+
+      unmount()
+      await act(async () => vi.advanceTimersByTimeAsync(0))
+      expect(vi.getTimerCount()).toBe(0)
+      const reported = reports.length
+      bufferTheFirstSegment(video)
+      fireEvent(video, new Event('play'))
+      await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_START_TIMEOUT_MS))
+
+      expect(hls.destroy).toHaveBeenCalledOnce()
+      expect(hls.loadSource).toHaveBeenCalledOnce()
+      expect(reports).toHaveLength(reported)
+    })
+
+    // hls.js finishes the start of playback that has not ended.
+    it.each([
+      { startup: 'a normal startup', loadsAfterMs: SLOW_STARTUP_MS - 1 },
+      { startup: 'a slow startup', loadsAfterMs: SLOW_STARTUP_MS + PLAYBACK_STATUS_INTERVAL_MS },
+    ])(
+      'shouldKeepLoadingTheStreamWhenTheMetadataLoadsBeforePlaybackEnds($startup)',
+      async ({ loadsAfterMs }) => {
+        serveSession()
+        serveStatusReads(() => SESSION)
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        renderWithProviders(
+          <Player
+            playbackPlatform={withoutDecodingInfo}
+            mediaFileId="abcd"
+            startPositionSeconds={600}
+          />,
+        )
+        const video = await attachedWithTheClockStill()
+        await act(async () => vi.advanceTimersByTimeAsync(loadsAfterMs))
+
+        bufferTheFirstSegment(video)
+
+        expect(hls.loading).toBe(true)
+        expect(video.currentTime).toBe(600)
+        expect(video.paused).toBe(false)
+      },
+    )
+
+    it('shouldKeepLoadingTheStreamWhenPlaybackReachesTheRealEndAfterItsMetadataLoaded', async () => {
+      const { reports, video } = await playTheShortCopy()
+
+      playheadAt(video, REAL_END_SECONDS)
+
+      await waitFor(() => expect(reports.at(-1)?.state).toBe('STOPPED'))
+      expect(video.paused).toBe(true)
+      expect(hls.loading).toBe(true)
+    })
 
     it('shouldReadTheStatusAgainAfterTheIntervalWhenTheFirstReadOfASlowStartupNamesNoRealEnd', async () => {
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
