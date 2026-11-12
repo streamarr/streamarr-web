@@ -1,5 +1,5 @@
 import { useMutation } from '@apollo/client/react'
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { MarkNotificationReadDocument } from '../graphql/generated/graphql'
 
 /** A Notification as the page shows it, by its id. */
@@ -15,6 +15,9 @@ interface Shown {
  * late and sorts below the rows shown, stays unread until a visit reads it. Each id is marked once
  * a visit, one after another, so that each answer's unread count, handed to `onCount`, is newer
  * than the one before it. A mark that fails waits for the next visit.
+ *
+ * `marked` holds the ids it marked this visit. The server tells every socket, this page's too,
+ * that each of them is read, so the page draws them as unread from `marked` until the next visit.
  */
 export function useMarkShownRead(
   newestPage: readonly Shown[] | null,
@@ -24,11 +27,14 @@ export function useMarkShownRead(
   const sent = useRef(new Set<string>())
   const queue = useRef<Promise<unknown>>(Promise.resolve())
   const markedNewest = useRef(false)
+  const [marked, setMarked] = useState<ReadonlySet<string>>(() => new Set())
 
   const markRead = useCallback(
     (notifications: readonly Shown[]) => {
-      for (const { id, unread } of notifications) {
-        if (!unread || sent.current.has(id)) continue
+      const fresh = notifications.filter(({ id, unread }) => unread && !sent.current.has(id))
+      if (fresh.length === 0) return
+      setMarked((before) => new Set([...before, ...fresh.map(({ id }) => id)]))
+      for (const { id } of fresh) {
         sent.current.add(id)
         queue.current = queue.current.then(() =>
           markOne({ variables: { input: { notificationId: id } } })
@@ -49,5 +55,5 @@ export function useMarkShownRead(
     markRead(newestPage)
   }, [newestPage, markRead])
 
-  return markRead
+  return { marked, markRead }
 }

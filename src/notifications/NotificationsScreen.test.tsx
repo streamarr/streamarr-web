@@ -325,6 +325,38 @@ describe('Reading Notifications', () => {
     )
   })
 
+  it('shouldKeepTheUnreadMarkUntilTheNextVisitWhenTheServerSaysTheMarkReadIt', async () => {
+    const held = { page: notificationsPage([offerNotification()]) }
+    const { socket, marks } = serve()
+    server.use(graphql.query('Notifications', () => HttpResponse.json({ data: held.page })))
+    const { user } = renderAppAt(NOTIFICATIONS)
+    await screen.findByText(OFFER_LINE)
+    await followingNotificationChanges(socket)
+    await waitFor(() => expect(marks).toHaveLength(1))
+
+    // The server tells every socket that the mark read it; Leo's news shows the change applied.
+    const read = offerNotification({ unread: false })
+    const leo = answerNotification()
+    held.page = notificationsPage([leo, read], { from: 0 })
+    socket.publish(
+      'NotificationsChanged',
+      notificationsChanged([
+        notificationChange(read.id, notificationEdge(read, 1)),
+        notificationChange(leo.id, notificationEdge(leo, 0)),
+      ]),
+    )
+    await screen.findByText(ANSWER_LINE)
+
+    const offerRow = rows()[1]
+    expect(within(offerRow).getByText('Unread')).toBeInTheDocument()
+    expect(within(offerRow).getByTestId('unread-mark')).toBeVisible()
+    await leaveForHome(user, NOTIFICATIONS_PAGE)
+    await returnThroughTheProfileMenu(user, NOTIFICATIONS_PAGE)
+    await screen.findByText(OFFER_LINE)
+    expect(within(rows()[1]).queryByText('Unread')).not.toBeInTheDocument()
+    expect(within(rows()[1]).queryByTestId('unread-mark')).not.toBeInTheDocument()
+  })
+
   it('shouldLeaveUnreadUntilTheNextVisitANotificationThatArrivesWhenThePageIsOpen', async () => {
     const held = { page: notificationsPage([offerNotification()], { from: 1 }) }
     const { socket, marks, visits } = serve()
@@ -673,7 +705,8 @@ describe('Notifications as they change elsewhere', () => {
 
     expect(await within(rows()[0]).findByText('Accepted')).toBeVisible()
     expect(screen.queryByRole('link', { name: 'Review' })).not.toBeInTheDocument()
-    expect(within(rows()[0]).queryByText('Unread')).not.toBeInTheDocument()
+    // It was unread when the page opened, so it stays marked until the next visit.
+    expect(within(rows()[0]).getByText('Unread')).toBeInTheDocument()
   })
 
   it('shouldTakeANotificationOutWhenItLeavesTheList', async () => {

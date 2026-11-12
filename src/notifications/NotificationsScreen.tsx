@@ -57,7 +57,7 @@ function NotificationsList() {
   const readAgain = () => query.refetch().catch(() => undefined)
   const shown = query.error ? [] : definedEdges(query.data?.notifications.edges)
   const { receiveUnreadCount } = useMenuCounts()
-  const markRead = useMarkShownRead(
+  const { marked, markRead } = useMarkShownRead(
     query.data && !query.error ? shown.map((edge) => edge.node) : null,
     receiveUnreadCount,
   )
@@ -86,7 +86,9 @@ function NotificationsList() {
   }
   return (
     <>
-      {shown.length > 0 && <NotificationRows notifications={shown.map((edge) => edge.node)} />}
+      {shown.length > 0 && (
+        <NotificationRows notifications={shown.map((edge) => edge.node)} markedThisVisit={marked} />
+      )}
       {older.failure ? (
         <FailureRow className={styles.olderFailure} onRetry={older.load}>
           {requestFailureMessage(older.failure, "Couldn't load older notifications.")}
@@ -114,7 +116,12 @@ function EndOfTheList({ onReached }: Readonly<{ onReached: () => void }>) {
 
 function NotificationRows({
   notifications,
-}: Readonly<{ notifications: NotificationFieldsFragment[] }>) {
+  markedThisVisit,
+}: Readonly<{
+  notifications: NotificationFieldsFragment[]
+  /** The Notifications this visit marked read, which it still shows as unread. */
+  markedThisVisit: ReadonlySet<string>
+}>) {
   // A waiting Request turns into an expired one when its time runs out, as the server reads it,
   // and each row says how long ago as each whole minute, hour or day passes.
   const now = useNow((last) =>
@@ -126,7 +133,12 @@ function NotificationRows({
   return (
     <ul className={`${settingsStyles.formPanel} ${styles.rows}`} aria-label="Notifications">
       {notifications.map((notification) => (
-        <NotificationRow key={notification.id} notification={notification} now={now} />
+        <NotificationRow
+          key={notification.id}
+          notification={notification}
+          unread={notification.unread || markedThisVisit.has(notification.id)}
+          now={now}
+        />
       ))}
     </ul>
   )
@@ -134,19 +146,20 @@ function NotificationRows({
 
 function NotificationRow({
   notification,
+  unread,
   now,
-}: Readonly<{ notification: NotificationFieldsFragment; now: Date }>) {
+}: Readonly<{ notification: NotificationFieldsFragment; unread: boolean; now: Date }>) {
   const lineId = useId()
   return (
     <li className={styles.row}>
       {/* A shape, so that unread is not told by colour alone. */}
-      {notification.unread ? (
+      {unread ? (
         <span className={styles.unreadMark} data-testid="unread-mark" aria-hidden />
       ) : (
         <span className={styles.markSpace} aria-hidden />
       )}
       <div className={styles.text}>
-        {notification.unread && <VisuallyHidden>Unread</VisuallyHidden>}
+        {unread && <VisuallyHidden>Unread</VisuallyHidden>}
         {/* The server's line is plain text, so React writes it as text, never as markup. */}
         <p id={lineId} className={styles.line}>
           {notification.message}
