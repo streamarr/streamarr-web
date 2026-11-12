@@ -3482,7 +3482,7 @@ describe('browserPlaybackPlatform', () => {
 
   it('shouldSendTheBrowserEachQuestionOnceWhenTwoDeclarationsAskThroughThePagesAnswers', async () => {
     const decodingInfo = decodingInfoAnswering(() => true)
-    browseIn({ userAgent: FIREFOX_USER_AGENT, platform: 'MacIntel', decodingInfo })
+    browseIn({ userAgent: SAFARI, platform: 'MacIntel', decodingInfo })
     const pageAnswers = createDecodingAnswers({ decodingInfo: browserDecodingInfo })
     await declarePlaybackCapabilities(
       browserPlaybackPlatform(document.createElement('video'), pageAnswers),
