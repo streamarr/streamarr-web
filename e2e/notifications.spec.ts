@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { routeGraphqlSocket } from './graphqlSocket'
 import { serveSharingPages } from './sharingPages'
 
@@ -21,6 +21,18 @@ function news(id: string, message: string, at: number, unread = true) {
       unread,
     },
   }
+}
+
+/** The colour a design token resolves to in the page, as computed styles report it. */
+function tokenColour(page: Page, token: string) {
+  return page.evaluate((name) => {
+    const probe = document.createElement('span')
+    probe.style.color = `var(${name})`
+    document.body.append(probe)
+    const colour = getComputedStyle(probe).color
+    probe.remove()
+    return colour
+  }, token)
 }
 
 const UNREAD = [
@@ -88,4 +100,30 @@ test('the unread count and the dot clear once the Notifications page has been op
   await expect(page.getByRole('button', { name: 'Notifications', exact: true })).toHaveText(
     'Notifications',
   )
+})
+
+// The dot and the row's mark are marks, which need 3:1 against what they sit on; the brief gives
+// them indicator.activeTrack until the dot has a token of its own.
+test('the avatar dot and each unread row mark take the indicator colour', async ({
+  page,
+  request,
+}) => {
+  await serveSharingPages(page, request, {
+    UnreadNotificationCount: { unreadNotificationCount: 2 },
+    Notifications: {
+      notifications: {
+        __typename: 'NotificationConnection',
+        edges: UNREAD,
+        pageInfo: { __typename: 'PageInfo', hasNextPage: false, endCursor: 'cursor-002' },
+      },
+    },
+  })
+  await page.goto('/')
+  const indicator = await tokenColour(page, '--indicator-active-track')
+
+  const chip = page.getByRole('button', { name: 'Profile menu (Alex), has notifications' })
+  await expect(chip.getByTestId('unread-dot')).toHaveCSS('background-color', indicator)
+  await page.goto('/notifications')
+  const rows = page.getByRole('list', { name: 'Notifications' }).getByRole('listitem')
+  await expect(rows.first().getByTestId('unread-mark')).toHaveCSS('background-color', indicator)
 })
