@@ -255,3 +255,15 @@ test('a refused issue leaves Issue a share code where the person clicked it', as
   await expect(page.getByRole('alert')).toHaveText('Withdraw a code before issuing another.')
   expect((await boxOf(issue)).y).toBeCloseTo(before.y, 0)
 })
+
+test('a confirmation in the settings titles itself at 17px semibold', async ({ page, request }) => {
+  await page.setViewportSize(DESKTOP)
+  await serveSharingPages(page, request, { ProfileShares: alexsShares })
+  await page.goto('/settings/profile/sharing')
+
+  await page.getByRole('button', { name: 'Cancel invitation to Lake House' }).click()
+
+  const title = page.getByRole('dialog').getByRole('heading')
+  await expect(title).toHaveCSS('font-size', '17px')
+  await expect(title).toHaveCSS('font-weight', '600')
+})
