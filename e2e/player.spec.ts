@@ -835,11 +835,19 @@ async function openPlayerShowingMedia(page: Page, request: APIRequestContext): P
 const ORIGINAL_EXPLANATION =
   "This video couldn't play in its original form, so Quality changed to Auto."
 
-// Picking Original answers a playback session whose first attempt is an encode, so Original
-// changes to Auto: once the new stream shows its first frame, the Quality chip carries the caution
-// and the Quality menu marks Original. Returns the Quality chip. Its destruction is acknowledged
-// by its own ID, so a later pick can start.
-async function startOriginalWithAnEncode(page: Page): Promise<Locator> {
+// What the server answers a pick of `quality` with: a playback session that plays `playbackChoice`
+// after `formatChange`.
+interface AnsweredPick {
+  quality: string
+  playbackChoice: string
+  formatChange: string
+}
+
+// Every destruction is acknowledged by its own ID, so a later pick can start.
+async function answerPick(
+  page: Page,
+  { quality, playbackChoice, formatChange }: AnsweredPick,
+): Promise<void> {
   await page.route('**/graphql', async (route) => {
     const body = route.request().postDataJSON() as {
       operationName?: string
@@ -853,7 +861,7 @@ async function startOriginalWithAnEncode(page: Page): Promise<Locator> {
     }
     if (
       body?.operationName !== 'CreatePlaybackSession' ||
-      body.variables?.input?.options?.quality !== 'ORIGINAL'
+      body.variables?.input?.options?.quality !== quality
     ) {
       return route.fallback()
     }
@@ -867,15 +875,26 @@ async function startOriginalWithAnEncode(page: Page): Promise<Locator> {
             ...created.createPlaybackSession,
             playbackSession: {
               ...created.createPlaybackSession.playbackSession,
-              id: 'playback-2',
-              requestedChoice: 'ORIGINAL',
-              playbackChoice: 'AUTO',
-              formatChange: 'STARTED_WITH_ENCODE',
+              id: `playback-${quality}`,
+              requestedChoice: quality,
+              playbackChoice,
+              formatChange,
             },
           },
         },
       },
     })
+  })
+}
+
+// Picking Original answers a playback session whose first attempt is an encode, so Original
+// changes to Auto: once the new stream shows its first frame, the Quality chip carries the caution
+// and the Quality menu marks Original. Returns the Quality chip.
+async function startOriginalWithAnEncode(page: Page): Promise<Locator> {
+  await answerPick(page, {
+    quality: 'ORIGINAL',
+    playbackChoice: 'AUTO',
+    formatChange: 'STARTED_WITH_ENCODE',
   })
   const chip = page.getByRole('button', { name: 'Quality: Auto' })
   await chip.click()
