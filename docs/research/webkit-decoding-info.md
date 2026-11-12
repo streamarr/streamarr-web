@@ -6,10 +6,10 @@ All links are pinned to WebKit main at `c46f252a2c4246a5a5cda58ce4ba7aed237bf1c6
 
 ## Recorded in Safari 26.6
 
-Recorded through `safaridriver` on 2026-11-11, on a display that reports HDR, so each declaration asks its HDR questions.
+Every Safari figure in this note was recorded in Safari 26.6 on macOS through `safaridriver` on 2026-11-11, on a display that reports HDR, so each declaration asks its HDR questions.
 
-- One declaration asks 81 `decodingInfo` questions and takes 250 to 290 ms. The client builds a declaration before every playback start. A second declaration costs as much as the first, because WebKit keeps no answers.
-- WebKit answers the questions one at a time, in its GPU process, in arrival order. Asking them all at once is no faster than asking them one after another. Each takes about 4 ms once warm.
+- Before the client searched for an HEVC level above the one its picture needs, one declaration asked 81 `decodingInfo` questions and took 250 to 290 ms. With that search, one declaration makes 89 asks, 84 of them distinct, and takes about 300 ms. The client builds a declaration before every playback start. A second declaration costs as much as the first, because WebKit keeps no answers.
+- WebKit answers the questions one at a time, in its GPU process, in arrival order. Asking them all at once is no faster than asking them one after another. Each takes about 4 ms once warm. One question of a page's first declaration took 114 ms.
 - Pending questions do not block the page. A synchronous `HTMLMediaElement.canPlayType` or `MediaSource.isTypeSupported` call for a type not asked before does block it. That call waits behind every pending question: about 265 ms behind 70 pending questions, and about 5 ms (at worst 10 ms) behind one.
 - In the first declaration of a page, up to 71 questions were pending. The client's own `canPlayType` calls blocked the page for about 220 ms. The slowest single call took 204 ms.
 
