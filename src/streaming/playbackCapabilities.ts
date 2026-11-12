@@ -563,8 +563,8 @@ async function searchLevels({
   return { eightBit: eightBitLevel, tenBit: tenBitLevel, bases: new Map(bases) }
 }
 
-// No decoder plays level 8.5, so only a browser that compares the level with its decoder refuses
-// level 8.5. The search asks about level 8.5 first, and asks about other levels only after a refusal.
+// A browser that reads no level answers level 8.5 as it answers every other level, so the search
+// asks about other levels only after the browser refuses level 8.5.
 // The browser answers no faster when asked every level at once, so the search asks one level at a
 // time and stops at the first smooth answer. A missing answer is never evidence, so a question
 // that the browser rejects or leaves unanswered ends the search without a level. Power efficiency
