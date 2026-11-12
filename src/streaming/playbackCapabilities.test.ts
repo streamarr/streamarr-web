@@ -2755,15 +2755,35 @@ describe('declarePlaybackCapabilities', () => {
         }),
       )
 
-      const hevcFileQuestions = decodingInfo.mock.calls
-        .map(([configuration]) => configuration)
-        .filter(
-          (configuration) =>
-            configuration.type === 'file' && codecOf(configuration).startsWith('hvc1'),
-        )
-        .map(codecOf)
-      expect(hevcFileQuestions.toSorted()).toEqual([
+      expect(fileQuestionCodecs(decodingInfo, 'hvc1')).toEqual([
         hevcMainCodec(HEVC_LEVEL_6_2),
+        hevcMainTenCodec(HEVC_LEVEL_6_2),
+      ])
+      expect(directPlayOf(familyEntries(declaration, 'HEVC'))).toEqual([
+        { codecFamily: 'HEVC', containers: ['MP4'], sampleEntries: ['HVC1'] },
+      ])
+    })
+
+    it('shouldAskEachHevcFileQuestionAtTheLevelTheEntryDeclaresForItsOwnProfileWhenWebKitAnswersMainAndMainTenSmoothUpToDifferentLevels', async () => {
+      const hls = decodingInfoAnsweringHevc((configuration) => {
+        const maximum = isHevcMain(codecOf(configuration)) ? HEVC_LEVEL_6_0 : HEVC_LEVEL_6_2
+        return hevcDecoderUpTo(maximum)(configuration)
+      })
+      const files = filePlayingDecodingInfo(WEBKIT_FILE_TYPES)
+      const decodingInfo = vi.fn((configuration: MediaDecodingConfiguration) =>
+        configuration.type === 'file' ? files(configuration) : hls(configuration),
+      )
+
+      const declaration = await declarePlaybackCapabilities(
+        platformFixture({
+          decodingInfo,
+          canPlayType: canPlayTypeOf(WEBKIT_FILE_TYPES),
+          userAgent: SAFARI,
+        }),
+      )
+
+      expect(fileQuestionCodecs(decodingInfo, 'hvc1')).toEqual([
+        hevcMainCodec(HEVC_LEVEL_6_0),
         hevcMainTenCodec(HEVC_LEVEL_6_2),
       ])
       expect(directPlayOf(familyEntries(declaration, 'HEVC'))).toEqual([
@@ -2995,6 +3015,16 @@ function directPlayOf(entries: readonly VideoCapabilityEntryInput[]) {
     containers: directPlayContainers ?? [],
     sampleEntries: directPlaySampleEntries ?? [],
   }))
+}
+
+// The sorted codec strings of the file questions whose codec string starts with `codec`.
+function fileQuestionCodecs(decodingInfo: DecodingInfoFake, codec: string): string[] {
+  return decodingInfo.mock.calls
+    .map(([configuration]) => configuration)
+    .filter((configuration) => configuration.type === 'file')
+    .map(codecOf)
+    .filter((asked) => asked.startsWith(codec))
+    .toSorted()
 }
 
 // An AudioContext whose default output plays maxChannelCount channels, and whose close() settles
