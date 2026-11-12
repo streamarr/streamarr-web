@@ -224,6 +224,8 @@ function AmountForm({
         }
         rightSectionWidth={80}
         error={[refusal, unconfirmed && UNCONFIRMED].filter(Boolean).join(' ') || null}
+        // A refusal after Enter leaves focus in the field, so nothing would read it out.
+        errorProps={{ role: 'alert' }}
         inputContainer={(input) =>
           units.length > 1 ? (
             <div className={styles.amount}>

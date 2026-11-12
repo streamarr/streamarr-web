@@ -317,6 +317,28 @@ describe('sharing and invitation settings', () => {
     expect(field).toHaveFocus()
   })
 
+  it('shouldAnnounceTheRangeWhenAdminPressesEnterOnALimitOutsideIt', async () => {
+    const state = serve()
+    const { user } = renderAppAt(SHARING)
+    await enterLimit(user, '0')
+
+    await user.keyboard('{Enter}')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Choose from 1 to 100 codes.')
+    expect(state.limitChanges).toEqual([])
+  })
+
+  it('shouldAnnounceTheServersWordsWhenAdminPressesEnterAndTheServerRefuses', async () => {
+    serve()
+    refuseLimitChanges('Choose from 1 to 50 codes.')
+    const { user } = renderAppAt(SHARING)
+    await enterLimit(user, '60')
+
+    await user.keyboard('{Enter}')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Choose from 1 to 50 codes.')
+  })
+
   it('shouldLeaveFocusWhereAdminPutItWhenASaveAnswersAfterTheyMovedOn', async () => {
     const state = serve()
     const answer = deferred()
