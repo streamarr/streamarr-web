@@ -961,7 +961,6 @@ function startSessionPlayback({
   }
 
   function beginHandover() {
-    resume = resumePoint()
     detachSource()
     sessionId = null
     startupDeadline.end()
