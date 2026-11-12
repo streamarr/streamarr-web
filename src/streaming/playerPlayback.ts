@@ -1493,8 +1493,9 @@ function ignoreTimelineReportFailure() {
 interface StreamSource {
   detach: () => void
   /**
-   * Stops loading the stream and leaves the element where it stands. Only hls.js needs the stop:
-   * hls.js moves the element to the start position once hls.js has buffered the segment there.
+   * Stops loading the stream and lets go of the element, which then holds no media. Only hls.js
+   * needs the stop: hls.js moves the element to the start position once hls.js has buffered a
+   * segment there, even a segment that it had loaded before it stopped loading.
    */
   stopLoading?: () => void
   /** Whether attaching the stream again with another video preference can change its range. */
@@ -1564,7 +1565,12 @@ function attach(video: HTMLVideoElement, url: string, options: StreamSourceOptio
       video.removeEventListener('error', onVideoError)
       hls.destroy()
     },
-    stopLoading: () => hls.stopLoad(),
+    // hls.js 1.7.4 still appends a segment that it loaded before stopLoad. It then skips the move
+    // to the start position after a main segment, but not after an alternate audio segment.
+    stopLoading: () => {
+      hls.stopLoad()
+      hls.detachMedia()
+    },
     followsVideoPreference: true,
     tracks: hlsTrackSource(hls),
     segmentSeconds: () => hls.latestLevelDetails?.targetduration,

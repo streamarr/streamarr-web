@@ -15,7 +15,8 @@ import { STUB_URL } from './ports'
 
 // When the server replaces the stream session that plays, the player attaches the new one where
 // the viewer was, and a stream session attached again past its real end starts where its playlist
-// does. A startup past a real end that no status has named yet ends playback at that real end.
+// does. A startup past a real end that no status has named yet ends playback at that real end, and
+// Play then starts from the top, even once hls.js has appended what it loaded for that startup.
 // This spec plays a synthetic stream through hls.js in Chromium and records each media segment
 // that each stream session is asked for.
 
@@ -44,12 +45,29 @@ const ENDED_SECONDS = 35
 // startup deadline.
 const ENDED_WITHIN_MS = 10_000
 
+// A copy that really ends inside a segment, which the server still sends, and a start position
+// past that end in the same segment.
+const REAL_END_INSIDE_A_SEGMENT_SECONDS = 29
+const START_PAST_THE_REAL_END_INSIDE_ITS_SEGMENT_SECONDS = 29.5
+const FIRST_SEGMENT_PAST_THE_REAL_END_INSIDE_A_SEGMENT = Math.ceil(
+  REAL_END_INSIDE_A_SEGMENT_SECONDS / SEGMENT_SECONDS,
+)
+
 // VP9 in fMP4, which Playwright's Chromium decodes without proprietary codecs. The bandwidth it
 // declares keeps hls.js 30 s ahead of the playhead, as with the server's streams, where the real
 // bitrate would let hls.js load the whole stream at once.
 const MULTIVARIANT = [
   '#EXTM3U',
   '#EXT-X-STREAM-INF:BANDWIDTH=20000000,RESOLUTION=320x180,CODECS="vp09.00.21.08"',
+  'stream.m3u8?t=playback-token',
+  '',
+].join('\n')
+
+// The same video with its audio in an alternate rendition, as the server lists audio: Opus in fMP4.
+const MULTIVARIANT_WITH_ALTERNATE_AUDIO = [
+  '#EXTM3U',
+  '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="English",LANGUAGE="en",DEFAULT=YES,AUTOSELECT=YES,URI="audio.m3u8?t=playback-token"',
+  '#EXT-X-STREAM-INF:BANDWIDTH=20000000,RESOLUTION=320x180,CODECS="vp09.00.21.08,opus",AUDIO="audio"',
   'stream.m3u8?t=playback-token',
   '',
 ].join('\n')
@@ -68,6 +86,15 @@ test.beforeAll(async () => {
     ...['-hls_segment_type', 'fmp4', '-hls_fmp4_init_filename', 'init.mp4'],
     ...['-hls_segment_filename', join(streamDirectory, 'segment%d.m4s')],
     join(streamDirectory, 'stream.m3u8'),
+  ])
+  await promisify(execFile)('ffmpeg', [
+    ...['-hide_banner', '-loglevel', 'error', '-f', 'lavfi'],
+    ...['-i', `sine=frequency=440:sample_rate=48000:duration=${SEGMENTS * SEGMENT_SECONDS}`],
+    ...['-c:a', 'libopus', '-b:a', '64k'],
+    ...['-f', 'hls', '-hls_time', String(SEGMENT_SECONDS), '-hls_playlist_type', 'vod'],
+    ...['-hls_segment_type', 'fmp4', '-hls_fmp4_init_filename', 'audioinit.mp4'],
+    ...['-hls_segment_filename', join(streamDirectory, 'audio%d.m4s')],
+    join(streamDirectory, 'audio.m3u8'),
   ])
 })
 
@@ -161,10 +188,10 @@ async function serveThePlaybackSession(
 const STREAM_REQUEST = /\/api\/stream\/(first|replacement)\/([\w.]+)/
 
 // The stream session that a stream request names, the file it asks for, and the file's number
-// when it is a media segment.
+// when it is a media segment, of the video or of the alternate audio.
 function streamRequest(route: Route): { stream: StreamName; file: string; segment: number | null } {
   const [, stream, file] = STREAM_REQUEST.exec(route.request().url())!
-  const segment = /^segment(\d+)\.m4s$/.exec(file)
+  const segment = /^(?:segment|audio)(\d+)\.m4s$/.exec(file)
   return { stream: stream as StreamName, file, segment: segment ? Number(segment[1]) : null }
 }
 
@@ -315,6 +342,123 @@ async function serveAStartPastAnUnnamedRealEnd(
   return reports
 }
 
+// Serves a new playback session that starts at START_PAST_THE_REAL_END_INSIDE_ITS_SEGMENT_SECONDS,
+// with its audio in an alternate rendition, and whose copy ran short at
+// REAL_END_INSIDE_A_SEGMENT_SECONDS. As the server does, it sends the segments that hold the start
+// position, which begin before the real end, holds every later one, and names the real end only
+// when the player reads the status. Returns the timeline reports.
+async function serveAStartPastARealEndInsideItsSegment(
+  page: Page,
+  request: APIRequestContext,
+): Promise<TimelineReport[]> {
+  const reports = await serveThePlaybackSession(page, request, (operation) =>
+    playbackSession('first', {
+      mediaEndSeconds: operation === 'PlaybackSession' ? REAL_END_INSIDE_A_SEGMENT_SECONDS : null,
+    }),
+  )
+  await page.route(STREAM_REQUEST, async (route) => {
+    const { file, segment } = streamRequest(route)
+    if (file === 'multivariant.m3u8') {
+      return route.fulfill({
+        contentType: 'application/vnd.apple.mpegurl',
+        body: MULTIVARIANT_WITH_ALTERNATE_AUDIO,
+      })
+    }
+    // Left unanswered, as the server holds it.
+    if (segment !== null && segment >= FIRST_SEGMENT_PAST_THE_REAL_END_INSIDE_A_SEGMENT) return
+    return answerFromTheStream(route, file)
+  })
+  return reports
+}
+
+type SourceBufferKind = 'video' | 'audio'
+
+interface HeldAppends {
+  /** How many appends to each kind of source buffer wait. */
+  waiting: () => Record<SourceBufferKind, number>
+  /** Makes the waiting appends to one kind of source buffer, and lets every later one through. */
+  release: (kind: SourceBufferKind) => void
+  /** Whether every append made has ended. */
+  settled: () => boolean
+}
+
+// Holds every append to the element's source buffers until the spec releases that kind of buffer,
+// so that hls.js has loaded the segments of the start while it still appends them, as on a slow
+// device. hls.js makes one append to a buffer at a time and starts the next once the buffer no
+// longer updates, so a buffer whose append waits reads as updating.
+async function holdTheAppends(page: Page) {
+  await page.addInitScript(() => {
+    type Kind = 'video' | 'audio'
+    const kinds = new WeakMap<SourceBuffer, Kind>()
+    const waiting = new Map<SourceBuffer, () => void>()
+    const through: Record<Kind, boolean> = { video: false, audio: false }
+    let appending = 0
+    /* eslint-disable @typescript-eslint/unbound-method -- each is called with its own `this` */
+    const addSourceBuffer = MediaSource.prototype.addSourceBuffer
+    const appendBuffer = SourceBuffer.prototype.appendBuffer
+    const updating = Object.getOwnPropertyDescriptor(SourceBuffer.prototype, 'updating')?.get
+    /* eslint-enable @typescript-eslint/unbound-method */
+    MediaSource.prototype.addSourceBuffer = function (this: MediaSource, type: string) {
+      const buffer = addSourceBuffer.call(this, type)
+      kinds.set(buffer, type.startsWith('audio/') ? 'audio' : 'video')
+      return buffer
+    }
+    Object.defineProperty(SourceBuffer.prototype, 'updating', {
+      configurable: true,
+      get(this: SourceBuffer) {
+        return waiting.has(this) || Boolean(updating?.call(this))
+      },
+    })
+    const append = (buffer: SourceBuffer, data: BufferSource) => {
+      appendBuffer.call(buffer, data)
+      appending += 1
+      buffer.addEventListener('updateend', () => (appending -= 1), { once: true })
+    }
+    SourceBuffer.prototype.appendBuffer = function (this: SourceBuffer, data: BufferSource) {
+      if (through[kinds.get(this) ?? 'video']) {
+        append(this, data)
+        return
+      }
+      waiting.set(this, () => append(this, data))
+    }
+    const kindOf = (kind: Kind) =>
+      [...waiting.keys()].filter((buffer) => kinds.get(buffer) === kind)
+    const held: HeldAppends = {
+      waiting: () => ({ video: kindOf('video').length, audio: kindOf('audio').length }),
+      release: (kind) => {
+        through[kind] = true
+        for (const buffer of kindOf(kind)) {
+          const waitingAppend = waiting.get(buffer)
+          waiting.delete(buffer)
+          try {
+            waitingAppend?.()
+          } catch {
+            // A buffer that hls.js removed from the element takes no append.
+          }
+        }
+      },
+      settled: () => appending === 0,
+    }
+    Object.assign(window, { heldAppends: held })
+  })
+  // Page functions run in the page, so each reads the holder there.
+  return {
+    waiting: () =>
+      page.evaluate(() => (window as unknown as HeldAppendsWindow).heldAppends.waiting()),
+    release: (kind: SourceBufferKind) =>
+      page.evaluate(
+        (released) => (window as unknown as HeldAppendsWindow).heldAppends.release(released),
+        kind,
+      ),
+    settled: () =>
+      page.evaluate(() => (window as unknown as HeldAppendsWindow).heldAppends.settled()),
+  }
+}
+
+interface HeldAppendsWindow {
+  heldAppends: HeldAppends
+}
+
 function stoppedReports(reports: TimelineReport[]): TimelineReport[] {
   return reports.filter((report) => report.state === 'STOPPED')
 }
@@ -422,4 +566,48 @@ test('a first load at a start position past a real end that no status has named 
     .poll(() => stoppedReports(reports), { timeout: ENDED_WITHIN_MS })
     .toEqual([{ sessionId: 'sess-first', positionSeconds: REAL_END_SECONDS, state: 'STOPPED' }])
   await expect(page.getByRole('alert')).toHaveCount(0)
+})
+
+test('a startup that a status read ends at the real end before hls.js appends the audio it loaded plays from the top when the viewer plays', async ({
+  page,
+  request,
+}) => {
+  const reports = await serveAStartPastARealEndInsideItsSegment(page, request)
+  const appends = await holdTheAppends(page)
+  await page.goto(
+    `/play/file-1?movie=m1&position=${START_PAST_THE_REAL_END_INSIDE_ITS_SEGMENT_SECONDS}`,
+  )
+  await expect.poll(() => appends.waiting()).toEqual({ video: 1, audio: 1 })
+  await expect
+    .poll(() => stoppedReports(reports), { timeout: ENDED_WITHIN_MS })
+    .toEqual([
+      {
+        sessionId: 'sess-first',
+        positionSeconds: REAL_END_INSIDE_A_SEGMENT_SECONDS,
+        state: 'STOPPED',
+      },
+    ])
+
+  // hls.js had loaded the segments that hold the start position. Their appends end after the end of
+  // playback, the video's first.
+  await appends.release('video')
+  await expect.poll(() => appends.settled()).toBe(true)
+  await appends.release('audio')
+  await expect.poll(() => appends.settled()).toBe(true)
+  await page.getByRole('button', { name: 'Play' }).click()
+
+  const video = page.locator('video')
+  await expect
+    .poll(async () => ({
+      stopped: stoppedReports(reports).length,
+      playsBeforeTheRealEnd: await video.evaluate(
+        (element: HTMLVideoElement, realEnd) =>
+          !element.paused &&
+          element.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+          element.currentTime > 0 &&
+          element.currentTime < realEnd,
+        REAL_END_INSIDE_A_SEGMENT_SECONDS,
+      ),
+    }))
+    .toEqual({ stopped: 1, playsBeforeTheRealEnd: true })
 })
