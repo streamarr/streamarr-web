@@ -13,6 +13,7 @@ import type {
   VideoCodecProfile,
   VideoSampleEntry,
 } from '../graphql/generated/graphql'
+import { isWebKit } from './webKit'
 
 type CreatePlaybackSessionErrorTypename = NonNullable<
   CreatePlaybackSessionMutation['createPlaybackSession']
@@ -1206,11 +1207,6 @@ function sevenOneOperatingSystem(userAgent: string): SevenOneOperatingSystem | n
     return 'LINUX'
   }
   return null
-}
-
-// Every iPhone browser is WebKit; Blink keeps AppleWebKit in its user agent beside Chrome/.
-function isWebKit(userAgent: string): boolean {
-  return /AppleWebKit\//.test(userAgent) && !/\b(?:Chrome|Chromium)\//.test(userAgent)
 }
 
 // The sample entries that name a coding format in an MP4 file, keyed by the one each probe's codec
