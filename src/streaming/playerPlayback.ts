@@ -1081,7 +1081,8 @@ function startSessionPlayback({
     }
   }
 
-  async function pollForReplacement({ check, current, id }: StatusPoll) {
+  async function pollForReplacement(poll: StatusPoll) {
+    const { check, current, id } = poll
     while (current() && !check.controller.signal.aborted) {
       const playback = await readPlaybackSession(id, check.controller.signal)
       if (!current()) return
@@ -1097,16 +1098,22 @@ function startSessionPlayback({
         await waitForPlaybackStatus(check.controller.signal)
         continue
       }
-      beginHandover()
-      check.generation = sourceGeneration
-      const resolved = playback
-        ? await awaitReadyPlayback(playback, check.controller.signal, current)
-        : undefined
-      if (!current()) return
-      if (check.controller.signal.aborted) break
-      adoptPlayback(resolved)
+      await replaceTheAttachedStream(playback, poll)
       return
     }
+  }
+
+  async function replaceTheAttachedStream(
+    playback: PlaybackSessionFieldsFragment | null | undefined,
+    { check, current }: StatusPoll,
+  ) {
+    beginHandover()
+    check.generation = sourceGeneration
+    const resolved = playback
+      ? await awaitReadyPlayback(playback, check.controller.signal, current)
+      : undefined
+    if (!current() || check.controller.signal.aborted) return
+    adoptPlayback(resolved)
   }
 
   // The stream this player has attached, when the playback session still names it.
