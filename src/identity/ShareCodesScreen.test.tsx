@@ -367,7 +367,9 @@ describe('Share codes', () => {
       /^Withdraw a code before issuing another\.$/,
     )
     expect(screen.queryByRole('button', { name: 'Copy code' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Issue a share code' })).toBeEnabled()
+    const issue = screen.getByRole('button', { name: 'Issue a share code' })
+    expect(issue).toBeEnabled()
+    expect(issue).toHaveAccessibleDescription('Withdraw a code before issuing another.')
   })
 
   it('shouldShowTheServersWordsWhenTheServerRejectsTheIssue', async () => {

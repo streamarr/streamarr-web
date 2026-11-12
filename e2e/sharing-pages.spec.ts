@@ -225,3 +225,33 @@ test('an issued code shares its content edges with Live codes below it at phone 
     )
   }
 })
+
+test('a refused issue leaves Issue a share code where the person clicked it', async ({
+  page,
+  request,
+}) => {
+  await serveSharingPages(page, request, {
+    HouseholdShareCodes: THREE_CODES,
+    IssueShareCode: {
+      issueShareCode: {
+        __typename: 'IssueShareCodePayload',
+        issued: null,
+        userErrors: [
+          {
+            __typename: 'ShareCodeLimitReachedError',
+            message: 'Withdraw a code before issuing another.',
+          },
+        ],
+      },
+    },
+  })
+  await page.goto('/settings/household/codes')
+  const issue = page.getByRole('button', { name: 'Issue a share code' })
+  await expect(page.getByRole('heading', { name: 'Live codes' })).toBeVisible()
+  const before = await boxOf(issue)
+
+  await issue.click()
+
+  await expect(page.getByRole('alert')).toHaveText('Withdraw a code before issuing another.')
+  expect((await boxOf(issue)).y).toBeCloseTo(before.y, 0)
+})
