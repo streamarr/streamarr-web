@@ -59,6 +59,37 @@ export default defineConfig(
     languageOptions: { globals: { ...globals.browser, ...globals.serviceworker } },
   },
   {
+    // The entry imports these files at run time. A value import of hls.js, or of
+    // playbackCapabilities.ts, which imports it, would put hls.js in the entry's chunk.
+    files: [
+      'src/main.tsx',
+      'src/router.ts',
+      'src/streaming/decodingAnswers.ts',
+      'src/streaming/webKit.ts',
+    ],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'hls.js',
+              allowTypeImports: true,
+              message: 'hls.js loads with the play route. Import only its types here.',
+            },
+          ],
+          patterns: [
+            {
+              group: ['**/playbackCapabilities'],
+              allowTypeImports: true,
+              message: 'playbackCapabilities.ts imports hls.js. Import only its types here.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ['**/*.test.{ts,tsx}'],
     // Asserting on a spy reads the method without calling it: expect(scope.skipWaiting).
     rules: { '@typescript-eslint/unbound-method': 'off' },
