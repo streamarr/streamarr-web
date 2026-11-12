@@ -7,7 +7,12 @@ import { CaretPopover, type PopoverOption, type PopoverToggle } from '../ui/Care
 import type { HdrControl } from './hdrControl'
 import styles from './PlayerControls.module.css'
 import { qualityChipValue, qualityLabel } from './qualityChoices'
-import type { PlaybackCautions, QualityCaution, QualityMarks } from './usePlaybackFallbacks'
+import type {
+  AudioPick,
+  PlaybackCautions,
+  QualityCaution,
+  QualityMarks,
+} from './usePlaybackFallbacks'
 import type { StreamTracks, TrackSource } from './trackSources'
 import { useSpaceToPlayOrPause } from './useSpaceToPlayOrPause'
 import { useStreamTracks } from './useStreamTracks'
@@ -144,7 +149,7 @@ export function PlayerControls({
   /** The caution on the audio control, while the track the viewer chose does not play. */
   audioCaution?: string
   /** Hears every pick in the audio picker, a pick of the track that plays included. */
-  onAudioPicked?: () => void
+  onAudioPicked?: (pick: AudioPick) => void
   /** Hears each audio or subtitle track the viewer switches to, as the stream switches. */
   onTrackChosen?: (chosen: ChosenTrack) => void
   playbackDataShown: boolean
@@ -323,7 +328,7 @@ export function PlayerControls({
               }
               // A pick of the track in use still reaches the source, which lets it stand.
               const moved = tracks.selectAudio(id)
-              onAudioPicked?.()
+              onAudioPicked?.({ playing: id === audio.selected })
               if (id !== audio.selected) {
                 onTrackChosen?.({ kind: 'audio', language: languageOf(audio.options, id), moved })
               }

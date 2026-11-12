@@ -53,6 +53,12 @@ export interface CautionAnnouncement {
 /** What a stream tells the player once it shows its first frame. */
 export type FollowPlayingChoices = (qualities: QualityChoices) => void
 
+/** A pick in the audio picker. */
+export interface AudioPick {
+  /** Whether the viewer picked the track that plays. */
+  playing: boolean
+}
+
 export interface PlaybackFallbacks {
   marks: QualityMarks
   cautions: PlaybackCautions
@@ -63,10 +69,13 @@ export interface PlaybackFallbacks {
    * before, and returns what to tell about each stream it shows.
    */
   followPlaybackSession: () => FollowPlayingChoices
-  /** Cautions on the audio control that the server refused the viewer's audio switch. */
+  /**
+   * Cautions on the audio control that the server refused the viewer's audio switch, unless the
+   * viewer has since picked the track that plays.
+   */
   refuseAudioSwitch: () => void
   /** Hears the viewer pick any audio track, which takes down the audio control's caution. */
-  pickAudio: () => void
+  pickAudio: (pick: AudioPick) => void
 }
 
 interface ViewingCautions {
@@ -74,10 +83,11 @@ interface ViewingCautions {
   marks: QualityMarks
   cautions: PlaybackCautions
   announcement: CautionAnnouncement | null
+  pickedAudioPlays: boolean
 }
 
 function startViewing(viewing: object): ViewingCautions {
-  return { viewing, marks: new Map(), cautions: {}, announcement: null }
+  return { viewing, marks: new Map(), cautions: {}, announcement: null, pickedAudioPlays: false }
 }
 
 // Every change but the Dolby Vision copy and the lost HDR plays a converted version, including a
@@ -153,6 +163,15 @@ function afterOutputShown(
   }
 }
 
+// The refusal answers a pick of another track. The server answers it after a while, so the viewer
+// may since have picked the track that plays, which leaves nothing to caution about.
+function afterAudioSwitchRefused(state: ViewingCautions): ViewingCautions {
+  if (state.pickedAudioPlays) {
+    return state
+  }
+  return withCautions(state, { ...state.cautions, audio: AUDIO_SWITCH_REFUSED })
+}
+
 function standingAnnouncement({
   announcement,
   cautions,
@@ -188,14 +207,14 @@ export function usePlaybackFallbacks(viewing: object): PlaybackFallbacks {
     }
   }, [update])
 
-  const refuseAudioSwitch = useCallback(
-    () =>
-      update((latest) => withCautions(latest, { ...latest.cautions, audio: AUDIO_SWITCH_REFUSED })),
-    [update],
-  )
+  const refuseAudioSwitch = useCallback(() => update(afterAudioSwitchRefused), [update])
 
   const pickAudio = useCallback(
-    () => update((latest) => withCautions(latest, { ...latest.cautions, audio: undefined })),
+    ({ playing }: AudioPick) =>
+      update((latest) => ({
+        ...withCautions(latest, { ...latest.cautions, audio: undefined }),
+        pickedAudioPlays: playing,
+      })),
     [update],
   )
 

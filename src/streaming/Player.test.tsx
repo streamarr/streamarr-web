@@ -8565,6 +8565,61 @@ describe('Player', () => {
         expect(switches).toHaveLength(1)
       })
 
+      it('shouldShowNoAudioCautionWhenTheViewerPicksThePlayingTrackBeforeTheServerRefusesTheSwitch', async () => {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        const answered = deferred()
+        const switches = serveAudioTrackSwitch({
+          answered: answered.promise,
+          answer: refusedSwitch,
+        })
+        const overrides = serveOverrideStores()
+        const { user } = renderEpisode()
+        const text: FakeTextTrack[] = [
+          { kind: 'subtitles', label: 'English', language: 'en', mode: 'disabled' },
+        ]
+        giveElementTracks(renderedVideo(), { text })
+        const announced = watchAnnouncements()
+        await directPlayAt(0)
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+        await waitFor(() => expect(switches).toHaveLength(1))
+        await chooseAudioTrack(user, { from: 'English', to: 'English' })
+        // Switches store in the order the viewer made them, so this one stores only once the
+        // refused switch before it has settled.
+        await user.click(screen.getByRole('button', { name: 'Subtitles: Off' }))
+        await user.click(screen.getByRole('menuitemradio', { name: 'English' }))
+
+        answered.resolve()
+
+        await waitFor(() =>
+          expect(overrides).toEqual([
+            { itemId: 'e1', subtitleLanguage: 'EN', subtitleMode: 'ALWAYS' },
+          ]),
+        )
+        expect(await settledAnnouncements(announced)).toEqual([])
+        expectNoCaution(audioChip())
+      })
+
+      it('shouldShowTheAudioCautionWhenTheViewerPicksTheRefusedTrackAgainBeforeTheServerRefusesIt', async () => {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        const answered = deferred()
+        const switches = serveAudioTrackSwitch({
+          answered: answered.promise,
+          answer: refusedSwitch,
+        })
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        await directPlayAt(0)
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+        await waitFor(() => expect(switches).toHaveLength(1))
+        await chooseAudioTrack(user, { from: 'English', to: 'English' })
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+
+        answered.resolve()
+
+        await waitFor(() => expectCaution(audioChip(), AUDIO_SWITCH_REFUSED))
+      })
+
       it('shouldKeepTheAudioCautionWhenTheViewerPicksSubtitlesAfterARefusal', async () => {
         serveDirectPlay({ audioTracks: TWO_TRACKS })
         serveAudioTrackSwitch({ answer: refusedSwitch })
