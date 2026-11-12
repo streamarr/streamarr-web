@@ -82,17 +82,17 @@
   gap: var(--spacing-8);
 }
 
-/* At phone width the review's three actions take two lines and leave none alone on one: the offer
-   across the first, Back and Cancel sharing the second. Where the two no longer fit side by side,
-   they wrap rather than clip their labels. */
+/* At phone width a group led by its primary action takes two lines: the primary across the first,
+   the others sharing the second. Where those no longer fit side by side, they wrap rather than clip
+   their labels. */
 @media (max-width: 760px) {
-  .reviewActions > * {
+  .leadingActions > * {
     flex: 1 1 0;
     /* A button hides what overflows it, so without this it shrinks past its label, never wraps. */
     min-width: max-content;
   }
 
-  .reviewActions > :first-child {
+  .leadingActions > :first-child {
     flex-basis: 100%;
   }
 }
