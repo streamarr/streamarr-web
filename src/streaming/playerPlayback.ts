@@ -160,6 +160,8 @@ interface PlaybackStatusCheck {
   // the check keeps it running past the metadata.
   endsAtMetadata: boolean
   settled: Promise<void>
+  // Aborts the check PLAYBACK_START_TIMEOUT_MS after it was armed.
+  deadline?: ReturnType<typeof setTimeout>
 }
 
 // A running status check reads the status of playback session `id` for as long as it is current.
@@ -1080,16 +1082,21 @@ function startSessionPlayback({
   async function runStatusCheck(check: PlaybackStatusCheck, id: string) {
     const current = () =>
       !cancelled && statusCheck === check && check.generation === sourceGeneration
-    const deadline = setTimeout(() => check.controller.abort(), PLAYBACK_START_TIMEOUT_MS)
+    armCheckDeadline(check)
     try {
       await pollForReplacement({ check, current, id })
       if (current() && check.controller.signal.aborted && check.fatal) failSource()
     } catch {
       if (current() && check.fatal) failSource()
     } finally {
-      clearTimeout(deadline)
+      clearTimeout(check.deadline)
       if (statusCheck === check) statusCheck = undefined
     }
+  }
+
+  function armCheckDeadline(check: PlaybackStatusCheck) {
+    clearTimeout(check.deadline)
+    check.deadline = setTimeout(() => check.controller.abort(), PLAYBACK_START_TIMEOUT_MS)
   }
 
   async function pollForReplacement(poll: StatusPoll) {
