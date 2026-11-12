@@ -6036,26 +6036,51 @@ describe('Player', () => {
       expect(video.paused).toBe(false)
     })
 
+    // The picked quality's stream loads its metadata, where the viewer may press Play or Pause, and
+    // fails before its first frame.
+    const failingBeforeItsFirstFrame =
+      (press: (video: HTMLVideoElement) => void = () => undefined) =>
+      async (video: HTMLVideoElement) => {
+        await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(choiceStreamUrl(2)))
+        loadMetadata(video)
+        press(video)
+        raiseHlsFatalError()
+      }
+
     it.each([
       {
         failure: 'the server refuses it',
         refuse: (creation: number) => (creation === 2 ? CAPACITY_REFUSED : null),
+        leaveAtThePick: pressPause,
         fail: async () => {
           expect(await screen.findByRole('alert')).toHaveTextContent(CAPACITY_REFUSAL)
         },
+        paused: true,
       },
       {
         failure: 'its stream fails before its first frame',
         refuse: () => null,
-        fail: async (video: HTMLVideoElement) => {
-          await waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(choiceStreamUrl(2)))
-          loadMetadata(video)
-          raiseHlsFatalError()
-        },
+        leaveAtThePick: pressPause,
+        fail: failingBeforeItsFirstFrame(),
+        paused: true,
+      },
+      {
+        failure: 'its stream fails before its first frame, after the viewer pressed Play',
+        refuse: () => null,
+        leaveAtThePick: pressPause,
+        fail: failingBeforeItsFirstFrame(pressPlay),
+        paused: false,
+      },
+      {
+        failure: 'its stream fails before its first frame, after the viewer pressed Pause',
+        refuse: () => null,
+        leaveAtThePick: () => undefined,
+        fail: failingBeforeItsFirstFrame(pressPause),
+        paused: true,
       },
     ])(
-      'shouldRetryThePickedQualityWhereTheViewerPickedItWhenItNeverPlayed(failure: $failure)',
-      async ({ refuse, fail }) => {
+      'shouldRetryThePickedQualityWhereTheViewerPickedItAsTheyLastLeftItWhenItNeverPlayed(failure: $failure)',
+      async ({ refuse, leaveAtThePick, fail, paused }) => {
         const log = servePlaybackChoices({ refuse })
         const { user } = renderWithProviders(
           <Player
@@ -6067,7 +6092,7 @@ describe('Player', () => {
         const video = await attachedVideo(choiceStreamUrl(1))
         loadMetadata(video)
         playheadAt(video, 73.25)
-        pressPause(video)
+        leaveAtThePick(video)
         hls.destroy.mockImplementation(() => video.load())
         await pickQuality(user, '720p')
         await fail(video)
@@ -6082,7 +6107,7 @@ describe('Player', () => {
           'create HIGH_720P at 73.25',
         ])
         expect(video.currentTime).toBe(73.25)
-        expect(video.paused).toBe(true)
+        expect(video.paused).toBe(paused)
       },
     )
 

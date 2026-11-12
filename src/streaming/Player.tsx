@@ -314,14 +314,20 @@ export function Player({
     setPlaybackDataScreen({ screen, displaysHighDynamicRange, userAgent })
   }
 
-  // A choice that never played is asked for again as it was, from where the viewer picked it. Once
-  // it played, its resume point is long past, so Retry starts where playback first started.
+  // A choice that never played is asked for again as it was, from where the viewer picked it, and
+  // plays or stays paused as the viewer last asked while it tried to start. Once it played, its
+  // resume point is long past, so Retry starts where playback first started.
   function retry() {
-    if (playedChoice.current !== choice) {
-      setChoice({ ...choice })
+    if (playedChoice.current === choice) {
+      setChoice({ start: choice.start, quality: choice.quality, dynamicRange: choice.dynamicRange })
       return
     }
-    setChoice({ start: choice.start, quality: choice.quality, dynamicRange: choice.dynamicRange })
+    let { resumeFrom } = choice
+    const failed = playbackRef.current
+    if (resumeFrom && failed) {
+      resumeFrom = { ...resumeFrom, playing: failed.resumePoint().playing }
+    }
+    setChoice({ ...choice, resumeFrom })
   }
 
   return (
