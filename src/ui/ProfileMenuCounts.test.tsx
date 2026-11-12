@@ -19,6 +19,7 @@ import {
   followingNotificationChanges,
   notificationsChanged,
   notificationsPage,
+  offerNotification,
 } from '../test/notificationFixtures'
 import { renderAppAt } from '../test/render'
 import { leaveForHome } from '../test/returnVisits'
@@ -490,5 +491,42 @@ describe('The dot on the Profile menu', () => {
 
     const chip = await screen.findByRole('button', { name: 'Profile menu (Owner)' })
     expect(within(chip).queryByTestId('unread-dot')).not.toBeInTheDocument()
+  })
+
+  it('shouldTakeADismissedRequestOutOfTheListTheCountAndTheDotInOneChange', async () => {
+    const { socket } = serveHome(meFixture(), 1)
+    const waiting = offerNotification()
+    // The page's mark of the offer answers only once the test has looked, so that only the
+    // dismissal can clear the count.
+    const markAnswer = deferred()
+    onTestFinished(markAnswer.resolve)
+    server.use(
+      graphql.query('Notifications', () =>
+        HttpResponse.json({ data: notificationsPage([waiting]) }),
+      ),
+      graphql.mutation('MarkNotificationsRead', async () => {
+        await markAnswer.promise
+        return HttpResponse.json({
+          data: { markNotificationsRead: { unreadNotificationCount: 0, userErrors: [] } },
+        })
+      }),
+    )
+    const { user } = renderAppAt('/notifications')
+    await screen.findByText(waiting.message)
+    await screen.findByRole('button', { name: MARKED })
+    await followingNotificationChanges(socket)
+
+    // The Account is no longer the Household's admin: its request about the offer is dismissed.
+    socket.publish(
+      'NotificationsChanged',
+      notificationsChanged([notificationChange(waiting.id, null)], 0),
+    )
+
+    expect(await screen.findByText('No notifications.')).toBeVisible()
+    const chip = await screen.findByRole('button', { name: 'Profile menu (Owner)' })
+    expect(within(chip).queryByTestId('unread-dot')).not.toBeInTheDocument()
+    await user.click(chip)
+    const menu = within(await screen.findByTestId('profile-menu'))
+    expect(menu.getByRole('button', { name: 'Notifications' })).toHaveTextContent(/^Notifications$/)
   })
 })
