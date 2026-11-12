@@ -41,13 +41,19 @@ The linked Chromium code therefore gives no evidence about a level.
 
 The questions went to Safari 26.6 on macOS through `safaridriver` on 2026-11-11.
 
-- `decodingInfo` was asked about HEVC Main and HEVC Main 10 at each level. At level 6.2 the codec strings were `hvc1.1.6.L186.B0` and `hvc1.2.4.L186.B0`. Each question was asked as `media-source` and as `file`, in SDR and with PQ or HLG colour fields. Safari answered supported, smooth and power-efficient at every level from 3.1 to 6.2. Safari answered not supported at levels 6.3, 6.5, 7.0 and 8.5.
-- The picture changed no answer. A 1280×720 picture at 30 fps and a 7680×4320 picture at 120 fps got the same answers at every level.
+- `decodingInfo` was asked about HEVC Main and HEVC Main 10. At level 6.2 the codec strings were `hvc1.1.6.L186.B0` and `hvc1.2.4.L186.B0`. Each question was asked as `media-source` and as `file`.
+- HEVC Main was asked in SDR only. HEVC Main 10 was asked in SDR, with PQ colour fields and with HLG colour fields. The PQ fields were `colorGamut: 'rec2020'`, `transferFunction: 'pq'` and `hdrMetadataType: 'smpteSt2086'`. The HLG fields were `colorGamut: 'rec2020'` and `transferFunction: 'hlg'`.
+- Each picture was asked at these levels:
+  - 1280×720 at 30 fps and 5 Mbit/s: 3.1, 4.0, 4.1, 5.0, 5.1, 5.2, 6.0, 6.1, 6.2, 6.3, 6.5, 7.0 and 8.5.
+  - 3840×2160 at 60 fps and 40 Mbit/s: 3.1, 4.0, 4.1, 5.0, 5.1, 5.2, 6.0, 6.1 and 6.2.
+  - 7680×4320 at 120 fps and 240 Mbit/s: 5.1, 6.2, 6.3, 6.5, 7.0 and 8.5.
+- Safari answered supported, smooth and power-efficient at each level that it was asked from 3.1 to 6.2. Safari answered not supported at levels 6.3, 6.5, 7.0 and 8.5.
+- The picture changed no answer. At each level, every picture that was asked at that level got the same answer.
 - `HTMLMediaElement.canPlayType` answered `probably` and `MediaSource.isTypeSupported` answered `true` for `hvc1` at levels 5.1 to 6.2. Both refused level 6.3.
-- 144 questions took about 1.07 s when asked one after another, and about 0.98 s when asked all at once. Each question took about 7 ms, and questions asked at the same time finished no sooner. A refused question took less time.
+- One run of 144 questions, at levels 3.1 to 6.2, took about 1.07 s when asked one after another, and about 0.98 s when asked all at once. Each question took about 7 ms, and questions asked at the same time finished no sooner. A refused question took less time: a second run of 96 questions, at levels 5.1 to 8.5 with two in three of them refused, took about 0.26 s when asked one after another.
 
 The answers agree with the WebKit source: the level decides the answer, and the picture does not. A smooth Safari answer at a level is therefore evidence about that level, in the sense of ADR 0049.
 
 ## Asking about level 8.5 first
 
-Level 8.5 is `L255`, the highest level that an HEVC codec string can carry. Safari 26.6 on macOS refused level 8.5 in HEVC Main and HEVC Main 10, as `media-source` and as `file`, in SDR and with PQ or HLG colour fields. A browser that reads no level, such as WebKit's GStreamer port with an HEVC decoder, answers level 8.5 as it answers every other level. The web client therefore asks about level 8.5 before it asks about any level above the needed level. It asks about those levels only after the browser refuses level 8.5.
+Level 8.5 is `L255`, the highest level that an HEVC codec string can carry. Safari 26.6 on macOS refused each level 8.5 question that it was asked: HEVC Main in SDR, and HEVC Main 10 in SDR, PQ and HLG, as `media-source` and as `file`, at 1280×720 at 30 fps and at 7680×4320 at 120 fps. A browser that reads no level, such as WebKit's GStreamer port with an HEVC decoder, answers level 8.5 as it answers every other level. The web client therefore asks about level 8.5 before it asks about any level above the needed level. It asks about those levels only after the browser refuses level 8.5.
