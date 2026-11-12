@@ -238,15 +238,14 @@ describe('The unread count in the Profile menu', () => {
     // Every count read after the first answers late, with the count as the server read it, so
     // that only the mark's answer can clear the count until they do.
     const held = { unread: 1, reads: 0, answered: 0 }
-    let release = () => undefined as void
-    const released = new Promise<void>((resolve) => (release = resolve))
-    onTestFinished(release)
+    const later = deferred()
+    onTestFinished(later.resolve)
     server.use(
       graphql.query('UnreadNotificationCount', async () => {
         held.reads += 1
         const unreadNotificationCount = held.unread
         if (held.reads > 1) {
-          await released
+          await later.promise
           held.answered += 1
         }
         return HttpResponse.json({ data: { unreadNotificationCount } })
@@ -267,7 +266,7 @@ describe('The unread count in the Profile menu', () => {
     await screen.findByText(MARA_LINE)
 
     const chip = await screen.findByRole('button', { name: 'Profile menu (Owner)' })
-    release()
+    later.resolve()
     await waitFor(() => expect(held.answered).toBe(held.reads - 1))
     await user.click(chip)
 
@@ -294,6 +293,26 @@ describe('The unread count in the Profile menu', () => {
     // The picker reads the Profiles from the same identity the count would wait for.
     await screen.findByRole('button', { name: 'Alex' })
     expect(reads.unread).toBe(0)
+    expect(socket.isLive('NotificationsChanged')).toBe(false)
+  })
+  it('shouldReadNoCountWhenSignedOut', async () => {
+    const socket = serveGraphqlSocket()
+    const reads = { unread: 0, offers: 0 }
+    server.use(
+      graphql.query('UnreadNotificationCount', () => {
+        reads.unread += 1
+        return HttpResponse.json({ data: { unreadNotificationCount: 3 } })
+      }),
+      graphql.query('ShareOffers', () => {
+        reads.offers += 1
+        return HttpResponse.json({ data: offersData([offer()]) })
+      }),
+    )
+
+    renderAppAt('/login')
+
+    await screen.findByRole('button', { name: /sign in/i })
+    expect(reads).toEqual({ unread: 0, offers: 0 })
     expect(socket.isLive('NotificationsChanged')).toBe(false)
   })
 })
