@@ -162,6 +162,13 @@ interface PlaybackStatusCheck {
   settled: Promise<void>
 }
 
+// A running status check reads the status of playback session `id` for as long as it is current.
+interface StatusPoll {
+  check: PlaybackStatusCheck
+  current: () => boolean
+  id: string
+}
+
 /** What the player asks of a new playback session; no start position starts at the beginning. */
 interface PlaybackSessionRequest {
   capabilities: ClientCapabilityDeclarationInput
@@ -1074,15 +1081,7 @@ function startSessionPlayback({
     }
   }
 
-  async function pollForReplacement({
-    check,
-    current,
-    id,
-  }: {
-    check: PlaybackStatusCheck
-    current: () => boolean
-    id: string
-  }) {
+  async function pollForReplacement({ check, current, id }: StatusPoll) {
     while (current() && !check.controller.signal.aborted) {
       const playback = await readPlaybackSession(id, check.controller.signal)
       if (!current()) return
