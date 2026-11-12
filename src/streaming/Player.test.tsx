@@ -7293,7 +7293,7 @@ describe('Player', () => {
       },
     )
 
-    it('shouldKeepTheCautionWithoutATimeLimitAndWithoutPausingPlayback', async () => {
+    it('shouldKeepTheCautionWithoutPausingPlaybackWhenAMinutePasses', async () => {
       servePlaybackChoices()
       replaceTheRefusedStream(FIXED_QUALITY_CONVERTED)
       const { user } = renderWithProviders(
@@ -7393,7 +7393,7 @@ describe('Player', () => {
         message: DOLBY_VISION_EXPLANATION,
       },
     ] as const)(
-      'shouldMarkTheChoiceWhoseOutputFellBackAndExplainItAtTheTopOfTheMenu(picked: $picked, plays: $selected)',
+      'shouldExplainTheFallbackAtTheTopAndMarkItsChoiceWhenTheMenuOpens(picked: $picked, plays: $selected)',
       async ({ picked, choices, selected, message }) => {
         const { user } = await watchAFallback(picked, choices)
 
@@ -7407,7 +7407,7 @@ describe('Player', () => {
       },
     )
 
-    it('shouldShowTheMessageAsTheKeyboardOpensTheMenuWithFocusOnTheSelectedRow', async () => {
+    it('shouldShowTheMessageAndFocusTheSelectedRowWhenTheKeyboardOpensTheMenu', async () => {
       const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
       qualityChip().focus()
 
@@ -7418,7 +7418,7 @@ describe('Player', () => {
       expect(within(menu).getByRole('menuitemradio', { name: 'Auto' })).toHaveFocus()
     })
 
-    it('shouldNameTheRowThatTheMessageExplainsByItsLabelAloneAndExplainItNowhereElse', async () => {
+    it('shouldExplainTheRowOnlyInTheMessageWhenTheMessageExplainsIt', async () => {
       const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
       const menu = await openQualityMenu(user)
       const original = within(menu).getByRole('menuitemradio', { name: 'Original' })
@@ -7433,7 +7433,7 @@ describe('Player', () => {
       ])
     })
 
-    it('shouldKeepTheCautionWhileTheViewerOpensAndClosesTheQualityMenu', async () => {
+    it('shouldKeepTheCautionWhenTheViewerOpensAndClosesTheQualityMenu', async () => {
       const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
 
       await openQualityMenu(user)
@@ -7526,7 +7526,7 @@ describe('Player', () => {
       ])
     })
 
-    it('shouldPickTheRowThatTheMessageExplainsOnATapOnItsMark', async () => {
+    it('shouldPickTheRowWhenTheViewerTapsTheMarkThatTheMessageExplains', async () => {
       const { user, log } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
       const menu = await openQualityMenu(user)
       const row = within(menu).getByRole('menuitemradio', { name: 'Original' })
@@ -7619,7 +7619,7 @@ describe('Player', () => {
       expect(marksIn(await openQualityMenu(user))).toEqual([])
     })
 
-    it('shouldShowTheCautionOnceTheReplacementShowsItsFirstFrame', async () => {
+    it('shouldShowTheCautionOnlyWhenTheReplacementShowsItsFirstFrame', async () => {
       servePlaybackChoices()
       replaceTheRefusedStream(FIXED_QUALITY_CONVERTED)
       const { user } = renderWithProviders(
@@ -8449,6 +8449,13 @@ describe('Player', () => {
         userErrors: [],
       })
 
+      const refusedSwitch = () => ({
+        playbackSession: directPlayStill(),
+        userErrors: [
+          { __typename: 'TranscodeCapacityUnavailableError' as const, message: SWITCH_REFUSAL },
+        ],
+      })
+
       function renderEpisode() {
         return renderWithProviders(
           <Player
@@ -8474,18 +8481,7 @@ describe('Player', () => {
 
       it('shouldStoreNoLanguageForASwitchTheServerRefuses', async () => {
         serveDirectPlay({ audioTracks: TWO_TRACKS })
-        const answers = [
-          () => ({
-            playbackSession: directPlayStill(),
-            userErrors: [
-              {
-                __typename: 'TranscodeCapacityUnavailableError' as const,
-                message: SWITCH_REFUSAL,
-              },
-            ],
-          }),
-          movedToHls,
-        ]
+        const answers = [refusedSwitch, movedToHls]
         serveAudioTrackSwitch({ answer: () => (answers.shift() ?? movedToHls)() })
         const overrides = serveOverrideStores()
         const { user } = renderEpisode()
@@ -8501,18 +8497,7 @@ describe('Player', () => {
 
       it('shouldClearTheAudioCautionWhenTheViewerPicksAnotherTrackAfterARefusal', async () => {
         serveDirectPlay({ audioTracks: TWO_TRACKS })
-        const answers = [
-          () => ({
-            playbackSession: directPlayStill(),
-            userErrors: [
-              {
-                __typename: 'TranscodeCapacityUnavailableError' as const,
-                message: SWITCH_REFUSAL,
-              },
-            ],
-          }),
-          movedToHls,
-        ]
+        const answers = [refusedSwitch, movedToHls]
         serveAudioTrackSwitch({ answer: () => (answers.shift() ?? movedToHls)() })
         const { user } = renderWithProviders(
           <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
@@ -8614,12 +8599,7 @@ describe('Player', () => {
       it('shouldKeepDirectPlayingAndShowACautionOnAudioWhenTheServerRefusesTheSwitch', async () => {
         serveDirectPlay({ audioTracks: TWO_TRACKS })
         serveAudioTrackSwitch({
-          answer: () => ({
-            playbackSession: directPlayStill(),
-            userErrors: [
-              { __typename: 'TranscodeCapacityUnavailableError', message: SWITCH_REFUSAL },
-            ],
-          }),
+          answer: refusedSwitch,
         })
         const { user } = renderWithProviders(
           <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
@@ -8670,12 +8650,7 @@ describe('Player', () => {
         const answered = deferred()
         const switches = serveAudioTrackSwitch({
           answered: answered.promise,
-          answer: () => ({
-            playbackSession: directPlayStill(),
-            userErrors: [
-              { __typename: 'TranscodeCapacityUnavailableError', message: SWITCH_REFUSAL },
-            ],
-          }),
+          answer: refusedSwitch,
         })
         const { user } = renderWithProviders(
           <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
@@ -8785,12 +8760,7 @@ describe('Player', () => {
         const answered = deferred()
         serveAudioTrackSwitch({
           answered: answered.promise,
-          answer: () => ({
-            playbackSession: directPlayStill(),
-            userErrors: [
-              { __typename: 'TranscodeCapacityUnavailableError', message: SWITCH_REFUSAL },
-            ],
-          }),
+          answer: refusedSwitch,
         })
         const { user } = renderWithProviders(
           <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
@@ -9128,12 +9098,7 @@ describe('Player', () => {
           const answered = deferred()
           const switches = serveAudioTrackSwitch({
             answered: answered.promise,
-            answer: () => ({
-              playbackSession: directPlayStill(),
-              userErrors: [
-                { __typename: 'TranscodeCapacityUnavailableError', message: SWITCH_REFUSAL },
-              ],
-            }),
+            answer: refusedSwitch,
           })
           const { user } = renderWithProviders(
             <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
@@ -9172,12 +9137,7 @@ describe('Player', () => {
         const answered = deferred()
         const switches = serveAudioTrackSwitch({
           answered: answered.promise,
-          answer: () => ({
-            playbackSession: directPlayStill(),
-            userErrors: [
-              { __typename: 'TranscodeCapacityUnavailableError', message: SWITCH_REFUSAL },
-            ],
-          }),
+          answer: refusedSwitch,
         })
         const { user } = renderWithProviders(
           <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
