@@ -9,6 +9,13 @@
   align-self: stretch;
 }
 
+.issue {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-8);
+}
+
 /* The code just issued, in the page rather than over it, until the person is done with it. It
    takes the settings panel's padding, so its content lines up with Live codes below it. */
 .issued {
