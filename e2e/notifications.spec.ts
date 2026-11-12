@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 import { routeGraphqlSocket } from './graphqlSocket'
 import { serveSharingPages } from './sharingPages'
 
@@ -6,6 +6,8 @@ import { serveSharingPages } from './sharingPages'
 test.use({ serviceWorkers: 'block' })
 
 const HOUR = 60 * 60 * 1000
+const PHONE = { width: 390, height: 844 }
+const DESKTOP = { width: 1440, height: 900 }
 
 function news(id: string, message: string, at: number, unread = true) {
   const position = String(at).padStart(3, '0')
@@ -146,4 +148,84 @@ test('a count after a menu entry is a plain number in the primary text colour', 
   await expect(count).toHaveCSS('color', primary)
   await expect(count).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
   await expect(count).toHaveCSS('border-radius', '0px')
+})
+
+/** A Request of an offer at position `at`: waiting, or over as `resolution` and `status` say. */
+function offerRequest(
+  id: string,
+  message: string,
+  at: number,
+  over?: { resolution: string; status: string },
+) {
+  const position = String(at).padStart(3, '0')
+  return {
+    __typename: 'NotificationEdge',
+    cursor: `cursor-${position}`,
+    orderKey: `key-${position}`,
+    node: {
+      __typename: 'ProfileShareOfferedNotification',
+      id,
+      message,
+      latestEventAt: new Date(Date.now() - at * HOUR).toISOString(),
+      unread: false,
+      expiresAt: new Date(Date.now() + 72 * HOUR).toISOString(),
+      resolution: over?.resolution ?? null,
+      share: { __typename: 'ProfileShare', id: `share-${id}`, status: over?.status ?? 'PENDING' },
+    },
+  }
+}
+
+const REQUESTS = [
+  offerRequest('offer-of-mara', '“Sam” offered the Profile “Mara” to your Household.', 1),
+  offerRequest('offer-of-leo', '“Alex” offered the Profile “Leo” to your Household.', 2, {
+    resolution: 'DECIDED',
+    status: 'ACTIVE',
+  }),
+]
+
+async function openRequests(page: Page, request: Parameters<typeof serveSharingPages>[1]) {
+  await serveSharingPages(page, request, {
+    Notifications: {
+      notifications: {
+        __typename: 'NotificationConnection',
+        edges: REQUESTS,
+        pageInfo: { __typename: 'PageInfo', hasNextPage: false, endCursor: 'cursor-002' },
+      },
+    },
+  })
+  await page.goto('/notifications')
+  const rows = page.getByRole('list', { name: 'Notifications' }).getByRole('listitem')
+  await expect(rows).toHaveCount(2)
+  return rows
+}
+
+/** Where each row's action sits against the row's text: its left edge, and its top edge. */
+async function actionPlacements(rows: Locator) {
+  return rows.evaluateAll((items) =>
+    items.map((item) => {
+      const [, text, action] = [...item.children].map((child) => child.getBoundingClientRect())
+      return { text, action }
+    }),
+  )
+}
+
+test('each Request puts Review or how it ended under its line at phone width', async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize(PHONE)
+  const rows = await openRequests(page, request)
+
+  for (const { text, action } of await actionPlacements(rows)) {
+    expect(action.top).toBeGreaterThanOrEqual(text.bottom)
+    expect(action.left).toBeCloseTo(text.left, 0)
+  }
+  const sideways = await page.evaluate(
+    () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+  )
+  expect(sideways).toBe(false)
+  await page.setViewportSize(DESKTOP)
+  for (const { text, action } of await actionPlacements(rows)) {
+    expect(action.left).toBeGreaterThanOrEqual(text.right)
+  }
 })

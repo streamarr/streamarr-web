@@ -219,13 +219,14 @@ function RequestAction({
         component={Link}
         to="/settings/household/offers"
         variant="default"
+        className={styles.action}
         aria-describedby={lineId}
       >
         Review
       </Button>
     )
   }
-  return state.ending && <span className={styles.ending}>{state.ending}</span>
+  return state.ending && <span className={`${styles.ending} ${styles.action}`}>{state.ending}</span>
 }
 
 /** How long ago for the eye, and the whole time for a screen reader. */
