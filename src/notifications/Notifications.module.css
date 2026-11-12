@@ -16,9 +16,24 @@
 }
 
 .row {
+  --mark-size: 8px;
   display: flex;
   align-items: flex-start;
   gap: var(--spacing-12);
+}
+
+/* At phone width a row's action goes under its text, lined up with it, so the line keeps the
+   row's width, as each sharing list does. */
+@media (max-width: 760px) {
+  .row {
+    display: grid;
+    grid-template-columns: var(--mark-size) minmax(0, 1fr);
+  }
+
+  .action {
+    grid-column: 2;
+    justify-self: start;
+  }
 }
 
 .row + .row {
@@ -30,7 +45,6 @@
 /* Every row keeps the mark's place, so a row read in place keeps its text where it was. */
 .markSpace,
 .unreadMark {
-  --mark-size: 8px;
   flex: none;
   width: var(--mark-size);
   height: var(--mark-size);
