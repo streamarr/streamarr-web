@@ -32,7 +32,7 @@ export function offerNotification(
   return {
     __typename: 'ProfileShareOfferedNotification',
     id: 'offer-of-alex',
-    message: '“Sam” offered the Profile “Alex” to your Household.',
+    message: '“Alex” was offered to your Household.',
     latestEventAt: hoursAgo(1),
     unread: true,
     expiresAt: new Date(Date.now() + 7 * 24 * HOUR).toISOString(),
@@ -42,12 +42,12 @@ export function offerNotification(
   }
 }
 
-/** News that Cabin accepted the offer of Leo, read. */
+/** News that the offer of Leo was accepted, read. */
 export function answerNotification(overrides: Partial<NewsNode> = {}): NewsNode {
   return {
     __typename: 'ProfileShareAnsweredNotification',
     id: 'answer-for-leo',
-    message: '“Cabin” accepted the Profile “Leo”.',
+    message: 'The offer of “Leo” was accepted.',
     latestEventAt: hoursAgo(2),
     unread: false,
     ...overrides,
@@ -111,7 +111,7 @@ export function notificationsChanged(
   }
 }
 
-/** The entry of a change for the Notification at `edge`, or for one that left the list. */
+/** The entry of a change for the Notification at `edge`, or for one that was dismissed. */
 export function notificationChange(notificationId: string, edge: Edge | null): Entry {
   return { __typename: 'NotificationChange', notificationId, edge } as Entry
 }

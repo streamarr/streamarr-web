@@ -63,7 +63,7 @@ async function openTheProfileMenu() {
   return within(await screen.findByTestId('profile-menu'))
 }
 
-const MARA_LINE = '“Cabin” accepted the Profile “Mara”.'
+const MARA_LINE = 'The offer of “Mara” was accepted.'
 
 describe('The unread count in the Profile menu', () => {
   it('shouldCountTheUnreadNotificationsAfterTheirEntryWhenSomeAreUnread', async () => {
