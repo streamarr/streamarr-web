@@ -199,14 +199,21 @@ async function openRequests(page: Page, request: Parameters<typeof serveSharingP
   return rows
 }
 
-/** Where each row's action sits against the row's text: its left edge, and its top edge. */
+/** Each row's text and its action, Review or how the Request ended, as the page lays them out. */
 async function actionPlacements(rows: Locator) {
-  return rows.evaluateAll((items) =>
-    items.map((item) => {
-      const [, text, action] = [...item.children].map((child) => child.getBoundingClientRect())
-      return { text, action }
-    }),
-  )
+  const placements = []
+  for (const row of await rows.all()) {
+    const text = (await row.getByTestId('notification-text').boundingBox())!
+    const action = (await row
+      .getByRole('link', { name: 'Review' })
+      .or(row.getByText('Accepted', { exact: true }))
+      .boundingBox())!
+    placements.push({
+      text: { left: text.x, right: text.x + text.width, bottom: text.y + text.height },
+      action: { left: action.x, top: action.y },
+    })
+  }
+  return placements
 }
 
 test('each Request puts Review or how it ended under its line at phone width', async ({
@@ -235,13 +242,14 @@ test('how a Request ended sits on the line of its first row of text', async ({ p
   const rows = await openRequests(page, request)
 
   const ended = rows.nth(1)
-  await expect(ended.getByText('Accepted')).toBeVisible()
-  const { ending, line } = await ended.evaluate((item) => {
-    const paragraph = item.querySelector('p')!
-    const lineHeight = Number.parseFloat(getComputedStyle(paragraph).lineHeight)
-    const first = paragraph.getBoundingClientRect().top + lineHeight / 2
-    const label = item.lastElementChild!.getBoundingClientRect()
-    return { ending: label.top + label.height / 2, line: first }
-  })
-  expect(ending).toBeCloseTo(line, 0)
+  const label = ended.getByText('Accepted', { exact: true })
+  const line = ended.getByText('“Alex” offered the Profile “Leo” to your Household.')
+  await expect(label).toBeVisible()
+  const lineHeight = await line.evaluate((text) =>
+    Number.parseFloat(getComputedStyle(text).lineHeight),
+  )
+  const [labelBox, lineBox] = [(await label.boundingBox())!, (await line.boundingBox())!]
+  const ending = labelBox.y + labelBox.height / 2
+  const firstRow = lineBox.y + lineHeight / 2
+  expect(ending).toBeCloseTo(firstRow, 0)
 })
