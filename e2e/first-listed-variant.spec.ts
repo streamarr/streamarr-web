@@ -406,9 +406,11 @@ test('Auto starts on the lowest variant within the startup limit when the first-
   await expect.poll(() => requests.segments).toContain('segment1.m4s')
 })
 
-// hls.js leaves a variant whose playlist failed out of its choices and goes back to the copy. When
-// the copy's first segment again cannot start, the player starts on the lowest variant left, and
-// asks the failed one no more.
+// hls.js leaves a variant whose playlist failed out of its choices and goes back to the copy's
+// first segment, which keeps loading over the slow link. The player then starts on the lowest
+// variant left. Once hls.js has measured that variant's segment, it adapts as usual: below every
+// variant's bandwidth, it asks for the lowest one even after a failure. So only the first
+// playlists that it asked for show the step down.
 test('Auto starts on the lowest variant left within the startup limit when the lowest variant fails', async ({
   page,
   request,
@@ -417,14 +419,18 @@ test('Auto starts on the lowest variant left within the startup limit when the l
     variants: COPY_LADDER,
     transcodeMode: 'REMUX',
     missingPlaylists: [ENCODED_360P],
-    firstSegmentTransfer: (variant) => (variant === COPY_LADDER[0] ? 'never' : 0),
+    firstSegmentTransfer: overALink(SLOW_LINK_BITS_PER_SECOND),
   })
 
   const { outcome, afterMs } = await playUntilStartupEnds(page, requests)
 
   expect(outcome).toBe('started')
   expect(afterMs).toBeLessThan(STARTUP_LIMIT_MS)
-  expect(requests.mediaPlaylists).toEqual(['stream.m3u8', '360p/stream.m3u8', '720p/stream.m3u8'])
+  expect(requests.mediaPlaylists.slice(0, 3)).toEqual([
+    'stream.m3u8',
+    '360p/stream.m3u8',
+    '720p/stream.m3u8',
+  ])
 })
 
 // Once it has measured the first segment, hls.js adapts as usual, so only the first segments that

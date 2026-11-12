@@ -181,20 +181,40 @@ describe('stepDownFromASlowFirstSegment', () => {
     expect(loadingHeight(hls)).toBe(360)
   })
 
-  // hls.js goes back to the copy when the lowest variant fails, and keeps that variant out of its
-  // choices.
-  it('shouldStartOnTheLowestVariantLeftWhenTheLowestVariantFailed', async () => {
+  // When the lowest variant's playlist fails, hls.js goes back to the copy and keeps that variant
+  // out of its choices. The copy's first segment keeps loading: hls.js asks for it no second time.
+  it('shouldStartOnTheLowestVariantLeftWhenTheLowestVariantFailsWhileTheFirstSegmentKeepsLoading', async () => {
     const { hls, mediaPlaylists } = await startPlayer()
     server.use(
-      http.get(`${LADDER_URL}360p/stream.m3u8`, () => new HttpResponse(null, { status: 404 })),
+      http.get(`${LADDER_URL}360p/stream.m3u8`, () => {
+        mediaPlaylists.push('360p/stream.m3u8')
+        return new HttpResponse(null, { status: 404 })
+      }),
     )
-    await deliver(loadFirstSegment(hls), { bitsPerSecond: 2_000_000, forMs: 3_100 })
-    await vi.waitFor(() => expect(loadingHeight(hls)).toBe(1080))
+    const segment = loadFirstSegment(hls)
 
-    await deliver(loadFirstSegment(hls), { bitsPerSecond: 2_000_000, forMs: 3_100 })
+    // The step down comes at about 3 s; the bytes go on arriving for as long again.
+    await deliver(segment, { bitsPerSecond: 2_000_000, forMs: 6_000 })
 
     expect(loadingHeight(hls)).toBe(720)
-    await vi.waitFor(() => expect(mediaPlaylists).toEqual(['stream.m3u8', '720p/stream.m3u8']))
+    expect(mediaPlaylists).toEqual(['stream.m3u8', '360p/stream.m3u8', '720p/stream.m3u8'])
+  })
+
+  // As on a stream with one variant, the first segment keeps loading.
+  it('shouldKeepLoadingTheFirstSegmentWhenEveryLowerVariantFails', async () => {
+    const { hls, mediaPlaylists } = await startPlayer()
+    server.use(
+      http.get(`${LADDER_URL}:variant/stream.m3u8`, ({ params }) => {
+        mediaPlaylists.push(`${String(params.variant)}/stream.m3u8`)
+        return new HttpResponse(null, { status: 404 })
+      }),
+    )
+    const segment = loadFirstSegment(hls)
+
+    await deliver(segment, { bitsPerSecond: 2_000_000, forMs: 6_000 })
+
+    expect(loadingHeight(hls)).toBe(1080)
+    expect(mediaPlaylists).toEqual(['stream.m3u8', '360p/stream.m3u8', '720p/stream.m3u8'])
   })
 
   it.each([

@@ -16,7 +16,6 @@ interface FirstSegmentStepDownOptions {
 interface Watch {
   timer: ReturnType<typeof setInterval>
   frag: Fragment
-  lowest: number
   loaded: number
   lastByteAt: number
 }
@@ -39,13 +38,11 @@ export function stepDownFromASlowFirstSegment({
   function startWatching(frag: Fragment) {
     stopWatching()
     if (video.readyState !== HTMLMediaElement.HAVE_NOTHING) return
-    const lowest = lowestVariantBeneath(hls.levels, frag.level)
-    if (lowest === undefined) return
+    if (lowestVariantBeneath(hls.levels, frag.level) === undefined) return
     const { stats } = frag
     const started: Watch = {
       timer: setInterval(() => check(started), LOAD_CHECK_MS),
       frag,
-      lowest,
       loaded: stats.loaded,
       lastByteAt: stats.loading.start,
     }
@@ -69,11 +66,17 @@ export function stepDownFromASlowFirstSegment({
       current.lastByteAt = now
     }
     if (now - current.lastByteAt < silenceLimitMs && arrivesInTime(current.frag, now)) return
-    stopWatching()
+    const lowest = lowestVariantBeneath(hls.levels, current.frag.level)
+    if (lowest === undefined) {
+      stopWatching()
+      return
+    }
     // hls.js loads the lowest variant's playlist, then aborts the segment of the variant it leaves.
     // An abort before that leaves hls.js waiting on the segment: until it has buffered media,
-    // hls.js does not resume after an aborted load.
-    hls.nextLoadLevel = current.lowest
+    // hls.js does not resume after an aborted load. When that playlist fails, hls.js can go back to
+    // the segment's variant and leave the segment loading, so each later check asks again; hls.js
+    // ignores a request for the variant that it is already switching to.
+    hls.nextLoadLevel = lowest
   }
 
   function arrivesInTime(frag: Fragment, now: number): boolean {
