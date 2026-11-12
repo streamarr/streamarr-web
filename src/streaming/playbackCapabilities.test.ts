@@ -2561,6 +2561,18 @@ describe('declarePlaybackCapabilities', () => {
       })
     })
 
+    it('shouldAskTheAv1FileQuestionsOfBothBitDepthsAtTheLevelThePictureNeedsWhenTheVideoElementPlaysThemLikeChromium', async () => {
+      const decodingInfo = filePlayingDecodingInfo(CHROMIUM_FILE_TYPES)
+
+      await declarePlaybackCapabilities(
+        filePlayingPlatform({ plays: CHROMIUM_FILE_TYPES, decodingInfo }),
+      )
+
+      expect(new Set(fileQuestionCodecs(decodingInfo, 'av01'))).toEqual(
+        new Set(['av01.0.13M.08', 'av01.0.13M.10']),
+      )
+    })
+
     it('shouldListHvc1AndAvc1ButNotHev1OrAvc3WhenWebKitPlaysOnlyThoseSampleEntriesFromAFile', async () => {
       const declaration = await declarePlaybackCapabilities(
         filePlayingPlatform({ plays: WEBKIT_FILE_TYPES, userAgent: SAFARI }),
