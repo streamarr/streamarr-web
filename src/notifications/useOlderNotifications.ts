@@ -14,7 +14,7 @@ import { withOlderPage } from './notificationList'
  * already reading that page is not sent twice. A load that fails keeps its failure until the next
  * one starts. `context` is the list's own, so a page takes the changes that arrive on its way. The
  * loaded pages last as long as the page that shows them: the next visit reads the newest page
- * afresh. `onJoined` is handed the Notifications of each page that joins the list.
+ * afresh. `onJoined` is handed the Notifications that each page adds to the list.
  */
 export function useOlderNotifications(
   pageInfo: NotificationsQuery['notifications']['pageInfo'] | undefined,
@@ -53,7 +53,9 @@ export function useOlderNotifications(
     const notifications = withOlderPage(list.notifications, data.notifications, after)
     if (notifications === list.notifications) return
     client.cache.writeQuery({ query: NotificationsDocument, data: { ...list, notifications } })
-    onJoined(definedEdges(data.notifications.edges).map((edge) => edge.node))
+    // The page joins after the list's own edges, without any the list already held.
+    const joined = notifications.edges.slice(list.notifications.edges.length)
+    onJoined(definedEdges(joined).map((edge) => edge.node))
   }
 
   function load() {
