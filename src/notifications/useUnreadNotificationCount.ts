@@ -1,5 +1,5 @@
 import { useQuery } from '@apollo/client/react'
-import { useCallback } from 'react'
+import { useCallback, useRef } from 'react'
 import {
   NotificationsChangedDocument,
   UnreadNotificationCountDocument,
@@ -14,13 +14,18 @@ import { useLiveChanges } from '../graphql/useLiveChanges'
  * last count, as does a read again that fails. Each change carries the whole count, so the menu
  * shows a change's count even when no read of the count has succeeded. Zero until a read or a
  * change first gives the count, and while neither can: the count is a hint, never a failure of its
- * own. `skip` reads nothing and follows nothing. `receive` takes a count the server answered
- * outside a change, such as a mark's.
+ * own. `skip` reads nothing and follows nothing.
+ *
+ * `markSent` is called as a mark goes out, and the function it returns takes the count the mark
+ * answers. A change that arrives in between means the server is delivering changes, this mark's
+ * own among them, and it may be newer than the mark, such as another session's mark; the mark's
+ * count then stands aside.
  */
 export function useUnreadNotificationCount({ skip }: { skip: boolean }): {
   count: number
-  receive: (count: number) => void
+  markSent: () => (count: number) => void
 } {
+  const changes = useRef(0)
   const live = useLiveList({
     query: UnreadNotificationCountDocument,
     variables: {},
@@ -36,11 +41,19 @@ export function useUnreadNotificationCount({ skip }: { skip: boolean }): {
     },
     [skip, live],
   )
+  const markSent = useCallback(() => {
+    const changesBefore = changes.current
+    return (count: number) => {
+      if (changes.current === changesBefore) receive(count)
+    }
+  }, [receive])
   useLiveChanges(
     NotificationsChangedDocument,
     ({ data }) => {
       const count = data?.notificationsChanged?.unreadNotificationCount
-      if (typeof count === 'number') receive(count)
+      if (typeof count !== 'number') return
+      changes.current += 1
+      receive(count)
     },
     { skip },
   )
@@ -51,5 +64,5 @@ export function useUnreadNotificationCount({ skip }: { skip: boolean }): {
     // way. When that read then fails, the menu still leaves the count out.
     fetchPolicy: 'cache-and-network',
   })
-  return { count: data?.unreadNotificationCount ?? 0, receive }
+  return { count: data?.unreadNotificationCount ?? 0, markSent }
 }

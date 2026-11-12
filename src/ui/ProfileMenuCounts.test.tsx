@@ -274,6 +274,49 @@ describe('The unread count in the Profile menu', () => {
     expect(menu.getByRole('button', { name: 'Notifications' })).toBeVisible()
   })
 
+  it('shouldKeepTheCountOfALaterChangeWhenAMarkSentBeforeItAnswersAfterIt', async () => {
+    const { socket } = serveHome(meFixture(), 2)
+    const leo = answerNotification({ id: 'answer-for-leo', unread: true })
+    const mara = answerNotification({ id: 'answer-for-mara', message: MARA_LINE, unread: true })
+    // Leo's mark answers late, with the count as it stood after it: Mara is still unread. Mara's
+    // mark answers only once the test has looked.
+    const leosAnswer = deferred()
+    const marasAnswer = deferred()
+    onTestFinished(leosAnswer.resolve)
+    onTestFinished(marasAnswer.resolve)
+    const marks: string[] = []
+    server.use(
+      graphql.query('Notifications', () =>
+        HttpResponse.json({ data: notificationsPage([leo, mara]) }),
+      ),
+      graphql.mutation('MarkNotificationRead', async ({ variables }) => {
+        const { notificationId } = (variables as { input: { notificationId: string } }).input
+        marks.push(notificationId)
+        await (notificationId === leo.id ? leosAnswer : marasAnswer).promise
+        const unreadNotificationCount = notificationId === leo.id ? 1 : 0
+        return HttpResponse.json({
+          data: { markNotificationRead: { unreadNotificationCount, userErrors: [] } },
+        })
+      }),
+    )
+    const { user } = renderAppAt('/notifications')
+    await screen.findByText(MARA_LINE)
+    await followingNotificationChanges(socket)
+    await waitFor(() => expect(marks).toEqual([leo.id]))
+
+    // Another session marks Mara read: the server tells this one, before Leo's mark answers.
+    socket.publish('NotificationsChanged', notificationsChanged([], 1))
+    socket.publish('NotificationsChanged', notificationsChanged([], 0))
+    const chip = await screen.findByRole('button', { name: 'Profile menu (Owner)' })
+    leosAnswer.resolve()
+    // The page marks Mara only once Leo's mark has answered.
+    await waitFor(() => expect(marks).toEqual([leo.id, mara.id]))
+    await user.click(chip)
+
+    const menu = within(await screen.findByTestId('profile-menu'))
+    expect(menu.getByRole('button', { name: 'Notifications' })).toBeVisible()
+  })
+
   it('shouldReadNoCountWhenTheSessionIsBoundToATV', async () => {
     const { socket, reads } = serveHome(meFixture({ deviceBound: true }), 3)
 
