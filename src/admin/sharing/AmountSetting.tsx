@@ -201,7 +201,11 @@ function AmountForm({
   }
 
   return (
-    <form ref={form} className={settingsStyles.form} onSubmit={(event) => void submit(event)}>
+    <form
+      ref={form}
+      className={`${settingsStyles.form} ${styles.form}`}
+      onSubmit={(event) => void submit(event)}
+    >
       <NumberInput
         ref={field}
         size="md"
