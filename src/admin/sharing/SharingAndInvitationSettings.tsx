@@ -1,22 +1,25 @@
 import { useMutation, useQuery } from '@apollo/client/react'
 import {
   ChangeInvitationLifetimeDocument,
-  ChangeNotificationRetentionDocument,
   ChangeShareCodeLifetimeDocument,
   ChangeShareCodeLimitDocument,
   InvitationLifetimeSettingDocument,
-  NotificationRetentionSettingDocument,
   ShareCodeLifetimeSettingDocument,
   ShareCodeLimitSettingDocument,
 } from '../../graphql/generated/graphql'
 import styles from '../../styles/settings.module.css'
 import { PageNotice } from '../../ui/PageNotice'
 import { usePageNotice } from '../../ui/usePageNotice'
+import { NotificationRetention } from '../notifications/NotificationRetentionSettings'
 import sectionStyles from './SharingAndInvitationSettings.module.css'
-import { AmountSetting, answerOf, type SettingWords } from './AmountSetting'
+import {
+  AmountSetting,
+  answerOf,
+  SETTING_READ as READ,
+  type OnSaved,
+  type SettingWords,
+} from './AmountSetting'
 import { amountOf, countOf, type StoredAmount, type Unit, type Units } from './amounts'
-
-type OnSaved = (notice: string) => void
 
 /** A lifetime as the server keeps it, in whole hours. */
 interface HoursSetting {
@@ -25,12 +28,8 @@ interface HoursSetting {
   maximumHours: number
 }
 
-// Each visit shows what is cached at once and reads the server again.
-const READ = { fetchPolicy: 'cache-and-network', notifyOnNetworkStatusChange: true } as const
-
 const CODES: Units = [{ size: 1, one: 'code', many: 'codes' }]
 const LIVE_CODE: Unit = { size: 1, one: 'live share code', many: 'live share codes' }
-const DAYS: Units = [{ size: 1, one: 'day', many: 'days' }]
 // The server takes a lifetime in hours; the admin may count it in hours or in days.
 const HOURS_OR_DAYS: Units = [
   { size: 1, one: 'hour', many: 'hours' },
@@ -53,13 +52,6 @@ const INVITATION_LIFETIME: SettingWords = {
   label: 'An invitation or an offer waits',
   subject: 'how long an invitation or an offer waits',
   saved: (hours) => `Saved. An invitation or an offer waits ${amountOf(hours, HOURS_OR_DAYS)}.`,
-}
-
-const RETENTION: SettingWords = {
-  label: 'Notifications are kept',
-  subject: 'how long Notifications are kept',
-  saved: (days) => `Saved. Notifications are kept ${amountOf(days, DAYS)}.`,
-  unitAfterNumber: true,
 }
 
 /**
@@ -175,37 +167,6 @@ function InvitationLifetime({ onSaved }: Readonly<{ onSaved: OnSaved }>) {
       words={INVITATION_LIFETIME}
       units={HOURS_OR_DAYS}
       stored={storedHours(setting)}
-      read={query}
-      saving={saving}
-      save={save}
-      onSaved={onSaved}
-    />
-  )
-}
-
-// How long the server keeps read news and resolved requests, which the server counts in days.
-function NotificationRetention({ onSaved }: Readonly<{ onSaved: OnSaved }>) {
-  const query = useQuery(NotificationRetentionSettingDocument, READ)
-  const [change, { loading: saving }] = useMutation(ChangeNotificationRetentionDocument)
-  const setting = (query.data ?? query.previousData)?.notificationRetentionSetting
-
-  async function save(days: number) {
-    const { data } = await change({ variables: { input: { days } } })
-    const payload = data?.changeNotificationRetention
-    return answerOf(payload?.userErrors, payload?.notificationRetentionSetting?.days)
-  }
-
-  return (
-    <AmountSetting
-      words={RETENTION}
-      units={DAYS}
-      stored={
-        setting && {
-          value: setting.days,
-          minimum: setting.minimumDays,
-          maximum: setting.maximumDays,
-        }
-      }
       read={query}
       saving={saving}
       save={save}
