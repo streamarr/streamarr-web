@@ -120,11 +120,22 @@ interface LadderRoutes {
   missingPlaylists?: readonly Variant[]
   /** Once it settles, each variant's first media segment is answered; until then it is held. */
   firstSegmentAnswered?: Promise<void>
-  /**
-   * How long each variant's first media segment takes to arrive: its headers come at once and its
-   * bytes over that many milliseconds. 'never' leaves the request unanswered.
-   */
-  firstSegmentTransfer?: (variant: Variant) => number | 'never'
+  /** How each variant's first media segment arrives. 'never' leaves the request unanswered. */
+  firstSegmentTransfer?: (variant: Variant) => Transfer | 'never'
+}
+
+/**
+ * How a first media segment crosses the link: its headers come after `heldMs`, then its bytes in
+ * legs, each leg `share` of them in ten even chunks over `ms`.
+ */
+interface Transfer {
+  heldMs: number
+  legs: readonly { share: number; ms: number }[]
+}
+
+// Headers at once, then the bytes in ten even chunks over `ms`.
+function evenly(ms: number): Transfer {
+  return { heldMs: 0, legs: [{ share: 1, ms }] }
 }
 
 interface Requests {
@@ -176,7 +187,7 @@ async function serveLadder(
     if (firstSegmentTransfer && isFirstSegment(segment)) {
       const transfer = firstSegmentTransfer(variantOf(variants, segment))
       if (transfer === 'never') return new Promise(() => undefined)
-      const query = new URLSearchParams({ ms: String(transfer), segment })
+      const query = new URLSearchParams({ transfer: JSON.stringify(transfer), segment })
       return route.continue({ url: `${trickle.url}?${query}` })
     }
     if (!firstSegmentAnswered || !isFirstSegment(segment)) return new Promise(() => undefined)
@@ -206,9 +217,28 @@ function variantOf(variants: readonly Variant[], segment: string): Variant {
   return variant!
 }
 
-// Answers with the fixture's media segment: its headers at once, then its bytes in ten even chunks
-// over the `ms` that the query names, as a link slower than the segment's bit rate delivers them.
-// Counts the chunks it has written of each `segment` that a query names.
+const CHUNKS_PER_LEG = 10
+
+// Each chunk of a transfer's `legs` over `length` bytes: the bytes it carries, and when it is
+// written after the headers.
+function chunksOf(legs: Transfer['legs'], length: number) {
+  let shareBefore = 0
+  let msBefore = 0
+  return legs.flatMap(({ share, ms }) => {
+    const chunks = Array.from({ length: CHUNKS_PER_LEG }, (_, chunk) => ({
+      start: Math.ceil((shareBefore + (share * chunk) / CHUNKS_PER_LEG) * length),
+      end: Math.ceil((shareBefore + (share * (chunk + 1)) / CHUNKS_PER_LEG) * length),
+      atMs: msBefore + (ms * (chunk + 1)) / CHUNKS_PER_LEG,
+    }))
+    shareBefore += share
+    msBefore += ms
+    return chunks
+  })
+}
+
+// Answers with the fixture's media segment as the `transfer` that the query names, as a link
+// slower than the segment's bit rate delivers it. Counts the chunks it has written of each
+// `segment` that a query names.
 let trickle: { url: string; server: Server; chunksWritten: Map<string, number> }
 
 test.beforeAll(async () => {
@@ -216,24 +246,23 @@ test.beforeAll(async () => {
   const chunksWritten = new Map<string, number>()
   const server = createServer((request, response) => {
     const query = new URL(request.url ?? '', 'http://trickle').searchParams
-    const transferMs = Number(query.get('ms'))
+    const { heldMs, legs } = JSON.parse(query.get('transfer') ?? '') as Transfer
     const requested = query.get('segment') ?? ''
     chunksWritten.set(requested, 0)
-    response.writeHead(200, { 'Content-Type': 'video/mp4', 'Content-Length': segment.length })
-    response.flushHeaders()
-    const chunks = 10
-    const timers = Array.from({ length: chunks }, (_, chunk) =>
-      setTimeout(
-        () => {
-          const start = Math.ceil((chunk * segment.length) / chunks)
-          const end = Math.ceil(((chunk + 1) * segment.length) / chunks)
+    const chunks = chunksOf(legs, segment.length)
+    const timers = [
+      setTimeout(() => {
+        response.writeHead(200, { 'Content-Type': 'video/mp4', 'Content-Length': segment.length })
+        response.flushHeaders()
+      }, heldMs),
+      ...chunks.map(({ start, end, atMs }, chunk) =>
+        setTimeout(() => {
           response.write(segment.subarray(start, end))
           chunksWritten.set(requested, chunk + 1)
-          if (chunk === chunks - 1) response.end()
-        },
-        ((chunk + 1) * transferMs) / chunks,
+          if (chunk === chunks.length - 1) response.end()
+        }, heldMs + atMs),
       ),
-    )
+    ]
     response.on('close', () => timers.forEach(clearTimeout))
   })
   await new Promise<void>((listening) => server.listen(0, '127.0.0.1', listening))
@@ -262,8 +291,8 @@ const FAST_LINK_BITS_PER_SECOND = 10_000_000
 // How long a segment that runs at its variant's BANDWIDTH for its six seconds takes to cross a link
 // of `bitsPerSecond`. Over the slow link: 60 s for the copy, 11.3 s for the 720p variant and 3.3 s
 // for the 360p variant.
-function overALink(bitsPerSecond: number): (variant: Variant) => number {
-  return ({ bandwidth }) => (bandwidth * SEGMENT_SECONDS * 1_000) / bitsPerSecond
+function overALink(bitsPerSecond: number): (variant: Variant) => Transfer {
+  return ({ bandwidth }) => evenly((bandwidth * SEGMENT_SECONDS * 1_000) / bitsPerSecond)
 }
 
 // The player gives up on startup after 30 s and says so.
@@ -395,7 +424,7 @@ test('Auto starts on the lowest variant within the startup limit when the first-
   const requests = await serveLadder(page, request, {
     variants: COPY_LADDER,
     transcodeMode: 'REMUX',
-    firstSegmentTransfer: (variant) => (variant === COPY_LADDER[0] ? 'never' : 0),
+    firstSegmentTransfer: (variant) => (variant === COPY_LADDER[0] ? 'never' : evenly(0)),
   })
 
   const { outcome, afterMs } = await playUntilStartupEnds(page, requests)
@@ -480,7 +509,7 @@ for (const { listing, choice, variant, transcodeMode } of [
       variants: [variant],
       choice,
       transcodeMode,
-      firstSegmentTransfer: () => 2 * STARTUP_LIMIT_MS,
+      firstSegmentTransfer: () => evenly(2 * STARTUP_LIMIT_MS),
     })
 
     await page.goto('/play/file-1?movie=m1')
