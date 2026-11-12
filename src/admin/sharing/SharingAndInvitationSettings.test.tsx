@@ -5,16 +5,12 @@ import { describe, expect, it } from 'vitest'
 import type {
   ChangeInvitationLifetimeMutation,
   ChangeInvitationLifetimeMutationVariables,
-  ChangeNotificationRetentionMutation,
-  ChangeNotificationRetentionMutationVariables,
   ChangeShareCodeLifetimeMutation,
   ChangeShareCodeLifetimeMutationVariables,
   ChangeShareCodeLimitMutation,
   ChangeShareCodeLimitMutationVariables,
   InvitationLifetimeSettingFieldsFragment,
   InvitationLifetimeSettingQuery,
-  NotificationRetentionSettingFieldsFragment,
-  NotificationRetentionSettingQuery,
   ShareCodeLifetimeSettingFieldsFragment,
   ShareCodeLifetimeSettingQuery,
   ShareCodeLimitSettingFieldsFragment,
@@ -27,8 +23,6 @@ import { server } from '../../test/server'
 
 const SHARING = '/settings/server/sharing'
 const SETTINGS_ID = '5c0f1e2d-3b4a-4968-8776-a5b4c3d2e1f0'
-// The unit choices keep their options in the page, where a unit's name also appears.
-const UNIT_OPTIONS = 'script, style, [role=option] *'
 const UNCONFIRMED =
   "Couldn't confirm the change. Refresh the page to check the saved setting before trying again."
 
@@ -71,24 +65,10 @@ function invitationLifetimeFixture(
   }
 }
 
-function retentionFixture(
-  overrides: Partial<NotificationRetentionSettingFieldsFragment> = {},
-): NotificationRetentionSettingFieldsFragment {
-  return {
-    __typename: 'NotificationRetentionSetting',
-    id: SETTINGS_ID,
-    days: 90,
-    minimumDays: 1,
-    maximumDays: 365,
-    ...overrides,
-  }
-}
-
 function serve({
   limit = limitFixture(),
   shareCodeLifetime = shareCodeLifetimeFixture(),
   invitationLifetime = invitationLifetimeFixture(),
-  retention = retentionFixture(),
   me = meFixture({ scope: 'profile', serverAdmin: true }),
 } = {}) {
   const state = {
@@ -99,8 +79,6 @@ function serve({
     shareCodeLifetimeChanges: [] as number[],
     invitationLifetime,
     invitationLifetimeChanges: [] as number[],
-    retention,
-    retentionChanges: [] as number[],
   }
   server.use(
     graphql.query('Me', () => HttpResponse.json({ data: { me } })),
@@ -156,24 +134,6 @@ function serve({
         })
       },
     ),
-    graphql.query<NotificationRetentionSettingQuery>('NotificationRetentionSetting', () =>
-      HttpResponse.json({ data: { notificationRetentionSetting: state.retention } }),
-    ),
-    graphql.mutation<
-      ChangeNotificationRetentionMutation,
-      ChangeNotificationRetentionMutationVariables
-    >('ChangeNotificationRetention', ({ variables }) => {
-      state.retentionChanges.push(variables.input.days)
-      state.retention = { ...state.retention, days: variables.input.days }
-      return HttpResponse.json({
-        data: {
-          changeNotificationRetention: {
-            notificationRetentionSetting: state.retention,
-            userErrors: [],
-          },
-        },
-      })
-    }),
   )
   return state
 }
@@ -266,14 +226,6 @@ function saveInvitationLifetime() {
   return screen.getByRole('button', { name: 'Save how long an invitation or an offer waits' })
 }
 
-async function retentionField() {
-  return screen.findByRole('textbox', { name: 'Notifications are kept, in days' })
-}
-
-function saveRetention() {
-  return screen.getByRole('button', { name: 'Save how long Notifications are kept' })
-}
-
 async function enter(user: UserEvent, field: HTMLElement, value: string) {
   await user.clear(field)
   await user.type(field, value)
@@ -329,11 +281,11 @@ describe('sharing and invitation settings', () => {
       await limitField(),
       await shareCodeLifetimeField(),
       await invitationLifetimeField(),
-      await retentionField(),
     ]
-    const fact = 'A change applies to share codes, invitations and offers issued after it.'
+    const fact = 'A change applies to what is issued after it.'
     expect(screen.getAllByText(fact)).toHaveLength(1)
     for (const field of fields) expect(field).not.toHaveAccessibleDescription(fact)
+    expect(screen.getAllByRole('textbox')).toHaveLength(3)
   })
 
   it('shouldSaveLimitAndSayItWasSavedWhenAdminEntersCodesAndSaves', async () => {
@@ -780,92 +732,6 @@ describe('sharing and invitation settings', () => {
     )
     await user.click(screen.getByRole('button', { name: 'Retry' }))
     expect(await invitationLifetimeField()).toHaveValue('7')
-  })
-
-  it('shouldShowHowManyDaysNotificationsAreKeptWhenAdminOpensTheSection', async () => {
-    serve({ retention: retentionFixture({ days: 30 }) })
-    renderAppAt(SHARING)
-    expect(await retentionField()).toHaveValue('30')
-    expect(screen.getByText('Notifications are kept')).toBeInTheDocument()
-    expect(screen.getByText('days', { ignore: UNIT_OPTIONS })).toBeInTheDocument()
-    expect(saveRetention()).toBeDisabled()
-  })
-
-  it('shouldSaveHowLongNotificationsAreKeptWhenAdminEntersDaysAndSaves', async () => {
-    const state = serve()
-    const { user } = renderAppAt(SHARING)
-    const field = await enter(user, await retentionField(), '60')
-    await user.click(saveRetention())
-    await expectNotice('Saved. Notifications are kept 60 days.')
-    expect(state.retentionChanges).toEqual([60])
-    expect(field).toHaveValue('60')
-    expect(field).toHaveFocus()
-  })
-
-  it('shouldNameOneDayWhenNotificationsAreKeptForOneDay', async () => {
-    serve()
-    const { user } = renderAppAt(SHARING)
-    await enter(user, await retentionField(), '1')
-    expect(screen.getByText('day', { ignore: UNIT_OPTIONS })).toBeInTheDocument()
-    await user.click(saveRetention())
-    await expectNotice('Saved. Notifications are kept 1 day.')
-  })
-
-  it.each(['0', '366'])(
-    'shouldRefuseBesideTheFieldWithoutAskingServerWhenTheRetentionIsOutsideTheServerRange(%s)',
-    async (entered) => {
-      const state = serve()
-      const { user } = renderAppAt(SHARING)
-      const field = await enter(user, await retentionField(), entered)
-      await user.click(saveRetention())
-      await waitFor(() => expect(field).toHaveAccessibleDescription('Choose from 1 to 365 days.'))
-      expect(field).toHaveValue(entered)
-      expect(state.retentionChanges).toEqual([])
-    },
-  )
-
-  it('shouldShowServerWordsBesideTheRetentionAndKeepDraftWhenServerRefusesChange', async () => {
-    const state = serve()
-    server.use(
-      graphql.mutation<ChangeNotificationRetentionMutation>('ChangeNotificationRetention', () =>
-        HttpResponse.json({
-          data: {
-            changeNotificationRetention: {
-              notificationRetentionSetting: null,
-              userErrors: [
-                {
-                  __typename: 'NotificationRetentionOutOfRangeError',
-                  message: 'Choose from 1 to 180 days.',
-                },
-              ],
-            },
-          },
-        }),
-      ),
-    )
-    const { user } = renderAppAt(SHARING)
-    const field = await enter(user, await retentionField(), '200')
-    await user.click(saveRetention())
-    await waitFor(() => expect(field).toHaveAccessibleDescription('Choose from 1 to 180 days.'))
-    expect(field).toHaveValue('200')
-    expect(state.retention.days).toBe(90)
-  })
-
-  it('shouldOfferRetryWhenTheRetentionCannotBeLoaded', async () => {
-    serve()
-    server.use(
-      graphql.query(
-        'NotificationRetentionSetting',
-        () => HttpResponse.json({ errors: [{ message: 'offline' }] }),
-        { once: true },
-      ),
-    )
-    const { user } = renderAppAt(SHARING)
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      "Couldn't load how long Notifications are kept.",
-    )
-    await user.click(screen.getByRole('button', { name: 'Retry' }))
-    expect(await retentionField()).toHaveValue('90')
   })
 
   it.each([

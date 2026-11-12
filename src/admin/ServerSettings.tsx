@@ -27,6 +27,12 @@ const SECTIONS = [
     label: 'Sharing and invitations',
     region: 'Sharing and invitations',
   },
+  {
+    to: '/settings/server/notifications',
+    icon: 'notifications',
+    label: 'Notifications',
+    region: 'Notifications',
+  },
 ] as const satisfies readonly SettingsSection[]
 
 /** The settings shell: sections mount only after the server confirms the admin's access on entry. */
