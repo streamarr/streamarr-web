@@ -894,6 +894,28 @@ describe('Notifications as they change elsewhere', () => {
     expect(within(rows()[0]).getByText('Unread')).toBeInTheDocument()
   })
 
+  it('shouldListANotificationFirstOnceWithItsNewLineWhenItIsUpdatedInPlace', async () => {
+    const { socket, user } = await openWithAnOffer(notificationsPage([offerNotification(), leo]))
+
+    // No sharing kind is told twice about one subject, so news of an answer stands in for a kind
+    // that is: the change keeps the Notification's id and gives it a new line and a newer time.
+    const updated = answerNotification({
+      unread: true,
+      message: 'The offer of “Leon” was accepted.',
+      latestEventAt: new Date().toISOString(),
+    })
+    socket.publish(
+      'NotificationsChanged',
+      notificationsChanged([notificationChange(leo.id, notificationEdge(updated, 0))], 3),
+    )
+
+    await waitFor(() => expect(lines()).toEqual(['The offer of “Leon” was accepted.', OFFER_LINE]))
+    expect(within(rows()[0]).getByText('Just now')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: /^Profile menu/ }))
+    const menu = within(await screen.findByTestId('profile-menu'))
+    expect(menu.getByRole('button', { name: 'Notifications, 3 unread' })).toBeVisible()
+  })
+
   it('shouldKeepFocusWhereThePersonIsWhenANotificationArrives', async () => {
     const { socket } = await openWithAnOffer()
     const review = screen.getByRole('link', { name: 'Review' })
