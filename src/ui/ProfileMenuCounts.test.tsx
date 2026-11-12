@@ -99,7 +99,7 @@ describe('The unread count in the Profile menu', () => {
     expect(within(entry).getByText('99+')).toBeVisible()
   })
 
-  it('shouldKeepTheCountCurrentAsNotificationsChangeOnAnyPage', async () => {
+  it('shouldKeepTheCountCurrentWhenNotificationsChangeOnAnyPage', async () => {
     const { socket } = serveHome(meFixture(), 3)
     const menu = await openTheProfileMenu()
     await menu.findByRole('button', { name: 'Notifications, 3 unread' })
@@ -285,7 +285,7 @@ describe('The unread count in the Profile menu', () => {
     expect(socket.isLive('NotificationsChanged')).toBe(false)
   })
 
-  it('shouldReadNoCountOnTheProfilePicker', async () => {
+  it('shouldReadNoCountWhenTheProfilePickerIsOpen', async () => {
     const { socket, reads } = serveHome(meFixture(), 3)
 
     renderAppAt('/select-profile')
@@ -351,7 +351,7 @@ describe('The count of offers waiting in the Profile menu', () => {
     )
   })
 
-  it('shouldKeepTheWaitingCountCurrentAsSharesChangeOnAnyPage', async () => {
+  it('shouldKeepTheWaitingCountCurrentWhenSharesChangeOnAnyPage', async () => {
     const { socket } = serveHome()
     const held = serveWaitingOffers([offer()])
     const menu = await openTheProfileMenu()
@@ -367,7 +367,7 @@ describe('The count of offers waiting in the Profile menu', () => {
     await menu.findByRole('button', { name: 'Household settings, 1 offer waiting' })
   })
 
-  it('shouldKeepTheWaitingCountCurrentAfterTheAdminLeavesShareOffers', async () => {
+  it('shouldKeepTheWaitingCountCurrentWhenTheAdminHasLeftShareOffers', async () => {
     const { socket } = serveHome()
     const held = serveWaitingOffers([offer()])
     const { user } = renderAppAt('/settings/household/offers')
