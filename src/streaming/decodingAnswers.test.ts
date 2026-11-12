@@ -4,6 +4,7 @@ import {
   CHROME_USER_AGENT,
   type DecodingInfo,
   FIREFOX_USER_AGENT,
+  HEADLESS_CHROME_USER_AGENT,
   IPHONE_CHROME_USER_AGENT,
   IPHONE_SAFARI_USER_AGENT,
   MAC_SAFARI_USER_AGENT,
@@ -526,6 +527,7 @@ describe('browserDecodingAnswers', () => {
 
   it.each([
     ['Chromium', CHROME_USER_AGENT, 'MacIntel'],
+    ['HeadlessChromium', HEADLESS_CHROME_USER_AGENT, 'MacIntel'],
     ['Firefox', FIREFOX_USER_AGENT, 'MacIntel'],
     ['WebKitOnLinux', MAC_SAFARI_USER_AGENT, 'Linux x86_64'],
     ['WebKitOnWindows', MAC_SAFARI_USER_AGENT, 'Win32'],

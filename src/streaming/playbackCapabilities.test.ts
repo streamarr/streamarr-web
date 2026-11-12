@@ -9,6 +9,7 @@ import {
   CHROME_USER_AGENT,
   type DecodingInfo,
   FIREFOX_USER_AGENT,
+  HEADLESS_CHROME_USER_AGENT,
   IPHONE_CHROME_USER_AGENT,
   IPHONE_SAFARI_HEVC_ANSWER,
   IPHONE_SAFARI_USER_AGENT,
@@ -1401,6 +1402,15 @@ describe('declarePlaybackCapabilities', () => {
 
     expect(audioEntry(declaration, 'OPUS')?.maxChannels).toBe(2)
     expect(audioEntry(declaration, 'AAC')?.maxChannels).toBe(6)
+  })
+
+  it.each([
+    ['Chromium', CHROME_USER_AGENT],
+    ['HeadlessChromium', HEADLESS_CHROME_USER_AGENT],
+  ])('shouldDeclareSurroundOpusWhen%sConfirmsSurroundOpus', async (_, userAgent) => {
+    const declaration = await declarePlaybackCapabilities(platformFixture({ userAgent }))
+
+    expect(audioEntry(declaration, 'OPUS')?.maxChannels).toBe(6)
   })
 
   it('shouldNotDeclareAlacWhenTheBrowserDoesNotConfirmIt', async () => {
