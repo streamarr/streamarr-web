@@ -38,8 +38,8 @@ function tokenColour(page: Page, token: string) {
 }
 
 const UNREAD = [
-  news('answer-for-leo', '“Cabin” accepted the Profile “Leo”.', 1),
-  news('answer-for-mara', '“Lake House” accepted the Profile “Mara”.', 2),
+  news('answer-for-leo', 'The offer of “Leo” was accepted.', 1),
+  news('answer-for-mara', 'The offer of “Mara” was accepted.', 2),
 ]
 
 test('the unread count and the dot clear when shown notifications are explicitly marked read', async ({
@@ -77,7 +77,7 @@ test('the unread count and the dot clear when shown notifications are explicitly
   await expect(entry).toHaveText('Notifications2')
   await entry.click()
   await expect(page.getByRole('heading', { level: 1, name: 'Notifications' })).toBeVisible()
-  await expect(page.getByText('“Cabin” accepted the Profile “Leo”.', { exact: true })).toBeVisible()
+  await expect(page.getByText('The offer of “Leo” was accepted.', { exact: true })).toBeVisible()
   await expect(marked.getByTestId('unread-dot')).toBeVisible()
   expect(server.unread).toBe(2)
 
@@ -193,12 +193,12 @@ function offerRequest({
 const REQUESTS = [
   offerRequest({
     id: 'offer-of-mara',
-    message: '“Sam” offered the Profile “Mara” to your Household.',
+    message: '“Mara” was offered to your Household.',
     at: 1,
   }),
   offerRequest({
     id: 'offer-of-leo',
-    message: '“Alex” offered the Profile “Leo” to your Household.',
+    message: 'The offer of “Leo” to your Household was accepted.',
     at: 2,
     resolution: 'DECIDED',
     answer: 'ACCEPTED',
@@ -265,7 +265,7 @@ test('how a Request ended sits on the line of its first row of text', async ({ p
 
   const ended = rows.nth(1)
   const label = ended.getByText('Accepted', { exact: true })
-  const line = ended.getByText('“Alex” offered the Profile “Leo” to your Household.')
+  const line = ended.getByText('The offer of “Leo” to your Household was accepted.')
   await expect(label).toBeVisible()
   const lineHeight = await line.evaluate((text) =>
     Number.parseFloat(getComputedStyle(text).lineHeight),

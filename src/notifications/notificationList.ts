@@ -12,7 +12,7 @@ type ShownEdge = NotificationEdgeFieldsFragment & {
   node: NonNullable<NotificationEdgeFieldsFragment['node']>
 }
 
-/** One Notification that a change touched: its edge in the list, or null once it left the list. */
+/** One Notification that a change touched: its edge in the list, or null once it is dismissed. */
 export interface NotificationEntry {
   notificationId: string
   edge: ShownEdge | null

@@ -74,7 +74,7 @@ async function openTheProfileMenu() {
   return within(await screen.findByTestId('profile-menu'))
 }
 
-const MARA_LINE = '“Cabin” accepted the Profile “Mara”.'
+const MARA_LINE = 'The offer of “Mara” was accepted.'
 const SHARE_OFFERS: SettingsPage = { area: 'Household settings', heading: 'Share invitations' }
 const NOTIFICATIONS_PAGE: SettingsPage = { area: 'Notifications', heading: 'Notifications' }
 
