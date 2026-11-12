@@ -1082,9 +1082,9 @@ function startSessionPlayback({
   }
 
   async function pollForReplacement(poll: StatusPoll) {
-    const { check, current } = poll
+    const { check, current, id } = poll
     while (current() && !check.controller.signal.aborted) {
-      const status = await readTheStatus(poll)
+      const status = await readTheStatus(id, check)
       if (!current()) return
       if (!status.read) {
         await waitForPlaybackStatus(check.controller.signal)
@@ -1110,23 +1110,23 @@ function startSessionPlayback({
 
   async function replaceTheAttachedStream(
     playback: PlaybackSessionFieldsFragment | null | undefined,
-    { check, current }: StatusPoll,
+    poll: StatusPoll,
   ) {
+    const { check, current } = poll
     beginHandover()
     check.generation = sourceGeneration
-    const resolved = playback
-      ? await awaitReadyPlayback(playback, check.controller.signal, current)
-      : undefined
+    const resolved = playback ? await awaitReadyPlayback(playback, poll) : undefined
     if (!current() || check.controller.signal.aborted) return
     adoptPlayback(resolved)
   }
 
-  // A failed read ends a check, except a slow startup's: nothing else asks for that status again.
-  function readTheStatus({ check, id }: StatusPoll) {
-    return readPlaybackSession(id, check.controller.signal).then(
+  // A failed read rejects, except in a slow startup's check: nothing else asks for that status
+  // again.
+  function readTheStatus(id: string, check?: PlaybackStatusCheck) {
+    return readPlaybackSession(id, check?.controller.signal ?? statusCancellation.signal).then(
       (playback) => ({ read: true as const, playback }),
       (error: unknown) => {
-        if (!check.endsAtMetadata) throw error
+        if (!check?.endsAtMetadata) throw error
         return { read: false as const }
       },
     )
@@ -1161,11 +1161,10 @@ function startSessionPlayback({
     showFailure(PLAYBACK_FAILURE_MESSAGE)
   }
 
-  async function awaitReadyPlayback(
-    initial: PlaybackSessionFieldsFragment,
-    signal = statusCancellation.signal,
-    current = () => !cancelled,
-  ) {
+  // A status check's poll waits with the check's own signal, and only while the check is current.
+  async function awaitReadyPlayback(initial: PlaybackSessionFieldsFragment, poll?: StatusPoll) {
+    const signal = poll?.check.controller.signal ?? statusCancellation.signal
+    const current = poll?.current ?? (() => !cancelled)
     let playback: PlaybackSessionFieldsFragment | null | undefined = initial
     while (
       current() &&
