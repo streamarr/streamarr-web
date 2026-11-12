@@ -6808,6 +6808,27 @@ describe('Player', () => {
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     })
 
+    // The start position lies in the copy's last segment, past the real end within it, so the
+    // server answers the segment, here only after the status read has ended playback.
+    it('shouldStayEndedWhenTheMetadataLoadsAfterASlowStartupEndedAtTheRealEnd', async () => {
+      const reports = serveSession()
+      serveStatusReads(() => ({ ...SESSION, mediaEndSeconds: REAL_END_SECONDS }))
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      const video = await startAFirstLoadPastTheRealEnd()
+      await act(async () => vi.advanceTimersByTimeAsync(SLOW_STARTUP_MS))
+      const stopped = () => reports.filter((report) => report.state === 'STOPPED')
+      await vi.waitFor(() => expect(stopped()).toHaveLength(1))
+
+      loadMetadata(video)
+      expect(video.paused).toBe(true)
+      await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_START_TIMEOUT_MS))
+
+      expect(hls.loadSource).toHaveBeenCalledOnce()
+      expect(stopped()).toEqual([
+        { sessionId: SESSION.id, positionSeconds: REAL_END_SECONDS, state: 'STOPPED' },
+      ])
+    })
+
     it('shouldReadTheStatusAgainAfterTheIntervalWhenTheFirstReadOfASlowStartupNamesNoRealEnd', async () => {
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
       const { reports, replacement, statusReads, nameTheRealEnd } =

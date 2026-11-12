@@ -367,6 +367,8 @@ function startSessionPlayback({
       // Seeking before metadata is loaded is unreliable across browsers; the event is the safe point.
       onLoadedMetadata: (element) => {
         stopSlowStartupReads()
+        // Playback that ended at the real end before its metadata loaded has no start left to make.
+        if (endedAtRealEnd) return
         if (resume) {
           const previous = resume
           resume = undefined
