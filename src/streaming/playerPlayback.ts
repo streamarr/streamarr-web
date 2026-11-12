@@ -723,6 +723,7 @@ function startSessionPlayback({
     }
     const options: StreamSourceOptions = {
       startupDeadline,
+      startPositionSeconds: resume?.position ?? startAt,
       videoPreference: hlsVideoPreference(declaration, dynamicRange),
       onFirstFrame: () => {
         firstFrameShown = true
@@ -1404,6 +1405,8 @@ interface StreamSourceOptions {
   onFirstFrame: () => void
   onFormatFailure: (reason: PlaybackFormatFailure) => void
   onStatusRequired: (fatal: boolean) => void
+  /** Where the stream starts to play, which the element seeks to once its metadata has loaded. */
+  startPositionSeconds?: number
   startupDeadline: StartupDeadline
   videoPreference: VideoSelectionOption
 }
@@ -1413,7 +1416,13 @@ function attach(video: HTMLVideoElement, url: string, options: StreamSourceOptio
   if (!Hls.isSupported()) {
     return attachNative(video, url, options)
   }
-  const hls: Hls = new Hls(hlsPlaybackConfig(() => hls, options.videoPreference))
+  // The element has its metadata only once hls.js has appended the first media segment it loads, so
+  // the seek to the start position comes too late to choose that segment. The server marks no
+  // EXT-X-START in a stream session that replaces another after playback moved from its start.
+  const hls: Hls = new Hls({
+    ...hlsPlaybackConfig(() => hls, options.videoPreference),
+    startPosition: options.startPositionSeconds ?? -1,
+  })
   hls.on(Hls.Events.ERROR, (_event, data) => {
     if (
       data.type === Hls.ErrorTypes.NETWORK_ERROR &&
