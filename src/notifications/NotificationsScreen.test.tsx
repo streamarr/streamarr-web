@@ -355,6 +355,35 @@ describe('Requests in Notifications', () => {
       expect(screen.getByRole('heading', { level: 1, name: 'Notifications' })).toHaveFocus(),
     )
   })
+
+  it('shouldSayHowAnOfferWasDecidedWhenTheDecisionArrivesAfterItShowedExpired', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'], shouldAdvanceTime: true })
+    onTestFinished(() => void vi.useRealTimers())
+    const expiresAt = new Date(Date.now() + HOUR).toISOString()
+    const { socket } = serve(notificationsPage([offerNotification({ expiresAt })]))
+    renderAppAt(NOTIFICATIONS)
+    await screen.findByRole('link', { name: 'Review' })
+    await followingNotificationChanges(socket)
+    await act(() => vi.advanceTimersByTimeAsync(HOUR))
+    await within(rows()[0]).findByText('Expired')
+
+    // The offer was accepted before its expiry, and the change arrives after it.
+    const accepted = offerNotification({
+      message: 'The offer of “Alex” to your Household was accepted.',
+      unread: false,
+      expiresAt,
+      resolution: 'DECIDED',
+      answer: 'ACCEPTED',
+    })
+    socket.publish(
+      'NotificationsChanged',
+      notificationsChanged([notificationChange(accepted.id, notificationEdge(accepted, 1))]),
+    )
+
+    expect(await within(rows()[0]).findByText('Accepted')).toBeVisible()
+    expect(within(rows()[0]).queryByText('Expired')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Review' })).not.toBeInTheDocument()
+  })
 })
 
 describe('Reading Notifications', () => {
