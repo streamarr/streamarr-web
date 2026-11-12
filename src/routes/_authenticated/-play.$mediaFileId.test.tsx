@@ -3,9 +3,15 @@ import { readyPlaybackSession, destroyedPlaybackSession } from '../../test/playb
 import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
 import { HttpResponse, graphql } from 'msw'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { CreatePlaybackSessionInput } from '../../graphql/generated/graphql'
+import type {
+  ClientCapabilityDeclarationInput,
+  CreatePlaybackSessionInput,
+} from '../../graphql/generated/graphql'
+import { createDecodingAnswers, type DecodingAnswers } from '../../streaming/decodingAnswers'
+import { deferred } from '../../test/deferred'
 import { hls } from '../../test/fakeHls'
 import { meFixture } from '../../test/meFixture'
+import { browseIn, type DecodingInfo, MAC_SAFARI_USER_AGENT } from '../../test/playbackCapabilities'
 import { renderAppAt } from '../../test/render'
 import { server } from '../../test/server'
 
@@ -80,6 +86,11 @@ function serveMediaTitles(): unknown[] {
     }),
   )
   return requests
+}
+
+function browseInSafariOnAMac(decodingInfo: DecodingInfo): DecodingAnswers {
+  browseIn({ userAgent: MAC_SAFARI_USER_AGENT, platform: 'MacIntel', decodingInfo })
+  return createDecodingAnswers({ decodingInfo })
 }
 
 async function attachedVideo(): Promise<HTMLVideoElement> {
@@ -170,6 +181,64 @@ describe('/play/$mediaFileId', () => {
     fireEvent(video, new Event('loadedmetadata'))
     expect(video.currentTime).toBe(120)
     expect(created).toEqual(['AUTO', 'HIGH_720P', 'AUTO'])
+  })
+
+  it('shouldSendTheSameDeclarationWithoutAskingTheBrowserAgainWhenSafariStartsASecondPlaybackSession', async () => {
+    serveApp()
+    const declarations: ClientCapabilityDeclarationInput[] = []
+    server.use(
+      graphql.mutation('CreatePlaybackSession', ({ variables }) => {
+        const { capabilities } = (variables as { input: CreatePlaybackSessionInput }).input
+        declarations.push(capabilities)
+        const id = `sess-${declarations.length}`
+        return HttpResponse.json({
+          data: {
+            createPlaybackSession: {
+              playbackSession: readyPlaybackSession({
+                streamSession: { id, streamUrl: `/api/stream/${id}.m3u8`, transcodeMode: 'REMUX' },
+              }),
+              userErrors: [],
+            },
+          },
+        })
+      }),
+    )
+    const decodingInfo = vi.fn(() =>
+      Promise.resolve({ supported: true, smooth: true, powerEfficient: true }),
+    )
+    const pageAnswers = browseInSafariOnAMac(decodingInfo)
+    const { router } = renderAppAt('/play/file-1', { decodingAnswers: pageAnswers })
+    await attachedVideoAt('/api/stream/sess-1.m3u8')
+    const askedForTheFirst = decodingInfo.mock.calls.length
+
+    await act(() =>
+      router.navigate({ to: '/play/$mediaFileId', params: { mediaFileId: 'file-2' } }),
+    )
+
+    await attachedVideoAt('/api/stream/sess-2.m3u8')
+    expect(askedForTheFirst).toBeGreaterThan(0)
+    expect(decodingInfo).toHaveBeenCalledTimes(askedForTheFirst)
+    expect(declarations).toHaveLength(2)
+    expect(declarations[1]).toEqual(declarations[0])
+  })
+
+  it('shouldKeepItsPlaybackSessionWhenTheTitleArrivesAfterPlaybackStarts', async () => {
+    serveApp()
+    const titleSent = deferred()
+    server.use(
+      graphql.query('PlayerMediaTitle', async () => {
+        await titleSent.promise
+        return HttpResponse.json({ data: { movie: MOVIES.m1 } })
+      }),
+    )
+    renderAppAt('/play/file-1?movie=m1')
+    await attachedVideo()
+
+    titleSent.resolve()
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Everlight' })).toBeVisible()
+    expect(hls.destroy).not.toHaveBeenCalled()
+    expect(hls.loadSource).toHaveBeenCalledOnce()
   })
 
   it('shouldNameTheEpisodeAndItsSeriesInTheTitleLine', async () => {

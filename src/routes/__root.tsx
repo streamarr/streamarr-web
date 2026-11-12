@@ -12,12 +12,14 @@ import type { SubscriptionTransport } from '../graphql/subscriptionTransport'
 import type { FileRouteTypes } from '../routeTree.gen'
 import { AmbientScope } from '../media/AmbientScope'
 import { AmbientThemeProvider, useAmbientTheme } from '../media/ambientThemeContext'
+import type { DecodingAnswers } from '../streaming/decodingAnswers'
 import { HomeShell } from '../ui/HomeShell'
 import { TopBar } from '../ui/TopBar'
 
 interface RouterContext {
   session: SessionStore
   subscriptions: SubscriptionTransport
+  decodingAnswers?: DecodingAnswers
 }
 
 export const Route = createRootRouteWithContext<RouterContext>()({

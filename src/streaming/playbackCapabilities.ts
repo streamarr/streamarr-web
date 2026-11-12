@@ -13,6 +13,8 @@ import type {
   VideoCodecProfile,
   VideoSampleEntry,
 } from '../graphql/generated/graphql'
+import { browserDecodingInfo, type DecodingAnswers } from './decodingAnswers'
+import { isWebKit } from './webKit'
 
 type CreatePlaybackSessionErrorTypename = NonNullable<
   CreatePlaybackSessionMutation['createPlaybackSession']
@@ -43,7 +45,10 @@ export interface DecodingAnswer {
 
 /** The browser facts a capability declaration is built from, and that playback data shows. */
 export interface PlaybackPlatform {
-  /** `MediaCapabilities.decodingInfo`, absent where the browser lacks the API. */
+  /**
+   * Answers as `MediaCapabilities.decodingInfo` does, absent where the browser lacks the API. It may
+   * answer a question from the answer the browser gave earlier in the page.
+   */
   decodingInfo?: (configuration: MediaDecodingConfiguration) => Promise<DecodingAnswer>
   /** Whether hls.js plays here, on Media Source Extensions or ManagedMediaSource. */
   hlsJsSupported: boolean
@@ -366,9 +371,12 @@ interface Askers {
 }
 
 /**
- * What this browser plays over HLS, and from MP4 and WebM files in its own media element, built
- * fresh for each playback session from the platform's answers. Never rejects: each probe the browser rejects or leaves unanswered counts as
- * unconfirmed, and a browser without decodingInfo gets the minimal declaration.
+ * What this browser plays over HLS, and from MP4 and WebM files in its own media element, built for
+ * each playback session from the platform's answers. Each declaration reads the display and the
+ * audio output again, so a changed reading asks other questions. The platform may answer a question
+ * that it answered for an earlier declaration. Never rejects: each probe the browser rejects or
+ * leaves unanswered counts as unconfirmed, and a browser without decodingInfo gets the minimal
+ * declaration.
  */
 export async function declarePlaybackCapabilities(
   platform: PlaybackPlatform,
@@ -1208,11 +1216,6 @@ function sevenOneOperatingSystem(userAgent: string): SevenOneOperatingSystem | n
   return null
 }
 
-// Every iPhone browser is WebKit; Blink keeps AppleWebKit in its user agent beside Chrome/.
-function isWebKit(userAgent: string): boolean {
-  return /AppleWebKit\//.test(userAgent) && !/\b(?:Chrome|Chromium)\//.test(userAgent)
-}
-
 // The sample entries that name a coding format in an MP4 file, keyed by the one each probe's codec
 // string starts with. A browser may play a format from one sample entry and not another: WebKit
 // plays hvc1 and avc1 files, never hev1 or avc3.
@@ -1490,8 +1493,15 @@ interface MediaSourceType {
   isTypeSupported: (type: string) => boolean
 }
 
-/** Binds the platform facts to this browser and the element that plays the stream. */
-export function browserPlaybackPlatform(video: HTMLVideoElement): PlaybackPlatform {
+/**
+ * Binds the platform facts to this browser and the element that plays the stream. Where the browser
+ * offers decodingInfo, the binding asks through `pageAnswers` when the page keeps them, and sends
+ * the browser every question otherwise.
+ */
+export function browserPlaybackPlatform(
+  video: HTMLVideoElement,
+  pageAnswers?: DecodingAnswers,
+): PlaybackPlatform {
   // The order hls.js attaches through by default (preferManagedMediaSource: false). TypeScript's
   // DOM library declares neither ManagedMediaSource nor WebKitMediaSource.
   const scope: {
@@ -1521,8 +1531,7 @@ export function browserPlaybackPlatform(video: HTMLVideoElement): PlaybackPlatfo
     platform.audioOutputChannels = () => Promise.resolve(0)
   }
   if ('mediaCapabilities' in navigator) {
-    platform.decodingInfo = (configuration) =>
-      navigator.mediaCapabilities.decodingInfo(configuration)
+    platform.decodingInfo = pageAnswers?.ask ?? browserDecodingInfo
   }
   return platform
 }

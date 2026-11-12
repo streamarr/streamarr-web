@@ -5,15 +5,23 @@ import { createSessionStore, probeSession } from './auth/session'
 import { type AuthRoute, createApolloClient } from './graphql/client'
 import { createSubscriptionTransport } from './graphql/subscriptionTransport'
 import { routeTree } from './routeTree.gen'
+import type { DecodingAnswers } from './streaming/decodingAnswers'
 
 /**
  * One composition: the guard probes over the client, and the error link's routing is a
- * navigation. `history` is passed only by tests.
+ * navigation. `history` is passed only by tests. `decodingAnswers`, present where the page keeps
+ * them, serve every playback session of the page. Without them, each playback session sends the
+ * browser every question.
  */
-export function createAppRouter(
-  history?: RouterHistory,
-  renewal: Pick<RenewalBridge, 'refreshNow'> = inactiveRenewalBridge,
-) {
+export function createAppRouter({
+  history,
+  renewal = inactiveRenewalBridge,
+  decodingAnswers,
+}: {
+  history?: RouterHistory
+  renewal?: Pick<RenewalBridge, 'refreshNow'>
+  decodingAnswers?: DecodingAnswers
+} = {}) {
   // The probe closes over the client assigned below: the only order the circular wiring allows.
   let apolloClient: ApolloClient
   const session = createSessionStore(async () => {
@@ -32,7 +40,7 @@ export function createAppRouter(
   const router = createRouter({
     routeTree,
     history,
-    context: { session, subscriptions },
+    context: { session, subscriptions, decodingAnswers },
     scrollRestoration: true,
   })
   const routeAuth = (route: AuthRoute): void => {
