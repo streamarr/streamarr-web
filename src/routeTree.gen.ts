@@ -37,7 +37,6 @@ import { Route as AuthenticatedSettingsServerIndexRouteImport } from './routes/_
 import { Route as AuthenticatedSettingsServerEncodingRouteImport } from './routes/_authenticated/settings.server.encoding'
 import { Route as AuthenticatedSettingsServerLibrariesRouteImport } from './routes/_authenticated/settings.server.libraries'
 import { Route as AuthenticatedSettingsServerNotificationsRouteImport } from './routes/_authenticated/settings.server.notifications'
-import { Route as AuthenticatedSettingsServerSharingRouteImport } from './routes/_authenticated/settings.server.sharing'
 import { Route as AuthenticatedSettingsServerStreamsRouteImport } from './routes/_authenticated/settings.server.streams'
 import { Route as AuthenticatedSettingsServerLibrariesNewRouteImport } from './routes/_authenticated/settings.server.libraries_.new'
 
@@ -201,12 +200,6 @@ const AuthenticatedSettingsServerNotificationsRoute =
     path: '/notifications',
     getParentRoute: () => AuthenticatedSettingsServerRoute,
   } as any)
-const AuthenticatedSettingsServerSharingRoute =
-  AuthenticatedSettingsServerSharingRouteImport.update({
-    id: '/sharing',
-    path: '/sharing',
-    getParentRoute: () => AuthenticatedSettingsServerRoute,
-  } as any)
 const AuthenticatedSettingsServerStreamsRoute =
   AuthenticatedSettingsServerStreamsRouteImport.update({
     id: '/streams',
@@ -245,7 +238,6 @@ export interface FileRoutesByFullPath {
   '/settings/server/encoding': typeof AuthenticatedSettingsServerEncodingRoute
   '/settings/server/libraries': typeof AuthenticatedSettingsServerLibrariesRoute
   '/settings/server/notifications': typeof AuthenticatedSettingsServerNotificationsRoute
-  '/settings/server/sharing': typeof AuthenticatedSettingsServerSharingRoute
   '/settings/server/streams': typeof AuthenticatedSettingsServerStreamsRoute
   '/settings/household/': typeof AuthenticatedSettingsHouseholdIndexRoute
   '/settings/profile/': typeof AuthenticatedSettingsProfileIndexRoute
@@ -274,7 +266,6 @@ export interface FileRoutesByTo {
   '/settings/server/encoding': typeof AuthenticatedSettingsServerEncodingRoute
   '/settings/server/libraries': typeof AuthenticatedSettingsServerLibrariesRoute
   '/settings/server/notifications': typeof AuthenticatedSettingsServerNotificationsRoute
-  '/settings/server/sharing': typeof AuthenticatedSettingsServerSharingRoute
   '/settings/server/streams': typeof AuthenticatedSettingsServerStreamsRoute
   '/settings/household': typeof AuthenticatedSettingsHouseholdIndexRoute
   '/settings/profile': typeof AuthenticatedSettingsProfileIndexRoute
@@ -308,7 +299,6 @@ export interface FileRoutesById {
   '/_authenticated/settings/server/encoding': typeof AuthenticatedSettingsServerEncodingRoute
   '/_authenticated/settings/server/libraries': typeof AuthenticatedSettingsServerLibrariesRoute
   '/_authenticated/settings/server/notifications': typeof AuthenticatedSettingsServerNotificationsRoute
-  '/_authenticated/settings/server/sharing': typeof AuthenticatedSettingsServerSharingRoute
   '/_authenticated/settings/server/streams': typeof AuthenticatedSettingsServerStreamsRoute
   '/_authenticated/settings/household/': typeof AuthenticatedSettingsHouseholdIndexRoute
   '/_authenticated/settings/profile/': typeof AuthenticatedSettingsProfileIndexRoute
@@ -342,7 +332,6 @@ export interface FileRouteTypes {
     | '/settings/server/encoding'
     | '/settings/server/libraries'
     | '/settings/server/notifications'
-    | '/settings/server/sharing'
     | '/settings/server/streams'
     | '/settings/household/'
     | '/settings/profile/'
@@ -371,7 +360,6 @@ export interface FileRouteTypes {
     | '/settings/server/encoding'
     | '/settings/server/libraries'
     | '/settings/server/notifications'
-    | '/settings/server/sharing'
     | '/settings/server/streams'
     | '/settings/household'
     | '/settings/profile'
@@ -404,7 +392,6 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/server/encoding'
     | '/_authenticated/settings/server/libraries'
     | '/_authenticated/settings/server/notifications'
-    | '/_authenticated/settings/server/sharing'
     | '/_authenticated/settings/server/streams'
     | '/_authenticated/settings/household/'
     | '/_authenticated/settings/profile/'
@@ -618,13 +605,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsServerNotificationsRouteImport
       parentRoute: typeof AuthenticatedSettingsServerRoute
     }
-    '/_authenticated/settings/server/sharing': {
-      id: '/_authenticated/settings/server/sharing'
-      path: '/sharing'
-      fullPath: '/settings/server/sharing'
-      preLoaderRoute: typeof AuthenticatedSettingsServerSharingRouteImport
-      parentRoute: typeof AuthenticatedSettingsServerRoute
-    }
     '/_authenticated/settings/server/streams': {
       id: '/_authenticated/settings/server/streams'
       path: '/streams'
@@ -691,7 +671,6 @@ interface AuthenticatedSettingsServerRouteChildren {
   AuthenticatedSettingsServerEncodingRoute: typeof AuthenticatedSettingsServerEncodingRoute
   AuthenticatedSettingsServerLibrariesRoute: typeof AuthenticatedSettingsServerLibrariesRoute
   AuthenticatedSettingsServerNotificationsRoute: typeof AuthenticatedSettingsServerNotificationsRoute
-  AuthenticatedSettingsServerSharingRoute: typeof AuthenticatedSettingsServerSharingRoute
   AuthenticatedSettingsServerStreamsRoute: typeof AuthenticatedSettingsServerStreamsRoute
   AuthenticatedSettingsServerIndexRoute: typeof AuthenticatedSettingsServerIndexRoute
   AuthenticatedSettingsServerLibrariesNewRoute: typeof AuthenticatedSettingsServerLibrariesNewRoute
@@ -705,8 +684,6 @@ const AuthenticatedSettingsServerRouteChildren: AuthenticatedSettingsServerRoute
       AuthenticatedSettingsServerLibrariesRoute,
     AuthenticatedSettingsServerNotificationsRoute:
       AuthenticatedSettingsServerNotificationsRoute,
-    AuthenticatedSettingsServerSharingRoute:
-      AuthenticatedSettingsServerSharingRoute,
     AuthenticatedSettingsServerStreamsRoute:
       AuthenticatedSettingsServerStreamsRoute,
     AuthenticatedSettingsServerIndexRoute:

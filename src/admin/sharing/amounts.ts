@@ -28,7 +28,7 @@ export function wholeCount(amount: number, units: Units): Count {
 }
 
 /** Names a count of a unit: "1 code", "20 codes". */
-export function countOf(count: number, unit: Unit): string {
+function countOf(count: number, unit: Unit): string {
   return `${count} ${count === 1 ? unit.one : unit.many}`
 }
 

@@ -241,8 +241,8 @@ test('a refused issue leaves Issue a share code where the person clicked it', as
         issued: null,
         userErrors: [
           {
-            __typename: 'ShareCodeLimitReachedError',
-            message: 'Withdraw a code before issuing another.',
+            __typename: 'HouseholdNotFoundError',
+            message: 'Smith Family cannot issue a share code now.',
           },
         ],
       },
@@ -255,7 +255,7 @@ test('a refused issue leaves Issue a share code where the person clicked it', as
 
   await issue.click()
 
-  await expect(page.getByRole('alert')).toHaveText('Withdraw a code before issuing another.')
+  await expect(page.getByRole('alert')).toHaveText('Smith Family cannot issue a share code now.')
   expect((await boxOf(issue)).y).toBeCloseTo(before.y, 0)
 })
 

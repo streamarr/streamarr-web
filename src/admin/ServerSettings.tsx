@@ -22,12 +22,6 @@ const SECTIONS = [
     region: 'Active streams',
   },
   {
-    to: '/settings/server/sharing',
-    icon: 'sharing',
-    label: 'Sharing and invitations',
-    region: 'Sharing and invitations',
-  },
-  {
     to: '/settings/server/notifications',
     icon: 'notifications',
     label: 'Notifications',
