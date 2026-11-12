@@ -12,6 +12,11 @@ import {
 import { browserDecodingAnswers, createDecodingAnswers } from './decodingAnswers'
 import type { DecodingAnswer } from './playbackCapabilities'
 
+const IPAD_SAFARI_USER_AGENT =
+  'Mozilla/5.0 (iPad; CPU OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1'
+const IPOD_SAFARI_USER_AGENT =
+  'Mozilla/5.0 (iPod touch; CPU iPhone OS 15_8 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.6 Mobile/15E148 Safari/604.1'
+
 const SUPPORTED: DecodingAnswer = { supported: true, smooth: true, powerEfficient: true }
 const SUPPORTED_BUT_NOT_SMOOTH: DecodingAnswer = {
   supported: true,
@@ -508,6 +513,8 @@ describe('browserDecodingAnswers', () => {
     ['SafariOnAMac', MAC_SAFARI_USER_AGENT, 'MacIntel'],
     ['SafariOnTheIphone', IPHONE_SAFARI_USER_AGENT, 'iPhone'],
     ['ChromeOnTheIphone', IPHONE_CHROME_USER_AGENT, 'iPhone'],
+    ['SafariOnTheIpad', IPAD_SAFARI_USER_AGENT, 'iPad'],
+    ['SafariOnTheIpod', IPOD_SAFARI_USER_AGENT, 'iPod touch'],
   ])(
     'shouldAskTheBrowserOnceForARepeatedQuestionWhen%sOpensThePage',
     async (_, userAgent, platform) => {
