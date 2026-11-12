@@ -47,17 +47,3 @@
   font-size: var(--font-size-body);
   line-height: var(--line-height-prose);
 }
-
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--spacing-8);
-}
-
-/* Too narrow for the three on one line, they stack, so that no one is left alone on a line. */
-@media (max-width: 760px) {
-  .actions {
-    flex-direction: column;
-    align-items: stretch;
-  }
-}
