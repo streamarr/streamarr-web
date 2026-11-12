@@ -1,5 +1,5 @@
 import { useApolloClient, useQuery } from '@apollo/client/react'
-import { Button, Center, Loader, VisuallyHidden } from '@mantine/core'
+import { Alert, Button, Center, Loader, VisuallyHidden } from '@mantine/core'
 import { Link } from '@tanstack/react-router'
 import { useId, useRef } from 'react'
 import {
@@ -8,6 +8,7 @@ import {
 } from '../graphql/generated/graphql'
 import { useLiveList } from '../graphql/liveList'
 import { requestFailureMessage } from '../graphql/requestErrors'
+import { useMe } from '../identity/useMe'
 import { useNow } from '../identity/useNow'
 import { definedEdges } from '../media/edges'
 import settingsStyles from '../styles/settings.module.css'
@@ -16,6 +17,7 @@ import { useMenuCounts } from '../ui/MenuCountsProvider'
 import { useFocusFallback } from '../ui/useFocusFallback'
 import { useIntersectionObserver } from '../media/useIntersectionObserver'
 import styles from './Notifications.module.css'
+import { canReadNotifications } from './notificationAccess'
 import { withNotificationChange, type NotificationEntry } from './notificationList'
 import { fullTime, nextLabelChange, whenLabel } from './notificationTime'
 import { expiryOfWaiting, isOfferRequest, offerRequestState } from './requestState'
@@ -37,9 +39,37 @@ export function NotificationsScreen() {
       </div>
       {/* Holds every state of the list, so that focus in a row that leaves is never lost. */}
       <div ref={liveList}>
-        <NotificationsList />
+        <NotificationsForSession />
       </div>
     </div>
+  )
+}
+
+/** The list, for a session that may read it. A session bound to a TV reads and follows nothing. */
+function NotificationsForSession() {
+  const me = useMe()
+
+  if (me.error)
+    return (
+      <FailurePanel onRetry={() => me.refetch().catch(() => undefined)}>
+        {requestFailureMessage(me.error, "Couldn't load notifications.")}
+      </FailurePanel>
+    )
+  if (!me.data) return <ListLoading />
+  if (!canReadNotifications(me.data.me))
+    return (
+      <Alert role="alert">
+        Notifications are available using an account session. <Link to="/">Back to Home</Link>
+      </Alert>
+    )
+  return <NotificationsList />
+}
+
+function ListLoading() {
+  return (
+    <Center h={200}>
+      <Loader role="status" aria-label="Loading notifications" />
+    </Center>
   )
 }
 
@@ -72,13 +102,7 @@ function NotificationsList() {
   const pageInfo = query.data?.notifications.pageInfo
   const older = useOlderNotifications(pageInfo, live.context, markRead)
 
-  if (query.loading && !query.data) {
-    return (
-      <Center h={200}>
-        <Loader role="status" aria-label="Loading notifications" />
-      </Center>
-    )
-  }
+  if (query.loading && !query.data) return <ListLoading />
   if (query.error || !query.data) {
     return (
       <FailurePanel onRetry={readAgain}>
