@@ -13,9 +13,13 @@ interface Shown {
  * `newestPage` once it has rendered, and each older page that the returned function is handed as
  * it joins the list. A Notification that reaches the page any other way, such as one that commits
  * late and sorts below the rows shown, stays unread until a visit reads it. Each id is marked once
- * a visit, one after another, and a mark that fails waits for the next visit.
+ * a visit, one after another, so that each answer's unread count, handed to `onCount`, is newer
+ * than the one before it. A mark that fails waits for the next visit.
  */
-export function useMarkShownRead(newestPage: readonly Shown[] | null) {
+export function useMarkShownRead(
+  newestPage: readonly Shown[] | null,
+  onCount: (count: number) => void,
+) {
   const [markOne] = useMutation(MarkNotificationReadDocument)
   const sent = useRef(new Set<string>())
   const queue = useRef<Promise<unknown>>(Promise.resolve())
@@ -27,11 +31,16 @@ export function useMarkShownRead(newestPage: readonly Shown[] | null) {
         if (!unread || sent.current.has(id)) continue
         sent.current.add(id)
         queue.current = queue.current.then(() =>
-          markOne({ variables: { input: { notificationId: id } } }).catch(() => undefined),
+          markOne({ variables: { input: { notificationId: id } } })
+            .then(({ data }) => {
+              const count = data?.markNotificationRead?.unreadNotificationCount
+              if (typeof count === 'number') onCount(count)
+            })
+            .catch(() => undefined),
         )
       }
     },
-    [markOne],
+    [markOne, onCount],
   )
 
   useEffect(() => {

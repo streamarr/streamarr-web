@@ -12,9 +12,15 @@ export interface MenuCounts {
   unreadNotifications: number
   /** The offers of Profiles to the Account's Household that wait for its admins' decision. */
   waitingOffers: number
+  /** Takes the unread count that the server answered outside a change, such as a mark's. */
+  receiveUnreadCount: (count: number) => void
 }
 
-const MenuCountsContext = createContext<MenuCounts>({ unreadNotifications: 0, waitingOffers: 0 })
+const MenuCountsContext = createContext<MenuCounts>({
+  unreadNotifications: 0,
+  waitingOffers: 0,
+  receiveUnreadCount: () => undefined,
+})
 
 /**
  * Reads the counts after the Profile menu's entries for `me` and keeps them current while it is
@@ -27,11 +33,15 @@ export function MenuCountsProvider({
   me,
   children,
 }: Readonly<{ me: Me | undefined; children: ReactNode }>) {
-  const unreadNotifications = useUnreadNotificationCount({ skip: !canReadNotifications(me) })
+  const unread = useUnreadNotificationCount({ skip: !canReadNotifications(me) })
   const waitingOffers = useWaitingOfferCount(me)
   const counts = useMemo(
-    () => ({ unreadNotifications, waitingOffers }),
-    [unreadNotifications, waitingOffers],
+    () => ({
+      unreadNotifications: unread.count,
+      waitingOffers,
+      receiveUnreadCount: unread.receive,
+    }),
+    [unread.count, unread.receive, waitingOffers],
   )
   return <MenuCountsContext value={counts}>{children}</MenuCountsContext>
 }
