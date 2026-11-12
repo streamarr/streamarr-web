@@ -160,7 +160,7 @@ interface PlaybackStatusCheck {
   // the check keeps it running past the metadata.
   endsAtMetadata: boolean
   settled: Promise<void>
-  // Aborts the check PLAYBACK_START_TIMEOUT_MS after it was armed.
+  // Aborts the check PLAYBACK_START_TIMEOUT_MS after it starts, or after it hands over.
   deadline?: ReturnType<typeof setTimeout>
 }
 
@@ -1132,6 +1132,9 @@ function startSessionPlayback({
   ) {
     const { check, current } = poll
     beginHandover()
+    // The replacement has as long to start as the handover gives it, however long the check read
+    // before it found the replacement.
+    armCheckDeadline(check)
     check.generation = sourceGeneration
     statusHandover = check.settled
     const resolved = playback ? await awaitReadyPlayback(playback, poll) : undefined
