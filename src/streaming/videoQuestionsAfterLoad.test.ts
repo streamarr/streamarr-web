@@ -1,16 +1,39 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { CatchBoundary, lazyRouteComponent } from '@tanstack/react-router'
+import { act, render } from '@testing-library/react'
+import { createElement, Suspense } from 'react'
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { playbackPlatformFixture } from '../test/playbackCapabilities'
 import { createDecodingAnswers, type DecodingAnswers } from './decodingAnswers'
 import type { askVideoQuestions, browserPlaybackPlatform } from './playbackCapabilities'
-import { askVideoQuestionsAfterLoad } from './videoQuestionsAfterLoad'
+import { askVideoQuestionsAfterLoad, type LoadingPage } from './videoQuestionsAfterLoad'
+
+function sessionStorageHolding(...keys: string[]): LoadingPage['sessionStorage'] {
+  const entries = new Map(keys.map((key) => [key, '1']))
+  return {
+    get length() {
+      return entries.size
+    },
+    key: (index) => [...entries.keys()][index] ?? null,
+    setItem: (key, value) => {
+      entries.set(key, value)
+    },
+    removeItem: (key) => {
+      entries.delete(key)
+    },
+  }
+}
 
 // A window whose document reports `readyState`, and that fires load only when the test dispatches it.
-function pageWhoseDocumentIs(readyState: DocumentReadyState) {
+function pageWhoseDocumentIs(
+  readyState: DocumentReadyState,
+  { sessionStorage = sessionStorageHolding() }: Partial<Pick<LoadingPage, 'sessionStorage'>> = {},
+) {
   return Object.assign(new EventTarget(), {
     document: {
       readyState,
       createElement: (tagName: 'video') => document.createElement(tagName),
     },
+    sessionStorage,
   })
 }
 
@@ -125,6 +148,103 @@ describe('askVideoQuestionsAfterLoad', () => {
 
     await expect(asking).resolves.toBeUndefined()
     expect(loadCapabilities).toHaveBeenCalledOnce()
+  })
+
+  it('shouldNotLoadTheCapabilitiesWhenTheRouterHasMarkedTheTabForAReloadAfterAFailedImport', async () => {
+    onTestFinished(() => window.sessionStorage.clear())
+    const Playback = lazyRouteComponent(() =>
+      Promise.reject<{ default: () => null }>(new TypeError('Importing a module script failed.')),
+    )
+    // React renders Playback again after the router marks the tab, and the router then throws the
+    // import error, so a boundary must catch it.
+    await act(async () => {
+      render(
+        createElement(CatchBoundary, {
+          getResetKey: () => 0,
+          errorComponent: () => null,
+          children: createElement(Suspense, { fallback: null }, createElement(Playback)),
+        }),
+        { onCaughtError: () => {} },
+      )
+    })
+    expect(window.sessionStorage).toHaveLength(1)
+    const capabilities = fakeCapabilitiesModule()
+
+    await askVideoQuestionsAfterLoad({
+      pageAnswers: keptAnswers(),
+      page: pageWhoseDocumentIs('complete', { sessionStorage: window.sessionStorage }),
+      loadCapabilities: capabilities.loadCapabilities,
+    })
+
+    expect(capabilities.loadCapabilities).not.toHaveBeenCalled()
+  })
+
+  it('shouldSettleWithoutLoadingTheCapabilitiesWhenReadingTheSessionStorageThrows', async () => {
+    const page = Object.defineProperty(pageWhoseDocumentIs('complete'), 'sessionStorage', {
+      get: () => {
+        throw new DOMException('The operation is insecure.', 'SecurityError')
+      },
+    })
+    const capabilities = fakeCapabilitiesModule()
+
+    const asking = askVideoQuestionsAfterLoad({
+      pageAnswers: keptAnswers(),
+      page,
+      loadCapabilities: capabilities.loadCapabilities,
+    })
+
+    await expect(asking).resolves.toBeUndefined()
+    expect(capabilities.loadCapabilities).not.toHaveBeenCalled()
+  })
+
+  it('shouldNotLoadTheCapabilitiesWhenTheSessionStorageRefusesAWrite', async () => {
+    const sessionStorage: LoadingPage['sessionStorage'] = {
+      length: 0,
+      key: () => null,
+      setItem: () => {
+        throw new DOMException('The quota has been exceeded.', 'QuotaExceededError')
+      },
+      removeItem: () => {},
+    }
+    const capabilities = fakeCapabilitiesModule()
+
+    const asking = askVideoQuestionsAfterLoad({
+      pageAnswers: keptAnswers(),
+      page: pageWhoseDocumentIs('complete', { sessionStorage }),
+      loadCapabilities: capabilities.loadCapabilities,
+    })
+
+    await expect(asking).resolves.toBeUndefined()
+    expect(capabilities.loadCapabilities).not.toHaveBeenCalled()
+  })
+
+  it('shouldLeaveTheSessionStorageAsItWasWhenThePageAsksTheVideoQuestions', async () => {
+    const sessionStorage = sessionStorageHolding('tsr-scroll-restoration-v1_3')
+    const capabilities = fakeCapabilitiesModule()
+
+    await askVideoQuestionsAfterLoad({
+      pageAnswers: keptAnswers(),
+      page: pageWhoseDocumentIs('complete', { sessionStorage }),
+      loadCapabilities: capabilities.loadCapabilities,
+    })
+
+    expect(capabilities.askVideo).toHaveBeenCalledOnce()
+    expect(sessionStorage.length).toBe(1)
+    expect(sessionStorage.key(0)).toBe('tsr-scroll-restoration-v1_3')
+  })
+
+  it('shouldAskTheVideoQuestionsWhenTheSessionStorageHoldsOnlyOtherKeys', async () => {
+    const capabilities = fakeCapabilitiesModule()
+
+    await askVideoQuestionsAfterLoad({
+      pageAnswers: keptAnswers(),
+      page: pageWhoseDocumentIs('complete', {
+        sessionStorage: sessionStorageHolding('tsr-scroll-restoration-v1_3'),
+      }),
+      loadCapabilities: capabilities.loadCapabilities,
+    })
+
+    expect(capabilities.askVideo).toHaveBeenCalledWith(capabilities.platform)
   })
 
   it('shouldSettleWithoutARejectionWhenAskingTheVideoQuestionsFails', async () => {
