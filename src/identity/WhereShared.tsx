@@ -1,6 +1,5 @@
 import { Button } from '@mantine/core'
 import { useMutation } from '@apollo/client/react'
-import { useState } from 'react'
 import {
   CancelProfileShareDocument,
   EndProfileShareDocument,
@@ -28,6 +27,8 @@ export function WhereShared({
   ownHouseholdName,
   readAgain,
   onChanged,
+  changing,
+  onChangingChange,
   ending,
   onEndingChange,
   refusal,
@@ -40,6 +41,9 @@ export function WhereShared({
   ownHouseholdName: string
   readAgain: () => Promise<unknown>
   onChanged: (notice: string) => void
+  /** The share whose change is on its way; no other change starts until it lands. */
+  changing: string | null
+  onChangingChange: (shareId: string | null) => void
   /** The share whose end waits for the person's confirmation. */
   ending: ProfileShareRow | null
   onEndingChange: (share: ProfileShareRow | null) => void
@@ -49,8 +53,6 @@ export function WhereShared({
 }>) {
   const [cancel] = useMutation(CancelProfileShareDocument)
   const [end] = useMutation(EndProfileShareDocument)
-  /** The share whose change is on its way; no other change starts until it lands. */
-  const [changing, setChanging] = useState<string | null>(null)
 
   const live = shares.filter(isLive)
   const earlier = shares.filter((share) => !isLive(share))
@@ -58,7 +60,7 @@ export function WhereShared({
   /** Sends the change and reads the shares again; resolves to whether the server took it. */
   async function change(share: ProfileShareRow): Promise<boolean> {
     onRefusalChange(null)
-    setChanging(share.id)
+    onChangingChange(share.id)
     try {
       const errors = await send(share)
       if (errors?.length) {
@@ -71,7 +73,7 @@ export function WhereShared({
       onRefusalChange(requestFailureMessage(error, UPDATE_FAILED_MESSAGE))
       return false
     } finally {
-      setChanging(null)
+      onChangingChange(null)
     }
   }
 

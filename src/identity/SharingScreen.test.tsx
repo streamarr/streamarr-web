@@ -34,6 +34,7 @@ const SHARING_PAGE: SettingsPage = {
 const SHARE_ID = '77777777-7777-7777-7777-777777777777'
 const CABIN_ID = '55555555-5555-5555-5555-555555555555'
 const LAKE_HOUSE_ID = '66666666-6666-6666-6666-666666666666'
+const BEACH_HOUSE_ID = '99999999-9999-9999-9999-999999999999'
 const SMITH_FAMILY = { id: HOUSEHOLD_ID, name: 'Smith Family', membership: true }
 const CABIN = { id: CABIN_ID, name: 'Cabin', membership: false }
 const DAY = 24 * 60 * 60 * 1000
@@ -340,6 +341,30 @@ describe('Sharing', () => {
 
     await noticed('Offer to Cabin canceled.')
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('shouldStartNoOtherChangeUntilACancelOnItsWayLandsWhenRetryBringsTheSharesBack', async () => {
+    const elsewhere = share({ id: 'elsewhere', householdId: LAKE_HOUSE_ID, status: 'ACTIVE' })
+    serveSecondReadFailing([share(), elsewhere])
+    const refusal = heldAnswer({ cancelProfileShare: notPendingPayload() })
+    server.use(
+      graphql.mutation('CancelProfileShare', refusal.answer),
+      graphql.mutation('OfferProfileShare', () => HttpResponse.json({ data: offered() })),
+    )
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.click(await screen.findByRole('button', { name: 'Cancel offer to Cabin' }))
+    await user.type(await openShareForm(user), `${BEACH_HOUSE_ID}{Enter}`)
+    expect(await screen.findByText("Couldn't load sharing.")).toBeVisible()
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    const endElsewhere = await screen.findByRole('button', {
+      name: 'End share with Household 66666666',
+    })
+    expect(endElsewhere).toBeDisabled()
+    refusal.release()
+    expect(await screen.findByRole('alert')).toHaveTextContent('That offer is not pending.')
+    await waitFor(() => expect(endElsewhere).toBeEnabled())
   })
 
   it('shouldOpenTheConfirmationWithoutAnEarlierRefusalWhenThePersonAsksToEndAShare', async () => {
