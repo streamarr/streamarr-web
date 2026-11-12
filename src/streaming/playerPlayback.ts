@@ -1033,7 +1033,7 @@ function startSessionPlayback({
   // there, and another stream that the status names replaces the attached one.
   function readTheStatusIfStartupIsSlow(generation: number) {
     slowStartup = setTimeout(() => {
-      void reconcilePlaybackStatus({ generation, fatal: false, endsAtMetadata: true })
+      void reconcilePlaybackStatus({ generation, fatal: false, forSlowStartup: true })
     }, SLOW_STARTUP_MS)
   }
 
@@ -1047,11 +1047,11 @@ function startSessionPlayback({
   function reconcilePlaybackStatus({
     generation,
     fatal,
-    endsAtMetadata = false,
+    forSlowStartup = false,
   }: {
     generation: number
     fatal: boolean
-    endsAtMetadata?: boolean
+    forSlowStartup?: boolean
   }): Promise<void> {
     if (
       cancelled ||
@@ -1063,7 +1063,7 @@ function startSessionPlayback({
       return Promise.resolve()
     if (statusCheck?.generation === generation) {
       statusCheck.fatal ||= fatal
-      statusCheck.endsAtMetadata &&= endsAtMetadata
+      statusCheck.endsAtMetadata &&= forSlowStartup
       return statusCheck.settled
     }
     stopStatusCheck()
@@ -1071,7 +1071,7 @@ function startSessionPlayback({
       controller: new AbortController(),
       generation,
       fatal,
-      endsAtMetadata,
+      endsAtMetadata: forSlowStartup,
       settled: Promise.resolve(),
     }
     statusCheck = check
