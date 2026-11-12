@@ -1166,6 +1166,10 @@ function startSessionPlayback({
   }
 
   function detachSource() {
+    // Releasing the stream also pauses the element, so the resume point is read first: a playback
+    // that takes this one's place, even after a failure, resumes where this one was, playing or
+    // paused as it was.
+    resume = resumePoint()
     sourceGeneration += 1
     clearStallLimit()
     // Releasing the stream rewinds the element; the timeline must not record the rewind.

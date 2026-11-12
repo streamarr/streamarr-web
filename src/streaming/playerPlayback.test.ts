@@ -89,6 +89,13 @@ function playheadAt(video: HTMLVideoElement, seconds: number) {
   video.dispatchEvent(new Event('timeupdate'))
 }
 
+// A failure hls.js gives up on, such as a network error with no response.
+function raiseHlsFatalError() {
+  const onError = hls.on.mock.calls.findLast(([event]) => event === 'hlsError')?.[1]
+  expect(onError).toBeTypeOf('function')
+  onError?.('hlsError', { fatal: true, type: 'networkError' })
+}
+
 describe('startPlayerPlayback', () => {
   let playback: PlayerPlayback | undefined
   // Each playback session the player created and each one it destroyed, so a test ends only once
@@ -188,6 +195,21 @@ describe('startPlayerPlayback', () => {
 
       await vi.waitFor(() => expect(hls.loadSource).toHaveBeenCalledTimes(2))
       expect(hls.config?.videoPreference).toEqual(SDR_ONLY)
+    })
+  })
+
+  describe('resumePoint', () => {
+    it('shouldStayWhereTheViewerWasPlayingWhenTheFailedStreamIsReleased', async () => {
+      const video = fakeMedia()
+      // Releasing the stream rewinds and pauses the element, as a browser does.
+      hls.destroy.mockImplementationOnce(() => video.load())
+      const playback = startPlaying({ video })
+      await playingFrom(video, 120)
+
+      raiseHlsFatalError()
+
+      expect(video).toMatchObject({ currentTime: 0, paused: true })
+      expect(playback.resumePoint()).toEqual({ position: 120, playing: true })
     })
   })
 })
