@@ -18,7 +18,9 @@
   background: transparent;
 }
 
-.title {
+/* Rendered in place, the dialog sits inside the settings, whose h2 rule would outrank a single
+   class, so the title names the content it sits in. */
+.content .title {
   font-size: 17px;
   font-weight: var(--font-weight-semibold);
 }
