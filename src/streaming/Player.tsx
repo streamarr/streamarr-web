@@ -14,12 +14,7 @@ import { PlaybackData, type PlaybackDataScreen, type PlaybackDataStream } from '
 import { PlaybackNotice } from './PlaybackNotice'
 import { declarePlaybackCapabilities, type PlaybackPlatform } from './playbackCapabilities'
 import styles from './Player.module.css'
-import {
-  PlayerControls,
-  type PickerKind,
-  type PlayerTitle,
-  pickerOffersChoice,
-} from './PlayerControls'
+import { PlayerControls, type PickerKind, type PlayerTitle, pickerOpens } from './PlayerControls'
 import {
   type PlayerPlayback,
   type ResumePoint,
@@ -156,7 +151,7 @@ export function Player({
     }
   }, [streamTracks, choice.start])
   const openPicker =
-    picker !== null && pickerOffersChoice(picker, { ...streamTracks, qualities: quality.offered })
+    picker !== null && pickerOpens(picker, { ...streamTracks, qualities: quality.offered })
       ? picker
       : null
   // A picker that loses its choices, or its stream with them, closes rather than reopen later.

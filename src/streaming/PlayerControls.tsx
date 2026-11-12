@@ -61,11 +61,11 @@ const PLAYER_MENU: readonly PopoverOption<typeof PLAYBACK_DATA>[] = [
 ]
 
 /**
- * Whether a picker has a choice to make: one option alone would only repeat what its chip shows.
- * The subtitles picker always offers Off beside the stream's tracks, and the player menu always
- * offers its items.
+ * Whether a picker opens: only when it has a choice to make, as one option alone would only repeat
+ * what its chip shows. The subtitles picker always offers Off beside the stream's tracks, and the
+ * player menu always offers its items.
  */
-export function pickerOffersChoice(
+export function pickerOpens(
   kind: PickerKind,
   { audio, subtitles, qualities }: PickerChoices,
 ): boolean {
@@ -270,7 +270,7 @@ export function PlayerControls({
             options={qualityOptions(quality.offered, quality.marks)}
             selected={quality.selected}
             value={qualityChipValue(quality.selected, videoState.videoHeight)}
-            choosable={pickerOffersChoice('quality', choices)}
+            choosable={pickerOpens('quality', choices)}
             toggle={
               quality.hdr && {
                 label: 'HDR',
@@ -288,7 +288,7 @@ export function PlayerControls({
             icon="audio-track"
             options={audio.options}
             selected={audio.selected}
-            choosable={pickerOffersChoice('audio', choices)}
+            choosable={pickerOpens('audio', choices)}
             open={openPicker === 'audio'}
             onOpenChange={(open) => onOpenPicker(open ? 'audio' : null)}
             onChoose={(id) => {
@@ -308,7 +308,7 @@ export function PlayerControls({
             options={[SUBTITLES_OFF, ...subtitles.options]}
             selected={subtitles.selected}
             showsActiveTrack={subtitles.selected !== null}
-            choosable={pickerOffersChoice('subtitles', choices)}
+            choosable={pickerOpens('subtitles', choices)}
             open={openPicker === 'subtitles'}
             onOpenChange={(open) => onOpenPicker(open ? 'subtitles' : null)}
             onChoose={(id) => {
