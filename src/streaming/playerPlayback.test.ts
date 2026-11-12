@@ -224,6 +224,28 @@ describe('startPlayerPlayback', () => {
       await vi.waitFor(() => expect(hls.loadSource).toHaveBeenLastCalledWith(REPLACEMENT.streamUrl))
       expect(hls.config?.startPosition).toBe(120)
     })
+
+    // The server holds every request for a segment past a short copy's real end, so hls.js starts
+    // where the playlist does (-1) unless the replacement's media goes on past the playhead.
+    it.each([
+      { mediaEnds: 'after the playhead', mediaEndSeconds: 121, startPosition: 120 },
+      { mediaEnds: 'at the playhead', mediaEndSeconds: 120, startPosition: -1 },
+      { mediaEnds: 'before the playhead', mediaEndSeconds: 100, startPosition: -1 },
+    ])(
+      'shouldLoadTheReplacementFromThePlayheadOnlyWhenItsMediaGoesOnPastIt(media ends $mediaEnds)',
+      async ({ mediaEndSeconds, startPosition }) => {
+        const video = fakeMedia()
+        startPlaying({ video })
+        await playingFrom(video, 120)
+
+        replaceTheAttachedStreamSessionWith({ ...REPLACEMENT, mediaEndSeconds })
+
+        await vi.waitFor(() =>
+          expect(hls.loadSource).toHaveBeenLastCalledWith(REPLACEMENT.streamUrl),
+        )
+        expect(hls.config?.startPosition).toBe(startPosition)
+      },
+    )
   })
 
   describe('videoPreference', () => {

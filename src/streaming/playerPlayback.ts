@@ -460,6 +460,14 @@ function startSessionPlayback({
     return firstFrameShown && video.currentTime >= realEnd - segmentSeconds
   }
 
+  // The server holds a request for a segment past the real end, so hls.js, started there, would
+  // never load the media that the element's metadata waits for. It starts where the playlist does
+  // instead, and the element still seeks to the position once its metadata has loaded.
+  function startPositionBeforeTheRealEnd(position: number | undefined): number | undefined {
+    if (position === undefined || realEnd === null || position < realEnd) return position
+    return undefined
+  }
+
   // Ends playback as at the end of the media title. Callers end it only while it has not ended.
   function endAtRealEnd() {
     if (realEnd === null) {
@@ -723,7 +731,7 @@ function startSessionPlayback({
     }
     const options: StreamSourceOptions = {
       startupDeadline,
-      startPositionSeconds: resume?.position ?? startAt,
+      startPositionSeconds: startPositionBeforeTheRealEnd(resume?.position ?? startAt),
       videoPreference: hlsVideoPreference(declaration, dynamicRange),
       onFirstFrame: () => {
         firstFrameShown = true
@@ -1405,7 +1413,7 @@ interface StreamSourceOptions {
   onFirstFrame: () => void
   onFormatFailure: (reason: PlaybackFormatFailure) => void
   onStatusRequired: (fatal: boolean) => void
-  /** Where the stream starts to play, which the element seeks to once its metadata has loaded. */
+  /** Where hls.js starts to load the stream. Without one, hls.js starts where the playlist does. */
   startPositionSeconds?: number
   startupDeadline: StartupDeadline
   videoPreference: VideoSelectionOption

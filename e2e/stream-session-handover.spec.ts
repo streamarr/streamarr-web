@@ -14,8 +14,9 @@ import { promisify } from 'node:util'
 import { STUB_URL } from './ports'
 
 // When the server replaces the stream session that plays, the player attaches the new one where
-// the viewer was. This spec plays a synthetic stream through hls.js in Chromium and records each
-// media segment that each stream session is asked for.
+// the viewer was, and a stream session attached again past its real end starts where its playlist
+// does. This spec plays a synthetic stream through hls.js in Chromium and records each media
+// segment that each stream session is asked for.
 
 test.use({ viewport: { width: 1512, height: 850 }, serviceWorkers: 'block' })
 
@@ -31,6 +32,12 @@ const SEGMENT_PAST_THE_REPLACEMENT = SEGMENT_HOLDING_THE_RESUME_POINT + 2
 // Each segment of the replacement takes this long to arrive, as on a slow link, so that hls.js asks
 // for little more than the segments the first picture waits for.
 const SLOW_SEGMENT_MS = 1_000
+
+// Where a copy that ran short of its playlist's advertised end really ends.
+const REAL_END_SECONDS = 30
+const FIRST_SEGMENT_PAST_THE_REAL_END = REAL_END_SECONDS / SEGMENT_SECONDS
+// Past the real end, where the viewer's first seek ends playback.
+const ENDED_SECONDS = 35
 
 // VP9 in fMP4, which Playwright's Chromium decodes without proprietary codecs. The bandwidth it
 // declares keeps hls.js 30 s ahead of the playhead, as with the server's streams, where the real
@@ -73,7 +80,10 @@ type StreamName = 'first' | 'replacement'
 
 type PlaybackSession = ReturnType<typeof playbackSession>
 
-function playbackSession(stream: StreamName) {
+function playbackSession(
+  stream: StreamName,
+  { mediaEndSeconds = null }: { mediaEndSeconds?: number | null } = {},
+) {
   return {
     id: 'playback-1',
     formatAttemptCount: stream === 'first' ? 1 : 2,
@@ -90,7 +100,7 @@ function playbackSession(stream: StreamName) {
         streamUrl: `/api/stream/${stream}/multivariant.m3u8?t=playback-token`,
         transcodeMode: 'VIDEO_TRANSCODE',
         videoRange: 'SDR',
-        mediaEndSeconds: null,
+        mediaEndSeconds,
       },
     },
   }
@@ -185,6 +195,27 @@ async function serveAHandover(page: Page, request: APIRequestContext): Promise<H
   return handover
 }
 
+// Serves a playback session whose stream session's copy ran short at REAL_END_SECONDS, as the
+// server names it from the start. As the server does, it never answers a request for a segment past
+// that end. Returns the media segments hls.js asked for, by number, in order, each time the player
+// attached the stream session.
+async function serveACopyThatRanShort(page: Page, request: APIRequestContext): Promise<number[][]> {
+  const attaches: number[][] = []
+  await serveThePlaybackSession(page, request, () =>
+    playbackSession('first', { mediaEndSeconds: REAL_END_SECONDS }),
+  )
+  await page.route(STREAM_REQUEST, async (route) => {
+    const { file, segment } = streamRequest(route)
+    if (file === 'multivariant.m3u8') attaches.push([])
+    if (segment === null) return answerFromTheStream(route, file)
+    attaches.at(-1)?.push(segment)
+    // Left unanswered, as the server holds it.
+    if (segment >= FIRST_SEGMENT_PAST_THE_REAL_END) return
+    return answerFromTheStream(route, file)
+  })
+  return attaches
+}
+
 // Whether the element shows the picture at `seconds` or later, with no seek under way.
 async function showsAPictureFrom(page: Page, seconds: number): Promise<boolean> {
   return page
@@ -219,4 +250,37 @@ test('a replacement stream session is first asked for the segment that holds the
   const asked = `the replacement was asked for segments ${beforeTheFirstPicture.join(', ')}`
   expect(beforeTheFirstPicture[0], asked).toBe(SEGMENT_HOLDING_THE_RESUME_POINT)
   expect(beforeTheFirstPicture, asked).not.toContain(0)
+})
+
+test('a stream session attached again as the viewer plays past its real end loads from its first segment, not from one the server holds', async ({
+  page,
+  request,
+}) => {
+  const attaches = await serveACopyThatRanShort(page, request)
+  await page.goto('/play/file-1?movie=m1')
+  const video = page.locator('video')
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(false)
+
+  // As the browser's own controls seek, without the player. A seek past the real end ends playback
+  // there. Play after an end at the real end attaches the stream session again, from the top while
+  // the playhead stays where playback ended, so the viewer first seeks further.
+  const seekTo = (seconds: number) =>
+    video.evaluate((element: HTMLVideoElement, to) => {
+      element.currentTime = to
+    }, seconds)
+  await seekTo(ENDED_SECONDS)
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(true)
+  await seekTo(RESUME_SECONDS)
+  await page.getByRole('button', { name: 'Play' }).click()
+
+  await expect.poll(() => attaches[1]?.length ?? 0).toBeGreaterThan(0)
+  const asked = `the stream session attached again was asked for segments ${attaches[1]?.join(', ')}`
+  expect(attaches[1]?.[0], asked).toBe(0)
+  await expect
+    .poll(() =>
+      video.evaluate(
+        (element: HTMLVideoElement) => element.readyState >= HTMLMediaElement.HAVE_METADATA,
+      ),
+    )
+    .toBe(true)
 })
