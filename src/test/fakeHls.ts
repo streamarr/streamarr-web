@@ -49,11 +49,14 @@ export const hls = {
   bandwidthEstimate: Number.NaN,
   /** Whether the latest instance loads its stream: from `loadSource` to `stopLoad` or `destroy`. */
   loading: false,
+  /** Whether the latest instance holds its element: from `attachMedia` to `detachMedia` or `destroy`. */
+  holdsMedia: false,
 }
 
 export function resetFakeHls() {
   listeners.clear()
   hls.loading = false
+  hls.holdsMedia = false
   hls.supported = true
   hls.audioTracks = []
   hls.audioTrack = -1
@@ -93,12 +96,19 @@ class FakeHls {
     hls.loading = true
     hls.loadSource(url)
   }
-  attachMedia = hls.attachMedia
+  attachMedia = (media: HTMLMediaElement) => {
+    hls.holdsMedia = true
+    hls.attachMedia(media)
+  }
+  detachMedia = () => {
+    hls.holdsMedia = false
+  }
   stopLoad = () => {
     hls.loading = false
   }
   destroy = () => {
     hls.loading = false
+    hls.holdsMedia = false
     hls.destroy()
   }
   on = hls.on
