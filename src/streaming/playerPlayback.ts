@@ -1082,10 +1082,15 @@ function startSessionPlayback({
   }
 
   async function pollForReplacement(poll: StatusPoll) {
-    const { check, current, id } = poll
+    const { check, current } = poll
     while (current() && !check.controller.signal.aborted) {
-      const playback = await readPlaybackSession(id, check.controller.signal)
+      const status = await readTheStatus(poll)
       if (!current()) return
+      if (!status.read) {
+        await waitForPlaybackStatus(check.controller.signal)
+        continue
+      }
+      const { playback } = status
       const attachedStream = attachedStreamIn(playback)
       const realEndOfStream = mediaEndOf(attachedStream)
       // The segments past a short copy's real end never come, and nothing replaces the stream.
@@ -1114,6 +1119,17 @@ function startSessionPlayback({
       : undefined
     if (!current() || check.controller.signal.aborted) return
     adoptPlayback(resolved)
+  }
+
+  // A failed read ends a check, except a slow startup's: nothing else asks for that status again.
+  function readTheStatus({ check, id }: StatusPoll) {
+    return readPlaybackSession(id, check.controller.signal).then(
+      (playback) => ({ read: true as const, playback }),
+      (error: unknown) => {
+        if (!check.endsAtMetadata) throw error
+        return { read: false as const }
+      },
+    )
   }
 
   // The stream this player has attached, when the playback session still names it.

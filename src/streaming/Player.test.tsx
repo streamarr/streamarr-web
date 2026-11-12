@@ -484,13 +484,17 @@ async function replaceTheStreamPastAnUnnamedRealEnd(
   }
 }
 
-// Each status read answers with the stream session that `named` gives; returns how often the
-// status was read.
-function serveStatusReads(named: () => StatusStreamSession): () => number {
+// Each status read answers with the stream session that `named` gives, except that the first
+// `failedReads` fail as when the connection drops; returns how often the status was read.
+function serveStatusReads(
+  named: () => StatusStreamSession,
+  { failedReads = 0 }: { failedReads?: number } = {},
+): () => number {
   let reads = 0
   server.use(
     graphql.query('PlaybackSession', () => {
       reads += 1
+      if (reads <= failedReads) return HttpResponse.error()
       return HttpResponse.json({
         data: { playbackSession: readyPlaybackSession({ streamSession: named() }) },
       })
@@ -6853,6 +6857,32 @@ describe('Player', () => {
         ]),
       )
       expect(statusReads()).toBe(readsBeforeTheReplacement + 2)
+      await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_START_TIMEOUT_MS))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('shouldReadTheStatusAgainAfterTheIntervalWhenTheFirstReadOfASlowStartupFails', async () => {
+      const reports = serveSession()
+      const statusReads = serveStatusReads(
+        () => ({ ...SESSION, mediaEndSeconds: REAL_END_SECONDS }),
+        { failedReads: 1 },
+      )
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      await startAFirstLoadPastTheRealEnd()
+      const stopped = () => reports.filter((report) => report.state === 'STOPPED')
+
+      await act(async () => vi.advanceTimersByTimeAsync(SLOW_STARTUP_MS))
+      expect(statusReads()).toBe(1)
+      await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_STATUS_INTERVAL_MS - 1))
+      expect(statusReads()).toBe(1)
+      await act(async () => vi.advanceTimersByTimeAsync(1))
+
+      await vi.waitFor(() =>
+        expect(stopped()).toEqual([
+          { sessionId: SESSION.id, positionSeconds: REAL_END_SECONDS, state: 'STOPPED' },
+        ]),
+      )
+      expect(statusReads()).toBe(2)
       await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_START_TIMEOUT_MS))
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     })
