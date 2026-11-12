@@ -481,6 +481,32 @@ test('Auto keeps the first-listed copy when its first segment crosses the link w
   expect(requests.segments.filter(isFirstSegment)).toEqual(['segment0.m4s'])
 })
 
+// The server holds a starting variant's first segment until it has stored it, and the transfer
+// that follows starts below the link's rate. Its first second carries a 240th of the segment, as
+// 500 kb/s carries a 240th of the copy's 15 MB, and the rest crosses in 3 s more.
+test('Auto keeps the first-listed copy when the server holds its first segment and the transfer starts slowly', async ({
+  page,
+  request,
+}) => {
+  const requests = await serveLadder(page, request, {
+    variants: COPY_LADDER,
+    transcodeMode: 'REMUX',
+    firstSegmentTransfer: () => ({
+      heldMs: 4_000,
+      legs: [
+        { share: 1 / 240, ms: 1_000 },
+        { share: 239 / 240, ms: 3_000 },
+      ],
+    }),
+  })
+
+  const { outcome, afterMs } = await playUntilStartupEnds(page, requests)
+
+  expect(outcome).toBe('started')
+  expect(afterMs).toBeLessThan(STARTUP_LIMIT_MS)
+  expect(requests.segments.filter(isFirstSegment)).toEqual(['segment0.m4s'])
+})
+
 // Original and each fixed quality list one variant, and so does Auto for a copy without encodes
 // beside it. With no lower variant, the slow first segment keeps loading, as before the step down.
 // With a lower variant, a first segment that receives no byte for a quarter of the startup limit

@@ -160,17 +160,26 @@ describe('stepDownFromASlowFirstSegment', () => {
     expect(loadingHeight(hls)).toBe(360)
   })
 
-  it('shouldJudgeTheFirstSegmentsRateOnlyOnceHalfItsDurationHasPassed', async () => {
-    const { hls } = await startPlayer()
-    const segment = loadFirstSegment(hls)
+  // The server holds a starting variant's first segment until it has stored it, so the segment's
+  // first byte can come seconds after its request.
+  it.each([
+    { firstByteAfter: 'NoWait', waitMs: 0 },
+    { firstByteAfter: 'TheServersHold', waitMs: 4_000 },
+  ])(
+    'shouldJudgeTheFirstSegmentsRateOnlyOnceHalfItsDurationHasPassedSinceItsFirstByteWhenThatComesAfter$firstByteAfter',
+    async ({ waitMs }) => {
+      const { hls } = await startPlayer()
+      const segment = loadFirstSegment(hls)
 
-    // Its first second alone would take 240 s for the whole segment; the rest arrives in 3 s more.
-    await deliver(segment, { bitsPerSecond: 500_000, forMs: 1_000 })
-    await deliver(segment, { bitsPerSecond: 40_000_000, forMs: 3_000 })
-    finish(segment)
+      await vi.advanceTimersByTimeAsync(waitMs)
+      // Its first second alone would take 240 s for the whole segment; the rest arrives in 3 s more.
+      await deliver(segment, { bitsPerSecond: 500_000, forMs: 1_000 })
+      await deliver(segment, { bitsPerSecond: 40_000_000, forMs: 3_000 })
+      finish(segment)
 
-    expect(loadingHeight(hls)).toBe(1080)
-  })
+      expect(loadingHeight(hls)).toBe(1080)
+    },
+  )
 
   it('shouldProjectFromTheVariantsBitrateWhenTheResponseNamesNoLength', async () => {
     const { hls } = await startPlayer()

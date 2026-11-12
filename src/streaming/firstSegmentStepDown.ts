@@ -81,9 +81,11 @@ export function stepDownFromASlowFirstSegment({
 
   function arrivesInTime(frag: Fragment, now: number): boolean {
     const { loaded, loading } = frag.stats
-    // hls.js's own abandon rule also waits this long before it judges a load by its rate: a
-    // transfer's first moments run below the link's rate.
-    if (now - loading.start < (frag.duration * 1000) / 2 || loaded === 0) return true
+    // A transfer's first moments run below the link's rate, so the rate is judged once bytes have
+    // arrived for half the segment's duration, as long as hls.js's own abandon rule waits. The wait
+    // for the first byte tells nothing of the link: the server holds a starting variant's first
+    // segment until it is stored.
+    if (loaded === 0 || now - loading.first < (frag.duration * 1000) / 2) return true
     const bytesPerMs = loaded / (now - loading.first)
     return (segmentBytes(frag, hls.levels) - loaded) / bytesPerMs <= startupRemainingMs()
   }
