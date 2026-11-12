@@ -120,6 +120,7 @@ export function PlayerControls({
   openPicker,
   onOpenPicker,
   audioCaution,
+  onAudioPicked,
   onTrackChosen,
   playbackDataShown,
   onTogglePlaybackData,
@@ -142,6 +143,8 @@ export function PlayerControls({
   onOpenPicker: (kind: PickerKind | null) => void
   /** The caution on the audio control, while the track the viewer chose does not play. */
   audioCaution?: string
+  /** Hears every pick in the audio picker, a pick of the track that plays included. */
+  onAudioPicked?: () => void
   /** Hears each audio or subtitle track the viewer switches to, as the stream switches. */
   onTrackChosen?: (chosen: ChosenTrack) => void
   playbackDataShown: boolean
@@ -320,6 +323,7 @@ export function PlayerControls({
               }
               // A pick of the track in use still reaches the source, which lets it stand.
               const moved = tracks.selectAudio(id)
+              onAudioPicked?.()
               if (id !== audio.selected) {
                 onTrackChosen?.({ kind: 'audio', language: languageOf(audio.options, id), moved })
               }

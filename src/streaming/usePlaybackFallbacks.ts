@@ -65,7 +65,7 @@ export interface PlaybackFallbacks {
   followPlaybackSession: () => FollowPlayingChoices
   /** Cautions on the audio control that the server refused the viewer's audio switch. */
   refuseAudioSwitch: () => void
-  /** Takes down the audio control's caution, as the viewer picks another audio track. */
+  /** Takes down the audio control's caution, as the viewer picks any audio track. */
   clearAudioCaution: () => void
 }
 

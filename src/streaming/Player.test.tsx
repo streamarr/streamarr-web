@@ -8549,6 +8549,22 @@ describe('Player', () => {
         expectNoCaution(audioChip())
       })
 
+      it('shouldClearTheAudioCautionWhenTheViewerPicksThePlayingTrackAfterARefusal', async () => {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        const switches = serveAudioTrackSwitch({ answer: refusedSwitch })
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        await directPlayAt(0)
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+        await waitFor(() => expectCaution(audioChip(), AUDIO_SWITCH_REFUSED))
+
+        await chooseAudioTrack(user, { from: 'English', to: 'English' })
+
+        expectNoCaution(audioChip())
+        expect(switches).toHaveLength(1)
+      })
+
       it('shouldKeepTheAudioCautionWhenTheViewerPicksSubtitlesAfterARefusal', async () => {
         serveDirectPlay({ audioTracks: TWO_TRACKS })
         serveAudioTrackSwitch({ answer: refusedSwitch })

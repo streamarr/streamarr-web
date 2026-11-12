@@ -13,13 +13,7 @@ import { BufferingRing } from './BufferingRing'
 import { PlaybackData, type PlaybackDataScreen, type PlaybackDataStream } from './PlaybackData'
 import { declarePlaybackCapabilities, type PlaybackPlatform } from './playbackCapabilities'
 import styles from './Player.module.css'
-import {
-  type ChosenTrack,
-  PlayerControls,
-  type PickerKind,
-  type PlayerTitle,
-  pickerOpens,
-} from './PlayerControls'
+import { PlayerControls, type PickerKind, type PlayerTitle, pickerOpens } from './PlayerControls'
 import {
   type PlayerPlayback,
   type ResumePoint,
@@ -262,15 +256,6 @@ export function Player({
     })
   }
 
-  // A new audio pick is the viewer's new choice, which a caution about an earlier one no longer
-  // describes.
-  function trackChosen(chosen: ChosenTrack) {
-    if (chosen.kind === 'audio') {
-      clearAudioCaution()
-    }
-    reportTrackChosen(chosen)
-  }
-
   function seek(seconds: number) {
     playbackRef.current?.seek(seconds)
   }
@@ -357,7 +342,8 @@ export function Player({
         openPicker={openPicker}
         onOpenPicker={setPicker}
         audioCaution={cautions.audio}
-        onTrackChosen={trackChosen}
+        onAudioPicked={clearAudioCaution}
+        onTrackChosen={reportTrackChosen}
         playbackDataShown={playbackDataScreen !== null}
         onTogglePlaybackData={togglePlaybackData}
         title={title}
