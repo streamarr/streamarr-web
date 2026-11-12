@@ -1,4 +1,11 @@
-import { expect, test, type APIRequestContext, type Page, type Request } from '@playwright/test'
+import {
+  expect,
+  test,
+  type APIRequestContext,
+  type Page,
+  type Request,
+  type Route,
+} from '@playwright/test'
 import { execFile } from 'node:child_process'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -58,6 +65,8 @@ test.afterAll(async () => {
 
 type StreamName = 'first' | 'replacement'
 
+type PlaybackSession = ReturnType<typeof playbackSession>
+
 function playbackSession(stream: StreamName) {
   return {
     id: 'playback-1',
@@ -86,6 +95,53 @@ function operationName(call: Request): string {
   return body?.operationName ?? ''
 }
 
+// Signs the viewer in and answers the player's operations with `playback()`, read each time the
+// player creates or reads the playback session.
+async function serveThePlaybackSession(
+  page: Page,
+  request: APIRequestContext,
+  playback: () => PlaybackSession,
+) {
+  await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
+  await request.post(`${STUB_URL}/api/auth/refresh`)
+  await page.route('**/graphql', (route) => {
+    const operations: Record<string, unknown> = {
+      CreatePlaybackSession: {
+        createPlaybackSession: { playbackSession: playback(), userErrors: [] },
+      },
+      PlaybackSession: { playbackSession: playback() },
+      PlayerMediaTitle: { movie: { __typename: 'Movie', id: 'm1', title: 'Everlight' } },
+      ReportStreamSessionTimeline: { reportStreamSessionTimeline: true },
+      DestroyPlaybackSession: {
+        destroyPlaybackSession: { playbackSessionId: 'playback-1', userErrors: [] },
+      },
+    }
+    const data = operations[operationName(route.request())]
+    return data ? route.fulfill({ json: { data } }) : route.continue()
+  })
+}
+
+const STREAM_REQUEST = /\/api\/stream\/(first|replacement)\/([\w.]+)/
+
+// The stream session that a stream request names, the file it asks for, and the file's number
+// when it is a media segment.
+function streamRequest(route: Route): { stream: StreamName; file: string; segment: number | null } {
+  const [, stream, file] = STREAM_REQUEST.exec(route.request().url())!
+  const segment = /^segment(\d+)\.m4s$/.exec(file)
+  return { stream: stream as StreamName, file, segment: segment ? Number(segment[1]) : null }
+}
+
+// Answers with the multivariant playlist, or with the file FFmpeg wrote.
+function answerFromTheStream(route: Route, file: string) {
+  if (file === 'multivariant.m3u8') {
+    return route.fulfill({ contentType: 'application/vnd.apple.mpegurl', body: MULTIVARIANT })
+  }
+  return route.fulfill({
+    contentType: file.endsWith('.m3u8') ? 'application/vnd.apple.mpegurl' : 'video/mp4',
+    path: join(streamDirectory, file),
+  })
+}
+
 interface Handover {
   /** The media segments that hls.js asked each stream session for, by number, in order. */
   segments: Record<StreamName, number[]>
@@ -103,45 +159,22 @@ async function serveAHandover(page: Page, request: APIRequestContext): Promise<H
     replacementRequested: false,
   }
   let current: StreamName = 'first'
-  await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
-  await request.post(`${STUB_URL}/api/auth/refresh`)
-  await page.route('**/graphql', (route) => {
-    const operations: Record<string, unknown> = {
-      CreatePlaybackSession: {
-        createPlaybackSession: { playbackSession: playbackSession('first'), userErrors: [] },
-      },
-      PlaybackSession: { playbackSession: playbackSession(current) },
-      PlayerMediaTitle: { movie: { __typename: 'Movie', id: 'm1', title: 'Everlight' } },
-      ReportStreamSessionTimeline: { reportStreamSessionTimeline: true },
-      DestroyPlaybackSession: {
-        destroyPlaybackSession: { playbackSessionId: 'playback-1', userErrors: [] },
-      },
+  await serveThePlaybackSession(page, request, () => playbackSession(current))
+  await page.route(STREAM_REQUEST, async (route) => {
+    const { stream, file, segment } = streamRequest(route)
+    if (file === 'multivariant.m3u8' && stream === 'replacement') {
+      handover.replacementRequested = true
     }
-    const data = operations[operationName(route.request())]
-    return data ? route.fulfill({ json: { data } }) : route.continue()
-  })
-  await page.route(/\/api\/stream\/(first|replacement)\/([\w.]+)/, async (route) => {
-    const [, stream, file] = /\/(first|replacement)\/([\w.]+)/.exec(route.request().url())!
-    const name = stream as StreamName
-    if (file === 'multivariant.m3u8') {
-      if (name === 'replacement') handover.replacementRequested = true
-      return route.fulfill({ contentType: 'application/vnd.apple.mpegurl', body: MULTIVARIANT })
-    }
-    const segment = /^segment(\d+)\.m4s$/.exec(file)
-    if (segment) {
-      const index = Number(segment[1])
-      handover.segments[name].push(index)
-      if (name === 'first' && index === SEGMENT_PAST_THE_REPLACEMENT) {
+    if (segment !== null) {
+      handover.segments[stream].push(segment)
+      if (stream === 'first' && segment === SEGMENT_PAST_THE_REPLACEMENT) {
         current = 'replacement'
         return route.fulfill({ status: 404 })
       }
-      if (name === 'replacement')
+      if (stream === 'replacement')
         await new Promise((resolve) => setTimeout(resolve, SLOW_SEGMENT_MS))
     }
-    return route.fulfill({
-      contentType: file.endsWith('.m3u8') ? 'application/vnd.apple.mpegurl' : 'video/mp4',
-      path: join(streamDirectory, file),
-    })
+    return answerFromTheStream(route, file)
   })
   return handover
 }
