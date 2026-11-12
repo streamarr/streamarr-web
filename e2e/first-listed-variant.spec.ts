@@ -1,11 +1,17 @@
 import { expect, test, type APIRequestContext, type Page, type Request } from '@playwright/test'
+import { readFile } from 'node:fs/promises'
+import { createServer, type Server } from 'node:http'
+import type { AddressInfo } from 'node:net'
+import { posix } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { LADDER_STREAM_PATH, routeLadderPlayback } from './ladderPlayback'
 
 // Creating a stream session starts the variant that its multivariant playlist lists first, and the
 // server starts any other variant on the player's first request for it. These specs serve Auto
 // ladders in the server's order and record which variant hls.js asks for first. Media segment
-// requests hang unless a spec answers the first one, so hls.js starts before it measures any.
+// requests hang unless a spec answers the first one, so hls.js starts before it measures any. The
+// last specs slow the first segment down, and the player starts on the lowest variant when the
+// first-listed one cannot start within the startup limit.
 
 test.use({ viewport: { width: 1512, height: 850 }, serviceWorkers: 'block' })
 
@@ -106,10 +112,17 @@ function mediaPlaylist(): string {
 
 interface LadderRoutes {
   variants: readonly Variant[]
+  /** The playback choice; Auto unless named. */
+  choice?: string
   transcodeMode: string
   startPositionSeconds?: number
   /** Once it settles, each variant's first media segment is answered; until then it is held. */
   firstSegmentAnswered?: Promise<void>
+  /**
+   * How long each variant's first media segment takes to arrive: its headers come at once and its
+   * bytes over that many milliseconds. 'never' leaves the request unanswered.
+   */
+  firstSegmentTransfer?: (variant: Variant) => number | 'never'
 }
 
 interface Requests {
@@ -119,15 +132,22 @@ interface Requests {
   segments: string[]
 }
 
-// Serves an Auto playback session whose multivariant playlist lists `variants`, and records the
+// Serves a playback session whose multivariant playlist lists `variants`, and records the
 // media playlists and media segments that hls.js asks for.
 async function serveLadder(
   page: Page,
   request: APIRequestContext,
-  { variants, transcodeMode, startPositionSeconds, firstSegmentAnswered }: LadderRoutes,
+  {
+    variants,
+    choice = 'AUTO',
+    transcodeMode,
+    startPositionSeconds,
+    firstSegmentAnswered,
+    firstSegmentTransfer,
+  }: LadderRoutes,
 ): Promise<Requests> {
   const requests: Requests = { mediaPlaylists: [], segments: [] }
-  await routeLadderPlayback(page, request, { choice: 'AUTO', transcodeMode })
+  await routeLadderPlayback(page, request, { choice, transcodeMode })
   await page.route(`**${LADDER_STREAM_PATH}multivariant.m3u8*`, (route) =>
     route.fulfill({
       contentType: 'application/vnd.apple.mpegurl',
@@ -146,6 +166,11 @@ async function serveLadder(
   await page.route(/\/api\/stream\/ladder\/.*\.m4s/, async (route) => {
     const segment = underStream(route.request())
     requests.segments.push(segment)
+    if (firstSegmentTransfer && isFirstSegment(segment)) {
+      const transfer = firstSegmentTransfer(variantOf(variants, segment))
+      if (transfer === 'never') return new Promise(() => undefined)
+      return route.continue({ url: `${trickle.url}?ms=${transfer}` })
+    }
     if (!firstSegmentAnswered || !isFirstSegment(segment)) return new Promise(() => undefined)
     await firstSegmentAnswered
     return route.fulfill({ contentType: 'video/mp4', path: fixture('media-segment.m4s') })
@@ -163,6 +188,91 @@ function fixture(name: string): string {
 
 function isFirstSegment(segment: string): boolean {
   return /(?:^|\/)segment0\.m4s$/.test(segment)
+}
+
+function variantOf(variants: readonly Variant[], segment: string): Variant {
+  const variant = variants.find(
+    ({ playlist }) => posix.dirname(playlist) === posix.dirname(segment),
+  )
+  expect(variant, `the variant that holds ${segment}`).toBeDefined()
+  return variant!
+}
+
+// Answers with the fixture's media segment: its headers at once, then its bytes in ten even chunks
+// over the `ms` that the query names, as a link slower than the segment's bit rate delivers them.
+let trickle: { url: string; server: Server }
+
+test.beforeAll(async () => {
+  const segment = await readFile(fixture('media-segment.m4s'))
+  const server = createServer((request, response) => {
+    const transferMs = Number(new URL(request.url ?? '', 'http://trickle').searchParams.get('ms'))
+    response.writeHead(200, { 'Content-Type': 'video/mp4', 'Content-Length': segment.length })
+    response.flushHeaders()
+    const chunks = 10
+    const timers = Array.from({ length: chunks }, (_, chunk) =>
+      setTimeout(
+        () => {
+          const start = Math.ceil((chunk * segment.length) / chunks)
+          const end = Math.ceil(((chunk + 1) * segment.length) / chunks)
+          response.write(segment.subarray(start, end))
+          if (chunk === chunks - 1) response.end()
+        },
+        ((chunk + 1) * transferMs) / chunks,
+      ),
+    )
+    response.on('close', () => timers.forEach(clearTimeout))
+  })
+  await new Promise<void>((listening) => server.listen(0, '127.0.0.1', listening))
+  trickle = { url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/`, server }
+})
+
+test.afterAll(async () => {
+  trickle.server.closeAllConnections()
+  await new Promise((closed) => trickle.server.close(closed))
+})
+
+// A link below the copy's peak and above its 720p variant's.
+const SLOW_LINK_BITS_PER_SECOND = 2_000_000
+// A link that carries the copy's first segment in 12 s.
+const FAST_LINK_BITS_PER_SECOND = 10_000_000
+
+// How long a segment that runs at its variant's BANDWIDTH for its six seconds takes to cross a link
+// of `bitsPerSecond`. Over the slow link: 60 s for the copy, 11.3 s for the 720p variant and 3.3 s
+// for the 360p variant.
+function overALink(bitsPerSecond: number): (variant: Variant) => number {
+  return ({ bandwidth }) => (bandwidth * SEGMENT_SECONDS * 1_000) / bitsPerSecond
+}
+
+// The player gives up on startup after 30 s and says so.
+const STARTUP_LIMIT_MS = 30_000
+// A first segment that receives no byte for a quarter of the startup limit gives way to the lowest
+// variant, and so does one whose bytes show it cannot arrive within the limit, by the time its
+// first tenth crosses the link.
+const SILENCE_LIMIT_MS = STARTUP_LIMIT_MS / 4
+
+// 'started' once the element has metadata. A startup that timed out names the segments that hls.js
+// asked for, so a failure shows which variant it waited on.
+async function startup(page: Page, { segments }: Requests): Promise<string> {
+  if (await page.getByText('Playback is taking too long to start').isVisible()) {
+    return `timed out after asking for ${segments.join(', ')}`
+  }
+  const hasMetadata = await page.evaluate(
+    () => (document.querySelector('video')?.readyState ?? 0) >= HTMLMediaElement.HAVE_METADATA,
+  )
+  return hasMetadata ? 'started' : 'starting'
+}
+
+// Opens the player and waits until startup ends: how it ended, and how long after the page was
+// opened. The player's own count starts later, once the page has loaded.
+async function playUntilStartupEnds(page: Page, requests: Requests) {
+  const openedAt = Date.now()
+  await page.goto('/play/file-1?movie=m1')
+  await expect
+    .poll(() => startup(page, requests), { timeout: STARTUP_LIMIT_MS + 5_000, intervals: [100] })
+    .not.toBe('starting')
+  const ended = { outcome: await startup(page, requests), afterMs: Date.now() - openedAt }
+  test.info().annotations.push({ type: 'startup', description: JSON.stringify(ended) })
+  return ended
 }
 
 test.afterEach(async ({ page }) => {
@@ -236,3 +346,99 @@ test('a seek while the first segment of the first-listed variant loads moves pla
     .toContainEqual(expect.stringMatching(/(?:^|\/)segment5\.m4s$/))
   expect(requests.segments[0]).toBe('segment0.m4s')
 })
+
+// Startup ends when the element has metadata, which it gets only from a whole first segment. The
+// first-listed copy's first segment is too large to cross the link before the startup limit,
+// while the 360p variant's crosses it in 3.3 s.
+test('Auto starts on the lowest variant within the startup limit on a link slower than the first-listed copy', async ({
+  page,
+  request,
+}) => {
+  const requests = await serveLadder(page, request, {
+    variants: COPY_LADDER,
+    transcodeMode: 'REMUX',
+    firstSegmentTransfer: overALink(SLOW_LINK_BITS_PER_SECOND),
+  })
+
+  const { outcome, afterMs } = await playUntilStartupEnds(page, requests)
+
+  expect(outcome).toBe('started')
+  expect(afterMs).toBeLessThan(STARTUP_LIMIT_MS)
+  expect(requests.segments.filter(isFirstSegment)).toEqual(['segment0.m4s', '360p/segment0.m4s'])
+})
+
+// The lowest variant's first segment arrives at once, so hls.js, adapting as usual once it has
+// measured it, moves up to the copy for the next segment.
+test('Auto starts on the lowest variant within the startup limit when the first-listed variant never answers its first segment, and adapts from there', async ({
+  page,
+  request,
+}) => {
+  const requests = await serveLadder(page, request, {
+    variants: COPY_LADDER,
+    transcodeMode: 'REMUX',
+    firstSegmentTransfer: (variant) => (variant === COPY_LADDER[0] ? 'never' : 0),
+  })
+
+  const { outcome, afterMs } = await playUntilStartupEnds(page, requests)
+
+  expect(outcome).toBe('started')
+  expect(afterMs).toBeLessThan(STARTUP_LIMIT_MS)
+  expect(requests.segments.filter(isFirstSegment)).toEqual(['segment0.m4s', '360p/segment0.m4s'])
+  await expect.poll(() => requests.segments).toContain('segment1.m4s')
+})
+
+// Once it has measured the first segment, hls.js adapts as usual, so only the first segments that
+// it asked for show where playback started.
+test('Auto keeps the first-listed copy when its first segment crosses the link within the startup limit', async ({
+  page,
+  request,
+}) => {
+  const requests = await serveLadder(page, request, {
+    variants: COPY_LADDER,
+    transcodeMode: 'REMUX',
+    firstSegmentTransfer: overALink(FAST_LINK_BITS_PER_SECOND),
+  })
+
+  const { outcome, afterMs } = await playUntilStartupEnds(page, requests)
+
+  expect(outcome).toBe('started')
+  expect(afterMs).toBeLessThan(STARTUP_LIMIT_MS)
+  expect(requests.segments.filter(isFirstSegment)).toEqual(['segment0.m4s'])
+})
+
+// Original and each fixed quality list one variant, and so does Auto for a copy without encodes
+// beside it. With no lower variant, the slow first segment keeps loading, as before the step down.
+for (const { listing, choice, variant, transcodeMode } of [
+  {
+    listing: 'Auto with the copy alone',
+    choice: 'AUTO',
+    variant: COPY_LADDER[0],
+    transcodeMode: 'REMUX',
+  },
+  {
+    listing: 'the fixed quality 1080p',
+    choice: 'FULL_HD_1080P',
+    variant: ENCODED_1080P,
+    transcodeMode: 'VIDEO_TRANSCODE',
+  },
+]) {
+  test(`${listing} keeps loading the first segment of its one variant on a link slower than it`, async ({
+    page,
+    request,
+  }) => {
+    const requests = await serveLadder(page, request, {
+      variants: [variant],
+      choice,
+      transcodeMode,
+      firstSegmentTransfer: () => 2 * STARTUP_LIMIT_MS,
+    })
+    await page.goto('/play/file-1?movie=m1')
+    await expect.poll(() => requests.segments).not.toHaveLength(0)
+
+    // Past the time by which Auto with a lower variant would have left the first segment.
+    await page.waitForTimeout(SILENCE_LIMIT_MS + 2_000)
+
+    expect(await startup(page, requests)).toBe('starting')
+    expect(requests.segments).toEqual([posix.join(posix.dirname(variant.playlist), 'segment0.m4s')])
+  })
+}

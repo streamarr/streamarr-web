@@ -11,6 +11,8 @@ export interface ListedVariant {
   bandwidth: number
   height: number
   range: VideoRange
+  /** The variant's CODECS; H.264 and AAC unless named. */
+  codecs?: string
 }
 
 // A copy of a 1080p source that peaks at 20 Mb/s, listed first as the server lists a copy in Auto
@@ -25,10 +27,12 @@ export const COPY_LADDER: readonly ListedVariant[] = [
 function multivariantOf(variants: readonly ListedVariant[]): string {
   return [
     '#EXTM3U',
-    ...variants.flatMap(({ playlist, bandwidth, height, range }) => [
-      `#EXT-X-STREAM-INF:BANDWIDTH=${bandwidth},RESOLUTION=${(height * 16) / 9}x${height},CODECS="avc1.640028,mp4a.40.2",VIDEO-RANGE=${range}`,
-      playlist,
-    ]),
+    ...variants.flatMap(
+      ({ playlist, bandwidth, height, range, codecs = 'avc1.640028,mp4a.40.2' }) => [
+        `#EXT-X-STREAM-INF:BANDWIDTH=${bandwidth},RESOLUTION=${(height * 16) / 9}x${height},CODECS="${codecs}",VIDEO-RANGE=${range}`,
+        playlist,
+      ],
+    ),
     '',
   ].join('\n')
 }
