@@ -455,9 +455,16 @@ function startSessionPlayback({
   // waits for the media it starts with, which can still come.
   function withinASegmentOfRealEnd(): boolean {
     if (realEnd === null) return false
-    if (video.currentTime >= realEnd) return true
+    if (playhead() >= realEnd) return true
     const segmentSeconds = source?.segmentSeconds() ?? DEFAULT_SEGMENT_SECONDS
-    return firstFrameShown && video.currentTime >= realEnd - segmentSeconds
+    return firstFrameShown && playhead() >= realEnd - segmentSeconds
+  }
+
+  // Until the element loads its metadata, its currentTime reads 0. The playhead is then the start
+  // position that playback waits for, and hls.js asks first for the segment that holds that position.
+  function playhead(): number {
+    if (video.readyState >= HTMLMediaElement.HAVE_METADATA) return video.currentTime
+    return resume?.position ?? startAt ?? video.currentTime
   }
 
   // The server holds a request for a segment past the real end, so hls.js, started there, would
@@ -474,6 +481,8 @@ function startSessionPlayback({
       return
     }
     endedAtRealEnd = true
+    // A startup that ends here never reaches the start position it waited for.
+    resume = undefined
     // Playback that ended has started; only attaching the stream again starts it anew.
     startupDeadline.end()
     stopStatusCheck()
@@ -505,7 +514,7 @@ function startSessionPlayback({
 
   // A seek's wait for media before the real end is no stall, but media past it never comes.
   function seekingBeforeRealEnd(): boolean {
-    return (video.seeking || seekUnresumed) && realEnd !== null && video.currentTime < realEnd
+    return (video.seeking || seekUnresumed) && realEnd !== null && playhead() < realEnd
   }
 
   // Nothing past the real end can arrive, so a stall or a failure close to it is the end. A
@@ -540,7 +549,7 @@ function startSessionPlayback({
     if (seekingBeforeRealEnd()) {
       return
     }
-    if (video.currentTime >= seconds || video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
+    if (playhead() >= seconds || video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
       tryEndAtRealEnd()
     }
   }

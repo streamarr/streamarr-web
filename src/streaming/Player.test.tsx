@@ -429,6 +429,62 @@ function serveAnotherStreamOnlyAtTheSecondStatusRead() {
   )
 }
 
+const PAST_THE_REAL_END_SECONDS = REAL_END_SECONDS + 10
+
+// How the viewer's playhead came to stand past the real end on the first stream session.
+const WAYS_PAST_THE_REAL_END = [
+  {
+    reached: 'played there',
+    reach: (video: HTMLVideoElement) => playheadAt(video, PAST_THE_REAL_END_SECONDS),
+  },
+  {
+    // The seek waits for media that the first stream session never sends, so it never completes.
+    reached: 'sought there while paused',
+    reach: (video: HTMLVideoElement) => {
+      act(() => video.pause())
+      video.currentTime = PAST_THE_REAL_END_SECONDS
+      setReadyState(video, HTMLMediaElement.HAVE_METADATA)
+      fireEvent(video, new Event('seeking'))
+      fireEvent(video, new Event('timeupdate'))
+    },
+  },
+]
+
+// The viewer's playhead reached a point past a real end that no status names yet, and the server
+// replaced the stream session there. The replacement's status names that real end only once
+// `nameTheRealEnd` is called, as after the replacement's job attempt has run past it.
+async function replaceTheStreamPastAnUnnamedRealEnd(reach: (video: HTMLVideoElement) => void) {
+  const reports = serveSession()
+  renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+  const video = await showingVideo(STREAM_URL)
+  reach(video)
+  hls.destroy.mockImplementation(() => video.load())
+  const replacement = replacementStream(1)
+  let realEndNamed = false
+  server.use(
+    graphql.query('PlaybackSession', () =>
+      HttpResponse.json({
+        data: {
+          playbackSession: readyPlaybackSession({
+            streamSession: realEndNamed
+              ? { ...replacement, mediaEndSeconds: REAL_END_SECONDS }
+              : replacement,
+          }),
+        },
+      }),
+    ),
+  )
+  answerTheNextSegmentWith503({ fatal: false })
+  await attachedVideo(replacement.streamUrl)
+  return {
+    reports,
+    replacement,
+    nameTheRealEnd: () => {
+      realEndNamed = true
+    },
+  }
+}
+
 // The media the stalled element waited for arrived, and the playhead moves on.
 function resumeAfterTheStall(video: HTMLVideoElement) {
   setReadyState(video, HTMLMediaElement.HAVE_ENOUGH_DATA)
@@ -6433,6 +6489,45 @@ describe('Player', () => {
       fireEvent(video, new Event('waiting'))
 
       expect(video.paused).toBe(true)
+    })
+
+    it.each(WAYS_PAST_THE_REAL_END)(
+      'shouldEndAtTheRealEndThatTheStatusNamesOnlyAfterAReplacementWasAttachedPastIt(viewer $reached)',
+      async ({ reach }) => {
+        const { reports, replacement, nameTheRealEnd } =
+          await replaceTheStreamPastAnUnnamedRealEnd(reach)
+        expect(hls.config?.startPosition).toBe(PAST_THE_REAL_END_SECONDS)
+
+        // The replacement's job ran past the real end, so the status names it now; the server
+        // holds the segment hls.js asked for first, and hls.js gives up on it.
+        nameTheRealEnd()
+        timeOutTheNextSegment()
+
+        await waitFor(() =>
+          expect(reports.at(-1)).toEqual({
+            sessionId: replacement.id,
+            positionSeconds: REAL_END_SECONDS,
+            state: 'STOPPED',
+          }),
+        )
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      },
+    )
+
+    it('shouldStartTheReturningPageFromTheTopWhenPlaybackEndedBeforeTheReplacementLoaded', async () => {
+      const { reports, nameTheRealEnd } = await replaceTheStreamPastAnUnnamedRealEnd((video) =>
+        playheadAt(video, PAST_THE_REAL_END_SECONDS),
+      )
+      nameTheRealEnd()
+      timeOutTheNextSegment()
+      await waitFor(() => expect(reports.at(-1)?.state).toBe('STOPPED'))
+      const created = recordCreatedSessions()
+
+      hideThePage({ persisted: true })
+      restoreThePage()
+
+      await waitFor(() => expect(created).toHaveLength(1))
+      expect(created[0]?.startPositionSeconds).toBeUndefined()
     })
 
     it('shouldKeepWaitingForTheFirstFrameOfTheStreamAttachedAgainWithinOneSegmentOfTheRealEnd', async () => {
