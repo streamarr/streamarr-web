@@ -260,6 +260,9 @@ function startSessionPlayback({
   let sourceGeneration = 0
   let reportingFormat = false
   let statusCheck: PlaybackStatusCheck | undefined
+  // Settles once the status check that last moved playback to another stream session has attached
+  // it or has ended.
+  let statusHandover: Promise<void> = Promise.resolve()
   let slowStartup: ReturnType<typeof setTimeout> | undefined
   let startAt = resumeFrom?.position ?? startPositionSeconds
   let resume: ResumePoint | undefined = resumeFrom && { ...resumeFrom }
@@ -886,7 +889,13 @@ function startSessionPlayback({
       audioTrackPosition,
     })
     if (pendingSwitch === pending) pendingSwitch = null
-    if (cancelled || generation !== sourceGeneration) return false
+    if (cancelled) return false
+    // While the switch waits, only a status check that reads the switch's stream session moves
+    // playback, so the switch moved playback once that check has attached the stream session.
+    if (generation !== sourceGeneration) {
+      await statusHandover
+      return playsAnotherStreamThan(directPlayStreamSessionId)
+    }
     switch (answer.kind) {
       case 'started': {
         beginHandover()
@@ -1115,6 +1124,7 @@ function startSessionPlayback({
     const { check, current } = poll
     beginHandover()
     check.generation = sourceGeneration
+    statusHandover = check.settled
     const resolved = playback ? await awaitReadyPlayback(playback, poll) : undefined
     if (!current() || check.controller.signal.aborted) return
     adoptPlayback(resolved)

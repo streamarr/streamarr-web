@@ -8357,6 +8357,95 @@ describe('Player', () => {
         await waitFor(() => expect(overrides).toEqual([{ itemId: 'e1', audioLanguage: 'FR' }]))
       })
 
+      it('shouldStoreTheChosenTracksLanguageWhenASlowStartupsStatusReadFindsTheSwitchBeforeItsAnswer', async () => {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        const answered = deferred()
+        const switches = serveAudioTrackSwitch({ answered: answered.promise, answer: movedToHls })
+        server.use(
+          graphql.query('PlaybackSession', () =>
+            HttpResponse.json({ data: { playbackSession: movedToHls().playbackSession } }),
+          ),
+        )
+        const overrides = serveOverrideStores()
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        renderEpisode()
+        await nativeVideo(SOURCE_FILE.streamUrl)
+        fireEvent.click(screen.getByRole('button', { name: 'Audio: English' }))
+        await act(async () => vi.advanceTimersByTimeAsync(0))
+        fireEvent.click(screen.getByRole('menuitemradio', { name: 'French' }))
+        await vi.waitFor(() => expect(switches).toHaveLength(1))
+
+        await act(async () => vi.advanceTimersByTimeAsync(SLOW_STARTUP_MS))
+        await vi.waitFor(() =>
+          expect(hls.loadSource).toHaveBeenCalledWith(replacementStream(1).streamUrl),
+        )
+        answered.resolve()
+
+        await vi.waitFor(() => expect(overrides).toEqual([{ itemId: 'e1', audioLanguage: 'FR' }]))
+        expect(hls.loadSource).toHaveBeenCalledOnce()
+      })
+
+      it('shouldStoreTheChosenTracksLanguageWhenTheSwitchsAnswerComesWhileASlowStartupWaitsForTheSwitchsStreamSessionToStart', async () => {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        const answered = deferred()
+        let answerSent = false
+        const switches = serveAudioTrackSwitch({
+          answered: answered.promise.then(() => {
+            answerSent = true
+          }),
+          answer: movedToHls,
+        })
+        let started = false
+        const statusReads = serveTheSwitchsStreamSession({ started: () => started })
+        const overrides = serveOverrideStores()
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        renderEpisode()
+        await nativeVideo(SOURCE_FILE.streamUrl)
+        fireEvent.click(screen.getByRole('button', { name: 'Audio: English' }))
+        await act(async () => vi.advanceTimersByTimeAsync(0))
+        fireEvent.click(screen.getByRole('menuitemradio', { name: 'French' }))
+        await vi.waitFor(() => expect(switches).toHaveLength(1))
+        await act(async () => vi.advanceTimersByTimeAsync(SLOW_STARTUP_MS))
+        // The first read finds the switch's stream session, and the handover's own read finds it
+        // still starting, so the handover waits for the next read.
+        await vi.waitFor(() => expect(statusReads()).toBe(2))
+
+        answered.resolve()
+        await vi.waitFor(() => expect(answerSent).toBe(true))
+        await act(async () => vi.advanceTimersByTimeAsync(0))
+        started = true
+        await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_STATUS_INTERVAL_MS))
+
+        await vi.waitFor(() =>
+          expect(hls.loadSource).toHaveBeenCalledWith(replacementStream(1).streamUrl),
+        )
+        await vi.waitFor(() => expect(overrides).toEqual([{ itemId: 'e1', audioLanguage: 'FR' }]))
+        expect(hls.loadSource).toHaveBeenCalledOnce()
+      })
+
+      // Each status read finds the switch's stream session, which the server is still starting
+      // until `started` says it has started; returns how often the status was read.
+      function serveTheSwitchsStreamSession({ started }: { started: () => boolean }) {
+        let reads = 0
+        server.use(
+          graphql.query('PlaybackSession', () => {
+            reads += 1
+            const ready = movedToHls().playbackSession
+            const playbackSession = started()
+              ? ready
+              : {
+                  ...ready,
+                  currentFormatAttempt: {
+                    __typename: 'PendingPlaybackFormatAttempt',
+                    streamSessionId: replacementStream(1).id,
+                  },
+                }
+            return HttpResponse.json({ data: { playbackSession } })
+          }),
+        )
+        return () => reads
+      }
+
       it('shouldStoreTheChosenTracksLanguageWhenThePlaybackStatusShowsTheSwitchAfterItsAnswerIsLost', async () => {
         serveDirectPlay({ audioTracks: TWO_TRACKS })
         server.use(
