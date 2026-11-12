@@ -36,9 +36,9 @@ const HOUR = 60 * 60 * 1000
 const OFFER_LINE = '“Sam” offered the Profile “Alex” to your Household.'
 const ANSWER_LINE = '“Cabin” accepted the Profile “Leo”.'
 
-/** Each time the page marked the list read: through which cursor, and on which visit. */
+/** Each Notification the page marked read, and on which visit. */
 interface Mark {
-  through: string
+  notificationId: string
   visit: number
 }
 
@@ -50,13 +50,13 @@ function serve(page: NotificationsQuery = notificationsPage([]), me = meFixture(
     graphql.query('Me', () => HttpResponse.json({ data: { me } })),
     graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
     graphql.query('Notifications', () => HttpResponse.json({ data: page })),
-    graphql.mutation('MarkAllNotificationsRead', ({ variables }) => {
-      const { through } = (variables as { input: { through: string } }).input
-      marks.push({ through, visit: visits.count })
+    graphql.mutation('MarkNotificationRead', ({ variables }) => {
+      const { notificationId } = (variables as { input: { notificationId: string } }).input
+      marks.push({ notificationId, visit: visits.count })
       return HttpResponse.json({
         data: {
-          markAllNotificationsRead: {
-            __typename: 'MarkAllNotificationsReadPayload',
+          markNotificationRead: {
+            __typename: 'MarkNotificationReadPayload',
             unreadNotificationCount: 0,
             userErrors: [],
           },
@@ -304,28 +304,43 @@ describe('Reading Notifications', () => {
     expect(within(read).queryByTestId('unread-mark')).not.toBeInTheDocument()
   })
 
-  it('shouldMarkWhatThePageShowsAsReadOnceTheListHasRendered', async () => {
-    const { marks } = serve(notificationsPage([offerNotification(), answerNotification()]))
+  it('shouldMarkReadByIdOnlyTheUnreadNotificationsThePageShowsWhenTheListHasRendered', async () => {
+    const mara = answerNotification({
+      id: 'answer-for-mara',
+      message: '“Lake House” accepted the Profile “Mara”.',
+      unread: true,
+    })
+    const { marks } = serve(
+      notificationsPage([offerNotification(), answerNotification(), mara], { hasNextPage: true }),
+    )
     renderAppAt(NOTIFICATIONS)
 
     await screen.findByText(OFFER_LINE)
 
-    await waitFor(() => expect(marks).toEqual([{ through: 'cursor-001', visit: 1 }]))
+    await waitFor(() =>
+      expect(marks).toEqual([
+        { notificationId: 'offer-of-alex', visit: 1 },
+        { notificationId: 'answer-for-mara', visit: 1 },
+      ]),
+    )
   })
 
-  it('shouldLeaveANotificationThatArrivesAfterOpeningUnreadUntilTheNextVisit', async () => {
-    const held = { page: notificationsPage([offerNotification({ unread: false })]) }
-    const { marks, visits } = serve()
+  it('shouldLeaveUnreadUntilTheNextVisitANotificationThatArrivesWhenThePageIsOpen', async () => {
+    const held = { page: notificationsPage([offerNotification()], { from: 1 }) }
+    const { socket, marks, visits } = serve()
     server.use(graphql.query('Notifications', () => HttpResponse.json({ data: held.page })))
     const { user } = renderAppAt(NOTIFICATIONS)
     await screen.findByText(OFFER_LINE)
+    await followingNotificationChanges(socket)
     await waitFor(() => expect(marks).toHaveLength(1))
 
-    held.page = notificationsPage(
-      [answerNotification({ unread: true }), offerNotification({ unread: false })],
-      { from: 0 },
+    // Leo's news commits late: it sorts below the row the page showed first.
+    const leo = answerNotification({ unread: true, latestEventAt: hoursAgo(5) })
+    held.page = notificationsPage([offerNotification({ unread: false }), leo], { from: 1 })
+    socket.publish(
+      'NotificationsChanged',
+      notificationsChanged([notificationChange(leo.id, notificationEdge(leo, 2))]),
     )
-    comeBackOnline()
     await screen.findByText(ANSWER_LINE)
     await leaveForHome(user, NOTIFICATIONS_PAGE)
     visits.count = 2
@@ -333,8 +348,8 @@ describe('Reading Notifications', () => {
 
     await waitFor(() => expect(marks.filter((mark) => mark.visit === 2)).toHaveLength(1))
     expect(marks).toEqual([
-      { through: 'cursor-001', visit: 1 },
-      { through: 'cursor-000', visit: 2 },
+      { notificationId: 'offer-of-alex', visit: 1 },
+      { notificationId: 'answer-for-leo', visit: 2 },
     ])
   })
 })
@@ -360,6 +375,23 @@ describe('Older Notifications', () => {
     ])
     expect(reads).toContain('cursor-002')
     expect(screen.queryByTestId('older-notifications')).not.toBeInTheDocument()
+  })
+
+  it('shouldMarkReadTheUnreadNotificationsOfAnOlderPageWhenItJoinsTheList', async () => {
+    const { marks } = serve()
+    const mara = answerNotification({
+      id: 'answer-for-mara',
+      message: '“Cabin” accepted the Profile “Mara”.',
+      unread: true,
+    })
+    servePages(NEWEST, notificationsPage([mara, answerAbout('Leo')], { from: 3 }))
+    renderAppAt(NOTIFICATIONS)
+    await screen.findByText('“Cabin” accepted the Profile “Alex”.')
+
+    await reachTheEndOfTheList()
+
+    await screen.findByText('“Cabin” accepted the Profile “Mara”.')
+    await waitFor(() => expect(marks).toEqual([{ notificationId: 'answer-for-mara', visit: 1 }]))
   })
 
   it('shouldLoadOlderNotificationsWhenTheNewestPageHasNoneToShow', async () => {

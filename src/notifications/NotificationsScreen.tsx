@@ -55,9 +55,11 @@ function NotificationsList() {
   // A failed read reports through the query's own error state.
   const readAgain = () => query.refetch().catch(() => undefined)
   const shown = query.error ? [] : definedEdges(query.data?.notifications.edges)
-  useMarkShownRead(shown[0]?.cursor ?? null)
+  const markRead = useMarkShownRead(
+    query.data && !query.error ? shown.map((edge) => edge.node) : null,
+  )
   const pageInfo = query.data?.notifications.pageInfo
-  const older = useOlderNotifications(pageInfo, live.context)
+  const older = useOlderNotifications(pageInfo, live.context, markRead)
 
   if (query.loading && !query.data) {
     return (

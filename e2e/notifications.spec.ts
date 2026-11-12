@@ -7,7 +7,7 @@ test.use({ serviceWorkers: 'block' })
 
 const HOUR = 60 * 60 * 1000
 
-function news(id: string, message: string, at: number) {
+function news(id: string, message: string, at: number, unread = true) {
   const position = String(at).padStart(3, '0')
   return {
     __typename: 'NotificationEdge',
@@ -18,7 +18,7 @@ function news(id: string, message: string, at: number) {
       id,
       message,
       latestEventAt: new Date(Date.now() - at * HOUR).toISOString(),
-      unread: true,
+      unread,
     },
   }
 }
@@ -32,7 +32,7 @@ test('the unread count and the dot clear once the Notifications page has been op
   page,
   request,
 }) => {
-  const server = { unread: 2 }
+  const server = { unread: 2, marked: [] as string[] }
   const socket = await routeGraphqlSocket(page)
   await serveSharingPages(page, request, {
     UnreadNotificationCount: () => ({ unreadNotificationCount: server.unread }),
@@ -43,12 +43,13 @@ test('the unread count and the dot clear once the Notifications page has been op
         pageInfo: { __typename: 'PageInfo', hasNextPage: false, endCursor: 'cursor-002' },
       },
     },
-    MarkAllNotificationsRead: () => {
-      server.unread = 0
+    MarkNotificationRead: (variables) => {
+      server.marked.push((variables.input as { notificationId: string }).notificationId)
+      server.unread -= 1
       return {
-        markAllNotificationsRead: {
-          __typename: 'MarkAllNotificationsReadPayload',
-          unreadNotificationCount: 0,
+        markNotificationRead: {
+          __typename: 'MarkNotificationReadPayload',
+          unreadNotificationCount: server.unread,
           userErrors: [],
         },
       }
@@ -61,21 +62,20 @@ test('the unread count and the dot clear once the Notifications page has been op
   await marked.click()
   const entry = page.getByRole('button', { name: 'Notifications, 2 unread' })
   await expect(entry).toHaveText('Notifications2')
-  const markedRead = page.waitForRequest(
-    (sent) =>
-      (sent.postDataJSON() as { operationName?: string } | null)?.operationName ===
-      'MarkAllNotificationsRead',
-  )
   await entry.click()
   await expect(page.getByRole('heading', { level: 1, name: 'Notifications' })).toBeVisible()
-  await markedRead
-  // The server tells every session of the Account its count after the mark.
+  await expect.poll(() => server.marked).toEqual(['answer-for-leo', 'answer-for-mara'])
+  // The server tells every session of the Account about each Notification that a mark changed.
   await expect.poll(() => socket.isLive('NotificationsChanged')).toBe(true)
   socket.publish('NotificationsChanged', {
     data: {
       notificationsChanged: {
         __typename: 'NotificationsChange',
-        notifications: [],
+        notifications: UNREAD.map((edge, index) => ({
+          __typename: 'NotificationChange',
+          notificationId: edge.node.id,
+          edge: news(edge.node.id, edge.node.message, index + 1, false),
+        })),
         unreadNotificationCount: 0,
       },
     },
