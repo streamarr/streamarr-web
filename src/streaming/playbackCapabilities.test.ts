@@ -271,12 +271,22 @@ function hevcLevelSearchOf(configuration: MediaDecodingConfiguration): HevcLevel
   return isHevcMain(codecOf(configuration)) ? 'HEVC_MAIN' : 'HEVC_MAIN_10'
 }
 
-// Only a level search asks the path that plays HLS about an HEVC level above 5.1.
-function isHevcLevelSearchQuestion(configuration: MediaDecodingConfiguration): boolean {
-  return (
-    configuration.type !== 'file' &&
-    codecOf(configuration).startsWith('hvc1') &&
-    hevcLevelOf(configuration) > HEVC_LEVEL_5_1
+function isHevcQuestion(configuration: MediaDecodingConfiguration): boolean {
+  return codecOf(configuration).startsWith('hvc1')
+}
+
+// Direct play asks at the levels that the searches found, so its first HEVC question comes after
+// every search has ended. That question is a file question. Before it, only a level search asks
+// about an HEVC level above 5.1.
+function hevcLevelSearchQuestions(decodingInfo: DecodingInfoFake): MediaDecodingConfiguration[] {
+  const configurations = decodingInfo.mock.calls.map(([configuration]) => configuration)
+  const directPlayStart = configurations.findIndex(
+    (configuration) => configuration.type === 'file' && isHevcQuestion(configuration),
+  )
+  const beforeDirectPlay =
+    directPlayStart === -1 ? configurations : configurations.slice(0, directPlayStart)
+  return beforeDirectPlay.filter(
+    (configuration) => isHevcQuestion(configuration) && hevcLevelOf(configuration) > HEVC_LEVEL_5_1,
   )
 }
 
@@ -285,10 +295,7 @@ function hevcLevelsAskedBySearch(
   decodingInfo: DecodingInfoFake,
 ): Partial<Record<HevcLevelSearch, number[]>> {
   const asked: Partial<Record<HevcLevelSearch, number[]>> = {}
-  const questions = decodingInfo.mock.calls
-    .map(([configuration]) => configuration)
-    .filter(isHevcLevelSearchQuestion)
-  for (const configuration of questions) {
+  for (const configuration of hevcLevelSearchQuestions(decodingInfo)) {
     const search = hevcLevelSearchOf(configuration)
     asked[search] = [...(asked[search] ?? []), hevcLevelOf(configuration)]
   }
@@ -2079,6 +2086,25 @@ describe('declarePlaybackCapabilities', () => {
       })
     })
 
+    it('shouldAskNoLowerHevcLevelWhenWebKitAnswersLevelSixPointTwoSmoothAndPlaysHevcFiles', async () => {
+      const decodingInfo = refusingHevcAboveLevelSixPointTwo(
+        filePlayingDecodingInfo(WEBKIT_FILE_TYPES),
+      )
+
+      await declarePlaybackCapabilities(
+        platformFixture({
+          decodingInfo,
+          canPlayType: canPlayTypeOf(WEBKIT_FILE_TYPES),
+          userAgent: SAFARI,
+        }),
+      )
+
+      expect(hevcLevelsAskedBySearch(decodingInfo)).toEqual({
+        HEVC_MAIN: [HEVC_LEVEL_8_5, HEVC_LEVEL_6_2],
+        HEVC_MAIN_10: [HEVC_LEVEL_8_5, HEVC_LEVEL_6_2],
+      })
+    })
+
     it('shouldAskTheControlQuestionAt2160p60BeforeTheFirstLevelOfEachHevcLevelSearchWhenWebKitRefusesIt', async () => {
       const decodingInfo = refusingHevcAboveLevelSixPointTwo(hdrBrowser())
 
@@ -2091,13 +2117,8 @@ describe('declarePlaybackCapabilities', () => {
         PQ: controlThenLevelSixPointTwo,
         HLG: controlThenLevelSixPointTwo,
       })
-      const controlPictures = decodingInfo.mock.calls
-        .map(([configuration]) => configuration)
-        .filter(
-          (configuration) =>
-            isHevcLevelSearchQuestion(configuration) &&
-            hevcLevelOf(configuration) === HEVC_LEVEL_8_5,
-        )
+      const controlPictures = hevcLevelSearchQuestions(decodingInfo)
+        .filter((configuration) => hevcLevelOf(configuration) === HEVC_LEVEL_8_5)
         .map(({ video }) => ({
           width: video?.width,
           height: video?.height,
