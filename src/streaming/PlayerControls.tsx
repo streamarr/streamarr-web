@@ -7,7 +7,7 @@ import { CaretPopover, type PopoverOption, type PopoverToggle } from '../ui/Care
 import type { HdrControl } from './hdrControl'
 import styles from './PlayerControls.module.css'
 import { qualityChipValue, qualityLabel } from './qualityChoices'
-import type { QualityMarks } from './usePlaybackFallbacks'
+import type { PlaybackCautions, QualityCaution, QualityMarks } from './usePlaybackFallbacks'
 import type { StreamTracks, TrackSource } from './trackSources'
 import { useSpaceToPlayOrPause } from './useSpaceToPlayOrPause'
 import { useStreamTracks } from './useStreamTracks'
@@ -24,19 +24,26 @@ export interface PlayerTitle {
 export type PickerKind = 'quality' | 'audio' | 'subtitles' | 'menu'
 
 /**
- * The quality menu's choices, empty while no stream is attached, the choice it shows selected, and
- * the explanation beside each choice whose output fell back.
+ * The quality menu's choices, empty while no stream is attached, the choice it shows selected, the
+ * explanation beside each choice whose output fell back, and the caution on the quality control.
  */
 interface QualityMenu {
   offered: readonly VideoQuality[]
   selected: VideoQuality
   marks: QualityMarks
+  caution?: QualityCaution
   /** The HDR toggle after the choices, while the stream that plays offers one. */
   hdr?: HdrControl
 }
 
-/** What each picker offers: the stream's tracks and the playback choices the server lists. */
-type PickerChoices = StreamTracks & { qualities: readonly VideoQuality[] }
+/**
+ * What each picker offers, the stream's tracks and the playback choices the server lists, and the
+ * cautions on the controls that open them.
+ */
+type PickerChoices = StreamTracks & {
+  qualities: readonly VideoQuality[]
+  cautions?: PlaybackCautions
+}
 
 // Mantine's slider ends a drag only on touchend or mouseup. After a cancelled touch its drag stays
 // open until the next touchend or mouseup anywhere, and that late end must not seek.
@@ -61,19 +68,20 @@ const PLAYER_MENU: readonly PopoverOption<typeof PLAYBACK_DATA>[] = [
 ]
 
 /**
- * Whether a picker opens: only when it has a choice to make, as one option alone would only repeat
- * what its chip shows. The subtitles picker always offers Off beside the stream's tracks, and the
- * player menu always offers its items.
+ * Whether a picker opens: when its control carries a caution, whose message the picker shows, or
+ * when it has a choice to make, as one option alone would only repeat what its chip shows. The
+ * subtitles picker always offers Off beside the stream's tracks, and the player menu always offers
+ * its items.
  */
 export function pickerOpens(
   kind: PickerKind,
-  { audio, subtitles, qualities }: PickerChoices,
+  { audio, subtitles, qualities, cautions = {} }: PickerChoices,
 ): boolean {
   switch (kind) {
     case 'quality':
-      return qualityOptions(qualities).length > 1
+      return cautions.quality !== undefined || qualityOptions(qualities).length > 1
     case 'audio':
-      return audio.options.length > 1
+      return cautions.audio !== undefined || audio.options.length > 1
     case 'subtitles':
       return subtitles.options.length > 0
     case 'menu':
@@ -81,14 +89,16 @@ export function pickerOpens(
   }
 }
 
-// A choice the server added after this client has no name here, so the menu leaves it out.
+// A choice the server added after this client has no name here, so the menu leaves it out. The
+// caution's message explains the mark of the choice it names.
 function qualityOptions(
   qualities: readonly VideoQuality[],
-  marks: QualityMarks = new Map(),
+  { marks = new Map(), caution }: Partial<QualityMenu> = {},
 ): PopoverOption<VideoQuality>[] {
   return qualities.flatMap((id) => {
     const label = qualityLabel(id)
-    return label ? [{ id, label, caution: marks.get(id) }] : []
+    const explainedByMessage = id === caution?.choice
+    return label ? [{ id, label, caution: marks.get(id), explainedByMessage }] : []
   })
 }
 
@@ -105,6 +115,7 @@ export function PlayerControls({
   onToggleHdr,
   openPicker,
   onOpenPicker,
+  audioCaution,
   onTrackChosen,
   playbackDataShown,
   onTogglePlaybackData,
@@ -125,6 +136,8 @@ export function PlayerControls({
   onToggleHdr: () => void
   openPicker: PickerKind | null
   onOpenPicker: (kind: PickerKind | null) => void
+  /** The caution on the audio control, while the track the viewer chose does not play. */
+  audioCaution?: string
   /** Hears each audio or subtitle track the viewer switches to, as the stream switches. */
   onTrackChosen?: (chosen: ChosenTrack) => void
   playbackDataShown: boolean
@@ -135,7 +148,11 @@ export function PlayerControls({
   const attached = tracks !== null
   const streamTracks = useStreamTracks(tracks)
   const { audio, subtitles } = streamTracks
-  const choices = { ...streamTracks, qualities: quality.offered }
+  const choices = {
+    ...streamTracks,
+    qualities: quality.offered,
+    cautions: { quality: quality.caution, audio: audioCaution },
+  }
   const durationKnown = Number.isFinite(videoState.duration)
   const timecodeAt = (seconds: number) =>
     formatTimecode({ positionSeconds: seconds, durationSeconds: videoState.duration })
@@ -267,9 +284,10 @@ export function PlayerControls({
           <ChoicePicker
             name="Quality"
             icon="quality"
-            options={qualityOptions(quality.offered, quality.marks)}
+            options={qualityOptions(quality.offered, quality)}
             selected={quality.selected}
             value={qualityChipValue(quality.selected, videoState.videoHeight)}
+            caution={quality.caution?.message}
             choosable={pickerOpens('quality', choices)}
             toggle={
               quality.hdr && {
@@ -288,6 +306,7 @@ export function PlayerControls({
             icon="audio-track"
             options={audio.options}
             selected={audio.selected}
+            caution={audioCaution}
             choosable={pickerOpens('audio', choices)}
             open={openPicker === 'audio'}
             onOpenChange={(open) => onOpenPicker(open ? 'audio' : null)}
@@ -440,6 +459,7 @@ function ChoicePicker<Id extends string | number | null>({
   selected,
   value = options.find((option) => option.id === selected)?.label,
   showsActiveTrack,
+  caution,
   choosable,
   toggle,
   open,
@@ -453,6 +473,8 @@ function ChoicePicker<Id extends string | number | null>({
   /** What the chip shows; the selected option's label unless given. */
   value?: string
   showsActiveTrack?: boolean
+  /** The message of the caution the chip carries, which the picker shows at its top. */
+  caution?: string
   choosable: boolean
   toggle?: PopoverToggle
   open: boolean
@@ -472,6 +494,7 @@ function ChoicePicker<Id extends string | number | null>({
         icon={icon}
         value={value}
         showsActiveTrack={showsActiveTrack}
+        caution={caution}
         menu={menu}
       />
       {choosable && open && (
@@ -481,6 +504,7 @@ function ChoicePicker<Id extends string | number | null>({
           anchorRef={chipRef}
           options={options}
           selected={selected}
+          message={caution}
           toggle={
             toggle && {
               ...toggle,
@@ -508,35 +532,53 @@ interface ChipMenu {
   toggle: () => void
 }
 
+// A caution's symbol is only seen; its message is the chip's description, which stays out of
+// sight, so the chip's name stays its name and value.
 function StatusChip({
   name,
   icon,
   value,
   showsActiveTrack = false,
+  caution,
   menu,
 }: Readonly<{
   name: string
   icon: IconName
   value?: string
   showsActiveTrack?: boolean
+  caution?: string
   menu?: ChipMenu
 }>) {
+  const cautionId = useId()
   return (
-    <button
-      ref={menu?.ref}
-      type="button"
-      className={styles.chip}
-      aria-label={value ? `${name}: ${value}` : name}
-      aria-disabled={!menu || undefined}
-      aria-haspopup={menu && 'menu'}
-      aria-expanded={menu?.open}
-      aria-controls={menu?.open ? menu.id : undefined}
-      onClick={menu?.toggle}
-    >
-      {showsActiveTrack && <span className={styles.activeTrack} data-testid="active-track" />}
-      <Icon name={icon} size={16} />
-      {value && <span className={styles.chipValue}>{value}</span>}
-    </button>
+    <>
+      <button
+        ref={menu?.ref}
+        type="button"
+        className={styles.chip}
+        aria-label={value ? `${name}: ${value}` : name}
+        aria-describedby={caution && cautionId}
+        aria-disabled={!menu || undefined}
+        aria-haspopup={menu && 'menu'}
+        aria-expanded={menu?.open}
+        aria-controls={menu?.open ? menu.id : undefined}
+        onClick={menu?.toggle}
+      >
+        {showsActiveTrack && <span className={styles.activeTrack} data-testid="active-track" />}
+        {caution && (
+          <span className={styles.cautionBadge} data-testid="caution-badge">
+            <Icon name="alert" size={14} />
+          </span>
+        )}
+        <Icon name={icon} size={16} />
+        {value && <span className={styles.chipValue}>{value}</span>}
+      </button>
+      {caution && (
+        <span id={cautionId} hidden>
+          {caution}
+        </span>
+      )}
+    </>
   )
 }
 

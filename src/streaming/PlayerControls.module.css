@@ -242,6 +242,18 @@
   text-overflow: ellipsis;
 }
 
+/* The caution's symbol overlaps the chip's top-right corner, clear of its glyph and value, and
+   takes no taps. Its yellow is set on this element, never on the svg: forced colors replace it
+   here with the chip's own text color. */
+.cautionBadge {
+  position: absolute;
+  top: -6px;
+  right: -4px;
+  display: flex;
+  color: var(--semantic-caution);
+  pointer-events: none;
+}
+
 .activeTrack {
   position: absolute;
   top: -3px;

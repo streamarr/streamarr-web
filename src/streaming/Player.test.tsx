@@ -74,23 +74,20 @@ const withoutDecodingInfo = () => playbackPlatformFixture()
 // WebKit lists a direct-played file's audio tracks on the element and switches between them.
 const selectingAudioTracks = () => playbackPlatformFixture({ selectsAudioTrackInDirectPlay: true })
 const STREAM_URL = '/api/stream/abcd/multivariant.m3u8?t=playback-token'
-const CHANGED_TO_AUTO_NOTICE =
-  "This video couldn't play in its original form, so a converted version is playing. " +
-  'Quality is now set to Auto. To choose another quality, open the Quality menu.'
-const CONVERTED_NOTICE =
-  "This video couldn't play in its original form, so a converted version is playing. " +
-  'To choose another quality, open the Quality menu.'
-const AUDIO_TRACK_SWITCHED_NOTICE =
-  'The audio track you chose plays in a converted version. Quality is now set to Auto. ' +
-  'To choose another quality, open the Quality menu.'
-const DOLBY_VISION_NOTICE =
-  "This video couldn't play in Dolby Vision, so the HDR version is playing."
 const ORIGINAL_EXPLANATION =
   "This video couldn't play in its original form, so Quality changed to Auto."
 const FIXED_QUALITY_EXPLANATION =
   "This video couldn't play in its original form at this quality, so a converted version is playing."
 const DOLBY_VISION_EXPLANATION =
   "This video couldn't play in Dolby Vision, so the HDR version is playing."
+const AUDIO_TRACK_SWITCHED_EXPLANATION =
+  'The audio track you chose plays in a converted version, so Quality changed to Auto.'
+const HDR_NOT_PLAYED_EXPLANATION =
+  "This video couldn't play in HDR at this quality, so it's playing in SDR."
+const HDR_NOT_KEPT_EXPLANATION =
+  "This video couldn't stay in HDR at this quality, so it's playing in SDR."
+const AUTO_HDR_NOT_KEPT_EXPLANATION = "This video couldn't stay in HDR, so it's playing in SDR."
+const AUDIO_SWITCH_REFUSED = "The audio track you chose couldn't play, so the audio didn't change."
 const ORIGINAL_CHANGED_TO_AUTO: Partial<PlaybackChoices> = {
   requestedChoice: 'ORIGINAL',
   playbackChoice: 'AUTO',
@@ -187,7 +184,10 @@ function servePlaybackChoices({
   videoRange = () => 'SDR',
 }: {
   playing?: (requested: VideoQuality) => VideoQuality
-  formatChange?: (requested: VideoQuality) => PlaybackFormatChange | null
+  formatChange?: (
+    requested: VideoQuality,
+    options: StreamingOptionsInput,
+  ) => PlaybackFormatChange | null
   offered?: VideoQuality[]
   sourceRange?: VideoRange
   videoRange?: (options: StreamingOptionsInput) => VideoRange
@@ -216,7 +216,7 @@ function servePlaybackChoices({
               sourceRange,
               requestedChoice: requested,
               playbackChoice: playing(requested),
-              formatChange: formatChange(requested),
+              formatChange: formatChange(requested, options ?? {}),
               offeredChoices: offered,
             }),
             userErrors: [],
@@ -282,6 +282,24 @@ function replaceTheRefusedStream(
   )
 }
 
+// The status read after a failed segment answers the playback session `id` on another stream,
+// with `choices`.
+function moveToAnotherStream(
+  id: string,
+  choices: Partial<PlaybackChoices> & { sourceRange?: VideoRange },
+  stream: Parameters<typeof readyPlaybackSession>[0]['streamSession'] = replacementStream(2),
+) {
+  server.use(
+    graphql.query('PlaybackSession', () =>
+      HttpResponse.json({
+        data: { playbackSession: readyPlaybackSession({ id, streamSession: stream, ...choices }) },
+      }),
+    ),
+  )
+  const onError = hls.on.mock.calls.findLast(([event]) => event === 'hlsError')?.[1]
+  act(() => onError?.('hlsError', { fatal: false, type: 'networkError', response: { code: 503 } }))
+}
+
 // What a player raises when the browser cannot play the stream's codecs, on the latest stream.
 function refuseTheStreamsFormat() {
   const onError = hls.on.mock.calls.findLast(([event]) => event === 'hlsError')?.[1]
@@ -295,18 +313,64 @@ function refuseTheStreamsFormat() {
   )
 }
 
-function notice(): HTMLElement {
-  return screen.getByRole('status')
+function qualityChip(): HTMLElement {
+  return screen.getByRole('button', { name: /^Quality/ })
+}
+
+function audioChip(): HTMLElement {
+  return screen.getByRole('button', { name: /^Audio/ })
+}
+
+// A control carries a caution while the symbol shows on it and its description is the message.
+function expectCaution(chip: HTMLElement, message: string) {
+  expect(within(chip).queryByTestId('caution-badge')).toBeInTheDocument()
+  expect(chip).toHaveAccessibleDescription(message)
+}
+
+function expectNoCaution(chip: HTMLElement) {
+  expect(within(chip).queryByTestId('caution-badge')).not.toBeInTheDocument()
+  expect(chip).toHaveAccessibleDescription('')
+}
+
+// The message at the top of an open picker, as the viewer reads it, and as the menu's description.
+function expectMessageIn(menu: HTMLElement, message: string) {
+  expect(screen.getByRole('paragraph')).toHaveTextContent(message)
+  expect(screen.getByRole('paragraph')).toBeVisible()
+  expect(menu).toHaveAccessibleDescription(message)
+}
+
+// Every text that the status region, which announces politely, announces from here on, in order. A
+// text that stays in the region is announced once.
+function watchAnnouncements(): string[] {
+  const announced: string[] = []
+  const region = screen.getByRole('status')
+  new MutationObserver((records) => {
+    for (const { addedNodes } of records) {
+      announced.push(...Array.from(addedNodes, (node) => node.textContent ?? ''))
+    }
+  }).observe(region, { childList: true, subtree: true })
+  return announced
+}
+
+// MutationObserver reports after the task that changed the region.
+async function settledAnnouncements(announced: string[]): Promise<string[]> {
+  await act(async () => undefined)
+  return announced
 }
 
 async function openQualityMenu(user: UserEvent): Promise<HTMLElement> {
-  return openPicker(user, screen.getByRole('button', { name: /^Quality/ }))
+  return openPicker(user, qualityChip())
 }
 
+// Each marked row's label, with the explanation its mark carries, or with "the message" when the
+// message at the top of the menu explains it instead.
 function marksIn(menu: HTMLElement): string[] {
   return within(menu)
-    .queryAllByRole('img')
-    .map((mark) => `${mark.closest('[role="menuitemradio"]')?.textContent}: ${mark.ariaLabel}`)
+    .queryAllByTestId('mark')
+    .map((mark) => {
+      const explanation = within(mark).queryByRole('img')?.ariaLabel ?? 'the message'
+      return `${mark.closest('[role="menuitemradio"]')?.textContent}: ${explanation}`
+    })
 }
 
 // The stream at `streamUrl` attached, loaded and shows its first frame.
@@ -6267,7 +6331,7 @@ describe('Player', () => {
 
       expect(video.paused).toBe(true)
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-      expect(notice()).toBeEmptyDOMElement()
+      expectNoCaution(qualityChip())
     })
 
     it('shouldReportStoppedOnceWhenTheElementAlsoEndsAtTheRealEnd', async () => {
@@ -7126,7 +7190,16 @@ describe('Player', () => {
   })
 
   describe('format changes', () => {
-    it('shouldSelectAutoAndShowTheNoticeWhenOriginalsCopyFallsBackToAnEncode', async () => {
+    // Original falls back to Auto, then the viewer picks 720p, which plays as asked: the caution
+    // goes, and Original keeps a mark that explains itself.
+    async function markOriginalThenPlay720p() {
+      const watched = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      await pickQuality(watched.user, '720p')
+      await showingVideo(choiceStreamUrl(3))
+      return watched
+    }
+
+    it('shouldSelectAutoAndShowTheCautionWhenOriginalsCopyFallsBackToAnEncode', async () => {
       servePlaybackChoices()
       const replacement = replacementStream(1)
       server.use(
@@ -7165,44 +7238,47 @@ describe('Player', () => {
       await showingVideo(choiceStreamUrl(1))
       await pickQuality(user, 'Original')
       await showingVideo(choiceStreamUrl(2))
-      expect(notice()).toBeEmptyDOMElement()
+      expectNoCaution(qualityChip())
 
       refuseTheStreamsFormat()
 
       await showingVideo(replacement.streamUrl)
-      expect(notice().textContent).toBe(CHANGED_TO_AUTO_NOTICE)
-      expect(screen.getByRole('button', { name: 'Quality: Auto' })).toBeInTheDocument()
+      expectCaution(screen.getByRole('button', { name: 'Quality: Auto' }), ORIGINAL_EXPLANATION)
     })
 
-    it('shouldShowTheNoticeAndSelectAutoWhenOriginalStartsWithAnEncode', async () => {
-      servePlaybackChoices({
-        playing: (requested) => (requested === 'ORIGINAL' ? 'AUTO' : requested),
-        formatChange: (requested) => (requested === 'ORIGINAL' ? 'STARTED_WITH_ENCODE' : null),
-      })
-      const { user } = renderWithProviders(
-        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
-      )
-      await showingVideo(choiceStreamUrl(1))
+    it.each(['DIRECT_PLAY_FAILED', 'STARTED_WITH_ENCODE'] as const)(
+      'shouldShowTheCautionAndSelectAutoWhenOriginalChangesToAutoFor(%s)',
+      async (change) => {
+        servePlaybackChoices({
+          playing: (requested) => (requested === 'ORIGINAL' ? 'AUTO' : requested),
+          formatChange: (requested) => (requested === 'ORIGINAL' ? change : null),
+        })
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        await showingVideo(choiceStreamUrl(1))
 
-      await pickQuality(user, 'Original')
+        await pickQuality(user, 'Original')
 
-      await showingVideo(choiceStreamUrl(2))
-      expect(notice().textContent).toBe(CHANGED_TO_AUTO_NOTICE)
-      expect(screen.getByRole('button', { name: 'Quality: Auto' })).toBeInTheDocument()
-    })
+        await showingVideo(choiceStreamUrl(2))
+        expectCaution(screen.getByRole('button', { name: 'Quality: Auto' }), ORIGINAL_EXPLANATION)
+      },
+    )
 
-    it('shouldKeepTheFixedQualityAndOmitTheAutoSentenceWhenItsCopyFallsBack', async () => {
+    it('shouldKeepTheFixedQualityAndShowItsCautionWhenItsCopyFallsBack', async () => {
       await watchAFallback('720p', FIXED_QUALITY_CONVERTED)
 
-      expect(notice().textContent).toBe(CONVERTED_NOTICE)
-      expect(screen.getByRole('button', { name: 'Quality: 720p' })).toBeInTheDocument()
+      expectCaution(
+        screen.getByRole('button', { name: 'Quality: 720p' }),
+        FIXED_QUALITY_EXPLANATION,
+      )
     })
 
     it.each([
       { picked: 'Original', requested: 'ORIGINAL' },
       { picked: '720p', requested: 'HIGH_720P' },
     ] as const)(
-      'shouldShowTheDolbyVisionNoticeAndKeepTheSelectionWhenDolbyVisionIsStripped(picked: $picked)',
+      'shouldShowTheDolbyVisionCautionAndKeepTheSelectionWhenDolbyVisionIsStripped(picked: $picked)',
       async ({ picked, requested }) => {
         await watchAFallback(picked, {
           requestedChoice: requested,
@@ -7210,12 +7286,14 @@ describe('Player', () => {
           formatChange: 'DOLBY_VISION_STRIPPED',
         })
 
-        expect(notice().textContent).toBe(DOLBY_VISION_NOTICE)
-        expect(screen.getByRole('button', { name: `Quality: ${picked}` })).toBeInTheDocument()
+        expectCaution(
+          screen.getByRole('button', { name: `Quality: ${picked}` }),
+          DOLBY_VISION_EXPLANATION,
+        )
       },
     )
 
-    it('shouldHideTheNoticeAfterSixSecondsWithoutPausingPlayback', async () => {
+    it('shouldKeepTheCautionWithoutATimeLimitAndWithoutPausingPlayback', async () => {
       servePlaybackChoices()
       replaceTheRefusedStream(FIXED_QUALITY_CONVERTED)
       const { user } = renderWithProviders(
@@ -7231,53 +7309,38 @@ describe('Player', () => {
       refuseTheStreamsFormat()
       await showingVideo(replacementStream(1).streamUrl)
       loadMetadata(video)
-      expect(notice().textContent).toBe(CONVERTED_NOTICE)
+      expectCaution(qualityChip(), FIXED_QUALITY_EXPLANATION)
 
-      await act(async () => vi.advanceTimersByTimeAsync(5_900))
-      expect(notice().textContent).toBe(CONVERTED_NOTICE)
-      await act(async () => vi.advanceTimersByTimeAsync(100))
-      expect(notice()).toBeEmptyDOMElement()
+      await act(async () => vi.advanceTimersByTimeAsync(60_000))
+
+      expectCaution(qualityChip(), FIXED_QUALITY_EXPLANATION)
       expect(video.paused).toBe(false)
     })
 
-    it('shouldShowTheNoticeOnceWhenTheSameChangeMovesToAnotherStream', async () => {
+    it('shouldAnnounceTheCautionOnceWithoutMovingFocusWhenTheSameChangeMovesToAnotherStream', async () => {
       servePlaybackChoices()
       replaceTheRefusedStream(ORIGINAL_CHANGED_TO_AUTO)
-      server.use(
-        graphql.query('PlaybackSession', () =>
-          HttpResponse.json({
-            data: {
-              playbackSession: readyPlaybackSession({
-                id: 'playback-2',
-                streamSession: replacementStream(2),
-                ...ORIGINAL_CHANGED_TO_AUTO,
-              }),
-            },
-          }),
-        ),
-      )
       const { user } = renderWithProviders(
         <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
       )
+      const announced = watchAnnouncements()
       await showingVideo(choiceStreamUrl(1))
       await pickQuality(user, 'Original')
       await showingVideo(choiceStreamUrl(2))
-      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      const focused = document.activeElement
       refuseTheStreamsFormat()
       await showingVideo(replacementStream(1).streamUrl)
-      await act(async () => vi.advanceTimersByTimeAsync(6_000))
-      expect(notice()).toBeEmptyDOMElement()
+      expect(await settledAnnouncements(announced)).toEqual([ORIGINAL_EXPLANATION])
 
-      const onError = hls.on.mock.calls.findLast(([event]) => event === 'hlsError')?.[1]
-      act(() =>
-        onError?.('hlsError', { fatal: false, type: 'networkError', response: { code: 503 } }),
-      )
+      moveToAnotherStream('playback-2', ORIGINAL_CHANGED_TO_AUTO)
 
       await showingVideo(replacementStream(2).streamUrl)
-      expect(notice()).toBeEmptyDOMElement()
+      expect(await settledAnnouncements(announced)).toEqual([ORIGINAL_EXPLANATION])
+      expectCaution(qualityChip(), ORIGINAL_EXPLANATION)
+      expect(document.activeElement).toBe(focused)
     })
 
-    it('shouldReplaceTheNoticeAndStartItsTimeAgainWhenTheCopyWithoutDolbyVisionAlsoFallsBack', async () => {
+    it('shouldReplaceTheCautionsMessageAndAnnounceItWhenTheCopyWithoutDolbyVisionAlsoFallsBack', async () => {
       servePlaybackChoices()
       replaceTheRefusedStream({
         requestedChoice: 'ORIGINAL',
@@ -7287,23 +7350,23 @@ describe('Player', () => {
       const { user } = renderWithProviders(
         <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
       )
+      const announced = watchAnnouncements()
       await showingVideo(choiceStreamUrl(1))
       await pickQuality(user, 'Original')
       await showingVideo(choiceStreamUrl(2))
-      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
       refuseTheStreamsFormat()
       await showingVideo(replacementStream(1).streamUrl)
-      expect(notice().textContent).toBe(DOLBY_VISION_NOTICE)
-      await act(async () => vi.advanceTimersByTimeAsync(4_000))
+      expectCaution(qualityChip(), DOLBY_VISION_EXPLANATION)
       replaceTheRefusedStream(ORIGINAL_CHANGED_TO_AUTO, replacementStream(2))
 
       refuseTheStreamsFormat()
       await showingVideo(replacementStream(2).streamUrl)
 
-      expect(notice().textContent).toBe(CHANGED_TO_AUTO_NOTICE)
-      await act(async () => vi.advanceTimersByTimeAsync(5_900))
-      expect(notice().textContent).toBe(CHANGED_TO_AUTO_NOTICE)
-      expect(screen.getByRole('button', { name: 'Quality: Auto' })).toBeInTheDocument()
+      expectCaution(screen.getByRole('button', { name: 'Quality: Auto' }), ORIGINAL_EXPLANATION)
+      expect(await settledAnnouncements(announced)).toEqual([
+        DOLBY_VISION_EXPLANATION,
+        ORIGINAL_EXPLANATION,
+      ])
     })
 
     it.each([
@@ -7311,13 +7374,13 @@ describe('Player', () => {
         picked: 'Original',
         choices: ORIGINAL_CHANGED_TO_AUTO,
         selected: 'Auto',
-        mark: `Original: ${ORIGINAL_EXPLANATION}`,
+        message: ORIGINAL_EXPLANATION,
       },
       {
         picked: '720p',
         choices: FIXED_QUALITY_CONVERTED,
         selected: '720p',
-        mark: `720p: ${FIXED_QUALITY_EXPLANATION}`,
+        message: FIXED_QUALITY_EXPLANATION,
       },
       {
         picked: 'Original',
@@ -7327,21 +7390,72 @@ describe('Player', () => {
           formatChange: 'DOLBY_VISION_STRIPPED',
         },
         selected: 'Original',
-        mark: `Original: ${DOLBY_VISION_EXPLANATION}`,
+        message: DOLBY_VISION_EXPLANATION,
       },
     ] as const)(
-      'shouldMarkTheChoiceWhoseOutputFellBackWithItsExplanation(picked: $picked, plays: $selected)',
-      async ({ picked, choices, selected, mark }) => {
+      'shouldMarkTheChoiceWhoseOutputFellBackAndExplainItAtTheTopOfTheMenu(picked: $picked, plays: $selected)',
+      async ({ picked, choices, selected, message }) => {
         const { user } = await watchAFallback(picked, choices)
 
         const menu = await openQualityMenu(user)
 
-        expect(marksIn(menu)).toEqual([mark])
+        expectMessageIn(menu, message)
+        expect(marksIn(menu)).toEqual([`${picked}: the message`])
         expect(within(menu).getByRole('menuitemradio', { checked: true }).textContent).toBe(
           selected,
         )
       },
     )
+
+    it('shouldShowTheMessageAsTheKeyboardOpensTheMenuWithFocusOnTheSelectedRow', async () => {
+      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      qualityChip().focus()
+
+      await user.keyboard('{Enter}')
+
+      const menu = screen.getByRole('menu')
+      expectMessageIn(menu, ORIGINAL_EXPLANATION)
+      expect(within(menu).getByRole('menuitemradio', { name: 'Auto' })).toHaveFocus()
+    })
+
+    it('shouldNameTheRowThatTheMessageExplainsByItsLabelAloneAndExplainItNowhereElse', async () => {
+      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      const menu = await openQualityMenu(user)
+      const original = within(menu).getByRole('menuitemradio', { name: 'Original' })
+
+      await user.hover(original)
+      await user.keyboard('{Home}')
+
+      expect(original).toHaveFocus()
+      // Beside the message, only the out-of-sight description and announcement hold the words.
+      expect(screen.getAllByText(ORIGINAL_EXPLANATION, { ignore: '[hidden], output *' })).toEqual([
+        screen.getByRole('paragraph'),
+      ])
+    })
+
+    it('shouldKeepTheCautionWhileTheViewerOpensAndClosesTheQualityMenu', async () => {
+      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+
+      await openQualityMenu(user)
+      await user.keyboard('{Escape}')
+
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+      expectCaution(qualityChip(), ORIGINAL_EXPLANATION)
+    })
+
+    it('shouldOpenTheQualityMenuThatCarriesACautionWhenItOffersOneChoice', async () => {
+      servePlaybackChoices({ offered: ['AUTO'], formatChange: () => 'HDR_NOT_KEPT' })
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await showingVideo(choiceStreamUrl(1))
+      expect(qualityChip()).not.toHaveAttribute('aria-disabled')
+
+      const menu = await openQualityMenu(user)
+
+      expectMessageIn(menu, AUTO_HDR_NOT_KEPT_EXPLANATION)
+      expect(marksIn(menu)).toEqual(['Auto: the message'])
+    })
 
     it('shouldReplaceTheMarksExplanationWhenTheCopyWithoutDolbyVisionAlsoFallsBack', async () => {
       const { user } = await watchAFallback('Original', {
@@ -7350,18 +7464,20 @@ describe('Player', () => {
         formatChange: 'DOLBY_VISION_STRIPPED',
       })
       replaceTheRefusedStream(ORIGINAL_CHANGED_TO_AUTO, replacementStream(2))
-
       refuseTheStreamsFormat()
       await showingVideo(replacementStream(2).streamUrl)
+
+      await pickQuality(user, '720p')
+      await showingVideo(choiceStreamUrl(3))
 
       expect(marksIn(await openQualityMenu(user))).toEqual([`Original: ${ORIGINAL_EXPLANATION}`])
     })
 
     it('shouldReadTheExplanationOnceWithTheMarkedRowForAssistiveTechnology', async () => {
-      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      const { user } = await markOriginalThenPlay720p()
       const menu = await openQualityMenu(user)
 
-      await user.keyboard('{ArrowUp}')
+      await user.keyboard('{Home}')
 
       const row = within(menu).getByRole('menuitemradio', {
         name: `Original. ${ORIGINAL_EXPLANATION}`,
@@ -7371,11 +7487,11 @@ describe('Player', () => {
     })
 
     it('shouldExplainTheMarkWhileKeyboardFocusIsOnTheMarkedRow', async () => {
-      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      const { user } = await markOriginalThenPlay720p()
       await openQualityMenu(user)
       expect(screen.getByText(ORIGINAL_EXPLANATION)).not.toBeVisible()
 
-      await user.keyboard('{ArrowUp}')
+      await user.keyboard('{Home}')
       expect(screen.getByText(ORIGINAL_EXPLANATION)).toBeVisible()
 
       await user.keyboard('{ArrowDown}')
@@ -7383,7 +7499,7 @@ describe('Player', () => {
     })
 
     it('shouldExplainTheMarkWhileThePointerHoversTheMarkedRow', async () => {
-      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      const { user } = await markOriginalThenPlay720p()
       const menu = await openQualityMenu(user)
       const row = within(menu).getByRole('menuitemradio', { name: /^Original/ })
 
@@ -7395,7 +7511,7 @@ describe('Player', () => {
     })
 
     it('shouldExplainTheMarkOnATapWithoutPickingItsChoice', async () => {
-      const { user, log } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      const { user, log } = await markOriginalThenPlay720p()
       const menu = await openQualityMenu(user)
       const row = within(menu).getByRole('menuitemradio', { name: /^Original/ })
 
@@ -7406,7 +7522,19 @@ describe('Player', () => {
       expect(log.filter((entry) => entry.startsWith('create'))).toEqual([
         'create AUTO',
         'create ORIGINAL',
+        'create HIGH_720P',
       ])
+    })
+
+    it('shouldPickTheRowThatTheMessageExplainsOnATapOnItsMark', async () => {
+      const { user, log } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      const menu = await openQualityMenu(user)
+      const row = within(menu).getByRole('menuitemradio', { name: 'Original' })
+
+      tap(within(row).getByTestId('mark'))
+
+      await showingVideo(choiceStreamUrl(3))
+      expect(log.slice(-2)).toEqual(['destroy playback-2', 'create ORIGINAL'])
     })
 
     it.each([
@@ -7424,29 +7552,26 @@ describe('Player', () => {
         },
       },
     ])('shouldPickTheMarkedChoiceOn($way)', async ({ press }) => {
-      const { user, log } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      const { user, log } = await markOriginalThenPlay720p()
       const menu = await openQualityMenu(user)
 
       await press(within(menu).getByRole('menuitemradio', { name: /^Original/ }), user)
 
-      await showingVideo(choiceStreamUrl(3))
-      expect(log.slice(-2)).toEqual(['destroy playback-2', 'create ORIGINAL'])
+      await showingVideo(choiceStreamUrl(4))
+      expect(log.slice(-2)).toEqual(['destroy playback-3', 'create ORIGINAL'])
     })
 
     it('shouldStartOriginalAfreshWhenTheViewerPicksItAgainAfterAFallback', async () => {
       const { user, log } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
 
-      await pickQuality(user, `Original. ${ORIGINAL_EXPLANATION}`)
+      await pickQuality(user, 'Original')
 
       await showingVideo(choiceStreamUrl(3))
       expect(log.slice(-2)).toEqual(['destroy playback-2', 'create ORIGINAL'])
     })
 
     it('shouldKeepTheMarkBesideOriginalWhenTheViewerPicksAFixedQualityAfterAFallback', async () => {
-      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
-
-      await pickQuality(user, '720p')
-      await showingVideo(choiceStreamUrl(3))
+      const { user } = await markOriginalThenPlay720p()
 
       const menu = await openQualityMenu(user)
       expect(marksIn(menu)).toEqual([`Original: ${ORIGINAL_EXPLANATION}`])
@@ -7456,26 +7581,26 @@ describe('Player', () => {
     it('shouldClearTheMarkWhenThePickedOriginalPlaysWithoutAFallback', async () => {
       const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
 
-      await pickQuality(user, `Original. ${ORIGINAL_EXPLANATION}`)
+      await pickQuality(user, 'Original')
       await showingVideo(choiceStreamUrl(3))
 
       expect(marksIn(await openQualityMenu(user))).toEqual([])
     })
 
-    it('shouldShowTheNoticeAgainWhenOriginalPickedAfreshFallsBackAgain', async () => {
+    it('shouldShowTheCautionAgainWhenOriginalPickedAfreshFallsBackAgain', async () => {
       const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
-      await pickQuality(user, `Original. ${ORIGINAL_EXPLANATION}`)
+      await pickQuality(user, 'Original')
       await showingVideo(choiceStreamUrl(3))
-      expect(notice()).toBeEmptyDOMElement()
+      expectNoCaution(qualityChip())
       replaceTheRefusedStream(ORIGINAL_CHANGED_TO_AUTO, replacementStream(2))
 
       refuseTheStreamsFormat()
 
       await showingVideo(replacementStream(2).streamUrl)
-      expect(notice().textContent).toBe(CHANGED_TO_AUTO_NOTICE)
+      expectCaution(qualityChip(), ORIGINAL_EXPLANATION)
       const menu = await openQualityMenu(user)
       expect(within(menu).getByRole('menuitemradio', { checked: true }).textContent).toBe('Auto')
-      expect(marksIn(menu)).toEqual([`Original: ${ORIGINAL_EXPLANATION}`])
+      expect(marksIn(menu)).toEqual(['Original: the message'])
     })
 
     it('shouldForgetTheMarksWhenTheNextMediaFileStarts', async () => {
@@ -7494,7 +7619,7 @@ describe('Player', () => {
       expect(marksIn(await openQualityMenu(user))).toEqual([])
     })
 
-    it('shouldShowTheNoticeOnceTheReplacementShowsItsFirstFrame', async () => {
+    it('shouldShowTheCautionOnceTheReplacementShowsItsFirstFrame', async () => {
       servePlaybackChoices()
       replaceTheRefusedStream(FIXED_QUALITY_CONVERTED)
       const { user } = renderWithProviders(
@@ -7506,14 +7631,14 @@ describe('Player', () => {
       refuseTheStreamsFormat()
       const video = await attachedVideo(replacementStream(1).streamUrl)
       loadMetadata(video)
-      expect(notice()).toBeEmptyDOMElement()
+      expectNoCaution(qualityChip())
 
       loadFirstFrame(video)
 
-      expect(notice().textContent).toBe(CONVERTED_NOTICE)
+      expectCaution(qualityChip(), FIXED_QUALITY_EXPLANATION)
     })
 
-    it('shouldShowNoNoticeWhenTheReplacementFailsBeforeItsFirstFrame', async () => {
+    it('shouldShowNoCautionWhenTheReplacementFailsBeforeItsFirstFrame', async () => {
       servePlaybackChoices()
       replaceTheRefusedStream(FIXED_QUALITY_CONVERTED)
       const { user } = renderWithProviders(
@@ -7528,19 +7653,21 @@ describe('Player', () => {
       raiseHlsFatalError()
 
       expect(await screen.findByRole('alert')).toBeInTheDocument()
-      expect(notice()).toBeEmptyDOMElement()
+      expectNoCaution(qualityChip())
     })
 
-    it('shouldClearTheNoticeWhenTheViewerPicksAnotherChoice', async () => {
+    it('shouldClearTheCautionWhenTheViewerPicksAnotherChoiceThatPlaysAsAsked', async () => {
       const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
-      expect(notice().textContent).toBe(CHANGED_TO_AUTO_NOTICE)
+      expectCaution(qualityChip(), ORIGINAL_EXPLANATION)
 
       await pickQuality(user, '720p')
+      expectNoCaution(screen.getByRole('button', { name: 'Quality: 720p' }))
+      await showingVideo(choiceStreamUrl(3))
 
-      expect(notice()).toBeEmptyDOMElement()
+      expectNoCaution(screen.getByRole('button', { name: 'Quality: 720p' }))
     })
 
-    it('shouldClearTheNoticeWhenTheNextMediaFileStarts', async () => {
+    it('shouldClearTheCautionWhenTheNextMediaFileStarts', async () => {
       servePlaybackChoices({
         playing: (requested) => (requested === 'ORIGINAL' ? 'AUTO' : requested),
         formatChange: (requested) => (requested === 'ORIGINAL' ? 'STARTED_WITH_ENCODE' : null),
@@ -7549,16 +7676,17 @@ describe('Player', () => {
       await showingVideo(choiceStreamUrl(1))
       await pickQuality(user, 'Original')
       await showingVideo(choiceStreamUrl(2))
-      expect(notice().textContent).toBe(CHANGED_TO_AUTO_NOTICE)
+      expectCaution(qualityChip(), ORIGINAL_EXPLANATION)
 
       await user.click(screen.getByRole('button', { name: 'Next' }))
 
-      expect(notice()).toBeEmptyDOMElement()
+      expectNoCaution(qualityChip())
+      expect(screen.getByRole('status')).toBeEmptyDOMElement()
     })
 
     it('shouldKeepTheMarkUntilThePickedOriginalShowsItsFirstFrame', async () => {
       const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
-      await pickQuality(user, `Original. ${ORIGINAL_EXPLANATION}`)
+      await pickQuality(user, 'Original')
       const video = await attachedVideo(choiceStreamUrl(3))
       expect(marksIn(await openQualityMenu(user))).toEqual([`Original: ${ORIGINAL_EXPLANATION}`])
       await user.keyboard('{Escape}')
@@ -7569,16 +7697,16 @@ describe('Player', () => {
     })
 
     it('shouldExplainTheFocusedMarkWhileThePointerRestsOnAnUnmarkedRow', async () => {
-      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      const { user } = await markOriginalThenPlay720p()
       const menu = await openQualityMenu(user)
       await user.hover(within(menu).getByRole('menuitemradio', { name: 'Auto' }))
 
-      await user.keyboard('{ArrowUp}')
+      await user.keyboard('{Home}')
 
       expect(screen.getByText(ORIGINAL_EXPLANATION)).toBeVisible()
     })
 
-    it('shouldShowNoNoticeWhenAutoRecoversFromAFailedCopy', async () => {
+    it('shouldShowNoCautionWhenAutoRecoversFromAFailedCopy', async () => {
       servePlaybackChoices()
       replaceTheRefusedStream({
         requestedChoice: 'AUTO',
@@ -7591,8 +7719,7 @@ describe('Player', () => {
       refuseTheStreamsFormat()
 
       await showingVideo(replacementStream(1).streamUrl)
-      expect(notice()).toBeEmptyDOMElement()
-      expect(screen.getByRole('button', { name: 'Quality: Auto' })).toBeInTheDocument()
+      expectNoCaution(screen.getByRole('button', { name: 'Quality: Auto' }))
     })
   })
 
@@ -7622,13 +7749,18 @@ describe('Player', () => {
       platform = showingHdr,
       videoRange = playsHdrUnlessSdrIsChosen,
       playing,
+      formatChange,
     }: {
       picked: string
       platform?: () => PlaybackPlatform
       videoRange?: (options: StreamingOptionsInput) => VideoRange
       playing?: (requested: VideoQuality) => VideoQuality
+      formatChange?: (
+        requested: VideoQuality,
+        options: StreamingOptionsInput,
+      ) => PlaybackFormatChange | null
     }) {
-      const log = servePlaybackChoices({ sourceRange: 'PQ', videoRange, playing })
+      const log = servePlaybackChoices({ sourceRange: 'PQ', videoRange, playing, formatChange })
       const { user } = renderWithProviders(
         <Player playbackPlatform={platform} mediaFileId="abcd" />,
       )
@@ -7811,7 +7943,7 @@ describe('Player', () => {
       refuseTheStreamsFormat()
       await showingVideo(replacementStream(1).streamUrl)
 
-      expect(notice().textContent).toBe(CONVERTED_NOTICE)
+      expectCaution(qualityChip(), FIXED_QUALITY_EXPLANATION)
       expect(hdrToggleIn(await openQualityMenu(user))).toHaveAttribute('aria-checked', 'false')
     })
 
@@ -7865,56 +7997,122 @@ describe('Player', () => {
       expect(log).toHaveLength(3)
     })
 
-    it('shouldShowTheConvertedNoticeWhenAFixedQualityPlaysSdrUnderTheViewersHdrChoice', async () => {
+    const sdrUnlessAuto = ({ quality }: StreamingOptionsInput): VideoRange =>
+      quality === 'AUTO' ? 'PQ' : 'SDR'
+    // As the server answers HDR asked for in 720p with SDR.
+    const hdrNotKeptIn720p = (
+      requested: VideoQuality,
+      { dynamicRange }: StreamingOptionsInput,
+    ): PlaybackFormatChange | null =>
+      requested === 'HIGH_720P' && dynamicRange === 'HDR' ? 'HDR_NOT_KEPT' : null
+    const HDR_NOT_KEPT_IN_720P: Partial<PlaybackChoices> & { sourceRange: VideoRange } = {
+      sourceRange: 'PQ',
+      requestedChoice: 'HIGH_720P',
+      playbackChoice: 'HIGH_720P',
+      formatChange: 'HDR_NOT_KEPT',
+    }
+    const SDR_STREAM = { ...replacementStream(2), videoRange: 'SDR' } as const
+
+    it('shouldShowTheHdrCautionWhenTheServerSaysAFixedQualityStartedInSdrUnderTheHdrChoice', async () => {
       const { user, log } = await pickForAnHdrSource({
         picked: '720p',
-        videoRange: ({ quality }) => (quality === 'AUTO' ? 'PQ' : 'SDR'),
+        videoRange: sdrUnlessAuto,
+        formatChange: hdrNotKeptIn720p,
       })
 
       expect(log.at(-1)).toBe('create HIGH_720P HDR')
-      expect(notice().textContent).toBe(CONVERTED_NOTICE)
+      expectCaution(
+        screen.getByRole('button', { name: 'Quality: 720p' }),
+        HDR_NOT_PLAYED_EXPLANATION,
+      )
       const menu = await openQualityMenu(user)
+      expectMessageIn(menu, HDR_NOT_PLAYED_EXPLANATION)
+      expect(marksIn(menu)).toEqual(['720p: the message'])
       expect(hdrToggleIn(menu)).toHaveAttribute('aria-checked', 'false')
-      expect(marksIn(menu)).toEqual([])
     })
 
-    it('shouldShowTheSdrNoticeOnceWhenThePlaybackSessionMovesToAnotherStream', async () => {
-      const sdrUnderHdrChoice = ({ quality }: StreamingOptionsInput): VideoRange =>
-        quality === 'AUTO' ? 'PQ' : 'SDR'
-      server.use(
-        graphql.query('PlaybackSession', () =>
-          HttpResponse.json({
-            data: {
-              playbackSession: readyPlaybackSession({
-                id: 'playback-2',
-                streamSession: { ...replacementStream(2), videoRange: 'SDR' },
-                sourceRange: 'PQ',
-                requestedChoice: 'HIGH_720P',
-                playbackChoice: 'HIGH_720P',
-              }),
-            },
-          }),
-        ),
+    it('shouldShowNoCautionWhenAFixedQualityPlaysSdrUnderTheHdrChoiceWithoutAFormatChange', async () => {
+      const { user } = await pickForAnHdrSource({ picked: '720p', videoRange: sdrUnlessAuto })
+
+      expectNoCaution(qualityChip())
+      expect(marksIn(await openQualityMenu(user))).toEqual([])
+    })
+
+    it('shouldKeepTheHdrCautionsWordsAndAnnounceThemOnceWhenThePlaybackSessionMovesToAnotherStream', async () => {
+      servePlaybackChoices({
+        sourceRange: 'PQ',
+        videoRange: sdrUnlessAuto,
+        formatChange: hdrNotKeptIn720p,
+      })
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={showingHdr} mediaFileId="abcd" />,
       )
-      servePlaybackChoices({ sourceRange: 'PQ', videoRange: sdrUnderHdrChoice })
+      const announced = watchAnnouncements()
+      await showingVideo(choiceStreamUrl(1))
+      await pickQuality(user, '720p')
+      await showingVideo(choiceStreamUrl(2))
+
+      moveToAnotherStream('playback-2', HDR_NOT_KEPT_IN_720P, SDR_STREAM)
+
+      await showingVideo(SDR_STREAM.streamUrl)
+      expectCaution(qualityChip(), HDR_NOT_PLAYED_EXPLANATION)
+      expect(await settledAnnouncements(announced)).toEqual([HDR_NOT_PLAYED_EXPLANATION])
+    })
+
+    it('shouldSayHdrCouldNotStayWhenAFixedQualityThatShowedHdrGoesOnInSdr', async () => {
+      const { user } = await pickForAnHdrSource({ picked: '720p' })
+      expectNoCaution(qualityChip())
+
+      moveToAnotherStream('playback-2', HDR_NOT_KEPT_IN_720P, SDR_STREAM)
+
+      await showingVideo(SDR_STREAM.streamUrl)
+      expectCaution(screen.getByRole('button', { name: 'Quality: 720p' }), HDR_NOT_KEPT_EXPLANATION)
+      const menu = await openQualityMenu(user)
+      expect(marksIn(menu)).toEqual(['720p: the message'])
+      expect(hdrToggleIn(menu)).toHaveAttribute('aria-checked', 'false')
+    })
+
+    it('shouldMarkAutoAndSayHdrCouldNotStayWhenAutoGivesUpHdrForSdr', async () => {
+      servePlaybackChoices({ sourceRange: 'PQ', videoRange: playsHdrUnlessSdrIsChosen })
       const { user } = renderWithProviders(
         <Player playbackPlatform={showingHdr} mediaFileId="abcd" />,
       )
       await showingVideo(choiceStreamUrl(1))
-      await pickQuality(user, '720p')
-      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-      await showingVideo(choiceStreamUrl(2))
-      expect(notice().textContent).toBe(CONVERTED_NOTICE)
-      await act(async () => vi.advanceTimersByTimeAsync(6_000))
-      expect(notice()).toBeEmptyDOMElement()
 
-      const onError = hls.on.mock.calls.findLast(([event]) => event === 'hlsError')?.[1]
-      act(() =>
-        onError?.('hlsError', { fatal: false, type: 'networkError', response: { code: 503 } }),
+      moveToAnotherStream(
+        'playback-1',
+        {
+          sourceRange: 'PQ',
+          requestedChoice: 'AUTO',
+          playbackChoice: 'AUTO',
+          formatChange: 'HDR_NOT_KEPT',
+        },
+        SDR_STREAM,
       )
 
-      await showingVideo(replacementStream(2).streamUrl)
-      expect(notice()).toBeEmptyDOMElement()
+      await showingVideo(SDR_STREAM.streamUrl)
+      expectCaution(
+        screen.getByRole('button', { name: 'Quality: Auto' }),
+        AUTO_HDR_NOT_KEPT_EXPLANATION,
+      )
+      const menu = await openQualityMenu(user)
+      expectMessageIn(menu, AUTO_HDR_NOT_KEPT_EXPLANATION)
+      expect(marksIn(menu)).toEqual(['Auto: the message'])
+    })
+
+    it('shouldClearTheHdrCautionWhenTheViewerPicksAQualityThatPlaysAsAsked', async () => {
+      const { user, log } = await pickForAnHdrSource({
+        picked: '720p',
+        videoRange: sdrUnlessAuto,
+        formatChange: hdrNotKeptIn720p,
+      })
+
+      await pickQuality(user, '1080p')
+      await showingVideo(choiceStreamUrl(3))
+
+      expect(log.at(-1)).toBe('create FULL_HD_1080P SDR')
+      expectNoCaution(screen.getByRole('button', { name: 'Quality: 1080p' }))
+      expect(marksIn(await openQualityMenu(user))).toEqual([`720p: ${HDR_NOT_PLAYED_EXPLANATION}`])
     })
 
     it('shouldKeepTheHdrChoiceWhenTheViewerRetries', async () => {
@@ -7929,13 +8127,13 @@ describe('Player', () => {
       expect(log.at(-1)).toBe('create HIGH_720P SDR')
     })
 
-    it('shouldShowNoNoticeWhenAFixedQualityPlaysTheSdrTheViewerChose', async () => {
+    it('shouldShowNoCautionWhenAFixedQualityPlaysTheSdrTheViewerChose', async () => {
       const { user } = await pickForAnHdrSource({ picked: '720p' })
 
       await user.click(hdrToggleIn(await openQualityMenu(user)) as HTMLElement)
       await showingVideo(choiceStreamUrl(3))
 
-      expect(notice()).toBeEmptyDOMElement()
+      expectNoCaution(qualityChip())
     })
   })
 
@@ -8293,12 +8491,41 @@ describe('Player', () => {
         const { user } = renderEpisode()
         await directPlayAt(0)
         await chooseAudioTrack(user, { from: 'English', to: 'French' })
-        await waitFor(() => expect(notice()).toHaveTextContent(SWITCH_REFUSAL))
+        await waitFor(() => expectCaution(audioChip(), AUDIO_SWITCH_REFUSED))
 
         await chooseAudioTrack(user, { from: 'English', to: 'French' })
 
         await attachedVideo(replacementStream(1).streamUrl)
         await waitFor(() => expect(overrides).toEqual([{ itemId: 'e1', audioLanguage: 'FR' }]))
+      })
+
+      it('shouldClearTheAudioCautionWhenTheViewerPicksAnotherTrackAfterARefusal', async () => {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        const answers = [
+          () => ({
+            playbackSession: directPlayStill(),
+            userErrors: [
+              {
+                __typename: 'TranscodeCapacityUnavailableError' as const,
+                message: SWITCH_REFUSAL,
+              },
+            ],
+          }),
+          movedToHls,
+        ]
+        serveAudioTrackSwitch({ answer: () => (answers.shift() ?? movedToHls)() })
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        await directPlayAt(0)
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+        await waitFor(() => expectCaution(audioChip(), AUDIO_SWITCH_REFUSED))
+
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+
+        expectNoCaution(audioChip())
+        await attachedVideo(replacementStream(1).streamUrl)
+        expectNoCaution(audioChip())
       })
 
       it('shouldStoreOnlyTheTrackTheServerMovesToWhenTheViewerPicksAnotherBeforeItAnswers', async () => {
@@ -8384,7 +8611,7 @@ describe('Player', () => {
         expect(screen.queryByRole('alert')).not.toBeInTheDocument()
       })
 
-      it('shouldKeepDirectPlayingAndShowTheServersWordsWhenTheServerRefusesTheSwitch', async () => {
+      it('shouldKeepDirectPlayingAndShowACautionOnAudioWhenTheServerRefusesTheSwitch', async () => {
         serveDirectPlay({ audioTracks: TWO_TRACKS })
         serveAudioTrackSwitch({
           answer: () => ({
@@ -8401,10 +8628,19 @@ describe('Player', () => {
 
         await chooseAudioTrack(user, { from: 'English', to: 'French' })
 
-        await waitFor(() => expect(notice()).toHaveTextContent(SWITCH_REFUSAL))
+        await waitFor(() =>
+          expectCaution(
+            screen.getByRole('button', { name: 'Audio: English' }),
+            AUDIO_SWITCH_REFUSED,
+          ),
+        )
         expect(video).toHaveAttribute('src', SOURCE_FILE.streamUrl)
         expect(hls.loadSource).not.toHaveBeenCalled()
-        expect(screen.getByRole('button', { name: 'Audio: English' })).toBeInTheDocument()
+        expectNoCaution(qualityChip())
+        expect(screen.queryByText(SWITCH_REFUSAL)).not.toBeInTheDocument()
+        const menu = await openPicker(user, audioChip())
+        expectMessageIn(menu, AUDIO_SWITCH_REFUSED)
+        expect(marksIn(menu)).toEqual([])
       })
 
       it('shouldKeepDirectPlayingWhenTheServerKeepsTheSameStreamSession', async () => {
@@ -8917,7 +9153,7 @@ describe('Player', () => {
           recover(video)
           answered.resolve()
 
-          await waitFor(() => expect(notice()).toHaveTextContent(SWITCH_REFUSAL))
+          await waitFor(() => expectCaution(audioChip(), AUDIO_SWITCH_REFUSED))
           expect(video).toHaveAttribute('src', SOURCE_FILE.streamUrl)
           expect(video.currentTime).toBe(43)
           expect(screen.queryByRole('alert')).not.toBeInTheDocument()
@@ -9019,7 +9255,11 @@ describe('Player', () => {
 
         loadFirstFrame(video)
 
-        expect(notice()).toHaveTextContent(AUDIO_TRACK_SWITCHED_NOTICE)
+        expectCaution(
+          screen.getByRole('button', { name: 'Quality: Auto' }),
+          AUDIO_TRACK_SWITCHED_EXPLANATION,
+        )
+        expectNoCaution(audioChip())
       })
     })
 

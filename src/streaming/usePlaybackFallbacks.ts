@@ -1,144 +1,210 @@
-import { useCallback, useEffect, useState } from 'react'
-import type { PlaybackFormatChange, VideoQuality } from '../graphql/generated/graphql'
-import type { DynamicRangeChoice } from './hlsVideoPreference'
+import { useCallback, useState } from 'react'
+import type { VideoQuality } from '../graphql/generated/graphql'
 import type { QualityChoices } from './qualityChoices'
 
-const NOTICE_DURATION_MS = 6_000
-
-const CONVERTED =
-  "This video couldn't play in its original form, so a converted version is playing."
-const OPEN_THE_QUALITY_MENU = 'To choose another quality, open the Quality menu.'
-
-type Fallback = 'changed-to-auto' | 'converted' | 'dolby-vision-stripped' | 'audio-track-switched'
-
-const NOTICES: Record<Fallback, string> = {
-  'changed-to-auto': `${CONVERTED} Quality is now set to Auto. ${OPEN_THE_QUALITY_MENU}`,
-  converted: `${CONVERTED} ${OPEN_THE_QUALITY_MENU}`,
-  'dolby-vision-stripped':
-    "This video couldn't play in Dolby Vision, so the HDR version is playing.",
-  'audio-track-switched': `The audio track you chose plays in a converted version. Quality is now set to Auto. ${OPEN_THE_QUALITY_MENU}`,
-}
+type Fallback =
+  | 'changed-to-auto'
+  | 'converted'
+  | 'dolby-vision-stripped'
+  | 'audio-track-switched'
+  | 'hdr-not-played'
+  | 'hdr-not-kept'
+  | 'auto-hdr-not-kept'
 
 const EXPLANATIONS: Record<Fallback, string> = {
   'changed-to-auto': "This video couldn't play in its original form, so Quality changed to Auto.",
   converted:
     "This video couldn't play in its original form at this quality, so a converted version is playing.",
-  'dolby-vision-stripped': NOTICES['dolby-vision-stripped'],
+  'dolby-vision-stripped':
+    "This video couldn't play in Dolby Vision, so the HDR version is playing.",
   'audio-track-switched':
     'The audio track you chose plays in a converted version, so Quality changed to Auto.',
+  'hdr-not-played': "This video couldn't play in HDR at this quality, so it's playing in SDR.",
+  'hdr-not-kept': "This video couldn't stay in HDR at this quality, so it's playing in SDR.",
+  'auto-hdr-not-kept': "This video couldn't stay in HDR, so it's playing in SDR.",
 }
 
-/** The explanation beside each playback choice whose output fell back during the viewing. */
+const AUDIO_SWITCH_REFUSED = "The audio track you chose couldn't play, so the audio didn't change."
+
+/** The explanation beside each playback choice whose output differed from it during the viewing. */
 export type QualityMarks = ReadonlyMap<VideoQuality, string>
 
-const NO_MARKS: QualityMarks = new Map()
+/** The caution on the quality control: its message, and the choice whose row the message explains. */
+export interface QualityCaution {
+  message: string
+  choice: VideoQuality
+}
+
+/**
+ * The cautions on the player's controls while what plays differs from what the viewer chose: on
+ * the quality control after a format change, and on the audio control after a refused switch.
+ */
+export interface PlaybackCautions {
+  quality?: QualityCaution
+  audio?: string
+}
+
+/** A caution's message for assistive technology; each new serial is announced once. */
+export interface CautionAnnouncement {
+  text: string
+  serial: number
+}
 
 /** What a stream tells the player once it shows its first frame. */
 export type FollowPlayingChoices = (qualities: QualityChoices) => void
 
 export interface PlaybackFallbacks {
-  /** The text over the video after the latest fallback, until it disappears by itself. */
-  notice: { text: string; serial: number } | null
   marks: QualityMarks
+  cautions: PlaybackCautions
+  /** The message of the caution that appeared or changed last, while that caution stands. */
+  announcement: CautionAnnouncement | null
   /**
-   * Starts following a new playback session, created with the viewer's HDR choice
-   * `dynamicRange`, which takes down the notice about an earlier one, and returns what to tell
-   * about each stream it shows, so that it announces each format change once.
+   * Starts following a new playback session, which takes down the quality caution of the one
+   * before, and returns what to tell about each stream it shows.
    */
-  followPlaybackSession: (dynamicRange?: DynamicRangeChoice) => FollowPlayingChoices
-  /** Shows a text of the caller's own over the video, as a fallback's notice shows. */
-  announce: (text: string) => void
+  followPlaybackSession: () => FollowPlayingChoices
+  /** Cautions on the audio control that the server refused the viewer's audio switch. */
+  refuseAudioSwitch: () => void
+  /** Takes down the audio control's caution, as the viewer picks another audio track. */
+  clearAudioCaution: () => void
 }
 
-// Every change but the Dolby Vision copy plays a converted version, including a change the
-// server adds after this client, so its notice stays true.
-function fallbackOf({ requested, playing, formatChange }: QualityChoices): Fallback | undefined {
-  if (formatChange === null) {
-    return undefined
-  }
-  if (formatChange === 'DOLBY_VISION_STRIPPED') {
-    return 'dolby-vision-stripped'
-  }
-  if (formatChange === 'AUDIO_TRACK_SWITCHED') {
-    return 'audio-track-switched'
-  }
-  return playing === requested ? 'converted' : 'changed-to-auto'
+interface ViewingCautions {
+  viewing: object
+  marks: QualityMarks
+  cautions: PlaybackCautions
+  announcement: CautionAnnouncement | null
 }
 
-// A fixed quality may play SDR under the viewer's HDR choice without a format change, as an
-// encode before HDR encodes does. The answer names SDR, and the notice keeps the change from
-// passing silently (ADR 0013); it leaves no mark, which belongs to a fallback. Only a fixed quality
-// is ever asked for a range.
-function playsSdrUnderHdrChoice(
-  { videoRange }: QualityChoices,
-  dynamicRange: DynamicRangeChoice | undefined,
-): boolean {
-  return dynamicRange === 'HDR' && videoRange === 'SDR'
+function startViewing(viewing: object): ViewingCautions {
+  return { viewing, marks: new Map(), cautions: {}, announcement: null }
 }
 
-// The requested choice keeps a mark while its output falls back, and loses it once it plays the
-// output it asked for. Each fallback replaces the explanation the choice had.
-function markFallback(marks: QualityMarks, qualities: QualityChoices): QualityMarks {
-  const fallback = fallbackOf(qualities)
+// Every change but the Dolby Vision copy and the lost HDR plays a converted version, including a
+// change the server adds after this client. A choice that showed HDR during the playback session
+// could not stay in HDR; one that never did could not play in it.
+function fallbackOf(
+  { requested, playing, formatChange }: QualityChoices,
+  shownHdr: boolean,
+): Fallback | undefined {
+  switch (formatChange) {
+    case null:
+      return undefined
+    case 'DOLBY_VISION_STRIPPED':
+      return 'dolby-vision-stripped'
+    case 'AUDIO_TRACK_SWITCHED':
+      return 'audio-track-switched'
+    case 'HDR_NOT_KEPT':
+      return hdrFallback(playing, shownHdr)
+    default:
+      return playing === requested ? 'converted' : 'changed-to-auto'
+  }
+}
+
+function hdrFallback(playing: VideoQuality, shownHdr: boolean): Fallback {
+  if (playing === 'AUTO') {
+    return 'auto-hdr-not-kept'
+  }
+  return shownHdr ? 'hdr-not-kept' : 'hdr-not-played'
+}
+
+// The requested choice keeps a mark while its output differs, and loses it once it plays the
+// output it asked for. Each change replaces the explanation the choice had.
+function markFallback(
+  marks: QualityMarks,
+  requested: VideoQuality,
+  explanation: string | undefined,
+): QualityMarks {
   const next = new Map(marks)
-  if (!fallback) {
-    next.delete(qualities.requested)
+  if (!explanation) {
+    next.delete(requested)
     return next
   }
-  next.set(qualities.requested, EXPLANATIONS[fallback])
+  next.set(requested, explanation)
   return next
 }
 
+// A caution that appears, or whose message changes, is announced; one that stays as it is is not.
+function withCautions(state: ViewingCautions, cautions: PlaybackCautions): ViewingCautions {
+  const appeared = [
+    [state.cautions.quality?.message, cautions.quality?.message],
+    [state.cautions.audio, cautions.audio],
+  ].findLast(([before, after]) => after !== undefined && after !== before)?.[1]
+  if (!appeared) {
+    return { ...state, cautions }
+  }
+  const serial = (state.announcement?.serial ?? 0) + 1
+  return { ...state, cautions, announcement: { text: appeared, serial } }
+}
+
+// The output that a stream shows sets the quality caution and the requested choice's mark.
+function afterOutputShown(
+  state: ViewingCautions,
+  requested: VideoQuality,
+  explanation: string | undefined,
+): ViewingCautions {
+  let quality: QualityCaution | undefined
+  if (explanation) {
+    quality = { message: explanation, choice: requested }
+  }
+  return {
+    ...withCautions(state, { ...state.cautions, quality }),
+    marks: markFallback(state.marks, requested, explanation),
+  }
+}
+
+function standingAnnouncement({
+  announcement,
+  cautions,
+}: ViewingCautions): CautionAnnouncement | null {
+  const standing = [cautions.quality?.message, cautions.audio]
+  return announcement && standing.includes(announcement.text) ? announcement : null
+}
+
 /**
- * The notice after each fallback during a viewing, and the marks it leaves in the quality menu.
- * Pass a new `viewing` object once the viewer leaves the media title: its first playback session
- * starts without marks.
+ * The cautions on the player's controls, and the marks they leave in the quality menu, during a
+ * viewing. Pass a new `viewing` object once the viewer leaves the media title: it starts without
+ * cautions or marks.
  */
 export function usePlaybackFallbacks(viewing: object): PlaybackFallbacks {
-  const [notice, setNotice] = useState<PlaybackFallbacks['notice']>(null)
-  const [marked, setMarked] = useState({ viewing, marks: NO_MARKS })
+  const [state, setState] = useState(() => startViewing(viewing))
+  const current = state.viewing === viewing ? state : startViewing(viewing)
 
-  const announce = useCallback((text: string) => {
-    setNotice((shown) => ({ text, serial: (shown?.serial ?? 0) + 1 }))
-  }, [])
-
-  useEffect(() => {
-    if (!notice) {
-      return undefined
-    }
-    const timer = setTimeout(() => setNotice(null), NOTICE_DURATION_MS)
-    return () => clearTimeout(timer)
-  }, [notice])
-
-  const followPlaybackSession = useCallback(
-    (dynamicRange?: DynamicRangeChoice) => {
-      setNotice(null)
-      setMarked((current) => (current.viewing === viewing ? current : { viewing, marks: NO_MARKS }))
-      let announced: PlaybackFormatChange | null = null
-      let announcedSdr = false
-      const announceSdrOnce = (qualities: QualityChoices) => {
-        if (announcedSdr || !playsSdrUnderHdrChoice(qualities, dynamicRange)) {
-          return
-        }
-        announcedSdr = true
-        announce(NOTICES.converted)
-      }
-      return (qualities: QualityChoices) => {
-        setMarked((current) => ({ viewing, marks: markFallback(current.marks, qualities) }))
-        const previous = announced
-        announced = qualities.formatChange
-        const fallback = fallbackOf(qualities)
-        if (!fallback) {
-          announceSdrOnce(qualities)
-          return
-        }
-        if (qualities.formatChange !== previous) {
-          announce(NOTICES[fallback])
-        }
-      }
-    },
-    [viewing, announce],
+  const update = useCallback(
+    (change: (state: ViewingCautions) => ViewingCautions) =>
+      setState((latest) => change(latest.viewing === viewing ? latest : startViewing(viewing))),
+    [viewing],
   )
 
-  return { notice, marks: marked.marks, followPlaybackSession, announce }
+  const followPlaybackSession = useCallback(() => {
+    update((latest) => withCautions(latest, { ...latest.cautions, quality: undefined }))
+    let shownHdr = false
+    return (qualities: QualityChoices) => {
+      const fallback = fallbackOf(qualities, shownHdr)
+      shownHdr ||= qualities.videoRange !== 'SDR'
+      update((latest) =>
+        afterOutputShown(latest, qualities.requested, fallback && EXPLANATIONS[fallback]),
+      )
+    }
+  }, [update])
+
+  const refuseAudioSwitch = useCallback(
+    () =>
+      update((latest) => withCautions(latest, { ...latest.cautions, audio: AUDIO_SWITCH_REFUSED })),
+    [update],
+  )
+
+  const clearAudioCaution = useCallback(
+    () => update((latest) => withCautions(latest, { ...latest.cautions, audio: undefined })),
+    [update],
+  )
+
+  return {
+    marks: current.marks,
+    cautions: current.cautions,
+    announcement: standingAnnouncement(current),
+    followPlaybackSession,
+    refuseAudioSwitch,
+    clearAudioCaution,
+  }
 }

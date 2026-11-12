@@ -47,6 +47,16 @@
   color: var(--text-secondary);
 }
 
+/* A caution's message, under the heading and above the rows, in the content voice. */
+.message {
+  flex: none;
+  margin: 0;
+  padding: 0 var(--spacing-8) var(--spacing-6);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-prose);
+  color: var(--text-primary);
+}
+
 /* The padding leaves room for a row's focus ring, which the scrolling menu would otherwise clip. */
 .menu {
   display: flex;

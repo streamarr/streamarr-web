@@ -33,6 +33,11 @@ export interface PopoverOption<Id> {
    * while focus is on it, or after a tap on the mark.
    */
   caution?: string
+  /**
+   * The menu's message explains the caution instead: the mark shows without an explanation of its
+   * own, and the row's name is its label alone.
+   */
+  explainedByMessage?: boolean
   /** A hairline above the row sets it, and the rows after it, apart from the rows before. */
   divided?: boolean
 }
@@ -63,7 +68,8 @@ type Side = 'above' | 'below'
 /**
  * A menu of options above the anchor that opened it, its caret pointing down at the anchor, or
  * below the anchor with the caret pointing up. A menu placed below opens above instead where the
- * screen ends too close under the anchor to show a row and leaves more room above it.
+ * screen ends too close under the anchor to show a row and leaves more room above it. A `message`
+ * shows under the heading as soon as the menu opens, and is the menu's description.
  * Focus starts on the chosen row, and moves there, or else to the nearest row, when the focused row
  * goes. Choosing, Escape or Shift+Tab returns focus to the anchor. A press or focus outside the
  * menu and its anchor dismisses it.
@@ -74,6 +80,7 @@ export function CaretPopover<Id>({
   anchorRef,
   options,
   selected,
+  message,
   toggle,
   onChoose,
   onDismiss,
@@ -84,6 +91,7 @@ export function CaretPopover<Id>({
   anchorRef: RefObject<HTMLElement | null>
   options: readonly PopoverOption<Id>[]
   selected: Id | null
+  message?: string
   toggle?: PopoverToggle
   onChoose: (id: Id) => void
   onDismiss: () => void
@@ -96,13 +104,14 @@ export function CaretPopover<Id>({
   const pressedByTouch = useRef(false)
   const [explainedRows, setExplainedRows] = useState(NO_EXPLAINED_ROWS)
   const explainedIndex = explainedRows.hovered ?? explainedRows.tapped ?? explainedRows.focused
-  const explanations = [...options.map(({ caution }) => caution), toggle?.unavailable]
+  const explanations = [...options.map(ownExplanation), toggle?.unavailable]
   const explanation = explainedIndex === null ? undefined : explanations[explainedIndex]
   // The menu keeps room for its longest explanation from the start, so no explanation that
   // shows or goes moves a row: a row moving under the pointer would end its own hover.
   const longestCaution = longestOf(explanations)
   const reservedRoom = useRef(0)
   const headingId = useId()
+  const messageId = useId()
 
   // The explanation's side depends on where the surface lands, so both move together. The height
   // limit is written once, at its final value: an interim taller limit would clamp the rows'
@@ -222,7 +231,22 @@ export function CaretPopover<Id>({
       <div id={headingId} className={styles.heading}>
         {heading}
       </div>
-      <div ref={menuRef} id={id} role="menu" aria-labelledby={headingId} className={styles.menu}>
+      {message && (
+        <>
+          <p id={messageId} className={styles.message}>
+            {message}
+          </p>
+          <hr className={styles.divider} />
+        </>
+      )}
+      <div
+        ref={menuRef}
+        id={id}
+        role="menu"
+        aria-labelledby={headingId}
+        aria-describedby={message && messageId}
+        className={styles.menu}
+      >
         {options.map((option, index) => {
           const checked = option.id === selected
           return (
@@ -239,7 +263,7 @@ export function CaretPopover<Id>({
                   pressedByTouch.current = event.pointerType === 'touch'
                 }}
                 onClick={(event) => {
-                  if (pressedByTouch.current && isOnTheMark(event)) {
+                  if (pressedByTouch.current && isOnTheMark(event) && explanations[index]) {
                     tapMark(index)
                     return
                   }
@@ -253,8 +277,8 @@ export function CaretPopover<Id>({
                 <span className={styles.label}>
                   {option.label}
                   {option.caution && (
-                    <span className={styles.caution} data-mark>
-                      <Icon name="alert" size={14} label={option.caution} />
+                    <span className={styles.caution} data-mark data-testid="mark">
+                      <Icon name="alert" size={14} label={ownExplanation(option)} />
                     </span>
                   )}
                 </span>
@@ -300,8 +324,13 @@ export function CaretPopover<Id>({
 
 // A row's name from its content would join the label and the mark's name with no space between
 // them, so a cautioned row names both itself, with a sentence break.
-function cautionedName<Id>({ label, caution }: PopoverOption<Id>): string | undefined {
-  return caution && `${label}. ${caution}`
+function cautionedName<Id>(option: PopoverOption<Id>): string | undefined {
+  const explanation = ownExplanation(option)
+  return explanation && `${option.label}. ${explanation}`
+}
+
+function ownExplanation<Id>({ caution, explainedByMessage }: PopoverOption<Id>) {
+  return explainedByMessage ? undefined : caution
 }
 
 function rowsOf(menu: HTMLElement | null): HTMLElement[] {

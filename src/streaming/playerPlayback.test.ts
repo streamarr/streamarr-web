@@ -118,7 +118,7 @@ describe('startPlayerPlayback', () => {
       dynamicRange,
       onSourcePhase: vi.fn(),
       onOutputShown: vi.fn(),
-      onNotice: vi.fn(),
+      onAudioSwitchRefused: vi.fn(),
     })
     return playback
   }
