@@ -373,6 +373,10 @@ function serveAStatusWithoutARealEnd(): () => number {
 // How long playback may wait for media at a playhead that does not move.
 const STALL_LIMIT_MS = 45_000
 const PLAYBACK_START_TIMEOUT_MS = 30_000
+// How long a startup waits for the element's metadata before it reads the playback status, and
+// how long it then waits between reads.
+const SLOW_STARTUP_MS = 3_000
+const PLAYBACK_STATUS_INTERVAL_MS = 500
 
 // A stream with no real end plays from its first frame.
 async function playingVideo(): Promise<HTMLVideoElement> {
@@ -452,8 +456,12 @@ const WAYS_PAST_THE_REAL_END = [
 
 // The viewer's playhead reached a point past a real end that no status names yet, and the server
 // replaced the stream session there. The replacement's status names that real end only once
-// `nameTheRealEnd` is called, as after the replacement's job attempt has run past it.
-async function replaceTheStreamPastAnUnnamedRealEnd(reach: (video: HTMLVideoElement) => void) {
+// `nameTheRealEnd` is called, as after the replacement's job attempt has run past it. `attached`
+// waits for the player to attach the replacement.
+async function replaceTheStreamPastAnUnnamedRealEnd(
+  reach: (video: HTMLVideoElement) => void,
+  { attached = attachedVideo }: { attached?: (streamUrl: string) => Promise<unknown> } = {},
+) {
   const reports = serveSession()
   renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
   const video = await showingVideo(STREAM_URL)
@@ -461,28 +469,44 @@ async function replaceTheStreamPastAnUnnamedRealEnd(reach: (video: HTMLVideoElem
   hls.destroy.mockImplementation(() => video.load())
   const replacement = replacementStream(1)
   let realEndNamed = false
-  server.use(
-    graphql.query('PlaybackSession', () =>
-      HttpResponse.json({
-        data: {
-          playbackSession: readyPlaybackSession({
-            streamSession: realEndNamed
-              ? { ...replacement, mediaEndSeconds: REAL_END_SECONDS }
-              : replacement,
-          }),
-        },
-      }),
-    ),
+  const statusReads = serveStatusReads(() =>
+    realEndNamed ? { ...replacement, mediaEndSeconds: REAL_END_SECONDS } : replacement,
   )
   answerTheNextSegmentWith503({ fatal: false })
-  await attachedVideo(replacement.streamUrl)
+  await attached(replacement.streamUrl)
   return {
     reports,
     replacement,
+    statusReads,
     nameTheRealEnd: () => {
       realEndNamed = true
     },
   }
+}
+
+// Each status read answers with the stream session that `named` gives; returns how often the
+// status was read.
+function serveStatusReads(named: () => StatusStreamSession): () => number {
+  let reads = 0
+  server.use(
+    graphql.query('PlaybackSession', () => {
+      reads += 1
+      return HttpResponse.json({
+        data: { playbackSession: readyPlaybackSession({ streamSession: named() }) },
+      })
+    }),
+  )
+  return () => reads
+}
+
+type StatusStreamSession = Parameters<typeof readyPlaybackSession>[0]['streamSession']
+
+// The player attaches `streamUrl` while the fake clock stands still, so a test can time what
+// follows the attach. Testing Library's and Vitest's waits both move a faked clock.
+async function attachedWithTheClockStill(streamUrl = STREAM_URL): Promise<HTMLVideoElement> {
+  await act(async () => vi.advanceTimersByTimeAsync(0))
+  expect(hls.loadSource).toHaveBeenLastCalledWith(streamUrl)
+  return fakeMedia(renderedVideo())
 }
 
 // The media the stalled element waited for arrived, and the playhead moves on.
@@ -6741,6 +6765,181 @@ describe('Player', () => {
 
       expect(video.paused).toBe(true)
     })
+  })
+
+  describe('slow startup', () => {
+    // The server holds the segment that hls.js asks for first, past a real end that the status
+    // named only once the job attempt had run past it, after the playback session was created.
+    it('shouldEndAtTheRealEndWhenAFirstLoadPastItStillWaitsForMetadataAfterTheSlowStartupDelay', async () => {
+      const reports = serveSession()
+      const statusReads = serveStatusReads(() => ({
+        ...SESSION,
+        mediaEndSeconds: REAL_END_SECONDS,
+      }))
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      renderWithProviders(
+        <Player
+          playbackPlatform={withoutDecodingInfo}
+          mediaFileId="abcd"
+          startPositionSeconds={PAST_THE_REAL_END_SECONDS}
+        />,
+      )
+      await attachedWithTheClockStill()
+
+      await act(async () => vi.advanceTimersByTimeAsync(SLOW_STARTUP_MS - 1))
+      expect(statusReads()).toBe(0)
+      await act(async () => vi.advanceTimersByTimeAsync(1))
+
+      await vi.waitFor(() =>
+        expect(reports.at(-1)).toEqual({
+          sessionId: SESSION.id,
+          positionSeconds: REAL_END_SECONDS,
+          state: 'STOPPED',
+        }),
+      )
+      expect(statusReads()).toBe(1)
+      await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_START_TIMEOUT_MS))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('shouldReadTheStatusAgainAfterTheIntervalWhenTheFirstReadOfASlowStartupNamesNoRealEnd', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      const { reports, replacement, statusReads, nameTheRealEnd } =
+        await replaceTheStreamPastAnUnnamedRealEnd(
+          (video) => playheadAt(video, PAST_THE_REAL_END_SECONDS),
+          { attached: attachedWithTheClockStill },
+        )
+      const readsBeforeTheReplacement = statusReads()
+      const stopped = () => reports.filter((report) => report.state === 'STOPPED')
+
+      await act(async () => vi.advanceTimersByTimeAsync(SLOW_STARTUP_MS))
+      expect(statusReads()).toBe(readsBeforeTheReplacement + 1)
+      // The replacement's job attempt runs past the real end only after the first read.
+      nameTheRealEnd()
+      await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_STATUS_INTERVAL_MS - 1))
+      expect(stopped()).toEqual([])
+      await act(async () => vi.advanceTimersByTimeAsync(1))
+
+      await vi.waitFor(() =>
+        expect(stopped()).toEqual([
+          { sessionId: replacement.id, positionSeconds: REAL_END_SECONDS, state: 'STOPPED' },
+        ]),
+      )
+      expect(statusReads()).toBe(readsBeforeTheReplacement + 2)
+      await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_START_TIMEOUT_MS))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('shouldReadNoStatusWhenTheMetadataLoadsWithinTheSlowStartupDelay', async () => {
+      serveSession()
+      const statusReads = serveStatusReads(() => SESSION)
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+      const video = await attachedWithTheClockStill()
+
+      await act(async () => vi.advanceTimersByTimeAsync(SLOW_STARTUP_MS - 1))
+      loadMetadata(video)
+      await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_START_TIMEOUT_MS))
+
+      expect(statusReads()).toBe(0)
+    })
+
+    it('shouldStopReadingTheStatusWhenASlowStartupLoadsItsMetadata', async () => {
+      const reports = serveSession()
+      const statusReads = serveStatusReads(() => SESSION)
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+      const video = await attachedWithTheClockStill()
+      await act(async () =>
+        vi.advanceTimersByTimeAsync(SLOW_STARTUP_MS + PLAYBACK_STATUS_INTERVAL_MS),
+      )
+      expect(statusReads()).toBe(2)
+
+      loadMetadata(video)
+      await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_START_TIMEOUT_MS))
+
+      expect(statusReads()).toBe(2)
+      expect(video.paused).toBe(false)
+      expect(reports.filter((report) => report.state === 'STOPPED')).toEqual([])
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('shouldAttachAtTheStartPositionTheStreamSessionThatTheStatusNamesWhenAStartupIsSlow', async () => {
+      serveSession()
+      const replacement = replacementStream(1)
+      serveStatusReads(() => replacement)
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      renderWithProviders(
+        <Player
+          playbackPlatform={withoutDecodingInfo}
+          mediaFileId="abcd"
+          startPositionSeconds={600}
+        />,
+      )
+      const video = await attachedWithTheClockStill()
+      hls.destroy.mockImplementation(() => video.load())
+
+      await act(async () => vi.advanceTimersByTimeAsync(SLOW_STARTUP_MS))
+
+      await vi.waitFor(() => expect(hls.loadSource).toHaveBeenLastCalledWith(replacement.streamUrl))
+      expect(hls.config?.startPosition).toBe(600)
+      loadMetadata(video)
+      expect(video.currentTime).toBe(600)
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it.each([
+      { leaves: 'before the first read', after: SLOW_STARTUP_MS - 1, reads: 0 },
+      { leaves: 'between two reads', after: SLOW_STARTUP_MS, reads: 1 },
+    ])(
+      'shouldLeaveNoStatusReadOrTimerBehindWhenTheViewerLeavesDuringASlowStartup(viewer leaves $leaves)',
+      async ({ after, reads }) => {
+        serveSession()
+        const statusReads = serveStatusReads(() => SESSION)
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        const { unmount } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        await attachedWithTheClockStill()
+        await act(async () => vi.advanceTimersByTimeAsync(after))
+
+        unmount()
+        // The player releases its playback session, and nothing of it waits on the clock after.
+        await act(async () => vi.advanceTimersByTimeAsync(0))
+        expect(vi.getTimerCount()).toBe(0)
+        await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_START_TIMEOUT_MS))
+
+        expect(statusReads()).toBe(reads)
+      },
+    )
+
+    it.each([
+      { joined: 'before the first read', errorAfter: 0, readsAfter: SLOW_STARTUP_MS },
+      { joined: 'after the first read', errorAfter: SLOW_STARTUP_MS, readsAfter: 0 },
+    ])(
+      'shouldKeepReadingTheStatusAfterTheMetadataLoadsWhenAStreamErrorJoinedASlowStartupsReads(error $joined)',
+      async ({ errorAfter, readsAfter }) => {
+        serveSession()
+        const replacement = replacementStream(1)
+        let replaced = false
+        serveStatusReads(() => (replaced ? replacement : SESSION))
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+        const video = await attachedWithTheClockStill()
+        hls.destroy.mockImplementation(() => video.load())
+        await act(async () => vi.advanceTimersByTimeAsync(errorAfter))
+        answerTheNextSegmentWith503({ fatal: false })
+        await act(async () => vi.advanceTimersByTimeAsync(readsAfter))
+
+        loadMetadata(video)
+        replaced = true
+        await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_STATUS_INTERVAL_MS))
+
+        await vi.waitFor(() =>
+          expect(hls.loadSource).toHaveBeenLastCalledWith(replacement.streamUrl),
+        )
+      },
+    )
   })
 
   describe('stalled playback', () => {

@@ -39,6 +39,11 @@ const TIMELINE_REPORT_INTERVAL_SECONDS = 10
 const TIMELINE_CLEANUP_TIMEOUT_MS = 10_000
 const PLAYBACK_START_TIMEOUT_MS = 30_000
 const PLAYBACK_STATUS_INTERVAL_MS = 500
+// The server holds a segment request past a short copy's real end. Its status names that end only
+// once a job attempt has run past it, so a stream attached past the end never loads its metadata.
+// A startup that still waits for the metadata this long after the attach reads the status every
+// PLAYBACK_STATUS_INTERVAL_MS until the metadata loads.
+const SLOW_STARTUP_MS = 3_000
 // The server's default target segment duration, for a player that keeps the playlist to itself.
 const DEFAULT_SEGMENT_SECONDS = 6
 // By the server's defaults, it replaces a job attempt that stores nothing for 10 s and gives the
@@ -151,6 +156,9 @@ interface PlaybackStatusCheck {
   controller: AbortController
   generation: number
   fatal: boolean
+  // A slow startup's check ends once the element loads its metadata. A stream error that joins
+  // the check keeps it running past the metadata.
+  endsAtMetadata: boolean
   settled: Promise<void>
 }
 
@@ -245,6 +253,7 @@ function startSessionPlayback({
   let sourceGeneration = 0
   let reportingFormat = false
   let statusCheck: PlaybackStatusCheck | undefined
+  let slowStartup: ReturnType<typeof setTimeout> | undefined
   let startAt = resumeFrom?.position ?? startPositionSeconds
   let resume: ResumePoint | undefined = resumeFrom && { ...resumeFrom }
   let lastReportedPosition = startAt ?? 0
@@ -357,6 +366,7 @@ function startSessionPlayback({
     return attachTimeline(video, {
       // Seeking before metadata is loaded is unreliable across browsers; the event is the safe point.
       onLoadedMetadata: (element) => {
+        stopSlowStartupReads()
         if (resume) {
           const previous = resume
           resume = undefined
@@ -775,6 +785,7 @@ function startSessionPlayback({
             onChooseAudio: (position) => switchAudioTrack(position, generation),
           })
         : attach(video, streamSession.streamUrl, options)
+    readTheStatusIfStartupIsSlow(generation)
     const { sourceStats } = source
     onSourcePhase({
       at: 'attached',
@@ -996,14 +1007,29 @@ function startSessionPlayback({
     previous?.controller.abort()
   }
 
+  // The reads run as a status check. A real end at or before the start position ends playback
+  // there, and another stream that the status names replaces the attached one.
+  function readTheStatusIfStartupIsSlow(generation: number) {
+    slowStartup = setTimeout(() => {
+      void reconcilePlaybackStatus({ generation, fatal: false, endsAtMetadata: true })
+    }, SLOW_STARTUP_MS)
+  }
+
+  function stopSlowStartupReads() {
+    clearTimeout(slowStartup)
+    if (statusCheck?.endsAtMetadata) stopStatusCheck()
+  }
+
   // A caller that joins a running check waits for that check to settle. A check begun for a stream
   // that has since been detached discards what it reads, so a new check replaces it.
   function reconcilePlaybackStatus({
     generation,
     fatal,
+    endsAtMetadata = false,
   }: {
     generation: number
     fatal: boolean
+    endsAtMetadata?: boolean
   }): Promise<void> {
     if (
       cancelled ||
@@ -1015,6 +1041,7 @@ function startSessionPlayback({
       return Promise.resolve()
     if (statusCheck?.generation === generation) {
       statusCheck.fatal ||= fatal
+      statusCheck.endsAtMetadata &&= endsAtMetadata
       return statusCheck.settled
     }
     stopStatusCheck()
@@ -1022,6 +1049,7 @@ function startSessionPlayback({
       controller: new AbortController(),
       generation,
       fatal,
+      endsAtMetadata,
       settled: Promise.resolve(),
     }
     statusCheck = check
@@ -1180,6 +1208,7 @@ function startSessionPlayback({
 
   function detachSource() {
     sourceGeneration += 1
+    clearTimeout(slowStartup)
     clearStallLimit()
     // Releasing the stream rewinds the element; the timeline must not record the rewind.
     timeline.detach()

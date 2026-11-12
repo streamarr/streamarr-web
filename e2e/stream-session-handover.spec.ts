@@ -15,8 +15,9 @@ import { STUB_URL } from './ports'
 
 // When the server replaces the stream session that plays, the player attaches the new one where
 // the viewer was, and a stream session attached again past its real end starts where its playlist
-// does. This spec plays a synthetic stream through hls.js in Chromium and records each media
-// segment that each stream session is asked for.
+// does. A startup past a real end that no status has named yet ends playback at that real end.
+// This spec plays a synthetic stream through hls.js in Chromium and records each media segment
+// that each stream session is asked for.
 
 test.use({ viewport: { width: 1512, height: 850 }, serviceWorkers: 'block' })
 
@@ -38,6 +39,10 @@ const REAL_END_SECONDS = 30
 const FIRST_SEGMENT_PAST_THE_REAL_END = REAL_END_SECONDS / SEGMENT_SECONDS
 // Past the real end, where the viewer's first seek ends playback.
 const ENDED_SECONDS = 35
+// A startup past a real end that no status names yet reads the status after 3 s. This bound leaves
+// room for that read and for the page's own start, and stays far short of the player's 30 s
+// startup deadline.
+const ENDED_WITHIN_MS = 10_000
 
 // VP9 in fMP4, which Playwright's Chromium decodes without proprietary codecs. The bandwidth it
 // declares keeps hls.js 30 s ahead of the playhead, as with the server's streams, where the real
@@ -111,16 +116,27 @@ function operationName(call: Request): string {
   return body?.operationName ?? ''
 }
 
+interface TimelineReport {
+  sessionId: string
+  positionSeconds: number
+  state: string
+}
+
 // Signs the viewer in and answers the player's operations with `playback()`, read each time the
-// player creates or reads the playback session.
+// player creates or reads the playback session. Returns the timeline reports the player sends.
 async function serveThePlaybackSession(
   page: Page,
   request: APIRequestContext,
   playback: () => PlaybackSession,
-) {
+): Promise<TimelineReport[]> {
+  const reports: TimelineReport[] = []
   await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
   await request.post(`${STUB_URL}/api/auth/refresh`)
   await page.route('**/graphql', (route) => {
+    if (operationName(route.request()) === 'ReportStreamSessionTimeline') {
+      const body = route.request().postDataJSON() as { variables: TimelineReport }
+      reports.push(body.variables)
+    }
     const operations: Record<string, unknown> = {
       CreatePlaybackSession: {
         createPlaybackSession: { playbackSession: playback(), userErrors: [] },
@@ -135,6 +151,7 @@ async function serveThePlaybackSession(
     const data = operations[operationName(route.request())]
     return data ? route.fulfill({ json: { data } }) : route.continue()
   })
+  return reports
 }
 
 const STREAM_REQUEST = /\/api\/stream\/(first|replacement)\/([\w.]+)/
@@ -216,6 +233,88 @@ async function serveACopyThatRanShort(page: Page, request: APIRequestContext): P
   return attaches
 }
 
+// The server learns where a short copy really ends only once a job attempt runs past that end, so
+// its status names the real end only after hls.js has asked for a segment past it. As the server
+// does, it never answers that request.
+function unnamedRealEnd() {
+  let named = false
+  return {
+    /** Whether to hold the request for `segment`; the status names the real end from then on. */
+    holdsPast: (segment: number): boolean => {
+      if (segment < FIRST_SEGMENT_PAST_THE_REAL_END) return false
+      named = true
+      return true
+    },
+    mediaEndSeconds: (): number | null => (named ? REAL_END_SECONDS : null),
+  }
+}
+
+// Serves a handover as serveAHandover does, without the slow link, to a replacement whose copy ran
+// short at REAL_END_SECONDS, an end that no status has named yet. Returns the timeline reports.
+async function serveAHandoverPastAnUnnamedRealEnd(
+  page: Page,
+  request: APIRequestContext,
+): Promise<{ reports: TimelineReport[]; handover: Handover }> {
+  const handover: Handover = {
+    segments: { first: [], replacement: [] },
+    replacementRequested: false,
+  }
+  const realEnd = unnamedRealEnd()
+  let current: StreamName = 'first'
+  const reports = await serveThePlaybackSession(page, request, () =>
+    playbackSession(current, {
+      mediaEndSeconds: current === 'replacement' ? realEnd.mediaEndSeconds() : null,
+    }),
+  )
+  await page.route(STREAM_REQUEST, async (route) => {
+    const { stream, file, segment } = streamRequest(route)
+    if (file === 'multivariant.m3u8' && stream === 'replacement') {
+      handover.replacementRequested = true
+    }
+    if (segment === null) return answerFromTheStream(route, file)
+    handover.segments[stream].push(segment)
+    if (stream === 'first' && segment === SEGMENT_PAST_THE_REPLACEMENT) {
+      current = 'replacement'
+      return route.fulfill({ status: 404 })
+    }
+    if (stream === 'replacement' && realEnd.holdsPast(segment)) return
+    return answerFromTheStream(route, file)
+  })
+  return { reports, handover }
+}
+
+// Serves a new playback session that starts at RESUME_SECONDS, which the server marks with
+// EXT-X-START, and whose copy ran short at REAL_END_SECONDS, an end that no status has named yet.
+// Returns the timeline reports.
+async function serveAStartPastAnUnnamedRealEnd(
+  page: Page,
+  request: APIRequestContext,
+): Promise<TimelineReport[]> {
+  const realEnd = unnamedRealEnd()
+  const reports = await serveThePlaybackSession(page, request, () =>
+    playbackSession('first', { mediaEndSeconds: realEnd.mediaEndSeconds() }),
+  )
+  await page.route(STREAM_REQUEST, async (route) => {
+    const { file, segment } = streamRequest(route)
+    if (file === 'multivariant.m3u8') {
+      return route.fulfill({
+        contentType: 'application/vnd.apple.mpegurl',
+        body: MULTIVARIANT.replace(
+          '#EXTM3U\n',
+          `#EXTM3U\n#EXT-X-START:TIME-OFFSET=${RESUME_SECONDS},PRECISE=YES\n`,
+        ),
+      })
+    }
+    if (segment !== null && realEnd.holdsPast(segment)) return
+    return answerFromTheStream(route, file)
+  })
+  return reports
+}
+
+function stoppedReports(reports: TimelineReport[]): TimelineReport[] {
+  return reports.filter((report) => report.state === 'STOPPED')
+}
+
 // Whether the element shows the picture at `seconds` or later, with no seek under way.
 async function showsAPictureFrom(page: Page, seconds: number): Promise<boolean> {
   return page
@@ -283,4 +382,40 @@ test('a stream session attached again as the viewer plays past its real end load
       ),
     )
     .toBe(true)
+})
+
+test('a replacement attached past a real end that no status has named yet ends playback at the real end, long before the startup deadline', async ({
+  page,
+  request,
+}) => {
+  const { reports, handover } = await serveAHandoverPastAnUnnamedRealEnd(page, request)
+  await page.goto('/play/file-1?movie=m1')
+  await expect(page.getByRole('slider', { name: 'Seek' })).toHaveAttribute('aria-disabled', 'false')
+  await page.locator('video').evaluate((video: HTMLVideoElement, seconds) => {
+    video.pause()
+    video.currentTime = seconds
+  }, RESUME_SECONDS)
+  await expect.poll(() => handover.replacementRequested).toBe(true)
+
+  await expect
+    .poll(() => stoppedReports(reports), { timeout: ENDED_WITHIN_MS })
+    .toEqual([
+      { sessionId: 'sess-replacement', positionSeconds: REAL_END_SECONDS, state: 'STOPPED' },
+    ])
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  expect(handover.segments.replacement[0]).toBe(SEGMENT_HOLDING_THE_RESUME_POINT)
+})
+
+test('a first load at a start position past a real end that no status has named yet ends playback at the real end, long before the startup deadline', async ({
+  page,
+  request,
+}) => {
+  const reports = await serveAStartPastAnUnnamedRealEnd(page, request)
+
+  await page.goto(`/play/file-1?movie=m1&position=${RESUME_SECONDS}`)
+
+  await expect
+    .poll(() => stoppedReports(reports), { timeout: ENDED_WITHIN_MS })
+    .toEqual([{ sessionId: 'sess-first', positionSeconds: REAL_END_SECONDS, state: 'STOPPED' }])
+  await expect(page.getByRole('alert')).toHaveCount(0)
 })
