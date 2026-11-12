@@ -6859,6 +6859,46 @@ describe('Player', () => {
       ])
     })
 
+    // The status read ended the first load before anything played it, as the end of a title
+    // leaves it: paused, to start again from the top.
+    it.each<{ startsAgain: string; startAgain: () => Promise<void> | void }>([
+      {
+        startsAgain: 'the page returns from the back-forward cache',
+        startAgain: () => {
+          hideThePage({ persisted: true })
+          restoreThePage()
+        },
+      },
+      {
+        startsAgain: 'the viewer picks another quality',
+        startAgain: async () => {
+          fireEvent.click(screen.getByRole('button', { name: /^Quality/ }))
+          await act(async () => vi.advanceTimersByTimeAsync(0))
+          fireEvent.click(screen.getByRole('menuitemradio', { name: '720p' }))
+        },
+      },
+    ])(
+      'shouldStayPausedAtTheTopWhenPlaybackThatASlowStartupEndedStartsAgain($startsAgain)',
+      async ({ startAgain }) => {
+        const reports = serveSession()
+        serveStatusReads(() => ({ ...SESSION, mediaEndSeconds: REAL_END_SECONDS }))
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        const video = await startAFirstLoadPastTheRealEnd()
+        await act(async () => vi.advanceTimersByTimeAsync(SLOW_STARTUP_MS))
+        await vi.waitFor(() => expect(reports.at(-1)?.state).toBe('STOPPED'))
+        hls.destroy.mockImplementation(() => video.load())
+        const created = recordCreatedSessions()
+
+        await startAgain()
+
+        await vi.waitFor(() => expect(hls.loadSource).toHaveBeenCalledTimes(2))
+        loadMetadata(video)
+        expect(created.map((input) => input.startPositionSeconds)).toEqual([undefined])
+        expect(video.currentTime).toBe(0)
+        expect(video.paused).toBe(true)
+      },
+    )
+
     it('shouldReadTheStatusAgainAfterTheIntervalWhenTheFirstReadOfASlowStartupNamesNoRealEnd', async () => {
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
       const { reports, replacement, statusReads, nameTheRealEnd } =

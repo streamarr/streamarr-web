@@ -503,8 +503,10 @@ function startSessionPlayback({
       return
     }
     endedAtRealEnd = true
-    // A startup that ends here never reaches the start position it waited for.
+    // A startup that ends here never reaches the start position it waited for, nor plays from it,
+    // so only the viewer's Play plays it again.
     resume = undefined
+    playRequested = true
     // Playback that ended has started; only attaching the stream again starts it anew.
     startupDeadline.end()
     stopStatusCheck()
