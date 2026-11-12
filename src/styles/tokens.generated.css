@@ -8,7 +8,8 @@
   --color-blue-deep: #12557a; /** Active blue. Selected nav items, active filter chips, selected rows on neutral screens. Aliased as selection.active. */
   --color-blue-sky: #5cc0e8; /** Active-track indicator bar in the player track menus. */
   --color-gold-rating: #ffd60a; /** Rating star glyph. Matches the shipped StreamarrTheme.Semantic.rating. */
-  --color-mint: #6fe0bf; /** Semantic success and watched-state accent. Also the accent slot of the teal ambient reference palette — on neutral screens its use is semantic only (principle 1.2). */
+  --color-yellow-caution: #ffd60a; /** Caution yellow. Aliased as semantic.caution. It has gold.rating's value because that yellow measured best on the player's surfaces, and it keeps its own name because the meanings differ (principle 1.2). */
+  --color-mint: #6fe0bf; /** Semantic success and the watched check on neutral screens (detail pages take ambient.accent, principle 2.5). Also the accent slot of the teal ambient reference palette — on neutral screens its use is semantic only (principle 1.2). */
   --color-mint-ink: #06231c; /** Ink text on mint fills (watched check glyph, success chips). */
   --color-white: #ffffff;
   --color-alpha-10: rgba(255, 255, 255, 0.1); /** White 10% — hairline separators and dividers. */
@@ -29,7 +30,7 @@
   --gradient-brand-angle: 45; /** Degrees, CSS convention. The mark's angle — every render of gradient.brand uses it. */
   --gradient-wash-angle: 135; /** Degrees, CSS convention. Single-hue alpha washes (panel sheen) always run at this angle (principle 2.2). Scrims are excluded — they follow content geometry (principle 2.3). */
   --font-family-content: 'Space Grotesk', system-ui, sans-serif; /** The content voice (principle 9.1). Set once at the root and inherited — the mocks declare it a single time; everything not explicitly system voice is Space Grotesk. */
-  --font-family-system: 'JetBrains Mono', ui-monospace, monospace; /** The system voice (principle 9.2): eyebrows, key–value labels, timestamps, pairing codes, badges. Always uppercase with tracking (letterSpacing.system). */
+  --font-family-system: 'JetBrains Mono', ui-monospace, monospace; /** The system voice (principle 9.2), reserved for pairing codes, PINs, timecodes, and numbers that align in columns or update in place. Labels are content voice, never this face. */
   --font-weight-regular: 400;
   --font-weight-medium: 500;
   --font-weight-semibold: 600;
@@ -43,7 +44,7 @@
   --radius-2xl: 14px;
   --border-width-hairline: 1px; /** Separators at desktop distance. tv uses 2px. */
   --border-width-rule: 2px; /** The rule that stream tabs sit flush on (mocks/README.md shared patterns). */
-  --letter-spacing-system: 0.10em; /** Tracking for the uppercase system voice. Dominant value in the web mock (41 uses). */
+  --letter-spacing-system: 0.10em; /** The web mock's dominant tracking value (41 uses, all on uppercase labels). Labels take no tracking (principle 9.2). */
   --font-size-micro: 10px;
   --font-size-caption: 11px;
   --font-size-label: 12px;
@@ -78,10 +79,11 @@
   --surface-panel-heavy: var(--color-alpha-18); /** Heaviest panel fill — button chips. */
   --surface-chrome: var(--color-chrome); /** Floating chrome for player controls and floating overlays. */
   --border-hairline: var(--color-alpha-10); /** Separator color. Width is platform-specific (borderWidth.hairline); hairlines stop a few px short of container edges (principle 4.1). */
-  --selection-active: var(--color-blue-deep); /** Selection on neutral screens (principle 2.5). On ambient pages, selection uses the runtime ambient.selected slot instead — see tokens/ambient/contract.json. */
-  --semantic-success: var(--color-mint); /** Success and watched state. The one sanctioned reuse of an ambient hue on neutral screens (principle 1.2) — reuse by meaning, not by mood. */
+  --selection-active: var(--color-blue-deep); /** Selection on neutral screens (principle 2.5), and the primary action's fill there (principle 10.3). On ambient pages, selection uses the runtime ambient.selected slot, and the primary action, the season rail's selected row and watched checks use ambient.accent — see tokens/ambient/contract.json. Until a title's ambient colors arrive, or when it has none, ambient.accent falls back to selection.active (principle 2.5). */
+  --semantic-success: var(--color-mint); /** Success, and watched state on neutral screens; detail pages draw watched checks in ambient.accent (principle 2.5). The one sanctioned reuse of an ambient hue on neutral screens (principle 1.2) — reuse by meaning, not by mood. */
   --semantic-success-ink: var(--color-mint-ink);
   --semantic-rating: var(--color-gold-rating);
+  --semantic-caution: var(--color-yellow-caution); /** Playback continues but differs from what the viewer chose: the CautionBadge on a player control and the QualityMark in its picker. A glyph color only, never text or a fill. The triangle's shape carries the meaning, not the color. It reaches at least 3:1 on every player surface it sits on (mocks/PlaybackCaution.md). The player keeps the dark roles in both appearances (principle 1.4), so it has no light value. */
   --semantic-error: var(--color-red-error); /** Error state — input borders, failure badges. */
   --semantic-error-text: var(--color-red-error-text); /** Error copy on dark grounds. */
   --indicator-active-track: var(--color-blue-sky); /** Active-track indicator bar in player track/quality menus. */
