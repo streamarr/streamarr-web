@@ -789,11 +789,11 @@ type KeepsUp<T> = (answers: T, answerOf: AnswerOf<T>) => boolean
 // the codec string passes its support checks and VideoToolbox is available, whatever the picture
 // size or frame rate. The cap therefore holds power-efficient HEVC to the highest H.264
 // configuration WebKit accepts. If WebKit answers no H.264 tier smooth, power-efficient HEVC is
-// dropped and the server encodes instead. WebKit answers an HEVC question smooth when its level is
-// at most the decoder's maximum playback level, and does not read the picture. So once a profile
-// answers smooth at any tier, its smooth answers are its ceiling and power efficiency no longer
-// stands in for them. Its level searches can then raise its level above the tiers' levels.
-// Elsewhere only a smooth answer keeps up.
+// dropped and the server encodes instead. WebKit on Apple platforms answers an HEVC question
+// smooth when its level is at most the decoder's maximum playback level, and does not read the
+// picture. So once a profile answers smooth at any tier, its smooth answers are its ceiling and
+// power efficiency no longer stands in for them. Its level searches can then raise its level above
+// the tiers' levels. Elsewhere only a smooth answer keeps up.
 function keepsUpOn<T extends { tier: PictureTier }>({
   platform,
   family,
