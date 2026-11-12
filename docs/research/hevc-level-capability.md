@@ -13,6 +13,19 @@ An HEVC codec string writes the level as 30 times the level number, after `L` fo
 - `decodingInfo` parses an HEVC question and calls `validateHEVCParameters`. [Dispatch, lines 94-104](https://github.com/WebKit/WebKit/blob/45fea774f101adb1e29ec2b8d88b0584c5ec5610/Source/WebCore/platform/graphics/cocoa/PlatformMediaEngineConfigurationFactoryCocoa.cpp#L94-L104)
 - `validateHEVCParameters` checks the profile against VideoToolbox. It compares the requested level with the decoder's `MaxDecodeLevel`, and it derives the smooth answer from `MaxPlaybackLevel`. Its caller passes no width, height, frame rate or bitrate to it. [HEVC validation, lines 50-130](https://github.com/WebKit/WebKit/blob/45fea774f101adb1e29ec2b8d88b0584c5ec5610/Source/WebCore/platform/graphics/cocoa/HEVCUtilitiesCocoa.mm#L50-L130)
 - An earlier MIME check hands the type to Apple's `AVStreamDataParser`. WebKit does not contain that parser's code. [MIME delegation, lines 204-213](https://github.com/WebKit/WebKit/blob/45fea774f101adb1e29ec2b8d88b0584c5ec5610/Source/WebCore/platform/graphics/avfoundation/objc/SourceBufferParserAVFObjC.mm#L204-L213)
+- The comparison with `MaxDecodeLevel` runs only when VideoToolbox's capability dictionary contains that key. Without the key, any level passes. The source does not show which systems leave the key out. [HEVC validation, lines 113-128](https://github.com/WebKit/WebKit/blob/c46f252a2c4246a5a5cda58ce4ba7aed237bf1c6/Source/WebCore/platform/graphics/cocoa/HEVCUtilitiesCocoa.mm#L113-L128)
+- WebKit's HEVC codec-string parser accepts any `general_level_idc` from 0 to 255 and keeps no list of valid levels. Only `L256` or a non-number fails to parse. A refusal of a level from 0 to 255 therefore never comes from the parser. [HEVC codec-string parser, lines 186-197](https://github.com/WebKit/WebKit/blob/c46f252a2c4246a5a5cda58ce4ba7aed237bf1c6/Source/WebCore/platform/graphics/HEVCUtilities.cpp#L186-L197)
+
+## WebKit's GStreamer port
+
+WebKitGTK and WPE run on Linux and answer `decodingInfo` through GStreamer. Nothing on that path reads the level of an HEVC question.
+
+- `isHEVCCodecSupported` checks the profile, then asks whether any decoder handles plain `video/x-h265`. [HEVC support, lines 810-824](https://github.com/WebKit/WebKit/blob/c46f252a2c4246a5a5cda58ce4ba7aed237bf1c6/Source/WebCore/platform/graphics/gstreamer/GStreamerRegistryScanner.cpp#L810-L824), [decoder lookup, lines 996-1011](https://github.com/WebKit/WebKit/blob/c46f252a2c4246a5a5cda58ce4ba7aed237bf1c6/Source/WebCore/platform/graphics/gstreamer/GStreamerRegistryScanner.cpp#L996-L1011)
+- The profile check reads only the profile space and the profile IDC. [HEVC profile parser, lines 115-146](https://github.com/WebKit/WebKit/blob/c46f252a2c4246a5a5cda58ce4ba7aed237bf1c6/Source/WebCore/platform/gstreamer/GStreamerCodecUtilities.cpp#L115-L146)
+- With such a decoder, an HEVC question answers supported and smooth at every level. The answer is power-efficient only for a hardware decoder. [Answer, lines 1173-1180](https://github.com/WebKit/WebKit/blob/c46f252a2c4246a5a5cda58ce4ba7aed237bf1c6/Source/WebCore/platform/graphics/gstreamer/GStreamerRegistryScanner.cpp#L1173-L1180), [GStreamer `decodingInfo`, lines 58-62](https://github.com/WebKit/WebKit/blob/c46f252a2c4246a5a5cda58ce4ba7aed237bf1c6/Source/WebCore/platform/graphics/gstreamer/PlatformMediaEngineConfigurationFactoryGStreamer.cpp#L58-L62)
+- For an H.264 question, the same port puts the level into the caps that a decoder must accept. [H.264 support, lines 1013-1054](https://github.com/WebKit/WebKit/blob/c46f252a2c4246a5a5cda58ce4ba7aed237bf1c6/Source/WebCore/platform/graphics/gstreamer/GStreamerRegistryScanner.cpp#L1013-L1054)
+
+A smooth answer from this port gives no evidence about an HEVC level.
 
 ## Chromium
 
@@ -32,3 +45,7 @@ The questions went to Safari 26.6 on macOS through `safaridriver` on 2026-11-11.
 - 144 questions took about 1.07 s when asked one after another, and about 0.98 s when asked all at once. Each question took about 7 ms, and questions asked at the same time finished no sooner. A refused question took less time.
 
 The answers agree with the WebKit source: the level decides the answer, and the picture does not. A smooth Safari answer at a level is therefore evidence about that level, in the sense of ADR 0049.
+
+## Asking about level 8.5 first
+
+Level 8.5 is `L255`, the highest level that an HEVC codec string can carry. Safari 26.6 on macOS refused level 8.5 in HEVC Main and HEVC Main 10, as `media-source` and as `file`, in SDR and with PQ or HLG colour fields. A browser that reads no level, such as WebKit's GStreamer port with an HEVC decoder, answers level 8.5 as it answers every other level. The web client therefore asks about level 8.5 before it asks about any level above the needed level. It asks about those levels only after the browser refuses level 8.5.

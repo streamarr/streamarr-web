@@ -41,6 +41,8 @@ const HEVC_LEVEL_6_0 = 60
 const HEVC_LEVEL_6_1 = 61
 const HEVC_LEVEL_6_2 = 62
 const EVERY_SEARCHED_HEVC_LEVEL = [HEVC_LEVEL_6_2, HEVC_LEVEL_6_1, HEVC_LEVEL_6_0, HEVC_LEVEL_5_2]
+// The control question of a level search asks about level 8.5, which a codec string writes as L255.
+const HEVC_LEVEL_8_5 = 85
 
 type Decodes = (configuration: MediaDecodingConfiguration) => boolean
 
@@ -244,6 +246,15 @@ function refusingHevcAboveLevelSixPointTwo(decodingInfo: DecodingInfo): Decoding
     }
     return decodingInfo(configuration)
   })
+}
+
+// Answers the control question of each HEVC level search as `control` does, and every other
+// question as Safari did.
+function decodingInfoAnsweringTheHevcControlQuestion(control: DecodingInfo): DecodingInfoFake {
+  const safari = decodingInfoAnsweringHevc(hevcDecoderUpTo(HEVC_LEVEL_6_2))
+  return vi.fn((configuration: MediaDecodingConfiguration) =>
+    hevcLevelOf(configuration) === HEVC_LEVEL_8_5 ? control(configuration) : safari(configuration),
+  )
 }
 
 // A level search asks about HEVC Main, about HEVC Main 10, or about one compatible base.
@@ -2052,9 +2063,119 @@ describe('declarePlaybackCapabilities', () => {
       await declarePlaybackCapabilities(platformFixture({ decodingInfo, userAgent: SAFARI }))
 
       expect(hevcLevelsAskedBySearch(decodingInfo)).toEqual({
-        HEVC_MAIN: [HEVC_LEVEL_6_2],
-        HEVC_MAIN_10: [HEVC_LEVEL_6_2],
+        HEVC_MAIN: [HEVC_LEVEL_8_5, HEVC_LEVEL_6_2],
+        HEVC_MAIN_10: [HEVC_LEVEL_8_5, HEVC_LEVEL_6_2],
       })
+    })
+
+    it('shouldAskTheControlQuestionBeforeTheFirstLevelOfEachHevcLevelSearchWhenWebKitRefusesIt', async () => {
+      const decodingInfo = refusingHevcAboveLevelSixPointTwo(hdrBrowser())
+
+      await declarePlaybackCapabilities(hdrPlatformFixture({ decodingInfo, userAgent: SAFARI }))
+
+      const controlThenLevelSixPointTwo = [HEVC_LEVEL_8_5, HEVC_LEVEL_6_2]
+      expect(hevcLevelsAskedBySearch(decodingInfo)).toEqual({
+        HEVC_MAIN: controlThenLevelSixPointTwo,
+        HEVC_MAIN_10: controlThenLevelSixPointTwo,
+        PQ: controlThenLevelSixPointTwo,
+        HLG: controlThenLevelSixPointTwo,
+      })
+    })
+
+    it('shouldAskNoHevcLevelAndDeclareTheNeededLevelsWhenWebKitAnswersEveryHevcQuestionSmooth', async () => {
+      // WebKit's GStreamer port, or an Apple decoder that reports no maximum level, answers level 8.5
+      // as it answers every other level.
+      const decodingInfo = hdrBrowser()
+
+      const declaration = await declarePlaybackCapabilities(
+        hdrPlatformFixture({ decodingInfo, userAgent: SAFARI }),
+      )
+
+      expect(hevcLevelsAskedBySearch(decodingInfo)).toEqual({
+        HEVC_MAIN: [HEVC_LEVEL_8_5],
+        HEVC_MAIN_10: [HEVC_LEVEL_8_5],
+        PQ: [HEVC_LEVEL_8_5],
+        HLG: [HEVC_LEVEL_8_5],
+      })
+      expect(hevcLevelsByBases(declaration)).toEqual([
+        { compatibleBases: ['SDR'], codecProfiles: hevcProfiles(HEVC_LEVEL_5_1) },
+        { compatibleBases: ['PQ', 'HLG'], codecProfiles: hevcMainTen(HEVC_LEVEL_5_1) },
+      ])
+    })
+
+    it.each([
+      [
+        'AnswersTheControlQuestionWithDroppedFrames',
+        () => Promise.resolve(UNSMOOTH_SOFTWARE_ANSWER),
+      ],
+      [
+        'AnswersTheControlQuestionPowerEfficientButNotSmooth',
+        () => Promise.resolve(IPHONE_SAFARI_HEVC_ANSWER),
+      ],
+      [
+        'RejectsTheControlQuestion',
+        () => Promise.reject(new TypeError('Unsupported configuration')),
+      ],
+      ['LeavesTheControlQuestionUnansweredAtTheDeadline', () => NEVER_ANSWERED],
+    ])(
+      'shouldAskNoHevcLevelAndDeclareTheNeededLevelsWhenWebKit%s',
+      async (_, controlAnswer: () => Promise<DecodingAnswer>) => {
+        vi.useFakeTimers()
+        const decodingInfo = decodingInfoAnsweringTheHevcControlQuestion(controlAnswer)
+        const declaration = declarePlaybackCapabilities(
+          platformFixture({ decodingInfo, userAgent: SAFARI }),
+        )
+
+        await vi.advanceTimersByTimeAsync(3_000)
+
+        expect(familyEntries(await declaration, 'HEVC')).toEqual([UHD_AT_60_HEVC_ENTRY])
+        expect(hevcLevelsAskedBySearch(decodingInfo)).toEqual({
+          HEVC_MAIN: [HEVC_LEVEL_8_5],
+          HEVC_MAIN_10: [HEVC_LEVEL_8_5],
+        })
+      },
+    )
+
+    it.each([
+      ['Main', hevcMainCodec(HEVC_LEVEL_8_5), HEVC_LEVEL_6_2, HEVC_LEVEL_5_1],
+      ['MainTen', hevcMainTenCodec(HEVC_LEVEL_8_5), HEVC_LEVEL_5_1, HEVC_LEVEL_6_2],
+    ])(
+      'shouldDeclareTheSearchedLevelOnlyForHevc%sWhenWebKitRefusesOnlyItsControlQuestion',
+      async (_, refusedControl, mainLevel, mainTenLevel) => {
+        const decodingInfo = decodingInfoAnsweringTheHevcControlQuestion((configuration) =>
+          Promise.resolve(answer(codecOf(configuration) !== refusedControl)),
+        )
+
+        const declaration = await declarePlaybackCapabilities(
+          platformFixture({ decodingInfo, userAgent: SAFARI }),
+        )
+
+        expect(familyEntries(declaration, 'HEVC')).toEqual([
+          {
+            ...UHD_AT_60_HEVC_ENTRY,
+            codecProfiles: [
+              { profile: 'HEVC_MAIN', maxLevel: mainLevel },
+              { profile: 'HEVC_MAIN_10', maxLevel: mainTenLevel },
+            ],
+          },
+        ])
+      },
+    )
+
+    it('shouldDeclareTheNeededLevelForAnHdrEntryWhenWebKitAnswersTheControlQuestionOfOneOfItsCompatibleBasesSmooth', async () => {
+      const declaration = await declarePlaybackCapabilities(
+        hdrPlatformFixture({
+          decodingInfo: decodingInfoAnsweringTheHevcControlQuestion((configuration) =>
+            Promise.resolve(answer(configuration.video?.transferFunction === 'hlg')),
+          ),
+          userAgent: SAFARI,
+        }),
+      )
+
+      expect(hevcLevelsByBases(declaration)).toEqual([
+        { compatibleBases: ['SDR'], codecProfiles: hevcProfiles(HEVC_LEVEL_6_2) },
+        { compatibleBases: ['PQ', 'HLG'], codecProfiles: hevcMainTen(HEVC_LEVEL_5_1) },
+      ])
     })
 
     it('shouldDeclareTheFirstSmoothHevcLevelWhenWebKitRefusesOrAnswersUnsmoothAtEachLevelAboveIt', async () => {
@@ -2078,8 +2199,8 @@ describe('declarePlaybackCapabilities', () => {
         { ...UHD_AT_60_HEVC_ENTRY, codecProfiles: hevcProfiles(HEVC_LEVEL_5_2) },
       ])
       expect(hevcLevelsAskedBySearch(decodingInfo)).toEqual({
-        HEVC_MAIN: EVERY_SEARCHED_HEVC_LEVEL,
-        HEVC_MAIN_10: EVERY_SEARCHED_HEVC_LEVEL,
+        HEVC_MAIN: [HEVC_LEVEL_8_5, ...EVERY_SEARCHED_HEVC_LEVEL],
+        HEVC_MAIN_10: [HEVC_LEVEL_8_5, ...EVERY_SEARCHED_HEVC_LEVEL],
       })
     })
 
@@ -2092,8 +2213,8 @@ describe('declarePlaybackCapabilities', () => {
 
       expect(familyEntries(declaration, 'HEVC')).toEqual([UHD_AT_60_HEVC_ENTRY])
       expect(hevcLevelsAskedBySearch(decodingInfo)).toEqual({
-        HEVC_MAIN: EVERY_SEARCHED_HEVC_LEVEL,
-        HEVC_MAIN_10: EVERY_SEARCHED_HEVC_LEVEL,
+        HEVC_MAIN: [HEVC_LEVEL_8_5, ...EVERY_SEARCHED_HEVC_LEVEL],
+        HEVC_MAIN_10: [HEVC_LEVEL_8_5, ...EVERY_SEARCHED_HEVC_LEVEL],
       })
     })
 
@@ -2124,8 +2245,8 @@ describe('declarePlaybackCapabilities', () => {
 
         expect(familyEntries(await declaration, 'HEVC')).toEqual([UHD_AT_60_HEVC_ENTRY])
         expect(hevcLevelsAskedBySearch(decodingInfo)).toEqual({
-          HEVC_MAIN: [HEVC_LEVEL_6_2],
-          HEVC_MAIN_10: [HEVC_LEVEL_6_2],
+          HEVC_MAIN: [HEVC_LEVEL_8_5, HEVC_LEVEL_6_2],
+          HEVC_MAIN_10: [HEVC_LEVEL_8_5, HEVC_LEVEL_6_2],
         })
       },
     )

@@ -146,6 +146,9 @@ function pixelRate(tier: PictureTier): number {
 // above 5.1.
 const SEARCHED_HEVC_LEVELS: readonly number[] = [62, 61, 60, 52]
 
+// Level 8.5 is general_level_idc 255, the highest level that an HEVC codec string can carry.
+const HEVC_CONTROL_LEVEL = 85
+
 interface BitDepthProbe {
   bitDepth: number
   profiles: readonly VideoCodecProfile[]
@@ -525,10 +528,9 @@ function probeHdr({
   )
 }
 
-// WebKit on Apple platforms answers an HEVC question by comparing its level with the decoder's
-// maximum levels, and does not read the picture. Its smooth answer is therefore evidence about the
-// level itself (ADR 0049). Each search asks at the widest picture tier, so a WebKit port that reads
-// the picture cannot raise a level on the strength of a small picture.
+// A smooth answer is evidence about an HEVC level only where the browser compares the level with its
+// decoder (ADR 0049). Each search asks at the widest picture tier, so a browser that reads the
+// picture cannot raise a level on the strength of a small picture.
 async function searchLevels({
   platform,
   family,
@@ -561,11 +563,16 @@ async function searchLevels({
   return { eightBit: eightBitLevel, tenBit: tenBitLevel, bases: new Map(bases) }
 }
 
+// No decoder plays level 8.5, so only a browser that compares the level with its decoder refuses
+// level 8.5. The search asks about level 8.5 first, and asks about other levels only after a refusal.
 // The browser answers no faster when asked every level at once, so the search asks one level at a
 // time and stops at the first smooth answer. A missing answer is never evidence, so a question
 // that the browser rejects or leaves unanswered ends the search without a level. Power efficiency
 // never raises a level.
 async function searchLevel(ask: (level: number) => Promise<ProbeAnswer>): Promise<number | null> {
+  if (!isRefusal(await ask(HEVC_CONTROL_LEVEL))) {
+    return null
+  }
   for (const level of SEARCHED_HEVC_LEVELS) {
     const answer = await ask(level)
     if (answer === null) {
