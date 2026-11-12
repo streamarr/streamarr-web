@@ -127,3 +127,23 @@ test('the avatar dot and each unread row mark take the indicator colour', async 
   const rows = page.getByRole('list', { name: 'Notifications' }).getByRole('listitem')
   await expect(rows.first().getByTestId('unread-mark')).toHaveCSS('background-color', indicator)
 })
+
+// A count is text, so it takes text.primary, which reaches 4.5:1 against the menu, and it draws
+// no badge around itself.
+test('a count after a menu entry is a plain number in the primary text colour', async ({
+  page,
+  request,
+}) => {
+  await serveSharingPages(page, request, {
+    UnreadNotificationCount: { unreadNotificationCount: 3 },
+  })
+  await page.goto('/')
+  const primary = await tokenColour(page, '--text-primary')
+
+  await page.getByRole('button', { name: 'Profile menu (Alex), has notifications' }).click()
+  const count = page.getByRole('button', { name: 'Notifications, 3 unread' }).getByText('3')
+
+  await expect(count).toHaveCSS('color', primary)
+  await expect(count).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  await expect(count).toHaveCSS('border-radius', '0px')
+})
