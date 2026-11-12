@@ -20,6 +20,7 @@ import {
 import { giveElementTracks } from '../test/mediaTracks'
 import { browserDecodingInfo, createDecodingAnswers } from './decodingAnswers'
 import {
+  askVideoQuestions,
   browserPlaybackPlatform,
   declarePlaybackCapabilities,
   type DecodingAnswer,
@@ -3173,6 +3174,209 @@ function isHdrQuestion(configuration: MediaDecodingConfiguration): boolean {
     /^(dvh1|dav1)/.test(codecOf(configuration))
   )
 }
+
+// Refuses HEVC above level 6.2, as the fakes that stand for Safari do. Decodes Dolby Vision profiles
+// 5, 8 and 10, so that a declaration lists an entry for each. Answers every other question smooth.
+function safariAnswers(): DecodingInfoFake {
+  return refusingHevcAboveLevelSixPointTwo(
+    hdrBrowser({ dolbyVision: ['dvh1.05', 'dvh1.08', 'dav1.10'] }),
+  )
+}
+
+// Safari on a Mac with an HDR display, whose media element plays every file type.
+function safariOnAMac(
+  decodingInfo: DecodingInfo,
+  overrides: Partial<PlaybackPlatform> = {},
+): PlaybackPlatform {
+  return hdrPlatformFixture({
+    decodingInfo,
+    userAgent: SAFARI,
+    canPlayType: () => 'probably',
+    ...overrides,
+  })
+}
+
+function questionsSentTo(browser: DecodingInfoFake): MediaDecodingConfiguration[] {
+  return browser.mock.calls.map(([configuration]) => configuration)
+}
+
+function isVideoQuestion(configuration: MediaDecodingConfiguration): boolean {
+  return configuration.video !== undefined
+}
+
+function questionsRefusedBy(browser: DecodingInfoFake): MediaDecodingConfiguration[] {
+  return questionsSentTo(browser).filter((_, index) => {
+    const settled = browser.mock.settledResults[index]
+    return settled.type === 'fulfilled' && !settled.value.supported
+  })
+}
+
+describe('askVideoQuestions', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('shouldSendTheBrowserEveryVideoQuestionThatADeclarationSendsWhenAskedForTheSamePlatform', async () => {
+    const declaring = safariAnswers()
+    await declarePlaybackCapabilities(safariOnAMac(declaring))
+    const asking = safariAnswers()
+
+    await askVideoQuestions(safariOnAMac(asking))
+
+    const sent = questionsSentTo(asking)
+    expect(sent).toEqual(questionsSentTo(declaring).filter(isVideoQuestion))
+    expect(sent.some(isHdrQuestion)).toBe(true)
+    expect(hevcLevelSearchQuestions(asking)).not.toEqual([])
+    expect(sent.some((configuration) => configuration.type === 'file')).toBe(true)
+  })
+
+  it('shouldSendTheBrowserEveryVideoQuestionThatADeclarationSendsWhenTheMediaElementPlaysHlsOnAnSdrDisplay', async () => {
+    const readings = {
+      hlsJsSupported: false,
+      nativeHlsSupported: true,
+      displaysHighDynamicRange: false,
+    }
+    const declaring = safariAnswers()
+    await declarePlaybackCapabilities(safariOnAMac(declaring, readings))
+    const asking = safariAnswers()
+
+    await askVideoQuestions(safariOnAMac(asking, readings))
+
+    const sent = questionsSentTo(asking)
+    expect(sent).not.toEqual([])
+    expect(sent).toEqual(questionsSentTo(declaring).filter(isVideoQuestion))
+  })
+
+  it('shouldNeverReadTheAudioOutputWhenAskingTheVideoQuestions', async () => {
+    const audioOutputChannels = vi.fn(() => Promise.resolve(8))
+
+    await askVideoQuestions(safariOnAMac(safariAnswers(), { audioOutputChannels }))
+
+    expect(audioOutputChannels).not.toHaveBeenCalled()
+  })
+
+  it('shouldResolveWhenTheBrowserRejectsEveryQuestion', async () => {
+    const browser = vi.fn<DecodingInfo>(() =>
+      Promise.reject(new TypeError('Unsupported configuration')),
+    )
+
+    const asking = askVideoQuestions(safariOnAMac(browser))
+
+    await expect(asking).resolves.toBeUndefined()
+    expect(browser).toHaveBeenCalled()
+  })
+
+  it('shouldResolveAtTheDeadlineOfADeclarationWhenTheBrowserLeavesEveryQuestionUnanswered', async () => {
+    vi.useFakeTimers()
+    const browser = vi.fn<DecodingInfo>(() => NEVER_ANSWERED)
+    let settled = false
+
+    void askVideoQuestions(safariOnAMac(browser)).then(() => {
+      settled = true
+    })
+
+    await vi.advanceTimersByTimeAsync(2_999)
+    expect(settled).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(settled).toBe(true)
+  })
+
+  it('shouldAskNothingWhenThePlatformLacksDecodingInfo', async () => {
+    const canPlayType = vi.fn<PlaybackPlatform['canPlayType']>(() => 'probably')
+    const mediaSourceTypeSupported = vi.fn(() => true)
+    const audioOutputChannels = vi.fn(() => Promise.resolve(8))
+
+    await askVideoQuestions(
+      playbackPlatformFixture({
+        userAgent: SAFARI,
+        canPlayType,
+        mediaSourceTypeSupported,
+        audioOutputChannels,
+      }),
+    )
+
+    expect(canPlayType).not.toHaveBeenCalled()
+    expect(mediaSourceTypeSupported).not.toHaveBeenCalled()
+    expect(audioOutputChannels).not.toHaveBeenCalled()
+  })
+
+  describe('with the answers kept for the page', () => {
+    it('shouldSendTheBrowserOnlyAudioQuestionsAndTheVideoQuestionsItRefusesWhenADeclarationFollowsTheVideoQuestions', async () => {
+      const browser = safariAnswers()
+      const { ask } = createDecodingAnswers({ decodingInfo: browser })
+      await askVideoQuestions(safariOnAMac(ask))
+      browser.mockClear()
+
+      await declarePlaybackCapabilities(safariOnAMac(ask))
+
+      const audioQuestions = questionsSentTo(browser).filter(
+        (configuration) => !isVideoQuestion(configuration),
+      )
+      expect(audioQuestions).not.toEqual([])
+      expect(questionsSentTo(browser).filter(isVideoQuestion)).not.toEqual([])
+      expect(questionsAnsweredAsSupported(browser).filter(isVideoQuestion)).toEqual([])
+    })
+
+    it('shouldDeclareWhatADeclarationWithoutTheVideoQuestionsDeclaresWhenTheVideoQuestionsCameFirst', async () => {
+      const { ask } = createDecodingAnswers({ decodingInfo: safariAnswers() })
+      await askVideoQuestions(safariOnAMac(ask))
+
+      const declaration = await declarePlaybackCapabilities(safariOnAMac(ask))
+
+      expect(declaration).toEqual(await declarePlaybackCapabilities(safariOnAMac(safariAnswers())))
+    })
+
+    it('shouldShareTheVideoQuestionsStillOutWhenADeclarationStartsBeforeTheBrowserRefusesAny', async () => {
+      vi.useFakeTimers()
+      const safari = safariAnswers()
+      // Safari answered one HEVC question in about 5 ms, one question after another.
+      const browser = vi.fn<DecodingInfo>(
+        (configuration) =>
+          new Promise((resolve) => {
+            setTimeout(() => resolve(safari(configuration)), 5)
+          }),
+      )
+      const { ask } = createDecodingAnswers({ decodingInfo: browser })
+      const asking = askVideoQuestions(safariOnAMac(ask))
+      await vi.advanceTimersByTimeAsync(50)
+      const sentBeforeTheDeclaration = browser.mock.calls.length
+      expect(questionsRefusedBy(browser)).toEqual([])
+
+      const declaration = declarePlaybackCapabilities(safariOnAMac(ask))
+      await vi.advanceTimersByTimeAsync(3_000)
+      await asking
+
+      const videoQuestions = questionsSentTo(browser)
+        .filter(isVideoQuestion)
+        .map((configuration) => JSON.stringify(configuration))
+      expect(sentBeforeTheDeclaration).toBeGreaterThan(0)
+      expect(sentBeforeTheDeclaration).toBeLessThan(videoQuestions.length)
+      expect(
+        videoQuestions.filter((question, index) => videoQuestions.indexOf(question) !== index),
+      ).toEqual([])
+      vi.useRealTimers()
+      expect(await declaration).toEqual(
+        await declarePlaybackCapabilities(safariOnAMac(safariAnswers())),
+      )
+    })
+
+    it('shouldAskTheQuestionsOfTheNewReadingWhenTheDisplayShowsHdrOnlyAtTheDeclaration', async () => {
+      const browser = safariAnswers()
+      const { ask } = createDecodingAnswers({ decodingInfo: browser })
+      await askVideoQuestions(safariOnAMac(ask, { displaysHighDynamicRange: false }))
+      browser.mockClear()
+
+      const declaration = await declarePlaybackCapabilities(safariOnAMac(ask))
+
+      const supportedVideoQuestions = questionsAnsweredAsSupported(browser).filter(isVideoQuestion)
+      expect(supportedVideoQuestions).not.toEqual([])
+      expect(
+        supportedVideoQuestions.filter((configuration) => !isHdrQuestion(configuration)),
+      ).toEqual([])
+      expect(declaration).toEqual(await declarePlaybackCapabilities(safariOnAMac(safariAnswers())))
+    })
+  })
+})
 
 // The content types that Chromium's video element plays as files, as Playwright's Chromium 156
 // answered canPlayType and decodingInfo: H.264 as avc1 and avc3, AV1 in MP4 and Matroska, and AAC,

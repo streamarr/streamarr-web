@@ -374,15 +374,34 @@ interface Askers {
  * What this browser plays over HLS, and from MP4 and WebM files in its own media element, built for
  * each playback session from the platform's answers. Each declaration reads the display and the
  * audio output again, so a changed reading asks other questions. The platform may answer a question
- * that it answered for an earlier declaration. Never rejects: each probe the browser rejects or
- * leaves unanswered counts as unconfirmed, and a browser without decodingInfo gets the minimal
- * declaration.
+ * that it answered earlier in the page, for an earlier declaration or for `askVideoQuestions`.
+ * Never rejects: each probe the browser rejects or leaves unanswered counts as unconfirmed, and a
+ * browser without decodingInfo gets the minimal declaration.
  */
 export async function declarePlaybackCapabilities(
   platform: PlaybackPlatform,
 ): Promise<ClientCapabilityDeclarationInput> {
   const entries = await declareEntries(platform)
   return { ...entries, selectsAudioTrackInDirectPlay: platform.selectsAudioTrackInDirectPlay }
+}
+
+/**
+ * Asks the video questions that `declarePlaybackCapabilities` asks under the same readings of the
+ * platform, and discards what they would declare. Asks no audio question and never reads the audio
+ * output: reading it creates an AudioContext, which a page must not create before the viewer starts
+ * playback. Settles once the questions settle or at the deadline of a declaration, and never
+ * rejects. A platform without decodingInfo gets no question.
+ */
+export async function askVideoQuestions(platform: PlaybackPlatform): Promise<void> {
+  const { decodingInfo } = platform
+  if (!decodingInfo) {
+    return
+  }
+  await askWithOneDeadline({
+    platform,
+    decodingInfo,
+    ask: ({ askers }) => probeVideo({ platform, askers, hls: playsHls(platform) }),
+  })
 }
 
 async function declareEntries(platform: PlaybackPlatform): Promise<CapabilityEntries> {
@@ -409,8 +428,7 @@ async function declareEntries(platform: PlaybackPlatform): Promise<CapabilityEnt
   })
 }
 
-// Gives `ask` the askers of one declaration and the deadline that their answers share, and clears
-// the deadline once `ask` settles.
+// Gives `ask` askers whose answers share one deadline, and clears the deadline once `ask` settles.
 async function askWithOneDeadline<T>({
   platform,
   decodingInfo,
@@ -432,7 +450,7 @@ async function askWithOneDeadline<T>({
     (asked: MediaDecodingType): AskDecodingInfo =>
     (configuration) => {
       // Called inside an async function so a decodingInfo that throws synchronously becomes a
-      // rejection, which settles this probe alone instead of failing every probe in the declaration.
+      // rejection, which settles this probe alone instead of failing every other probe.
       const answer = (async () => decodingInfo({ type: asked, ...configuration }))()
       return Promise.race([answer.catch(() => null), deadline])
     }

@@ -14,6 +14,7 @@ import { inactiveRenewalBridge } from './auth/renewalBridge'
 import { createBrowserRenewalBridge } from './auth/renewalBrowser'
 import { createAppRouter } from './router'
 import { browserDecodingAnswers } from './streaming/decodingAnswers'
+import { askVideoQuestionsAfterLoad } from './streaming/videoQuestionsAfterLoad'
 import { decideRegistration } from './sw/registration'
 import { cssVariablesResolver, theme } from './theme'
 
@@ -41,6 +42,12 @@ createRoot(document.getElementById('root')!).render(
     </MantineProvider>
   </StrictMode>,
 )
+
+void askVideoQuestionsAfterLoad({
+  pageAnswers: decodingAnswers,
+  page: window,
+  loadCapabilities: () => import('./streaming/playbackCapabilities'),
+})
 
 // Registered after rendering starts, so the page never waits on the worker.
 if ('serviceWorker' in navigator) {

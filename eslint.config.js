@@ -65,6 +65,7 @@ export default defineConfig(
       'src/main.tsx',
       'src/router.ts',
       'src/streaming/decodingAnswers.ts',
+      'src/streaming/videoQuestionsAfterLoad.ts',
       'src/streaming/webKit.ts',
     ],
     rules: {
