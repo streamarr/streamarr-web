@@ -438,3 +438,119 @@ test.describe(() => {
     }
   })
 })
+
+// As the server refuses a session it has no transcode slot for, in its own words.
+const CAPACITY_WORDS = "The server can't start this video right now. Try again in a few minutes."
+const CAPACITY_REFUSED = {
+  createPlaybackSession: {
+    playbackSession: null,
+    userErrors: [{ __typename: 'TranscodeCapacityUnavailableError', message: CAPACITY_WORDS }],
+  },
+}
+const SDR_REFUSED_EXPLANATION =
+  "This video couldn't play in SDR at this quality, so it's playing in HDR."
+
+// Plays the PQ source in 480p, paused one second in, and turns HDR off. The server refuses every
+// session that asks for SDR, and the first `refusedInHdr` sessions after it that ask for HDR. Each
+// creation joins the log with its choice, its HDR choice and where it starts.
+async function turnHdrOffWhileTheServerRefusesSdr(
+  page: Page,
+  request: APIRequestContext,
+  { refusedInHdr }: { refusedInHdr: number },
+): Promise<string[]> {
+  await onDisplay(page, true)
+  await servePqStream(page, request, PQ_ONLY_MULTIVARIANT)
+  const created: string[] = []
+  let refusalsInHdr = refusedInHdr
+  await page.route('**/graphql', (route) => {
+    if (operationName(route.request()) !== 'CreatePlaybackSession') return route.fallback()
+    const { input } = (
+      route.request().postDataJSON() as { variables: CreatePlaybackSessionMutationVariables }
+    ).variables
+    const range = input.options?.dynamicRange
+    created.push(`${input.options?.quality} ${range ?? '-'} at ${input.startPositionSeconds ?? 0}`)
+    const refused = range === 'SDR' || (range === 'HDR' && refusalsInHdr-- > 0)
+    return route.fulfill({
+      json: { data: refused ? CAPACITY_REFUSED : sessionOf(FIXED_QUALITY_IN_HDR) },
+    })
+  })
+  await page.goto('/play/file-1?episode=e1')
+  await expectFirstPqFrame(page)
+  await page.locator('video').evaluate(async (video: HTMLVideoElement) => {
+    video.pause()
+    const seeked = new Promise((resolve) =>
+      video.addEventListener('seeked', resolve, { once: true }),
+    )
+    video.currentTime = 1
+    await seeked
+  })
+  await page.getByRole('button', { name: 'Quality: 480p' }).click()
+  await page
+    .getByRole('menu', { name: 'Quality' })
+    .getByRole('menuitemcheckbox', { name: /^HDR/ })
+    .click()
+  return created
+}
+
+// The stream shows its first PQ frame again, paused at one second.
+async function expectHdrPausedAtOneSecond(page: Page): Promise<void> {
+  await expect
+    .poll(() =>
+      page.locator('video').evaluate((video: HTMLVideoElement) => ({
+        decoded: video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA,
+        width: video.videoWidth,
+        at: video.currentTime,
+        paused: video.paused,
+      })),
+    )
+    .toEqual({ decoded: true, width: 640, at: 1, paused: true })
+}
+
+test('HDR goes on where the viewer was when the server refuses SDR, with a caution on Quality', async ({
+  page,
+  request,
+}) => {
+  const created = await turnHdrOffWhileTheServerRefusesSdr(page, request, { refusedInHdr: 0 })
+
+  await expect
+    .poll(() => created)
+    .toEqual(['AUTO - at 0', 'MEDIUM_480P SDR at 1', 'MEDIUM_480P HDR at 1'])
+  await expectHdrPausedAtOneSecond(page)
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  await expect(page.getByText(CAPACITY_WORDS)).toHaveCount(0)
+  const chip = page.getByRole('button', { name: 'Quality: 480p' })
+  await expect(chip.getByTestId('caution-badge')).toBeVisible()
+  await expect(chip).toHaveAccessibleDescription(SDR_REFUSED_EXPLANATION)
+  await chip.click()
+  const menu = page.getByRole('menu', { name: 'Quality' })
+  await expect(menu).toHaveAccessibleDescription(SDR_REFUSED_EXPLANATION)
+  await expect(
+    page.getByRole('paragraph').filter({ hasText: SDR_REFUSED_EXPLANATION }),
+  ).toBeVisible()
+  await expect(menu.getByRole('menuitemcheckbox', { name: /^HDR/ })).toHaveAttribute(
+    'aria-checked',
+    'true',
+  )
+})
+
+test('Retry starts HDR where the viewer turned it off when the server refuses SDR and then HDR', async ({
+  page,
+  request,
+}) => {
+  const created = await turnHdrOffWhileTheServerRefusesSdr(page, request, { refusedInHdr: 1 })
+  const alert = page.getByRole('alert')
+  await expect(alert).toContainText(CAPACITY_WORDS)
+
+  await alert.getByRole('button', { name: 'Retry playback' }).click()
+
+  await expectHdrPausedAtOneSecond(page)
+  expect(created).toEqual([
+    'AUTO - at 0',
+    'MEDIUM_480P SDR at 1',
+    'MEDIUM_480P HDR at 1',
+    'MEDIUM_480P HDR at 1',
+  ])
+  await expect(page.getByRole('button', { name: 'Quality: 480p' })).toHaveAccessibleDescription(
+    SDR_REFUSED_EXPLANATION,
+  )
+})

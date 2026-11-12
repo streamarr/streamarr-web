@@ -41,6 +41,11 @@ interface ChoiceRequest {
   /** The viewer's HDR choice, which only a fixed quality takes. */
   dynamicRange?: DynamicRangeChoice
   resumeFrom?: ResumePoint
+  /**
+   * An HDR toggle's change of range: `asked` goes back to the range that played when the server
+   * refuses it, and `refused` is that range going on, with a caution.
+   */
+  rangeChange?: 'asked' | 'refused'
 }
 
 // The audio language that plays from a start, which every later playback session of that start asks
@@ -80,6 +85,17 @@ function audioLanguageFrom(
 
 function startingChoice(start: PlaybackStart): ChoiceRequest {
   return { start, quality: 'AUTO' }
+}
+
+// Any range is better than no video, so when the server refuses the range the toggle asked for, the
+// range that played before goes on in the same quality, where the refused playback would resume.
+function rangeThatPlayed(asked: ChoiceRequest, resumeFrom: ResumePoint): ChoiceRequest {
+  return {
+    ...asked,
+    dynamicRange: asked.dynamicRange === 'SDR' ? 'HDR' : 'SDR',
+    resumeFrom,
+    rangeChange: 'refused',
+  }
 }
 
 function playingRanges(phase: Extract<SourcePhase, { at: 'attached' }>): PlayingRanges {
@@ -125,6 +141,8 @@ export function Player({
     setChoice(startingChoice({ mediaFileId, startPositionSeconds }))
   }
   const sourcePhase = reported?.start === choice.start ? reported.phase : STARTING
+  // The choice whose playback has shown a frame, which Retry no longer resumes where it was picked.
+  const playedChoice = useRef<ChoiceRequest>(null)
   const {
     marks,
     cautions,
@@ -188,6 +206,9 @@ export function Player({
     }
     const reportSourcePhase = (phase: SourcePhase) => setReported({ start: choice.start, phase })
     reportSourcePhase(STARTING)
+    const followOutput = followPlaybackSession(
+      choice.rangeChange === 'refused' ? choice.dynamicRange : undefined,
+    )
 
     const playback = startPlayerPlayback({
       video,
@@ -212,8 +233,15 @@ export function Player({
       dynamicRange: choice.dynamicRange ?? 'HDR',
       resumeFrom: choice.resumeFrom,
       onSourcePhase: reportSourcePhase,
-      onOutputShown: followPlaybackSession(),
+      onOutputShown: (qualities) => {
+        playedChoice.current = choice
+        followOutput(qualities)
+      },
       onAudioSwitchRefused: refuseAudioSwitch,
+      onRefused:
+        choice.rangeChange === 'asked'
+          ? (resumeFrom) => setChoice(rangeThatPlayed(choice, resumeFrom))
+          : undefined,
     })
     playbackRef.current = playback
     return playback.stop
@@ -253,6 +281,7 @@ export function Player({
       quality: quality.selected,
       dynamicRange: hdr.on ? 'SDR' : 'HDR',
       resumeFrom: playback.resumePoint(),
+      rangeChange: 'asked',
     })
   }
 
@@ -285,8 +314,13 @@ export function Player({
     setPlaybackDataScreen({ screen, displaysHighDynamicRange, userAgent })
   }
 
-  // The pick's resume point is long past by now, so Retry starts where playback first started.
+  // A choice that never played is asked for again as it was, from where the viewer picked it. Once
+  // it played, its resume point is long past, so Retry starts where playback first started.
   function retry() {
+    if (playedChoice.current !== choice) {
+      setChoice({ ...choice })
+      return
+    }
     setChoice({ start: choice.start, quality: choice.quality, dynamicRange: choice.dynamicRange })
   }
 
