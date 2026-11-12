@@ -40,6 +40,17 @@ const H264_AT_1080P30: MediaDecodingConfiguration = {
   },
 }
 
+const AV1_AT_1080P30: MediaDecodingConfiguration = {
+  type: 'media-source',
+  video: {
+    contentType: 'video/mp4; codecs="av01.0.08M.08"',
+    width: 1920,
+    height: 1080,
+    framerate: 30,
+    bitrate: 10_000_000,
+  },
+}
+
 const STEREO_AAC: MediaDecodingConfiguration = {
   type: 'media-source',
   audio: {
@@ -278,6 +289,90 @@ describe('createDecodingAnswers', () => {
     expect(askedConfigurations(browser.decodingInfo)).toEqual([HEVC_AT_2160P60, H264_AT_1080P30])
   })
 
+  it('shouldSendEveryWaitingQuestionWhenTheTurnOfAQuestionPassesWithoutAnAnswer', async () => {
+    const decodingInfo = vi.fn<DecodingInfo>((configuration) =>
+      configuration === AV1_AT_1080P30
+        ? Promise.resolve(SUPPORTED)
+        : new Promise<DecodingAnswer>(() => {}),
+    )
+    const { ask } = createDecodingAnswers({ decodingInfo })
+    void ask(HEVC_AT_2160P60)
+    void ask(H264_AT_1080P30)
+    void ask(STEREO_AAC)
+    const answered = ask(AV1_AT_1080P30)
+
+    await letTurnsPass(249)
+    expect(askedConfigurations(decodingInfo)).toEqual([HEVC_AT_2160P60])
+
+    await letTurnsPass(1)
+    expect(askedConfigurations(decodingInfo)).toEqual([
+      HEVC_AT_2160P60,
+      H264_AT_1080P30,
+      STEREO_AAC,
+      AV1_AT_1080P30,
+    ])
+    await expect(answered).resolves.toEqual(SUPPORTED)
+  })
+
+  it('shouldSendAQuestionAtOnceWhenItIsAskedWhileAnotherIsOverdue', async () => {
+    const browser = browserAnsweringByHand()
+    const { ask } = createDecodingAnswers({ decodingInfo: browser.decodingInfo })
+    void ask(HEVC_AT_2160P60)
+    await letTurnsPass(250)
+
+    void ask(H264_AT_1080P30)
+    void ask(STEREO_AAC)
+    await letTurnsPass(0)
+
+    expect(askedConfigurations(browser.decodingInfo)).toEqual([
+      HEVC_AT_2160P60,
+      H264_AT_1080P30,
+      STEREO_AAC,
+    ])
+  })
+
+  it.each<[string, (question: SentQuestion) => void]>([
+    ['Answers', (question) => question.resolve(SUPPORTED)],
+    ['Rejects', (question) => question.reject(new TypeError('Unsupported configuration'))],
+  ])(
+    'shouldSendOneQuestionAtATimeAgainWhenTheBrowser%sTheOverdueQuestionLate',
+    async (_, settle) => {
+      const browser = browserAnsweringByHand()
+      const { ask } = createDecodingAnswers({ decodingInfo: browser.decodingInfo })
+      void ask(HEVC_AT_2160P60).catch(() => undefined)
+      await letTurnsPass(250)
+      settle(browser.sent[0])
+      await letTurnsPass(0)
+
+      void ask(H264_AT_1080P30)
+      void ask(STEREO_AAC)
+      await letTurnsPass(0)
+
+      expect(askedConfigurations(browser.decodingInfo)).toEqual([HEVC_AT_2160P60, H264_AT_1080P30])
+    },
+  )
+
+  it('shouldHoldNoQuestionBackUntilTheBrowserSettlesEveryOverdueQuestion', async () => {
+    const browser = browserAnsweringByHand()
+    const { ask } = createDecodingAnswers({ decodingInfo: browser.decodingInfo })
+    void ask(HEVC_AT_2160P60)
+    void ask(H264_AT_1080P30)
+    await letTurnsPass(500)
+    browser.sent[0].resolve(SUPPORTED)
+    await letTurnsPass(0)
+
+    void ask(STEREO_AAC)
+    void ask(AV1_AT_1080P30)
+    await letTurnsPass(0)
+
+    expect(askedConfigurations(browser.decodingInfo)).toEqual([
+      HEVC_AT_2160P60,
+      H264_AT_1080P30,
+      STEREO_AAC,
+      AV1_AT_1080P30,
+    ])
+  })
+
   it('shouldSendAQuestionOnceWhenTwoAsksShareItWhileItWaitsInLine', async () => {
     const browser = browserAnsweringByHand()
     const { ask } = createDecodingAnswers({ decodingInfo: browser.decodingInfo })
@@ -335,21 +430,17 @@ describe('createDecodingAnswers', () => {
     expect(browser.decodingInfo).toHaveBeenCalledOnce()
   })
 
-  it('shouldSettleAnAskThatWaitsInLineWithALateAnswerAndNeverSendItsQuestionAgain', async () => {
+  it('shouldSettleAnAskWithALateAnswerAndNeverSendItsQuestionAgainWhenTheAnswerArrivesBeforeItsTurn', async () => {
     const browser = browserAnsweringByHand()
     const { ask } = createDecodingAnswers({ decodingInfo: browser.decodingInfo })
     void ask(HEVC_AT_2160P60)
     await letTurnsPass(250)
-    void ask(H264_AT_1080P30)
-    const waiting = ask(HEVC_AT_2160P60)
-    await letTurnsPass(0)
 
     browser.sent[0].resolve(SUPPORTED)
-    await expect(waiting).resolves.toEqual(SUPPORTED)
-    browser.sent[1].resolve(SUPPORTED)
-    await letTurnsPass(0)
+    const again = ask(HEVC_AT_2160P60)
 
-    expect(askedConfigurations(browser.decodingInfo)).toEqual([HEVC_AT_2160P60, H264_AT_1080P30])
+    await expect(again).resolves.toEqual(SUPPORTED)
+    expect(browser.decodingInfo).toHaveBeenCalledOnce()
   })
 
   it('shouldSettleTheQuestionSentAgainWithTheFirstAnswerThatArrives', async () => {

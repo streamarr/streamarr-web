@@ -3031,6 +3031,35 @@ describe('declarePlaybackCapabilities', () => {
       expect(familyEntries(second, 'H264')).toEqual(neverRefused)
     })
 
+    it('shouldDeclareH264AV1AndAudioAsWithoutThePagesAnswersWhenTheBrowserSettlesNoHevcQuestion', async () => {
+      vi.useFakeTimers()
+      const browser = decodingInfoLeavingUnanswered({
+        unanswered: (configuration) => codecOf(configuration).startsWith('hvc1'),
+        otherwise: hdrBrowser(),
+      })
+      const declareAtTheDeadline = async (decodingInfo: DecodingInfo) => {
+        const declaration = declarePlaybackCapabilities(
+          hdrPlatformFixture({ decodingInfo, userAgent: SAFARI }),
+        )
+        await vi.advanceTimersByTimeAsync(3_000)
+        return declaration
+      }
+      const withoutThePagesAnswers = await declareAtTheDeadline(browser)
+      expect(familyEntries(withoutThePagesAnswers, 'AV1')).not.toEqual([])
+
+      const declaration = await declareAtTheDeadline(
+        createDecodingAnswers({ decodingInfo: browser }).ask,
+      )
+
+      expect(familyEntries(declaration, 'H264')).toEqual(
+        familyEntries(withoutThePagesAnswers, 'H264'),
+      )
+      expect(familyEntries(declaration, 'AV1')).toEqual(
+        familyEntries(withoutThePagesAnswers, 'AV1'),
+      )
+      expect(declaration.audio).toEqual(withoutThePagesAnswers.audio)
+    })
+
     it('shouldAnswerAQuestionLeftUnansweredAtTheFirstDeadlineFromItsLateAnswerWhenItDeclaresAgain', async () => {
       vi.useFakeTimers()
       const isLate = hlsQuestionAbout(H264_AT_2160P60)

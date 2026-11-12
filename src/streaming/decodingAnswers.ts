@@ -8,8 +8,9 @@ export interface DecodingAnswers {
   /**
    * Answers as the browser's decodingInfo does. A question that the browser answered as supported
    * gets that answer without another call. The browser gets one question at a time, in the order of
-   * the asks. Refuses or rejects when the browser does, and keeps neither: the next ask of that
-   * question goes to the browser again.
+   * the asks. While the browser leaves a question unsettled after its turn of 250 ms, every question
+   * goes to the browser at once. Refuses or rejects when the browser does, and keeps neither: the
+   * next ask of that question goes to the browser again.
    */
   ask: DecodingInfo
 }
@@ -17,7 +18,9 @@ export interface DecodingAnswers {
 // WebKit answers its questions one at a time. A synchronous canPlayType or isTypeSupported call
 // for a type not asked before waits behind every pending question
 // (docs/research/webkit-decoding-info.md). A question that never settles would hold back every
-// later question, so after its turn the next one goes out.
+// later question, so once its turn passes every question goes out at once until the browser
+// settles it. Safari 26.6 took 114 ms over one question of a page's first declaration, so a shorter
+// turn would give up on a browser that works.
 const QUESTION_TURN_MS = 250
 
 interface Question {
@@ -95,7 +98,7 @@ export function createDecodingAnswers({
     }
     const turnPasses = setTimeout(() => {
       stopSharing()
-      turn.end()
+      turn.pass()
     }, QUESTION_TURN_MS)
     try {
       const answer = await decodingInfo(configuration)
@@ -129,33 +132,54 @@ export function createDecodingAnswers({
 }
 
 interface Turn {
-  // Lets the next question in line go to the browser. Has no effect after the first call.
+  // The browser settled the question, or the question needs no sending. Lets the next question in
+  // line go to the browser.
   end: () => void
+  // The turn passed without an answer. The question is overdue until `end`.
+  pass: () => void
 }
 
 // Lets one question at a time go to the browser, in the order the questions take their turns.
+// While a question is overdue, every question goes at once and holds no line.
 function createQuestionLine() {
-  const waiting: (() => void)[] = []
+  const waiting: ((holdsLine: boolean) => void)[] = []
   let held = false
+  let overdue = 0
 
-  function letNextGo() {
+  function letWaitingGo() {
+    if (overdue > 0) {
+      waiting.splice(0).forEach((go) => go(false))
+      return
+    }
     if (held || waiting.length === 0) {
       return
     }
     held = true
-    waiting.shift()?.()
+    waiting.shift()?.(true)
   }
 
-  function turnHoldingTheLine(): Turn {
-    let holding = true
-    return {
-      end: () => {
-        if (!holding) {
-          return
-        }
+  function turnOf(holdsLine: boolean): Turn {
+    let holding = holdsLine
+    let owed = false
+    const leaveLine = () => {
+      if (holding) {
         holding = false
         held = false
-        letNextGo()
+      }
+      letWaitingGo()
+    }
+    return {
+      pass: () => {
+        owed = true
+        overdue += 1
+        leaveLine()
+      },
+      end: () => {
+        if (owed) {
+          owed = false
+          overdue -= 1
+        }
+        leaveLine()
       },
     }
   }
@@ -163,8 +187,8 @@ function createQuestionLine() {
   return {
     takeTurn: () =>
       new Promise<Turn>((resolve) => {
-        waiting.push(() => resolve(turnHoldingTheLine()))
-        letNextGo()
+        waiting.push((holdsLine) => resolve(turnOf(holdsLine)))
+        letWaitingGo()
       }),
   }
 }
