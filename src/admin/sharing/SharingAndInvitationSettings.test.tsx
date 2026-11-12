@@ -501,7 +501,7 @@ describe('sharing and invitation settings', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
-  it('shouldKeepSaveDisabledAndKeepDraftWhileRereadIsPendingOnReturn', async () => {
+  it('shouldKeepSaveDisabledAndKeepDraftWhenARereadIsPendingOnReturn', async () => {
     const state = serve()
     const { user } = renderAppAt(SHARING)
     expect(await limitField()).toHaveValue('10')
@@ -528,7 +528,7 @@ describe('sharing and invitation settings', () => {
     await waitFor(() => expect(state.limitChanges).toEqual([30]))
   })
 
-  it('shouldIgnoreRetryWhileSaveIsInFlight', async () => {
+  it('shouldIgnoreRetryWhenASaveIsInFlight', async () => {
     const state = serve()
     const { user } = renderAppAt(SHARING)
     expect(await limitField()).toHaveValue('10')

@@ -29,7 +29,6 @@ import {
 import { renderAppAt } from '../test/render'
 import { leaveForHome, returnThroughTheProfileMenu, type SettingsPage } from '../test/returnVisits'
 import { server } from '../test/server'
-import homeShellStyles from '../ui/HomeShell.module.css'
 import { intersectionObserverInstances } from '../../vitest.setup'
 
 const NOTIFICATIONS = '/notifications'
@@ -120,7 +119,7 @@ function servePages(...pages: NotificationsQuery[]) {
 }
 
 describe('Notifications', () => {
-  it('shouldOpenNotificationsFromTheProfileMenu', async () => {
+  it('shouldOpenNotificationsWhenTheAccountChoosesThemInTheProfileMenu', async () => {
     serve(notificationsPage([offerNotification()]))
     server.use(
       graphql.query('Home', () =>
@@ -143,7 +142,8 @@ describe('Notifications', () => {
     await screen.findByRole('heading', { level: 1, name: 'Notifications' })
 
     expect(screen.getByRole('banner')).toBeInTheDocument()
-    expect(document.querySelector(`.${homeShellStyles.homeAmbient}`)).toBeNull()
+    expect(screen.getByTestId('home-shell')).toBeInTheDocument()
+    expect(screen.queryByTestId('browsing-wash')).not.toBeInTheDocument()
   })
 
   it('shouldListEachNotificationInTheServersOrderAndWordsWhenTheyLoad', async () => {
@@ -278,7 +278,7 @@ describe('Requests in Notifications', () => {
     },
   )
 
-  it('shouldSayHowLongAgoAsTimePassesWithThePageOpen', async () => {
+  it('shouldSayHowLongAgoAgainWhenTimePassesWithThePageOpen', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'], shouldAdvanceTime: true })
     onTestFinished(() => void vi.useRealTimers())
     serve(
@@ -547,7 +547,7 @@ describe('Older Notifications', () => {
     )
   })
 
-  it('shouldAddNoOlderPageThatArrivesAfterThePersonLeft', async () => {
+  it('shouldAddNoOlderPageWhenItArrivesAfterThePersonLeft', async () => {
     serve()
     servePages(NEWEST, notificationsPage([answerAbout('Mara')], { from: 3 }))
     const late = heldAnswer(OLDER)
@@ -706,7 +706,7 @@ describe('Notifications as they change elsewhere', () => {
     await waitFor(() => expect(lines()).toEqual([ANSWER_LINE]))
   })
 
-  it('shouldKeepANotificationWhoseChangeCameWithAnError', async () => {
+  it('shouldKeepANotificationWhenItsChangeCameWithAnError', async () => {
     const { socket } = serve()
     const reads = readsThatCanBeHeld(() => notificationsPage([offerNotification()]))
     server.use(graphql.query('Notifications', reads.resolver))
@@ -734,7 +734,7 @@ describe('Notifications as they change elsewhere', () => {
     expect(lines()).toEqual([ANSWER_LINE, OFFER_LINE])
   })
 
-  it('shouldLeaveOutAChangeBelowTheLoadedPages', async () => {
+  it('shouldLeaveOutAChangeWhenItSortsBelowTheLoadedPages', async () => {
     const { socket } = await openWithAnOffer(
       notificationsPage([offerNotification()], { hasNextPage: true }),
     )
@@ -754,7 +754,7 @@ describe('Notifications as they change elsewhere', () => {
     await waitFor(() => expect(lines()).toEqual([ANSWER_LINE, OFFER_LINE]))
   })
 
-  it('shouldReadTheListAgainOnceItFollowsChanges', async () => {
+  it('shouldReadTheListAgainWhenItStartsFollowingChanges', async () => {
     const { socket } = serve()
     // Leo's news commits between the first read and the subscription, which misses it.
     const reads = answersInTurn(
