@@ -509,6 +509,19 @@ async function attachedWithTheClockStill(streamUrl = STREAM_URL): Promise<HTMLVi
   return fakeMedia(renderedVideo())
 }
 
+// A first load asks to start past the real end, and the player attaches its stream while the fake
+// clock stands still.
+async function startAFirstLoadPastTheRealEnd(): Promise<HTMLVideoElement> {
+  renderWithProviders(
+    <Player
+      playbackPlatform={withoutDecodingInfo}
+      mediaFileId="abcd"
+      startPositionSeconds={PAST_THE_REAL_END_SECONDS}
+    />,
+  )
+  return attachedWithTheClockStill()
+}
+
 // The media the stalled element waited for arrived, and the playhead moves on.
 function resumeAfterTheStall(video: HTMLVideoElement) {
   setReadyState(video, HTMLMediaElement.HAVE_ENOUGH_DATA)
@@ -6777,14 +6790,7 @@ describe('Player', () => {
         mediaEndSeconds: REAL_END_SECONDS,
       }))
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-      renderWithProviders(
-        <Player
-          playbackPlatform={withoutDecodingInfo}
-          mediaFileId="abcd"
-          startPositionSeconds={PAST_THE_REAL_END_SECONDS}
-        />,
-      )
-      await attachedWithTheClockStill()
+      await startAFirstLoadPastTheRealEnd()
 
       await act(async () => vi.advanceTimersByTimeAsync(SLOW_STARTUP_MS - 1))
       expect(statusReads()).toBe(0)
