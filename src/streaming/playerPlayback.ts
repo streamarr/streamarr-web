@@ -1161,7 +1161,8 @@ function startSessionPlayback({
     showFailure(PLAYBACK_FAILURE_MESSAGE)
   }
 
-  // A status check's poll waits with the check's own signal, and only while the check is current.
+  // A status check's poll waits with the check's own signal and reads, and only while the check is
+  // current, so a slow startup's check reads again after a read that failed.
   async function awaitReadyPlayback(initial: PlaybackSessionFieldsFragment, poll?: StatusPoll) {
     const signal = poll?.check.controller.signal ?? statusCancellation.signal
     const current = poll?.current ?? (() => !cancelled)
@@ -1171,11 +1172,11 @@ function startSessionPlayback({
       !signal.aborted &&
       playback?.currentFormatAttempt.__typename === 'PendingPlaybackFormatAttempt'
     ) {
-      const next = await readPlaybackSession(initial.id, signal)
+      const status = await readTheStatus(initial.id, poll?.check)
       if (!current()) {
         return undefined
       }
-      playback = next
+      if (status.read) playback = status.playback
       if (playback?.currentFormatAttempt.__typename === 'PendingPlaybackFormatAttempt') {
         await waitForPlaybackStatus(signal)
       }

@@ -505,6 +505,32 @@ function serveStatusReads(
 
 type StatusStreamSession = Parameters<typeof readyPlaybackSession>[0]['streamSession']
 
+// The first status read finds the server still starting `replacement`, the second fails as when
+// the connection drops, and every later read finds `replacement` ready; returns how often the
+// status was read.
+function serveAReplacementThatStartsAcrossAFailedRead(
+  replacement: StatusStreamSession,
+): () => number {
+  let reads = 0
+  server.use(
+    graphql.query('PlaybackSession', () => {
+      reads += 1
+      if (reads === 2) return HttpResponse.error()
+      const ready = readyPlaybackSession({ streamSession: replacement })
+      if (reads > 2) return HttpResponse.json({ data: { playbackSession: ready } })
+      const starting = {
+        ...ready,
+        currentFormatAttempt: {
+          __typename: 'PendingPlaybackFormatAttempt',
+          streamSessionId: replacement.id,
+        },
+      }
+      return HttpResponse.json({ data: { playbackSession: starting } })
+    }),
+  )
+  return () => reads
+}
+
 // The player attaches `streamUrl` while the fake clock stands still, so a test can time what
 // follows the attach. Testing Library's and Vitest's waits both move a faked clock.
 async function attachedWithTheClockStill(streamUrl = STREAM_URL): Promise<HTMLVideoElement> {
@@ -6942,6 +6968,24 @@ describe('Player', () => {
       expect(hls.config?.startPosition).toBe(600)
       loadMetadata(video)
       expect(video.currentTime).toBe(600)
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('shouldAttachTheStreamSessionThatTheStatusNamesWhenAReadFailsWhileASlowStartupWaitsForItToStart', async () => {
+      serveSession()
+      const replacement = replacementStream(1)
+      const statusReads = serveAReplacementThatStartsAcrossAFailedRead(replacement)
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+      const video = await attachedWithTheClockStill()
+      hls.destroy.mockImplementation(() => video.load())
+      await act(async () => vi.advanceTimersByTimeAsync(SLOW_STARTUP_MS))
+      await vi.waitFor(() => expect(statusReads()).toBe(2))
+
+      await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_STATUS_INTERVAL_MS))
+
+      await vi.waitFor(() => expect(hls.loadSource).toHaveBeenLastCalledWith(replacement.streamUrl))
+      expect(statusReads()).toBe(3)
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     })
 
