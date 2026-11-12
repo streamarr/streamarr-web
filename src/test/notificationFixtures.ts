@@ -18,18 +18,38 @@ export function hoursAgo(hours: number): string {
   return new Date(Date.now() - hours * HOUR).toISOString()
 }
 
-/** An offer of Alex to the reader's Household that waits for a decision, unread. */
+/**
+ * An offer of Alex to the reader's Household that waits for a decision, unread. Given how it
+ * resolved, it is read and its line says so, as the server words it.
+ */
 export function offerNotification(overrides: Partial<OfferNode> = {}): OfferNode {
+  const { resolution = null, answer = null } = overrides
   return {
     __typename: 'ProfileShareOfferedNotification',
     id: 'offer-of-alex',
-    message: '“Alex” was offered to your Household.',
+    message: offerLine(resolution, answer),
     latestEventAt: hoursAgo(1),
-    unread: true,
+    unread: resolution === null,
     expiresAt: new Date(Date.now() + 7 * 24 * HOUR).toISOString(),
-    resolution: null,
-    answer: null,
+    resolution,
+    answer,
     ...overrides,
+  }
+}
+
+const ANSWERED: Partial<Record<string, string>> = { ACCEPTED: 'accepted', REJECTED: 'declined' }
+
+function offerLine(resolution: OfferNode['resolution'], answer: OfferNode['answer']): string {
+  const offer = 'The offer of “Alex” to your Household'
+  switch (resolution) {
+    case null:
+      return '“Alex” was offered to your Household.'
+    case 'DECIDED':
+      return `${offer} was ${(answer && ANSWERED[answer]) ?? 'decided'}.`
+    case 'WITHDRAWN':
+      return `${offer} was withdrawn.`
+    default:
+      return `${offer} expired.`
   }
 }
 

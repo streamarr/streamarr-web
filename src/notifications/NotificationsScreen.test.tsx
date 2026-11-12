@@ -289,28 +289,38 @@ describe('Requests in Notifications', () => {
     expect(screen.getAllByRole('link', { name: 'Review' })).toHaveLength(1)
   })
 
-  it.each<[RequestResolution, ProfileShareAnswer | null, string]>([
-    ['DECIDED', 'ACCEPTED', 'Accepted'],
-    ['DECIDED', 'REJECTED', 'Declined'],
-    ['WITHDRAWN', null, 'Withdrawn'],
-    ['EXPIRED', null, 'Expired'],
+  it.each<[RequestResolution, ProfileShareAnswer | null, string, string]>([
+    ['DECIDED', 'ACCEPTED', 'The offer of “Alex” to your Household was accepted.', 'Accepted'],
+    ['DECIDED', 'REJECTED', 'The offer of “Alex” to your Household was declined.', 'Declined'],
+    ['WITHDRAWN', null, 'The offer of “Alex” to your Household was withdrawn.', 'Withdrawn'],
+    ['EXPIRED', null, 'The offer of “Alex” to your Household expired.', 'Expired'],
   ])(
-    'shouldSayHowAnOfferEndedInPlaceOfReviewWhenItResolved: %s with answer %s',
-    async (resolution, answer, ending) => {
-      serve(
-        notificationsPage([
-          offerNotification({
-            unread: false,
-            resolution,
-            answer,
-          }),
-        ]),
-      )
+    'shouldSayHowAnOfferEndedInPlaceOfReviewWhenItResolved: %s with the answer %s',
+    async (resolution, answer, line, ending) => {
+      serve(notificationsPage([offerNotification({ resolution, answer })]))
       renderAppAt(NOTIFICATIONS)
 
-      await screen.findByText(OFFER_LINE)
+      await screen.findByText(line)
 
       expect(within(rows()[0]).getByText(ending)).toBeVisible()
+      expect(screen.queryByRole('link', { name: 'Review' })).not.toBeInTheDocument()
+    },
+  )
+
+  it.each<[string, ProfileShareAnswer | null]>([
+    ['none', null],
+    ['one added after this client', 'POSTPONED' as ProfileShareAnswer],
+  ])(
+    'shouldSayNothingOfHowAnOfferWasDecidedWhenItCarriesNoAnswerThisClientKnows: %s',
+    async (_, answer) => {
+      serve(notificationsPage([offerNotification({ resolution: 'DECIDED', answer })]))
+      renderAppAt(NOTIFICATIONS)
+
+      await screen.findByRole('list', { name: 'Notifications' })
+
+      expect(
+        within(rows()[0]).queryByText(/^(Accepted|Declined|Withdrawn|Expired)$/),
+      ).not.toBeInTheDocument()
       expect(screen.queryByRole('link', { name: 'Review' })).not.toBeInTheDocument()
     },
   )
@@ -383,13 +393,7 @@ describe('Requests in Notifications', () => {
     await within(rows()[0]).findByText('Expired')
 
     // The offer was accepted before its expiry, and the change arrives after it.
-    const accepted = offerNotification({
-      message: 'The offer of “Alex” to your Household was accepted.',
-      unread: false,
-      expiresAt,
-      resolution: 'DECIDED',
-      answer: 'ACCEPTED',
-    })
+    const accepted = offerNotification({ expiresAt, resolution: 'DECIDED', answer: 'ACCEPTED' })
     socket.publish(
       'NotificationsChanged',
       notificationsChanged([notificationChange(accepted.id, notificationEdge(accepted, 1))]),
@@ -795,7 +799,7 @@ describe('Older Notifications', () => {
     await screen.findByRole('link', { name: 'Review' })
 
     // The offer is withdrawn while the page misses changes.
-    held.replace(offerNotification({ unread: false, resolution: 'WITHDRAWN' }))
+    held.replace(offerNotification({ resolution: 'WITHDRAWN' }))
     comeBackOnline()
 
     expect(await within(rows()[20]).findByText('Withdrawn')).toBeVisible()
@@ -1106,11 +1110,7 @@ describe('Notifications as they change elsewhere', () => {
   it('shouldMoveFocusToTheHeadingWhenTheReviewThePersonIsOnIsDecidedElsewhere', async () => {
     const { socket } = await openWithAnOffer()
     act(() => screen.getByRole('link', { name: 'Review' }).focus())
-    const accepted = offerNotification({
-      unread: false,
-      resolution: 'DECIDED',
-      answer: 'ACCEPTED',
-    })
+    const accepted = offerNotification({ resolution: 'DECIDED', answer: 'ACCEPTED' })
 
     socket.publish(
       'NotificationsChanged',
@@ -1136,11 +1136,7 @@ describe('Notifications as they change elsewhere', () => {
 
   it('shouldSayHowARequestEndedWhenItIsDecidedElsewhere', async () => {
     const { socket } = await openWithAnOffer()
-    const accepted = offerNotification({
-      unread: false,
-      resolution: 'DECIDED',
-      answer: 'ACCEPTED',
-    })
+    const accepted = offerNotification({ resolution: 'DECIDED', answer: 'ACCEPTED' })
 
     socket.publish(
       'NotificationsChanged',
@@ -1286,7 +1282,7 @@ describe('Notifications as they change elsewhere', () => {
         notificationsChanged([notificationChange(leo.id, notificationEdge(leo, 8))]),
       )
       await screen.findByText(ANSWER_LINE)
-      const withdrawn = offerNotification({ resolution: 'WITHDRAWN', unread: false })
+      const withdrawn = offerNotification({ resolution: 'WITHDRAWN' })
       socket.publish(
         'NotificationsChanged',
         notificationsChanged([notificationChange(withdrawn.id, notificationEdge(withdrawn, 10))]),
@@ -1295,7 +1291,7 @@ describe('Notifications as they change elsewhere', () => {
       release()
 
       await screen.findByText(MARA_LINE)
-      expect(lines()).toEqual([ANSWER_LINE, MARA_LINE, OFFER_LINE])
+      expect(lines()).toEqual([ANSWER_LINE, MARA_LINE, withdrawn.message])
       expect(within(rows()[2]).getByText('Withdrawn')).toBeVisible()
       expect(screen.queryByRole('link', { name: 'Review' })).not.toBeInTheDocument()
     })
