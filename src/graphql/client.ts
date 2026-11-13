@@ -152,14 +152,18 @@ class IdentitySwitchGate {
 
 const gates = new WeakMap<ApolloClient, IdentitySwitchGate>()
 
+function gateOf(client: ApolloClient): IdentitySwitchGate {
+  const gate = gates.get(client)
+  if (!gate) throw new Error('The client was not created by createApolloClient.')
+  return gate
+}
+
 /**
  * Starts a Household or Profile switch on a client from createApolloClient: its operations wait
  * for the switch's answer, and after a successful switch none goes out until the store resets.
  */
 export function beginIdentitySwitch(client: ApolloClient): IdentitySwitch {
-  const gate = gates.get(client)
-  if (!gate) throw new Error('The client was not created by createApolloClient.')
-  return gate.begin()
+  return gateOf(client).begin()
 }
 
 const CSRF_RETRY_ATTEMPTED = 'csrfRetryAttempted'
