@@ -128,7 +128,7 @@ function serveHouseholdHolding(codes: ShareCodeNode[]) {
       return HttpResponse.json({ data: codesData(live.slice(0, pageSize)) })
     }),
     graphql.mutation('WithdrawShareCode', ({ variables }) => {
-      const { shareCodeId } = (variables as { input: { shareCodeId: string } }).input
+      const shareCodeId = withdrawnCodeId(variables)
       live = live.filter((code) => code.id !== shareCodeId)
       return HttpResponse.json({ data: withdrawn(shareCodeId) })
     }),
@@ -145,7 +145,15 @@ function serveIssue(answer: Parameters<typeof issued>[0] = {}) {
 }
 
 function serveWithdraw() {
-  server.use(graphql.mutation('WithdrawShareCode', () => HttpResponse.json({ data: withdrawn() })))
+  server.use(
+    graphql.mutation('WithdrawShareCode', ({ variables }) =>
+      HttpResponse.json({ data: withdrawn(withdrawnCodeId(variables)) }),
+    ),
+  )
+}
+
+function withdrawnCodeId(variables: unknown): string {
+  return (variables as { input: { shareCodeId: string } }).input.shareCodeId
 }
 
 // Issuing waits for the first read of the codes, so a test presses the button once the list loads.
@@ -157,6 +165,17 @@ async function pressIssue(user: ReturnType<typeof renderAppAt>['user']) {
 async function issue(user: ReturnType<typeof renderAppAt>['user']) {
   await pressIssue(user)
   return screen.findByText(SHARE_CODE)
+}
+
+// A change waits for the change before it, so a test presses Withdraw once the button allows it.
+async function withdrawWhenAllowed(
+  user: ReturnType<typeof renderAppAt>['user'],
+  description: RegExp,
+) {
+  const live = screen.getByRole('region', { name: 'Live codes' })
+  const withdraw = await within(live).findByRole('button', { name: 'Withdraw', description })
+  await waitFor(() => expect(withdraw).toBeEnabled())
+  await user.click(withdraw)
 }
 
 function failingClipboard() {
@@ -438,6 +457,39 @@ describe('Share codes', () => {
     )
     await waitFor(() => expect(codes.calls).toBe(2))
     expect(screen.getByRole('status')).toBeEmptyDOMElement()
+  })
+
+  it('shouldTakeTheIssuedCodeAwayWhenAnAdminWithdrawsThatCode', async () => {
+    serveInTurn([], [liveCode()], [])
+    serveIssue()
+    serveWithdraw()
+    const { user } = renderAppAt(CODES)
+    await issue(user)
+
+    await withdrawWhenAllowed(user, /^Issued by Sam /)
+
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent('Share code withdrawn.'),
+    )
+    expect(screen.queryByText(SHARE_CODE)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Copy link' })).not.toBeInTheDocument()
+  })
+
+  it('shouldKeepTheIssuedCodeWhenAnAdminWithdrawsAnotherCode', async () => {
+    const anasCode = liveCode({ id: ANOTHER_CODE_ID, issuedByDisplayName: 'Ana' })
+    serveInTurn([anasCode], [liveCode(), anasCode], [liveCode()])
+    serveIssue()
+    serveWithdraw()
+    const { user } = renderAppAt(CODES)
+    await issue(user)
+
+    await withdrawWhenAllowed(user, /^Issued by Ana /)
+
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent('Share code withdrawn.'),
+    )
+    expect(screen.getByText(SHARE_CODE)).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Copy link' })).toBeEnabled()
   })
 
   it('shouldWaitToIssueACodeWhenAWithdrawalOrTheReadAfterItIsOnItsWay', async () => {

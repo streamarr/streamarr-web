@@ -147,10 +147,13 @@ function HouseholdShareCodes({
     try {
       const { data } = await withdraw({ variables: { input: { shareCodeId: code.id } } })
       const errors = data?.withdrawShareCode?.userErrors ?? []
-      if (errors.length > 0) setWithdrawRefusal(errors.map(userErrorMessage).join(' '))
+      const refused = errors.length > 0
+      if (refused) setWithdrawRefusal(errors.map(userErrorMessage).join(' '))
+      // A withdrawn code no longer works, so the panel stops offering it for copying.
+      if (!refused) setIssued((shown) => (shown?.shareCode.id === code.id ? null : shown))
       // A refused code may have been spent or withdrawn elsewhere, so the list is read again.
       await readAgain()
-      if (errors.length === 0) announce('Share code withdrawn.')
+      if (!refused) announce('Share code withdrawn.')
     } catch (error) {
       setWithdrawRefusal(requestFailureMessage(error, WITHDRAW_FAILED))
     } finally {
