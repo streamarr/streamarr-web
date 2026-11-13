@@ -1,5 +1,6 @@
 import { Button, Center, Loader } from '@mantine/core'
-import { useMutation, useQuery } from '@apollo/client/react'
+import type { ApolloClient, DocumentNode } from '@apollo/client'
+import { useApolloClient, useMutation, useQuery } from '@apollo/client/react'
 import { useState } from 'react'
 import {
   EndProfileShareDocument,
@@ -92,7 +93,7 @@ function SharedProfiles({
     send: async (share) =>
       (await end({ variables: { input: { shareId: share.id } } })).data?.endProfileShare
         ?.userErrors ?? [],
-    readAgain,
+    listsToReadAgain: [SharedWithHouseholdDocument],
     onDone: (share) => announce(`Sharing of ${share.profile.name} ended.`),
   })
 
@@ -174,7 +175,7 @@ function VisitorTvs({
     send: async (tv) =>
       (await revoke({ variables: { input: { registrationId: tv.id } } })).data
         ?.revokeDeviceRegistration?.userErrors ?? [],
-    readAgain,
+    listsToReadAgain: [VisitorDevicesDocument],
     onDone: (tv) => announce(`${tv.displayName} unlinked.`),
   })
 
@@ -249,13 +250,15 @@ function VisitorTvs({
  */
 function useConfirmedChange<Row>({
   send,
-  readAgain,
+  listsToReadAgain,
   onDone,
 }: {
   send: (row: Row) => Promise<readonly UserErrorLike[]>
-  readAgain: () => Promise<unknown>
+  /** The queries of the lists that the change can alter. */
+  listsToReadAgain: DocumentNode[]
   onDone: (row: Row) => void
 }) {
+  const client = useApolloClient()
   const [pending, setPending] = useState<Row | null>(null)
   const [sending, setSending] = useState(false)
   const [refusal, setRefusal] = useState<string | null>(null)
@@ -266,7 +269,7 @@ function useConfirmedChange<Row>({
     try {
       const errors = await send(row)
       if (errors.length > 0) setRefusal(errors.map(userErrorMessage).join(' '))
-      await readAgain()
+      await readListsAgain(client, listsToReadAgain)
       if (errors.length > 0) return
       setPending(null)
       onDone(row)
@@ -293,6 +296,13 @@ function useConfirmedChange<Row>({
       if (pending) void confirm(pending)
     },
   }
+}
+
+// A failed read keeps the list on screen, and the list's own query reports the failure.
+function readListsAgain(client: ApolloClient, lists: DocumentNode[]): Promise<unknown> {
+  return Promise.all(
+    [...client.getObservableQueries(lists)].map((query) => query.refetch().catch(() => undefined)),
+  )
 }
 
 /** What ending the share stops, as the server does it for this Profile. */
