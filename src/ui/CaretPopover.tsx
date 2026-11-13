@@ -345,8 +345,12 @@ export function CaretPopover<Id>({
     stopHovering(explained)
   }
 
-  // While one pointer is on its way onto an explanation, no other pointer ends that way.
-  function canEndTheHover({ pointerId }: ReactPointerEvent<HTMLElement>): boolean {
+  // Nothing hovers a touch screen, so a finger that lifts or scrolls ends no hover. While one pointer
+  // is on its way onto an explanation, no other pointer ends that way.
+  function canEndTheHover({ pointerType, pointerId }: ReactPointerEvent<HTMLElement>): boolean {
+    if (pointerType === 'touch') {
+      return false
+    }
     const onItsWay = pointerOnItsWay.current
     return !onItsWay || onItsWay.pointerId === pointerId
   }

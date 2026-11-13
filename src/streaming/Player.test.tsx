@@ -905,8 +905,8 @@ function tap(target: Element, { mouseTarget = target, clientX = 0 } = {}) {
   fireEvent.click(mouseTarget, { clientX })
 }
 
-// A screen that takes touch and a mouse gives each pointer its own id. A finger that lifts leaves
-// what it touched for no element, and the browser then clicks it.
+// A screen that takes touch and a mouse gives each pointer its own id. A finger that lifts, or that
+// the browser takes back to scroll, leaves what it touched for no element.
 const SECOND_FINGER = { pointerType: 'touch', pointerId: 2 }
 
 function tapWithASecondFinger(target: Element) {
@@ -915,6 +915,13 @@ function tapWithASecondFinger(target: Element) {
   fireEvent.pointerUp(target, SECOND_FINGER)
   fireEvent.pointerOut(target, SECOND_FINGER)
   fireEvent.click(target)
+}
+
+function scrollWithASecondFinger(target: Element) {
+  fireEvent.pointerOver(target, SECOND_FINGER)
+  fireEvent.pointerDown(target, SECOND_FINGER)
+  fireEvent.pointerCancel(target, SECOND_FINGER)
+  fireEvent.pointerOut(target, SECOND_FINGER)
 }
 
 // Mantine's slider follows a finger through touch events; the controls watch its pointer events.
@@ -7720,6 +7727,32 @@ describe('Player', () => {
       moveMouse(row, explanation)
 
       expect(explanation).toBeVisible()
+    })
+
+    // Nothing hovers a touch screen, so a finger ends no hover. What the mouse's hover shows stays
+    // until the mouse leaves (WCAG 2.2, 1.4.13).
+    it('shouldKeepTheMarksExplanationWhileTheMouseRestsOnItAndASecondFingerTapsIt', async () => {
+      const { user } = await markOriginalThenPlay720p()
+      const menu = await openQualityMenu(user)
+      const row = within(menu).getByRole('menuitemradio', { name: /^Original/ })
+      await user.hover(row)
+      const explanation = screen.getByText(ORIGINAL_EXPLANATION)
+      moveMouse(explanation, row)
+
+      tapWithASecondFinger(explanation)
+
+      expect(explanation).toBeVisible()
+    })
+
+    it('shouldKeepTheMarksExplanationWhileTheMouseRestsOnTheMarkedRowAndASecondFingerScrollsFromIt', async () => {
+      const { user } = await markOriginalThenPlay720p()
+      const menu = await openQualityMenu(user)
+      const row = within(menu).getByRole('menuitemradio', { name: /^Original/ })
+      await user.hover(row)
+
+      scrollWithASecondFinger(row)
+
+      expect(screen.getByText(ORIGINAL_EXPLANATION)).toBeVisible()
     })
 
     describe('when the pointer leaves the marked row', () => {
