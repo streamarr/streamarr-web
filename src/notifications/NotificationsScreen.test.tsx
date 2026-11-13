@@ -462,6 +462,34 @@ describe('Older Notifications', () => {
     expect(mara).toHaveTextContent('“Cabin” accepted the Profile “Mara”.')
     expect(within(mara).queryByText('Unread')).not.toBeInTheDocument()
   })
+
+  it('shouldLoadOlderNotificationsWhenEveryLoadedOneLeavesTheList', async () => {
+    const { socket } = serve()
+    servePages(NEWEST, OLDER)
+    renderAppAt(NOTIFICATIONS)
+    await screen.findByText('“Cabin” accepted the Profile “Alex”.')
+    await followingNotificationChanges(socket)
+
+    socket.publish(
+      'NotificationsChanged',
+      notificationsChanged([
+        notificationChange(answerAbout('Alex').id, null),
+        notificationChange(answerAbout('Sam').id, null),
+      ]),
+    )
+    // With every loaded row gone, the page shows no empty list, and it does not say there are none.
+    await waitFor(() =>
+      expect(screen.queryByRole('list', { name: 'Notifications' })).not.toBeInTheDocument(),
+    )
+    expect(screen.queryByText('No notifications.')).not.toBeInTheDocument()
+    await reachTheEndOfTheList()
+
+    await screen.findByText('“Cabin” accepted the Profile “Leo”.')
+    expect(lines()).toEqual([
+      '“Cabin” accepted the Profile “Mara”.',
+      '“Cabin” accepted the Profile “Leo”.',
+    ])
+  })
 })
 
 describe('Notifications as they change elsewhere', () => {

@@ -73,12 +73,14 @@ function NotificationsList() {
     )
   }
 
-  if (shown.length === 0) {
+  // Changes can take out every loaded row while older pages remain, so only the end of the list
+  // can say there are none.
+  if (shown.length === 0 && !pageInfo?.hasNextPage) {
     return <p className={styles.empty}>No notifications.</p>
   }
   return (
     <>
-      <NotificationRows notifications={shown.map((edge) => edge.node)} />
+      {shown.length > 0 && <NotificationRows notifications={shown.map((edge) => edge.node)} />}
       {older.failure ? (
         <FailureRow className={styles.olderFailure} onRetry={older.load}>
           {requestFailureMessage(older.failure, "Couldn't load older notifications.")}
