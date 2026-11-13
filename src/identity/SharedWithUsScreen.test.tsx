@@ -1,7 +1,11 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import { delay, graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
-import type { SharedWithHouseholdQuery, VisitorDevicesQuery } from '../graphql/generated/graphql'
+import {
+  SharedWithHouseholdDocument,
+  type SharedWithHouseholdQuery,
+  type VisitorDevicesQuery,
+} from '../graphql/generated/graphql'
 import { focusesOf, leaveTheConfirmation, type WayOut } from '../test/focus'
 import {
   answersInTurn,
@@ -775,6 +779,55 @@ describe('Shared with us as shares change elsewhere', () => {
     )
 
     expect(await screen.findByText('No visitor has linked a TV here.')).toBeVisible()
+  })
+
+  it('shouldReadTheTvsAgainWhenAPersonalProfilesShareEndsBeforeThePageShowsTheReadThatListsIt', async () => {
+    const leo = share({
+      id: 'leo',
+      profileId: 'leo',
+      profile: sharedProfile({ id: 'leo', name: 'Leo', personalProfile: true }),
+    })
+    const held = { shares: [share()] }
+    const tvs: DeviceNode[] = []
+    const socket = serve([], tvs)
+    const reads = readsThatCanBeHeld(() => sharesData(held.shares))
+    server.use(graphql.query('SharedWithHousehold', reads.resolver))
+    const { apolloClient } = renderAppAt(VISITORS)
+    await screen.findByRole('button', { name: 'End share of Alex' })
+    await followingShareChanges(socket)
+    // While the browser is offline, Leo's Personal Profile is shared here and Leo links a TV.
+    held.shares = [leo, share()]
+    tvs.push(device({ displayName: 'Guest room TV', authorizingAccountDisplayName: 'Leo' }))
+    const read = reads.holdNext()
+    comeBackOnline()
+    await read.arrived
+    await screen.findByRole('button', { name: 'Unlink Guest room TV' })
+    // Apollo tells the page's query about a cache write a task later. Leo's share ends as soon as
+    // the cache holds the answer that lists Leo, so the end arrives before the page has drawn Leo.
+    const stopWatching = apolloClient.cache.watch<SharedWithHouseholdQuery>({
+      query: SharedWithHouseholdDocument,
+      variables: { householdId: HOUSEHOLD_ID },
+      optimistic: true,
+      callback: ({ result }) => {
+        if (!result?.householdShares?.edges?.some((edge) => edge?.node?.id === leo.id)) return
+        stopWatching()
+        // The server unlinks the TV that Leo linked here as it ends Leo's share.
+        held.shares = [share()]
+        tvs.splice(0)
+        socket.publish(
+          'ProfileShareChanged',
+          shareChanged(
+            leo.id,
+            liveShare({ id: leo.id, profileId: 'leo', status: 'ENDED', ...HIDDEN_ONCE_OVER }),
+          ),
+        )
+      },
+    })
+
+    read.release()
+
+    expect(await screen.findByText('No visitor has linked a TV here.')).toBeVisible()
+    expect(sharedNames()).toEqual(['End share of Alex'])
   })
 
   it('shouldLeaveOutAProfileOfTheHouseholdsOwnWhenItsShareChanges', async () => {

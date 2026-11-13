@@ -134,6 +134,12 @@ function SharedProfiles({
   // The end of someone's Personal Profile's share unlinks the TVs that person linked here.
   const readTheTvsAgain = () => void readQueriesAgain(client, [VisitorDevicesDocument])
   useShareChanges((change) => {
+    // Apollo gives the page a read's answer a task after the cache keeps that answer, so the page
+    // also remembers the shares that the cache holds before the change applies.
+    rememberPersonalShares(
+      personalShares.current,
+      client.readQuery({ query: SharedWithHouseholdDocument, variables })?.householdShares.edges,
+    )
     liveShares.receive(change)
     if (change.share && keeps(change.share)) return
     if (!personalShares.current.delete(change.shareId)) return
