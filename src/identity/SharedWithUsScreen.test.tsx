@@ -2,7 +2,13 @@ import { screen, waitFor, within } from '@testing-library/react'
 import { delay, graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { SharedWithHouseholdQuery, VisitorDevicesQuery } from '../graphql/generated/graphql'
-import { answersInTurn, answerWith, failsOnceThen } from '../test/graphqlResponses'
+import {
+  answersInTurn,
+  answerWith,
+  comeBackOnline,
+  failsOnceThen,
+  heldAnswer,
+} from '../test/graphqlResponses'
 import { HOUSEHOLD_ID, meFixture, PROFILE_ID } from '../test/meFixture'
 import { renderAppAt } from '../test/render'
 import { leaveForHomeAndReturn, type SettingsPage } from '../test/returnVisits'
@@ -308,6 +314,41 @@ describe('Shared with us', () => {
     expect(within(tvs).getByRole('button', { name: 'Unlink Den TV' })).toBeEnabled()
   })
 
+  it('shouldTakeTheEndedShareOffTheListWhenAReadFromBeforeTheEndIsOnItsWay', async () => {
+    const fromBefore = heldAnswer(sharesData([share()]))
+    serve()
+    const shares = answersInTurn(
+      answerWith(sharesData([share()])),
+      fromBefore.answer,
+      answerWith(sharesData([])),
+    )
+    const devices = answersInTurn(answerWith(devicesData()))
+    server.use(
+      graphql.query('SharedWithHousehold', shares.resolver),
+      graphql.query('VisitorDevices', devices.resolver),
+      graphql.mutation('EndProfileShare', () =>
+        HttpResponse.json({ data: { endProfileShare: endedPayload() } }),
+      ),
+    )
+    const { user } = renderAppAt(VISITORS)
+    const endAlex = await screen.findByRole('button', { name: 'End share of Alex' })
+    comeBackOnline()
+    await waitFor(() => expect(shares.calls).toBe(2))
+
+    await user.click(endAlex)
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'End share' }))
+    // The page reads the TVs again, and the shares too, once the server takes the end. So the read
+    // of the shares after the end has started by the time the server sees the third read of TVs.
+    await waitFor(() => expect(devices.calls).toBe(3))
+    fromBefore.release()
+
+    await noticed('Sharing of Alex ended.')
+    expect(
+      await screen.findByText('No Profile from another Household is shared with Smith Family.'),
+    ).toBeVisible()
+    expect(shares.calls).toBe(3)
+  })
+
   it('shouldKeepTheConfirmationOpenWithTheServersWordsWhenEndingIsRefused', async () => {
     serve([share()])
     server.use(
@@ -389,6 +430,38 @@ describe('Shared with us', () => {
     expect(await screen.findByText('No visitor has linked a TV here.')).toBeVisible()
     expect(devices.calls).toBe(2)
     expect(screen.getByRole('heading', { level: 1, name: 'Shared with us' })).toHaveFocus()
+  })
+
+  it('shouldTakeATvUnlinkedElsewhereOffTheListWhenAReadFromBeforeTheRefusedUnlinkIsOnItsWay', async () => {
+    const fromBefore = heldAnswer(devicesData([device()]))
+    serve()
+    const devices = answersInTurn(
+      answerWith(devicesData([device()])),
+      fromBefore.answer,
+      answerWith(devicesData([])),
+    )
+    server.use(
+      graphql.query('VisitorDevices', devices.resolver),
+      graphql.mutation('RevokeDeviceRegistration', () =>
+        HttpResponse.json({
+          data: unlinkRefused('RegistrationNotActiveError', 'That TV is no longer linked.'),
+        }),
+      ),
+    )
+    const { user } = renderAppAt(VISITORS)
+    const unlink = await screen.findByRole('button', { name: 'Unlink Living room TV' })
+    comeBackOnline()
+    await waitFor(() => expect(devices.calls).toBe(2))
+
+    await user.click(unlink)
+    const dialog = screen.getByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Unlink' }))
+    // The refusal shows once the server answers. By then the read after the refusal has started.
+    await within(dialog).findByRole('alert')
+    fromBefore.release()
+
+    expect(await screen.findByText('No visitor has linked a TV here.')).toBeVisible()
+    expect(devices.calls).toBe(3)
   })
 
   it('shouldKeepTheConfirmationOpenWithTheServersWordsWhenUnlinkingIsRefused', async () => {
