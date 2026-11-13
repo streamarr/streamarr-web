@@ -74,10 +74,13 @@ function EarlierList({
   onRetry: () => unknown
   householdName: (householdId: string) => string
 }>) {
-  if (failure && shares.length === 0) {
+  // The rows a failed read leaves can be only some of them: an offer whose time ran out on this
+  // page, or the list from before the read. So the failure and Retry show above them.
+  if (failure) {
     return (
       <div id={id}>
         <FailureRow onRetry={onRetry}>{failure}</FailureRow>
+        {shares.length > 0 && <EarlierRows shares={shares} householdName={householdName} />}
       </div>
     )
   }
