@@ -8809,20 +8809,34 @@ describe('Player', () => {
         expect(messageTooltip(AUDIO_SWITCH_REFUSED)).toBeVisible()
       })
 
-      it('shouldKeepShowingTheMessageUnderThePointerWhenTheTrackThatHasFocusGoes', async () => {
-        const { user, menu } = await openTheAudioPickerWithACautionOverHls([
-          { name: 'English' },
-          { name: 'French' },
-        ])
-        await user.keyboard('{ArrowDown}')
-        await user.hover(headingCaution(AUDIO_SWITCH_REFUSED))
-        expect(messageTooltip(AUDIO_SWITCH_REFUSED)).toBeVisible()
+      // A tap shows the message without focusing the caution, as in Safari, so focus stays on French.
+      it.each([
+        {
+          shownBy: 'hover',
+          showTheMessage: (user: UserEvent) => user.hover(headingCaution(AUDIO_SWITCH_REFUSED)),
+        },
+        {
+          shownBy: 'tap',
+          showTheMessage: () => tap(headingCaution(AUDIO_SWITCH_REFUSED)),
+        },
+      ])(
+        'shouldKeepShowingTheMessageWhenTheTrackThatHasFocusGoes(shown by: $shownBy)',
+        async ({ showTheMessage }) => {
+          const { user, menu } = await openTheAudioPickerWithACautionOverHls([
+            { name: 'English' },
+            { name: 'French' },
+          ])
+          await user.keyboard('{ArrowDown}')
+          await showTheMessage(user)
+          expect(within(menu).getByRole('menuitemradio', { name: 'French' })).toHaveFocus()
+          expect(messageTooltip(AUDIO_SWITCH_REFUSED)).toBeVisible()
 
-        offerHlsTracks({ audio: [{ name: 'English' }], audioTrack: 0 })
+          offerHlsTracks({ audio: [{ name: 'English' }], audioTrack: 0 })
 
-        expect(within(menu).getByRole('menuitemradio', { name: 'English' })).toHaveFocus()
-        expect(messageTooltip(AUDIO_SWITCH_REFUSED)).toBeVisible()
-      })
+          expect(within(menu).getByRole('menuitemradio', { name: 'English' })).toHaveFocus()
+          expect(messageTooltip(AUDIO_SWITCH_REFUSED)).toBeVisible()
+        },
+      )
 
       it('shouldKeepTheMessageOutOfSightWhenTheTrackThatHasFocusGoesWithThePointerElsewhere', async () => {
         const { user, menu } = await openTheAudioPickerWithACautionOverHls([

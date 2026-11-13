@@ -231,12 +231,12 @@ export function CaretPopover<Id>({
     setExplainedRows((rows) => ({ ...rows, hovered: index }))
   }
 
-  // The viewer did not move focus, so the pointer on the heading's caution keeps its message. A
-  // row's index moves as rows go, so a row's explanation does not stay.
+  // The viewer did not move focus, so the heading's caution keeps its message under the pointer or
+  // after a tap. A row's index moves as rows go, so a row's explanation does not stay.
   function keepExplainingTheHeading(focused: number) {
-    setExplainedRows(({ hovered }) => ({
+    setExplainedRows(({ hovered, tapped }) => ({
       hovered: hovered === HEADING ? HEADING : null,
-      tapped: null,
+      tapped: tapped === HEADING ? HEADING : null,
       focused,
     }))
   }
