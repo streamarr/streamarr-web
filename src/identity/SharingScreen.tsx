@@ -2,7 +2,11 @@ import { Center, Loader } from '@mantine/core'
 import { useQuery } from '@apollo/client/react'
 import { useState } from 'react'
 import settingsStyles from '../styles/settings.module.css'
-import { ProfileSharesDocument, type MeQuery } from '../graphql/generated/graphql'
+import {
+  ProfileSharesDocument,
+  type MeQuery,
+  type ProfileSharesQuery,
+} from '../graphql/generated/graphql'
 import { requestFailureMessage } from '../graphql/requestErrors'
 import { FailurePanel } from '../ui/Failure'
 import { PageNotice } from '../ui/PageNotice'
@@ -121,16 +125,10 @@ function ProfileSharing({
     return <SharingUnavailable error={query.error} onRetry={readAgain} />
   }
 
-  // Every Personal Profile is shared with its Account's own Household, and that share cannot
-  // end, so it is no news here.
-  const shares = query.data.profileShares.edges
-    .map((edge) => edge.node)
-    .filter((share) => !share.requiredByAccountMembership)
-
   return (
     <WhereShared
       profile={profile}
-      shares={shares}
+      shares={listedShares(query.data)}
       householdName={householdName}
       ownHouseholdName={ownHouseholdName}
       readAgain={readAgain}
@@ -143,6 +141,14 @@ function ProfileSharing({
       onRefusalChange={setRefusal}
     />
   )
+}
+
+// Every Personal Profile is shared with its Account's own Household, and that share cannot end,
+// so it is no news here.
+function listedShares(data: ProfileSharesQuery): ProfileShareRow[] {
+  return data.profileShares.edges
+    .map((edge) => edge.node)
+    .filter((share) => !share.requiredByAccountMembership)
 }
 
 function SharingLoading() {
