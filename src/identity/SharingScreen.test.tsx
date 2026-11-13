@@ -424,6 +424,72 @@ describe('Sharing', () => {
     expect(await screen.findByText('Declined')).toBeVisible()
   })
 
+  it('shouldOfferToRetryEarlierOffersAndSharesBesideAnOfferWhoseTimeRanOutWhenTheirReadFails', async () => {
+    const anHourAgo = new Date(Date.now() - DAY / 24).toISOString()
+    // The server still lists the offer as waiting until it marks it expired.
+    const live = sharesData([share({ expiresAt: anHourAgo })])
+    const over = failsOnceThen(sharesData([share({ id: 'declined', status: 'REJECTED' })]))
+    serve()
+    server.use(
+      graphql.query<GraphQLQuery, ProfileSharesQueryVariables>('ProfileShares', ({ variables }) =>
+        asksFor(variables.statuses, 'PENDING')
+          ? HttpResponse.json({ data: live })
+          : over.resolver(),
+      ),
+    )
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.click(await screen.findByRole('button', { name: 'Earlier invitations and shares' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "Couldn't load earlier offers and shares.",
+    )
+    expect(screen.getAllByRole('listitem').map((row) => row.textContent)).toEqual(['CabinExpired'])
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByText('Declined')).toBeVisible()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('shouldOfferToRetryEarlierOffersAndSharesAndKeepTheirRowsWhenTheirReadAfterACancelFails', async () => {
+    const declined = share({ id: 'declined', status: 'REJECTED' })
+    const held = serveHeldShares([share(), declined])
+    const earlierReads = { count: 0 }
+    server.use(
+      graphql.query<ProfileSharesQuery, ProfileSharesQueryVariables>(
+        'ProfileShares',
+        ({ variables }) => {
+          const earlier = asksFor(variables.statuses, 'CANCELED')
+          if (earlier) earlierReads.count += 1
+          // The read of the earlier ones after the cancel fails.
+          if (earlier && earlierReads.count === 2) return serverFailure()
+          return HttpResponse.json({ data: listedShares(held.shares, variables) })
+        },
+      ),
+      graphql.mutation('CancelProfileShare', () => {
+        held.shares = [declined, share({ status: 'CANCELED' })]
+        return HttpResponse.json({ data: { cancelProfileShare: canceledPayload() } })
+      }),
+    )
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.click(await screen.findByRole('button', { name: 'Earlier invitations and shares' }))
+    await screen.findByText('Declined')
+
+    await user.click(screen.getByRole('button', { name: 'Cancel invitation to Cabin' }))
+
+    await noticed('Invitation to Cabin canceled.')
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "Couldn't load earlier offers and shares.",
+    )
+    expect(screen.getAllByRole('listitem').map((row) => row.textContent)).toEqual(['CabinDeclined'])
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByText('Canceled')).toBeVisible()
+    expect(screen.getAllByRole('listitem').map((row) => row.textContent)).toEqual([
+      'CabinDeclined',
+      'CabinCanceled',
+    ])
+  })
+
   it('shouldCancelAPendingOfferAndSaySo', async () => {
     const shares = serveInTurn([share()], [])
     let canceled = false
