@@ -301,6 +301,21 @@ describe('Sharing', () => {
     expect(screen.getByRole('status')).toBeEmptyDOMElement()
   })
 
+  it('shouldMoveFocusToTheHeadingWhenThePersonDismissesTheNoticeFromTheKeyboard', async () => {
+    serveInTurn([share()], [])
+    agreeToCancel()
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.click(await screen.findByRole('button', { name: 'Cancel invitation to Cabin' }))
+    await noticed('Invitation to Cabin canceled.')
+    await user.tab()
+    expect(screen.getByRole('button', { name: 'Dismiss notification' })).toHaveFocus()
+
+    await user.keyboard('{Enter}')
+
+    expect(screen.queryByRole('button', { name: 'Dismiss notification' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Sharing' })).toHaveFocus()
+  })
+
   it('shouldLeaveFocusOnTheBodyWhenThePageOpensWithoutANotice', async () => {
     serve([share()])
     renderWithProviders(<SharingScreen />)
