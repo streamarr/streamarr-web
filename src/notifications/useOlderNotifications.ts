@@ -18,23 +18,28 @@ export function useOlderNotifications(
   const client = useApolloClient()
   const [failure, setFailure] = useState<unknown>(null)
   const reading = useRef<string | null>(null)
+  const visit = useRef({ left: false })
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    const current = { left: false }
+    visit.current = current
+    return () => {
+      current.left = true
       client.cache.evict({ id: 'ROOT_QUERY', fieldName: 'notifications' })
       client.cache.gc()
-    },
-    [client],
-  )
+    }
+  }, [client])
 
   async function read(after: string) {
+    const sentOn = visit.current
     const { data } = await client.query({
       query: NotificationsDocument,
       variables: { after },
       fetchPolicy: 'no-cache',
       context,
     })
-    if (!data) return
+    // A page that answers after the person left belongs to that visit, not to the next one.
+    if (!data || sentOn.left) return
     client.cache.updateQuery({ query: NotificationsDocument }, (list) =>
       list
         ? { ...list, notifications: withOlderPage(list.notifications, data.notifications, after) }
