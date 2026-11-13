@@ -1050,10 +1050,12 @@ test("the caution sits after the Quality menu's name, and its message shows besi
   expect(tooltip.y + tooltip.height).toBeGreaterThanOrEqual(heading.y + heading.height)
 })
 
-test("the focus ring on the caution in the Quality menu's heading leaves the menu's name clear", async ({
-  page,
-  request,
-}) => {
+// Keyboard focus moves from the selected row to the caution in the Quality menu's heading. Returns the
+// space between the end of the menu's name and the start of the focus ring, in CSS pixels.
+async function roomBetweenTheNameAndTheRingOnTheCautionInTheHeading(
+  page: Page,
+  request: APIRequestContext,
+): Promise<number> {
   await openPlayerShowingMedia(page, request)
   const chip = await startOriginalWithAnEncode(page)
   await chip.click()
@@ -1068,7 +1070,16 @@ test("the focus ring on the caution in the Quality menu's heading leaves the men
   const ringReach = Number.parseFloat(RING.offset) + Number.parseFloat(RING.outline)
   const heading = await menuHeadingBox(menu)
   const symbolBox = (await symbol.boundingBox()) as Box
-  expect(symbolBox.x - ringReach).toBeGreaterThan(heading.x + heading.width)
+  return symbolBox.x - ringReach - (heading.x + heading.width)
+}
+
+test("the focus ring on the caution in the Quality menu's heading leaves the menu's name clear", async ({
+  page,
+  request,
+}) => {
+  const room = await roomBetweenTheNameAndTheRingOnTheCautionInTheHeading(page, request)
+
+  expect(room).toBeGreaterThan(0)
 })
 
 // WCAG 2.2 asks that a pointer can move onto the content that its hover shows (1.4.13). The pointer
