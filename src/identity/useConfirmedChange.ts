@@ -1,7 +1,7 @@
 import type { ApolloClient, DocumentNode } from '@apollo/client'
 import { useApolloClient } from '@apollo/client/react'
 import { useEffect, useEffectEvent, useState } from 'react'
-import { isReading } from '../graphql/readAgain'
+import { refetchAfterReadsInFlight } from '../graphql/readAgain'
 import { requestFailureMessage } from '../graphql/requestErrors'
 import { userErrorMessage, type UserErrorLike } from '../graphql/userErrors'
 import { UPDATE_FAILED_MESSAGE } from './shareText'
@@ -91,10 +91,8 @@ export function useConfirmedChange<Row extends { id: string }>({
 // keeps the list on screen, and the list's own query reports the failure.
 function readListsAgain(client: ApolloClient, lists: DocumentNode[]): Promise<unknown> {
   return Promise.all(
-    [...client.getObservableQueries(lists)].map(async (query) => {
-      const refetch = () => query.refetch().catch(() => undefined)
-      if (isReading(query)) await refetch()
-      await refetch()
-    }),
+    [...client.getObservableQueries(lists)].map((query) =>
+      refetchAfterReadsInFlight(query).catch(() => undefined),
+    ),
   )
 }
