@@ -18,23 +18,28 @@ export interface NotificationEntry {
   edge: ShownEdge | null
 }
 
-/**
- * The list once one Notification's change applies, by its id: its edge takes its place by order
- * key, and a null edge takes it out. While older pages are still to load, an edge that sorts below
- * the loaded list belongs to one of them, so the list lets the Notification go and that page
- * brings it.
- */
-export function withNotificationChange(
-  list: NotificationList,
-  { notificationId, edge }: NotificationEntry,
-): NotificationList {
-  const edges = definedEdges(list.edges)
-  const last = edges.at(-1)
-  const below =
-    edge !== null && list.pageInfo.hasNextPage && !!last && edge.orderKey > last.orderKey
+/** The pages of the Account's list of Notifications that one visit loads, as changes reach them. */
+export function createLoadedPages() {
   return {
-    ...list,
-    edges: placeOrderedEdge(edges, { itemId: notificationId, edge: below ? null : edge }),
+    /**
+     * The list once one Notification's change applies, by its id: its edge takes its place by
+     * order key, and a null edge takes it out. While older pages are still to load, an edge that
+     * sorts below the loaded list belongs to one of them, so the list lets the Notification go and
+     * that page brings it.
+     */
+    withChange(
+      list: NotificationList,
+      { notificationId, edge }: NotificationEntry,
+    ): NotificationList {
+      const edges = definedEdges(list.edges)
+      const last = edges.at(-1)
+      const below =
+        edge !== null && list.pageInfo.hasNextPage && !!last && edge.orderKey > last.orderKey
+      return {
+        ...list,
+        edges: placeOrderedEdge(edges, { itemId: notificationId, edge: below ? null : edge }),
+      }
+    },
   }
 }
 

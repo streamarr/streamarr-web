@@ -1,7 +1,7 @@
 import { useApolloClient, useQuery } from '@apollo/client/react'
 import { Button, Center, Loader, VisuallyHidden } from '@mantine/core'
 import { Link } from '@tanstack/react-router'
-import { useId } from 'react'
+import { useId, useState } from 'react'
 import {
   NotificationsDocument,
   type NotificationFieldsFragment,
@@ -14,7 +14,7 @@ import settingsStyles from '../styles/settings.module.css'
 import { FailurePanel, FailureRow } from '../ui/Failure'
 import { useIntersectionObserver } from '../media/useIntersectionObserver'
 import styles from './Notifications.module.css'
-import { withNotificationChange, type NotificationEntry } from './notificationList'
+import { createLoadedPages, type NotificationEntry } from './notificationList'
 import { fullTime, whenLabel } from './notificationTime'
 import { expiryOfWaiting, isOfferRequest, offerRequestState } from './requestState'
 import { useMarkShownRead } from './useMarkShownRead'
@@ -35,13 +35,14 @@ export function NotificationsScreen() {
 
 function NotificationsList() {
   const { cache } = useApolloClient()
+  const [loadedPages] = useState(createLoadedPages)
   const live = useLiveList({
     query: NotificationsDocument,
     variables: {},
     keyOf: (entry: NotificationEntry) => entry.notificationId,
     apply: (data, entry: NotificationEntry) => ({
       ...data,
-      notifications: withNotificationChange(data.notifications, entry),
+      notifications: loadedPages.withChange(data.notifications, entry),
     }),
   })
   // One change can touch many Notifications, such as marking them read; the list shows it once.
