@@ -12,7 +12,7 @@ import {
   type SharedWithHouseholdQuery,
   type VisitorDevicesQuery,
 } from '../graphql/generated/graphql'
-import { isReading } from '../graphql/readAgain'
+import { isReading, readQueriesAgain } from '../graphql/readAgain'
 import { requestFailureMessage } from '../graphql/requestErrors'
 import { userErrorMessage, type UserErrorLike } from '../graphql/userErrors'
 import settingsStyles from '../styles/settings.module.css'
@@ -112,7 +112,7 @@ function SharedProfiles({
     })
     // The end of someone's Personal Profile's share unlinks the TVs that person linked here.
     if (leaving(listed, edges, change)?.profile.personalProfile) {
-      void client.refetchQueries({ include: [VisitorDevicesDocument] }).catch(() => undefined)
+      void readQueriesAgain(client, [VisitorDevicesDocument])
     }
   })
   // Shares start and end elsewhere, so a visit shows only the server's answer.
