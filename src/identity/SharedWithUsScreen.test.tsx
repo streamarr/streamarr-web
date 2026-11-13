@@ -6,8 +6,10 @@ import {
   answersInTurn,
   answerWith,
   comeBackOnline,
+  comeBackOnlineUntil,
   failsOnceThen,
   heldAnswer,
+  serverFailure,
 } from '../test/graphqlResponses'
 import { serveGraphqlSocket } from '../test/graphqlSocket'
 import { HOUSEHOLD_ID, meFixture, PROFILE_ID } from '../test/meFixture'
@@ -612,6 +614,39 @@ describe('Shared with us as shares change elsewhere', () => {
 
     expect(await screen.findByText('No visitor has linked a TV here.')).toBeVisible()
     expect(reads.count).toBeGreaterThan(readsBeforeTheEnd)
+  })
+
+  it('shouldKeepTheTvsOnScreenWhenTheReadAfterAShareEndsFails', async () => {
+    const tvs = { calls: 0, answer: answerWith(devicesData([device()])) }
+    const socket = serve([share({ profile: sharedProfile({ personalProfile: true }) })])
+    server.use(
+      graphql.query('VisitorDevices', () => {
+        tvs.calls += 1
+        return tvs.answer()
+      }),
+    )
+    renderAppAt(VISITORS)
+    const tv = await screen.findByRole('button', { name: 'Unlink Living room TV' })
+    await followingShareChanges(socket)
+    // The first read, and the read that the page makes once it follows share changes.
+    await waitFor(() => expect(tvs.calls).toBeGreaterThanOrEqual(2))
+    tvs.answer = serverFailure
+    const readsBeforeTheEnd = tvs.calls
+
+    socket.publish(
+      'ProfileShareChanged',
+      shareChanged(SHARE_ID, liveShare({ status: 'ENDED', ...HIDDEN_ONCE_OVER })),
+    )
+    await waitFor(() => expect(tvs.calls).toBeGreaterThan(readsBeforeTheEnd))
+    // The server unlinked the TV as it ended the share, and its next answer says so.
+    const fresh = heldAnswer(devicesData())
+    tvs.answer = fresh.answer
+    await comeBackOnlineUntil(tvs, tvs.calls + 1)
+
+    expect(tv).toBeInTheDocument()
+    expect(screen.queryByText("Couldn't load the TVs linked here.")).not.toBeInTheDocument()
+    fresh.release()
+    expect(await screen.findByText('No visitor has linked a TV here.')).toBeVisible()
   })
 
   it('shouldLeaveOutAProfileOfTheHouseholdsOwnWhenItsShareChanges', async () => {

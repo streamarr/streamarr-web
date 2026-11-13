@@ -1,4 +1,4 @@
-import type { ApolloClient, ObservableQuery } from '@apollo/client'
+import type { ApolloClient, DocumentNode, ObservableQuery } from '@apollo/client'
 import { isForbidden } from './errorRouting'
 
 // A read beside a query leaves the query's own status alone, so the reads in flight are counted
@@ -26,11 +26,19 @@ export function readActiveQueriesAgain(client: ApolloClient): Promise<unknown> {
   return readEachAgain(client, client.getObservableQueries('active'))
 }
 
+/** Reads the queries of `documents` again the way `readActiveQueriesAgain` reads every query. */
+export function readQueriesAgain(
+  client: ApolloClient,
+  documents: DocumentNode[],
+): Promise<unknown> {
+  return readEachAgain(client, client.getObservableQueries(documents))
+}
+
 function readEachAgain(client: ApolloClient, queries: Set<ObservableQuery>): Promise<unknown> {
   return Promise.allSettled([...queries].map((query) => readAgain(client, query)))
 }
 
-// Whether `readActiveQueriesAgain` is reading `query` now.
+// Whether `readActiveQueriesAgain` or `readQueriesAgain` is reading `query` now.
 function isReadingAgain(query: ObservableQuery): boolean {
   return readsOf(query).count > 0
 }
