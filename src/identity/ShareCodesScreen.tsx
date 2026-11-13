@@ -1,6 +1,6 @@
 import { Button, Center, Loader } from '@mantine/core'
 import { useApolloClient, useMutation, useQuery } from '@apollo/client/react'
-import { useId, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import {
   HouseholdShareCodesDocument,
   IssueShareCodeDocument,
@@ -114,7 +114,18 @@ function HouseholdShareCodes({
   // read of the codes, is on its way.
   const waiting = change !== null || (query.loading && !query.data)
   const issueAction = useRef<HTMLButtonElement>(null)
+  /** Set when the admin closes the issued panel, so that focus returns to the issue button. */
+  const returnFocus = useRef(false)
   const client = useApolloClient()
+
+  // A disabled button takes no focus. So focus returns to the issue button once the button is
+  // enabled, unless the admin has moved focus away from the page body since the panel closed.
+  useEffect(() => {
+    if (issued || waiting || !returnFocus.current) return
+    returnFocus.current = false
+    if (document.activeElement === document.body) issueAction.current?.focus()
+  }, [issued, waiting])
+
   // A failed read keeps the list that is on screen; the query's own error state reports it.
   const readAgain = () => query.refetch().catch(() => undefined)
 
@@ -204,8 +215,8 @@ function HouseholdShareCodes({
           origin={origin}
           onCopied={(notice) => announce(notice, { inPlace: true })}
           onDone={() => {
+            returnFocus.current = true
             setIssued(null)
-            issueAction.current?.focus()
           }}
         />
       )}

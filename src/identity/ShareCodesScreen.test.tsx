@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import { parse, valueFromASTUntyped, visit } from 'graphql'
 import { delay, graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
@@ -194,6 +194,20 @@ async function withdrawWhenAllowed(
   await user.click(withdraw)
 }
 
+// Issues a code and holds the read after the issue, which keeps the issue button disabled until
+// the test releases the read.
+async function issueAndHoldTheReadAfterTheIssue() {
+  const afterIssue = heldAnswer(codesData([liveCode()]))
+  serve()
+  const codes = answersInTurn(answerWith(codesData([])), afterIssue.answer)
+  server.use(graphql.query('HouseholdShareCodes', codes.resolver))
+  serveIssue()
+  const { user } = renderAppAt(CODES)
+  await issue(user)
+  await waitFor(() => expect(codes.calls).toBe(2))
+  return { user, release: afterIssue.release }
+}
+
 function failingClipboard() {
   return { writeText: () => Promise.reject(new Error('NotAllowedError')) }
 }
@@ -367,6 +381,30 @@ describe('Share codes', () => {
 
     expect(screen.queryByText(SHARE_CODE)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Issue a share code' })).toHaveFocus()
+  })
+
+  it('shouldReturnToTheIssueButtonWhenTheAdminIsDoneBeforeTheReadAfterTheIssueArrives', async () => {
+    const { user, release } = await issueAndHoldTheReadAfterTheIssue()
+    const issueAction = screen.getByRole('button', { name: 'Issue a share code' })
+    expect(issueAction).toBeDisabled()
+
+    await user.click(screen.getByRole('button', { name: 'Done' }))
+    release()
+
+    await waitFor(() => expect(issueAction).toHaveFocus())
+  })
+
+  it('shouldLeaveFocusWhereTheAdminMovedItWhenTheReadAfterTheIssueArrivesAfterDone', async () => {
+    const { user, release } = await issueAndHoldTheReadAfterTheIssue()
+    await user.click(screen.getByRole('button', { name: 'Done' }))
+    const shareOffers = screen.getByRole('link', { name: 'Share invitations' })
+    act(() => shareOffers.focus())
+
+    release()
+
+    const issueAction = screen.getByRole('button', { name: 'Issue a share code' })
+    await waitFor(() => expect(issueAction).toBeEnabled())
+    expect(shareOffers).toHaveFocus()
   })
 
   it('shouldKeepTheCodeOutOfTheCacheTheAddressAndTheBrowsersStorage', async () => {
