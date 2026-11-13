@@ -32,13 +32,17 @@ type Announce = ReturnType<typeof usePageNotice>['announce']
 type Change = { kind: 'issue' } | { kind: 'withdraw'; codeId: string }
 /**
  * The code on show, and what the reads since the issue say about the code: `unlisted` until a list
- * holds the code, and `listed` once a list does.
+ * holds the code, `listed` once a list does, and `readFailed` once a read that started after the
+ * issue fails before any list held the code.
  */
-type Shown = { issued: Issued; reads: 'unlisted' | 'listed' }
+type Shown = { issued: Issued; reads: 'unlisted' | 'listed' | 'readFailed' }
 /** The latest read of the codes, as the query reports it. */
 type LatestRead = {
-  /** The last list the server gave, if any. */
+  /** The last list the server gave, if any. A failed read keeps that list. */
   listed: HouseholdShareCodesQuery | undefined
+  failed: boolean
+  /** True once the read after the issue settled. Every read from then on started after the issue. */
+  afterIssue: boolean
 }
 
 const ISSUE_FAILED = "Couldn't issue a share code."
@@ -119,7 +123,11 @@ function HouseholdShareCodes({
   const [withdrawRefusal, setWithdrawRefusal] = useState<string | null>(null)
   /** The change on its way. A change stays on its way until the read after the change lands. */
   const [change, setChange] = useState<Change | null>(null)
-  const afterRead = afterLatestRead(shown, { listed: query.data })
+  const afterRead = afterLatestRead(shown, {
+    listed: query.data,
+    failed: query.error !== undefined,
+    afterIssue: change?.kind !== 'issue',
+  })
   if (afterRead !== shown) setShown(afterRead)
   // Apollo answers a read sent while the same read is on its way with the earlier read's answer,
   // and that answer can predate a change. So no change starts while another change, or the first
@@ -260,10 +268,16 @@ function HouseholdShareCodes({
 }
 
 // The code on show after the latest read. The list read before the issue never holds the new code.
-// So only a list that leaves out a code that an earlier list held proves that the code stopped
-// working, and the page then stops showing the code.
+// So a list without the code proves that the code stopped working in two cases only. In the first,
+// an earlier list held the code. In the second, a read failed after the read after the issue
+// settled, so the next read that succeeds started after the issue. The page then stops showing the
+// code. A failed read keeps the code on show.
 function afterLatestRead(shown: Shown | null, read: LatestRead): Shown | null {
-  if (!shown || !read.listed) return shown
+  if (!shown) return shown
+  if (read.failed) {
+    return shown.reads === 'unlisted' && read.afterIssue ? { ...shown, reads: 'readFailed' } : shown
+  }
+  if (!read.listed) return shown
   const id = shown.issued.shareCode.id
   const holds = read.listed.householdShareCodes.edges.some((edge) => edge.node.id === id)
   if (holds) return shown.reads === 'listed' ? shown : { ...shown, reads: 'listed' }

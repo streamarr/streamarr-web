@@ -623,6 +623,58 @@ describe('Share codes', () => {
     expect(screen.getByRole('button', { name: 'Copy link' })).toBeEnabled()
   })
 
+  it('shouldTakeTheIssuedCodeAwayWhenARetryAfterAFailedReadNoLongerListsThatCode', async () => {
+    // Someone offers a Profile with the code before the admin retries, and the offer spends the code.
+    serve()
+    const codes = answersInTurn(
+      answerWith(codesData([])),
+      networkFailure,
+      answerWith(codesData([])),
+    )
+    server.use(graphql.query('HouseholdShareCodes', codes.resolver))
+    serveIssue()
+    const { user } = renderAppAt(CODES)
+    await issue(user)
+    await waitForTheReadAfterTheIssue()
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByText('No live share codes.')).toBeVisible()
+    expect(codes.calls).toBe(3)
+    expect(screen.queryByText(SHARE_CODE)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Copy link' })).not.toBeInTheDocument()
+  })
+
+  it('shouldKeepTheIssuedCodeWhenAReadFromBeforeTheIssueArrivesAfterAFailedRead', async () => {
+    const issuedNow = liveCode({ id: ANOTHER_CODE_ID, issuedByDisplayName: 'Ana' })
+    const fromBefore = heldAnswer(codesData([]))
+    serve()
+    const codes = answersInTurn(
+      answerWith(codesData([liveCode()])),
+      networkFailure,
+      fromBefore.answer,
+      answerWith(codesData([issuedNow])),
+    )
+    server.use(graphql.query('HouseholdShareCodes', codes.resolver))
+    serveWithdraw()
+    serveIssue({ shareCode: issuedNow })
+    const { user } = renderAppAt(CODES)
+    // The read after the withdrawal fails. Coming back online then reads the codes again, and that
+    // read is still on its way when the admin issues a code.
+    await user.click(await screen.findByRole('button', { name: 'Withdraw' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load share codes.")
+    comeBackOnline()
+    await waitFor(() => expect(codes.calls).toBe(3))
+
+    await user.click(screen.getByRole('button', { name: 'Issue a share code' }))
+    await screen.findByText(SHARE_CODE)
+    fromBefore.release()
+
+    expect(await screen.findByText('Issued by Ana')).toBeVisible()
+    expect(codes.calls).toBe(4)
+    expect(screen.getByText(SHARE_CODE)).toBeVisible()
+  })
+
   it('shouldWaitToIssueACodeWhenAWithdrawalOrTheReadAfterItIsOnItsWay', async () => {
     const issuedLater = liveCode({ id: ANOTHER_CODE_ID, issuedByDisplayName: 'Ana' })
     const afterWithdrawal = heldAnswer(codesData([]))
