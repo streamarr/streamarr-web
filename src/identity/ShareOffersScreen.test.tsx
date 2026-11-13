@@ -466,6 +466,81 @@ describe('Share invitations', () => {
     expect(within(dialog).getByRole('button', { name: 'Accept' })).toBeEnabled()
   })
 
+  it('shouldConfirmWithTheProfilesCurrentFactsWhenTheOffersReadAfterARefusalHaveChanged', async () => {
+    serveInTurn(
+      [offer()],
+      [offer({ profile: offeredProfile({ name: 'Robin', restricted: true }) })],
+    )
+    server.use(
+      graphql.mutation('AcceptProfileShare', () =>
+        HttpResponse.json({ data: { acceptProfileShare: refusedAcceptance(NAME_IN_USE) } }),
+      ),
+    )
+    const { user } = renderAppAt(OFFERS)
+
+    await user.click(await screen.findByRole('button', { name: 'Accept Alex' }))
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Accept' }))
+
+    expect(
+      await screen.findByRole('dialog', { name: 'Accept Robin into Smith Family?' }),
+    ).toHaveTextContent(
+      'Robin becomes available in Smith Family. It is restricted, so admins of Smith Family supervise it here.',
+    )
+  })
+
+  it('shouldSayTheProfilesCurrentNameWhenAcceptingSucceedsAfterARefusal', async () => {
+    const offers = serveInTurn(
+      [offer()],
+      [offer({ profile: offeredProfile({ name: 'Robin' }) })],
+      [],
+    )
+    const answers = [refusedAcceptance(NAME_IN_USE), acceptedPayload()]
+    server.use(
+      graphql.mutation('AcceptProfileShare', () =>
+        HttpResponse.json({ data: { acceptProfileShare: answers.shift() } }),
+      ),
+    )
+    const { user } = renderAppAt(OFFERS)
+
+    await user.click(await screen.findByRole('button', { name: 'Accept Alex' }))
+    const dialog = screen.getByRole('dialog')
+    const confirm = within(dialog).getByRole('button', { name: 'Accept' })
+    await user.click(confirm)
+    await within(dialog).findByRole('alert')
+    // The confirmation takes a second Accept only once the offers have been read again.
+    await waitFor(() => expect(confirm).toBeEnabled())
+    expect(offers.calls).toBe(2)
+    await user.click(confirm)
+
+    await noticed('Robin accepted into Smith Family.')
+  })
+
+  it('shouldCloseTheConfirmationAndKeepTheServersWordsWhenARefusedOfferIsNoLongerListed', async () => {
+    serveInTurn([offer()], [])
+    server.use(
+      graphql.mutation('AcceptProfileShare', () =>
+        HttpResponse.json({
+          data: {
+            acceptProfileShare: refusedAcceptance({
+              __typename: 'ShareNotPendingError',
+              message: 'That offer is not pending.',
+            }),
+          },
+        }),
+      ),
+    )
+    const { user } = renderAppAt(OFFERS)
+
+    await user.click(await screen.findByRole('button', { name: 'Accept Alex' }))
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Accept' }))
+
+    expect(
+      await screen.findByText('No share invitations are waiting for Smith Family.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('That offer is not pending.')
+  })
+
   it('shouldTakeTheServersWordsAwayWhenTheAdminClosesTheConfirmation', async () => {
     serve([offer()])
     refuseToAccept()

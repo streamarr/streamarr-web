@@ -70,8 +70,11 @@ function HouseholdOffers({
   })
   const [accept] = useMutation(AcceptProfileShareDocument)
   const [decline] = useMutation(RejectProfileShareDocument)
-  /** The offer whose acceptance waits for the admin's confirmation. */
-  const [confirming, setConfirming] = useState<PendingOffer | null>(null)
+  /**
+   * The id of the offer whose acceptance waits for the admin's confirmation. The confirmation shows
+   * the offer as the latest read lists it, and closes when that read no longer lists the offer.
+   */
+  const [confirmingId, setConfirmingId] = useState<string | null>(null)
   /** The offer whose decision is on its way; no other decision starts until it lands. */
   const [deciding, setDeciding] = useState<string | null>(null)
   const [refusal, setRefusal] = useState<string | null>(null)
@@ -113,7 +116,7 @@ function HouseholdOffers({
 
   async function confirmAccept(offer: PendingOffer) {
     if (await decide(offer, 'accept')) {
-      setConfirming(null)
+      setConfirmingId(null)
       onDecided(`${offeredProfile(offer)} accepted into ${household.name}.`)
     }
   }
@@ -132,6 +135,7 @@ function HouseholdOffers({
   }
 
   const offers = query.data.householdShares.edges.map((edge) => edge.node).filter(namesItsProfile)
+  const confirming = offers.find((offer) => offer.id === confirmingId) ?? null
 
   return (
     <>
@@ -155,7 +159,7 @@ function HouseholdOffers({
                     disabled={deciding !== null}
                     onClick={() => {
                       setRefusal(null)
-                      setConfirming(offer)
+                      setConfirmingId(offer.id)
                     }}
                   >
                     Accept
@@ -184,7 +188,7 @@ function HouseholdOffers({
         pending={confirming !== null && deciding === confirming.id}
         error={refusal}
         onClose={() => {
-          setConfirming(null)
+          setConfirmingId(null)
           setRefusal(null)
         }}
         onConfirm={() => {
