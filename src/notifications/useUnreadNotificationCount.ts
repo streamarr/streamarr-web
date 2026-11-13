@@ -22,6 +22,10 @@ import { useLiveChanges } from '../graphql/useLiveChanges'
  * count then stands aside. A mark's count also stands aside once the count of a mark that went out
  * after it has been taken. A visit of a page sends its marks one after another, but a mark from an
  * earlier visit can answer after a mark from the next visit.
+ *
+ * When a read of the count and a mark overlap, nothing tells which count is newer. A mark that
+ * answers after the read replaces the read's count, even a newer one, until the next mark, change
+ * or read again. ADR 0042 accepts such a late answer.
  */
 export function useUnreadNotificationCount({ skip }: { skip: boolean }): {
   count: number
