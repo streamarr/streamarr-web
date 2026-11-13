@@ -78,3 +78,12 @@ export function rowsToRead(list: NotificationList | undefined): number {
  * write holds a whole list and takes the place of the list that the cache holds.
  */
 export const notificationsField: FieldPolicy = { keyArgs: false, merge: false }
+
+/**
+ * Whether a Notification in the cache is unread. A read Notification never becomes unread again
+ * (ADR 0063). An answer that calls a read Notification unread was read by the server before the
+ * mark that read it, so the Notification stays read.
+ */
+export const notificationUnreadField: FieldPolicy<boolean> = {
+  merge: (existing, incoming) => (existing === false ? false : incoming),
+}

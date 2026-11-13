@@ -5,6 +5,7 @@ import { server } from '../test/server'
 import { deferred } from '../test/deferred'
 import { beginIdentitySwitch, createApolloClient } from './client'
 import { MarkWatchedDocument, MeDocument } from './generated/graphql'
+import generatedIntrospection from './generated/possibleTypes.json'
 import { meFixture } from '../test/meFixture'
 
 const ME = meFixture({ scope: 'profile' })
@@ -343,4 +344,36 @@ describe('apollo client', () => {
       },
     })
   })
+
+  it.each(generatedIntrospection.possibleTypes.Notification)(
+    'shouldKeepANotificationReadWhenAnAnswerReadBeforeItsMarkSaysUnread %s',
+    (__typename) => {
+      const client = createApolloClient(vi.fn())
+      const readState = gql`
+        fragment ReadState on Notification {
+          id
+          unread
+        }
+      `
+      const id = client.cache.identify({ __typename, id: 'n1' })
+      client.cache.writeFragment({
+        fragment: readState,
+        id,
+        data: { __typename, id: 'n1', unread: false },
+      })
+
+      // The answer of a read that the server made before the mark arrives after the mark answered.
+      client.cache.writeFragment({
+        fragment: readState,
+        id,
+        data: { __typename, id: 'n1', unread: true },
+      })
+
+      expect(client.cache.readFragment({ fragment: readState, id })).toEqual({
+        __typename,
+        id: 'n1',
+        unread: false,
+      })
+    },
+  )
 })
