@@ -130,7 +130,8 @@ function serveInTurn(...lists: ShareCodeNode[][]) {
 }
 
 // Answers each read of the codes as the server does: the newest codes first, and only as many as
-// the read's `first` asks for. A withdrawal takes the code out of the codes the reads answer with.
+// the read's `first` asks for. An issue adds the issued code as the newest code. A withdrawal takes
+// the withdrawn code out.
 function serveHouseholdHolding(codes: ShareCodeNode[]) {
   let live = codes
   serve()
@@ -143,6 +144,10 @@ function serveHouseholdHolding(codes: ShareCodeNode[]) {
         },
       })
       return HttpResponse.json({ data: codesData(live.slice(0, pageSize)) })
+    }),
+    graphql.mutation('IssueShareCode', () => {
+      live = [liveCode(), ...live]
+      return HttpResponse.json({ data: issued() })
     }),
     graphql.mutation('WithdrawShareCode', ({ variables }) => {
       const shareCodeId = withdrawnCodeId(variables)
@@ -318,8 +323,7 @@ describe('Share codes', () => {
   })
 
   it('shouldCopyTheCodeAndSaySoWithoutMovingFocus', async () => {
-    serve()
-    serveIssue()
+    serveHouseholdHolding([])
     const { user } = renderAppAt(CODES)
     await issue(user)
 
@@ -332,8 +336,7 @@ describe('Share codes', () => {
   })
 
   it('shouldCopyALinkThatOpensTheShareFormWithTheCode', async () => {
-    serve()
-    serveIssue()
+    serveHouseholdHolding([])
     const { user } = renderAppAt(CODES)
     await issue(user)
 
@@ -349,8 +352,7 @@ describe('Share codes', () => {
     ['copy code', 'Copy code', "Couldn't copy the code. Select it and copy it yourself."],
     ['copy link', 'Copy link', "Couldn't copy the link. Select the code and give it instead."],
   ])('shouldSaySoAndSelectTheCodeWhenTheBrowserWillNotCopy(%s)', async (_, button, failure) => {
-    serve()
-    serveIssue()
+    serveHouseholdHolding([])
     const { user } = renderWithProviders(
       <ShareCodesScreen clipboard={failingClipboard()} origin="https://streamarr.test" />,
     )
@@ -364,8 +366,7 @@ describe('Share codes', () => {
   })
 
   it('shouldSayTheCodeCannotBeCopiedWhenTheBrowserHasNoClipboard', async () => {
-    serve()
-    serveIssue()
+    serveHouseholdHolding([])
     const { user } = renderWithProviders(
       <ShareCodesScreen clipboard={null} origin="https://streamarr.test" />,
     )
@@ -379,8 +380,7 @@ describe('Share codes', () => {
   })
 
   it('shouldTakeTheCodeAwayAndReturnToTheIssueButtonWhenTheAdminIsDone', async () => {
-    serve()
-    serveIssue()
+    serveHouseholdHolding([])
     const { user } = renderAppAt(CODES)
     await issue(user)
 
@@ -415,8 +415,7 @@ describe('Share codes', () => {
   })
 
   it('shouldKeepTheCodeOutOfTheCacheTheAddressAndTheBrowsersStorage', async () => {
-    serve()
-    serveIssue()
+    serveHouseholdHolding([])
     const { user, router, apolloClient } = renderAppAt(CODES)
 
     await issue(user)
