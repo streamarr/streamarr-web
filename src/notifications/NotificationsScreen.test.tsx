@@ -1,5 +1,5 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
-import { graphql, HttpResponse } from 'msw'
+import { graphql, http, HttpResponse } from 'msw'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import type {
   NotificationsQuery,
@@ -14,6 +14,7 @@ import {
   heldAnswer,
   readsThatCanBeHeld,
 } from '../test/graphqlResponses'
+import { deferred } from '../test/deferred'
 import { serveGraphqlSocket } from '../test/graphqlSocket'
 import { meFixture } from '../test/meFixture'
 import {
@@ -29,6 +30,7 @@ import {
 import { renderAppAt } from '../test/render'
 import { leaveForHome, returnThroughTheProfileMenu, type SettingsPage } from '../test/returnVisits'
 import { server } from '../test/server'
+import { signIn } from '../test/signIn'
 import { intersectionObserverInstances } from '../../vitest.setup'
 
 const NOTIFICATIONS = '/notifications'
@@ -426,6 +428,61 @@ describe('Reading Notifications', () => {
       { notificationId: 'offer-of-alex', visit: 1 },
       { notificationId: 'answer-for-leo', visit: 2 },
     ])
+  })
+
+  it('shouldSendNoMarkOnceThePersonHasSignedOutWhenTheVisitStillHadMarksToSend', async () => {
+    const leo = answerNotification({ id: 'answer-for-leo', unread: true })
+    const mara = { ...answerAbout('Mara'), unread: true }
+    serve(notificationsPage([leo, mara]))
+    const session = { signedIn: true }
+    const marks: { notificationId: string; signedIn: boolean }[] = []
+    // The page sends Mara's mark only after Leo's mark answers, and Leo's mark answers only after
+    // the person has signed out.
+    const leosAnswer = deferred()
+    onTestFinished(leosAnswer.resolve)
+    const signedOut = deferred()
+    server.use(
+      http.post('/api/auth/refresh/revoke', () => {
+        session.signedIn = false
+        signedOut.resolve()
+        return new HttpResponse(null, { status: 204 })
+      }),
+      http.post('/api/auth/login', () => {
+        session.signedIn = true
+        return HttpResponse.json({ accessTokenExpiresAt: '2026-08-06T12:10:00Z', scope: 'account' })
+      }),
+      graphql.mutation('MarkNotificationRead', async ({ variables }) => {
+        const { notificationId } = (variables as { input: { notificationId: string } }).input
+        const { signedIn } = session
+        marks.push({ notificationId, signedIn })
+        if (notificationId === leo.id) await leosAnswer.promise
+        // The server refuses a mark sent while signed out. If that refusal arrives after the person
+        // has signed in again, the app sends the person back to the sign-in page.
+        if (!signedIn) {
+          return Response.json({ code: 'AUTHENTICATION_REQUIRED' }, { status: 401 })
+        }
+        return HttpResponse.json({
+          data: { markNotificationRead: { unreadNotificationCount: 1, userErrors: [] } },
+        })
+      }),
+    )
+    const { user, router } = renderAppAt(NOTIFICATIONS)
+    await screen.findByText(mara.message)
+    await waitFor(() => expect(marks).toEqual([{ notificationId: leo.id, signedIn: true }]))
+
+    await user.click(screen.getByRole('button', { name: /^Profile menu/ }))
+    await user.click(await screen.findByRole('button', { name: 'Sign out' }))
+    await signedOut.promise
+    leosAnswer.resolve()
+    // Mara's mark would go out right after Leo's mark answers, long before the person has signed
+    // in again and left the sign-in page.
+    await signIn(user)
+    await waitFor(() => {
+      expect(router.state.location.pathname).not.toBe('/login')
+      expect(router.state.status).toBe('idle')
+    })
+
+    expect(marks).toEqual([{ notificationId: leo.id, signedIn: true }])
   })
 })
 

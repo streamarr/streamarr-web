@@ -1,4 +1,10 @@
-import { ApolloClient, ApolloLink, HttpLink, InMemoryCache } from '@apollo/client'
+import {
+  ApolloClient,
+  ApolloLink,
+  HttpLink,
+  InMemoryCache,
+  type DefaultContext,
+} from '@apollo/client'
 import { ErrorLink } from '@apollo/client/link/error'
 import { OperationTypeNode } from 'graphql'
 import { map, Observable, type Subscription, throwError } from 'rxjs'
@@ -148,6 +154,10 @@ class IdentitySwitchGate {
     this.held.clear()
     entries.forEach((entry) => entry.refuse())
   }
+
+  bindToCurrent(): DefaultContext {
+    return { [IDENTITY_GENERATION]: this.generation }
+  }
 }
 
 const gates = new WeakMap<ApolloClient, IdentitySwitchGate>()
@@ -164,6 +174,15 @@ function gateOf(client: ApolloClient): IdentitySwitchGate {
  */
 export function beginIdentitySwitch(client: ApolloClient): IdentitySwitch {
   return gateOf(client).begin()
+}
+
+/**
+ * The context for an operation on a client from createApolloClient that may act only as the
+ * identity current now. Sent after a sign-in, a sign-out or a successful switch, the operation is
+ * refused, so that work queued under one identity never goes out as the next.
+ */
+export function boundToCurrentIdentity(client: ApolloClient): DefaultContext {
+  return gateOf(client).bindToCurrent()
 }
 
 const CSRF_RETRY_ATTEMPTED = 'csrfRetryAttempted'

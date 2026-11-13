@@ -1,5 +1,6 @@
-import { useMutation } from '@apollo/client/react'
+import { useApolloClient, useMutation } from '@apollo/client/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { boundToCurrentIdentity } from '../graphql/client'
 import { MarkNotificationReadDocument } from '../graphql/generated/graphql'
 
 /** A Notification as the page shows it, by its id. */
@@ -15,7 +16,9 @@ interface Shown {
  * late and sorts below the rows shown, stays unread until a visit reads it. Each id is marked once
  * a visit, one after another, so that each answer's unread count is newer than the one before it.
  * `markSent` is called as each mark goes out, and its function takes the count the mark answers
- * (`useUnreadNotificationCount`). A mark that fails waits for the next visit.
+ * (`useUnreadNotificationCount`). A mark that fails waits for the next visit. So does a mark still
+ * waiting to go out when a sign-out, a sign-in or a switch changes the identity: the client
+ * refuses it rather than send it as the identity that followed.
  *
  * `marked` holds the ids it marked this visit. The server tells every socket, this page's too,
  * that each of them is read, so the page draws them as unread from `marked` until the next visit.
@@ -24,6 +27,7 @@ export function useMarkShownRead(
   newestPage: readonly Shown[] | null,
   markSent: () => (count: number) => void,
 ) {
+  const client = useApolloClient()
   const [markOne] = useMutation(MarkNotificationReadDocument)
   const sent = useRef(new Set<string>())
   const queue = useRef<Promise<unknown>>(Promise.resolve())
@@ -35,11 +39,12 @@ export function useMarkShownRead(
       const fresh = notifications.filter(({ id, unread }) => unread && !sent.current.has(id))
       if (fresh.length === 0) return
       setMarked((before) => new Set([...before, ...fresh.map(({ id }) => id)]))
+      const identity = boundToCurrentIdentity(client)
       for (const { id } of fresh) {
         sent.current.add(id)
         queue.current = queue.current.then(() => {
           const answered = markSent()
-          return markOne({ variables: { input: { notificationId: id } } })
+          return markOne({ variables: { input: { notificationId: id } }, context: identity })
             .then(({ data }) => {
               const count = data?.markNotificationRead?.unreadNotificationCount
               if (typeof count === 'number') answered(count)
@@ -48,7 +53,7 @@ export function useMarkShownRead(
         })
       }
     },
-    [markOne, markSent],
+    [client, markOne, markSent],
   )
 
   useEffect(() => {
