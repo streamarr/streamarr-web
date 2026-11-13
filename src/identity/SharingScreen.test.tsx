@@ -274,6 +274,40 @@ describe('Sharing', () => {
     await waitFor(() => expect(shares.calls).toBe(2))
   })
 
+  it('shouldMoveFocusToTheHeadingWhenTheCanceledOffersButtonLeavesThePage', async () => {
+    serveInTurn([share()], [])
+    server.use(
+      graphql.mutation('CancelProfileShare', () =>
+        HttpResponse.json({ data: { cancelProfileShare: canceledPayload() } }),
+      ),
+    )
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    await user.click(await screen.findByRole('button', { name: 'Cancel invitation to Cabin' }))
+
+    await noticed('Invitation to Cabin canceled.')
+    expect(
+      screen.queryByRole('button', { name: 'Cancel invitation to Cabin' }),
+    ).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Sharing' })).toHaveFocus()
+  })
+
+  it('shouldKeepFocusInTheShareFormWhenACancelFinishesWhileThePersonTypes', async () => {
+    serveInTurn([share()], [])
+    const cancel = heldAnswer({ cancelProfileShare: canceledPayload() })
+    server.use(graphql.mutation('CancelProfileShare', cancel.answer))
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.click(await screen.findByRole('button', { name: 'Cancel invitation to Cabin' }))
+    const field = await openShareForm(user)
+    await user.type(field, 'abc')
+    expect(field).toHaveFocus()
+
+    cancel.release()
+
+    await noticed('Invitation to Cabin canceled.')
+    expect(field).toHaveFocus()
+  })
+
   it('shouldShowTheServersWordsAndReadTheSharesAgainWhenCancelingIsRefused', async () => {
     const shares = serveInTurn([share()], [share()])
     refuseToCancel()
@@ -735,6 +769,21 @@ describe('Sharing', () => {
       await screen.findByText("Alex's Profile would be locked there until it has a PIN."),
     ).toBeVisible()
     expect(asked).toEqual([{ profileId: PROFILE_ID, householdId: CABIN_ID }])
+  })
+
+  it('shouldMoveFocusToTheHeadingAgainWhenASecondOfferBringsTheSameNotice', async () => {
+    serve()
+    server.use(graphql.mutation('OfferProfileShare', () => HttpResponse.json({ data: offered() })))
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.type(await openShareForm(user), `${CABIN_ID}{Enter}`)
+    await noticed('Invitation sent. An admin there must accept it.')
+    const field = await openShareForm(user)
+    expect(field).toHaveFocus()
+
+    await user.type(field, `${BEACH_HOUSE_ID}{Enter}`)
+
+    await waitFor(() => expect(screen.queryByRole('textbox')).not.toBeInTheDocument())
+    expect(screen.getByRole('heading', { level: 1, name: 'Sharing' })).toHaveFocus()
   })
 
   it('shouldSayNoHouseholdHasThatIdWhenTheServerFindsNone', async () => {
