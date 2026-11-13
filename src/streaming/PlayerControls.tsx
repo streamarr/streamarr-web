@@ -486,7 +486,7 @@ function ChoicePicker<Id extends string | number | null>({
   /** What the chip shows; the selected option's label unless given. */
   value?: string
   showsActiveTrack?: boolean
-  /** The message of the caution the chip carries, which the picker shows at its top. */
+  /** The message of the caution the chip carries, which the picker's heading carries too. */
   caution?: string
   choosable: boolean
   toggle?: PopoverToggle

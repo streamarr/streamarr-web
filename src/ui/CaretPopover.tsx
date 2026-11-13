@@ -53,8 +53,8 @@ export interface PopoverToggle {
   onToggle: () => void
 }
 
-// Which row's caution shows: the hovered row first, then a tapped mark, then the focused row.
-// Focus moving to a row clears the other two.
+// Which caution shows: the hovered row first, then a tapped mark, then the focused row. The caution
+// in the heading counts as a row here. Focus moving to a row clears the other two.
 interface ExplainedRows {
   hovered: number | null
   tapped: number | null
@@ -69,10 +69,12 @@ type Side = 'above' | 'below'
  * A menu of options above the anchor that opened it, its caret pointing down at the anchor, or
  * below the anchor with the caret pointing up. A menu placed below opens above instead where the
  * screen ends too close under the anchor to show a row and leaves more room above it. A `message`
- * shows under the heading as soon as the menu opens, and is the menu's description.
- * Focus starts on the chosen row, and moves there, or else to the nearest row, when the focused row
- * goes. Choosing, Escape or Shift+Tab returns focus to the anchor. A press or focus outside the
- * menu and its anchor dismisses it.
+ * puts a caution symbol in the heading, and is the menu's description. The message shows as a
+ * row's explanation does: while the pointer hovers the symbol, while focus is on it, or after a tap
+ * on it. Focus starts on the chosen row, and moves there, or else to the nearest row, when the
+ * focused row goes. Shift+Tab from a row moves focus to the heading's symbol, and Tab moves it back.
+ * Choosing, Escape, or Shift+Tab from the heading's symbol or else from a row, returns focus to the
+ * anchor. A press or focus outside the menu and its anchor dismisses it.
  */
 export function CaretPopover<Id>({
   id,
@@ -98,13 +100,16 @@ export function CaretPopover<Id>({
   placement?: Side
 }>) {
   const surfaceRef = useRef<HTMLDivElement>(null)
+  const headingRef = useRef<HTMLDivElement>(null)
+  const headingCautionRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const focusedRow = useRef<{ row: HTMLElement; index: number } | null>(null)
   const explanationRef = useRef<HTMLDivElement>(null)
   const pressedByTouch = useRef(false)
   const [explainedRows, setExplainedRows] = useState(NO_EXPLAINED_ROWS)
   const explainedIndex = explainedRows.hovered ?? explainedRows.tapped ?? explainedRows.focused
-  const explanations = [...options.map(ownExplanation), toggle?.unavailable]
+  const explanations = [...options.map(ownExplanation), toggle?.unavailable, message]
+  const messageIndex = explanations.length - 1
   const explanation = explainedIndex === null ? undefined : explanations[explainedIndex]
   // The menu keeps room for its longest explanation from the start, so no explanation that
   // shows or goes moves a row: a row moving under the pointer would end its own hover.
@@ -122,7 +127,12 @@ export function CaretPopover<Id>({
       alignToAnchor(surface, anchorRef.current)
       reservedRoom.current = placeExplanation({
         explanation: explanationRef.current,
-        row: explainedIndex === null ? undefined : rowsOf(menuRef.current)[explainedIndex],
+        row: explainedLine({
+          index: explainedIndex,
+          messageIndex,
+          heading: headingRef.current,
+          menu: menuRef.current,
+        }),
         surface,
         reservedRoom: reservedRoom.current,
       })
@@ -136,7 +146,7 @@ export function CaretPopover<Id>({
     place()
     window.addEventListener('resize', place)
     return () => window.removeEventListener('resize', place)
-  }, [anchorRef, explainedIndex, explanation, placement])
+  }, [anchorRef, explainedIndex, explanation, placement, messageIndex])
 
   useEffect(() => {
     focusCheckedOrNearestRow(menuRef.current, 0)
@@ -182,6 +192,11 @@ export function CaretPopover<Id>({
     onChoose(option)
   }
 
+  function returnToAnchor() {
+    anchorRef.current?.focus()
+    onDismiss()
+  }
+
   // An unavailable toggle explains itself on any press rather than change.
   function pressToggle({ unavailable, onToggle }: PopoverToggle, index: number) {
     if (unavailable) {
@@ -215,30 +230,59 @@ export function CaretPopover<Id>({
     setExplainedRows((rows) => ({ ...rows, tapped: rows.tapped === index ? null : index }))
   }
 
+  // The heading's caution comes before the rows, and the anchor before both. Shift+Tab to the anchor
+  // dismisses the menu, because the outside checks count the anchor as part of it.
   function handleRowKey(event: ReactKeyboardEvent<HTMLElement>) {
-    // Shift+Tab lands on the anchor, which the outside checks count as part of the menu.
     if (event.key === 'Tab' && event.shiftKey) {
       event.preventDefault()
-      anchorRef.current?.focus()
-      onDismiss()
+      if (headingCautionRef.current) {
+        headingCautionRef.current.focus()
+        return
+      }
+      returnToAnchor()
       return
     }
     moveBetweenRows(event)
   }
 
+  // The rows take one stop in the Tab order, so Tab from the heading's caution focuses the chosen row.
+  function handleHeadingCautionKey(event: ReactKeyboardEvent<HTMLElement>) {
+    if (event.key !== 'Tab') {
+      return
+    }
+    event.preventDefault()
+    if (event.shiftKey) {
+      returnToAnchor()
+      return
+    }
+    focusCheckedOrNearestRow(menuRef.current, focusedRow.current?.index ?? 0)
+  }
+
   return (
     <div ref={surfaceRef} className={styles.popover}>
-      <div id={headingId} className={styles.heading}>
-        {heading}
+      <div ref={headingRef} className={styles.heading}>
+        <span id={headingId}>{heading}</span>
+        {message && (
+          <>
+            <button
+              ref={headingCautionRef}
+              type="button"
+              aria-label={message}
+              className={styles.headingCaution}
+              onClick={() => tapMark(messageIndex)}
+              onFocus={() => explainFocused(messageIndex)}
+              onPointerEnter={() => explainHovered(messageIndex)}
+              onPointerLeave={() => stopHovering(messageIndex)}
+              onKeyDown={handleHeadingCautionKey}
+            >
+              <Icon name="alert" size={14} />
+            </button>
+            <span id={messageId} hidden>
+              {message}
+            </span>
+          </>
+        )}
       </div>
-      {message && (
-        <>
-          <p id={messageId} className={styles.message}>
-            {message}
-          </p>
-          <hr className={styles.divider} />
-        </>
-      )}
       <div
         ref={menuRef}
         id={id}
@@ -331,6 +375,24 @@ function cautionedName<Id>(option: PopoverOption<Id>): string | undefined {
 
 function ownExplanation<Id>({ caution, explainedByMessage }: PopoverOption<Id>) {
   return explainedByMessage ? undefined : caution
+}
+
+// The line that an explanation sits level with: the heading for the message, or the row it explains.
+function explainedLine({
+  index,
+  messageIndex,
+  heading,
+  menu,
+}: {
+  index: number | null
+  messageIndex: number
+  heading: HTMLElement | null
+  menu: HTMLElement | null
+}): HTMLElement | undefined {
+  if (index === messageIndex) {
+    return heading ?? undefined
+  }
+  return index === null ? undefined : rowsOf(menu)[index]
 }
 
 function rowsOf(menu: HTMLElement | null): HTMLElement[] {

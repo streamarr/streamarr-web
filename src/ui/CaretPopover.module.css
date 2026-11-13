@@ -42,19 +42,30 @@
 }
 
 .heading {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-6);
   padding: var(--spacing-4) var(--spacing-8) var(--spacing-6);
   font-size: var(--font-size-caption);
   color: var(--text-secondary);
 }
 
-/* A caution's message, under the heading and above the rows, in the content voice. */
-.message {
-  flex: none;
-  margin: 0;
-  padding: 0 var(--spacing-8) var(--spacing-6);
-  font-size: var(--font-size-body);
-  line-height: var(--line-height-prose);
-  color: var(--text-primary);
+/* The caution after the heading's name has the mark's glyph and yellow. Its target reaches 24px,
+   44px on a touch screen, without moving the heading. */
+.headingCaution {
+  display: inline-flex;
+  margin: -5px;
+  padding: 5px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--semantic-caution);
+  cursor: default;
+
+  @media (pointer: coarse) {
+    margin: -15px;
+    padding: 15px;
+  }
 }
 
 /* The padding leaves room for a row's focus ring, which the scrolling menu would otherwise clip. */

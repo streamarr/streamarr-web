@@ -972,14 +972,36 @@ test('the caution hides with the controls and its chip keeps its description', a
   await expect(chip).toHaveAccessibleDescription(ORIGINAL_EXPLANATION)
 })
 
-test('the keyboard reaches the message of the caution: Tab to the Quality chip, then Enter', async ({
+// The symbol after the menu's name in its heading, which the message names.
+function headingCaution(page: Page, message: string): Locator {
+  return page.getByRole('button', { name: message })
+}
+
+// The message wherever the open menu shows it in sight. The status region and the chip hold it out
+// of sight.
+function shownMessage(menu: Locator, message: string): Locator {
+  return menu.locator('xpath=..').getByText(message).filter({ visible: true })
+}
+
+// The heading's text, which names the menu.
+async function menuHeadingBox(menu: Locator): Promise<Box> {
+  return menu.evaluate((node) => {
+    const heading = document.getElementById(node.getAttribute('aria-labelledby') ?? '')
+    if (!heading) {
+      throw new Error('the menu has no heading')
+    }
+    const { x, y, width, height } = heading.getBoundingClientRect()
+    return { x, y, width, height }
+  })
+}
+
+test('the keyboard reaches the message of the caution: Tab to the Quality chip, Enter, then Shift+Tab to the symbol in the heading', async ({
   page,
   request,
 }) => {
   await openPlayerShowingMedia(page, request)
   const chip = await startOriginalWithAnEncode(page)
   await page.getByRole('button', { name: 'Back', exact: true }).focus()
-
   await tabThrough(page, [
     page.getByRole('slider', { name: 'Seek' }),
     page.getByRole('button', { name: /^(Mute|Unmute)$/ }),
@@ -990,32 +1012,128 @@ test('the keyboard reaches the message of the caution: Tab to the Quality chip, 
     chip,
   ])
   await page.keyboard.press('Enter')
-
   const menu = page.getByRole('menu', { name: 'Quality' })
   await expect(menu).toHaveAccessibleDescription(ORIGINAL_EXPLANATION)
-  await expect(page.getByRole('paragraph').filter({ hasText: ORIGINAL_EXPLANATION })).toBeVisible()
   await expect(menu.getByRole('menuitemradio', { name: 'Auto' })).toBeFocused()
+  await expect(shownMessage(menu, ORIGINAL_EXPLANATION)).toBeHidden()
+
+  await page.keyboard.press('Shift+Tab')
+
+  await expect(headingCaution(page, ORIGINAL_EXPLANATION)).toBeFocused()
+  expect(await ringOnActiveElement(page)).toMatchObject(RING)
+  await expect(shownMessage(menu, ORIGINAL_EXPLANATION)).toBeVisible()
+  await page.keyboard.press('Tab')
+  await expect(menu.getByRole('menuitemradio', { name: 'Auto' })).toBeFocused()
+  await expect(shownMessage(menu, ORIGINAL_EXPLANATION)).toBeHidden()
 })
 
-test('on a phone the message of the caution sits in the menu, under its heading and above the rows', async ({
+test("the caution sits after the Quality menu's name, and its message shows beside the menu, level with the heading", async ({
+  page,
+  request,
+}) => {
+  await openPlayerShowingMedia(page, request)
+  const chip = await startOriginalWithAnEncode(page)
+  await chip.click()
+  const menu = page.getByRole('menu', { name: 'Quality' })
+  const symbol = headingCaution(page, ORIGINAL_EXPLANATION)
+
+  await symbol.hover()
+
+  const heading = await menuHeadingBox(menu)
+  const symbolBox = (await symbol.boundingBox()) as Box
+  const menuBox = (await menu.boundingBox()) as Box
+  const tooltip = (await shownMessage(menu, ORIGINAL_EXPLANATION).boundingBox()) as Box
+  expect(symbolBox.x).toBeGreaterThan(heading.x + heading.width)
+  expect(symbolBox.y + symbolBox.height).toBeLessThanOrEqual(menuBox.y)
+  expect(tooltip.x + tooltip.width).toBeLessThan(menuBox.x)
+  expect(tooltip.y).toBeLessThanOrEqual(heading.y)
+  expect(tooltip.y + tooltip.height).toBeGreaterThanOrEqual(heading.y + heading.height)
+})
+
+test('on a phone the message of the caution shows above the menu, on screen', async ({
   page,
   request,
 }) => {
   await page.setViewportSize({ width: 375, height: 667 })
   await openPlayerShowingMedia(page, request)
   const chip = await startOriginalWithAnEncode(page)
+  await chip.click()
+  const menu = page.getByRole('menu', { name: 'Quality' })
+
+  await headingCaution(page, ORIGINAL_EXPLANATION).hover()
+
+  const surface = await popoverPlacement(menu)
+  const tooltip = (await shownMessage(menu, ORIGINAL_EXPLANATION).boundingBox()) as Box
+  expect(tooltip.y + tooltip.height).toBeLessThan(surface.top)
+  expect(tooltip.y).toBeGreaterThanOrEqual(0)
+  expect(tooltip.x).toBeGreaterThanOrEqual(0)
+  expect(tooltip.x + tooltip.width).toBeLessThanOrEqual(375)
+})
+
+// The share of a row's height left in sight once its menu's scroll box and the screen cut it.
+async function shownShareOf(row: Locator): Promise<number> {
+  return row.evaluate((node) => {
+    const box = node.getBoundingClientRect()
+    const menu = node.closest('[role="menu"]')?.getBoundingClientRect()
+    if (!menu) {
+      throw new Error('the row is in no menu')
+    }
+    const top = Math.max(box.top, menu.top, 0)
+    const bottom = Math.min(box.bottom, menu.bottom, window.innerHeight)
+    return Math.max(bottom - top, 0) / box.height
+  })
+}
+
+// After the viewer picks 720p, a converted version plays at 720p, so the Quality chip carries the
+// caution whose message is the longest. Returns the chip.
+async function play720pConverted(page: Page): Promise<Locator> {
+  await answerPick(page, {
+    quality: 'HIGH_720P',
+    playbackChoice: 'HIGH_720P',
+    formatChange: 'COPY_FAILED',
+  })
+  await page.getByRole('button', { name: /^Quality/ }).click()
+  await page.getByRole('menuitemradio', { name: '720p' }).click()
+  const chip = page.getByRole('button', { name: /^Quality: 720p/ })
+  await expect(chip).toHaveAccessibleDescription(FIXED_QUALITY_EXPLANATION)
+  return chip
+}
+
+test('in a short window the Quality menu that carries a caution shows its whole selected row', async ({
+  page,
+  request,
+}) => {
+  await openPlayerShowingMedia(page, request)
+  const chip = await play720pConverted(page)
+  await pause(page)
+  await page.setViewportSize({ width: 800, height: 300 })
 
   await chip.click()
 
-  const message = (await page
-    .getByRole('paragraph')
-    .filter({ hasText: ORIGINAL_EXPLANATION })
-    .boundingBox()) as Box
-  const menu = (await page.getByRole('menu', { name: 'Quality' }).boundingBox()) as Box
-  expect(message.x).toBeGreaterThanOrEqual(0)
-  expect(message.x + message.width).toBeLessThanOrEqual(375)
-  expect(message.y + message.height).toBeLessThanOrEqual(menu.y)
-  expect(message.y).toBeGreaterThanOrEqual(0)
+  const selected = page.getByRole('menu', { name: 'Quality' }).getByRole('menuitemradio', {
+    checked: true,
+  })
+  await expect(selected).toHaveText('720p')
+  expect(await shownShareOf(selected)).toBe(1)
+})
+
+test('on a small phone held sideways the Quality menu shows its whole selected row beside an older mark', async ({
+  page,
+  request,
+}) => {
+  await openPlayerShowingMedia(page, request)
+  await startOriginalWithAnEncode(page)
+  const chip = await play720pConverted(page)
+  await pause(page)
+  await page.setViewportSize({ width: 568, height: 320 })
+
+  await chip.click()
+
+  const menu = page.getByRole('menu', { name: 'Quality' })
+  await expect(menu.getByRole('menuitemradio', { name: /^Original\. / })).toHaveCount(1)
+  const selected = menu.getByRole('menuitemradio', { checked: true })
+  await expect(selected).toHaveText('720p')
+  expect(await shownShareOf(selected)).toBe(1)
 })
 
 // The symbol is judged by the pixels the browser paints. At two device pixels to a CSS pixel its
@@ -1133,6 +1251,43 @@ test.describe(() => {
     for (const [row, measured] of Object.entries({ resting, hovered, selected })) {
       expect.soft(measured.mark, `${row}: the yellow`).toEqual(yellow)
       expect.soft(measured.contrast, `${row}: against the row`).toBeGreaterThanOrEqual(3)
+    }
+  })
+
+  test("the caution in the Quality menu's heading is the caution yellow at 3:1 or more", async ({
+    page,
+    request,
+  }) => {
+    await openPlayerShowingMedia(page, request)
+    const chip = await startOriginalWithAnEncode(page)
+    const yellow = await cautionYellow(page)
+    await chip.click()
+
+    const { mark, backdrop } = paintedMark(
+      await paintedPixels(headingCaution(page, ORIGINAL_EXPLANATION)),
+    )
+
+    expect.soft(mark, 'the yellow').toEqual(yellow)
+    expect(contrast(mark, backdrop), 'against the menu').toBeGreaterThanOrEqual(3)
+  })
+
+  test("the caution in the Quality menu's heading keeps 3:1 or more when the system forces its colors", async ({
+    page,
+    request,
+  }) => {
+    await openPlayerShowingMedia(page, request)
+    const chip = await startOriginalWithAnEncode(page)
+    await chip.click()
+    const symbol = headingCaution(page, ORIGINAL_EXPLANATION)
+
+    for (const palette of ['light', 'dark'] as const) {
+      await page.emulateMedia({ forcedColors: 'active', colorScheme: palette })
+      expect(await page.evaluate(() => matchMedia('(forced-colors: active)').matches)).toBe(true)
+      const { mark, backdrop } = paintedMark(await paintedPixels(symbol))
+
+      expect
+        .soft(contrast(mark, backdrop), `in a ${palette} forced palette`)
+        .toBeGreaterThanOrEqual(3)
     }
   })
 

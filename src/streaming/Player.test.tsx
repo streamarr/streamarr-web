@@ -353,11 +353,37 @@ function expectNoCaution(chip: HTMLElement) {
   expect(chip).toHaveAccessibleDescription('')
 }
 
-// The message at the top of an open picker, as the viewer reads it, and as the menu's description.
-function expectMessageIn(menu: HTMLElement, message: string) {
-  expect(screen.getByRole('paragraph')).toHaveTextContent(message)
-  expect(screen.getByRole('paragraph')).toBeVisible()
+// The caution symbol in an open picker's heading, which the message names.
+function headingCaution(message: string): HTMLElement {
+  return screen.getByRole('button', { name: message })
+}
+
+// Every text on the page that shows the message. The control's description and the announcement
+// hold the words out of sight, so they are left out.
+function messageTexts(message: string): HTMLElement[] {
+  return screen.queryAllByText(message, { ignore: '[hidden], output *' })
+}
+
+// The tooltip that shows the message beside the menu.
+function messageTooltip(message: string): HTMLElement {
+  const [tooltip, ...others] = messageTexts(message)
+  expect(others).toEqual([])
+  assert(tooltip, `no text holds "${message}"`)
+  return tooltip
+}
+
+function expectMessageOutOfSight(message: string) {
+  for (const text of messageTexts(message)) {
+    expect(text).not.toBeVisible()
+  }
+}
+
+// An open picker carries the caution in its heading, outside the rows. The message is the menu's
+// description, and nothing in sight shows it until the viewer points at, focuses or taps the symbol.
+function expectCautionInHeading(menu: HTMLElement, message: string) {
+  expect(menu).not.toContainElement(headingCaution(message))
   expect(menu).toHaveAccessibleDescription(message)
+  expectMessageOutOfSight(message)
 }
 
 // Every text that the status region, which announces politely, announces from here on, in order. A
@@ -384,7 +410,7 @@ async function openQualityMenu(user: UserEvent): Promise<HTMLElement> {
 }
 
 // Each marked row's label, with the explanation its mark carries, or with "the message" when the
-// message at the top of the menu explains it instead.
+// caution in the menu's heading explains it instead.
 function marksIn(menu: HTMLElement): string[] {
   return within(menu)
     .queryAllByTestId('mark')
@@ -7414,13 +7440,13 @@ describe('Player', () => {
         message: DOLBY_VISION_EXPLANATION,
       },
     ] as const)(
-      'shouldExplainTheFallbackAtTheTopAndMarkItsChoiceWhenTheMenuOpens(picked: $picked, plays: $selected)',
+      'shouldPutTheCautionInTheHeadingAndMarkItsChoiceWhenTheMenuOpens(picked: $picked, plays: $selected)',
       async ({ picked, choices, selected, message }) => {
         const { user } = await watchAFallback(picked, choices)
 
         const menu = await openQualityMenu(user)
 
-        expectMessageIn(menu, message)
+        expectCautionInHeading(menu, message)
         expect(marksIn(menu)).toEqual([`${picked}: the message`])
         expect(within(menu).getByRole('menuitemradio', { checked: true }).textContent).toBe(
           selected,
@@ -7428,18 +7454,68 @@ describe('Player', () => {
       },
     )
 
-    it('shouldShowTheMessageAndFocusTheSelectedRowWhenTheKeyboardOpensTheMenu', async () => {
+    it('shouldKeepTheMessageOutOfSightAndFocusTheSelectedRowWhenTheKeyboardOpensTheMenu', async () => {
       const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
       qualityChip().focus()
 
       await user.keyboard('{Enter}')
 
       const menu = screen.getByRole('menu')
-      expectMessageIn(menu, ORIGINAL_EXPLANATION)
+      expectCautionInHeading(menu, ORIGINAL_EXPLANATION)
       expect(within(menu).getByRole('menuitemradio', { name: 'Auto' })).toHaveFocus()
     })
 
-    it('shouldExplainTheRowOnlyInTheMessageWhenTheMessageExplainsIt', async () => {
+    it('shouldShowTheMessageWhileThePointerHoversTheCautionInTheHeading', async () => {
+      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      await openQualityMenu(user)
+
+      await user.hover(headingCaution(ORIGINAL_EXPLANATION))
+      expect(messageTooltip(ORIGINAL_EXPLANATION)).toBeVisible()
+
+      await user.unhover(headingCaution(ORIGINAL_EXPLANATION))
+      expectMessageOutOfSight(ORIGINAL_EXPLANATION)
+    })
+
+    it('shouldShowTheMessageWhileKeyboardFocusIsOnTheCautionInTheHeading', async () => {
+      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      const menu = await openQualityMenu(user)
+
+      await user.tab({ shift: true })
+      expect(headingCaution(ORIGINAL_EXPLANATION)).toHaveFocus()
+      expect(messageTooltip(ORIGINAL_EXPLANATION)).toBeVisible()
+
+      await user.tab()
+      expect(within(menu).getByRole('menuitemradio', { name: 'Auto' })).toHaveFocus()
+      expectMessageOutOfSight(ORIGINAL_EXPLANATION)
+    })
+
+    it('shouldCloseTheMenuWhenShiftTabLeavesTheCautionInTheHeadingForTheChip', async () => {
+      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      await openQualityMenu(user)
+      await user.tab({ shift: true })
+
+      await user.tab({ shift: true })
+
+      expect(qualityChip()).toHaveFocus()
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+      expect(qualityChip()).toHaveAttribute('aria-expanded', 'false')
+    })
+
+    it('shouldShowTheMessageWithoutPickingAChoiceWhenTheViewerTapsTheCautionInTheHeading', async () => {
+      const { user, log } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      const menu = await openQualityMenu(user)
+
+      tap(headingCaution(ORIGINAL_EXPLANATION))
+
+      expect(messageTooltip(ORIGINAL_EXPLANATION)).toBeVisible()
+      expect(screen.getByRole('menu')).toBe(menu)
+      expect(log.filter((entry) => entry.startsWith('create'))).toEqual([
+        'create AUTO',
+        'create ORIGINAL',
+      ])
+    })
+
+    it('shouldKeepTheMessageOutOfSightWhileThePointerOrFocusIsOnTheRowThatTheMessageExplains', async () => {
       const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
       const menu = await openQualityMenu(user)
       const original = within(menu).getByRole('menuitemradio', { name: 'Original' })
@@ -7448,10 +7524,7 @@ describe('Player', () => {
       await user.keyboard('{Home}')
 
       expect(original).toHaveFocus()
-      // Beside the message, only the out-of-sight description and announcement hold the words.
-      expect(screen.getAllByText(ORIGINAL_EXPLANATION, { ignore: '[hidden], output *' })).toEqual([
-        screen.getByRole('paragraph'),
-      ])
+      expectMessageOutOfSight(ORIGINAL_EXPLANATION)
     })
 
     it('shouldKeepTheCautionWhenTheViewerOpensAndClosesTheQualityMenu', async () => {
@@ -7474,7 +7547,7 @@ describe('Player', () => {
 
       const menu = await openQualityMenu(user)
 
-      expectMessageIn(menu, AUTO_HDR_NOT_KEPT_EXPLANATION)
+      expectCautionInHeading(menu, AUTO_HDR_NOT_KEPT_EXPLANATION)
       expect(marksIn(menu)).toEqual(['Auto: the message'])
     })
 
@@ -8075,7 +8148,7 @@ describe('Player', () => {
         HDR_NOT_PLAYED_EXPLANATION,
       )
       const menu = await openQualityMenu(user)
-      expectMessageIn(menu, HDR_NOT_PLAYED_EXPLANATION)
+      expectCautionInHeading(menu, HDR_NOT_PLAYED_EXPLANATION)
       expect(marksIn(menu)).toEqual(['720p: the message'])
       expect(hdrToggleIn(menu)).toHaveAttribute('aria-checked', 'false')
     })
@@ -8145,7 +8218,7 @@ describe('Player', () => {
         AUTO_HDR_NOT_KEPT_EXPLANATION,
       )
       const menu = await openQualityMenu(user)
-      expectMessageIn(menu, AUTO_HDR_NOT_KEPT_EXPLANATION)
+      expectCautionInHeading(menu, AUTO_HDR_NOT_KEPT_EXPLANATION)
       expect(marksIn(menu)).toEqual(['Auto: the message'])
     })
 
@@ -8684,7 +8757,7 @@ describe('Player', () => {
 
         const menu = await openPicker(user, audioChip())
 
-        expectMessageIn(menu, AUDIO_SWITCH_REFUSED)
+        expectCautionInHeading(menu, AUDIO_SWITCH_REFUSED)
       })
 
       it('shouldOpenNoMenuWhenTheAudioChipCarriesACautionWhileTheNextStreamStarts', async () => {
@@ -8812,7 +8885,7 @@ describe('Player', () => {
         expectNoCaution(qualityChip())
         expect(screen.queryByText(SWITCH_REFUSAL)).not.toBeInTheDocument()
         const menu = await openPicker(user, audioChip())
-        expectMessageIn(menu, AUDIO_SWITCH_REFUSED)
+        expectCautionInHeading(menu, AUDIO_SWITCH_REFUSED)
         expect(marksIn(menu)).toEqual([])
       })
 
