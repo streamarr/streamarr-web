@@ -1,6 +1,6 @@
 import { Button, TextInput } from '@mantine/core'
 import { useApolloClient, useMutation } from '@apollo/client/react'
-import { useEffect, useRef, useState, type FormEvent, type Ref } from 'react'
+import { useEffect, useRef, useState, type Ref, type SubmitEvent } from 'react'
 import {
   LookUpShareCodeDocument,
   OfferProfileShareDocument,
@@ -162,7 +162,7 @@ export function ShareForm({
     setReview(null)
   }
 
-  function submit(event: FormEvent) {
+  function submit(event: SubmitEvent) {
     event.preventDefault()
     if (sending) return
     if (review) {
