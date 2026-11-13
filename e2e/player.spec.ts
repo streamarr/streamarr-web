@@ -1071,6 +1071,54 @@ test("the focus ring on the caution in the Quality menu's heading leaves the men
   expect(symbolBox.x - ringReach).toBeGreaterThan(heading.x + heading.width)
 })
 
+// WCAG 2.2 asks that a pointer can move onto the content that its hover shows (1.4.13). The pointer
+// rests on the caution, then moves in a straight line to the middle of the message. Returns the
+// message as the open menu shows it.
+async function movePointerFromTheCautionInTheHeadingOntoItsMessage(page: Page): Promise<Locator> {
+  const menu = page.getByRole('menu', { name: 'Quality' })
+  const symbol = headingCaution(page, ORIGINAL_EXPLANATION)
+  await symbol.hover()
+  const message = shownMessage(menu, ORIGINAL_EXPLANATION)
+  const start = (await symbol.boundingBox()) as Box
+  const end = (await message.boundingBox()) as Box
+  const sideways = end.x + end.width < start.x
+  await page.mouse.move(
+    sideways ? end.x + end.width / 2 : start.x + start.width / 2,
+    sideways ? start.y + start.height / 2 : end.y + end.height / 2,
+    { steps: 40 },
+  )
+  return message
+}
+
+test('the message beside the menu stays while the pointer moves onto it from the caution in the heading, and goes when the pointer leaves it', async ({
+  page,
+  request,
+}) => {
+  await openPlayerShowingMedia(page, request)
+  const chip = await startOriginalWithAnEncode(page)
+  await chip.click()
+
+  const message = await movePointerFromTheCautionInTheHeadingOntoItsMessage(page)
+
+  await expect(message).toBeVisible()
+  await page.mouse.move(100, 100)
+  await expect(message).toBeHidden()
+})
+
+test('on a phone the message above the menu stays while the pointer moves onto it from the caution in the heading', async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize({ width: 375, height: 667 })
+  await openPlayerShowingMedia(page, request)
+  const chip = await startOriginalWithAnEncode(page)
+  await chip.click()
+
+  const message = await movePointerFromTheCautionInTheHeadingOntoItsMessage(page)
+
+  await expect(message).toBeVisible()
+})
+
 // WCAG 2.2 asks a pointer target for 24px. A touch screen gives the caution the 44px of the mark.
 // Returns what a press lands on 1px inside each edge of a square that size, centred on the glyph:
 // the top, the right, the bottom and the left edge, in that order.

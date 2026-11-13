@@ -232,6 +232,17 @@ export function CaretPopover<Id>({
     setExplainedRows((rows) => ({ ...rows, tapped: rows.tapped === index ? null : index }))
   }
 
+  // The pointer keeps the heading's message while it moves across the heading and onto the message,
+  // so a viewer can move it there to read (WCAG 2.2, 1.4.13).
+  function leaveHeadingCaution(next: EventTarget | null) {
+    const stays = [headingRef.current, explanationRef.current].some(
+      (region) => next instanceof Node && region?.contains(next),
+    )
+    if (!stays) {
+      stopHovering(HEADING)
+    }
+  }
+
   // No row has focus while the heading's caution has it, so no row that goes takes focus back.
   function focusHeadingCaution() {
     focusedRow.current = null
@@ -268,7 +279,11 @@ export function CaretPopover<Id>({
 
   return (
     <div ref={surfaceRef} className={styles.popover}>
-      <div ref={headingRef} className={styles.heading}>
+      <div
+        ref={headingRef}
+        className={styles.heading}
+        onPointerLeave={(event) => leaveHeadingCaution(event.relatedTarget)}
+      >
         <span id={headingId}>{heading}</span>
         {message && (
           <>
@@ -280,7 +295,6 @@ export function CaretPopover<Id>({
               onClick={() => tapMark(HEADING)}
               onFocus={focusHeadingCaution}
               onPointerEnter={() => explainHovered(HEADING)}
-              onPointerLeave={() => stopHovering(HEADING)}
               onKeyDown={handleHeadingCautionKey}
             >
               <Icon name="alert" size={14} />
@@ -364,8 +378,12 @@ export function CaretPopover<Id>({
         <div
           ref={explanationRef}
           className={styles.explanation}
-          style={explanation ? undefined : { visibility: 'hidden' }}
+          style={{
+            visibility: explanation ? undefined : 'hidden',
+            pointerEvents: explainedIndex === HEADING ? 'auto' : undefined,
+          }}
           aria-hidden="true"
+          onPointerLeave={(event) => leaveHeadingCaution(event.relatedTarget)}
         >
           {explanation ?? longestCaution}
         </div>
