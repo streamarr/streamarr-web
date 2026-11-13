@@ -1,11 +1,12 @@
 import {
   ApolloLink,
   type ApolloCache,
+  type DocumentNode,
   type OperationVariables,
   type TypedDocumentNode,
 } from '@apollo/client'
 import { useApolloClient } from '@apollo/client/react'
-import { useEffect, useState } from 'react'
+import { canonicalStringify } from '@apollo/client/utilities'
 import { Observable } from 'rxjs'
 
 type Data = Record<string, unknown>
@@ -45,27 +46,22 @@ export const liveListLink = new ApolloLink((operation, forward) => {
   })
 })
 
+/** The changes that the reads of one list take again, whichever component received them. */
+interface Journal {
+  context: { liveList: LiveListReads }
+  /** Keeps `change` under `key` for every read of the list on its way. */
+  keep(key: string, change: (data: Data) => Data): void
+}
+
 /**
- * One list that live changes keep current. A change reaches what the cache holds at once. The
- * server answers a read with the list as it read it, which can be from before a change that has
- * since arrived, so each answer takes again every change that arrived after its read was sent.
+ * The server answers a read with the list as it read it, which can be from before a change that
+ * has since arrived, so each answer takes again every change that arrived after its read was sent.
  * Only the last change for a key is kept, since it carries that key's latest state, and a change
  * older than every read on its way is forgotten, since every later read is sent after it.
  */
-function createLiveList<TData extends Data, TVariables extends OperationVariables, TChange>({
-  cache,
-  query,
-  keyOf,
-  following,
-}: {
-  cache: ApolloCache
-  query: TypedDocumentNode<TData, TVariables>
-  keyOf: (change: TChange) => string
-  following: { variables: TVariables; apply: (data: TData, change: TChange) => TData }
-}) {
-  let current = following
+function createJournal(): Journal {
   let arrivals = 0
-  const latest = new Map<string, { arrival: number; change: TChange }>()
+  const latest = new Map<string, { arrival: number; change: (data: Data) => Data }>()
   /** The arrivals counted when each read on its way was sent. */
   const sentAfter = new Map<symbol, number>()
 
@@ -86,8 +82,7 @@ function createLiveList<TData extends Data, TVariables extends OperationVariable
           [...latest.values()]
             .filter((kept) => kept.arrival > after)
             .sort((a, b) => a.arrival - b.arrival)
-            // The link hands over an answer to this list's own query.
-            .reduce((answer, kept) => current.apply(answer, kept.change), data as TData),
+            .reduce((answer, kept) => kept.change(answer), data),
         settled: () => {
           sentAfter.delete(read)
           forget()
@@ -98,24 +93,47 @@ function createLiveList<TData extends Data, TVariables extends OperationVariable
 
   return {
     context: { liveList: reads },
-    follow: (next: typeof following) => {
-      current = next
-    },
-    receive: (change: TChange) => {
+    keep(key, change) {
       arrivals += 1
-      latest.set(keyOf(change), { arrival: arrivals, change })
+      latest.set(key, { arrival: arrivals, change })
       forget()
-      cache.updateQuery({ query, variables: current.variables }, (data) =>
-        data ? current.apply(data, change) : undefined,
-      )
     },
   }
 }
 
 /**
- * A list that live changes keep current. `receive` applies a change to what the cache holds, and
- * keeps it for every read of the list on its way; the query that reads the list passes `context`,
- * so that its answers take those changes too. `apply` gives the list once a change applies to it.
+ * Each list's journal, by cache, query and variables. Apollo joins a read to one already on its
+ * way with the same query and variables, under the context of the read it joins, and that read
+ * may have been sent by a component that has since unmounted. So every component that follows a
+ * list keeps its changes in the one journal. A journal holds no change once no read is on its way.
+ */
+const journals = new WeakMap<ApolloCache, WeakMap<DocumentNode, Map<string, Journal>>>()
+
+function journalOf(cache: ApolloCache, query: DocumentNode, variables: OperationVariables) {
+  let byQuery = journals.get(cache)
+  if (!byQuery) {
+    byQuery = new WeakMap()
+    journals.set(cache, byQuery)
+  }
+  let byVariables = byQuery.get(query)
+  if (!byVariables) {
+    byVariables = new Map()
+    byQuery.set(query, byVariables)
+  }
+  const key = canonicalStringify(variables)
+  let journal = byVariables.get(key)
+  if (!journal) {
+    journal = createJournal()
+    byVariables.set(key, journal)
+  }
+  return journal
+}
+
+/**
+ * A list that live changes keep current. `receive` applies a change to what the cache holds at
+ * once, and keeps it for every read of the list on its way; the query that reads the list passes
+ * `context`, so that its answers take those changes too. `apply` gives the list once a change
+ * applies to it.
  */
 export function useLiveList<TData extends Data, TVariables extends OperationVariables, TChange>({
   query,
@@ -129,9 +147,13 @@ export function useLiveList<TData extends Data, TVariables extends OperationVari
   apply: (data: TData, change: TChange) => TData
 }): { context: { liveList: LiveListReads }; receive: (change: TChange) => void } {
   const { cache } = useApolloClient()
-  const [list] = useState(() =>
-    createLiveList({ cache, query, keyOf, following: { variables, apply } }),
-  )
-  useEffect(() => list.follow({ variables, apply }))
-  return list
+  const journal = journalOf(cache, query, variables)
+  return {
+    context: journal.context,
+    receive: (change) => {
+      // The link hands the journal only answers to this list's own query.
+      journal.keep(keyOf(change), (data) => apply(data as TData, change))
+      cache.updateQuery({ query, variables }, (data) => (data ? apply(data, change) : undefined))
+    },
+  }
 }
