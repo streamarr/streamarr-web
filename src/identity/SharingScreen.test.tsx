@@ -103,11 +103,18 @@ function serveOneReadThenFail(shares: ShareNode[]) {
   server.use(graphql.query('ProfileShares', handler.resolver))
 }
 
-// Answers each read of the shares with `shares`, except the second, which fails.
-function serveSecondReadFailing(shares: ShareNode[]) {
+// Answers the first read of the shares with `shares` and fails the second. Each read after it
+// answers with `afterFailure`, the shares as they stand by then, which are `shares` unless given.
+function serveSecondReadFailing(
+  shares: ShareNode[],
+  { afterFailure = shares }: { afterFailure?: ShareNode[] } = {},
+) {
   serve([], me([SMITH_FAMILY, CABIN]))
-  const listed = answerWith(sharesData(shares))
-  const handler = answersInTurn(listed, serverFailure, listed)
+  const handler = answersInTurn(
+    answerWith(sharesData(shares)),
+    serverFailure,
+    answerWith(sharesData(afterFailure)),
+  )
   server.use(graphql.query('ProfileShares', handler.resolver))
 }
 
@@ -498,6 +505,44 @@ describe('Sharing', () => {
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'End share with Cabin' })).toHaveFocus()
+  })
+
+  it('shouldMoveFocusToTheSharesHeadingWhenThePersonClosesAConfirmationThatRetryBroughtBackAfterTheShareEnded', async () => {
+    serveSecondReadFailing([share({ status: 'ACTIVE' })], {
+      afterFailure: [share({ status: 'ENDED', endedAt: '2026-11-01T12:00:00Z' })],
+    })
+    refuseToEnd()
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.click(await screen.findByRole('button', { name: 'End share with Cabin' }))
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'End share' }))
+    expect(await screen.findByText("Couldn't load sharing.")).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+    const dialog = await screen.findByRole('dialog', { name: 'End sharing with Cabin?' })
+
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 2, name: 'Where Alex is shared' })).toHaveFocus()
+  })
+
+  it('shouldMoveFocusToTheSharesHeadingWhenThePersonClosesTheConfirmationAfterTheShareEnded', async () => {
+    serveInTurn(
+      [share({ status: 'ACTIVE' })],
+      [share({ status: 'ENDED', endedAt: '2026-11-01T12:00:00Z' })],
+    )
+    refuseToEnd()
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.click(await screen.findByRole('button', { name: 'End share with Cabin' }))
+    const dialog = screen.getByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'End share' }))
+    await waitFor(() =>
+      expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeEnabled(),
+    )
+
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 2, name: 'Where Alex is shared' })).toHaveFocus()
   })
 
   it('shouldTakeTheServersWordsAwayWhenThePersonClosesTheConfirmation', async () => {

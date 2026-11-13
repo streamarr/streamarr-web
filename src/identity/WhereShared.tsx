@@ -56,6 +56,8 @@ export function WhereShared({
   const [end] = useMutation(EndProfileShareDocument)
   /** Each live share's End action, where focus returns when its confirmation closes. */
   const endActions = useRef(new Map<string, HTMLButtonElement | null>())
+  /** Where focus goes when the confirmation closes after its share's End action is gone. */
+  const heading = useRef<HTMLHeadingElement>(null)
 
   const live = shares.filter(isLive)
   const earlier = shares.filter((share) => !isLive(share))
@@ -103,7 +105,11 @@ export function WhereShared({
   }
 
   return (
-    <SharingSection title={`Where ${profile.name} is shared`} failure={ending ? null : refusal}>
+    <SharingSection
+      title={`Where ${profile.name} is shared`}
+      failure={ending ? null : refusal}
+      heading={heading}
+    >
       {live.length === 0 && (
         <p className={styles.note}>{profile.name} is not shared with another Household.</p>
       )}
@@ -170,8 +176,9 @@ export function WhereShared({
         error={refusal}
         onClose={() => {
           // A confirmation that Retry brought back opened without the person's click, so the
-          // dialog knows nothing to return focus to.
-          if (ending) endActions.current.get(ending.id)?.focus()
+          // dialog knows nothing to return focus to. A share that ended meanwhile has no End
+          // action left to return to.
+          if (ending) (endActions.current.get(ending.id) ?? heading.current)?.focus()
           onEndingChange(null)
           onRefusalChange(null)
         }}
