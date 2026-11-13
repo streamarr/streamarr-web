@@ -425,6 +425,43 @@ describe('Older Notifications', () => {
       '“Cabin” accepted the Profile “Sam”.',
     ])
   })
+
+  it('shouldShowOlderNotificationsAsThisVisitReadsThemWhenAnEarlierVisitsReadAnswersLate', async () => {
+    serve()
+    // Mara's news is unread when the first visit asks for the older page. The next visit marks it
+    // read as the page opens.
+    const stored = {
+      older: notificationsPage([{ ...answerAbout('Mara'), unread: true }, answerAbout('Leo')], {
+        from: 3,
+      }),
+    }
+    const olderReads = readsThatCanBeHeld(() => stored.older)
+    server.use(
+      graphql.query('Notifications', ({ variables }) =>
+        (variables as { after?: string | null }).after
+          ? olderReads.resolver()
+          : HttpResponse.json({ data: NEWEST }),
+      ),
+    )
+    const { user } = renderAppAt(NOTIFICATIONS)
+    await screen.findByText('“Cabin” accepted the Profile “Alex”.')
+    const firstVisitsRead = olderReads.holdNext()
+    onTestFinished(firstVisitsRead.release)
+    await reachTheEndOfTheList()
+    await firstVisitsRead.arrived
+
+    await leaveForHome(user, NOTIFICATIONS_PAGE)
+    stored.older = OLDER
+    await returnThroughTheProfileMenu(user, NOTIFICATIONS_PAGE)
+    await screen.findByText('“Cabin” accepted the Profile “Alex”.')
+    firstVisitsRead.release()
+    await reachTheEndOfTheList()
+
+    await screen.findByText('“Cabin” accepted the Profile “Leo”.')
+    const mara = rows()[2]
+    expect(mara).toHaveTextContent('“Cabin” accepted the Profile “Mara”.')
+    expect(within(mara).queryByText('Unread')).not.toBeInTheDocument()
+  })
 })
 
 describe('Notifications as they change elsewhere', () => {
