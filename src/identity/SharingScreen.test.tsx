@@ -292,6 +292,14 @@ describe('Sharing', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Sharing' })).toHaveFocus()
   })
 
+  it('shouldLeaveFocusOnTheBodyWhenThePageOpensWithoutANotice', async () => {
+    serve([share()])
+    renderWithProviders(<SharingScreen />)
+
+    expect(await screen.findByRole('button', { name: /^Cancel invitation to/ })).toBeEnabled()
+    expect(document.body).toHaveFocus()
+  })
+
   it('shouldKeepFocusInTheShareFormWhenACancelFinishesWhileThePersonTypes', async () => {
     serveInTurn([share()], [])
     const cancel = heldAnswer({ cancelProfileShare: canceledPayload() })
