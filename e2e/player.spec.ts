@@ -1050,6 +1050,27 @@ test("the caution sits after the Quality menu's name, and its message shows besi
   expect(tooltip.y + tooltip.height).toBeGreaterThanOrEqual(heading.y + heading.height)
 })
 
+test("the focus ring on the caution in the Quality menu's heading leaves the menu's name clear", async ({
+  page,
+  request,
+}) => {
+  await openPlayerShowingMedia(page, request)
+  const chip = await startOriginalWithAnEncode(page)
+  await chip.click()
+  const menu = page.getByRole('menu', { name: 'Quality' })
+
+  await page.keyboard.press('Shift+Tab')
+
+  const symbol = headingCaution(page, ORIGINAL_EXPLANATION)
+  await expect(symbol).toBeFocused()
+  expect(await ringOnActiveElement(page)).toMatchObject(RING)
+  // The ring is drawn its offset away from the symbol's box, and is its outline's width thick.
+  const ringReach = Number.parseFloat(RING.offset) + Number.parseFloat(RING.outline)
+  const heading = await menuHeadingBox(menu)
+  const symbolBox = (await symbol.boundingBox()) as Box
+  expect(symbolBox.x - ringReach).toBeGreaterThan(heading.x + heading.width)
+})
+
 // WCAG 2.2 asks a pointer target for 24px. A touch screen gives the caution the 44px of the mark.
 async function headingCautionTarget(page: Page, request: APIRequestContext): Promise<Box> {
   await openPlayerShowingMedia(page, request)

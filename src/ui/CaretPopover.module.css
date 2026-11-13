@@ -51,10 +51,11 @@
 }
 
 /* The caution after the heading's name has the mark's glyph and yellow. Its target reaches 24px,
-   44px on a touch screen, without moving the heading. */
+   44px on a touch screen, without moving the heading. The target starts after the gap, so the
+   focus ring around it leaves the name clear, and the glyph keeps its place on a touch screen. */
 .headingCaution {
   display: inline-flex;
-  margin: -5px;
+  margin: -5px -5px -5px 0;
   padding: 5px;
   border: none;
   border-radius: var(--radius-md);
@@ -63,7 +64,7 @@
   cursor: default;
 
   @media (pointer: coarse) {
-    margin: -15px;
+    margin: -15px -15px -15px -10px;
     padding: 15px;
   }
 }
