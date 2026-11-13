@@ -10,12 +10,13 @@ export const Route = createFileRoute('/invite')({
 // The code is a bearer capability that creates an account: the address bar and history keep none.
 function Invite() {
   const navigate = useNavigate()
-  const code = useLinkCode()
+  const { code, arrivals } = useLinkCode()
 
   // Acceptance signs the new person in (ACCOUNT scope), so the picker is always the next stop.
   return (
     <AuthShell width={480}>
       <InvitationScreen
+        key={arrivals}
         initialCode={code || undefined}
         onAccepted={() => navigate({ to: '/select-profile' })}
       />
