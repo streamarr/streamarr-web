@@ -140,6 +140,8 @@ function SharedProfiles({
   const [end] = useMutation(EndProfileShareDocument)
   const readAgain = () => query.refetch().catch(() => undefined)
   const listed = query.data?.householdShares.edges
+  // A share leaves the list with the answer that ends it, as the query would leave it out.
+  const active = listed?.map((edge) => edge.node).filter((share) => share.status === 'ACTIVE')
   const ending = useConfirmedChange<VisitorShare>({
     send: async (share) =>
       (await end({ variables: { input: { shareId: share.id } } })).data?.endProfileShare
@@ -147,7 +149,7 @@ function SharedProfiles({
     // Ending the share of someone's Personal Profile also unlinks the TVs that person linked here.
     listsToReadAgain: [SharedWithHouseholdDocument, VisitorDevicesDocument],
     onDone: (share) => announce(`Sharing of ${share.profile.name} ended.`),
-    listed: query.error ? undefined : listed?.map((edge) => edge.node),
+    listed: query.error ? undefined : active,
     onGone: (share) => announce(`${share.profile.name} is no longer shared here.`),
   })
 
@@ -156,7 +158,7 @@ function SharedProfiles({
   if (query.loading && !query.data) {
     return <ListLoading label="Loading shared Profiles" />
   }
-  if (query.error || !query.data) {
+  if (query.error || !query.data || !active) {
     return (
       <SharingSection title={`Profiles shared with ${household.name}`} failure={null}>
         <FailureRow onRetry={readAgain}>
@@ -166,7 +168,7 @@ function SharedProfiles({
     )
   }
 
-  const shares = query.data.householdShares.edges.map((edge) => edge.node).filter(namesItsProfile)
+  const shares = active.filter(namesItsProfile)
 
   return (
     <SharingSection
