@@ -1,16 +1,27 @@
-import { screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import { graphql, http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
+import type {
+  LookUpShareCodeMutation,
+  LookUpShareCodeMutationVariables,
+} from '../../graphql/generated/graphql'
 import { shareCodeLink } from '../../identity/shareCode'
 import { meFixture, profileFixture } from '../../test/meFixture'
 import { renderAppAt } from '../../test/render'
 import { server } from '../../test/server'
-import { SENT_SHARE_CODE, serveShareCodeQuestions, SHARE_CODE } from '../../test/shareCodeFixtures'
+import {
+  SENT_SHARE_CODE,
+  serveShareCodeQuestions,
+  SHARE_CODE,
+  shareCodeLookUpFixture,
+} from '../../test/shareCodeFixtures'
 import { signIn } from '../../test/signIn'
 
 const SHARING = '/settings/profile/sharing'
 const LINK = new URL(shareCodeLink(SHARE_CODE, 'https://streamarr.test'))
 const ARRIVAL = `${LINK.pathname}${LINK.search}${LINK.hash}`
+const SECOND_SHARE_CODE = 'LMNP-QRST'
+const SECOND_SENT_CODE = 'LMNPQRST'
 
 // An account session with no selected Profile: a link can arrive before anyone picks one.
 function serveSharing() {
@@ -26,6 +37,19 @@ function serveSharing() {
     ),
   )
   return serveShareCodeQuestions()
+}
+
+/** Answers the lookup of each code with the name of the Household that the code belongs to. */
+function serveLookUpsNaming(households: Record<string, string>) {
+  server.use(
+    graphql.mutation<LookUpShareCodeMutation, LookUpShareCodeMutationVariables>(
+      'LookUpShareCode',
+      ({ variables }) =>
+        HttpResponse.json({
+          data: shareCodeLookUpFixture({ householdName: households[variables.input.code] }),
+        }),
+    ),
+  )
 }
 
 describe('/settings/profile/sharing', () => {
@@ -48,6 +72,54 @@ describe('/settings/profile/sharing', () => {
     expect(router.state.location.searchStr).toBe('')
     expect(typeof router.state.location.state.__TSR_index).toBe('number')
     expect(router.history.length).toBe(1)
+  })
+
+  it('shouldReviewTheOfferOfALinksCodeWhenTheLinkOpensWhileTheSharingPageIsOpen', async () => {
+    const asked = serveSharing()
+    const { router } = renderAppAt(SHARING)
+    await screen.findByRole('button', { name: 'Share with another Household' })
+
+    // Pasted into the address bar of the open page, the link changes only the fragment, so the
+    // browser keeps the page and adds a history entry.
+    act(() => router.history.push(ARRIVAL))
+
+    expect(await screen.findByRole('heading', { name: 'Offer Alex to Cabin?' })).toHaveFocus()
+    expect(asked.lookUps).toEqual([{ input: { code: SENT_SHARE_CODE } }])
+    await waitFor(() => expect(router.state.location.hash).toBe(''))
+  })
+
+  it('shouldReviewTheOfferOfTheSecondLinksCodeWhenASecondLinkOpensOverTheReviewOfTheFirst', async () => {
+    const asked = serveSharing()
+    serveLookUpsNaming({ [SENT_SHARE_CODE]: 'Cabin', [SECOND_SENT_CODE]: 'Lake House' })
+    const { router } = renderAppAt(ARRIVAL)
+    await screen.findByRole('heading', { name: 'Offer Alex to Cabin?' })
+    await waitFor(() => expect(router.state.location.hash).toBe(''))
+
+    act(() => router.history.push(`${SHARING}#code=${SECOND_SHARE_CODE}`))
+
+    expect(await screen.findByRole('heading', { name: 'Offer Alex to Lake House?' })).toHaveFocus()
+    expect(screen.queryByRole('heading', { name: 'Offer Alex to Cabin?' })).not.toBeInTheDocument()
+    expect(asked.previews).toEqual([
+      expect.objectContaining({ shareCode: SENT_SHARE_CODE }),
+      expect.objectContaining({ shareCode: SECOND_SENT_CODE }),
+    ])
+    await waitFor(() => expect(router.state.location.hash).toBe(''))
+  })
+
+  it('shouldReviewTheOfferAgainWhenThePersonOpensTheSameLinkAgainAfterCancellingTheForm', async () => {
+    const asked = serveSharing()
+    const { router, user } = renderAppAt(ARRIVAL)
+    await user.click(await screen.findByRole('button', { name: 'Back' }))
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(router.state.location.hash).toBe(''))
+
+    act(() => router.history.push(ARRIVAL))
+
+    expect(await screen.findByRole('heading', { name: 'Offer Alex to Cabin?' })).toHaveFocus()
+    expect(asked.lookUps).toEqual([
+      { input: { code: SENT_SHARE_CODE } },
+      { input: { code: SENT_SHARE_CODE } },
+    ])
   })
 
   it('shouldLookNothingUpWhenThePersonReloadsThePageTheLinkOpened', async () => {
