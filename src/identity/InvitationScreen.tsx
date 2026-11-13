@@ -239,11 +239,11 @@ function ConnectReview({ preview }: Readonly<{ preview: InvitationPreview }>) {
   return (
     <section className={styles.panel} aria-labelledby={titleId}>
       <h2 id={titleId} className={styles.panelTitle}>
-        Connecting {preview.profileName} to your new account
+        Connecting {preview.profileName}'s Profile to your new account
       </h2>
       <p className={styles.body}>
-        {preview.profileName} becomes your Personal Profile — its history, progress, and preferences
-        come with it.
+        {preview.profileName}'s Profile becomes your Personal Profile. Its history, progress, and
+        preferences come with it.
       </p>
       <ConsequenceList
         title="These people keep managing it"
@@ -256,9 +256,9 @@ function ConnectReview({ preview }: Readonly<{ preview: InvitationPreview }>) {
         empty="It isn't visiting any other Household."
       />
       <ConsequenceList
-        title="These Households will be offered it afresh"
+        title="These Households get a new share invitation"
         items={preview.profileShareOfferTargets}
-        empty="No Household will be offered it again."
+        empty="No Household gets a new share invitation."
       />
     </section>
   )

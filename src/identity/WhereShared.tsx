@@ -93,7 +93,7 @@ export function WhereShared({
   // Canceling an offer loses nothing that a new offer cannot bring back, so it asks nothing.
   async function cancelOffer(share: ProfileShareRow) {
     if (await change(share)) {
-      onChanged(`Offer to ${householdName(share.householdId)} canceled.`)
+      onChanged(`Invitation to ${householdName(share.householdId)} canceled.`)
     }
   }
 
@@ -106,12 +106,12 @@ export function WhereShared({
 
   return (
     <SharingSection
-      title={`Where ${profile.name} is shared`}
+      title={`Where ${profile.name}'s Profile is shared`}
       failure={ending ? null : refusal}
       heading={heading}
     >
       {live.length === 0 && (
-        <p className={styles.note}>{profile.name} is not shared with another Household.</p>
+        <p className={styles.note}>{profile.name}'s Profile isn't shared with another Household.</p>
       )}
       <ul className={styles.rows}>
         {live.map((share) => {
@@ -129,12 +129,12 @@ export function WhereShared({
               {pending ? (
                 <Button
                   variant="default"
-                  aria-label={`Cancel offer to ${household}`}
+                  aria-label={`Cancel invitation to ${household}`}
                   loading={changing === share.id}
                   disabled={changing !== null}
                   onClick={() => void cancelOffer(share)}
                 >
-                  Cancel offer
+                  Cancel invitation
                 </Button>
               ) : (
                 <Button
@@ -171,7 +171,7 @@ export function WhereShared({
         title={`End sharing with ${ending ? householdName(ending.householdId) : ''}?`}
         body={
           ending
-            ? `${profile.name} stops being available in ${householdName(ending.householdId)}. The TVs you linked there are unlinked, and your sessions there return to ${ownHouseholdName}. Sharing again needs a new offer and an admin there to accept it.`
+            ? `${profile.name}'s Profile stops being available in ${householdName(ending.householdId)}. The TVs you linked there are unlinked, and your sessions there return to ${ownHouseholdName}. To share ${profile.name}'s Profile with ${householdName(ending.householdId)} again, send a new invitation. An admin there must accept it.`
             : ''
         }
         confirmLabel="End share"

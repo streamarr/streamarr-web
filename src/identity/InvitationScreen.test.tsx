@@ -131,7 +131,9 @@ describe('InvitationScreen', () => {
     renderWithProviders(<InvitationScreen initialCode={CODE} onAccepted={vi.fn()} />)
 
     expect(
-      await screen.findByRole('region', { name: 'Connecting Grandpa Joe to your new account' }),
+      await screen.findByRole('region', {
+        name: "Connecting Grandpa Joe's Profile to your new account",
+      }),
     ).toBeInTheDocument()
   })
 
@@ -140,13 +142,29 @@ describe('InvitationScreen', () => {
     renderWithProviders(<InvitationScreen initialCode={CODE} onAccepted={vi.fn()} />)
 
     expect(
-      await screen.findByText(/Connecting Grandpa Joe to your new account/),
+      await screen.findByText("Connecting Grandpa Joe's Profile to your new account"),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        "Grandpa Joe's Profile becomes your Personal Profile. Its history, progress, and preferences come with it.",
+      ),
     ).toBeInTheDocument()
     expect(screen.getByText('Your existing Profile')).toBeInTheDocument()
     expect(screen.getByText('· Nina')).toBeInTheDocument()
     expect(screen.getByText('· Lake House')).toBeInTheDocument()
-    expect(screen.getByText('These Households will be offered it afresh')).toBeInTheDocument()
+    expect(screen.getByText('These Households get a new share invitation')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Create my account' })).toBeInTheDocument()
+  })
+
+  it('shouldSayNoHouseholdGetsANewShareInvitationWhenTheServerListsNone', async () => {
+    server.use(
+      http.post('/api/auth/invitation/lookup', () =>
+        HttpResponse.json({ ...CONNECT_PREVIEW, profileShareOfferTargets: [] }),
+      ),
+    )
+    renderWithProviders(<InvitationScreen initialCode={CODE} onAccepted={vi.fn()} />)
+
+    expect(await screen.findByText('No Household gets a new share invitation.')).toBeVisible()
   })
 
   it('shouldDeclineWithoutCreatingAnything', async () => {

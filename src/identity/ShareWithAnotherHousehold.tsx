@@ -52,7 +52,7 @@ export function ShareWithAnotherHousehold({
       onOffered={async () => {
         await readAgain()
         setOpen(false)
-        onChanged('Offer sent. An admin there must accept it.')
+        onChanged('Invitation sent. An admin there must accept it.')
       }}
       onCancel={() => {
         returnFocus.current = true

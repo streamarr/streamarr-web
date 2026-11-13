@@ -11,8 +11,8 @@ const SECTIONS = [
   {
     to: '/settings/household/offers',
     icon: 'people',
-    label: 'Share offers',
-    region: 'Share offers',
+    label: 'Share invitations',
+    region: 'Share invitations',
   },
 ] as const satisfies readonly SettingsSection[]
 
