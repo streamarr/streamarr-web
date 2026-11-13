@@ -133,18 +133,22 @@ function journalOf(cache: ApolloCache, query: DocumentNode, variables: Operation
  * A list that live changes keep current. `receive` applies a change to what the cache holds at
  * once, and keeps it for every read of the list on its way; the query that reads the list passes
  * `context`, so that its answers take those changes too. `apply` gives the list once a change
- * applies to it.
+ * applies to it. A change reaches the cache only when the cache holds an answer, unless
+ * `wholeAnswerFrom` gives the whole answer from the change alone, as for a query whose every
+ * change carries all of it.
  */
 export function useLiveList<TData extends Data, TVariables extends OperationVariables, TChange>({
   query,
   variables,
   keyOf,
   apply,
+  wholeAnswerFrom,
 }: {
   query: TypedDocumentNode<TData, TVariables>
   variables: TVariables
   keyOf: (change: TChange) => string
   apply: (data: TData, change: TChange) => TData
+  wholeAnswerFrom?: (change: TChange) => TData
 }): { context: { liveList: LiveListReads }; receive: (change: TChange) => void } {
   const { cache } = useApolloClient()
   const journal = journalOf(cache, query, variables)
@@ -153,7 +157,9 @@ export function useLiveList<TData extends Data, TVariables extends OperationVari
     receive: (change) => {
       // The link hands the journal only answers to this list's own query.
       journal.keep(keyOf(change), (data) => apply(data as TData, change))
-      cache.updateQuery({ query, variables }, (data) => (data ? apply(data, change) : undefined))
+      cache.updateQuery({ query, variables }, (data) =>
+        data ? apply(data, change) : wholeAnswerFrom?.(change),
+      )
     },
   }
 }
