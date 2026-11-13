@@ -3,7 +3,13 @@ import { parse, valueFromASTUntyped, visit } from 'graphql'
 import { delay, graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { HouseholdShareCodesQuery } from '../graphql/generated/graphql'
-import { answersInTurn, answerWith, failsOnceThen, heldAnswer } from '../test/graphqlResponses'
+import {
+  answersInTurn,
+  answerWith,
+  comeBackOnline,
+  failsOnceThen,
+  heldAnswer,
+} from '../test/graphqlResponses'
 import { HOUSEHOLD_ID, meFixture } from '../test/meFixture'
 import { renderAppAt, renderWithProviders } from '../test/render'
 import { leaveForHomeAndReturn, type SettingsPage } from '../test/returnVisits'
@@ -559,6 +565,55 @@ describe('Share codes', () => {
     await waitFor(() => expect(issueAction).toBeEnabled())
     await issue(user)
     expect(await screen.findByText('Issued by Ana')).toBeVisible()
+  })
+
+  it('shouldListTheIssuedCodeWhenAReadFromBeforeTheIssueIsOnItsWay', async () => {
+    const fromBefore = heldAnswer(codesData([]))
+    serve()
+    const codes = answersInTurn(
+      answerWith(codesData([])),
+      fromBefore.answer,
+      answerWith(codesData([liveCode()])),
+    )
+    server.use(graphql.query('HouseholdShareCodes', codes.resolver))
+    serveIssue()
+    const { user } = renderAppAt(CODES)
+    await screen.findByText('No live share codes.')
+    comeBackOnline()
+    await waitFor(() => expect(codes.calls).toBe(2))
+
+    // The code shows once the server takes the issue. By then the read after the issue has started.
+    await issue(user)
+    fromBefore.release()
+
+    expect(await screen.findByText('Issued by Sam')).toBeVisible()
+  })
+
+  it('shouldTakeTheWithdrawnCodeOffTheListWhenAReadFromBeforeTheWithdrawalIsOnItsWay', async () => {
+    const fromBefore = heldAnswer(codesData([liveCode()]))
+    serve()
+    const codes = answersInTurn(
+      answerWith(codesData([])),
+      answerWith(codesData([liveCode()])),
+      fromBefore.answer,
+      answerWith(codesData([])),
+    )
+    server.use(graphql.query('HouseholdShareCodes', codes.resolver))
+    serveIssue()
+    serveWithdraw()
+    const { user } = renderAppAt(CODES)
+    await issue(user)
+    await screen.findByText('Issued by Sam')
+    comeBackOnline()
+    await waitFor(() => expect(codes.calls).toBe(3))
+
+    await withdrawWhenAllowed(user, /^Issued by Sam /)
+    // The panel closes once the server takes the withdrawal. By then the read after the withdrawal
+    // has started.
+    await waitFor(() => expect(screen.queryByText(SHARE_CODE)).not.toBeInTheDocument())
+    fromBefore.release()
+
+    expect(await screen.findByText('No live share codes.')).toBeVisible()
   })
 
   it('shouldListACodeIssuedWhileTheAdminWasAwayWhenTheyReturn', async () => {

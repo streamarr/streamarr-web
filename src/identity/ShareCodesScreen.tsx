@@ -1,5 +1,5 @@
 import { Button, Center, Loader } from '@mantine/core'
-import { useMutation, useQuery } from '@apollo/client/react'
+import { useApolloClient, useMutation, useQuery } from '@apollo/client/react'
 import { useId, useRef, useState } from 'react'
 import {
   HouseholdShareCodesDocument,
@@ -9,6 +9,7 @@ import {
   type IssueShareCodeMutation,
   type MeQuery,
 } from '../graphql/generated/graphql'
+import { isReading } from '../graphql/readAgain'
 import { requestFailureMessage } from '../graphql/requestErrors'
 import { userErrorMessage } from '../graphql/userErrors'
 import settingsStyles from '../styles/settings.module.css'
@@ -113,8 +114,19 @@ function HouseholdShareCodes({
   // read of the codes, is on its way.
   const waiting = change !== null || (query.loading && !query.data)
   const issueAction = useRef<HTMLButtonElement>(null)
+  const client = useApolloClient()
   // A failed read keeps the list that is on screen; the query's own error state reports it.
   const readAgain = () => query.refetch().catch(() => undefined)
+
+  // A read sent before the change can answer as if the change never happened, and a refetch now
+  // would join that read. The app reads every active query again when the page comes back into
+  // view or online. So a read already on its way settles first, and a fresh read follows.
+  async function readAfterChange() {
+    if ([...client.getObservableQueries([HouseholdShareCodesDocument])].some(isReading)) {
+      await readAgain()
+    }
+    await readAgain()
+  }
 
   async function issue() {
     setRefusal(null)
@@ -132,7 +144,7 @@ function HouseholdShareCodes({
         return
       }
       setIssued(answer)
-      await readAgain()
+      await readAfterChange()
     } catch (error) {
       setRefusal(requestFailureMessage(error, ISSUE_FAILED))
     } finally {
@@ -152,7 +164,7 @@ function HouseholdShareCodes({
       // A withdrawn code no longer works, so the panel stops offering it for copying.
       if (!refused) setIssued((shown) => (shown?.shareCode.id === code.id ? null : shown))
       // A refused code may have been spent or withdrawn elsewhere, so the list is read again.
-      await readAgain()
+      await readAfterChange()
       if (!refused) announce('Share code withdrawn.')
     } catch (error) {
       setWithdrawRefusal(requestFailureMessage(error, WITHDRAW_FAILED))
