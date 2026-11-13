@@ -30,6 +30,8 @@ type Household = MeQuery['me']['household']
 type Announce = ReturnType<typeof usePageNotice>['announce']
 /** A change to the Household's codes: issuing a code, or withdrawing the code that `codeId` names. */
 type Change = { kind: 'issue' } | { kind: 'withdraw'; codeId: string }
+/** The code on show, and whether a list the server gave has held that code since the issue. */
+type Shown = { issued: Issued; listed: boolean }
 
 const ISSUE_FAILED = "Couldn't issue a share code."
 const WITHDRAW_FAILED = "Couldn't withdraw the share code."
@@ -104,7 +106,9 @@ function HouseholdShareCodes({
   // The answer carries the code, which no cache may keep.
   const [issueCode] = useMutation(IssueShareCodeDocument, { fetchPolicy: 'no-cache' })
   const [withdraw] = useMutation(WithdrawShareCodeDocument)
-  const [issued, setIssued] = useState<Issued | null>(null)
+  const [shown, setShown] = useState<Shown | null>(null)
+  const afterRead = afterList(shown, query.data)
+  if (afterRead !== shown) setShown(afterRead)
   const [refusal, setRefusal] = useState<string | null>(null)
   const [withdrawRefusal, setWithdrawRefusal] = useState<string | null>(null)
   /** The change on its way. A change stays on its way until the read after the change lands. */
@@ -121,10 +125,10 @@ function HouseholdShareCodes({
   // A disabled button takes no focus. So focus returns to the issue button once the button is
   // enabled, unless the admin has moved focus away from the page body since the panel closed.
   useEffect(() => {
-    if (issued || waiting || !returnFocus.current) return
+    if (shown || waiting || !returnFocus.current) return
     returnFocus.current = false
     if (document.activeElement === document.body) issueAction.current?.focus()
-  }, [issued, waiting])
+  }, [shown, waiting])
 
   // A failed read keeps the list that is on screen; the query's own error state reports it.
   const readAgain = () => query.refetch().catch(() => undefined)
@@ -154,7 +158,7 @@ function HouseholdShareCodes({
         setRefusal(ISSUE_FAILED)
         return
       }
-      setIssued(answer)
+      setShown({ issued: answer, listed: false })
       await readAfterChange()
     } catch (error) {
       setRefusal(requestFailureMessage(error, ISSUE_FAILED))
@@ -175,7 +179,7 @@ function HouseholdShareCodes({
       // The shown code no longer works after either answer. The server refuses the Account that
       // issued a code only once the code was spent, withdrawn or invalidated. So the panel stops
       // offering the code for copying.
-      setIssued((shown) => (shown?.shareCode.id === code.id ? null : shown))
+      setShown((current) => (current?.issued.shareCode.id === code.id ? null : current))
       // A refused code may have been spent or withdrawn elsewhere, so the list is read again.
       await readAfterChange()
       if (!refused) announce('Share code withdrawn.')
@@ -206,17 +210,17 @@ function HouseholdShareCodes({
       >
         Issue a share code
       </Button>
-      {issued && (
+      {shown && (
         <IssuedShareCode
-          key={issued.shareCode.id}
-          code={issued.code}
-          expiresAt={issued.shareCode.expiresAt}
+          key={shown.issued.shareCode.id}
+          code={shown.issued.code}
+          expiresAt={shown.issued.shareCode.expiresAt}
           clipboard={clipboard}
           origin={origin}
           onCopied={(notice) => announce(notice, { inPlace: true })}
           onDone={() => {
             returnFocus.current = true
-            setIssued(null)
+            setShown(null)
           }}
         />
       )}
@@ -232,6 +236,20 @@ function HouseholdShareCodes({
       />
     </div>
   )
+}
+
+// The code on show after `listed`, the last list the server gave. The list read before the issue
+// never holds the new code. So only a list that leaves out a code that an earlier list held proves
+// that the code stopped working, and the page then stops showing the code.
+function afterList(
+  shown: Shown | null,
+  listed: HouseholdShareCodesQuery | undefined,
+): Shown | null {
+  if (!shown || !listed) return shown
+  const id = shown.issued.shareCode.id
+  const holds = listed.householdShareCodes.edges.some((edge) => edge.node.id === id)
+  if (holds) return shown.listed ? shown : { ...shown, listed: true }
+  return shown.listed ? null : shown
 }
 
 function LiveShareCodes({

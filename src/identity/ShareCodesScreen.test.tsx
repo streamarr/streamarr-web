@@ -9,6 +9,7 @@ import {
   comeBackOnline,
   failsOnceThen,
   heldAnswer,
+  networkFailure,
 } from '../test/graphqlResponses'
 import { HOUSEHOLD_ID, meFixture } from '../test/meFixture'
 import { renderAppAt, renderWithProviders } from '../test/render'
@@ -206,6 +207,12 @@ async function issueAndHoldTheReadAfterTheIssue() {
   await issue(user)
   await waitFor(() => expect(codes.calls).toBe(2))
   return { user, release: afterIssue.release }
+}
+
+// The issue button stays disabled until the read after the change on its way lands.
+async function waitForTheReadAfterTheIssue() {
+  const issueAction = screen.getByRole('button', { name: 'Issue a share code' })
+  await waitFor(() => expect(issueAction).toBeEnabled())
 }
 
 function failingClipboard() {
@@ -550,6 +557,38 @@ describe('Share codes', () => {
     await waitFor(() =>
       expect(screen.getByRole('status')).toHaveTextContent('Share code withdrawn.'),
     )
+    expect(screen.getByText(SHARE_CODE)).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Copy link' })).toBeEnabled()
+  })
+
+  it('shouldTakeTheIssuedCodeAwayWhenALaterReadNoLongerListsThatCode', async () => {
+    // Someone offers a Profile with the code while the page is open, and the offer spends the code.
+    const codes = serveInTurn([], [liveCode()], [])
+    serveIssue()
+    const { user } = renderAppAt(CODES)
+    await issue(user)
+    await waitForTheReadAfterTheIssue()
+
+    comeBackOnline()
+
+    expect(await screen.findByText('No live share codes.')).toBeVisible()
+    expect(codes.calls).toBe(3)
+    expect(screen.queryByText(SHARE_CODE)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Copy link' })).not.toBeInTheDocument()
+  })
+
+  it('shouldKeepTheIssuedCodeWhenTheReadAfterTheIssueFails', async () => {
+    serve()
+    const codes = answersInTurn(answerWith(codesData([])), networkFailure)
+    server.use(graphql.query('HouseholdShareCodes', codes.resolver))
+    serveIssue()
+    const { user } = renderAppAt(CODES)
+    await issue(user)
+
+    await waitForTheReadAfterTheIssue()
+
+    expect(codes.calls).toBe(2)
+    expect(screen.getByRole('alert')).toHaveTextContent("Couldn't load share codes.")
     expect(screen.getByText(SHARE_CODE)).toBeVisible()
     expect(screen.getByRole('button', { name: 'Copy link' })).toBeEnabled()
   })
