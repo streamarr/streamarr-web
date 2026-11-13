@@ -952,6 +952,23 @@ describe('Sharing', () => {
     ])
   })
 
+  it('shouldLookTheCodeUpAgainWhenThePersonContinuesWithACodeTheReviewFoundNoLongerWorks', async () => {
+    serve()
+    const asked = serveShareCodeQuestions({ preview: { profileSharePreview: null } })
+    const { user } = renderWithProviders(<SharingScreen />)
+    const field = await openShareForm(user)
+    await user.type(field, `${SHARE_CODE}{Enter}`)
+    await waitFor(() => expect(field).toBeInvalid())
+
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+
+    await waitFor(() => expect(field).toBeInvalid())
+    expect(asked.lookUps).toEqual([
+      { input: { code: SENT_SHARE_CODE } },
+      { input: { code: SENT_SHARE_CODE } },
+    ])
+  })
+
   it('shouldContinueWhenEnterIsPressedInTheField', async () => {
     serve()
     const { user } = renderWithProviders(<SharingScreen />)
