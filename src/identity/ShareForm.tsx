@@ -16,10 +16,13 @@ import styles from './Sharing.module.css'
  */
 export function ShareForm({
   profile,
+  onSend,
   onOffered,
   onCancel,
 }: Readonly<{
   profile: Readonly<{ id: string; name: string }>
+  /** Called when the person sends the form, before the server answers. */
+  onSend: () => void
   onOffered: () => Promise<void>
   onCancel: () => void
 }>) {
@@ -45,6 +48,7 @@ export function ShareForm({
 
   async function submit(event: FormEvent) {
     event.preventDefault()
+    onSend()
     setRefusal(null)
     if (householdId === null) {
       setNotAnId(true)

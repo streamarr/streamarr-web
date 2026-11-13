@@ -350,6 +350,67 @@ describe('Sharing', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
+  it('shouldTakeTheServersWordsAwayWhenThePersonSendsANewShare', async () => {
+    serveInTurn([share()], [], [share()])
+    refuseToCancel()
+    server.use(graphql.mutation('OfferProfileShare', () => HttpResponse.json({ data: offered() })))
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.click(await screen.findByRole('button', { name: 'Cancel offer to Cabin' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('That offer is not pending.')
+
+    await user.type(await openShareForm(user), `${CABIN_ID}{Enter}`)
+
+    await noticed('Offer sent. An admin there must accept it.')
+    expect(await screen.findByRole('button', { name: 'Cancel offer to Cabin' })).toBeVisible()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('shouldTakeTheServersWordsAwayWhenThePersonSendsANewShareAfterRetryBroughtThemBack', async () => {
+    serve([], me([SMITH_FAMILY, CABIN]))
+    const shares = answersInTurn(
+      answerWith(sharesData([share()])),
+      serverFailure,
+      answerWith(sharesData([])),
+      answerWith(sharesData([share()])),
+    )
+    server.use(graphql.query('ProfileShares', shares.resolver))
+    refuseToCancel()
+    server.use(graphql.mutation('OfferProfileShare', () => HttpResponse.json({ data: offered() })))
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.click(await screen.findByRole('button', { name: 'Cancel offer to Cabin' }))
+    expect(await screen.findByText("Couldn't load sharing.")).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(await screen.findByText('Alex is not shared with another Household.')).toBeVisible()
+    expect(screen.getByRole('alert')).toHaveTextContent('That offer is not pending.')
+
+    await user.type(await openShareForm(user), `${CABIN_ID}{Enter}`)
+
+    await noticed('Offer sent. An admin there must accept it.')
+    expect(await screen.findByRole('button', { name: 'Cancel offer to Cabin' })).toBeVisible()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('shouldKeepTheServersWordsWhileThePersonFillsInANewShareUntilTheySendIt', async () => {
+    serveInTurn([share()], [], [share()])
+    refuseToCancel()
+    const offer = heldAnswer(offered())
+    server.use(graphql.mutation('OfferProfileShare', offer.answer))
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.click(await screen.findByRole('button', { name: 'Cancel offer to Cabin' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('That offer is not pending.')
+
+    const field = await openShareForm(user)
+    expect(screen.getByRole('alert')).toHaveTextContent('That offer is not pending.')
+    await user.type(field, CABIN_ID)
+    expect(screen.getByRole('alert')).toHaveTextContent('That offer is not pending.')
+
+    await user.click(screen.getByRole('button', { name: 'Offer share' }))
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    offer.release()
+    await noticed('Offer sent. An admin there must accept it.')
+  })
+
   it('shouldStartNoOtherChangeUntilACancelOnItsWayLandsWhenRetryBringsTheSharesBack', async () => {
     const elsewhere = share({ id: 'elsewhere', householdId: LAKE_HOUSE_ID, status: 'ACTIVE' })
     serveSecondReadFailing([share(), elsewhere])

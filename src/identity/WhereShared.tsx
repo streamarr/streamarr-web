@@ -159,7 +159,12 @@ export function WhereShared({
           )
         })}
       </ul>
-      <ShareWithAnotherHousehold profile={profile} readAgain={readAgain} onChanged={onChanged} />
+      <ShareWithAnotherHousehold
+        profile={profile}
+        readAgain={readAgain}
+        onSend={() => onRefusalChange(null)}
+        onChanged={onChanged}
+      />
       <EarlierShares shares={earlier} householdName={householdName} />
       <ConfirmDialog
         opened={ending !== null}
