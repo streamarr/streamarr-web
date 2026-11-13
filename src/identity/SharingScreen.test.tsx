@@ -276,11 +276,7 @@ describe('Sharing', () => {
 
   it('shouldMoveFocusToTheHeadingWhenTheCanceledOffersButtonLeavesThePage', async () => {
     serveInTurn([share()], [])
-    server.use(
-      graphql.mutation('CancelProfileShare', () =>
-        HttpResponse.json({ data: { cancelProfileShare: canceledPayload() } }),
-      ),
-    )
+    agreeToCancel()
     const { user } = renderWithProviders(<SharingScreen />)
 
     await user.click(await screen.findByRole('button', { name: 'Cancel invitation to Cabin' }))
@@ -290,6 +286,19 @@ describe('Sharing', () => {
       screen.queryByRole('button', { name: 'Cancel invitation to Cabin' }),
     ).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 1, name: 'Sharing' })).toHaveFocus()
+  })
+
+  it('shouldEmptyTheStatusAndKeepItInThePageWhenThePersonDismissesTheNotice', async () => {
+    serveInTurn([share()], [])
+    agreeToCancel()
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.click(await screen.findByRole('button', { name: 'Cancel invitation to Cabin' }))
+    await noticed('Invitation to Cabin canceled.')
+
+    await user.click(screen.getByRole('button', { name: 'Dismiss notification' }))
+
+    // The next notice then changes the text of a status already in the page, so it is read.
+    expect(screen.getByRole('status')).toBeEmptyDOMElement()
   })
 
   it('shouldLeaveFocusOnTheBodyWhenThePageOpensWithoutANotice', async () => {
@@ -1100,6 +1109,14 @@ function canceledPayload() {
     share: { __typename: 'ProfileShare', id: SHARE_ID, status: 'CANCELED' },
     userErrors: [],
   }
+}
+
+function agreeToCancel() {
+  server.use(
+    graphql.mutation('CancelProfileShare', () =>
+      HttpResponse.json({ data: { cancelProfileShare: canceledPayload() } }),
+    ),
+  )
 }
 
 function notPendingPayload() {
