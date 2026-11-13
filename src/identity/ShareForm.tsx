@@ -182,6 +182,7 @@ export function ShareForm({
           label="Share code"
           description="An admin of the other Household gives you this code."
           value={text}
+          readOnly={sending}
           error={fieldError}
           autoComplete="off"
           autoCapitalize="characters"

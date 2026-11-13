@@ -24,6 +24,7 @@ import {
   SENT_SHARE_CODE,
   serveShareCodeQuestions,
   SHARE_CODE,
+  shareCodeLookUpFixture,
   sharePreviewFixture,
 } from '../test/shareCodeFixtures'
 import { SharingScreen } from './SharingScreen'
@@ -911,6 +912,22 @@ describe('Sharing', () => {
       /^Too many attempts\. Try again in 15 minutes\.$/,
     )
     expect(field).toHaveValue(SHARE_CODE)
+  })
+
+  it('shouldKeepTheCodeInTheFieldWhileTheServerChecksIt', async () => {
+    serve()
+    const lookUp = heldAnswer(shareCodeLookUpFixture())
+    server.use(graphql.mutation('LookUpShareCode', lookUp.answer))
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    const field = await openShareForm(user)
+    await user.type(field, `${SHARE_CODE}{Enter}`)
+    await user.type(field, '{Backspace>9/}LMNP-QRST')
+
+    expect(field).toHaveValue(SHARE_CODE)
+    lookUp.release()
+    await user.click(await screen.findByRole('button', { name: 'Back' }))
+    expect(screen.getByRole('textbox', { name: 'Share code' })).toHaveValue(SHARE_CODE)
   })
 
   it('shouldWarnInTheReviewThatTheProfileWouldLockAndThatItsNameIsTaken', async () => {
