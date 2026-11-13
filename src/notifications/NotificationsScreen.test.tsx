@@ -777,29 +777,32 @@ describe('Older Notifications', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
-  it('shouldKeepTheOlderNotificationsItLoadedWhenTheListIsReadAgain', async () => {
-    serve()
-    const reads = servePages(NEWEST, OLDER)
-    renderAppAt(NOTIFICATIONS)
-    await screen.findByText('The offer of “Alex” was accepted.')
-    await reachTheEndOfTheList()
-    await screen.findByText('The offer of “Leo” was accepted.')
-
-    comeBackOnline()
-
-    await waitFor(() => expect(reads.filter((after) => after === null)).toHaveLength(2))
-    await waitFor(() =>
-      expect(lines()).toEqual([
-        'The offer of “Alex” was accepted.',
-        'The offer of “Sam” was accepted.',
-        'The offer of “Mara” was accepted.',
-        'The offer of “Leo” was accepted.',
-      ]),
-    )
-  })
-
   // More than the newest page of the server's 20 holds, so that the list loads an older page.
   const TWENTY_TWO = Array.from({ length: 22 }, (_, index) => answerAbout(`Profile ${index + 1}`))
+
+  it('shouldKeepTheOlderNotificationsItLoadedWhenTheListIsReadAgain', async () => {
+    serve()
+    const held = serveTheHeldList(TWENTY_TWO)
+    renderAppAt(NOTIFICATIONS)
+    await screen.findByText('The offer of “Profile 1” was accepted.')
+    await reachTheEndOfTheList()
+    await screen.findByText('The offer of “Profile 22” was accepted.')
+
+    // Profile 1's line changes while the page misses changes, so the answer of the read shows.
+    held.replace(
+      answerNotification({
+        id: 'answer-for-Profile 1',
+        message: 'The offer of “Profile 1” was declined.',
+      }),
+    )
+    comeBackOnline()
+
+    await screen.findByText('The offer of “Profile 1” was declined.')
+    expect(lines()).toEqual([
+      'The offer of “Profile 1” was declined.',
+      ...TWENTY_TWO.slice(1).map(({ message }) => message),
+    ])
+  })
 
   it('shouldDropANotificationOfAnOlderPageWhenTheListReadAgainNoLongerHasIt', async () => {
     serve()
