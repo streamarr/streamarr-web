@@ -93,7 +93,8 @@ function SharedProfiles({
     send: async (share) =>
       (await end({ variables: { input: { shareId: share.id } } })).data?.endProfileShare
         ?.userErrors ?? [],
-    listsToReadAgain: [SharedWithHouseholdDocument],
+    // Ending the share of someone's Personal Profile also unlinks the TVs that person linked here.
+    listsToReadAgain: [SharedWithHouseholdDocument, VisitorDevicesDocument],
     onDone: (share) => announce(`Sharing of ${share.profile.name} ended.`),
   })
 
