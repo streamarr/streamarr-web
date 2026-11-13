@@ -53,12 +53,16 @@ export interface PopoverToggle {
   onToggle: () => void
 }
 
+// The caution in the heading keeps its own name, because a row's index moves as options come and go.
+const HEADING = 'heading'
+type Explained = number | typeof HEADING
+
 // Which caution shows: the hovered row first, then a tapped mark, then the focused row. The caution
 // in the heading counts as a row here. Focus moving to a row clears the other two.
 interface ExplainedRows {
-  hovered: number | null
-  tapped: number | null
-  focused: number | null
+  hovered: Explained | null
+  tapped: Explained | null
+  focused: Explained | null
 }
 
 const NO_EXPLAINED_ROWS: ExplainedRows = { hovered: null, tapped: null, focused: null }
@@ -108,12 +112,11 @@ export function CaretPopover<Id>({
   const pressedByTouch = useRef(false)
   const [explainedRows, setExplainedRows] = useState(NO_EXPLAINED_ROWS)
   const explainedIndex = explainedRows.hovered ?? explainedRows.tapped ?? explainedRows.focused
-  const explanations = [...options.map(ownExplanation), toggle?.unavailable, message]
-  const messageIndex = explanations.length - 1
-  const explanation = explainedIndex === null ? undefined : explanations[explainedIndex]
+  const explanations = [...options.map(ownExplanation), toggle?.unavailable]
+  const explanation = explanationOf({ explained: explainedIndex, explanations, message })
   // The menu keeps room for its longest explanation from the start, so no explanation that
   // shows or goes moves a row: a row moving under the pointer would end its own hover.
-  const longestCaution = longestOf(explanations)
+  const longestCaution = longestOf([...explanations, message])
   const reservedRoom = useRef(0)
   const headingId = useId()
   const messageId = useId()
@@ -128,8 +131,7 @@ export function CaretPopover<Id>({
       reservedRoom.current = placeExplanation({
         explanation: explanationRef.current,
         line: explainedLine({
-          index: explainedIndex,
-          messageIndex,
+          explained: explainedIndex,
           heading: headingRef.current,
           menu: menuRef.current,
         }),
@@ -146,7 +148,7 @@ export function CaretPopover<Id>({
     place()
     window.addEventListener('resize', place)
     return () => window.removeEventListener('resize', place)
-  }, [anchorRef, explainedIndex, explanation, placement, messageIndex])
+  }, [anchorRef, explainedIndex, explanation, placement])
 
   useEffect(() => {
     focusCheckedOrNearestRow(menuRef.current, 0)
@@ -213,21 +215,27 @@ export function CaretPopover<Id>({
   }
 
   // Moving focus supersedes whatever the pointer last explained, even where it still rests.
-  function explainFocused(index: number) {
+  function explainFocused(index: Explained) {
     setExplainedRows({ hovered: null, tapped: null, focused: index })
   }
 
-  function explainHovered(index: number) {
+  function explainHovered(index: Explained) {
     setExplainedRows((rows) => ({ ...rows, hovered: index }))
   }
 
-  function stopHovering(index: number) {
+  function stopHovering(index: Explained) {
     setExplainedRows((rows) => (rows.hovered === index ? { ...rows, hovered: null } : rows))
   }
 
   // A tap on the mark explains it rather than choosing the row; a mouse click chooses as usual.
-  function tapMark(index: number) {
+  function tapMark(index: Explained) {
     setExplainedRows((rows) => ({ ...rows, tapped: rows.tapped === index ? null : index }))
+  }
+
+  // No row has focus while the heading's caution has it, so no row that goes takes focus back.
+  function focusHeadingCaution() {
+    focusedRow.current = null
+    explainFocused(HEADING)
   }
 
   // The heading's caution comes before the rows, and the anchor before both. Shift+Tab to the anchor
@@ -269,10 +277,10 @@ export function CaretPopover<Id>({
               type="button"
               aria-label={message}
               className={styles.headingCaution}
-              onClick={() => tapMark(messageIndex)}
-              onFocus={() => explainFocused(messageIndex)}
-              onPointerEnter={() => explainHovered(messageIndex)}
-              onPointerLeave={() => stopHovering(messageIndex)}
+              onClick={() => tapMark(HEADING)}
+              onFocus={focusHeadingCaution}
+              onPointerEnter={() => explainHovered(HEADING)}
+              onPointerLeave={() => stopHovering(HEADING)}
               onKeyDown={handleHeadingCautionKey}
             >
               <Icon name="alert" size={14} />
@@ -377,22 +385,35 @@ function ownExplanation<Id>({ caution, explainedByMessage }: PopoverOption<Id>) 
   return explainedByMessage ? undefined : caution
 }
 
+function explanationOf({
+  explained,
+  explanations,
+  message,
+}: {
+  explained: Explained | null
+  explanations: readonly (string | undefined)[]
+  message: string | undefined
+}): string | undefined {
+  if (explained === HEADING) {
+    return message
+  }
+  return explained === null ? undefined : explanations[explained]
+}
+
 // The line that an explanation sits level with: the heading for the message, or the row it explains.
 function explainedLine({
-  index,
-  messageIndex,
+  explained,
   heading,
   menu,
 }: {
-  index: number | null
-  messageIndex: number
+  explained: Explained | null
   heading: HTMLElement | null
   menu: HTMLElement | null
 }): HTMLElement | undefined {
-  if (index === messageIndex) {
+  if (explained === HEADING) {
     return heading ?? undefined
   }
-  return index === null ? undefined : rowsOf(menu)[index]
+  return explained === null ? undefined : rowsOf(menu)[explained]
 }
 
 function rowsOf(menu: HTMLElement | null): HTMLElement[] {

@@ -8760,6 +8760,55 @@ describe('Player', () => {
         expectCautionInHeading(menu, AUDIO_SWITCH_REFUSED)
       })
 
+      // The server refused a switch during direct play, then the source failed and an HLS stream
+      // that offers `tracks` replaced it. Returns the open Audio picker.
+      async function openTheAudioPickerWithACautionOverHls(tracks: FakeHlsTrack[]) {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        serveAudioTrackSwitch({ answer: refusedSwitch })
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        const video = await directPlayAt(42)
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+        await waitFor(() => expectCaution(audioChip(), AUDIO_SWITCH_REFUSED))
+        failTheSourceFile(video, 3)
+        await attachedVideo(replacementStream(1).streamUrl)
+        offerHlsTracks({ audio: tracks, audioTrack: 0 })
+        return { user, menu: await openPicker(user, audioChip()) }
+      }
+
+      it('shouldKeepShowingTheMessageWhenATrackArrivesWhileFocusIsOnTheCautionInTheHeading', async () => {
+        const { user } = await openTheAudioPickerWithACautionOverHls([
+          { name: 'English' },
+          { name: 'French' },
+        ])
+        await user.tab({ shift: true })
+        expect(messageTooltip(AUDIO_SWITCH_REFUSED)).toBeVisible()
+
+        offerHlsTracks({
+          audio: [{ name: 'English' }, { name: 'French' }, { name: 'German' }],
+          audioTrack: 0,
+        })
+
+        expect(headingCaution(AUDIO_SWITCH_REFUSED)).toHaveFocus()
+        expect(messageTooltip(AUDIO_SWITCH_REFUSED)).toBeVisible()
+      })
+
+      it('shouldKeepFocusOnTheCautionInTheHeadingWhenTheTrackFocusedBeforeItGoes', async () => {
+        const { user, menu } = await openTheAudioPickerWithACautionOverHls([
+          { name: 'English' },
+          { name: 'French' },
+        ])
+        await user.keyboard('{ArrowDown}')
+        expect(within(menu).getByRole('menuitemradio', { name: 'French' })).toHaveFocus()
+        await user.tab({ shift: true })
+
+        offerHlsTracks({ audio: [{ name: 'English' }], audioTrack: 0 })
+
+        expect(headingCaution(AUDIO_SWITCH_REFUSED)).toHaveFocus()
+        expect(messageTooltip(AUDIO_SWITCH_REFUSED)).toBeVisible()
+      })
+
       it('shouldOpenNoMenuWhenTheAudioChipCarriesACautionWhileTheNextStreamStarts', async () => {
         serveDirectPlay({ audioTracks: TWO_TRACKS })
         serveAudioTrackSwitch({ answer: refusedSwitch })
