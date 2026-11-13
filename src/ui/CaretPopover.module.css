@@ -168,7 +168,9 @@
   }
 }
 
-/* The side and the top come from the row it explains; the explanation never takes a tap. */
+/* The side and the top come from the line it explains. It takes the pointer while the pointer shows
+   it and while it explains the heading's caution. A press on a row's explanation that a tap or focus
+   shows goes through it. */
 .explanation {
   position: absolute;
   box-sizing: border-box;
@@ -188,8 +190,8 @@
   right: calc(100% + 8px);
 }
 
-/* While the explanation explains the heading's caution, the pointer can cross from the heading to
-   the explanation over this strip, which spans the gap and the surface's edge. */
+/* While the explanation takes the pointer, the pointer can cross from the heading to the
+   explanation over this strip, which spans the gap and the surface's edge. */
 .explanation::after {
   content: '';
   position: absolute;

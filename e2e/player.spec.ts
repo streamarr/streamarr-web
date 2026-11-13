@@ -1494,6 +1494,108 @@ test('the mark that outlives its caution explains itself beside the menu, level 
   expect(explanation.y).toBeCloseTo(row.y, 0)
 })
 
+// After 720p played a converted version, the viewer picks Auto, which plays as asked: the caution
+// goes, and 720p keeps a mark that explains itself. Original and Auto sit above 720p. Returns the
+// open Quality menu's 720p row.
+async function open720pMarkedBelowOtherRows(page: Page): Promise<Locator> {
+  await play720pConverted(page)
+  await page.getByRole('button', { name: /^Quality/ }).click()
+  await page.getByRole('menuitemradio', { name: 'Auto', exact: true }).click()
+  const chip = page.getByRole('button', { name: /^Quality: Auto/ })
+  await expect(chip).toHaveAccessibleDescription('')
+  await chip.click()
+  return page.getByRole('menuitemradio', { name: `720p. ${FIXED_QUALITY_EXPLANATION}` })
+}
+
+// WCAG 2.2 asks that a pointer can move onto the content that its hover shows (1.4.13). The pointer
+// rests on the row, then moves in a straight line to the middle of the row's explanation: sideways
+// to an explanation beside the menu, or up across the rows above to an explanation above the menu.
+async function movePointerFromTheRowOntoItsExplanation(page: Page, row: Locator): Promise<Locator> {
+  await row.hover()
+  const explanation = page.getByText(FIXED_QUALITY_EXPLANATION)
+  await expect(explanation).toBeVisible()
+  const start = (await row.boundingBox()) as Box
+  const end = (await explanation.boundingBox()) as Box
+  const sideways = end.x + end.width < start.x
+  await page.mouse.move(
+    sideways ? end.x + end.width / 2 : start.x + start.width / 2,
+    sideways ? start.y + start.height / 2 : end.y + end.height / 2,
+    { steps: 40 },
+  )
+  return explanation
+}
+
+test("a mark's explanation beside the menu stays while the pointer moves onto it from its row", async ({
+  page,
+  request,
+}) => {
+  await openPlayerShowingMedia(page, request)
+  const row = await open720pMarkedBelowOtherRows(page)
+
+  const explanation = await movePointerFromTheRowOntoItsExplanation(page, row)
+
+  await expect(explanation).toBeVisible()
+})
+
+test("on a phone a mark's explanation above the menu stays while the pointer moves onto it from its row, across the rows above", async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize({ width: 375, height: 667 })
+  await openPlayerShowingMedia(page, request)
+  const row = await open720pMarkedBelowOtherRows(page)
+
+  const explanation = await movePointerFromTheRowOntoItsExplanation(page, row)
+
+  await expect(explanation).toBeVisible()
+})
+
+test("a mark's explanation beside the menu goes when the pointer moves from its row onto the row above", async ({
+  page,
+  request,
+}) => {
+  await openPlayerShowingMedia(page, request)
+  const row = await open720pMarkedBelowOtherRows(page)
+  await row.hover()
+  await expect(page.getByText(FIXED_QUALITY_EXPLANATION)).toBeVisible()
+
+  const above = (await page
+    .getByRole('menuitemradio', { name: 'Auto', exact: true })
+    .boundingBox()) as Box
+  await page.mouse.move(above.x + above.width / 2, above.y + above.height / 2, { steps: 10 })
+
+  await expect(page.getByText(FIXED_QUALITY_EXPLANATION)).toBeHidden()
+})
+
+// Original falls back to Auto, 720p then plays a converted version, and the viewer picks Auto,
+// which plays as asked. Original and 720p keep marks that explain themselves. Returns the open
+// Quality menu.
+async function openTheMenuWithTwoMarkedRows(page: Page): Promise<Locator> {
+  await startOriginalWithAnEncode(page)
+  await open720pMarkedBelowOtherRows(page)
+  return page.getByRole('menu', { name: 'Quality' })
+}
+
+test('on a phone a marked row that the pointer crossed on its way up explains itself once the pointer leaves the way', async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize({ width: 375, height: 667 })
+  await openPlayerShowingMedia(page, request)
+  const menu = await openTheMenuWithTwoMarkedRows(page)
+  const original = menu.getByRole('menuitemradio', { name: `Original. ${ORIGINAL_EXPLANATION}` })
+  await menu.getByRole('menuitemradio', { name: `720p. ${FIXED_QUALITY_EXPLANATION}` }).hover()
+  const crossed = (await original.boundingBox()) as Box
+  await page.mouse.move(crossed.x + crossed.width / 2, crossed.y + crossed.height / 2, {
+    steps: 20,
+  })
+  await expect(page.getByText(FIXED_QUALITY_EXPLANATION)).toBeVisible()
+
+  await page.mouse.move(crossed.x + 16, crossed.y + crossed.height / 2, { steps: 10 })
+
+  await expect(page.getByText(ORIGINAL_EXPLANATION)).toBeVisible()
+})
+
 test('on a phone the explanation sits above the menu', async ({ page, request }) => {
   await page.setViewportSize({ width: 375, height: 667 })
   await openPlayerShowingMedia(page, request)

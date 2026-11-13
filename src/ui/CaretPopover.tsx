@@ -1,6 +1,7 @@
 import {
   Fragment,
   type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
   type RefObject,
   useEffect,
   useId,
@@ -9,6 +10,7 @@ import {
   useState,
 } from 'react'
 import { Icon } from './Icon'
+import { pathOnto, type PointerPath } from './pointerPath'
 import styles from './CaretPopover.module.css'
 
 // The surface scrolls its rows rather than rise closer than this to the top of the screen.
@@ -67,6 +69,12 @@ interface ExplainedRows {
 
 const NO_EXPLAINED_ROWS: ExplainedRows = { hovered: null, tapped: null, focused: null }
 
+// The pointer left the line that it explained, and moves along this path onto the explanation.
+interface PointerOnItsWay {
+  from: Explained
+  onThePath: PointerPath
+}
+
 type Side = 'above' | 'below'
 
 /**
@@ -75,11 +83,12 @@ type Side = 'above' | 'below'
  * screen ends too close under the anchor to show a row and leaves more room above it. A `message`
  * puts a caution symbol in the heading, and is the menu's description. The message shows as a
  * row's explanation does: while the pointer hovers the symbol, while focus is on it, or after a tap
- * on it. Focus starts on the chosen row, and moves there, or else to the nearest row, when the
- * focused row goes. Shift+Tab from a row moves focus to the heading's symbol, and Tab moves it back.
- * Escape hides an explanation that shows and keeps focus where it is. Choosing, Escape while no
- * explanation shows, or Shift+Tab from the heading's symbol or else from a row, returns focus to the
- * anchor. A press or focus outside the menu and its anchor dismisses it.
+ * on it. An explanation that the pointer shows stays while the pointer moves onto it, across the
+ * rows on the way. Focus starts on the chosen row, and moves there, or else to the nearest row, when
+ * the focused row goes. Shift+Tab from a row moves focus to the heading's symbol, and Tab moves it
+ * back. Escape hides an explanation that shows and keeps focus where it is. Choosing, Escape while
+ * no explanation shows, or Shift+Tab from the heading's symbol or else from a row, returns focus to
+ * the anchor. A press or focus outside the menu and its anchor dismisses it.
  */
 export function CaretPopover<Id>({
   id,
@@ -113,6 +122,7 @@ export function CaretPopover<Id>({
   const movingFocusItself = useRef(false)
   const explanationRef = useRef<HTMLDivElement>(null)
   const pressedByTouch = useRef(false)
+  const pointerOnItsWay = useRef<PointerOnItsWay | null>(null)
   const [explainedRows, setExplainedRows] = useState(NO_EXPLAINED_ROWS)
   const explainedIndex = explainedRows.hovered ?? explainedRows.tapped ?? explainedRows.focused
   const explanations = [...options.map(ownExplanation), toggle?.unavailable]
@@ -194,6 +204,7 @@ export function CaretPopover<Id>({
         return
       }
       if (explanationShows) {
+        pointerOnItsWay.current = null
         setExplainedRows(NO_EXPLAINED_ROWS)
         return
       }
@@ -203,6 +214,38 @@ export function CaretPopover<Id>({
     document.addEventListener('keydown', hideOrDismissOnEscape)
     return () => document.removeEventListener('keydown', hideOrDismissOnEscape)
   }, [anchorRef, onDismiss, explanationShows])
+
+  // On its way, the pointer keeps the explanation until it reaches the explanation or the line it
+  // left, or strays off the path. A pointer that strays explains the line it is on instead.
+  useEffect(() => {
+    function followThePointer(event: PointerEvent) {
+      const onItsWay = pointerOnItsWay.current
+      if (!onItsWay) {
+        return
+      }
+      const line = explainedLine({
+        explained: onItsWay.from,
+        heading: headingRef.current,
+        menu: menuRef.current,
+      })
+      if (isWithin(event.target, [line, explanationRef.current])) {
+        pointerOnItsWay.current = null
+        return
+      }
+      if (onItsWay.onThePath({ x: event.clientX, y: event.clientY })) {
+        return
+      }
+      pointerOnItsWay.current = null
+      const under = lineUnder({
+        target: event.target,
+        headingCaution: headingCautionRef.current,
+        menu: menuRef.current,
+      })
+      setExplainedRows((rows) => ({ ...rows, hovered: under }))
+    }
+    document.addEventListener('pointermove', followThePointer)
+    return () => document.removeEventListener('pointermove', followThePointer)
+  }, [])
 
   function choose(option: Id) {
     anchorRef.current?.focus()
@@ -235,10 +278,16 @@ export function CaretPopover<Id>({
 
   // Moving focus supersedes whatever the pointer last explained, even where it still rests.
   function explainFocused(index: Explained) {
+    pointerOnItsWay.current = null
     setExplainedRows({ hovered: null, tapped: null, focused: index })
   }
 
-  function explainHovered(index: Explained) {
+  // Nothing hovers a touch screen: a tap explains a mark instead. A line that the pointer crosses on
+  // its way onto another line's explanation explains nothing.
+  function explainHovered(index: Explained, { pointerType }: ReactPointerEvent<HTMLElement>) {
+    if (pointerType === 'touch' || pointerOnItsWay.current) {
+      return
+    }
     setExplainedRows((rows) => ({ ...rows, hovered: index }))
   }
 
@@ -261,14 +310,48 @@ export function CaretPopover<Id>({
     setExplainedRows((rows) => ({ ...rows, tapped: rows.tapped === index ? null : index }))
   }
 
-  // The pointer keeps the heading's message while it moves across the heading and onto the message,
+  // The pointer keeps an explanation while it moves from the line it explains onto the explanation,
   // so a viewer can move it there to read (WCAG 2.2, 1.4.13).
-  function leaveHeadingCaution(next: EventTarget | null) {
-    const stays = [headingRef.current, explanationRef.current].some(
-      (region) => next instanceof Node && region?.contains(next),
-    )
-    if (!stays) {
-      stopHovering(HEADING)
+  function leaveLine(explained: Explained, event: ReactPointerEvent<HTMLElement>) {
+    if (isWithin(event.relatedTarget, [event.currentTarget, explanationRef.current])) {
+      return
+    }
+    const onThePath = pathOntoTheExplanation(explained, event)
+    if (onThePath) {
+      pointerOnItsWay.current = { from: explained, onThePath }
+      return
+    }
+    stopHovering(explained)
+  }
+
+  // Only an explanation that the pointer shows waits for the pointer.
+  function pathOntoTheExplanation(
+    explained: Explained,
+    { clientX, clientY, currentTarget }: ReactPointerEvent<HTMLElement>,
+  ): PointerPath | undefined {
+    const shown = explanationRef.current
+    if (explainedRows.hovered !== explained || !explanationShows || !shown) {
+      return undefined
+    }
+    return pathOnto({
+      exit: { x: clientX, y: clientY },
+      from: currentTarget.getBoundingClientRect(),
+      to: shown.getBoundingClientRect(),
+    })
+  }
+
+  function leaveExplanation(next: EventTarget | null) {
+    const { hovered } = explainedRows
+    if (hovered === null) {
+      return
+    }
+    const line = explainedLine({
+      explained: hovered,
+      heading: headingRef.current,
+      menu: menuRef.current,
+    })
+    if (!isWithin(next, [line, explanationRef.current])) {
+      stopHovering(hovered)
     }
   }
 
@@ -311,7 +394,7 @@ export function CaretPopover<Id>({
       <div
         ref={headingRef}
         className={styles.heading}
-        onPointerLeave={(event) => leaveHeadingCaution(event.relatedTarget)}
+        onPointerLeave={(event) => leaveLine(HEADING, event)}
       >
         <span id={headingId}>{heading}</span>
         {message && (
@@ -323,7 +406,7 @@ export function CaretPopover<Id>({
               className={styles.headingCaution}
               onClick={() => tapMark(HEADING)}
               onFocus={focusHeadingCaution}
-              onPointerEnter={() => explainHovered(HEADING)}
+              onPointerEnter={(event) => explainHovered(HEADING, event)}
               onKeyDown={handleHeadingCautionKey}
             >
               <Icon name="alert" size={14} />
@@ -365,8 +448,8 @@ export function CaretPopover<Id>({
                   choose(option.id)
                 }}
                 onFocus={(event) => focusRow(event.currentTarget, index)}
-                onPointerEnter={() => explainHovered(index)}
-                onPointerLeave={() => stopHovering(index)}
+                onPointerEnter={(event) => explainHovered(index, event)}
+                onPointerLeave={(event) => leaveLine(index, event)}
                 onKeyDown={handleRowKey}
               >
                 <span className={styles.label}>
@@ -394,8 +477,8 @@ export function CaretPopover<Id>({
             className={`${styles.row} ${styles.toggle}`}
             onClick={() => pressToggle(toggle, options.length)}
             onFocus={(event) => focusRow(event.currentTarget, options.length)}
-            onPointerEnter={() => explainHovered(options.length)}
-            onPointerLeave={() => stopHovering(options.length)}
+            onPointerEnter={(event) => explainHovered(options.length, event)}
+            onPointerLeave={(event) => leaveLine(options.length, event)}
             onKeyDown={handleRowKey}
           >
             <span className={styles.label}>{toggle.label}</span>
@@ -408,11 +491,12 @@ export function CaretPopover<Id>({
           ref={explanationRef}
           className={styles.explanation}
           style={{
-            visibility: explanation ? undefined : 'hidden',
-            pointerEvents: explainedIndex === HEADING ? 'auto' : undefined,
+            visibility: explanationShows ? undefined : 'hidden',
+            pointerEvents:
+              explainedIndex === HEADING || explainedRows.hovered !== null ? 'auto' : undefined,
           }}
           aria-hidden="true"
-          onPointerLeave={(event) => leaveHeadingCaution(event.relatedTarget)}
+          onPointerLeave={(event) => leaveExplanation(event.relatedTarget)}
         >
           {explanation ?? longestCaution}
         </div>
@@ -461,6 +545,34 @@ function explainedLine({
     return heading ?? undefined
   }
   return explained === null ? undefined : rowsOf(menu)[explained]
+}
+
+// The line that the pointer is on: the heading's caution, or a row.
+function lineUnder({
+  target,
+  headingCaution,
+  menu,
+}: {
+  target: EventTarget | null
+  headingCaution: HTMLElement | null
+  menu: HTMLElement | null
+}): Explained | null {
+  if (!(target instanceof Element)) {
+    return null
+  }
+  if (headingCaution?.contains(target)) {
+    return HEADING
+  }
+  const row = target.closest('[role="menuitemradio"], [role="menuitemcheckbox"]')
+  const index = rowsOf(menu).findIndex((candidate) => candidate === row)
+  return index === -1 ? null : index
+}
+
+function isWithin(
+  target: EventTarget | null,
+  regions: readonly (HTMLElement | null | undefined)[],
+): boolean {
+  return target instanceof Node && regions.some((region) => region?.contains(target))
 }
 
 function rowsOf(menu: HTMLElement | null): HTMLElement[] {

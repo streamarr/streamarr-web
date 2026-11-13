@@ -7501,6 +7501,20 @@ describe('Player', () => {
       expect(qualityChip()).toHaveAttribute('aria-expanded', 'false')
     })
 
+    it('shouldKeepTheMessageWhenThePointerMovesFromItBackOntoTheMenusName', async () => {
+      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      const menu = await openQualityMenu(user)
+      await user.hover(headingCaution(ORIGINAL_EXPLANATION))
+      const tooltip = messageTooltip(ORIGINAL_EXPLANATION)
+      moveMouse(tooltip, headingCaution(ORIGINAL_EXPLANATION))
+      const name = document.getElementById(menu.getAttribute('aria-labelledby') ?? '')
+      assert(name, 'the menu has no name')
+
+      moveMouse(name, tooltip)
+
+      expect(tooltip).toBeVisible()
+    })
+
     // WCAG 2.2 asks for a way to hide what hover or focus shows without moving either (1.4.13).
     it.each([
       {
@@ -7657,6 +7671,86 @@ describe('Player', () => {
       expect(screen.getByText(ORIGINAL_EXPLANATION)).not.toBeVisible()
     })
 
+    // WCAG 2.2 asks that the pointer can move onto what its hover shows (1.4.13).
+    it('shouldKeepTheMarksExplanationWhileThePointerMovesFromTheMarkedRowOntoIt', async () => {
+      const { user } = await markOriginalThenPlay720p()
+      const menu = await openQualityMenu(user)
+      const row = within(menu).getByRole('menuitemradio', { name: /^Original/ })
+      await user.hover(row)
+      const explanation = screen.getByText(ORIGINAL_EXPLANATION)
+
+      moveMouse(explanation, row)
+
+      expect(explanation).toBeVisible()
+    })
+
+    it('shouldHideTheMarksExplanationWhenThePointerLeavesItForTheVideo', async () => {
+      const { user } = await markOriginalThenPlay720p()
+      const menu = await openQualityMenu(user)
+      const row = within(menu).getByRole('menuitemradio', { name: /^Original/ })
+      await user.hover(row)
+      const explanation = screen.getByText(ORIGINAL_EXPLANATION)
+      moveMouse(explanation, row)
+
+      moveMouse(renderedVideo(), explanation)
+
+      expect(explanation).not.toBeVisible()
+    })
+
+    it('shouldKeepTheMarksExplanationWhenThePointerMovesFromItBackOntoTheMarkedRow', async () => {
+      const { user } = await markOriginalThenPlay720p()
+      const menu = await openQualityMenu(user)
+      const row = within(menu).getByRole('menuitemradio', { name: /^Original/ })
+      await user.hover(row)
+      const explanation = screen.getByText(ORIGINAL_EXPLANATION)
+      moveMouse(explanation, row)
+
+      moveMouse(row, explanation)
+
+      expect(explanation).toBeVisible()
+    })
+
+    describe('when the pointer leaves the marked row over another row', () => {
+      // jsdom lays nothing out. Every box takes the same 1000 by 40 pixels, so the path from the
+      // marked row's top edge onto its explanation covers that box and nothing outside it.
+      function layOutEveryBoxInOnePlace() {
+        vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
+          ...{ x: 0, y: 0, left: 0, top: 0, right: 1000, bottom: 40, width: 1000, height: 40 },
+          toJSON: () => ({}),
+        })
+      }
+
+      // The pointer rests on Original, then leaves its top edge for Auto.
+      async function leaveOriginalForAuto() {
+        const { user } = await markOriginalThenPlay720p()
+        const menu = await openQualityMenu(user)
+        const original = within(menu).getByRole('menuitemradio', { name: /^Original/ })
+        const auto = within(menu).getByRole('menuitemradio', { name: 'Auto' })
+        await user.hover(original)
+        layOutEveryBoxInOnePlace()
+        const exit = { pointerType: 'mouse', clientX: 500, clientY: 0 }
+        fireEvent.pointerOut(original, { ...exit, relatedTarget: auto })
+        fireEvent.pointerOver(auto, { ...exit, relatedTarget: original })
+        return auto
+      }
+
+      it('shouldKeepTheMarksExplanationWhileThePointerCrossesThatRowOnItsWayOntoTheExplanation', async () => {
+        const auto = await leaveOriginalForAuto()
+
+        fireEvent.pointerMove(auto, { pointerType: 'mouse', clientX: 500, clientY: 20 })
+
+        expect(screen.getByText(ORIGINAL_EXPLANATION)).toBeVisible()
+      })
+
+      it('shouldHideTheMarksExplanationWhenThePointerStraysOffItsWayOntoTheExplanation', async () => {
+        const auto = await leaveOriginalForAuto()
+
+        fireEvent.pointerMove(auto, { pointerType: 'mouse', clientX: 500, clientY: 100 })
+
+        expect(screen.getByText(ORIGINAL_EXPLANATION)).not.toBeVisible()
+      })
+    })
+
     // WCAG 2.2 asks for a way to hide what hover or focus shows without moving either (1.4.13).
     it.each([
       { shownBy: 'focus', showTheExplanation: (user: UserEvent) => user.keyboard('{Home}') },
@@ -7691,6 +7785,18 @@ describe('Player', () => {
 
       expect(screen.queryByRole('menu')).not.toBeInTheDocument()
       expect(qualityChip()).toHaveFocus()
+    })
+
+    // Nothing hovers a touch screen: a tap on the mark explains it, and a tap elsewhere picks the row.
+    it('shouldShowNoExplanationWhileAFingerRestsOnTheMarkedRowOutsideItsMark', async () => {
+      const { user } = await markOriginalThenPlay720p()
+      const menu = await openQualityMenu(user)
+      const row = within(menu).getByRole('menuitemradio', { name: /^Original/ })
+
+      fireEvent.pointerOver(row, { pointerType: 'touch' })
+      fireEvent.pointerDown(row, { pointerType: 'touch' })
+
+      expect(screen.getByText(ORIGINAL_EXPLANATION)).not.toBeVisible()
     })
 
     it('shouldExplainTheMarkOnATapWithoutPickingItsChoice', async () => {
