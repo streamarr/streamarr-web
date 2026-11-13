@@ -2,8 +2,10 @@ import { screen, waitFor, within } from '@testing-library/react'
 import { graphql, HttpResponse } from 'msw'
 import { describe, expect, it, onTestFinished } from 'vitest'
 import { watchingConnection } from '../test/continueWatchingFixtures'
+import { deferred } from '../test/deferred'
 import {
   answersInTurn,
+  answerWith,
   comeBackOnline,
   comeBackOnlineUntil,
   heldAnswer,
@@ -60,6 +62,10 @@ function serveNotifications() {
     ),
   )
 }
+
+/** The server's answer to a read of the count that it could not count. */
+const countNotRead = () =>
+  HttpResponse.json({ errors: [{ message: 'The count could not be read.' }] })
 
 async function openTheProfileMenu() {
   const { user } = renderAppAt('/')
@@ -182,6 +188,54 @@ describe('The unread count in the Profile menu', () => {
     expect(screen.queryByText('The count could not be read.')).not.toBeInTheDocument()
     later.release()
     await menu.findByRole('button', { name: 'Notifications, 2 unread' })
+  })
+
+  it('shouldCountWhatAChangeSaysWhenTheCountCouldNotBeRead', async () => {
+    const { socket } = serveHome()
+    const later = heldAnswer({ unreadNotificationCount: 2 })
+    onTestFinished(later.release)
+    const reads = answersInTurn(countNotRead, later.answer)
+    server.use(graphql.query('UnreadNotificationCount', reads.resolver))
+    const menu = await openTheProfileMenu()
+    await followingNotificationChanges(socket)
+    // The read after the failed one is held, so only the change can bring a count.
+    await comeBackOnlineUntil(reads, 2)
+
+    socket.publish('NotificationsChanged', notificationsChanged([], 5))
+
+    await menu.findByRole('button', { name: 'Notifications, 5 unread' })
+  })
+
+  it.each([
+    ['answers with the count from before the change', answerWith({ unreadNotificationCount: 2 })],
+    ['fails', countNotRead],
+  ])('shouldKeepTheCountAChangeGaveAfterAFailedReadWhenTheReadOnItsWay %s', async (_, answer) => {
+    const { socket } = serveHome()
+    const onItsWay = deferred()
+    onTestFinished(onItsWay.resolve)
+    const after = heldAnswer({ unreadNotificationCount: 0 })
+    onTestFinished(after.release)
+    const reads = answersInTurn(
+      countNotRead,
+      async () => {
+        await onItsWay.promise
+        return answer()
+      },
+      // Holding every later read keeps it from bringing a count of its own.
+      after.answer,
+    )
+    server.use(graphql.query('UnreadNotificationCount', reads.resolver))
+    const menu = await openTheProfileMenu()
+    await followingNotificationChanges(socket)
+    await comeBackOnlineUntil(reads, 2)
+    socket.publish('NotificationsChanged', notificationsChanged([], 5))
+    await menu.findByRole('button', { name: 'Notifications, 5 unread' })
+
+    onItsWay.resolve()
+    // The next read goes out only once the read on its way has settled.
+    await comeBackOnlineUntil(reads, 3)
+
+    expect(menu.getByRole('button', { name: 'Notifications, 5 unread' })).toBeVisible()
   })
 
   it('shouldReadNoCountWhenTheSessionIsBoundToATV', async () => {
