@@ -73,6 +73,15 @@ function membershipShare(): ShareNode {
   })
 }
 
+// A share into a Household that the Account may not use, which the page names by its id.
+function shareIntoAnotherHousehold(overrides: Partial<ShareNode> = {}): ShareNode {
+  return share({
+    id: '99999999-9999-9999-9999-999999999999',
+    householdId: '66666666-6666-6666-6666-666666666666',
+    ...overrides,
+  })
+}
+
 function sharesData(shares: ShareNode[] = []) {
   return {
     profileShares: {
@@ -98,10 +107,12 @@ function serve(shares: ShareNode[] = [], account = me()) {
   serveShareCodeQuestions()
 }
 
-// Answers each read of the shares with the next list, and the last list from then on.
-function serveInTurn(...lists: ShareNode[][]) {
+// Answers each read of the shares with the next list or failure, and the last one from then on.
+function serveInTurn(...reads: (ShareNode[] | (() => Response))[]) {
   serve([], me([SMITH_FAMILY, CABIN]))
-  const handler = answersInTurn(...lists.map((shares) => answerWith(sharesData(shares))))
+  const handler = answersInTurn(
+    ...reads.map((read) => (Array.isArray(read) ? answerWith(sharesData(read)) : read)),
+  )
   server.use(graphql.query('ProfileShares', handler.resolver))
   return handler
 }
@@ -126,6 +137,20 @@ function serveSecondReadFailing(
     answerWith(sharesData(afterFailure)),
   )
   server.use(graphql.query('ProfileShares', handler.resolver))
+}
+
+// The server's answer when it cannot decide whether the Account may read the shares.
+function authorizationUnavailable(): Response {
+  return HttpResponse.json({
+    errors: [
+      {
+        message: 'Authorization is temporarily unavailable.',
+        path: ['profileShares'],
+        extensions: { code: 'AUTHORIZATION_UNAVAILABLE' },
+      },
+    ],
+    data: null,
+  })
 }
 
 // A return goes through the Profile menu, which offers Profile settings only with a Profile
@@ -736,6 +761,88 @@ describe('Sharing', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
+  it('shouldKeepTheListAndSaySharingCouldNotLoadWhenTheSharesCannotBeReadAfterAnOfferIsCanceled', async () => {
+    serveInTurn([share(), shareIntoAnotherHousehold({ status: 'ACTIVE' })], serverFailure)
+    server.use(
+      graphql.mutation('CancelProfileShare', () =>
+        HttpResponse.json({ data: { cancelProfileShare: canceledPayload() } }),
+      ),
+    )
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    await user.click(await screen.findByRole('button', { name: 'Cancel invitation to Cabin' }))
+
+    await noticed('Invitation to Cabin canceled.')
+    const sharing = screen.getByRole('region', { name: "Where Alex's Profile is shared" })
+    expect(within(sharing).getByRole('alert')).toHaveTextContent(/^Couldn't load sharing\.$/)
+    expect(within(sharing).getByRole('button', { name: 'Retry' })).toBeEnabled()
+    expect(
+      within(sharing).getByRole('button', { name: 'End share with Household 66666666' }),
+    ).toBeVisible()
+  })
+
+  it('shouldKeepTheListAndSaySharingCouldNotLoadWhenTheSharesCannotBeReadAfterAShareEnds', async () => {
+    serveInTurn([share({ status: 'ACTIVE' }), shareIntoAnotherHousehold()], serverFailure)
+    server.use(
+      graphql.mutation('EndProfileShare', () =>
+        HttpResponse.json({ data: { endProfileShare: endedPayload() } }),
+      ),
+    )
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    await user.click(await screen.findByRole('button', { name: 'End share with Cabin' }))
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'End share' }))
+
+    await noticed('Sharing with Cabin ended.')
+    const sharing = screen.getByRole('region', { name: "Where Alex's Profile is shared" })
+    expect(within(sharing).getByRole('alert')).toHaveTextContent(/^Couldn't load sharing\.$/)
+    expect(within(sharing).getByRole('button', { name: 'Retry' })).toBeEnabled()
+    expect(
+      within(sharing).getByRole('button', { name: 'Cancel invitation to Household 66666666' }),
+    ).toBeVisible()
+  })
+
+  it('shouldShowTheServersWordsWhenTheSharesCannotBeReadAfterAChange', async () => {
+    serveInTurn([share()], authorizationUnavailable)
+    server.use(
+      graphql.mutation('CancelProfileShare', () =>
+        HttpResponse.json({ data: { cancelProfileShare: canceledPayload() } }),
+      ),
+    )
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    await user.click(await screen.findByRole('button', { name: 'Cancel invitation to Cabin' }))
+
+    await noticed('Invitation to Cabin canceled.')
+    expect(
+      within(screen.getByRole('region', { name: "Where Alex's Profile is shared" })).getByRole(
+        'alert',
+      ),
+    ).toHaveTextContent(/^Authorization is temporarily unavailable\.$/)
+  })
+
+  it('shouldShowTheListReadAgainAndDropTheFailureWhenRetrySucceeds', async () => {
+    const shares = serveInTurn([share()], serverFailure, [])
+    server.use(
+      graphql.mutation('CancelProfileShare', () =>
+        HttpResponse.json({ data: { cancelProfileShare: canceledPayload() } }),
+      ),
+    )
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.click(await screen.findByRole('button', { name: 'Cancel invitation to Cabin' }))
+    await noticed('Invitation to Cabin canceled.')
+    const sharing = screen.getByRole('region', { name: "Where Alex's Profile is shared" })
+
+    await user.click(within(sharing).getByRole('button', { name: 'Retry' }))
+
+    expect(
+      await within(sharing).findByText("Alex's Profile isn't shared with another Household."),
+    ).toBeVisible()
+    expect(within(sharing).queryByRole('alert')).not.toBeInTheDocument()
+    expect(within(sharing).queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+    expect(shares.calls).toBe(3)
+  })
+
   it('shouldOpenTheShareFormInPlaceWhenThePersonAsksToShare', async () => {
     serve()
     const { user } = renderWithProviders(<SharingScreen />)
@@ -1146,12 +1253,8 @@ describe('Sharing', () => {
   })
 
   it('shouldKeepSayingItCannotTellWhetherTheShareInvitationWasSentWhenTheSharesCannotBeReadAgain', async () => {
-    serve([], me([SMITH_FAMILY, CABIN]))
-    const shares = answersInTurn(answerWith(sharesData()), serverFailure)
-    server.use(
-      graphql.query('ProfileShares', shares.resolver),
-      graphql.mutation('OfferProfileShare', networkFailure),
-    )
+    const shares = serveInTurn([], serverFailure)
+    server.use(graphql.mutation('OfferProfileShare', networkFailure))
     const { user } = renderWithProviders(<SharingScreen />)
 
     await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
@@ -1159,6 +1262,39 @@ describe('Sharing', () => {
 
     await noticed(ANSWER_LOST)
     expect(shares.calls).toBe(2)
+  })
+
+  it('shouldKeepTheReviewAndSaySharingCouldNotLoadWhenTheSharesCannotBeReadAfterTheAnswerIsLost', async () => {
+    serveInTurn([], serverFailure)
+    server.use(graphql.mutation('OfferProfileShare', networkFailure))
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
+    await user.click(await screen.findByRole('button', { name: 'Send invitation' }))
+
+    await noticed(ANSWER_LOST)
+    const sharing = screen.getByRole('region', { name: "Where Alex's Profile is shared" })
+    expect(within(sharing).getByRole('alert')).toHaveTextContent(/^Couldn't load sharing\.$/)
+    expect(within(sharing).getByRole('button', { name: 'Retry' })).toBeEnabled()
+    expect(screen.getByRole('heading', { name: 'Offer Alex to Cabin?' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Send invitation' })).toBeEnabled()
+  })
+
+  it('shouldKeepTheReviewWhenRetryReadsTheSharesAfterTheAnswerIsLost', async () => {
+    const shares = serveInTurn([], serverFailure, [share()])
+    server.use(graphql.mutation('OfferProfileShare', networkFailure))
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
+    await user.click(await screen.findByRole('button', { name: 'Send invitation' }))
+    await noticed(ANSWER_LOST)
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByRole('button', { name: 'Cancel invitation to Cabin' })).toBeVisible()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Offer Alex to Cabin?' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Send invitation' })).toBeEnabled()
+    expect(shares.calls).toBe(3)
   })
 
   it('shouldNotAskAboutTheCodeAgainWhenSharingIsReadAgainDuringTheReview', async () => {

@@ -108,29 +108,32 @@ function ProfileSharing({
     variables: { profileId: profile.id },
     fetchPolicy: 'network-only',
   })
-  // The query keeps a failed read, and the page shows it in place of the list. Rejecting here
-  // would report the change that the read follows as failed.
+  // A failed read reports through the query's own error. Rejecting here would report the change
+  // that the read follows as failed.
   const readAgain = () => query.refetch().catch(() => undefined)
+  // A failed read empties `data`, so the last list read stays on screen with the form inside it.
+  const data = query.data ?? query.previousData
   // A change on its way, its refusal, and the confirmation that it belongs to outlast the list
   // that a failed read takes off the page, so they are held here and not in the list.
   const [changing, setChanging] = useState<string | null>(null)
   const [ending, setEnding] = useState<ProfileShareRow | null>(null)
   const [refusal, setRefusal] = useState<string | null>(null)
 
-  if (query.loading && !query.data) {
+  if (query.loading && !data) {
     return <SharingLoading />
   }
 
-  if (query.error || !query.data) {
+  if (!data) {
     return <SharingUnavailable error={query.error} onRetry={readAgain} />
   }
 
   return (
     <WhereShared
       profile={profile}
-      shares={listedShares(query.data)}
+      shares={listedShares(data)}
       householdName={householdName}
       ownHouseholdName={ownHouseholdName}
+      readFailure={query.error ? sharingFailureMessage(query.error) : null}
       readAgain={readAgain}
       onChanged={onChanged}
       changing={changing}
