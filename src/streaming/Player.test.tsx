@@ -7710,7 +7710,7 @@ describe('Player', () => {
       expect(explanation).toBeVisible()
     })
 
-    describe('when the pointer leaves the marked row over another row', () => {
+    describe('when the pointer leaves the marked row', () => {
       // jsdom lays nothing out. Every box takes the same 1000 by 40 pixels, so the path from the
       // marked row's top edge onto its explanation covers that box and nothing outside it.
       function layOutEveryBoxInOnePlace() {
@@ -7746,6 +7746,29 @@ describe('Player', () => {
         const auto = await leaveOriginalForAuto()
 
         fireEvent.pointerMove(auto, { pointerType: 'mouse', clientX: 500, clientY: 100 })
+
+        expect(screen.getByText(ORIGINAL_EXPLANATION)).not.toBeVisible()
+      })
+
+      // A pen that leaves hover range, like a pointer that leaves the page, leaves for no element
+      // and moves no more until it comes back (Pointer Events, "Suppressing a pointer event
+      // stream").
+      it('shouldHideTheMarksExplanationWhenThePenLeavesHoverRangeOverTheMarkedRow', async () => {
+        const { user } = await markOriginalThenPlay720p()
+        const menu = await openQualityMenu(user)
+        const original = within(menu).getByRole('menuitemradio', { name: /^Original/ })
+        fireEvent.pointerOver(original, { pointerType: 'pen' })
+        layOutEveryBoxInOnePlace()
+
+        fireEvent.pointerOut(original, { pointerType: 'pen', clientX: 500, clientY: 0 })
+
+        expect(screen.getByText(ORIGINAL_EXPLANATION)).not.toBeVisible()
+      })
+
+      it('shouldHideTheMarksExplanationWhenThePointerLeavesThePageOnItsWayOntoTheExplanation', async () => {
+        const auto = await leaveOriginalForAuto()
+
+        fireEvent.pointerOut(auto, { pointerType: 'mouse', clientX: 500, clientY: 20 })
 
         expect(screen.getByText(ORIGINAL_EXPLANATION)).not.toBeVisible()
       })

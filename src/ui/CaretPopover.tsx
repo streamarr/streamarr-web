@@ -243,8 +243,24 @@ export function CaretPopover<Id>({
       })
       setExplainedRows((rows) => ({ ...rows, hovered: under }))
     }
+    // A pointer that leaves the page, or a pen that leaves hover range, leaves for no element, and
+    // no move follows to end its way.
+    function endTheWayOffThePage(event: PointerEvent) {
+      const onItsWay = pointerOnItsWay.current
+      if (event.relatedTarget !== null || !onItsWay) {
+        return
+      }
+      pointerOnItsWay.current = null
+      setExplainedRows((rows) =>
+        rows.hovered === onItsWay.from ? { ...rows, hovered: null } : rows,
+      )
+    }
     document.addEventListener('pointermove', followThePointer)
-    return () => document.removeEventListener('pointermove', followThePointer)
+    document.addEventListener('pointerout', endTheWayOffThePage)
+    return () => {
+      document.removeEventListener('pointermove', followThePointer)
+      document.removeEventListener('pointerout', endTheWayOffThePage)
+    }
   }, [])
 
   function choose(option: Id) {
