@@ -13,7 +13,7 @@ export function requestFailureMessage(error: unknown, fallback: string): string 
 }
 
 /** The server's sentence for a failed request, or null when it sent none. */
-function serverFailureSentence(error: unknown): string | null {
+export function serverFailureSentence(error: unknown): string | null {
   if (!CombinedGraphQLErrors.is(error)) {
     return null
   }

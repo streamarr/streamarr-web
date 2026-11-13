@@ -1,5 +1,5 @@
 import { Center, Loader } from '@mantine/core'
-import { useApolloClient, useQuery } from '@apollo/client/react'
+import { useQuery } from '@apollo/client/react'
 import { useState } from 'react'
 import settingsStyles from '../styles/settings.module.css'
 import {
@@ -103,19 +103,14 @@ function ProfileSharing({
   ownHouseholdName: string
   onChanged: (notice: string) => void
 }>) {
-  const client = useApolloClient()
-  const variables = { profileId: profile.id }
   // Offers are accepted, declined and expire elsewhere, so a visit shows only the server's answer.
-  const query = useQuery(ProfileSharesDocument, { variables, fetchPolicy: 'network-only' })
+  const query = useQuery(ProfileSharesDocument, {
+    variables: { profileId: profile.id },
+    fetchPolicy: 'network-only',
+  })
   // The query keeps a failed read, and the page shows it in place of the list. Rejecting here
   // would report the change that the read follows as failed.
   const readAgain = () => query.refetch().catch(() => undefined)
-  // A read apart from the page's own, whose failure leaves the page as it is.
-  const readShares = () =>
-    client
-      .query({ query: ProfileSharesDocument, variables, fetchPolicy: 'network-only' })
-      .then(({ data }) => (data ? listedShares(data) : undefined))
-      .catch(() => undefined)
   // A change on its way, its refusal, and the confirmation that it belongs to outlast the list
   // that a failed read takes off the page, so they are held here and not in the list.
   const [changing, setChanging] = useState<string | null>(null)
@@ -137,7 +132,6 @@ function ProfileSharing({
       householdName={householdName}
       ownHouseholdName={ownHouseholdName}
       readAgain={readAgain}
-      readShares={readShares}
       onChanged={onChanged}
       changing={changing}
       onChangingChange={setChanging}

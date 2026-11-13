@@ -7,7 +7,7 @@ import {
   ProfileSharePreviewDocument,
   type ProfileSharePreviewQuery,
 } from '../graphql/generated/graphql'
-import { requestFailureMessage } from '../graphql/requestErrors'
+import { requestFailureMessage, serverFailureSentence } from '../graphql/requestErrors'
 import { userErrorMessage, type UserErrorLike } from '../graphql/userErrors'
 import { shareCodeIn } from './shareCode'
 import styles from './Sharing.module.css'
@@ -15,9 +15,6 @@ import styles from './Sharing.module.css'
 const NOT_A_CODE = 'A share code is 8 letters, like BCDF-GHJK.'
 const CODE_REFUSED = 'That code does not work. Ask an admin there for a new one.'
 const LOOK_UP_FAILED = "Couldn't check that code."
-const NOT_SENT = "Couldn't send the share invitation. Try again."
-// Trying again is safe: a retry that finds the code spent finds the invitation that spent it.
-const NOT_KNOWN = "Couldn't tell whether the share invitation was sent. Try again."
 
 type Effects = NonNullable<ProfileSharePreviewQuery['profileSharePreview']>
 
@@ -46,7 +43,7 @@ export function ShareForm({
   codeFromLink = null,
   onCodeFromLinkTaken = () => {},
   onOffered,
-  findSent,
+  onAnswerLost,
   onCancel,
 }: Readonly<{
   profile: Readonly<{ id: string; name: string }>
@@ -58,10 +55,10 @@ export function ShareForm({
   /** Runs once the server took the offer, with the name of the Household it went to. */
   onOffered: (householdName: string) => Promise<void>
   /**
-   * Reads the shares again, after the answer to an offer was lost, and tells whether they list an
-   * offer made since the form opened; null when the read fails.
+   * Runs when the offer failed without the server's words, so the server may have made it. The
+   * form keeps the review, and its Offer share is the retry.
    */
-  findSent: () => Promise<boolean | null>
+  onAnswerLost: () => Promise<void>
   onCancel: () => void
 }>) {
   const client = useApolloClient()
@@ -76,8 +73,6 @@ export function ShareForm({
   const question = useRef<HTMLHeadingElement>(null)
   /** Set once the link's code is on its way, so that no second mount asks about it again. */
   const linkCodeTaken = useRef(false)
-  /** The review whose offer lost its answer: its code may be spent by an offer the server made. */
-  const answerLost = useRef<Review | null>(null)
   const reviewing = review !== null
 
   // The code step starts in its field, and the review in its question, so a reader hears it.
@@ -137,44 +132,25 @@ export function ShareForm({
       })
       const errors = data?.offerProfileShare?.userErrors ?? []
       if (errors.length > 0) {
-        await refused(offered, refusalOf(errors))
+        show(refusalOf(errors))
         return
       }
       await onOffered(offered.householdName)
     } catch (error) {
-      answerLost.current = offered
-      await lost(offered, error)
+      await failed(error)
     } finally {
       setSending(false)
     }
   }
 
-  // An outage is not a verdict: the shares tell whether the server made the offer.
-  async function lost(offered: Review, error: unknown) {
-    const sent = await findSent()
-    if (sent === true) {
-      await onOffered(offered.householdName)
+  // An outage is not a verdict: only the server's words say that it did not make the offer.
+  async function failed(error: unknown) {
+    const words = serverFailureSentence(error)
+    if (words === null) {
+      await onAnswerLost()
       return
     }
-    setRefusal(requestFailureMessage(error, sent === null ? NOT_KNOWN : NOT_SENT))
-  }
-
-  // After a lost answer, a refusal of the retry may mean only that the first offer spent the code.
-  async function refused(offered: Review, answer: Answer) {
-    if (answerLost.current !== offered) {
-      show(answer)
-      return
-    }
-    const sent = await findSent()
-    if (sent === true) {
-      await onOffered(offered.householdName)
-      return
-    }
-    if (sent === null) {
-      setRefusal(NOT_KNOWN)
-      return
-    }
-    show(answer)
+    setRefusal(words)
   }
 
   function show(answer: Answer) {
