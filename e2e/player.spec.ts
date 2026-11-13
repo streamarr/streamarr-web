@@ -1072,29 +1072,55 @@ test("the focus ring on the caution in the Quality menu's heading leaves the men
 })
 
 // WCAG 2.2 asks a pointer target for 24px. A touch screen gives the caution the 44px of the mark.
-async function headingCautionTarget(page: Page, request: APIRequestContext): Promise<Box> {
+// Returns what a press lands on 1px inside each edge of a square that size, centred on the glyph:
+// the top, the right, the bottom and the left edge, in that order.
+async function pressesAtTheEdgesOfTheCautionInTheHeading(
+  page: Page,
+  { request, size }: { request: APIRequestContext; size: number },
+): Promise<(string | null)[]> {
   await openPlayerShowingMedia(page, request)
   const chip = await startOriginalWithAnEncode(page)
   await chip.click()
-  return (await headingCaution(page, ORIGINAL_EXPLANATION).boundingBox()) as Box
+  const glyph = (await headingCaution(page, ORIGINAL_EXPLANATION)
+    .locator('svg')
+    .boundingBox()) as Box
+  const centre = { x: glyph.x + glyph.width / 2, y: glyph.y + glyph.height / 2 }
+  const reach = size / 2 - 1
+  const edges = [
+    { x: centre.x, y: centre.y - reach },
+    { x: centre.x + reach, y: centre.y },
+    { x: centre.x, y: centre.y + reach },
+    { x: centre.x - reach, y: centre.y },
+  ]
+  return page.evaluate(
+    (points) =>
+      points.map(({ x, y }) => {
+        const pressed = document.elementFromPoint(x, y)?.closest('button')
+        return pressed?.getAttribute('aria-label') ?? pressed?.textContent ?? null
+      }),
+    edges,
+  )
 }
 
-test("the caution in the Quality menu's heading takes a 24px target", async ({ page, request }) => {
-  const target = await headingCautionTarget(page, request)
+test("a press anywhere in a 24px square on the caution in the Quality menu's heading lands on the caution", async ({
+  page,
+  request,
+}) => {
+  const pressed = await pressesAtTheEdgesOfTheCautionInTheHeading(page, { request, size: 24 })
 
-  expect([target.width, target.height]).toEqual([24, 24])
+  expect(pressed).toEqual(Array(4).fill(ORIGINAL_EXPLANATION))
 })
 
 test.describe('with a touch screen', () => {
   test.use({ hasTouch: true })
 
-  test("the caution in the Quality menu's heading takes a 44px target", async ({
+  test("a tap anywhere in a 44px square on the caution in the Quality menu's heading lands on the caution", async ({
     page,
     request,
   }) => {
-    const target = await headingCautionTarget(page, request)
+    const pressed = await pressesAtTheEdgesOfTheCautionInTheHeading(page, { request, size: 44 })
 
-    expect([target.width, target.height]).toEqual([44, 44])
+    expect(pressed).toEqual(Array(4).fill(ORIGINAL_EXPLANATION))
   })
 })
 

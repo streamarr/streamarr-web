@@ -48,6 +48,14 @@
   padding: var(--spacing-4) var(--spacing-8) var(--spacing-6);
   font-size: var(--font-size-caption);
   color: var(--text-secondary);
+
+  /* On a touch screen the caution's 44px target would reach into the first row, and into the 44px
+     target of a mark on that row. The later row would take the tap. */
+  @media (pointer: coarse) {
+    &:has(.headingCaution) {
+      padding-bottom: var(--spacing-16);
+    }
+  }
 }
 
 /* The caution after the heading's name has the mark's glyph and yellow. Its target reaches 24px,
