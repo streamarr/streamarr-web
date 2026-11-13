@@ -93,6 +93,16 @@ function withdrawn(shareCodeId = CODE_ID) {
   }
 }
 
+function withdrawRefused(message: string) {
+  return {
+    withdrawShareCode: {
+      __typename: 'WithdrawShareCodePayload',
+      shareCode: null,
+      userErrors: [{ __typename: 'ShareCodeNotLiveError', message }],
+    },
+  }
+}
+
 function serve(codes: ShareCodeNode[] = []) {
   server.use(
     graphql.query('Me', () => HttpResponse.json({ data: { me: meFixture() } })),
@@ -438,20 +448,7 @@ describe('Share codes', () => {
     const codes = serveInTurn([liveCode()], [])
     server.use(
       graphql.mutation('WithdrawShareCode', () =>
-        HttpResponse.json({
-          data: {
-            withdrawShareCode: {
-              __typename: 'WithdrawShareCodePayload',
-              shareCode: null,
-              userErrors: [
-                {
-                  __typename: 'ShareCodeNotLiveError',
-                  message: 'That share code no longer works.',
-                },
-              ],
-            },
-          },
-        }),
+        HttpResponse.json({ data: withdrawRefused('That share code no longer works.') }),
       ),
     )
     const { user } = renderAppAt(CODES)
