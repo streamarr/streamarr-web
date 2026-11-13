@@ -124,20 +124,19 @@ function acceptedPayload() {
   }
 }
 
+function refusedAcceptance(error: { __typename: string; message: string }) {
+  return { __typename: 'AcceptProfileSharePayload', share: null, userErrors: [error] }
+}
+
+const NAME_IN_USE = {
+  __typename: 'ShareNameConflictError',
+  message: 'Another Profile in that Household already uses this name.',
+}
+
 function refuseToAccept() {
   server.use(
     graphql.mutation('AcceptProfileShare', () =>
-      HttpResponse.json({
-        data: {
-          acceptProfileShare: {
-            __typename: 'AcceptProfileSharePayload',
-            share: null,
-            userErrors: [
-              { __typename: 'ShareNameConflictError', message: 'That name is already in use.' },
-            ],
-          },
-        },
-      }),
+      HttpResponse.json({ data: { acceptProfileShare: refusedAcceptance(NAME_IN_USE) } }),
     ),
   )
 }
@@ -463,9 +462,7 @@ describe('Share invitations', () => {
     const dialog = screen.getByRole('dialog')
     await user.click(within(dialog).getByRole('button', { name: 'Accept' }))
 
-    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
-      'That name is already in use.',
-    )
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(NAME_IN_USE.message)
     expect(within(dialog).getByRole('button', { name: 'Accept' })).toBeEnabled()
   })
 
@@ -476,9 +473,7 @@ describe('Share invitations', () => {
     await user.click(await screen.findByRole('button', { name: 'Accept Alex' }))
     const dialog = screen.getByRole('dialog')
     await user.click(within(dialog).getByRole('button', { name: 'Accept' }))
-    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
-      'That name is already in use.',
-    )
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(NAME_IN_USE.message)
     await waitFor(() =>
       expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeEnabled(),
     )
@@ -503,7 +498,7 @@ describe('Share invitations', () => {
     const dialog = await screen.findByRole('dialog', {
       name: 'Accept Alex into Smith Family?',
     })
-    expect(within(dialog).getByRole('alert')).toHaveTextContent('That name is already in use.')
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(NAME_IN_USE.message)
     expect(within(dialog).getByRole('button', { name: 'Accept' })).toBeEnabled()
   })
 
