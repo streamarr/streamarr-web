@@ -478,6 +478,27 @@ describe('Share codes', () => {
     expect(screen.queryByRole('button', { name: 'Copy link' })).not.toBeInTheDocument()
   })
 
+  it('shouldTakeTheIssuedCodeAwayWhenTheServerSaysThatCodeNoLongerWorks', async () => {
+    // Another admin withdrew the code after this page listed it.
+    serveInTurn([], [liveCode()], [])
+    serveIssue()
+    server.use(
+      graphql.mutation('WithdrawShareCode', () =>
+        HttpResponse.json({ data: withdrawRefused('That share code no longer works.') }),
+      ),
+    )
+    const { user } = renderAppAt(CODES)
+    await issue(user)
+
+    await withdrawWhenAllowed(user, /^Issued by Sam /)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /^That share code no longer works\.$/,
+    )
+    await waitFor(() => expect(screen.queryByText(SHARE_CODE)).not.toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: 'Copy link' })).not.toBeInTheDocument()
+  })
+
   it('shouldKeepTheIssuedCodeWhenAnAdminWithdrawsAnotherCode', async () => {
     const anasCode = liveCode({ id: ANOTHER_CODE_ID, issuedByDisplayName: 'Ana' })
     serveInTurn([anasCode], [liveCode(), anasCode], [liveCode()])

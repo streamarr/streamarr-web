@@ -161,8 +161,10 @@ function HouseholdShareCodes({
       const errors = data?.withdrawShareCode?.userErrors ?? []
       const refused = errors.length > 0
       if (refused) setWithdrawRefusal(errors.map(userErrorMessage).join(' '))
-      // A withdrawn code no longer works, so the panel stops offering it for copying.
-      if (!refused) setIssued((shown) => (shown?.shareCode.id === code.id ? null : shown))
+      // The shown code no longer works after either answer. The server refuses the Account that
+      // issued a code only once the code was spent, withdrawn or invalidated. So the panel stops
+      // offering the code for copying.
+      setIssued((shown) => (shown?.shareCode.id === code.id ? null : shown))
       // A refused code may have been spent or withdrawn elsewhere, so the list is read again.
       await readAfterChange()
       if (!refused) announce('Share code withdrawn.')
