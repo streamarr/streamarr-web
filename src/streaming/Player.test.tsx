@@ -6625,7 +6625,7 @@ describe('Player', () => {
     })
 
     it.each(WAYS_PAST_THE_REAL_END)(
-      'shouldEndAtTheRealEndThatTheStatusNamesOnlyAfterAReplacementWasAttachedPastIt(viewer $reached)',
+      'shouldEndAtTheRealEndWhenAReplacementIsAttachedPastARealEndThatTheStatusNamesOnlyLater(viewer $reached)',
       async ({ reach }) => {
         const { reports, replacement, nameTheRealEnd } =
           await replaceTheStreamPastAnUnnamedRealEnd(reach)

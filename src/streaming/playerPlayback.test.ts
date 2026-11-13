@@ -207,14 +207,14 @@ describe('startPlayerPlayback', () => {
   })
 
   describe('startPosition', () => {
-    it('shouldLoadANewPlaybackFromItsStartPosition', async () => {
+    it('shouldLoadFromTheStartPositionWhenANewPlaybackIsGivenAStartPosition', async () => {
       startPlaying({ video: fakeMedia(), startPositionSeconds: 603 })
 
       await vi.waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(STREAM_URL))
       expect(hls.config?.startPosition).toBe(603)
     })
 
-    it('shouldLoadTheStreamSessionThatReplacesTheAttachedOneFromThePlayhead', async () => {
+    it('shouldLoadFromThePlayheadWhenAStreamSessionReplacesTheAttachedOne', async () => {
       const video = fakeMedia()
       startPlaying({ video })
       await playingFrom(video, 120)
