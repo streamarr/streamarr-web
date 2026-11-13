@@ -99,6 +99,29 @@ function answerTheNextSegmentWith503({ fatal }: { fatal: boolean }) {
   onError?.('hlsError', { fatal, type: 'networkError', response: { code: 503 } })
 }
 
+const REPLACEMENT = {
+  id: 'sess-replacement',
+  streamUrl: '/api/stream/replacement/multivariant.m3u8?t=playback-token',
+  transcodeMode: 'REMUX',
+} as const
+
+// The server replaces the attached stream session with `streamSession`: the playback status names
+// it, and the attached one answers its next segment request with 503.
+function replaceTheAttachedStreamSessionWith(
+  streamSession: Parameters<typeof readyPlaybackSession>[0]['streamSession'],
+) {
+  server.use(
+    graphql.query('PlaybackSession', () =>
+      HttpResponse.json({
+        data: {
+          playbackSession: readyPlaybackSession({ id: `playback-${PQ_SESSION.id}`, streamSession }),
+        },
+      }),
+    ),
+  )
+  answerTheNextSegmentWith503({ fatal: false })
+}
+
 // Holds every playback status read until the test ends, and counts them.
 function holdStatusReads(): { count: number } {
   const reads = { count: 0 }
@@ -123,19 +146,23 @@ describe('startPlayerPlayback', () => {
   // the player has released every session.
   let sessions = { created: 0, destroyed: 0 }
 
-  // Starts the playback of `session`, created for the declaration `declaration` the browser makes.
+  // Starts the playback of `session`, created for the declaration `declaration` the browser makes,
+  // at `startPositionSeconds` when it is given.
   function startPlaying({
     video,
     declaration = PQ_DECLARATION,
     session = Promise.resolve(created(readyPlaybackSession({ streamSession: PQ_SESSION }))),
+    startPositionSeconds,
   }: {
     video: HTMLVideoElement
     declaration?: ClientCapabilityDeclarationInput
     session?: Promise<{ data: CreatePlaybackSessionMutation }>
+    startPositionSeconds?: number
   }): PlayerPlayback {
     playback = startPlayerPlayback({
       video,
       client: createApolloClient(vi.fn()),
+      startPositionSeconds,
       declareCapabilities: () => Promise.resolve(declaration),
       createPlaybackSession: () => {
         sessions.created += 1
@@ -179,6 +206,48 @@ describe('startPlayerPlayback', () => {
     await vi.waitFor(() => expect(sessions.destroyed).toBe(sessions.created))
   })
 
+  describe('startPosition', () => {
+    it('shouldLoadFromTheStartPositionWhenANewPlaybackIsGivenAStartPosition', async () => {
+      startPlaying({ video: fakeMedia(), startPositionSeconds: 603 })
+
+      await vi.waitFor(() => expect(hls.loadSource).toHaveBeenCalledWith(STREAM_URL))
+      expect(hls.config?.startPosition).toBe(603)
+    })
+
+    it('shouldLoadFromThePlayheadWhenAStreamSessionReplacesTheAttachedOne', async () => {
+      const video = fakeMedia()
+      startPlaying({ video })
+      await playingFrom(video, 120)
+
+      replaceTheAttachedStreamSessionWith(REPLACEMENT)
+
+      await vi.waitFor(() => expect(hls.loadSource).toHaveBeenLastCalledWith(REPLACEMENT.streamUrl))
+      expect(hls.config?.startPosition).toBe(120)
+    })
+
+    // The server holds every request for a segment past a short copy's real end, so hls.js starts
+    // where the playlist does (-1) unless the replacement's media goes on past the playhead.
+    it.each([
+      { mediaEnds: 'after the playhead', mediaEndSeconds: 121, startPosition: 120 },
+      { mediaEnds: 'at the playhead', mediaEndSeconds: 120, startPosition: -1 },
+      { mediaEnds: 'before the playhead', mediaEndSeconds: 100, startPosition: -1 },
+    ])(
+      'shouldLoadTheReplacementFromThePlayheadOnlyWhenItsMediaGoesOnPastIt(media ends $mediaEnds)',
+      async ({ mediaEndSeconds, startPosition }) => {
+        const video = fakeMedia()
+        startPlaying({ video })
+        await playingFrom(video, 120)
+
+        replaceTheAttachedStreamSessionWith({ ...REPLACEMENT, mediaEndSeconds })
+
+        await vi.waitFor(() =>
+          expect(hls.loadSource).toHaveBeenLastCalledWith(REPLACEMENT.streamUrl),
+        )
+        expect(hls.config?.startPosition).toBe(startPosition)
+      },
+    )
+  })
+
   describe('videoPreference', () => {
     it('shouldStartHlsJsPreferringTheDeclaredHdrRangesWhenTheViewerHasNotChosen', async () => {
       startPlaying({ video: fakeMedia() })
@@ -208,6 +277,7 @@ describe('startPlayerPlayback', () => {
 
       expect(hls.loadSource.mock.calls).toEqual([[STREAM_URL], [STREAM_URL]])
       expect(hls.config?.videoPreference).toEqual(SDR_ONLY)
+      expect(hls.config?.startPosition).toBe(120)
       expect(video.currentTime).toBe(120)
       expect(video.paused).toBe(false)
     })

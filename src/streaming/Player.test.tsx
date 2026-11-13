@@ -52,6 +52,7 @@ import type {
   DecisionReason,
   PlaybackDecisionFieldsFragment,
   PlaybackFormatChange,
+  PlaybackSessionFieldsFragment,
   PlayerSubtitleModesQuery,
   PlayerSubtitleModesQueryVariables,
   ReportPlaybackFormatFailureInput,
@@ -373,6 +374,10 @@ function serveAStatusWithoutARealEnd(): () => number {
 // How long playback may wait for media at a playhead that does not move.
 const STALL_LIMIT_MS = 45_000
 const PLAYBACK_START_TIMEOUT_MS = 30_000
+// How long a startup waits for the element's metadata before it reads the playback status, and
+// how long it then waits between reads.
+const SLOW_STARTUP_MS = 3_000
+const PLAYBACK_STATUS_INTERVAL_MS = 500
 
 // A stream with no real end plays from its first frame.
 async function playingVideo(): Promise<HTMLVideoElement> {
@@ -427,6 +432,172 @@ function serveAnotherStreamOnlyAtTheSecondStatusRead() {
       })
     }),
   )
+}
+
+const PAST_THE_REAL_END_SECONDS = REAL_END_SECONDS + 10
+
+// How the viewer's playhead came to stand past the real end on the first stream session.
+const WAYS_PAST_THE_REAL_END = [
+  {
+    reached: 'played there',
+    reach: (video: HTMLVideoElement) => playheadAt(video, PAST_THE_REAL_END_SECONDS),
+  },
+  {
+    // The seek waits for media that the first stream session never sends, so it never completes.
+    reached: 'sought there while paused',
+    reach: (video: HTMLVideoElement) => {
+      act(() => video.pause())
+      video.currentTime = PAST_THE_REAL_END_SECONDS
+      setReadyState(video, HTMLMediaElement.HAVE_METADATA)
+      fireEvent(video, new Event('seeking'))
+      fireEvent(video, new Event('timeupdate'))
+    },
+  },
+]
+
+// The viewer's playhead reached a point past a real end that no status names yet, and the server
+// replaced the stream session there. The replacement's status names that real end only once
+// `nameTheRealEnd` is called, as after the replacement's job attempt has run past it. `attached`
+// waits for the player to attach the replacement.
+async function replaceTheStreamPastAnUnnamedRealEnd(
+  reach: (video: HTMLVideoElement) => void,
+  { attached = attachedVideo }: { attached?: (streamUrl: string) => Promise<unknown> } = {},
+) {
+  const reports = serveSession()
+  renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+  const video = await showingVideo(STREAM_URL)
+  reach(video)
+  hls.destroy.mockImplementation(() => video.load())
+  const replacement = replacementStream(1)
+  let realEndNamed = false
+  const statusReads = serveStatusReads(() =>
+    realEndNamed ? { ...replacement, mediaEndSeconds: REAL_END_SECONDS } : replacement,
+  )
+  answerTheNextSegmentWith503({ fatal: false })
+  await attached(replacement.streamUrl)
+  return {
+    reports,
+    replacement,
+    statusReads,
+    nameTheRealEnd: () => {
+      realEndNamed = true
+    },
+  }
+}
+
+// Each status read answers with the stream session that `named` gives, except that the first
+// `failedReads` fail as when the connection drops; returns how often the status was read.
+function serveStatusReads(
+  named: () => StatusStreamSession,
+  { failedReads = 0 }: { failedReads?: number } = {},
+): () => number {
+  let reads = 0
+  server.use(
+    graphql.query('PlaybackSession', () => {
+      reads += 1
+      if (reads <= failedReads) return HttpResponse.error()
+      return HttpResponse.json({
+        data: { playbackSession: readyPlaybackSession({ streamSession: named() }) },
+      })
+    }),
+  )
+  return () => reads
+}
+
+type StatusStreamSession = Parameters<typeof readyPlaybackSession>[0]['streamSession']
+
+// Each status read names the attached stream with no real end until `failTheNextRead` is called.
+// The read after that fails as when the connection drops, and every later read names
+// `afterTheFailure`.
+function serveAFailedReadOnCue(afterTheFailure: StatusStreamSession) {
+  let reads = 0
+  let failedRead = Number.POSITIVE_INFINITY
+  server.use(
+    graphql.query('PlaybackSession', () => {
+      reads += 1
+      if (reads === failedRead) return HttpResponse.error()
+      const streamSession = reads > failedRead ? afterTheFailure : SESSION
+      return HttpResponse.json({
+        data: { playbackSession: readyPlaybackSession({ streamSession }) },
+      })
+    }),
+  )
+  return {
+    statusReads: () => reads,
+    failTheNextRead: () => {
+      failedRead = reads + 1
+    },
+  }
+}
+
+// The first status read finds the server still starting `replacement`, the second fails as when
+// the connection drops, and every later read finds `replacement` ready; returns how often the
+// status was read.
+function serveAReplacementThatStartsAcrossAFailedRead(
+  replacement: StatusStreamSession,
+): () => number {
+  let reads = 0
+  server.use(
+    graphql.query('PlaybackSession', () => {
+      reads += 1
+      if (reads === 2) return HttpResponse.error()
+      let playbackSession = startingPlaybackSession(replacement)
+      if (reads > 2) playbackSession = readyPlaybackSession({ streamSession: replacement })
+      return HttpResponse.json({ data: { playbackSession } })
+    }),
+  )
+  return () => reads
+}
+
+// The playback session while the server still starts `replacement`.
+function startingPlaybackSession(replacement: StatusStreamSession): PlaybackSessionFieldsFragment {
+  return {
+    ...readyPlaybackSession({ streamSession: replacement }),
+    currentFormatAttempt: {
+      __typename: 'PendingPlaybackFormatAttempt',
+      streamSessionId: replacement.id,
+    },
+  }
+}
+
+// How far the server has come in replacing the attached stream session with another.
+type Replacing = 'not yet' | 'starting' | 'started'
+
+// Each status read finds the server as far as `replacing` says in replacing the attached stream
+// session with `replacement`.
+function serveAReplacementAsFarAs(replacement: StatusStreamSession, replacing: () => Replacing) {
+  server.use(
+    graphql.query('PlaybackSession', () => {
+      const progress = replacing()
+      let playbackSession = readyPlaybackSession({ streamSession: SESSION })
+      if (progress === 'starting') playbackSession = startingPlaybackSession(replacement)
+      if (progress === 'started') {
+        playbackSession = readyPlaybackSession({ streamSession: replacement })
+      }
+      return HttpResponse.json({ data: { playbackSession } })
+    }),
+  )
+}
+
+// The player attaches `streamUrl` while the fake clock stands still, so a test can time what
+// follows the attach. Testing Library's and Vitest's waits both move a faked clock.
+async function attachedWithTheClockStill(streamUrl = STREAM_URL): Promise<HTMLVideoElement> {
+  await act(async () => vi.advanceTimersByTimeAsync(0))
+  expect(hls.loadSource).toHaveBeenLastCalledWith(streamUrl)
+  return fakeMedia(renderedVideo())
+}
+
+// A first load asks to start past the real end, and the player attaches its stream while the fake
+// clock stands still.
+async function startAFirstLoadPastTheRealEnd(): Promise<HTMLVideoElement> {
+  renderWithProviders(
+    <Player
+      playbackPlatform={withoutDecodingInfo}
+      mediaFileId="abcd"
+      startPositionSeconds={PAST_THE_REAL_END_SECONDS}
+    />,
+  )
+  return attachedWithTheClockStill()
 }
 
 // The media the stalled element waited for arrived, and the playhead moves on.
@@ -698,6 +869,24 @@ function wholeText(text: string) {
 function loadMetadata(video: HTMLVideoElement) {
   setReadyState(video, HTMLMediaElement.HAVE_METADATA)
   fireEvent(video, new Event('loadedmetadata'))
+}
+
+// hls.js appends the first segment that it loaded, of the main stream or of the alternate audio,
+// and the element loads its metadata. hls.js 1.7.4 then moves an element that stands before the
+// start position to it (`seekToStartPos`). It skips the move after a main segment once loading
+// stopped, but not after an alternate audio segment. An element that hls.js let go of gets neither.
+function bufferTheFirstSegment(
+  video: HTMLVideoElement,
+  segment: 'main' | 'alternate audio' = 'main',
+) {
+  if (!hls.holdsMedia) return
+  loadMetadata(video)
+  const startPosition = hls.config?.startPosition ?? -1
+  if (segment === 'main' && !hls.loading) return
+  if (startPosition < 0 || video.currentTime >= startPosition) return
+  video.currentTime = startPosition
+  fireEvent(video, new Event('seeking'))
+  fireEvent(video, new Event('timeupdate'))
 }
 
 function loadFirstFrame(video: HTMLVideoElement) {
@@ -6435,6 +6624,45 @@ describe('Player', () => {
       expect(video.paused).toBe(true)
     })
 
+    it.each(WAYS_PAST_THE_REAL_END)(
+      'shouldEndAtTheRealEndWhenAReplacementIsAttachedPastARealEndThatTheStatusNamesOnlyLater(viewer $reached)',
+      async ({ reach }) => {
+        const { reports, replacement, nameTheRealEnd } =
+          await replaceTheStreamPastAnUnnamedRealEnd(reach)
+        expect(hls.config?.startPosition).toBe(PAST_THE_REAL_END_SECONDS)
+
+        // The replacement's job ran past the real end, so the status names it now; the server
+        // holds the segment hls.js asked for first, and hls.js gives up on it.
+        nameTheRealEnd()
+        timeOutTheNextSegment()
+
+        await waitFor(() =>
+          expect(reports.at(-1)).toEqual({
+            sessionId: replacement.id,
+            positionSeconds: REAL_END_SECONDS,
+            state: 'STOPPED',
+          }),
+        )
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      },
+    )
+
+    it('shouldStartTheReturningPageFromTheTopWhenPlaybackEndedBeforeTheReplacementLoaded', async () => {
+      const { reports, nameTheRealEnd } = await replaceTheStreamPastAnUnnamedRealEnd((video) =>
+        playheadAt(video, PAST_THE_REAL_END_SECONDS),
+      )
+      nameTheRealEnd()
+      timeOutTheNextSegment()
+      await waitFor(() => expect(reports.at(-1)?.state).toBe('STOPPED'))
+      const created = recordCreatedSessions()
+
+      hideThePage({ persisted: true })
+      restoreThePage()
+
+      await waitFor(() => expect(created).toHaveLength(1))
+      expect(created[0]?.startPositionSeconds).toBeUndefined()
+    })
+
     it('shouldKeepWaitingForTheFirstFrameOfTheStreamAttachedAgainWithinOneSegmentOfTheRealEnd', async () => {
       const { video } = await playTheShortCopy()
       playheadAt(video, REAL_END_SECONDS)
@@ -6645,6 +6873,491 @@ describe('Player', () => {
       stallAt(video, REAL_END_SECONDS - 5)
 
       expect(video.paused).toBe(true)
+    })
+  })
+
+  describe('slow startup', () => {
+    // The server holds the segment that hls.js asks for first, past a real end that the status
+    // named only once the job attempt had run past it, after the playback session was created.
+    it('shouldEndAtTheRealEndWhenAFirstLoadPastItStillWaitsForMetadataAfterTheSlowStartupDelay', async () => {
+      const reports = serveSession()
+      const statusReads = serveStatusReads(() => ({
+        ...SESSION,
+        mediaEndSeconds: REAL_END_SECONDS,
+      }))
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      await startAFirstLoadPastTheRealEnd()
+
+      await act(async () => vi.advanceTimersByTimeAsync(SLOW_STARTUP_MS - 1))
+      expect(statusReads()).toBe(0)
+      await act(async () => vi.advanceTimersByTimeAsync(1))
+
+      await vi.waitFor(() =>
+        expect(reports.at(-1)).toEqual({
+          sessionId: SESSION.id,
+          positionSeconds: REAL_END_SECONDS,
+          state: 'STOPPED',
+        }),
+      )
+      expect(statusReads()).toBe(1)
+      await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_START_TIMEOUT_MS))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    // The start position lies in the copy's last segment, past the real end within it, so the
+    // server answers the segment, here only after the status read has ended playback.
+    it('shouldStayEndedWhenTheMetadataLoadsAfterASlowStartupEndedAtTheRealEnd', async () => {
+      const reports = serveSession()
+      serveStatusReads(() => ({ ...SESSION, mediaEndSeconds: REAL_END_SECONDS }))
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      const video = await startAFirstLoadPastTheRealEnd()
+      await act(async () => vi.advanceTimersByTimeAsync(SLOW_STARTUP_MS))
+      const stopped = () => reports.filter((report) => report.state === 'STOPPED')
+      await vi.waitFor(() => expect(stopped()).toHaveLength(1))
+
+      loadMetadata(video)
+      expect(video.paused).toBe(true)
+      await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_START_TIMEOUT_MS))
+
+      expect(hls.loadSource).toHaveBeenCalledOnce()
+      expect(stopped()).toEqual([
+        { sessionId: SESSION.id, positionSeconds: REAL_END_SECONDS, state: 'STOPPED' },
+      ])
+    })
+
+    // The status read ended the first load before anything played it, as the end of a title
+    // leaves it: paused, to start again from the top.
+    it.each<{ startsAgain: string; startAgain: () => Promise<void> | void }>([
+      {
+        startsAgain: 'the page returns from the back-forward cache',
+        startAgain: () => {
+          hideThePage({ persisted: true })
+          restoreThePage()
+        },
+      },
+      {
+        startsAgain: 'the viewer picks another quality',
+        startAgain: async () => {
+          fireEvent.click(screen.getByRole('button', { name: /^Quality/ }))
+          await act(async () => vi.advanceTimersByTimeAsync(0))
+          fireEvent.click(screen.getByRole('menuitemradio', { name: '720p' }))
+        },
+      },
+    ])(
+      'shouldStayPausedAtTheTopWhenPlaybackThatASlowStartupEndedStartsAgain($startsAgain)',
+      async ({ startAgain }) => {
+        const reports = serveSession()
+        serveStatusReads(() => ({ ...SESSION, mediaEndSeconds: REAL_END_SECONDS }))
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        const video = await startAFirstLoadPastTheRealEnd()
+        await act(async () => vi.advanceTimersByTimeAsync(SLOW_STARTUP_MS))
+        await vi.waitFor(() => expect(reports.at(-1)?.state).toBe('STOPPED'))
+        hls.destroy.mockImplementation(() => video.load())
+        const created = recordCreatedSessions()
+
+        await startAgain()
+
+        await vi.waitFor(() => expect(hls.loadSource).toHaveBeenCalledTimes(2))
+        loadMetadata(video)
+        expect(created.map((input) => input.startPositionSeconds)).toEqual([undefined])
+        expect(video.currentTime).toBe(0)
+        expect(video.paused).toBe(true)
+      },
+    )
+
+    // hls.js had loaded the segment that holds the start position, of the main stream or of the
+    // alternate audio, and appends it after the status read has ended playback.
+    it.each([{ segment: 'main' as const }, { segment: 'alternate audio' as const }])(
+      'shouldPlayFromTheTopWhenTheViewerPlaysAfterTheStartSegmentOfASlowStartupThatEndedArrives($segment)',
+      async ({ segment }) => {
+        const reports = serveSession()
+        serveStatusReads(() => ({ ...SESSION, mediaEndSeconds: REAL_END_SECONDS }))
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        const video = await startAFirstLoadPastTheRealEnd()
+        expect(hls.config?.startPosition).toBe(PAST_THE_REAL_END_SECONDS)
+        hls.destroy.mockImplementation(() => video.load())
+        await act(async () => vi.advanceTimersByTimeAsync(SLOW_STARTUP_MS))
+        const stopped = () => reports.filter((report) => report.state === 'STOPPED')
+        await vi.waitFor(() => expect(stopped()).toHaveLength(1))
+        bufferTheFirstSegment(video, segment)
+
+        await act(() => video.play())
+        await vi.waitFor(() => expect(hls.loadSource).toHaveBeenCalledTimes(2))
+        bufferTheFirstSegment(video)
+        fireEvent(video, new Event('timeupdate'))
+        await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_START_TIMEOUT_MS))
+
+        expect(video.currentTime).toBe(0)
+        expect(video.paused).toBe(false)
+        expect(stopped()).toHaveLength(1)
+      },
+    )
+
+    it('shouldLeaveNoTimerOrListenerBehindWhenTheViewerLeavesAfterASlowStartupEndedAtTheRealEnd', async () => {
+      const reports = serveSession()
+      serveStatusReads(() => ({ ...SESSION, mediaEndSeconds: REAL_END_SECONDS }))
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      const { unmount } = renderWithProviders(
+        <Player
+          playbackPlatform={withoutDecodingInfo}
+          mediaFileId="abcd"
+          startPositionSeconds={PAST_THE_REAL_END_SECONDS}
+        />,
+      )
+      const video = await attachedWithTheClockStill()
+      await act(async () => vi.advanceTimersByTimeAsync(SLOW_STARTUP_MS))
+      await vi.waitFor(() => expect(reports.at(-1)?.state).toBe('STOPPED'))
+
+      unmount()
+      await act(async () => vi.advanceTimersByTimeAsync(0))
+      expect(vi.getTimerCount()).toBe(0)
+      const reported = reports.length
+      loadMetadata(video)
+      fireEvent(video, new Event('play'))
+      await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_START_TIMEOUT_MS))
+
+      expect(hls.destroy).toHaveBeenCalledOnce()
+      expect(hls.loadSource).toHaveBeenCalledOnce()
+      expect(reports).toHaveLength(reported)
+    })
+
+    // hls.js finishes the start of playback that has not ended.
+    it.each([
+      { startup: 'a normal startup', loadsAfterMs: SLOW_STARTUP_MS - 1 },
+      { startup: 'a slow startup', loadsAfterMs: SLOW_STARTUP_MS + PLAYBACK_STATUS_INTERVAL_MS },
+    ])(
+      'shouldKeepLoadingTheStreamWhenTheMetadataLoadsBeforePlaybackEnds($startup)',
+      async ({ loadsAfterMs }) => {
+        serveSession()
+        serveStatusReads(() => SESSION)
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        renderWithProviders(
+          <Player
+            playbackPlatform={withoutDecodingInfo}
+            mediaFileId="abcd"
+            startPositionSeconds={600}
+          />,
+        )
+        const video = await attachedWithTheClockStill()
+        await act(async () => vi.advanceTimersByTimeAsync(loadsAfterMs))
+
+        bufferTheFirstSegment(video)
+
+        expect(hls.loading).toBe(true)
+        expect(video.currentTime).toBe(600)
+        expect(video.paused).toBe(false)
+      },
+    )
+
+    it('shouldKeepLoadingTheStreamWhenPlaybackReachesTheRealEndAfterItsMetadataLoaded', async () => {
+      const { reports, video } = await playTheShortCopy()
+
+      playheadAt(video, REAL_END_SECONDS)
+
+      await waitFor(() => expect(reports.at(-1)?.state).toBe('STOPPED'))
+      expect(video.paused).toBe(true)
+      expect({ loading: hls.loading, holdsMedia: hls.holdsMedia }).toEqual({
+        loading: true,
+        holdsMedia: true,
+      })
+    })
+
+    // Playback that ends before its metadata loads has no start left to make, so hls.js loads
+    // nothing more for it, and nothing that hls.js had loaded for it reaches the element.
+    it('shouldStopLoadingTheStreamAndLetGoOfTheElementWhenASlowStartupEndsPlaybackBeforeTheMetadataLoads', async () => {
+      const reports = serveSession()
+      serveStatusReads(() => ({ ...SESSION, mediaEndSeconds: REAL_END_SECONDS }))
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      await startAFirstLoadPastTheRealEnd()
+
+      await act(async () => vi.advanceTimersByTimeAsync(SLOW_STARTUP_MS))
+
+      await vi.waitFor(() => expect(reports.at(-1)?.state).toBe('STOPPED'))
+      expect({ loading: hls.loading, holdsMedia: hls.holdsMedia }).toEqual({
+        loading: false,
+        holdsMedia: false,
+      })
+    })
+
+    it('shouldReadTheStatusAgainAfterTheIntervalWhenTheFirstReadOfASlowStartupNamesNoRealEnd', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      const { reports, replacement, statusReads, nameTheRealEnd } =
+        await replaceTheStreamPastAnUnnamedRealEnd(
+          (video) => playheadAt(video, PAST_THE_REAL_END_SECONDS),
+          { attached: attachedWithTheClockStill },
+        )
+      const readsBeforeTheReplacement = statusReads()
+      const stopped = () => reports.filter((report) => report.state === 'STOPPED')
+
+      await act(async () => vi.advanceTimersByTimeAsync(SLOW_STARTUP_MS))
+      expect(statusReads()).toBe(readsBeforeTheReplacement + 1)
+      // The replacement's job attempt runs past the real end only after the first read.
+      nameTheRealEnd()
+      await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_STATUS_INTERVAL_MS - 1))
+      expect(stopped()).toEqual([])
+      await act(async () => vi.advanceTimersByTimeAsync(1))
+
+      await vi.waitFor(() =>
+        expect(stopped()).toEqual([
+          { sessionId: replacement.id, positionSeconds: REAL_END_SECONDS, state: 'STOPPED' },
+        ]),
+      )
+      expect(statusReads()).toBe(readsBeforeTheReplacement + 2)
+      await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_START_TIMEOUT_MS))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('shouldReadTheStatusAgainAfterTheIntervalWhenTheFirstReadOfASlowStartupFails', async () => {
+      const reports = serveSession()
+      const statusReads = serveStatusReads(
+        () => ({ ...SESSION, mediaEndSeconds: REAL_END_SECONDS }),
+        { failedReads: 1 },
+      )
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      await startAFirstLoadPastTheRealEnd()
+      const stopped = () => reports.filter((report) => report.state === 'STOPPED')
+
+      await act(async () => vi.advanceTimersByTimeAsync(SLOW_STARTUP_MS))
+      expect(statusReads()).toBe(1)
+      await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_STATUS_INTERVAL_MS - 1))
+      expect(statusReads()).toBe(1)
+      await act(async () => vi.advanceTimersByTimeAsync(1))
+
+      await vi.waitFor(() =>
+        expect(stopped()).toEqual([
+          { sessionId: SESSION.id, positionSeconds: REAL_END_SECONDS, state: 'STOPPED' },
+        ]),
+      )
+      expect(statusReads()).toBe(2)
+      await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_START_TIMEOUT_MS))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('shouldReadNoStatusWhenTheMetadataLoadsWithinTheSlowStartupDelay', async () => {
+      serveSession()
+      const statusReads = serveStatusReads(() => SESSION)
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+      const video = await attachedWithTheClockStill()
+
+      await act(async () => vi.advanceTimersByTimeAsync(SLOW_STARTUP_MS - 1))
+      loadMetadata(video)
+      await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_START_TIMEOUT_MS))
+
+      expect(statusReads()).toBe(0)
+    })
+
+    it('shouldStopReadingTheStatusWhenASlowStartupLoadsItsMetadata', async () => {
+      const reports = serveSession()
+      const statusReads = serveStatusReads(() => SESSION)
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+      const video = await attachedWithTheClockStill()
+      await act(async () =>
+        vi.advanceTimersByTimeAsync(SLOW_STARTUP_MS + PLAYBACK_STATUS_INTERVAL_MS),
+      )
+      expect(statusReads()).toBe(2)
+
+      loadMetadata(video)
+      await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_START_TIMEOUT_MS))
+
+      expect(statusReads()).toBe(2)
+      expect(video.paused).toBe(false)
+      expect(reports.filter((report) => report.state === 'STOPPED')).toEqual([])
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('shouldAttachAtTheStartPositionTheStreamSessionThatTheStatusNamesWhenAStartupIsSlow', async () => {
+      serveSession()
+      const replacement = replacementStream(1)
+      serveStatusReads(() => replacement)
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      renderWithProviders(
+        <Player
+          playbackPlatform={withoutDecodingInfo}
+          mediaFileId="abcd"
+          startPositionSeconds={600}
+        />,
+      )
+      const video = await attachedWithTheClockStill()
+      hls.destroy.mockImplementation(() => video.load())
+
+      await act(async () => vi.advanceTimersByTimeAsync(SLOW_STARTUP_MS))
+
+      await vi.waitFor(() => expect(hls.loadSource).toHaveBeenLastCalledWith(replacement.streamUrl))
+      expect(hls.config?.startPosition).toBe(600)
+      loadMetadata(video)
+      expect(video.currentTime).toBe(600)
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('shouldAttachTheStreamSessionThatTheStatusNamesWhenAReadFailsWhileASlowStartupWaitsForItToStart', async () => {
+      serveSession()
+      const replacement = replacementStream(1)
+      const statusReads = serveAReplacementThatStartsAcrossAFailedRead(replacement)
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+      const video = await attachedWithTheClockStill()
+      hls.destroy.mockImplementation(() => video.load())
+      await act(async () => vi.advanceTimersByTimeAsync(SLOW_STARTUP_MS))
+      await vi.waitFor(() => expect(statusReads()).toBe(2))
+
+      await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_STATUS_INTERVAL_MS))
+
+      await vi.waitFor(() => expect(hls.loadSource).toHaveBeenLastCalledWith(replacement.streamUrl))
+      expect(statusReads()).toBe(3)
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    // The replacement starts within the time to start that the handover gives it, though only
+    // after the slow startup's reads have run for longer than that themselves.
+    it('shouldAttachTheStreamSessionThatTheStatusNamesWhenItStartsWithinItsOwnTimeToStartAfterALateHandover', async () => {
+      serveSession()
+      const replacement = replacementStream(1)
+      let replacing: Replacing = 'not yet'
+      serveAReplacementAsFarAs(replacement, () => replacing)
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+      const video = await attachedWithTheClockStill()
+      hls.destroy.mockImplementation(() => video.load())
+      const handoverAfterMs = 20_000
+      await act(async () => vi.advanceTimersByTimeAsync(handoverAfterMs))
+      replacing = 'starting'
+      await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_STATUS_INTERVAL_MS))
+      expect(hls.destroy).toHaveBeenCalledOnce()
+
+      const readsRunMs = SLOW_STARTUP_MS + PLAYBACK_START_TIMEOUT_MS
+      await act(async () => vi.advanceTimersByTimeAsync(readsRunMs - handoverAfterMs))
+      replacing = 'started'
+      await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_STATUS_INTERVAL_MS))
+
+      await vi.waitFor(() => expect(hls.loadSource).toHaveBeenLastCalledWith(replacement.streamUrl))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it.each([
+      { leaves: 'before the first read', after: SLOW_STARTUP_MS - 1, reads: 0 },
+      { leaves: 'between two reads', after: SLOW_STARTUP_MS, reads: 1 },
+    ])(
+      'shouldLeaveNoStatusReadOrTimerBehindWhenTheViewerLeavesDuringASlowStartup(viewer leaves $leaves)',
+      async ({ after, reads }) => {
+        serveSession()
+        const statusReads = serveStatusReads(() => SESSION)
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        const { unmount } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        await attachedWithTheClockStill()
+        await act(async () => vi.advanceTimersByTimeAsync(after))
+
+        unmount()
+        // The player releases its playback session, and nothing of it waits on the clock after.
+        await act(async () => vi.advanceTimersByTimeAsync(0))
+        expect(vi.getTimerCount()).toBe(0)
+        await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_START_TIMEOUT_MS))
+
+        expect(statusReads()).toBe(reads)
+      },
+    )
+
+    it.each([
+      { joined: 'before the first read', errorAfter: 0, readsAfter: SLOW_STARTUP_MS },
+      { joined: 'after the first read', errorAfter: SLOW_STARTUP_MS, readsAfter: 0 },
+    ])(
+      'shouldKeepReadingTheStatusAfterTheMetadataLoadsWhenAStreamErrorJoinedASlowStartupsReads(error $joined)',
+      async ({ errorAfter, readsAfter }) => {
+        serveSession()
+        const replacement = replacementStream(1)
+        let replaced = false
+        serveStatusReads(() => (replaced ? replacement : SESSION))
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+        const video = await attachedWithTheClockStill()
+        hls.destroy.mockImplementation(() => video.load())
+        await act(async () => vi.advanceTimersByTimeAsync(errorAfter))
+        answerTheNextSegmentWith503({ fatal: false })
+        await act(async () => vi.advanceTimersByTimeAsync(readsAfter))
+
+        loadMetadata(video)
+        replaced = true
+        await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_STATUS_INTERVAL_MS))
+
+        await vi.waitFor(() =>
+          expect(hls.loadSource).toHaveBeenLastCalledWith(replacement.streamUrl),
+        )
+      },
+    )
+
+    // hls.js retries a segment that the server answered with 503 on its own, so the stream error
+    // asks nothing more of the status.
+    it.each([
+      { joined: 'before the first read', errorAfter: 0, readsAfter: SLOW_STARTUP_MS },
+      { joined: 'after the first read', errorAfter: SLOW_STARTUP_MS, readsAfter: 0 },
+    ])(
+      'shouldReadTheStatusAgainAfterAFailedReadWhenAStreamErrorJoinedASlowStartupsReads(error $joined)',
+      async ({ errorAfter, readsAfter }) => {
+        const reports = serveSession()
+        const { failTheNextRead } = serveAFailedReadOnCue({
+          ...SESSION,
+          mediaEndSeconds: REAL_END_SECONDS,
+        })
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        await startAFirstLoadPastTheRealEnd()
+        await act(async () => vi.advanceTimersByTimeAsync(errorAfter))
+        answerTheNextSegmentWith503({ fatal: false })
+        await act(async () => vi.advanceTimersByTimeAsync(readsAfter))
+        const stopped = () => reports.filter((report) => report.state === 'STOPPED')
+
+        failTheNextRead()
+        await act(async () => vi.advanceTimersByTimeAsync(2 * PLAYBACK_STATUS_INTERVAL_MS))
+
+        await vi.waitFor(() =>
+          expect(stopped()).toEqual([
+            { sessionId: SESSION.id, positionSeconds: REAL_END_SECONDS, state: 'STOPPED' },
+          ]),
+        )
+        await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_START_TIMEOUT_MS))
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      },
+    )
+
+    // A stream that stopped for good fails at a read that cannot say what replaced it, as it does
+    // without a slow startup.
+    it('shouldShowFailureAtTheFailedReadWhenAFatalStreamErrorJoinedASlowStartupsReads', async () => {
+      serveSession()
+      const { statusReads, failTheNextRead } = serveAFailedReadOnCue(SESSION)
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+      await attachedWithTheClockStill()
+      await act(async () => vi.advanceTimersByTimeAsync(SLOW_STARTUP_MS))
+      answerTheNextSegmentWith503({ fatal: true })
+
+      failTheNextRead()
+      await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_STATUS_INTERVAL_MS))
+
+      await vi.waitFor(() =>
+        expect(screen.getByRole('alert')).toHaveTextContent("Playback couldn't start."),
+      )
+      expect(statusReads()).toBe(2)
+    })
+
+    // The metadata ends the slow startup's claim on the reads. The stream error's check then ends
+    // at a failed read, as it does without a slow startup: hls.js retries the segment itself.
+    it('shouldReadTheStatusNoMoreAfterAFailedReadWhenAStreamErrorKeptASlowStartupsReadsPastTheMetadata', async () => {
+      serveSession()
+      const { statusReads, failTheNextRead } = serveAFailedReadOnCue(SESSION)
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      renderWithProviders(<Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />)
+      const video = await attachedWithTheClockStill()
+      await act(async () => vi.advanceTimersByTimeAsync(SLOW_STARTUP_MS))
+      answerTheNextSegmentWith503({ fatal: false })
+      loadMetadata(video)
+
+      failTheNextRead()
+      await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_START_TIMEOUT_MS))
+
+      expect(statusReads()).toBe(2)
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     })
   })
 
@@ -7961,6 +8674,95 @@ describe('Player', () => {
         await attachedVideo(replacementStream(1).streamUrl)
         await waitFor(() => expect(overrides).toEqual([{ itemId: 'e1', audioLanguage: 'FR' }]))
       })
+
+      it('shouldStoreTheChosenTracksLanguageWhenASlowStartupsStatusReadFindsTheSwitchBeforeItsAnswer', async () => {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        const answered = deferred()
+        const switches = serveAudioTrackSwitch({ answered: answered.promise, answer: movedToHls })
+        server.use(
+          graphql.query('PlaybackSession', () =>
+            HttpResponse.json({ data: { playbackSession: movedToHls().playbackSession } }),
+          ),
+        )
+        const overrides = serveOverrideStores()
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        renderEpisode()
+        await nativeVideo(SOURCE_FILE.streamUrl)
+        fireEvent.click(screen.getByRole('button', { name: 'Audio: English' }))
+        await act(async () => vi.advanceTimersByTimeAsync(0))
+        fireEvent.click(screen.getByRole('menuitemradio', { name: 'French' }))
+        await vi.waitFor(() => expect(switches).toHaveLength(1))
+
+        await act(async () => vi.advanceTimersByTimeAsync(SLOW_STARTUP_MS))
+        await vi.waitFor(() =>
+          expect(hls.loadSource).toHaveBeenCalledWith(replacementStream(1).streamUrl),
+        )
+        answered.resolve()
+
+        await vi.waitFor(() => expect(overrides).toEqual([{ itemId: 'e1', audioLanguage: 'FR' }]))
+        expect(hls.loadSource).toHaveBeenCalledOnce()
+      })
+
+      it('shouldStoreTheChosenTracksLanguageWhenTheSwitchsAnswerComesWhileASlowStartupWaitsForTheSwitchsStreamSessionToStart', async () => {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        const answered = deferred()
+        let answerSent = false
+        const switches = serveAudioTrackSwitch({
+          answered: answered.promise.then(() => {
+            answerSent = true
+          }),
+          answer: movedToHls,
+        })
+        let started = false
+        const statusReads = serveTheSwitchsStreamSession({ started: () => started })
+        const overrides = serveOverrideStores()
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        renderEpisode()
+        await nativeVideo(SOURCE_FILE.streamUrl)
+        fireEvent.click(screen.getByRole('button', { name: 'Audio: English' }))
+        await act(async () => vi.advanceTimersByTimeAsync(0))
+        fireEvent.click(screen.getByRole('menuitemradio', { name: 'French' }))
+        await vi.waitFor(() => expect(switches).toHaveLength(1))
+        await act(async () => vi.advanceTimersByTimeAsync(SLOW_STARTUP_MS))
+        // The first read finds the switch's stream session, and the handover's own read finds it
+        // still starting, so the handover waits for the next read.
+        await vi.waitFor(() => expect(statusReads()).toBe(2))
+
+        answered.resolve()
+        await vi.waitFor(() => expect(answerSent).toBe(true))
+        await act(async () => vi.advanceTimersByTimeAsync(0))
+        started = true
+        await act(async () => vi.advanceTimersByTimeAsync(PLAYBACK_STATUS_INTERVAL_MS))
+
+        await vi.waitFor(() =>
+          expect(hls.loadSource).toHaveBeenCalledWith(replacementStream(1).streamUrl),
+        )
+        await vi.waitFor(() => expect(overrides).toEqual([{ itemId: 'e1', audioLanguage: 'FR' }]))
+        expect(hls.loadSource).toHaveBeenCalledOnce()
+      })
+
+      // Each status read finds the switch's stream session, which the server is still starting
+      // until `started` says it has started; returns how often the status was read.
+      function serveTheSwitchsStreamSession({ started }: { started: () => boolean }) {
+        let reads = 0
+        server.use(
+          graphql.query('PlaybackSession', () => {
+            reads += 1
+            const ready = movedToHls().playbackSession
+            const playbackSession = started()
+              ? ready
+              : {
+                  ...ready,
+                  currentFormatAttempt: {
+                    __typename: 'PendingPlaybackFormatAttempt',
+                    streamSessionId: replacementStream(1).id,
+                  },
+                }
+            return HttpResponse.json({ data: { playbackSession } })
+          }),
+        )
+        return () => reads
+      }
 
       it('shouldStoreTheChosenTracksLanguageWhenThePlaybackStatusShowsTheSwitchAfterItsAnswerIsLost', async () => {
         serveDirectPlay({ audioTracks: TWO_TRACKS })

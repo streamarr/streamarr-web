@@ -47,10 +47,16 @@ export const hls = {
   levels: [] as FakeHlsLevel[],
   currentLevel: -1,
   bandwidthEstimate: Number.NaN,
+  /** Whether the latest instance loads its stream: from `loadSource` to `stopLoad` or `destroy`. */
+  loading: false,
+  /** Whether the latest instance holds its element: from `attachMedia` to `detachMedia` or `destroy`. */
+  holdsMedia: false,
 }
 
 export function resetFakeHls() {
   listeners.clear()
+  hls.loading = false
+  hls.holdsMedia = false
   hls.supported = true
   hls.audioTracks = []
   hls.audioTrack = -1
@@ -86,9 +92,25 @@ class FakeHls {
   constructor(config?: Partial<HlsConfig>) {
     hls.config = config
   }
-  loadSource = hls.loadSource
-  attachMedia = hls.attachMedia
-  destroy = hls.destroy
+  loadSource = (url: string) => {
+    hls.loading = true
+    hls.loadSource(url)
+  }
+  attachMedia = (media: HTMLMediaElement) => {
+    hls.holdsMedia = true
+    hls.attachMedia(media)
+  }
+  detachMedia = () => {
+    hls.holdsMedia = false
+  }
+  stopLoad = () => {
+    hls.loading = false
+  }
+  destroy = () => {
+    hls.loading = false
+    hls.holdsMedia = false
+    hls.destroy()
+  }
   on = hls.on
   off = hls.off
   get audioTracks() {
