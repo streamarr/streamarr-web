@@ -1,5 +1,5 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
-import { graphql, HttpResponse } from 'msw'
+import { graphql, http, HttpResponse } from 'msw'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import type {
   NotificationsQuery,
@@ -14,6 +14,7 @@ import {
   heldAnswer,
   readsThatCanBeHeld,
 } from '../test/graphqlResponses'
+import { deferred } from '../test/deferred'
 import { serveGraphqlSocket } from '../test/graphqlSocket'
 import { meFixture } from '../test/meFixture'
 import {
@@ -29,6 +30,7 @@ import {
 import { renderAppAt } from '../test/render'
 import { leaveForHome, returnThroughTheProfileMenu, type SettingsPage } from '../test/returnVisits'
 import { server } from '../test/server'
+import { signIn } from '../test/signIn'
 import { intersectionObserverInstances } from '../../vitest.setup'
 
 const NOTIFICATIONS = '/notifications'
@@ -499,6 +501,67 @@ describe('Reading Notifications', () => {
     expect(marks[0].notificationIds[0]).toBe('news-1')
     expect(marks[0].notificationIds[99]).toBe('news-100')
     expect(marks[1].notificationIds).toEqual(['news-101'])
+  })
+
+  it('shouldSendNoMarkOnceThePersonHasSignedOutWhenTheVisitStillHadMarksToSend', async () => {
+    const firstPage = Array.from({ length: 100 }, (_, index) =>
+      answerNotification({ id: `news-${index + 1}`, message: `News ${index + 1}`, unread: true }),
+    )
+    serve()
+    servePages(
+      notificationsPage(firstPage, { hasNextPage: true }),
+      notificationsPage([answerNotification({ id: 'news-101', message: 'News 101', unread: true })], { from: 101 }),
+    )
+    const session = { signedIn: true }
+    const marks: { notificationIds: string[]; signedIn: boolean }[] = []
+    // Hold the first batch until sign-out, leaving the second batch queued.
+    const firstAnswer = deferred()
+    onTestFinished(firstAnswer.resolve)
+    const signedOut = deferred()
+    server.use(
+      http.post('/api/auth/refresh/revoke', () => {
+        session.signedIn = false
+        signedOut.resolve()
+        return new HttpResponse(null, { status: 204 })
+      }),
+      http.post('/api/auth/login', () => {
+        session.signedIn = true
+        return HttpResponse.json({ accessTokenExpiresAt: '2026-08-06T12:10:00Z', scope: 'account' })
+      }),
+      graphql.mutation('MarkNotificationsRead', async ({ variables }) => {
+        const { notificationIds } = (variables as { input: { notificationIds: string[] } }).input
+        const { signedIn } = session
+        marks.push({ notificationIds, signedIn })
+        if (notificationIds.includes('news-1')) await firstAnswer.promise
+        // The server refuses a mark sent while signed out. If that refusal arrives after the person
+        // has signed in again, the app sends the person back to the sign-in page.
+        if (!signedIn) {
+          return Response.json({ code: 'AUTHENTICATION_REQUIRED' }, { status: 401 })
+        }
+        return HttpResponse.json({
+          data: { markNotificationsRead: { unreadNotificationCount: 1, userErrors: [] } },
+        })
+      }),
+    )
+    const { user, router } = renderAppAt(NOTIFICATIONS)
+    await screen.findByText('News 100')
+    await reachTheEndOfTheList()
+    await screen.findByText('News 101')
+    await user.click(screen.getByRole('button', { name: 'Mark all as read' }))
+    await waitFor(() => expect(marks).toEqual([{ notificationIds: firstPage.map(({ id }) => id), signedIn: true }]))
+
+    await user.click(screen.getByRole('button', { name: /^Profile menu/ }))
+    await user.click(await screen.findByRole('button', { name: 'Sign out' }))
+    await signedOut.promise
+    firstAnswer.resolve()
+    // The second batch would go out as soon as the first settles.
+    await signIn(user)
+    await waitFor(() => {
+      expect(router.state.location.pathname).not.toBe('/login')
+      expect(router.state.status).toBe('idle')
+    })
+
+    expect(marks).toEqual([{ notificationIds: firstPage.map(({ id }) => id), signedIn: true }])
   })
 })
 
