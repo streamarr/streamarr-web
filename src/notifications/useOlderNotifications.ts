@@ -36,7 +36,9 @@ export function useOlderNotifications(
       query: NotificationsDocument,
       variables: { after },
       fetchPolicy: 'no-cache',
-      context,
+      // Apollo would otherwise join this read to an earlier visit's read of the same page that is
+      // still on its way, and hand this visit that visit's answer.
+      context: { ...context, queryDeduplication: false },
     })
     // A page that answers after the person left belongs to that visit, not to the next one.
     if (!data || sentOn.left) return
