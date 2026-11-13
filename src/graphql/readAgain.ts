@@ -23,9 +23,11 @@ function readsOf(query: ObservableQuery): { count: number } {
  * The error link already routes the other refusals.
  */
 export function readActiveQueriesAgain(client: ApolloClient): Promise<unknown> {
-  return Promise.allSettled(
-    [...client.getObservableQueries('active')].map((query) => readAgain(client, query)),
-  )
+  return readEachAgain(client, client.getObservableQueries('active'))
+}
+
+function readEachAgain(client: ApolloClient, queries: Set<ObservableQuery>): Promise<unknown> {
+  return Promise.allSettled([...queries].map((query) => readAgain(client, query)))
 }
 
 // Whether `readActiveQueriesAgain` is reading `query` now.
