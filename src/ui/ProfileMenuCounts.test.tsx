@@ -70,6 +70,7 @@ async function openTheProfileMenu() {
 
 const MARA_LINE = '“Cabin” accepted the Profile “Mara”.'
 const SHARE_OFFERS: SettingsPage = { area: 'Household settings', heading: 'Share invitations' }
+const NOTIFICATIONS_PAGE: SettingsPage = { area: 'Notifications', heading: 'Notifications' }
 
 describe('The unread count in the Profile menu', () => {
   it('shouldCountTheUnreadNotificationsAfterTheirEntryWhenSomeAreUnread', async () => {
@@ -315,6 +316,77 @@ describe('The unread count in the Profile menu', () => {
 
     const menu = within(await screen.findByTestId('profile-menu'))
     expect(menu.getByRole('button', { name: 'Notifications' })).toBeVisible()
+  })
+
+  it('shouldKeepTheCountOfALaterVisitsMarkWhenAnEarlierVisitsMarkAnswersAfterIt', async () => {
+    serveHome()
+    const leo = answerNotification({ id: 'answer-for-leo' })
+    const mara = answerNotification({ id: 'answer-for-mara', message: MARA_LINE })
+    // The server marks a Notification read as its mark arrives, and answers how many stay unread.
+    // The first visit's mark of Leo answers late, with the count as it stood then: Mara unread.
+    const unread = new Set([leo.id, mara.id])
+    const marks: string[] = []
+    const leosAnswer = deferred()
+    // Once Leo's mark has answered, the first visit marks Mara too; that answer waits for the end.
+    const firstVisitsMarkOfMara = deferred()
+    // Every count read after the first waits for the end too, so only the marks move the count.
+    const laterCountReads = deferred()
+    onTestFinished(leosAnswer.resolve)
+    onTestFinished(firstVisitsMarkOfMara.resolve)
+    onTestFinished(laterCountReads.resolve)
+    const countReads = { calls: 0 }
+    server.use(
+      graphql.query('UnreadNotificationCount', async () => {
+        countReads.calls += 1
+        const unreadNotificationCount = unread.size
+        if (countReads.calls > 1) await laterCountReads.promise
+        return HttpResponse.json({ data: { unreadNotificationCount } })
+      }),
+      graphql.query('Notifications', () =>
+        HttpResponse.json({
+          data: notificationsPage(
+            [leo, mara].map((news) => ({ ...news, unread: unread.has(news.id) })),
+          ),
+        }),
+      ),
+      graphql.mutation('MarkNotificationRead', async ({ variables }) => {
+        const { notificationId } = (variables as { input: { notificationId: string } }).input
+        marks.push(notificationId)
+        unread.delete(notificationId)
+        const unreadNotificationCount = unread.size
+        if (notificationId === leo.id) await leosAnswer.promise
+        if (marks.length === 3) await firstVisitsMarkOfMara.promise
+        return HttpResponse.json({
+          data: { markNotificationRead: { unreadNotificationCount, userErrors: [] } },
+        })
+      }),
+    )
+    const { user } = renderAppAt('/notifications')
+    await screen.findByText(MARA_LINE)
+    await waitFor(() => expect(marks).toEqual([leo.id]))
+    await leaveForHome(user, NOTIFICATIONS_PAGE)
+    await returnThroughTheProfileMenu(user, NOTIFICATIONS_PAGE)
+    await waitFor(() => expect(marks).toEqual([leo.id, mara.id]))
+    // The second visit's mark of Mara answers that nothing is unread, and the dot clears.
+    const chip = await screen.findByRole('button', { name: 'Profile menu (Owner)' })
+
+    leosAnswer.resolve()
+    // The first visit marks Mara only once Leo's mark has answered.
+    await waitFor(() => expect(marks).toEqual([leo.id, mara.id, mara.id]))
+    await user.click(chip)
+
+    const menu = within(await screen.findByTestId('profile-menu'))
+    expect(menu.getByRole('button', { name: /^Notifications/ })).toHaveAccessibleName(
+      'Notifications',
+    )
+
+    // The held count read began before the second visit's socket subscribed, so its answer brings
+    // one more read. Both answer before the test ends: a read sent after it would reach the next
+    // test's server.
+    const readsBefore = countReads.calls
+    laterCountReads.resolve()
+    firstVisitsMarkOfMara.resolve()
+    await waitFor(() => expect(countReads.calls).toBe(readsBefore + 1))
   })
 
   it('shouldReadNoCountWhenTheSessionIsBoundToATV', async () => {

@@ -19,13 +19,17 @@ import { useLiveChanges } from '../graphql/useLiveChanges'
  * `markSent` is called as a mark goes out, and the function it returns takes the count the mark
  * answers. A change that arrives in between means the server is delivering changes, this mark's
  * own among them, and it may be newer than the mark, such as another session's mark; the mark's
- * count then stands aside.
+ * count then stands aside. A mark's count also stands aside once the count of a mark that went out
+ * after it has been taken. A visit of a page sends its marks one after another, but a mark from an
+ * earlier visit can answer after a mark from the next visit.
  */
 export function useUnreadNotificationCount({ skip }: { skip: boolean }): {
   count: number
   markSent: () => (count: number) => void
 } {
   const changes = useRef(0)
+  // Each mark is numbered as it goes out; `taken` is the newest mark whose count was taken.
+  const marks = useRef({ sent: 0, taken: 0 })
   const live = useLiveList({
     query: UnreadNotificationCountDocument,
     variables: {},
@@ -43,8 +47,12 @@ export function useUnreadNotificationCount({ skip }: { skip: boolean }): {
   )
   const markSent = useCallback(() => {
     const changesBefore = changes.current
+    marks.current.sent += 1
+    const mark = marks.current.sent
     return (count: number) => {
-      if (changes.current === changesBefore) receive(count)
+      if (changes.current !== changesBefore || mark < marks.current.taken) return
+      marks.current.taken = mark
+      receive(count)
     }
   }, [receive])
   useLiveChanges(

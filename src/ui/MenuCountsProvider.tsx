@@ -14,7 +14,8 @@ export interface MenuCounts {
   waitingOffers: number
   /**
    * Called as a Notification's mark goes out: the function it returns takes the unread count that
-   * the mark answers, unless a change has brought one since (`useUnreadNotificationCount`).
+   * the mark answers, unless a change, or a mark that went out later, has brought one since
+   * (`useUnreadNotificationCount`).
    */
   markSent: () => (count: number) => void
 }
