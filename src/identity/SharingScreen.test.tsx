@@ -670,6 +670,15 @@ describe('Sharing', () => {
     expect(await screen.findByRole('region', { name: 'Where Alex is shared' })).toBeVisible()
   })
 
+  it('shouldShowTheServersWordsWhenTheServerRefusesToReadTheAccount', async () => {
+    server.use(graphql.query('Me', () => refusedWith('This session may not read its account.')))
+    renderWithProviders(<SharingScreen />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /^This session may not read its account\.$/,
+    )
+  })
+
   it('shouldRetryWhenSharingFailsToLoad', async () => {
     serve()
     const shares = failsOnceThen(sharesData())
