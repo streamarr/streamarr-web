@@ -544,6 +544,39 @@ describe('Sharing', () => {
     expect(screen.getAllByRole('listitem').map((row) => row.textContent)).toEqual(['CabinCanceled'])
   })
 
+  it('shouldListAnOfferThePersonCancelsUnderEarlierOffersAndSharesWhenTheirReadSentBeforeAnswersAfter', async () => {
+    const held = serveHeldShares([share()])
+    const earlierReads = readsThatCanBeHeld(() =>
+      sharesData(held.shares.filter((listed) => OVER.includes(listed.status))),
+    )
+    const liveReads = { count: 0 }
+    server.use(
+      graphql.query<GraphQLQuery, ProfileSharesQueryVariables>('ProfileShares', ({ variables }) => {
+        if (asksFor(variables.statuses, 'CANCELED')) return earlierReads.resolver()
+        liveReads.count += 1
+        return HttpResponse.json({ data: listedShares(held.shares, variables) })
+      }),
+      graphql.mutation('CancelProfileShare', () => {
+        held.shares = [share({ status: 'CANCELED' })]
+        return HttpResponse.json({ data: { cancelProfileShare: canceledPayload() } })
+      }),
+    )
+    const { user } = renderWithProviders(<SharingScreen />)
+    await screen.findByRole('button', { name: 'Cancel invitation to Cabin' })
+    const earlierRead = earlierReads.holdNext()
+    await user.click(screen.getByRole('button', { name: 'Earlier invitations and shares' }))
+    await earlierRead.arrived
+    const liveReadsBeforeTheCancel = liveReads.count
+
+    await user.click(screen.getByRole('button', { name: 'Cancel invitation to Cabin' }))
+    // The page reads the live shares and the earlier ones again together after the cancel.
+    await waitFor(() => expect(liveReads.count).toBeGreaterThan(liveReadsBeforeTheCancel))
+    earlierRead.release()
+
+    await noticed('Invitation to Cabin canceled.')
+    expect(screen.getAllByRole('listitem').map((row) => row.textContent)).toEqual(['CabinCanceled'])
+  })
+
   it('shouldShowTheServersWordsAndReadTheSharesAgainWhenCancelingIsRefused', async () => {
     const shares = serveInTurn([share()], [share()])
     refuseToCancel()

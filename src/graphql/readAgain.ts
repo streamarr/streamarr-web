@@ -55,6 +55,18 @@ export function isReading<TData, TVariables extends OperationVariables>(
   return query.getCurrentResult().loading || isReadingAgain(query)
 }
 
+/**
+ * Refetches `query` with a read sent after every read of it now in flight. The answer to a read in
+ * flight can be from before a change the caller has just made, and a refetch would join that read,
+ * so this refetch waits for its answer and then reads again.
+ */
+export async function refetchAfterReadsInFlight<TData, TVariables extends OperationVariables>(
+  query: ObservableQuery<TData, TVariables>,
+): Promise<unknown> {
+  if (isReading(query)) await query.refetch().catch(() => undefined)
+  return query.refetch()
+}
+
 async function readAgain(client: ApolloClient, query: ObservableQuery): Promise<unknown> {
   const reads = readsOf(query)
   reads.count += 1

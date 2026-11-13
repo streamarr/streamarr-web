@@ -8,6 +8,7 @@ import {
   type ProfileSharesQuery,
 } from '../graphql/generated/graphql'
 import { useLiveList } from '../graphql/liveList'
+import { refetchAfterReadsInFlight } from '../graphql/readAgain'
 import { requestFailureMessage } from '../graphql/requestErrors'
 import { FailurePanel } from '../ui/Failure'
 import { PageNotice } from '../ui/PageNotice'
@@ -130,7 +131,7 @@ function ProfileSharing({
   const readAgain = () =>
     Promise.all(
       [query, ...(earlierAsked ? [over.query] : [])].map((each) =>
-        each.refetch().catch(() => undefined),
+        refetchAfterReadsInFlight(each.observable).catch(() => undefined),
       ),
     )
   // A failed read empties `data`, so the last list read stays on screen with the form inside it.
