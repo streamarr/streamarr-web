@@ -124,6 +124,8 @@ function SharedProfiles({
   useShareChanges((change) => {
     const data = client.cache.readQuery({ query: SharedWithHouseholdDocument, variables })
     const prior = data?.householdShares.edges.find((edge) => edge.node.id === change.shareId)?.node
+    // A cache read can complete before the page draws it.
+    rememberPersonalShares(personalShares.current, data?.householdShares.edges)
     liveShares.receive(change)
     const relevant = change.share === null || change.share.householdId === household.id
     // An ended share hides its Profile facts, so an unseen one may have unlinked visitor TVs too.
