@@ -579,8 +579,8 @@ function lineUnder({
   if (headingCaution?.contains(target)) {
     return HEADING
   }
-  const row = target.closest('[role="menuitemradio"], [role="menuitemcheckbox"]')
-  const index = rowsOf(menu).findIndex((candidate) => candidate === row)
+  const row = target.closest<HTMLElement>('[role="menuitemradio"], [role="menuitemcheckbox"]')
+  const index = row ? rowsOf(menu).indexOf(row) : -1
   return index === -1 ? null : index
 }
 

@@ -70,14 +70,19 @@ export function pathOnto({
   return (point) => triangles.some((triangle) => isInTriangle(point, triangle))
 }
 
+const SIDES: readonly Side[] = ['top', 'bottom', 'left', 'right']
+
 function sideNearest({ x, y }: Point, box: Box): Side {
-  const distances: [Side, number][] = [
-    ['top', Math.abs(y - box.top)],
-    ['bottom', Math.abs(box.bottom - y)],
-    ['left', Math.abs(x - box.left)],
-    ['right', Math.abs(box.right - x)],
-  ]
-  return distances.reduce((nearest, side) => (side[1] < nearest[1] ? side : nearest))[0]
+  const distanceTo: Record<Side, number> = {
+    top: Math.abs(y - box.top),
+    bottom: Math.abs(box.bottom - y),
+    left: Math.abs(x - box.left),
+    right: Math.abs(box.right - x),
+  }
+  return SIDES.reduce(
+    (nearest, side) => (distanceTo[side] < distanceTo[nearest] ? side : nearest),
+    'top',
+  )
 }
 
 type Triangle = readonly [Point, Point, Point]
