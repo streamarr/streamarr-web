@@ -74,23 +74,20 @@ const withoutDecodingInfo = () => playbackPlatformFixture()
 // WebKit lists a direct-played file's audio tracks on the element and switches between them.
 const selectingAudioTracks = () => playbackPlatformFixture({ selectsAudioTrackInDirectPlay: true })
 const STREAM_URL = '/api/stream/abcd/multivariant.m3u8?t=playback-token'
-const CHANGED_TO_AUTO_NOTICE =
-  "This video couldn't play in its original form, so a converted version is playing. " +
-  'Quality is now set to Auto. To choose another quality, open the Quality menu.'
-const CONVERTED_NOTICE =
-  "This video couldn't play in its original form, so a converted version is playing. " +
-  'To choose another quality, open the Quality menu.'
-const AUDIO_TRACK_SWITCHED_NOTICE =
-  'The audio track you chose plays in a converted version. Quality is now set to Auto. ' +
-  'To choose another quality, open the Quality menu.'
-const DOLBY_VISION_NOTICE =
-  "This video couldn't play in Dolby Vision, so the HDR version is playing."
 const ORIGINAL_EXPLANATION =
   "This video couldn't play in its original form, so Quality changed to Auto."
 const FIXED_QUALITY_EXPLANATION =
   "This video couldn't play in its original form at this quality, so a converted version is playing."
 const DOLBY_VISION_EXPLANATION =
   "This video couldn't play in Dolby Vision, so the HDR version is playing."
+const AUDIO_TRACK_SWITCHED_EXPLANATION =
+  'The audio track you chose plays in a converted version, so Quality changed to Auto.'
+const HDR_NOT_PLAYED_EXPLANATION =
+  "This video couldn't play in HDR at this quality, so it's playing in SDR."
+const HDR_NOT_KEPT_EXPLANATION =
+  "This video couldn't stay in HDR at this quality, so it's playing in SDR."
+const AUTO_HDR_NOT_KEPT_EXPLANATION = "This video couldn't stay in HDR, so it's playing in SDR."
+const AUDIO_SWITCH_REFUSED = "The audio track you chose couldn't play, so the audio didn't change."
 const ORIGINAL_CHANGED_TO_AUTO: Partial<PlaybackChoices> = {
   requestedChoice: 'ORIGINAL',
   playbackChoice: 'AUTO',
@@ -187,7 +184,10 @@ function servePlaybackChoices({
   videoRange = () => 'SDR',
 }: {
   playing?: (requested: VideoQuality) => VideoQuality
-  formatChange?: (requested: VideoQuality) => PlaybackFormatChange | null
+  formatChange?: (
+    requested: VideoQuality,
+    options: StreamingOptionsInput,
+  ) => PlaybackFormatChange | null
   offered?: VideoQuality[]
   sourceRange?: VideoRange
   videoRange?: (options: StreamingOptionsInput) => VideoRange
@@ -216,7 +216,7 @@ function servePlaybackChoices({
               sourceRange,
               requestedChoice: requested,
               playbackChoice: playing(requested),
-              formatChange: formatChange(requested),
+              formatChange: formatChange(requested, options ?? {}),
               offeredChoices: offered,
             }),
             userErrors: [],
@@ -282,6 +282,45 @@ function replaceTheRefusedStream(
   )
 }
 
+// The status read after a failed segment answers the playback session `id` on another stream,
+// with `choices`.
+function moveToAnotherStream(
+  id: string,
+  choices: Partial<PlaybackChoices> & { sourceRange?: VideoRange },
+  stream: Parameters<typeof readyPlaybackSession>[0]['streamSession'] = replacementStream(2),
+) {
+  server.use(
+    graphql.query('PlaybackSession', () =>
+      HttpResponse.json({
+        data: { playbackSession: readyPlaybackSession({ id, streamSession: stream, ...choices }) },
+      }),
+    ),
+  )
+  const onError = hls.on.mock.calls.findLast(([event]) => event === 'hlsError')?.[1]
+  act(() => onError?.('hlsError', { fatal: false, type: 'networkError', response: { code: 503 } }))
+}
+
+// The status read after a failed segment answers the playback session `id`, with `choices`, while
+// its next stream is still pending: the player releases the failed stream and waits.
+function holdTheNextStreamPending(id: string, choices: Partial<PlaybackChoices>) {
+  const next = replacementStream(2)
+  server.use(
+    graphql.query('PlaybackSession', () =>
+      HttpResponse.json({
+        data: {
+          playbackSession: {
+            ...readyPlaybackSession({ id, streamSession: next, ...choices }),
+            currentFormatAttempt: {
+              __typename: 'PendingPlaybackFormatAttempt',
+              streamSessionId: next.id,
+            },
+          },
+        },
+      }),
+    ),
+  )
+}
+
 // What a player raises when the browser cannot play the stream's codecs, on the latest stream.
 function refuseTheStreamsFormat() {
   const onError = hls.on.mock.calls.findLast(([event]) => event === 'hlsError')?.[1]
@@ -295,18 +334,90 @@ function refuseTheStreamsFormat() {
   )
 }
 
-function notice(): HTMLElement {
-  return screen.getByRole('status')
+function qualityChip(): HTMLElement {
+  return screen.getByRole('button', { name: /^Quality/ })
+}
+
+function audioChip(): HTMLElement {
+  return screen.getByRole('button', { name: /^Audio/ })
+}
+
+// A control carries a caution while the symbol shows on it and its description is the message.
+function expectCaution(chip: HTMLElement, message: string) {
+  expect(within(chip).queryByTestId('caution-badge')).toBeInTheDocument()
+  expect(chip).toHaveAccessibleDescription(message)
+}
+
+function expectNoCaution(chip: HTMLElement) {
+  expect(within(chip).queryByTestId('caution-badge')).not.toBeInTheDocument()
+  expect(chip).toHaveAccessibleDescription('')
+}
+
+// The caution symbol in an open picker's heading, which the message names.
+function headingCaution(message: string): HTMLElement {
+  return screen.getByRole('button', { name: message })
+}
+
+// Every text on the page that shows the message. The control's description and the announcement
+// hold the words out of sight, so they are left out.
+function messageTexts(message: string): HTMLElement[] {
+  return screen.queryAllByText(message, { ignore: '[hidden], output *' })
+}
+
+// The tooltip that shows the message beside the menu.
+function messageTooltip(message: string): HTMLElement {
+  const [tooltip, ...others] = messageTexts(message)
+  expect(others).toEqual([])
+  assert(tooltip, `no text holds "${message}"`)
+  return tooltip
+}
+
+function expectMessageOutOfSight(message: string) {
+  for (const text of messageTexts(message)) {
+    expect(text).not.toBeVisible()
+  }
+}
+
+// An open picker carries the caution in its heading, outside the rows. The message is the menu's
+// description, and nothing in sight shows it until the viewer points at, focuses or taps the symbol.
+function expectCautionInHeading(menu: HTMLElement, message: string) {
+  expect(menu).not.toContainElement(headingCaution(message))
+  expect(menu).toHaveAccessibleDescription(message)
+  expectMessageOutOfSight(message)
+}
+
+// Every text that the status region, which announces politely, announces from here on, in order. A
+// text that stays in the region is announced once.
+function watchAnnouncements(): string[] {
+  const announced: string[] = []
+  const region = screen.getByRole('status')
+  new MutationObserver((records) => {
+    for (const { addedNodes } of records) {
+      announced.push(...Array.from(addedNodes, (node) => node.textContent ?? ''))
+    }
+  }).observe(region, { childList: true, subtree: true })
+  return announced
+}
+
+// MutationObserver reports after the task that changed the region.
+async function settledAnnouncements(announced: string[]): Promise<string[]> {
+  await act(async () => undefined)
+  return announced
 }
 
 async function openQualityMenu(user: UserEvent): Promise<HTMLElement> {
-  return openPicker(user, screen.getByRole('button', { name: /^Quality/ }))
+  return openPicker(user, qualityChip())
 }
 
+// Each marked row's label, with the explanation its mark carries, or with "the message" when the
+// caution in the menu's heading explains it instead.
 function marksIn(menu: HTMLElement): string[] {
   return within(menu)
-    .queryAllByRole('img')
-    .map((mark) => `${mark.closest('[role="menuitemradio"]')?.textContent}: ${mark.ariaLabel}`)
+    .queryAllByTestId('mark')
+    .map((mark) => {
+      const explanation = within(mark).queryByRole('img')?.ariaLabel ?? 'the message'
+      return `${mark.closest('[role="menuitemradio"]')?.textContent}: ${explanation}`
+    })
 }
 
 // The stream at `streamUrl` attached, loaded and shows its first frame.
@@ -792,6 +903,25 @@ function tap(target: Element, { mouseTarget = target, clientX = 0 } = {}) {
     fireEvent.mouseUp(mouseTarget, { clientX })
   }
   fireEvent.click(mouseTarget, { clientX })
+}
+
+// A screen that takes touch and a mouse gives each pointer its own id. A finger that lifts, or that
+// the browser takes back to scroll, leaves what it touched for no element.
+const SECOND_FINGER = { pointerType: 'touch', pointerId: 2 }
+
+function tapWithASecondFinger(target: Element) {
+  fireEvent.pointerOver(target, SECOND_FINGER)
+  fireEvent.pointerDown(target, SECOND_FINGER)
+  fireEvent.pointerUp(target, SECOND_FINGER)
+  fireEvent.pointerOut(target, SECOND_FINGER)
+  fireEvent.click(target)
+}
+
+function scrollWithASecondFinger(target: Element) {
+  fireEvent.pointerOver(target, SECOND_FINGER)
+  fireEvent.pointerDown(target, SECOND_FINGER)
+  fireEvent.pointerCancel(target, SECOND_FINGER)
+  fireEvent.pointerOut(target, SECOND_FINGER)
 }
 
 // Mantine's slider follows a finger through touch events; the controls watch its pointer events.
@@ -6267,7 +6397,7 @@ describe('Player', () => {
 
       expect(video.paused).toBe(true)
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-      expect(notice()).toBeEmptyDOMElement()
+      expectNoCaution(qualityChip())
     })
 
     it('shouldReportStoppedOnceWhenTheElementAlsoEndsAtTheRealEnd', async () => {
@@ -7126,7 +7256,16 @@ describe('Player', () => {
   })
 
   describe('format changes', () => {
-    it('shouldSelectAutoAndShowTheNoticeWhenOriginalsCopyFallsBackToAnEncode', async () => {
+    // Original falls back to Auto, then the viewer picks 720p, which plays as asked: the caution
+    // goes, and Original keeps a mark that explains itself.
+    async function markOriginalThenPlay720p() {
+      const watched = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      await pickQuality(watched.user, '720p')
+      await showingVideo(choiceStreamUrl(3))
+      return watched
+    }
+
+    it('shouldSelectAutoAndShowTheCautionWhenOriginalsCopyFallsBackToAnEncode', async () => {
       servePlaybackChoices()
       const replacement = replacementStream(1)
       server.use(
@@ -7165,44 +7304,47 @@ describe('Player', () => {
       await showingVideo(choiceStreamUrl(1))
       await pickQuality(user, 'Original')
       await showingVideo(choiceStreamUrl(2))
-      expect(notice()).toBeEmptyDOMElement()
+      expectNoCaution(qualityChip())
 
       refuseTheStreamsFormat()
 
       await showingVideo(replacement.streamUrl)
-      expect(notice().textContent).toBe(CHANGED_TO_AUTO_NOTICE)
-      expect(screen.getByRole('button', { name: 'Quality: Auto' })).toBeInTheDocument()
+      expectCaution(screen.getByRole('button', { name: 'Quality: Auto' }), ORIGINAL_EXPLANATION)
     })
 
-    it('shouldShowTheNoticeAndSelectAutoWhenOriginalStartsWithAnEncode', async () => {
-      servePlaybackChoices({
-        playing: (requested) => (requested === 'ORIGINAL' ? 'AUTO' : requested),
-        formatChange: (requested) => (requested === 'ORIGINAL' ? 'STARTED_WITH_ENCODE' : null),
-      })
-      const { user } = renderWithProviders(
-        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
-      )
-      await showingVideo(choiceStreamUrl(1))
+    it.each(['DIRECT_PLAY_FAILED', 'STARTED_WITH_ENCODE'] as const)(
+      'shouldShowTheCautionAndSelectAutoWhenOriginalChangesToAutoFor(%s)',
+      async (change) => {
+        servePlaybackChoices({
+          playing: (requested) => (requested === 'ORIGINAL' ? 'AUTO' : requested),
+          formatChange: (requested) => (requested === 'ORIGINAL' ? change : null),
+        })
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        await showingVideo(choiceStreamUrl(1))
 
-      await pickQuality(user, 'Original')
+        await pickQuality(user, 'Original')
 
-      await showingVideo(choiceStreamUrl(2))
-      expect(notice().textContent).toBe(CHANGED_TO_AUTO_NOTICE)
-      expect(screen.getByRole('button', { name: 'Quality: Auto' })).toBeInTheDocument()
-    })
+        await showingVideo(choiceStreamUrl(2))
+        expectCaution(screen.getByRole('button', { name: 'Quality: Auto' }), ORIGINAL_EXPLANATION)
+      },
+    )
 
-    it('shouldKeepTheFixedQualityAndOmitTheAutoSentenceWhenItsCopyFallsBack', async () => {
+    it('shouldKeepTheFixedQualityAndShowItsCautionWhenItsCopyFallsBack', async () => {
       await watchAFallback('720p', FIXED_QUALITY_CONVERTED)
 
-      expect(notice().textContent).toBe(CONVERTED_NOTICE)
-      expect(screen.getByRole('button', { name: 'Quality: 720p' })).toBeInTheDocument()
+      expectCaution(
+        screen.getByRole('button', { name: 'Quality: 720p' }),
+        FIXED_QUALITY_EXPLANATION,
+      )
     })
 
     it.each([
       { picked: 'Original', requested: 'ORIGINAL' },
       { picked: '720p', requested: 'HIGH_720P' },
     ] as const)(
-      'shouldShowTheDolbyVisionNoticeAndKeepTheSelectionWhenDolbyVisionIsStripped(picked: $picked)',
+      'shouldShowTheDolbyVisionCautionAndKeepTheSelectionWhenDolbyVisionIsStripped(picked: $picked)',
       async ({ picked, requested }) => {
         await watchAFallback(picked, {
           requestedChoice: requested,
@@ -7210,12 +7352,14 @@ describe('Player', () => {
           formatChange: 'DOLBY_VISION_STRIPPED',
         })
 
-        expect(notice().textContent).toBe(DOLBY_VISION_NOTICE)
-        expect(screen.getByRole('button', { name: `Quality: ${picked}` })).toBeInTheDocument()
+        expectCaution(
+          screen.getByRole('button', { name: `Quality: ${picked}` }),
+          DOLBY_VISION_EXPLANATION,
+        )
       },
     )
 
-    it('shouldHideTheNoticeAfterSixSecondsWithoutPausingPlayback', async () => {
+    it('shouldKeepTheCautionWithoutPausingPlaybackWhenAMinutePasses', async () => {
       servePlaybackChoices()
       replaceTheRefusedStream(FIXED_QUALITY_CONVERTED)
       const { user } = renderWithProviders(
@@ -7231,53 +7375,38 @@ describe('Player', () => {
       refuseTheStreamsFormat()
       await showingVideo(replacementStream(1).streamUrl)
       loadMetadata(video)
-      expect(notice().textContent).toBe(CONVERTED_NOTICE)
+      expectCaution(qualityChip(), FIXED_QUALITY_EXPLANATION)
 
-      await act(async () => vi.advanceTimersByTimeAsync(5_900))
-      expect(notice().textContent).toBe(CONVERTED_NOTICE)
-      await act(async () => vi.advanceTimersByTimeAsync(100))
-      expect(notice()).toBeEmptyDOMElement()
+      await act(async () => vi.advanceTimersByTimeAsync(60_000))
+
+      expectCaution(qualityChip(), FIXED_QUALITY_EXPLANATION)
       expect(video.paused).toBe(false)
     })
 
-    it('shouldShowTheNoticeOnceWhenTheSameChangeMovesToAnotherStream', async () => {
+    it('shouldAnnounceTheCautionOnceWithoutMovingFocusWhenTheSameChangeMovesToAnotherStream', async () => {
       servePlaybackChoices()
       replaceTheRefusedStream(ORIGINAL_CHANGED_TO_AUTO)
-      server.use(
-        graphql.query('PlaybackSession', () =>
-          HttpResponse.json({
-            data: {
-              playbackSession: readyPlaybackSession({
-                id: 'playback-2',
-                streamSession: replacementStream(2),
-                ...ORIGINAL_CHANGED_TO_AUTO,
-              }),
-            },
-          }),
-        ),
-      )
       const { user } = renderWithProviders(
         <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
       )
+      const announced = watchAnnouncements()
       await showingVideo(choiceStreamUrl(1))
       await pickQuality(user, 'Original')
       await showingVideo(choiceStreamUrl(2))
-      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      const focused = document.activeElement
       refuseTheStreamsFormat()
       await showingVideo(replacementStream(1).streamUrl)
-      await act(async () => vi.advanceTimersByTimeAsync(6_000))
-      expect(notice()).toBeEmptyDOMElement()
+      expect(await settledAnnouncements(announced)).toEqual([ORIGINAL_EXPLANATION])
 
-      const onError = hls.on.mock.calls.findLast(([event]) => event === 'hlsError')?.[1]
-      act(() =>
-        onError?.('hlsError', { fatal: false, type: 'networkError', response: { code: 503 } }),
-      )
+      moveToAnotherStream('playback-2', ORIGINAL_CHANGED_TO_AUTO)
 
       await showingVideo(replacementStream(2).streamUrl)
-      expect(notice()).toBeEmptyDOMElement()
+      expect(await settledAnnouncements(announced)).toEqual([ORIGINAL_EXPLANATION])
+      expectCaution(qualityChip(), ORIGINAL_EXPLANATION)
+      expect(document.activeElement).toBe(focused)
     })
 
-    it('shouldReplaceTheNoticeAndStartItsTimeAgainWhenTheCopyWithoutDolbyVisionAlsoFallsBack', async () => {
+    it('shouldReplaceTheCautionsMessageAndAnnounceItWhenTheCopyWithoutDolbyVisionAlsoFallsBack', async () => {
       servePlaybackChoices()
       replaceTheRefusedStream({
         requestedChoice: 'ORIGINAL',
@@ -7287,23 +7416,23 @@ describe('Player', () => {
       const { user } = renderWithProviders(
         <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
       )
+      const announced = watchAnnouncements()
       await showingVideo(choiceStreamUrl(1))
       await pickQuality(user, 'Original')
       await showingVideo(choiceStreamUrl(2))
-      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
       refuseTheStreamsFormat()
       await showingVideo(replacementStream(1).streamUrl)
-      expect(notice().textContent).toBe(DOLBY_VISION_NOTICE)
-      await act(async () => vi.advanceTimersByTimeAsync(4_000))
+      expectCaution(qualityChip(), DOLBY_VISION_EXPLANATION)
       replaceTheRefusedStream(ORIGINAL_CHANGED_TO_AUTO, replacementStream(2))
 
       refuseTheStreamsFormat()
       await showingVideo(replacementStream(2).streamUrl)
 
-      expect(notice().textContent).toBe(CHANGED_TO_AUTO_NOTICE)
-      await act(async () => vi.advanceTimersByTimeAsync(5_900))
-      expect(notice().textContent).toBe(CHANGED_TO_AUTO_NOTICE)
-      expect(screen.getByRole('button', { name: 'Quality: Auto' })).toBeInTheDocument()
+      expectCaution(screen.getByRole('button', { name: 'Quality: Auto' }), ORIGINAL_EXPLANATION)
+      expect(await settledAnnouncements(announced)).toEqual([
+        DOLBY_VISION_EXPLANATION,
+        ORIGINAL_EXPLANATION,
+      ])
     })
 
     it.each([
@@ -7311,13 +7440,13 @@ describe('Player', () => {
         picked: 'Original',
         choices: ORIGINAL_CHANGED_TO_AUTO,
         selected: 'Auto',
-        mark: `Original: ${ORIGINAL_EXPLANATION}`,
+        message: ORIGINAL_EXPLANATION,
       },
       {
         picked: '720p',
         choices: FIXED_QUALITY_CONVERTED,
         selected: '720p',
-        mark: `720p: ${FIXED_QUALITY_EXPLANATION}`,
+        message: FIXED_QUALITY_EXPLANATION,
       },
       {
         picked: 'Original',
@@ -7327,21 +7456,186 @@ describe('Player', () => {
           formatChange: 'DOLBY_VISION_STRIPPED',
         },
         selected: 'Original',
-        mark: `Original: ${DOLBY_VISION_EXPLANATION}`,
+        message: DOLBY_VISION_EXPLANATION,
       },
     ] as const)(
-      'shouldMarkTheChoiceWhoseOutputFellBackWithItsExplanation(picked: $picked, plays: $selected)',
-      async ({ picked, choices, selected, mark }) => {
+      'shouldPutTheCautionInTheHeadingAndMarkItsChoiceWhenTheMenuOpens(picked: $picked, plays: $selected)',
+      async ({ picked, choices, selected, message }) => {
         const { user } = await watchAFallback(picked, choices)
 
         const menu = await openQualityMenu(user)
 
-        expect(marksIn(menu)).toEqual([mark])
+        expectCautionInHeading(menu, message)
+        expect(marksIn(menu)).toEqual([`${picked}: the message`])
         expect(within(menu).getByRole('menuitemradio', { checked: true }).textContent).toBe(
           selected,
         )
       },
     )
+
+    it('shouldKeepTheMessageOutOfSightAndFocusTheSelectedRowWhenTheKeyboardOpensTheMenu', async () => {
+      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      qualityChip().focus()
+
+      await user.keyboard('{Enter}')
+
+      const menu = screen.getByRole('menu')
+      expectCautionInHeading(menu, ORIGINAL_EXPLANATION)
+      expect(within(menu).getByRole('menuitemradio', { name: 'Auto' })).toHaveFocus()
+    })
+
+    it('shouldShowTheMessageWhenThePointerHoversTheCautionInTheHeading', async () => {
+      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      await openQualityMenu(user)
+
+      await user.hover(headingCaution(ORIGINAL_EXPLANATION))
+      expect(messageTooltip(ORIGINAL_EXPLANATION)).toBeVisible()
+
+      await user.unhover(headingCaution(ORIGINAL_EXPLANATION))
+      expectMessageOutOfSight(ORIGINAL_EXPLANATION)
+    })
+
+    it('shouldShowTheMessageWhenKeyboardFocusIsOnTheCautionInTheHeading', async () => {
+      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      const menu = await openQualityMenu(user)
+
+      await user.tab({ shift: true })
+      expect(headingCaution(ORIGINAL_EXPLANATION)).toHaveFocus()
+      expect(messageTooltip(ORIGINAL_EXPLANATION)).toBeVisible()
+
+      await user.tab()
+      expect(within(menu).getByRole('menuitemradio', { name: 'Auto' })).toHaveFocus()
+      expectMessageOutOfSight(ORIGINAL_EXPLANATION)
+    })
+
+    it('shouldCloseTheMenuWhenShiftTabLeavesTheCautionInTheHeadingForTheChip', async () => {
+      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      await openQualityMenu(user)
+      await user.tab({ shift: true })
+
+      await user.tab({ shift: true })
+
+      expect(qualityChip()).toHaveFocus()
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+      expect(qualityChip()).toHaveAttribute('aria-expanded', 'false')
+    })
+
+    it('shouldKeepTheMessageWhenThePointerMovesFromItBackOntoTheMenusName', async () => {
+      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      const menu = await openQualityMenu(user)
+      await user.hover(headingCaution(ORIGINAL_EXPLANATION))
+      const tooltip = messageTooltip(ORIGINAL_EXPLANATION)
+      moveMouse(tooltip, headingCaution(ORIGINAL_EXPLANATION))
+      const name = document.getElementById(menu.getAttribute('aria-labelledby') ?? '')
+      assert(name, 'the menu has no name')
+
+      moveMouse(name, tooltip)
+
+      expect(tooltip).toBeVisible()
+    })
+
+    // WCAG 2.2 asks for a way to hide what hover or focus shows without moving either (1.4.13).
+    it.each([
+      {
+        shownBy: 'focus',
+        showTheMessage: (user: UserEvent) => user.tab({ shift: true }),
+      },
+      {
+        shownBy: 'hover',
+        showTheMessage: (user: UserEvent) => user.hover(headingCaution(ORIGINAL_EXPLANATION)),
+      },
+    ])(
+      'shouldHideTheMessageAndKeepTheMenuOpenWhenTheViewerPressesEscapeWhileItShows(shown by: $shownBy)',
+      async ({ showTheMessage }) => {
+        const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+        const menu = await openQualityMenu(user)
+        await showTheMessage(user)
+        const focused = document.activeElement
+        expect(messageTooltip(ORIGINAL_EXPLANATION)).toBeVisible()
+
+        await user.keyboard('{Escape}')
+
+        expectMessageOutOfSight(ORIGINAL_EXPLANATION)
+        expect(screen.getByRole('menu')).toBe(menu)
+        expect(document.activeElement).toBe(focused)
+      },
+    )
+
+    it('shouldCloseTheMenuWhenTheViewerPressesEscapeAgainAfterEscapeHidTheMessage', async () => {
+      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      await openQualityMenu(user)
+      await user.tab({ shift: true })
+      await user.keyboard('{Escape}')
+
+      await user.keyboard('{Escape}')
+
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+      expect(qualityChip()).toHaveFocus()
+    })
+
+    it('shouldShowTheMessageWithoutPickingAChoiceWhenTheViewerTapsTheCautionInTheHeading', async () => {
+      const { user, log } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      const menu = await openQualityMenu(user)
+
+      tap(headingCaution(ORIGINAL_EXPLANATION))
+
+      expect(messageTooltip(ORIGINAL_EXPLANATION)).toBeVisible()
+      expect(screen.getByRole('menu')).toBe(menu)
+      expect(log.filter((entry) => entry.startsWith('create'))).toEqual([
+        'create AUTO',
+        'create ORIGINAL',
+      ])
+    })
+
+    it('shouldKeepTheMessageOutOfSightWhenThePointerOrFocusIsOnTheRowThatTheMessageExplains', async () => {
+      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      const menu = await openQualityMenu(user)
+      const original = within(menu).getByRole('menuitemradio', { name: 'Original' })
+
+      await user.hover(original)
+      await user.keyboard('{Home}')
+
+      expect(original).toHaveFocus()
+      expectMessageOutOfSight(ORIGINAL_EXPLANATION)
+    })
+
+    it('shouldKeepTheCautionWhenTheViewerOpensAndClosesTheQualityMenu', async () => {
+      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+
+      await openQualityMenu(user)
+      await user.keyboard('{Escape}')
+
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+      expectCaution(qualityChip(), ORIGINAL_EXPLANATION)
+    })
+
+    it('shouldOpenTheQualityMenuThatCarriesACautionWhenItOffersOneChoice', async () => {
+      servePlaybackChoices({ offered: ['AUTO'], formatChange: () => 'HDR_NOT_KEPT' })
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+      )
+      await showingVideo(choiceStreamUrl(1))
+      expect(qualityChip()).not.toHaveAttribute('aria-disabled')
+
+      const menu = await openQualityMenu(user)
+
+      expectCautionInHeading(menu, AUTO_HDR_NOT_KEPT_EXPLANATION)
+      expect(marksIn(menu)).toEqual(['Auto: the message'])
+    })
+
+    it('shouldOpenNoMenuWhenTheQualityChipCarriesACautionWhileTheNextStreamStarts', async () => {
+      const { user } = await watchAFallback('720p', FIXED_QUALITY_CONVERTED)
+      holdTheNextStreamPending('playback-2', FIXED_QUALITY_CONVERTED)
+      const released = hls.destroy.mock.calls.length + 1
+      answerTheNextSegmentWith503({ fatal: false })
+      await waitFor(() => expect(hls.destroy).toHaveBeenCalledTimes(released))
+
+      await user.click(qualityChip())
+
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+      expect(qualityChip()).toHaveAttribute('aria-disabled', 'true')
+      expectCaution(qualityChip(), FIXED_QUALITY_EXPLANATION)
+    })
 
     it('shouldReplaceTheMarksExplanationWhenTheCopyWithoutDolbyVisionAlsoFallsBack', async () => {
       const { user } = await watchAFallback('Original', {
@@ -7350,18 +7644,20 @@ describe('Player', () => {
         formatChange: 'DOLBY_VISION_STRIPPED',
       })
       replaceTheRefusedStream(ORIGINAL_CHANGED_TO_AUTO, replacementStream(2))
-
       refuseTheStreamsFormat()
       await showingVideo(replacementStream(2).streamUrl)
+
+      await pickQuality(user, '720p')
+      await showingVideo(choiceStreamUrl(3))
 
       expect(marksIn(await openQualityMenu(user))).toEqual([`Original: ${ORIGINAL_EXPLANATION}`])
     })
 
     it('shouldReadTheExplanationOnceWithTheMarkedRowForAssistiveTechnology', async () => {
-      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      const { user } = await markOriginalThenPlay720p()
       const menu = await openQualityMenu(user)
 
-      await user.keyboard('{ArrowUp}')
+      await user.keyboard('{Home}')
 
       const row = within(menu).getByRole('menuitemradio', {
         name: `Original. ${ORIGINAL_EXPLANATION}`,
@@ -7371,11 +7667,11 @@ describe('Player', () => {
     })
 
     it('shouldExplainTheMarkWhileKeyboardFocusIsOnTheMarkedRow', async () => {
-      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      const { user } = await markOriginalThenPlay720p()
       await openQualityMenu(user)
       expect(screen.getByText(ORIGINAL_EXPLANATION)).not.toBeVisible()
 
-      await user.keyboard('{ArrowUp}')
+      await user.keyboard('{Home}')
       expect(screen.getByText(ORIGINAL_EXPLANATION)).toBeVisible()
 
       await user.keyboard('{ArrowDown}')
@@ -7383,7 +7679,7 @@ describe('Player', () => {
     })
 
     it('shouldExplainTheMarkWhileThePointerHoversTheMarkedRow', async () => {
-      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      const { user } = await markOriginalThenPlay720p()
       const menu = await openQualityMenu(user)
       const row = within(menu).getByRole('menuitemradio', { name: /^Original/ })
 
@@ -7394,8 +7690,222 @@ describe('Player', () => {
       expect(screen.getByText(ORIGINAL_EXPLANATION)).not.toBeVisible()
     })
 
+    // WCAG 2.2 asks that the pointer can move onto what its hover shows (1.4.13).
+    it('shouldKeepTheMarksExplanationWhileThePointerMovesFromTheMarkedRowOntoIt', async () => {
+      const { user } = await markOriginalThenPlay720p()
+      const menu = await openQualityMenu(user)
+      const row = within(menu).getByRole('menuitemradio', { name: /^Original/ })
+      await user.hover(row)
+      const explanation = screen.getByText(ORIGINAL_EXPLANATION)
+
+      moveMouse(explanation, row)
+
+      expect(explanation).toBeVisible()
+    })
+
+    it('shouldHideTheMarksExplanationWhenThePointerLeavesItForTheVideo', async () => {
+      const { user } = await markOriginalThenPlay720p()
+      const menu = await openQualityMenu(user)
+      const row = within(menu).getByRole('menuitemradio', { name: /^Original/ })
+      await user.hover(row)
+      const explanation = screen.getByText(ORIGINAL_EXPLANATION)
+      moveMouse(explanation, row)
+
+      moveMouse(renderedVideo(), explanation)
+
+      expect(explanation).not.toBeVisible()
+    })
+
+    it('shouldKeepTheMarksExplanationWhenThePointerMovesFromItBackOntoTheMarkedRow', async () => {
+      const { user } = await markOriginalThenPlay720p()
+      const menu = await openQualityMenu(user)
+      const row = within(menu).getByRole('menuitemradio', { name: /^Original/ })
+      await user.hover(row)
+      const explanation = screen.getByText(ORIGINAL_EXPLANATION)
+      moveMouse(explanation, row)
+
+      moveMouse(row, explanation)
+
+      expect(explanation).toBeVisible()
+    })
+
+    // Nothing hovers a touch screen, so a finger ends no hover. What the mouse's hover shows stays
+    // until the mouse leaves (WCAG 2.2, 1.4.13).
+    it('shouldKeepTheMarksExplanationWhileTheMouseRestsOnItAndASecondFingerTapsIt', async () => {
+      const { user } = await markOriginalThenPlay720p()
+      const menu = await openQualityMenu(user)
+      const row = within(menu).getByRole('menuitemradio', { name: /^Original/ })
+      await user.hover(row)
+      const explanation = screen.getByText(ORIGINAL_EXPLANATION)
+      moveMouse(explanation, row)
+
+      tapWithASecondFinger(explanation)
+
+      expect(explanation).toBeVisible()
+    })
+
+    it('shouldKeepTheMarksExplanationWhileTheMouseRestsOnTheMarkedRowAndASecondFingerScrollsFromIt', async () => {
+      const { user } = await markOriginalThenPlay720p()
+      const menu = await openQualityMenu(user)
+      const row = within(menu).getByRole('menuitemradio', { name: /^Original/ })
+      await user.hover(row)
+
+      scrollWithASecondFinger(row)
+
+      expect(screen.getByText(ORIGINAL_EXPLANATION)).toBeVisible()
+    })
+
+    describe('when the pointer leaves the marked row', () => {
+      // jsdom lays nothing out. Every box takes the same 1000 by 40 pixels, so the path from the
+      // marked row's top edge onto its explanation covers that box and nothing outside it.
+      function layOutEveryBoxInOnePlace() {
+        vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
+          ...{ x: 0, y: 0, left: 0, top: 0, right: 1000, bottom: 40, width: 1000, height: 40 },
+          toJSON: () => ({}),
+        })
+      }
+
+      // The pointer rests on Original, then leaves its top edge for Auto.
+      async function leaveOriginalForAuto() {
+        const { user } = await markOriginalThenPlay720p()
+        const menu = await openQualityMenu(user)
+        const original = within(menu).getByRole('menuitemradio', { name: /^Original/ })
+        const auto = within(menu).getByRole('menuitemradio', { name: 'Auto' })
+        await user.hover(original)
+        layOutEveryBoxInOnePlace()
+        const exit = { pointerType: 'mouse', clientX: 500, clientY: 0 }
+        fireEvent.pointerOut(original, { ...exit, relatedTarget: auto })
+        fireEvent.pointerOver(auto, { ...exit, relatedTarget: original })
+        return auto
+      }
+
+      it('shouldKeepTheMarksExplanationWhileThePointerCrossesThatRowOnItsWayOntoTheExplanation', async () => {
+        const auto = await leaveOriginalForAuto()
+
+        fireEvent.pointerMove(auto, { pointerType: 'mouse', clientX: 500, clientY: 20 })
+
+        expect(screen.getByText(ORIGINAL_EXPLANATION)).toBeVisible()
+      })
+
+      it('shouldHideTheMarksExplanationWhenThePointerStraysOffItsWayOntoTheExplanation', async () => {
+        const auto = await leaveOriginalForAuto()
+
+        fireEvent.pointerMove(auto, { pointerType: 'mouse', clientX: 500, clientY: 100 })
+
+        expect(screen.getByText(ORIGINAL_EXPLANATION)).not.toBeVisible()
+      })
+
+      // A pen that leaves hover range, like a pointer that leaves the page, leaves for no element
+      // and moves no more until it comes back (Pointer Events, "Suppressing a pointer event
+      // stream").
+      it('shouldHideTheMarksExplanationWhenThePenLeavesHoverRangeOverTheMarkedRow', async () => {
+        const { user } = await markOriginalThenPlay720p()
+        const menu = await openQualityMenu(user)
+        const original = within(menu).getByRole('menuitemradio', { name: /^Original/ })
+        fireEvent.pointerOver(original, { pointerType: 'pen' })
+        layOutEveryBoxInOnePlace()
+
+        fireEvent.pointerOut(original, { pointerType: 'pen', clientX: 500, clientY: 0 })
+
+        expect(screen.getByText(ORIGINAL_EXPLANATION)).not.toBeVisible()
+      })
+
+      // A screen that takes touch and a mouse sends both pointers' events, each with its own id.
+      it.each([
+        {
+          touch: 'moves off the way',
+          send: (auto: Element) => fireEvent.pointerMove(auto, { ...SECOND_FINGER, clientY: 100 }),
+        },
+        {
+          touch: 'leaves the page',
+          send: (auto: Element) => fireEvent.pointerOut(auto, SECOND_FINGER),
+        },
+        {
+          touch: 'taps the explanation',
+          send: () => tapWithASecondFinger(screen.getByText(ORIGINAL_EXPLANATION)),
+        },
+      ])(
+        'shouldKeepTheMarksExplanationWhileTheMouseIsOnItsWayAndATouch(touch: $touch)',
+        async ({ send }) => {
+          const auto = await leaveOriginalForAuto()
+
+          send(auto)
+
+          expect(screen.getByText(ORIGINAL_EXPLANATION)).toBeVisible()
+        },
+      )
+
+      it('shouldHideTheMarksExplanationWhenTheMouseLeavesThePageAfterAPenCrossedTheMarkedRow', async () => {
+        const auto = await leaveOriginalForAuto()
+        const original = screen.getByRole('menuitemradio', { name: /^Original/ })
+        const pen = { pointerType: 'pen', pointerId: 3, clientX: 500, clientY: 0 }
+        fireEvent.pointerOver(original, pen)
+        fireEvent.pointerOut(original, { ...pen, relatedTarget: auto })
+
+        fireEvent.pointerOut(auto, { pointerType: 'mouse', clientX: 500, clientY: 20 })
+
+        expect(screen.getByText(ORIGINAL_EXPLANATION)).not.toBeVisible()
+      })
+
+      it('shouldHideTheMarksExplanationWhenThePointerLeavesThePageOnItsWayOntoTheExplanation', async () => {
+        const auto = await leaveOriginalForAuto()
+
+        fireEvent.pointerOut(auto, { pointerType: 'mouse', clientX: 500, clientY: 20 })
+
+        expect(screen.getByText(ORIGINAL_EXPLANATION)).not.toBeVisible()
+      })
+    })
+
+    // WCAG 2.2 asks for a way to hide what hover or focus shows without moving either (1.4.13).
+    it.each([
+      { shownBy: 'focus', showTheExplanation: (user: UserEvent) => user.keyboard('{Home}') },
+      {
+        shownBy: 'hover',
+        showTheExplanation: (user: UserEvent) =>
+          user.hover(screen.getByRole('menuitemradio', { name: /^Original/ })),
+      },
+    ])(
+      'shouldHideTheMarksExplanationAndKeepTheMenuOpenWhenTheViewerPressesEscapeWhileItShows(shown by: $shownBy)',
+      async ({ showTheExplanation }) => {
+        const { user } = await markOriginalThenPlay720p()
+        const menu = await openQualityMenu(user)
+        await showTheExplanation(user)
+        const focused = document.activeElement
+        expect(screen.getByText(ORIGINAL_EXPLANATION)).toBeVisible()
+
+        await user.keyboard('{Escape}')
+
+        expect(screen.getByText(ORIGINAL_EXPLANATION)).not.toBeVisible()
+        expect(screen.getByRole('menu')).toBe(menu)
+        expect(document.activeElement).toBe(focused)
+      },
+    )
+
+    it('shouldCloseTheMenuWhenTheViewerPressesEscapeAgainAfterEscapeHidTheMarksExplanation', async () => {
+      const { user } = await markOriginalThenPlay720p()
+      await openQualityMenu(user)
+      await user.keyboard('{Home}{Escape}')
+
+      await user.keyboard('{Escape}')
+
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+      expect(qualityChip()).toHaveFocus()
+    })
+
+    // Nothing hovers a touch screen: a tap on the mark explains it, and a tap elsewhere picks the row.
+    it('shouldShowNoExplanationWhileAFingerRestsOnTheMarkedRowOutsideItsMark', async () => {
+      const { user } = await markOriginalThenPlay720p()
+      const menu = await openQualityMenu(user)
+      const row = within(menu).getByRole('menuitemradio', { name: /^Original/ })
+
+      fireEvent.pointerOver(row, { pointerType: 'touch' })
+      fireEvent.pointerDown(row, { pointerType: 'touch' })
+
+      expect(screen.getByText(ORIGINAL_EXPLANATION)).not.toBeVisible()
+    })
+
     it('shouldExplainTheMarkOnATapWithoutPickingItsChoice', async () => {
-      const { user, log } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      const { user, log } = await markOriginalThenPlay720p()
       const menu = await openQualityMenu(user)
       const row = within(menu).getByRole('menuitemradio', { name: /^Original/ })
 
@@ -7406,7 +7916,19 @@ describe('Player', () => {
       expect(log.filter((entry) => entry.startsWith('create'))).toEqual([
         'create AUTO',
         'create ORIGINAL',
+        'create HIGH_720P',
       ])
+    })
+
+    it('shouldPickTheRowWhenTheViewerTapsTheMarkThatTheMessageExplains', async () => {
+      const { user, log } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      const menu = await openQualityMenu(user)
+      const row = within(menu).getByRole('menuitemradio', { name: 'Original' })
+
+      tap(within(row).getByTestId('mark'))
+
+      await showingVideo(choiceStreamUrl(3))
+      expect(log.slice(-2)).toEqual(['destroy playback-2', 'create ORIGINAL'])
     })
 
     it.each([
@@ -7424,29 +7946,26 @@ describe('Player', () => {
         },
       },
     ])('shouldPickTheMarkedChoiceOn($way)', async ({ press }) => {
-      const { user, log } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      const { user, log } = await markOriginalThenPlay720p()
       const menu = await openQualityMenu(user)
 
       await press(within(menu).getByRole('menuitemradio', { name: /^Original/ }), user)
 
-      await showingVideo(choiceStreamUrl(3))
-      expect(log.slice(-2)).toEqual(['destroy playback-2', 'create ORIGINAL'])
+      await showingVideo(choiceStreamUrl(4))
+      expect(log.slice(-2)).toEqual(['destroy playback-3', 'create ORIGINAL'])
     })
 
     it('shouldStartOriginalAfreshWhenTheViewerPicksItAgainAfterAFallback', async () => {
       const { user, log } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
 
-      await pickQuality(user, `Original. ${ORIGINAL_EXPLANATION}`)
+      await pickQuality(user, 'Original')
 
       await showingVideo(choiceStreamUrl(3))
       expect(log.slice(-2)).toEqual(['destroy playback-2', 'create ORIGINAL'])
     })
 
     it('shouldKeepTheMarkBesideOriginalWhenTheViewerPicksAFixedQualityAfterAFallback', async () => {
-      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
-
-      await pickQuality(user, '720p')
-      await showingVideo(choiceStreamUrl(3))
+      const { user } = await markOriginalThenPlay720p()
 
       const menu = await openQualityMenu(user)
       expect(marksIn(menu)).toEqual([`Original: ${ORIGINAL_EXPLANATION}`])
@@ -7456,26 +7975,26 @@ describe('Player', () => {
     it('shouldClearTheMarkWhenThePickedOriginalPlaysWithoutAFallback', async () => {
       const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
 
-      await pickQuality(user, `Original. ${ORIGINAL_EXPLANATION}`)
+      await pickQuality(user, 'Original')
       await showingVideo(choiceStreamUrl(3))
 
       expect(marksIn(await openQualityMenu(user))).toEqual([])
     })
 
-    it('shouldShowTheNoticeAgainWhenOriginalPickedAfreshFallsBackAgain', async () => {
+    it('shouldShowTheCautionAgainWhenOriginalPickedAfreshFallsBackAgain', async () => {
       const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
-      await pickQuality(user, `Original. ${ORIGINAL_EXPLANATION}`)
+      await pickQuality(user, 'Original')
       await showingVideo(choiceStreamUrl(3))
-      expect(notice()).toBeEmptyDOMElement()
+      expectNoCaution(qualityChip())
       replaceTheRefusedStream(ORIGINAL_CHANGED_TO_AUTO, replacementStream(2))
 
       refuseTheStreamsFormat()
 
       await showingVideo(replacementStream(2).streamUrl)
-      expect(notice().textContent).toBe(CHANGED_TO_AUTO_NOTICE)
+      expectCaution(qualityChip(), ORIGINAL_EXPLANATION)
       const menu = await openQualityMenu(user)
       expect(within(menu).getByRole('menuitemradio', { checked: true }).textContent).toBe('Auto')
-      expect(marksIn(menu)).toEqual([`Original: ${ORIGINAL_EXPLANATION}`])
+      expect(marksIn(menu)).toEqual(['Original: the message'])
     })
 
     it('shouldForgetTheMarksWhenTheNextMediaFileStarts', async () => {
@@ -7494,7 +8013,7 @@ describe('Player', () => {
       expect(marksIn(await openQualityMenu(user))).toEqual([])
     })
 
-    it('shouldShowTheNoticeOnceTheReplacementShowsItsFirstFrame', async () => {
+    it('shouldShowTheCautionOnlyWhenTheReplacementShowsItsFirstFrame', async () => {
       servePlaybackChoices()
       replaceTheRefusedStream(FIXED_QUALITY_CONVERTED)
       const { user } = renderWithProviders(
@@ -7506,14 +8025,14 @@ describe('Player', () => {
       refuseTheStreamsFormat()
       const video = await attachedVideo(replacementStream(1).streamUrl)
       loadMetadata(video)
-      expect(notice()).toBeEmptyDOMElement()
+      expectNoCaution(qualityChip())
 
       loadFirstFrame(video)
 
-      expect(notice().textContent).toBe(CONVERTED_NOTICE)
+      expectCaution(qualityChip(), FIXED_QUALITY_EXPLANATION)
     })
 
-    it('shouldShowNoNoticeWhenTheReplacementFailsBeforeItsFirstFrame', async () => {
+    it('shouldShowNoCautionWhenTheReplacementFailsBeforeItsFirstFrame', async () => {
       servePlaybackChoices()
       replaceTheRefusedStream(FIXED_QUALITY_CONVERTED)
       const { user } = renderWithProviders(
@@ -7528,19 +8047,35 @@ describe('Player', () => {
       raiseHlsFatalError()
 
       expect(await screen.findByRole('alert')).toBeInTheDocument()
-      expect(notice()).toBeEmptyDOMElement()
+      expectNoCaution(qualityChip())
     })
 
-    it('shouldClearTheNoticeWhenTheViewerPicksAnotherChoice', async () => {
+    it('shouldClearTheCautionWhenTheViewerPicksAnotherChoiceThatPlaysAsAsked', async () => {
       const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
-      expect(notice().textContent).toBe(CHANGED_TO_AUTO_NOTICE)
+      expectCaution(qualityChip(), ORIGINAL_EXPLANATION)
 
       await pickQuality(user, '720p')
+      expectNoCaution(screen.getByRole('button', { name: 'Quality: 720p' }))
+      await showingVideo(choiceStreamUrl(3))
 
-      expect(notice()).toBeEmptyDOMElement()
+      expectNoCaution(screen.getByRole('button', { name: 'Quality: 720p' }))
+      expect(screen.getByRole('status')).toBeEmptyDOMElement()
     })
 
-    it('shouldClearTheNoticeWhenTheNextMediaFileStarts', async () => {
+    it('shouldKeepTheCautionAndThePlaybackSessionWhenTheViewerPicksTheAutoThatOriginalChangedTo', async () => {
+      const { user, log } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      const sessions = [...log]
+      const released = hls.destroy.mock.calls.length
+
+      await pickQuality(user, 'Auto')
+
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+      expect(log).toEqual(sessions)
+      expect(hls.destroy).toHaveBeenCalledTimes(released)
+      expectCaution(qualityChip(), ORIGINAL_EXPLANATION)
+    })
+
+    it('shouldClearTheCautionWhenTheNextMediaFileStarts', async () => {
       servePlaybackChoices({
         playing: (requested) => (requested === 'ORIGINAL' ? 'AUTO' : requested),
         formatChange: (requested) => (requested === 'ORIGINAL' ? 'STARTED_WITH_ENCODE' : null),
@@ -7549,19 +8084,21 @@ describe('Player', () => {
       await showingVideo(choiceStreamUrl(1))
       await pickQuality(user, 'Original')
       await showingVideo(choiceStreamUrl(2))
-      expect(notice().textContent).toBe(CHANGED_TO_AUTO_NOTICE)
+      expectCaution(qualityChip(), ORIGINAL_EXPLANATION)
 
       await user.click(screen.getByRole('button', { name: 'Next' }))
 
-      expect(notice()).toBeEmptyDOMElement()
+      expectNoCaution(qualityChip())
+      expect(screen.getByRole('status')).toBeEmptyDOMElement()
     })
 
     it('shouldKeepTheMarkUntilThePickedOriginalShowsItsFirstFrame', async () => {
       const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
-      await pickQuality(user, `Original. ${ORIGINAL_EXPLANATION}`)
+      await pickQuality(user, 'Original')
       const video = await attachedVideo(choiceStreamUrl(3))
       expect(marksIn(await openQualityMenu(user))).toEqual([`Original: ${ORIGINAL_EXPLANATION}`])
-      await user.keyboard('{Escape}')
+      // Focus starts on the picked Original, whose explanation shows, so the first Escape hides it.
+      await user.keyboard('{Escape}{Escape}')
 
       loadFirstFrame(video)
 
@@ -7569,16 +8106,16 @@ describe('Player', () => {
     })
 
     it('shouldExplainTheFocusedMarkWhileThePointerRestsOnAnUnmarkedRow', async () => {
-      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      const { user } = await markOriginalThenPlay720p()
       const menu = await openQualityMenu(user)
       await user.hover(within(menu).getByRole('menuitemradio', { name: 'Auto' }))
 
-      await user.keyboard('{ArrowUp}')
+      await user.keyboard('{Home}')
 
       expect(screen.getByText(ORIGINAL_EXPLANATION)).toBeVisible()
     })
 
-    it('shouldShowNoNoticeWhenAutoRecoversFromAFailedCopy', async () => {
+    it('shouldShowNoCautionWhenAutoRecoversFromAFailedCopy', async () => {
       servePlaybackChoices()
       replaceTheRefusedStream({
         requestedChoice: 'AUTO',
@@ -7591,8 +8128,7 @@ describe('Player', () => {
       refuseTheStreamsFormat()
 
       await showingVideo(replacementStream(1).streamUrl)
-      expect(notice()).toBeEmptyDOMElement()
-      expect(screen.getByRole('button', { name: 'Quality: Auto' })).toBeInTheDocument()
+      expectNoCaution(screen.getByRole('button', { name: 'Quality: Auto' }))
     })
   })
 
@@ -7622,13 +8158,18 @@ describe('Player', () => {
       platform = showingHdr,
       videoRange = playsHdrUnlessSdrIsChosen,
       playing,
+      formatChange,
     }: {
       picked: string
       platform?: () => PlaybackPlatform
       videoRange?: (options: StreamingOptionsInput) => VideoRange
       playing?: (requested: VideoQuality) => VideoQuality
+      formatChange?: (
+        requested: VideoQuality,
+        options: StreamingOptionsInput,
+      ) => PlaybackFormatChange | null
     }) {
-      const log = servePlaybackChoices({ sourceRange: 'PQ', videoRange, playing })
+      const log = servePlaybackChoices({ sourceRange: 'PQ', videoRange, playing, formatChange })
       const { user } = renderWithProviders(
         <Player playbackPlatform={platform} mediaFileId="abcd" />,
       )
@@ -7811,7 +8352,7 @@ describe('Player', () => {
       refuseTheStreamsFormat()
       await showingVideo(replacementStream(1).streamUrl)
 
-      expect(notice().textContent).toBe(CONVERTED_NOTICE)
+      expectCaution(qualityChip(), FIXED_QUALITY_EXPLANATION)
       expect(hdrToggleIn(await openQualityMenu(user))).toHaveAttribute('aria-checked', 'false')
     })
 
@@ -7865,56 +8406,122 @@ describe('Player', () => {
       expect(log).toHaveLength(3)
     })
 
-    it('shouldShowTheConvertedNoticeWhenAFixedQualityPlaysSdrUnderTheViewersHdrChoice', async () => {
+    const sdrUnlessAuto = ({ quality }: StreamingOptionsInput): VideoRange =>
+      quality === 'AUTO' ? 'PQ' : 'SDR'
+    // As the server answers HDR asked for in 720p with SDR.
+    const hdrNotKeptIn720p = (
+      requested: VideoQuality,
+      { dynamicRange }: StreamingOptionsInput,
+    ): PlaybackFormatChange | null =>
+      requested === 'HIGH_720P' && dynamicRange === 'HDR' ? 'HDR_NOT_KEPT' : null
+    const HDR_NOT_KEPT_IN_720P: Partial<PlaybackChoices> & { sourceRange: VideoRange } = {
+      sourceRange: 'PQ',
+      requestedChoice: 'HIGH_720P',
+      playbackChoice: 'HIGH_720P',
+      formatChange: 'HDR_NOT_KEPT',
+    }
+    const SDR_STREAM = { ...replacementStream(2), videoRange: 'SDR' } as const
+
+    it('shouldShowTheHdrCautionWhenTheServerSaysAFixedQualityStartedInSdrUnderTheHdrChoice', async () => {
       const { user, log } = await pickForAnHdrSource({
         picked: '720p',
-        videoRange: ({ quality }) => (quality === 'AUTO' ? 'PQ' : 'SDR'),
+        videoRange: sdrUnlessAuto,
+        formatChange: hdrNotKeptIn720p,
       })
 
       expect(log.at(-1)).toBe('create HIGH_720P HDR')
-      expect(notice().textContent).toBe(CONVERTED_NOTICE)
+      expectCaution(
+        screen.getByRole('button', { name: 'Quality: 720p' }),
+        HDR_NOT_PLAYED_EXPLANATION,
+      )
       const menu = await openQualityMenu(user)
+      expectCautionInHeading(menu, HDR_NOT_PLAYED_EXPLANATION)
+      expect(marksIn(menu)).toEqual(['720p: the message'])
       expect(hdrToggleIn(menu)).toHaveAttribute('aria-checked', 'false')
-      expect(marksIn(menu)).toEqual([])
     })
 
-    it('shouldShowTheSdrNoticeOnceWhenThePlaybackSessionMovesToAnotherStream', async () => {
-      const sdrUnderHdrChoice = ({ quality }: StreamingOptionsInput): VideoRange =>
-        quality === 'AUTO' ? 'PQ' : 'SDR'
-      server.use(
-        graphql.query('PlaybackSession', () =>
-          HttpResponse.json({
-            data: {
-              playbackSession: readyPlaybackSession({
-                id: 'playback-2',
-                streamSession: { ...replacementStream(2), videoRange: 'SDR' },
-                sourceRange: 'PQ',
-                requestedChoice: 'HIGH_720P',
-                playbackChoice: 'HIGH_720P',
-              }),
-            },
-          }),
-        ),
+    it('shouldShowNoCautionWhenAFixedQualityPlaysSdrUnderTheHdrChoiceWithoutAFormatChange', async () => {
+      const { user } = await pickForAnHdrSource({ picked: '720p', videoRange: sdrUnlessAuto })
+
+      expectNoCaution(qualityChip())
+      expect(marksIn(await openQualityMenu(user))).toEqual([])
+    })
+
+    it('shouldKeepTheHdrCautionsWordsAndAnnounceThemOnceWhenThePlaybackSessionMovesToAnotherStream', async () => {
+      servePlaybackChoices({
+        sourceRange: 'PQ',
+        videoRange: sdrUnlessAuto,
+        formatChange: hdrNotKeptIn720p,
+      })
+      const { user } = renderWithProviders(
+        <Player playbackPlatform={showingHdr} mediaFileId="abcd" />,
       )
-      servePlaybackChoices({ sourceRange: 'PQ', videoRange: sdrUnderHdrChoice })
+      const announced = watchAnnouncements()
+      await showingVideo(choiceStreamUrl(1))
+      await pickQuality(user, '720p')
+      await showingVideo(choiceStreamUrl(2))
+
+      moveToAnotherStream('playback-2', HDR_NOT_KEPT_IN_720P, SDR_STREAM)
+
+      await showingVideo(SDR_STREAM.streamUrl)
+      expectCaution(qualityChip(), HDR_NOT_PLAYED_EXPLANATION)
+      expect(await settledAnnouncements(announced)).toEqual([HDR_NOT_PLAYED_EXPLANATION])
+    })
+
+    it('shouldSayHdrCouldNotStayWhenAFixedQualityThatShowedHdrGoesOnInSdr', async () => {
+      const { user } = await pickForAnHdrSource({ picked: '720p' })
+      expectNoCaution(qualityChip())
+
+      moveToAnotherStream('playback-2', HDR_NOT_KEPT_IN_720P, SDR_STREAM)
+
+      await showingVideo(SDR_STREAM.streamUrl)
+      expectCaution(screen.getByRole('button', { name: 'Quality: 720p' }), HDR_NOT_KEPT_EXPLANATION)
+      const menu = await openQualityMenu(user)
+      expect(marksIn(menu)).toEqual(['720p: the message'])
+      expect(hdrToggleIn(menu)).toHaveAttribute('aria-checked', 'false')
+    })
+
+    it('shouldMarkAutoAndSayHdrCouldNotStayWhenAutoGivesUpHdrForSdr', async () => {
+      servePlaybackChoices({ sourceRange: 'PQ', videoRange: playsHdrUnlessSdrIsChosen })
       const { user } = renderWithProviders(
         <Player playbackPlatform={showingHdr} mediaFileId="abcd" />,
       )
       await showingVideo(choiceStreamUrl(1))
-      await pickQuality(user, '720p')
-      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-      await showingVideo(choiceStreamUrl(2))
-      expect(notice().textContent).toBe(CONVERTED_NOTICE)
-      await act(async () => vi.advanceTimersByTimeAsync(6_000))
-      expect(notice()).toBeEmptyDOMElement()
 
-      const onError = hls.on.mock.calls.findLast(([event]) => event === 'hlsError')?.[1]
-      act(() =>
-        onError?.('hlsError', { fatal: false, type: 'networkError', response: { code: 503 } }),
+      moveToAnotherStream(
+        'playback-1',
+        {
+          sourceRange: 'PQ',
+          requestedChoice: 'AUTO',
+          playbackChoice: 'AUTO',
+          formatChange: 'HDR_NOT_KEPT',
+        },
+        SDR_STREAM,
       )
 
-      await showingVideo(replacementStream(2).streamUrl)
-      expect(notice()).toBeEmptyDOMElement()
+      await showingVideo(SDR_STREAM.streamUrl)
+      expectCaution(
+        screen.getByRole('button', { name: 'Quality: Auto' }),
+        AUTO_HDR_NOT_KEPT_EXPLANATION,
+      )
+      const menu = await openQualityMenu(user)
+      expectCautionInHeading(menu, AUTO_HDR_NOT_KEPT_EXPLANATION)
+      expect(marksIn(menu)).toEqual(['Auto: the message'])
+    })
+
+    it('shouldClearTheHdrCautionWhenTheViewerPicksAQualityThatPlaysAsAsked', async () => {
+      const { user, log } = await pickForAnHdrSource({
+        picked: '720p',
+        videoRange: sdrUnlessAuto,
+        formatChange: hdrNotKeptIn720p,
+      })
+
+      await pickQuality(user, '1080p')
+      await showingVideo(choiceStreamUrl(3))
+
+      expect(log.at(-1)).toBe('create FULL_HD_1080P SDR')
+      expectNoCaution(screen.getByRole('button', { name: 'Quality: 1080p' }))
+      expect(marksIn(await openQualityMenu(user))).toEqual([`720p: ${HDR_NOT_PLAYED_EXPLANATION}`])
     })
 
     it('shouldKeepTheHdrChoiceWhenTheViewerRetries', async () => {
@@ -7929,13 +8536,13 @@ describe('Player', () => {
       expect(log.at(-1)).toBe('create HIGH_720P SDR')
     })
 
-    it('shouldShowNoNoticeWhenAFixedQualityPlaysTheSdrTheViewerChose', async () => {
+    it('shouldShowNoCautionWhenAFixedQualityPlaysTheSdrTheViewerChose', async () => {
       const { user } = await pickForAnHdrSource({ picked: '720p' })
 
       await user.click(hdrToggleIn(await openQualityMenu(user)) as HTMLElement)
       await showingVideo(choiceStreamUrl(3))
 
-      expect(notice()).toBeEmptyDOMElement()
+      expectNoCaution(qualityChip())
     })
   })
 
@@ -8251,6 +8858,13 @@ describe('Player', () => {
         userErrors: [],
       })
 
+      const refusedSwitch = () => ({
+        playbackSession: directPlayStill(),
+        userErrors: [
+          { __typename: 'TranscodeCapacityUnavailableError' as const, message: SWITCH_REFUSAL },
+        ],
+      })
+
       function renderEpisode() {
         return renderWithProviders(
           <Player
@@ -8276,29 +8890,289 @@ describe('Player', () => {
 
       it('shouldStoreNoLanguageForASwitchTheServerRefuses', async () => {
         serveDirectPlay({ audioTracks: TWO_TRACKS })
-        const answers = [
-          () => ({
-            playbackSession: directPlayStill(),
-            userErrors: [
-              {
-                __typename: 'TranscodeCapacityUnavailableError' as const,
-                message: SWITCH_REFUSAL,
-              },
-            ],
-          }),
-          movedToHls,
-        ]
+        const answers = [refusedSwitch, movedToHls]
         serveAudioTrackSwitch({ answer: () => (answers.shift() ?? movedToHls)() })
         const overrides = serveOverrideStores()
         const { user } = renderEpisode()
         await directPlayAt(0)
         await chooseAudioTrack(user, { from: 'English', to: 'French' })
-        await waitFor(() => expect(notice()).toHaveTextContent(SWITCH_REFUSAL))
+        await waitFor(() => expectCaution(audioChip(), AUDIO_SWITCH_REFUSED))
 
         await chooseAudioTrack(user, { from: 'English', to: 'French' })
 
         await attachedVideo(replacementStream(1).streamUrl)
         await waitFor(() => expect(overrides).toEqual([{ itemId: 'e1', audioLanguage: 'FR' }]))
+      })
+
+      it('shouldClearTheAudioCautionWhenTheViewerPicksAnotherTrackAfterARefusal', async () => {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        const answers = [refusedSwitch, movedToHls]
+        serveAudioTrackSwitch({ answer: () => (answers.shift() ?? movedToHls)() })
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        await directPlayAt(0)
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+        await waitFor(() => expectCaution(audioChip(), AUDIO_SWITCH_REFUSED))
+
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+
+        expectNoCaution(audioChip())
+        await attachedVideo(replacementStream(1).streamUrl)
+        expectNoCaution(audioChip())
+      })
+
+      it('shouldClearTheAudioCautionWhenTheViewerPicksThePlayingTrackAfterARefusal', async () => {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        const switches = serveAudioTrackSwitch({ answer: refusedSwitch })
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        await directPlayAt(0)
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+        await waitFor(() => expectCaution(audioChip(), AUDIO_SWITCH_REFUSED))
+
+        await chooseAudioTrack(user, { from: 'English', to: 'English' })
+
+        expectNoCaution(audioChip())
+        expect(switches).toHaveLength(1)
+      })
+
+      it('shouldShowNoAudioCautionWhenTheViewerPicksThePlayingTrackBeforeTheServerRefusesTheSwitch', async () => {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        const answered = deferred()
+        const switches = serveAudioTrackSwitch({
+          answered: answered.promise,
+          answer: refusedSwitch,
+        })
+        const overrides = serveOverrideStores()
+        const { user } = renderEpisode()
+        const text: FakeTextTrack[] = [
+          { kind: 'subtitles', label: 'English', language: 'en', mode: 'disabled' },
+        ]
+        giveElementTracks(renderedVideo(), { text })
+        const announced = watchAnnouncements()
+        await directPlayAt(0)
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+        await waitFor(() => expect(switches).toHaveLength(1))
+        await chooseAudioTrack(user, { from: 'English', to: 'English' })
+        // Switches store in the order the viewer made them, so this one stores only once the
+        // refused switch before it has settled.
+        await user.click(screen.getByRole('button', { name: 'Subtitles: Off' }))
+        await user.click(screen.getByRole('menuitemradio', { name: 'English' }))
+
+        answered.resolve()
+
+        await waitFor(() =>
+          expect(overrides).toEqual([
+            { itemId: 'e1', subtitleLanguage: 'EN', subtitleMode: 'ALWAYS' },
+          ]),
+        )
+        expect(await settledAnnouncements(announced)).toEqual([])
+        expectNoCaution(audioChip())
+      })
+
+      it('shouldShowTheAudioCautionWhenTheViewerPicksTheRefusedTrackAgainBeforeTheServerRefusesIt', async () => {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        const answered = deferred()
+        const switches = serveAudioTrackSwitch({
+          answered: answered.promise,
+          answer: refusedSwitch,
+        })
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        await directPlayAt(0)
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+        await waitFor(() => expect(switches).toHaveLength(1))
+        await chooseAudioTrack(user, { from: 'English', to: 'English' })
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+
+        answered.resolve()
+
+        await waitFor(() => expectCaution(audioChip(), AUDIO_SWITCH_REFUSED))
+      })
+
+      it('shouldKeepTheAudioCautionWhenTheViewerPicksSubtitlesAfterARefusal', async () => {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        serveAudioTrackSwitch({ answer: refusedSwitch })
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        const text: FakeTextTrack[] = [
+          { kind: 'subtitles', label: 'English', language: 'en', mode: 'disabled' },
+        ]
+        giveElementTracks(renderedVideo(), { text })
+        await directPlayAt(0)
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+        await waitFor(() => expectCaution(audioChip(), AUDIO_SWITCH_REFUSED))
+
+        await user.click(screen.getByRole('button', { name: 'Subtitles: Off' }))
+        await user.click(screen.getByRole('menuitemradio', { name: 'English' }))
+
+        expect(text.map((track) => track.mode)).toEqual(['showing'])
+        expectCaution(audioChip(), AUDIO_SWITCH_REFUSED)
+      })
+
+      it('shouldAnnounceTheAudioCautionOnceWhenTheServerRefusesTheSwitch', async () => {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        serveAudioTrackSwitch({ answer: refusedSwitch })
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        const announced = watchAnnouncements()
+        await directPlayAt(0)
+
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+
+        await waitFor(() => expectCaution(audioChip(), AUDIO_SWITCH_REFUSED))
+        expect(await settledAnnouncements(announced)).toEqual([AUDIO_SWITCH_REFUSED])
+      })
+
+      it('shouldOpenTheAudioPickerThatCarriesACautionWhenTheNextStreamOffersOneTrack', async () => {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        serveAudioTrackSwitch({ answer: refusedSwitch })
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        const video = await directPlayAt(42)
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+        await waitFor(() => expectCaution(audioChip(), AUDIO_SWITCH_REFUSED))
+        failTheSourceFile(video, 3)
+        await attachedVideo(replacementStream(1).streamUrl)
+        offerHlsTracks({ audio: [{ name: 'English' }], audioTrack: 0 })
+
+        const menu = await openPicker(user, audioChip())
+
+        expectCautionInHeading(menu, AUDIO_SWITCH_REFUSED)
+      })
+
+      // The server refused a switch during direct play, then the source failed and an HLS stream
+      // that offers `tracks` replaced it. Returns the open Audio picker.
+      async function openTheAudioPickerWithACautionOverHls(tracks: FakeHlsTrack[]) {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        serveAudioTrackSwitch({ answer: refusedSwitch })
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        const video = await directPlayAt(42)
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+        await waitFor(() => expectCaution(audioChip(), AUDIO_SWITCH_REFUSED))
+        failTheSourceFile(video, 3)
+        await attachedVideo(replacementStream(1).streamUrl)
+        offerHlsTracks({ audio: tracks, audioTrack: 0 })
+        return { user, menu: await openPicker(user, audioChip()) }
+      }
+
+      it('shouldKeepShowingTheMessageWhenATrackArrivesWhileFocusIsOnTheCautionInTheHeading', async () => {
+        const { user } = await openTheAudioPickerWithACautionOverHls([
+          { name: 'English' },
+          { name: 'French' },
+        ])
+        await user.tab({ shift: true })
+        expect(messageTooltip(AUDIO_SWITCH_REFUSED)).toBeVisible()
+
+        offerHlsTracks({
+          audio: [{ name: 'English' }, { name: 'French' }, { name: 'German' }],
+          audioTrack: 0,
+        })
+
+        expect(headingCaution(AUDIO_SWITCH_REFUSED)).toHaveFocus()
+        expect(messageTooltip(AUDIO_SWITCH_REFUSED)).toBeVisible()
+      })
+
+      it('shouldKeepFocusOnTheCautionInTheHeadingWhenTheTrackFocusedBeforeItGoes', async () => {
+        const { user, menu } = await openTheAudioPickerWithACautionOverHls([
+          { name: 'English' },
+          { name: 'French' },
+        ])
+        await user.keyboard('{ArrowDown}')
+        expect(within(menu).getByRole('menuitemradio', { name: 'French' })).toHaveFocus()
+        await user.tab({ shift: true })
+
+        offerHlsTracks({ audio: [{ name: 'English' }], audioTrack: 0 })
+
+        expect(headingCaution(AUDIO_SWITCH_REFUSED)).toHaveFocus()
+        expect(messageTooltip(AUDIO_SWITCH_REFUSED)).toBeVisible()
+      })
+
+      // A tap shows the message without focusing the caution, as in Safari, so focus stays on French.
+      it.each([
+        {
+          shownBy: 'hover',
+          showTheMessage: (user: UserEvent) => user.hover(headingCaution(AUDIO_SWITCH_REFUSED)),
+        },
+        {
+          shownBy: 'tap',
+          showTheMessage: () => tap(headingCaution(AUDIO_SWITCH_REFUSED)),
+        },
+      ])(
+        'shouldKeepShowingTheMessageWhenTheTrackThatHasFocusGoes(shown by: $shownBy)',
+        async ({ showTheMessage }) => {
+          const { user, menu } = await openTheAudioPickerWithACautionOverHls([
+            { name: 'English' },
+            { name: 'French' },
+          ])
+          await user.keyboard('{ArrowDown}')
+          await showTheMessage(user)
+          expect(within(menu).getByRole('menuitemradio', { name: 'French' })).toHaveFocus()
+          expect(messageTooltip(AUDIO_SWITCH_REFUSED)).toBeVisible()
+
+          offerHlsTracks({ audio: [{ name: 'English' }], audioTrack: 0 })
+
+          expect(within(menu).getByRole('menuitemradio', { name: 'English' })).toHaveFocus()
+          expect(messageTooltip(AUDIO_SWITCH_REFUSED)).toBeVisible()
+        },
+      )
+
+      it('shouldKeepTheMessageOutOfSightWhenTheTrackThatHasFocusGoesWithThePointerElsewhere', async () => {
+        const { user, menu } = await openTheAudioPickerWithACautionOverHls([
+          { name: 'English' },
+          { name: 'French' },
+        ])
+        await user.keyboard('{ArrowDown}')
+
+        offerHlsTracks({ audio: [{ name: 'English' }], audioTrack: 0 })
+
+        expect(within(menu).getByRole('menuitemradio', { name: 'English' })).toHaveFocus()
+        expectMessageOutOfSight(AUDIO_SWITCH_REFUSED)
+      })
+
+      it('shouldHideTheMessageUnderThePointerWhenTheViewerMovesFocusAfterTheFocusedTrackWent', async () => {
+        const { user, menu } = await openTheAudioPickerWithACautionOverHls([
+          { name: 'English' },
+          { name: 'French' },
+          { name: 'German' },
+        ])
+        await user.keyboard('{ArrowDown}{ArrowDown}')
+        await user.hover(headingCaution(AUDIO_SWITCH_REFUSED))
+        offerHlsTracks({ audio: [{ name: 'English' }, { name: 'French' }], audioTrack: 0 })
+        expect(within(menu).getByRole('menuitemradio', { name: 'English' })).toHaveFocus()
+        expect(messageTooltip(AUDIO_SWITCH_REFUSED)).toBeVisible()
+
+        await user.keyboard('{ArrowDown}')
+
+        expect(within(menu).getByRole('menuitemradio', { name: 'French' })).toHaveFocus()
+        expectMessageOutOfSight(AUDIO_SWITCH_REFUSED)
+      })
+
+      it('shouldOpenNoMenuWhenTheAudioChipCarriesACautionWhileTheNextStreamStarts', async () => {
+        serveDirectPlay({ audioTracks: TWO_TRACKS })
+        serveAudioTrackSwitch({ answer: refusedSwitch })
+        const { user } = renderWithProviders(
+          <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
+        )
+        const video = await directPlayAt(42)
+        await chooseAudioTrack(user, { from: 'English', to: 'French' })
+        await waitFor(() => expectCaution(audioChip(), AUDIO_SWITCH_REFUSED))
+        failTheSourceFile(video, 3)
+        await attachedVideo(replacementStream(1).streamUrl)
+
+        await user.click(audioChip())
+
+        expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+        expect(audioChip()).toHaveAttribute('aria-disabled', 'true')
+        expectCaution(audioChip(), AUDIO_SWITCH_REFUSED)
       })
 
       it('shouldStoreOnlyTheTrackTheServerMovesToWhenTheViewerPicksAnotherBeforeItAnswers', async () => {
@@ -8384,15 +9258,10 @@ describe('Player', () => {
         expect(screen.queryByRole('alert')).not.toBeInTheDocument()
       })
 
-      it('shouldKeepDirectPlayingAndShowTheServersWordsWhenTheServerRefusesTheSwitch', async () => {
+      it('shouldKeepDirectPlayingAndShowACautionOnAudioWhenTheServerRefusesTheSwitch', async () => {
         serveDirectPlay({ audioTracks: TWO_TRACKS })
         serveAudioTrackSwitch({
-          answer: () => ({
-            playbackSession: directPlayStill(),
-            userErrors: [
-              { __typename: 'TranscodeCapacityUnavailableError', message: SWITCH_REFUSAL },
-            ],
-          }),
+          answer: refusedSwitch,
         })
         const { user } = renderWithProviders(
           <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
@@ -8401,10 +9270,19 @@ describe('Player', () => {
 
         await chooseAudioTrack(user, { from: 'English', to: 'French' })
 
-        await waitFor(() => expect(notice()).toHaveTextContent(SWITCH_REFUSAL))
+        await waitFor(() =>
+          expectCaution(
+            screen.getByRole('button', { name: 'Audio: English' }),
+            AUDIO_SWITCH_REFUSED,
+          ),
+        )
         expect(video).toHaveAttribute('src', SOURCE_FILE.streamUrl)
         expect(hls.loadSource).not.toHaveBeenCalled()
-        expect(screen.getByRole('button', { name: 'Audio: English' })).toBeInTheDocument()
+        expectNoCaution(qualityChip())
+        expect(screen.queryByText(SWITCH_REFUSAL)).not.toBeInTheDocument()
+        const menu = await openPicker(user, audioChip())
+        expectCautionInHeading(menu, AUDIO_SWITCH_REFUSED)
+        expect(marksIn(menu)).toEqual([])
       })
 
       it('shouldKeepDirectPlayingWhenTheServerKeepsTheSameStreamSession', async () => {
@@ -8434,12 +9312,7 @@ describe('Player', () => {
         const answered = deferred()
         const switches = serveAudioTrackSwitch({
           answered: answered.promise,
-          answer: () => ({
-            playbackSession: directPlayStill(),
-            userErrors: [
-              { __typename: 'TranscodeCapacityUnavailableError', message: SWITCH_REFUSAL },
-            ],
-          }),
+          answer: refusedSwitch,
         })
         const { user } = renderWithProviders(
           <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
@@ -8549,12 +9422,7 @@ describe('Player', () => {
         const answered = deferred()
         serveAudioTrackSwitch({
           answered: answered.promise,
-          answer: () => ({
-            playbackSession: directPlayStill(),
-            userErrors: [
-              { __typename: 'TranscodeCapacityUnavailableError', message: SWITCH_REFUSAL },
-            ],
-          }),
+          answer: refusedSwitch,
         })
         const { user } = renderWithProviders(
           <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
@@ -8892,12 +9760,7 @@ describe('Player', () => {
           const answered = deferred()
           const switches = serveAudioTrackSwitch({
             answered: answered.promise,
-            answer: () => ({
-              playbackSession: directPlayStill(),
-              userErrors: [
-                { __typename: 'TranscodeCapacityUnavailableError', message: SWITCH_REFUSAL },
-              ],
-            }),
+            answer: refusedSwitch,
           })
           const { user } = renderWithProviders(
             <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
@@ -8917,7 +9780,7 @@ describe('Player', () => {
           recover(video)
           answered.resolve()
 
-          await waitFor(() => expect(notice()).toHaveTextContent(SWITCH_REFUSAL))
+          await waitFor(() => expectCaution(audioChip(), AUDIO_SWITCH_REFUSED))
           expect(video).toHaveAttribute('src', SOURCE_FILE.streamUrl)
           expect(video.currentTime).toBe(43)
           expect(screen.queryByRole('alert')).not.toBeInTheDocument()
@@ -8936,12 +9799,7 @@ describe('Player', () => {
         const answered = deferred()
         const switches = serveAudioTrackSwitch({
           answered: answered.promise,
-          answer: () => ({
-            playbackSession: directPlayStill(),
-            userErrors: [
-              { __typename: 'TranscodeCapacityUnavailableError', message: SWITCH_REFUSAL },
-            ],
-          }),
+          answer: refusedSwitch,
         })
         const { user } = renderWithProviders(
           <Player playbackPlatform={withoutDecodingInfo} mediaFileId="abcd" />,
@@ -9019,7 +9877,11 @@ describe('Player', () => {
 
         loadFirstFrame(video)
 
-        expect(notice()).toHaveTextContent(AUDIO_TRACK_SWITCHED_NOTICE)
+        expectCaution(
+          screen.getByRole('button', { name: 'Quality: Auto' }),
+          AUDIO_TRACK_SWITCHED_EXPLANATION,
+        )
+        expectNoCaution(audioChip())
       })
     })
 

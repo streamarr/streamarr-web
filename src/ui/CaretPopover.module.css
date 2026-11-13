@@ -42,9 +42,45 @@
 }
 
 .heading {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-6);
   padding: var(--spacing-4) var(--spacing-8) var(--spacing-6);
   font-size: var(--font-size-caption);
   color: var(--text-secondary);
+
+  /* On a touch screen the caution's 44px target would reach into the first row, and into the 44px
+     target of a mark on that row. The later row would take the tap. */
+  @media (pointer: coarse) {
+    &:has(.headingCaution) {
+      padding-bottom: var(--spacing-16);
+    }
+  }
+}
+
+/* The caution after the heading's name has the mark's glyph and yellow. Its target reaches 24px,
+   44px on a touch screen, without moving the heading. The target starts after the gap, so the
+   focus ring around it leaves the name clear, and the glyph keeps its place on a touch screen. */
+.headingCaution {
+  position: relative;
+  display: inline-flex;
+  margin: -5px -5px -5px 0;
+  padding: 5px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--semantic-caution);
+  cursor: default;
+
+  /* A touch screen widens the target to 44px but keeps the box, so the focus ring stays clear of
+     the menu's name. */
+  @media (pointer: coarse) {
+    &::after {
+      content: '';
+      position: absolute;
+      inset: -10px;
+    }
+  }
 }
 
 /* The padding leaves room for a row's focus ring, which the scrolling menu would otherwise clip. */
@@ -118,10 +154,12 @@
   gap: var(--spacing-6);
 }
 
-/* Never the error red: the mark explains a fallback, not a fault, and its shape carries that. */
+/* The caution yellow on every row, never the error red: the mark explains a fallback, not a
+   fault, and its shape carries that. The color sits on this element, not on the svg, so forced
+   colors replace it. */
 .caution {
   display: inline-flex;
-  color: var(--text-secondary);
+  color: var(--semantic-caution);
 
   /* Nothing hovers a touch screen, so the mark takes a 44px target there without moving the row. */
   @media (pointer: coarse) {
@@ -130,12 +168,9 @@
   }
 }
 
-.row[aria-checked='true'] .caution,
-.row:focus .caution {
-  color: inherit;
-}
-
-/* The side and the top come from the row it explains; the explanation never takes a tap. */
+/* The side and the top come from the line it explains. It takes the pointer while the pointer shows
+   it and while it explains the heading's caution. A press on a row's explanation that a tap or focus
+   shows goes through it. */
 .explanation {
   position: absolute;
   box-sizing: border-box;
@@ -153,6 +188,28 @@
 
 .explanation[data-side='start'] {
   right: calc(100% + 8px);
+}
+
+/* While the explanation takes the pointer, the pointer can cross from the heading to the
+   explanation over this strip, which spans the gap and the surface's edge. */
+.explanation::after {
+  content: '';
+  position: absolute;
+  --bridge: calc(8px + var(--border-width-hairline) + var(--spacing-10) + 2px);
+}
+
+.explanation[data-side='start']::after {
+  top: 0;
+  bottom: 0;
+  left: 100%;
+  width: var(--bridge);
+}
+
+.explanation[data-side='above']::after {
+  top: 100%;
+  right: 0;
+  left: 0;
+  height: var(--bridge);
 }
 
 .explanation[data-side='above'] {

@@ -1,5 +1,5 @@
 import { useApolloClient, useMutation } from '@apollo/client/react'
-import { Alert, Button } from '@mantine/core'
+import { Alert, Button, VisuallyHidden } from '@mantine/core'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   CreatePlaybackSessionDocument,
@@ -11,15 +11,9 @@ import { DetailBackButton } from '../media/DetailBack'
 import focusStyles from '../styles/focus.module.css'
 import { BufferingRing } from './BufferingRing'
 import { PlaybackData, type PlaybackDataScreen, type PlaybackDataStream } from './PlaybackData'
-import { PlaybackNotice } from './PlaybackNotice'
 import { declarePlaybackCapabilities, type PlaybackPlatform } from './playbackCapabilities'
 import styles from './Player.module.css'
-import {
-  PlayerControls,
-  type PickerKind,
-  type PlayerTitle,
-  pickerOffersChoice,
-} from './PlayerControls'
+import { PlayerControls, type PickerKind, type PlayerTitle, pickerOpens } from './PlayerControls'
 import {
   type PlayerPlayback,
   type ResumePoint,
@@ -131,7 +125,8 @@ export function Player({
     setChoice(startingChoice({ mediaFileId, startPositionSeconds }))
   }
   const sourcePhase = reported?.start === choice.start ? reported.phase : STARTING
-  const { notice, marks, followPlaybackSession, announce } = usePlaybackFallbacks(choice.start)
+  const { marks, cautions, announcement, followPlaybackSession, refuseAudioSwitch, pickAudio } =
+    usePlaybackFallbacks(choice.start)
   const [picker, setPicker] = useState<PickerKind | null>(null)
   // The screen as the browser reported it when the viewer opened playback data; null while closed.
   const [playbackDataScreen, setPlaybackDataScreen] = useState<PlaybackDataScreen | null>(null)
@@ -142,6 +137,7 @@ export function Player({
     offered: qualities?.offered ?? [],
     selected: qualities?.playing ?? choice.quality,
     marks,
+    caution: cautions.quality,
     hdr: ranges ? hdrControlFor(ranges) : undefined,
   }
   const streamTracks = useStreamTracks(tracks)
@@ -156,7 +152,8 @@ export function Player({
     }
   }, [streamTracks, choice.start])
   const openPicker =
-    picker !== null && pickerOffersChoice(picker, { ...streamTracks, qualities: quality.offered })
+    picker !== null &&
+    pickerOpens(picker, { ...streamTracks, qualities: quality.offered, cautions })
       ? picker
       : null
   // A picker that loses its choices, or its stream with them, closes rather than reopen later.
@@ -209,8 +206,8 @@ export function Player({
       dynamicRange: choice.dynamicRange ?? 'HDR',
       resumeFrom: choice.resumeFrom,
       onSourcePhase: reportSourcePhase,
-      onOutputShown: followPlaybackSession(choice.dynamicRange),
-      onNotice: announce,
+      onOutputShown: followPlaybackSession(),
+      onAudioSwitchRefused: refuseAudioSwitch,
     })
     playbackRef.current = playback
     return playback.stop
@@ -222,7 +219,7 @@ export function Player({
     playbackPlatform,
     choice,
     followPlaybackSession,
-    announce,
+    refuseAudioSwitch,
   ])
 
   function chooseQuality(picked: VideoQuality) {
@@ -308,8 +305,13 @@ export function Player({
         <div ref={backRef} className={`${styles.back} ${styles.chrome}`}>
           <DetailBackButton />
         </div>
-        <PlaybackNotice notice={notice} />
       </div>
+      {/* Stays in the page while empty, so each caution's message is announced once, politely. */}
+      <VisuallyHidden>
+        <output>
+          {announcement && <span key={announcement.serial}>{announcement.text}</span>}
+        </output>
+      </VisuallyHidden>
       {playbackDataScreen && (
         <PlaybackData
           videoRef={videoRef}
@@ -333,6 +335,8 @@ export function Player({
         onToggleHdr={toggleHdr}
         openPicker={openPicker}
         onOpenPicker={setPicker}
+        audioCaution={cautions.audio}
+        onAudioPicked={pickAudio}
         onTrackChosen={reportTrackChosen}
         playbackDataShown={playbackDataScreen !== null}
         onTogglePlaybackData={togglePlaybackData}

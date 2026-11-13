@@ -869,6 +869,14 @@ export type PlaybackFormatChange =
   | 'DIRECT_PLAY_FAILED'
   /** A Dolby Vision copy failed, so the same copy without Dolby Vision plays on the source's PQ or HLG base. */
   | 'DOLBY_VISION_STRIPPED'
+  /**
+   * The source's HDR range was not kept, and SDR plays. The server sets it when a format attempt plays SDR of
+   * a PQ or HLG source in one of two cases: the client sent dynamicRange HDR with a fixed quality, or an
+   * earlier format attempt of the playback session played PQ or HLG. The server sets it only while no other
+   * value is set, so a failed copy whose encode plays SDR stays COPY_FAILED. It clears as every value does:
+   * when the playback session ends.
+   */
+  | 'HDR_NOT_KEPT'
   /** Original could neither direct-play nor copy the source, so its first format attempt is an encode. */
   | 'STARTED_WITH_ENCODE'
   | '%future added value';

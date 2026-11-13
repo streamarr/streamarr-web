@@ -140,7 +140,7 @@ interface PendingAudioTrackSwitch {
 type AudioTrackSwitchAnswer =
   | { kind: 'started'; playback: PlaybackSessionFieldsFragment }
   | { kind: 'kept' }
-  | { kind: 'refused'; message: string }
+  | { kind: 'refused' }
   | { kind: 'lost' }
 
 // A stall's limit, and the status read once the stall outlasts it.
@@ -180,8 +180,8 @@ interface PlayerPlaybackOptions {
   onSourcePhase: (phase: SourcePhase) => void
   /** Called once each attached stream shows its first frame, with the choices that stream plays. */
   onOutputShown: (qualities: QualityChoices) => void
-  /** Shows the server's words when it refuses something the viewer asked for while playback goes on. */
-  onNotice: (text: string) => void
+  /** Hears that the server refused the viewer's audio switch, and the track that played goes on. */
+  onAudioSwitchRefused: () => void
 }
 
 interface SessionPlayback extends PlayerPlayback {
@@ -229,7 +229,7 @@ function startSessionPlayback({
   startPositionSeconds,
   onSourcePhase,
   onOutputShown,
-  onNotice,
+  onAudioSwitchRefused,
   resumeFrom,
   dynamicRange,
 }: PlayerPlaybackOptions): SessionPlayback {
@@ -849,7 +849,7 @@ function startSessionPlayback({
         return playsAnotherStreamThan(directPlayStreamSessionId)
       }
       case 'refused':
-        onNotice(answer.message)
+        onAudioSwitchRefused()
         failAfterTheSwitch(pending)
         return false
       case 'kept':
@@ -896,8 +896,7 @@ function startSessionPlayback({
         },
       })
       const payload = result.data?.switchPlaybackAudioTrack
-      const refusal = payload?.userErrors[0]
-      if (refusal) return { kind: 'refused', message: userErrorMessage(refusal) }
+      if (payload?.userErrors.length) return { kind: 'refused' }
       // The server keeps a session that already plays the chosen track, or that moved on.
       if (!payload?.playbackSession || attachedStreamIn(payload.playbackSession)) {
         return { kind: 'kept' }
