@@ -331,8 +331,7 @@ export function CaretPopover<Id>({
   // The pointer keeps an explanation while it moves from the line it explains onto the explanation,
   // so a viewer can move it there to read (WCAG 2.2, 1.4.13).
   function leaveLine(explained: Explained, event: ReactPointerEvent<HTMLElement>) {
-    const onItsWay = pointerOnItsWay.current
-    if (onItsWay && onItsWay.pointerId !== event.pointerId) {
+    if (!canEndTheHover(event)) {
       return
     }
     if (isWithin(event.relatedTarget, [event.currentTarget, explanationRef.current])) {
@@ -344,6 +343,12 @@ export function CaretPopover<Id>({
       return
     }
     stopHovering(explained)
+  }
+
+  // While one pointer is on its way onto an explanation, no other pointer ends that way.
+  function canEndTheHover({ pointerId }: ReactPointerEvent<HTMLElement>): boolean {
+    const onItsWay = pointerOnItsWay.current
+    return !onItsWay || onItsWay.pointerId === pointerId
   }
 
   // Only an explanation that the pointer shows waits for the pointer.
@@ -362,7 +367,7 @@ export function CaretPopover<Id>({
     })
   }
 
-  function leaveExplanation(next: EventTarget | null) {
+  function leaveExplanation({ relatedTarget }: ReactPointerEvent<HTMLElement>) {
     const { hovered } = explainedRows
     if (hovered === null) {
       return
@@ -372,7 +377,7 @@ export function CaretPopover<Id>({
       heading: headingRef.current,
       menu: menuRef.current,
     })
-    if (!isWithin(next, [line, explanationRef.current])) {
+    if (!isWithin(relatedTarget, [line, explanationRef.current])) {
       stopHovering(hovered)
     }
   }
@@ -518,7 +523,7 @@ export function CaretPopover<Id>({
               explainedIndex === HEADING || explainedRows.hovered !== null ? 'auto' : undefined,
           }}
           aria-hidden="true"
-          onPointerLeave={(event) => leaveExplanation(event.relatedTarget)}
+          onPointerLeave={leaveExplanation}
         >
           {explanation ?? longestCaution}
         </div>
