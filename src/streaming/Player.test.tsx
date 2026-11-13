@@ -905,6 +905,17 @@ function tap(target: Element, { mouseTarget = target, clientX = 0 } = {}) {
   fireEvent.click(mouseTarget, { clientX })
 }
 
+// A screen that takes touch and a mouse gives each pointer its own id. A finger that lifts leaves
+// what it touched for no element, and the browser then clicks it.
+function tapWithASecondFinger(target: Element) {
+  const finger = { pointerType: 'touch', pointerId: 2 }
+  fireEvent.pointerOver(target, finger)
+  fireEvent.pointerDown(target, finger)
+  fireEvent.pointerUp(target, finger)
+  fireEvent.pointerOut(target, finger)
+  fireEvent.click(target)
+}
+
 // Mantine's slider follows a finger through touch events; the controls watch its pointer events.
 function touchDown(target: Element, clientX = 0) {
   fireEvent.pointerDown(target, { pointerType: 'touch', clientX })
@@ -7776,6 +7787,10 @@ describe('Player', () => {
           touch: 'leaves the page',
           send: (auto: Element) =>
             fireEvent.pointerOut(auto, { pointerType: 'touch', pointerId: 2 }),
+        },
+        {
+          touch: 'taps the explanation',
+          send: () => tapWithASecondFinger(screen.getByText(ORIGINAL_EXPLANATION)),
         },
       ])(
         'shouldKeepTheMarksExplanationWhileTheMouseIsOnItsWayAndATouch(touch: $touch)',

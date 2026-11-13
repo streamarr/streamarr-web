@@ -367,9 +367,9 @@ export function CaretPopover<Id>({
     })
   }
 
-  function leaveExplanation({ relatedTarget }: ReactPointerEvent<HTMLElement>) {
+  function leaveExplanation(event: ReactPointerEvent<HTMLElement>) {
     const { hovered } = explainedRows
-    if (hovered === null) {
+    if (hovered === null || !canEndTheHover(event)) {
       return
     }
     const line = explainedLine({
@@ -377,7 +377,7 @@ export function CaretPopover<Id>({
       heading: headingRef.current,
       menu: menuRef.current,
     })
-    if (!isWithin(relatedTarget, [line, explanationRef.current])) {
+    if (!isWithin(event.relatedTarget, [line, explanationRef.current])) {
       stopHovering(hovered)
     }
   }
