@@ -131,7 +131,9 @@ describe('InvitationScreen', () => {
     renderWithProviders(<InvitationScreen initialCode={CODE} onAccepted={vi.fn()} />)
 
     expect(
-      await screen.findByRole('region', { name: 'Connecting Grandpa Joe to your new account' }),
+      await screen.findByRole('region', {
+        name: "Connecting Grandpa Joe's Profile to your new account",
+      }),
     ).toBeInTheDocument()
   })
 
@@ -140,7 +142,12 @@ describe('InvitationScreen', () => {
     renderWithProviders(<InvitationScreen initialCode={CODE} onAccepted={vi.fn()} />)
 
     expect(
-      await screen.findByText(/Connecting Grandpa Joe to your new account/),
+      await screen.findByText("Connecting Grandpa Joe's Profile to your new account"),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        "Grandpa Joe's Profile becomes your Personal Profile. Its history, progress, and preferences come with it.",
+      ),
     ).toBeInTheDocument()
     expect(screen.getByText('Your existing Profile')).toBeInTheDocument()
     expect(screen.getByText('· Nina')).toBeInTheDocument()

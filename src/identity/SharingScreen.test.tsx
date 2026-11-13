@@ -189,8 +189,10 @@ describe('Sharing', () => {
     serve([membershipShare()])
     renderWithProviders(<SharingScreen />)
 
-    const shared = await screen.findByRole('region', { name: 'Where Alex is shared' })
-    expect(within(shared).getByText('Alex is not shared with another Household.')).toBeVisible()
+    const shared = await screen.findByRole('region', { name: "Where Alex's Profile is shared" })
+    expect(
+      within(shared).getByText("Alex's Profile isn't shared with another Household."),
+    ).toBeVisible()
     expect(within(shared).queryByRole('listitem')).not.toBeInTheDocument()
     expect(within(shared).queryByText('Smith Family')).not.toBeInTheDocument()
     expect(
@@ -237,7 +239,7 @@ describe('Sharing', () => {
     const earlier = await screen.findByRole('button', { name: 'Earlier invitations and shares' })
     expect(earlier).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByRole('listitem')).not.toBeInTheDocument()
-    expect(screen.getByText('Alex is not shared with another Household.')).toBeVisible()
+    expect(screen.getByText("Alex's Profile isn't shared with another Household.")).toBeVisible()
 
     await user.click(earlier)
 
@@ -382,7 +384,9 @@ describe('Sharing', () => {
     await user.click(await screen.findByRole('button', { name: 'Cancel invitation to Cabin' }))
     expect(await screen.findByText("Couldn't load sharing.")).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Retry' }))
-    expect(await screen.findByText('Alex is not shared with another Household.')).toBeVisible()
+    expect(
+      await screen.findByText("Alex's Profile isn't shared with another Household."),
+    ).toBeVisible()
     expect(screen.getByRole('alert')).toHaveTextContent('That offer is not pending.')
 
     await user.type(await openShareForm(user), `${CABIN_ID}{Enter}`)
@@ -487,7 +491,7 @@ describe('Sharing', () => {
 
     const dialog = screen.getByRole('dialog', { name: 'End sharing with Cabin?' })
     expect(dialog).toHaveTextContent(
-      'Alex stops being available in Cabin. The TVs you linked there are unlinked, and your sessions there return to Smith Family. To share Alex with Cabin again, send a new invitation. An admin there must accept it.',
+      "Alex's Profile stops being available in Cabin. The TVs you linked there are unlinked, and your sessions there return to Smith Family. To share Alex's Profile with Cabin again, send a new invitation. An admin there must accept it.",
     )
     expect(ended).toBe(false)
 
@@ -599,7 +603,9 @@ describe('Sharing', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { level: 2, name: 'Where Alex is shared' })).toHaveFocus()
+    expect(
+      screen.getByRole('heading', { level: 2, name: "Where Alex's Profile is shared" }),
+    ).toHaveFocus()
   })
 
   it('shouldMoveFocusToTheSharesHeadingWhenThePersonClosesTheConfirmationAfterTheShareEnded', async () => {
@@ -619,7 +625,9 @@ describe('Sharing', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { level: 2, name: 'Where Alex is shared' })).toHaveFocus()
+    expect(
+      screen.getByRole('heading', { level: 2, name: "Where Alex's Profile is shared" }),
+    ).toHaveFocus()
   })
 
   it('shouldTakeTheServersWordsAwayWhenThePersonClosesTheConfirmation', async () => {
@@ -724,7 +732,7 @@ describe('Sharing', () => {
     await user.paste(CABIN_ID)
 
     expect(
-      await screen.findByText('Alex would arrive locked there until it has a PIN.'),
+      await screen.findByText("Alex's Profile would be locked there until it has a PIN."),
     ).toBeVisible()
     expect(asked).toEqual([{ profileId: PROFILE_ID, householdId: CABIN_ID }])
   })
@@ -767,7 +775,7 @@ describe('Sharing', () => {
     await user.type(await openShareForm(user), CABIN_ID)
 
     expect(
-      await screen.findByText('Alex would arrive locked there until it has a PIN.'),
+      await screen.findByText("Alex's Profile would be locked there until it has a PIN."),
     ).toBeVisible()
     expect(
       screen.getByText(
@@ -933,7 +941,9 @@ describe('Sharing', () => {
 
     await user.click(screen.getByRole('button', { name: 'Retry' }))
 
-    expect(await screen.findByRole('region', { name: 'Where Alex is shared' })).toBeVisible()
+    expect(
+      await screen.findByRole('region', { name: "Where Alex's Profile is shared" }),
+    ).toBeVisible()
   })
 
   it('shouldShowTheServersWordsWhenTheServerRefusesToReadTheAccount', async () => {
@@ -955,7 +965,9 @@ describe('Sharing', () => {
 
     await user.click(screen.getByRole('button', { name: 'Retry' }))
 
-    expect(await screen.findByRole('region', { name: 'Where Alex is shared' })).toBeVisible()
+    expect(
+      await screen.findByRole('region', { name: "Where Alex's Profile is shared" }),
+    ).toBeVisible()
     expect(shares.calls).toBe(2)
   })
 

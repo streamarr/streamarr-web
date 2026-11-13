@@ -239,11 +239,11 @@ function ConnectReview({ preview }: Readonly<{ preview: InvitationPreview }>) {
   return (
     <section className={styles.panel} aria-labelledby={titleId}>
       <h2 id={titleId} className={styles.panelTitle}>
-        Connecting {preview.profileName} to your new account
+        Connecting {preview.profileName}'s Profile to your new account
       </h2>
       <p className={styles.body}>
-        {preview.profileName} becomes your Personal Profile — its history, progress, and preferences
-        come with it.
+        {preview.profileName}'s Profile becomes your Personal Profile. Its history, progress, and
+        preferences come with it.
       </p>
       <ConsequenceList
         title="These people keep managing it"

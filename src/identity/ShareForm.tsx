@@ -92,7 +92,9 @@ export function ShareForm({
         }}
       />
       <div className={styles.effects} aria-live="polite">
-        {effects?.wouldLock && <p>{profile.name} would arrive locked there until it has a PIN.</p>}
+        {effects?.wouldLock && (
+          <p>{profile.name}'s Profile would be locked there until it has a PIN.</p>
+        )}
         {effects?.nameConflict && (
           <p>
             Another Profile there is already named {profile.name}. An admin there cannot accept the
