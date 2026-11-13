@@ -416,6 +416,39 @@ describe('Requests in Notifications', () => {
 })
 
 describe('Reading Notifications', () => {
+  it('shouldKeepTheNotificationsReadWhenAReadSentBeforeTheMarkAnswersAfterIt', async () => {
+    const { socket, marks } = serve()
+    const unread = [offerNotification(), answerNotification({ unread: true })]
+    const held = { page: notificationsPage(unread, { from: 10 }) }
+    const reads = readsThatCanBeHeld(() => held.page)
+    server.use(
+      graphql.query('Notifications', reads.resolver),
+      // The server holds the marked Notifications as read, and publishes no change.
+      graphql.mutation('MarkNotificationsRead', () => {
+        const read = unread.map((node) => ({ ...node, unread: false }))
+        held.page = notificationsPage([answerAbout('Mara'), ...read], { from: 9 })
+      }),
+    )
+    const { user } = renderAppAt(NOTIFICATIONS)
+    await screen.findByText(OFFER_LINE)
+    await followingNotificationChanges(socket)
+    // Mara's news commits before the server reads the list for the held read, and shows that the
+    // held read has answered.
+    held.page = notificationsPage([answerAbout('Mara'), ...unread], { from: 9 })
+    const read = reads.holdNext()
+    comeBackOnline()
+    await read.arrived
+    await user.click(screen.getByRole('button', { name: 'Mark all as read' }))
+    await waitFor(() => expect(marks).toHaveLength(1))
+    await waitFor(() => expect(screen.queryByTestId('unread-mark')).not.toBeInTheDocument())
+
+    read.release()
+
+    await screen.findByText('The offer of “Mara” was accepted.')
+    expect(screen.queryAllByTestId('unread-mark')).toHaveLength(0)
+    expect(screen.queryByRole('button', { name: 'Mark all as read' })).not.toBeInTheDocument()
+  })
+
   it('shouldSendTheNextCallOfMarkingAllWhenAnEarlierOneFails', async () => {
     const unread = Array.from({ length: 101 }, (_, index) =>
       answerNotification({

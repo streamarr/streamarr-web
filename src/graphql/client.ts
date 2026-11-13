@@ -12,7 +12,7 @@ import { csrfHeaders, isCsrfRejection } from '../auth/csrf'
 import generatedIntrospection from './generated/possibleTypes.json'
 import { decideAuthRoute, extractAuthContext } from './errorRouting'
 import { liveListLink } from './liveList'
-import { notificationsField } from '../notifications/notificationList'
+import { notificationsField, notificationUnreadField } from '../notifications/notificationList'
 
 export type AuthRoute = '/login' | '/select-profile'
 
@@ -246,6 +246,8 @@ export function createApolloClient(
       // query read when another query writes different ones.
       SelectedProfileState: { merge: true },
       WatchState: { merge: true },
+      // Each kind of Notification takes this policy through possibleTypes.
+      Notification: { fields: { unread: notificationUnreadField } },
       Query: {
         fields: {
           notifications: notificationsField,
