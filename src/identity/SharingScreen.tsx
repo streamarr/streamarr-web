@@ -163,9 +163,9 @@ function SharingUnavailable({
   error,
   onRetry,
 }: Readonly<{ error: unknown; onRetry: () => unknown }>) {
-  return (
-    <FailurePanel onRetry={onRetry}>
-      {requestFailureMessage(error, "Couldn't load sharing.")}
-    </FailurePanel>
-  )
+  return <FailurePanel onRetry={onRetry}>{sharingFailureMessage(error)}</FailurePanel>
+}
+
+function sharingFailureMessage(error: unknown): string {
+  return requestFailureMessage(error, "Couldn't load sharing.")
 }
