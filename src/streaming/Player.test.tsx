@@ -7465,7 +7465,7 @@ describe('Player', () => {
       expect(within(menu).getByRole('menuitemradio', { name: 'Auto' })).toHaveFocus()
     })
 
-    it('shouldShowTheMessageWhileThePointerHoversTheCautionInTheHeading', async () => {
+    it('shouldShowTheMessageWhenThePointerHoversTheCautionInTheHeading', async () => {
       const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
       await openQualityMenu(user)
 
@@ -7476,7 +7476,7 @@ describe('Player', () => {
       expectMessageOutOfSight(ORIGINAL_EXPLANATION)
     })
 
-    it('shouldShowTheMessageWhileKeyboardFocusIsOnTheCautionInTheHeading', async () => {
+    it('shouldShowTheMessageWhenKeyboardFocusIsOnTheCautionInTheHeading', async () => {
       const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
       const menu = await openQualityMenu(user)
 
@@ -7515,7 +7515,7 @@ describe('Player', () => {
       ])
     })
 
-    it('shouldKeepTheMessageOutOfSightWhileThePointerOrFocusIsOnTheRowThatTheMessageExplains', async () => {
+    it('shouldKeepTheMessageOutOfSightWhenThePointerOrFocusIsOnTheRowThatTheMessageExplains', async () => {
       const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
       const menu = await openQualityMenu(user)
       const original = within(menu).getByRole('menuitemradio', { name: 'Original' })
