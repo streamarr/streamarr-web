@@ -1181,6 +1181,15 @@ test.describe('with a touch screen', () => {
 
     expect(pressed).toEqual(Array(4).fill(ORIGINAL_EXPLANATION))
   })
+
+  test("the focus ring on the caution in the Quality menu's heading leaves the menu's name clear", async ({
+    page,
+    request,
+  }) => {
+    const room = await roomBetweenTheNameAndTheRingOnTheCautionInTheHeading(page, request)
+
+    expect(room).toBeGreaterThan(0)
+  })
 })
 
 test('on a phone the message of the caution shows above the menu, on screen', async ({

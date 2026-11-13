@@ -62,6 +62,7 @@
    44px on a touch screen, without moving the heading. The target starts after the gap, so the
    focus ring around it leaves the name clear, and the glyph keeps its place on a touch screen. */
 .headingCaution {
+  position: relative;
   display: inline-flex;
   margin: -5px -5px -5px 0;
   padding: 5px;
@@ -71,9 +72,14 @@
   color: var(--semantic-caution);
   cursor: default;
 
+  /* A touch screen widens the target to 44px but keeps the box, so the focus ring stays clear of
+     the menu's name. */
   @media (pointer: coarse) {
-    margin: -15px -15px -15px -10px;
-    padding: 15px;
+    &::after {
+      content: '';
+      position: absolute;
+      inset: -10px;
+    }
   }
 }
 
