@@ -7788,6 +7788,18 @@ describe('Player', () => {
         },
       )
 
+      it('shouldHideTheMarksExplanationWhenTheMouseLeavesThePageAfterAPenCrossedTheMarkedRow', async () => {
+        const auto = await leaveOriginalForAuto()
+        const original = screen.getByRole('menuitemradio', { name: /^Original/ })
+        const pen = { pointerType: 'pen', pointerId: 3, clientX: 500, clientY: 0 }
+        fireEvent.pointerOver(original, pen)
+        fireEvent.pointerOut(original, { ...pen, relatedTarget: auto })
+
+        fireEvent.pointerOut(auto, { pointerType: 'mouse', clientX: 500, clientY: 20 })
+
+        expect(screen.getByText(ORIGINAL_EXPLANATION)).not.toBeVisible()
+      })
+
       it('shouldHideTheMarksExplanationWhenThePointerLeavesThePageOnItsWayOntoTheExplanation', async () => {
         const auto = await leaveOriginalForAuto()
 

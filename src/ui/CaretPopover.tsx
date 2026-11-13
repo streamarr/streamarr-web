@@ -331,6 +331,10 @@ export function CaretPopover<Id>({
   // The pointer keeps an explanation while it moves from the line it explains onto the explanation,
   // so a viewer can move it there to read (WCAG 2.2, 1.4.13).
   function leaveLine(explained: Explained, event: ReactPointerEvent<HTMLElement>) {
+    const onItsWay = pointerOnItsWay.current
+    if (onItsWay && onItsWay.pointerId !== event.pointerId) {
+      return
+    }
     if (isWithin(event.relatedTarget, [event.currentTarget, explanationRef.current])) {
       return
     }
