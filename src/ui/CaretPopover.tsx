@@ -155,12 +155,16 @@ export function CaretPopover<Id>({
   }, [])
 
   // Removing the focused row drops focus to the body without a focusin, so nothing else notices.
+  // The viewer did not move focus, so the pointer on the heading's caution keeps its message.
   useEffect(() => {
     const lost = focusedRow.current
     if (!lost || lost.row.isConnected) {
       return
     }
     focusCheckedOrNearestRow(menuRef.current, lost.index)
+    if (explainedRows.hovered === HEADING) {
+      explainHovered(HEADING)
+    }
   })
 
   useEffect(() => {

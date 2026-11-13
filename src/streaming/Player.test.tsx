@@ -8809,6 +8809,34 @@ describe('Player', () => {
         expect(messageTooltip(AUDIO_SWITCH_REFUSED)).toBeVisible()
       })
 
+      it('shouldKeepShowingTheMessageUnderThePointerWhenTheTrackThatHasFocusGoes', async () => {
+        const { user, menu } = await openTheAudioPickerWithACautionOverHls([
+          { name: 'English' },
+          { name: 'French' },
+        ])
+        await user.keyboard('{ArrowDown}')
+        await user.hover(headingCaution(AUDIO_SWITCH_REFUSED))
+        expect(messageTooltip(AUDIO_SWITCH_REFUSED)).toBeVisible()
+
+        offerHlsTracks({ audio: [{ name: 'English' }], audioTrack: 0 })
+
+        expect(within(menu).getByRole('menuitemradio', { name: 'English' })).toHaveFocus()
+        expect(messageTooltip(AUDIO_SWITCH_REFUSED)).toBeVisible()
+      })
+
+      it('shouldKeepTheMessageOutOfSightWhenTheTrackThatHasFocusGoesWithThePointerElsewhere', async () => {
+        const { user, menu } = await openTheAudioPickerWithACautionOverHls([
+          { name: 'English' },
+          { name: 'French' },
+        ])
+        await user.keyboard('{ArrowDown}')
+
+        offerHlsTracks({ audio: [{ name: 'English' }], audioTrack: 0 })
+
+        expect(within(menu).getByRole('menuitemradio', { name: 'English' })).toHaveFocus()
+        expectMessageOutOfSight(AUDIO_SWITCH_REFUSED)
+      })
+
       it('shouldOpenNoMenuWhenTheAudioChipCarriesACautionWhileTheNextStreamStarts', async () => {
         serveDirectPlay({ audioTracks: TWO_TRACKS })
         serveAudioTrackSwitch({ answer: refusedSwitch })
