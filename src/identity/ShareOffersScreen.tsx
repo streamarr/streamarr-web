@@ -26,7 +26,7 @@ type Decision = 'accept' | 'decline'
 
 /** The offers of Profiles to the Account's Household, which its admins accept or decline. */
 export function ShareOffersScreen() {
-  const { notice, heading, announce, dismiss } = usePageNotice()
+  const { notice, count, heading, announce, dismiss } = usePageNotice()
 
   return (
     <>
@@ -35,7 +35,9 @@ export function ShareOffersScreen() {
           Share invitations
         </h1>
       </div>
-      <PageNotice onDismiss={dismiss}>{notice}</PageNotice>
+      <PageNotice count={count} onDismiss={dismiss}>
+        {notice}
+      </PageNotice>
       <ShareOffersContent onDecided={announce} />
     </>
   )

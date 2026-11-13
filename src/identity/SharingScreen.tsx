@@ -17,7 +17,7 @@ type PersonalProfile = Readonly<{ id: string; name: string }>
 
 /** Where the Account's Personal Profile is shared, and the way to share it with another Household. */
 export function SharingScreen() {
-  const { notice, heading, announce, dismiss } = usePageNotice()
+  const { notice, count, heading, announce, dismiss } = usePageNotice()
 
   return (
     <>
@@ -26,7 +26,9 @@ export function SharingScreen() {
           Sharing
         </h1>
       </div>
-      <PageNotice onDismiss={dismiss}>{notice}</PageNotice>
+      <PageNotice count={count} onDismiss={dismiss}>
+        {notice}
+      </PageNotice>
       <SharingContent onChanged={announce} />
     </>
   )

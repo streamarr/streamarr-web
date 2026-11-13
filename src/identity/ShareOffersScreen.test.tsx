@@ -561,7 +561,7 @@ describe('Share invitations', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Decline Profile 33333333' })).toBeEnabled(),
     )
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.getByRole('status')).toBeEmptyDOMElement()
   })
 
   it('shouldSayTheOfferWasDeclinedWhenReadingTheOffersAgainFails', async () => {

@@ -308,6 +308,22 @@ describe('Sharing', () => {
     expect(field).toHaveFocus()
   })
 
+  it('shouldSayTheCancelInAStatusAlreadyInThePageWhenFocusStaysInTheShareForm', async () => {
+    serveInTurn([share()], [])
+    const cancel = heldAnswer({ cancelProfileShare: canceledPayload() })
+    server.use(graphql.mutation('CancelProfileShare', cancel.answer))
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.click(await screen.findByRole('button', { name: 'Cancel invitation to Cabin' }))
+    await user.type(await openShareForm(user), 'abc')
+    // A screen reader reads a status whose text changes, not one added to the page with its text.
+    const status = screen.getByRole('status')
+    expect(status).toBeEmptyDOMElement()
+
+    cancel.release()
+
+    await waitFor(() => expect(status).toHaveTextContent(/^Invitation to Cabin canceled\.$/))
+  })
+
   it('shouldShowTheServersWordsAndReadTheSharesAgainWhenCancelingIsRefused', async () => {
     const shares = serveInTurn([share()], [share()])
     refuseToCancel()
@@ -330,7 +346,7 @@ describe('Sharing', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Cancel invitation to Cabin' })).toBeEnabled(),
     )
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.getByRole('status')).toBeEmptyDOMElement()
   })
 
   it('shouldSayTheOfferWasCanceledWhenReadingTheSharesAgainFails', async () => {
@@ -784,6 +800,25 @@ describe('Sharing', () => {
 
     await waitFor(() => expect(screen.queryByRole('textbox')).not.toBeInTheDocument())
     expect(screen.getByRole('heading', { level: 1, name: 'Sharing' })).toHaveFocus()
+  })
+
+  it('shouldWriteTheNoticeAnewWhenASecondOfferBringsTheSameWords', async () => {
+    serve()
+    server.use(graphql.mutation('OfferProfileShare', () => HttpResponse.json({ data: offered() })))
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.type(await openShareForm(user), `${CABIN_ID}{Enter}`)
+    await noticed('Invitation sent. An admin there must accept it.')
+    const status = screen.getByRole('status')
+    const first = within(status).getByText('Invitation sent. An admin there must accept it.')
+
+    await user.type(await openShareForm(user), `${BEACH_HOUSE_ID}{Enter}`)
+
+    // The same words, written anew, so a screen reader reads them again.
+    await waitFor(() =>
+      expect(within(status).getByText('Invitation sent. An admin there must accept it.')).not.toBe(
+        first,
+      ),
+    )
   })
 
   it('shouldSayNoHouseholdHasThatIdWhenTheServerFindsNone', async () => {
