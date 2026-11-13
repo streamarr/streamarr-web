@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import { delay, graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { HouseholdShareCodesQuery } from '../graphql/generated/graphql'
-import { answersInTurn, answerWith, failsOnceThen } from '../test/graphqlResponses'
+import { answersInTurn, answerWith, failsOnceThen, heldAnswer } from '../test/graphqlResponses'
 import { HOUSEHOLD_ID, meFixture } from '../test/meFixture'
 import { renderAppAt, renderWithProviders } from '../test/render'
 import { leaveForHomeAndReturn, type SettingsPage } from '../test/returnVisits'
@@ -21,6 +21,7 @@ const SHARE_CODES: SettingsPage = {
   section: 'Share codes',
 }
 const CODE_ID = '99999999-9999-9999-9999-999999999999'
+const ANOTHER_CODE_ID = '88888888-8888-8888-8888-888888888888'
 const HOUR = 60 * 60 * 1000
 const DAY = 24 * HOUR
 // Local times, so that the page's dates read the same in every time zone.
@@ -49,15 +50,13 @@ function codesData(codes: ShareCodeNode[] = []) {
   }
 }
 
-function issued() {
+function issued({
+  shareCode = liveCode({ expiresAt: EXPIRES_AT.toISOString() }),
+}: { shareCode?: ShareCodeNode } = {}) {
   return {
     issueShareCode: {
       __typename: 'IssueShareCodePayload',
-      issued: {
-        __typename: 'IssuedShareCode',
-        code: SHARE_CODE,
-        shareCode: liveCode({ expiresAt: EXPIRES_AT.toISOString() }),
-      },
+      issued: { __typename: 'IssuedShareCode', code: SHARE_CODE, shareCode },
       userErrors: [],
     },
   }
@@ -108,17 +107,27 @@ function serveInTurn(...lists: ShareCodeNode[][]) {
   return handler
 }
 
-function serveIssue() {
+function serveIssue(answer: Parameters<typeof issued>[0] = {}) {
   server.use(
     graphql.mutation('IssueShareCode', ({ variables }) => {
       expect(variables).toEqual({ input: { householdId: HOUSEHOLD_ID } })
-      return HttpResponse.json({ data: issued() })
+      return HttpResponse.json({ data: issued(answer) })
     }),
   )
 }
 
+function serveWithdraw() {
+  server.use(graphql.mutation('WithdrawShareCode', () => HttpResponse.json({ data: withdrawn() })))
+}
+
+// Issuing waits for the first read of the codes, so a test presses the button once the list loads.
+async function pressIssue(user: ReturnType<typeof renderAppAt>['user']) {
+  await screen.findByRole('region', { name: 'Live codes' })
+  await user.click(screen.getByRole('button', { name: 'Issue a share code' }))
+}
+
 async function issue(user: ReturnType<typeof renderAppAt>['user']) {
-  await user.click(await screen.findByRole('button', { name: 'Issue a share code' }))
+  await pressIssue(user)
   return screen.findByText(SHARE_CODE)
 }
 
@@ -300,7 +309,7 @@ describe('Share codes', () => {
     )
     const { user } = renderAppAt(CODES)
 
-    await user.click(await screen.findByRole('button', { name: 'Issue a share code' }))
+    await pressIssue(user)
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       /^Smith Family already has 10 live share codes\.$/,
@@ -324,7 +333,7 @@ describe('Share codes', () => {
     )
     const { user } = renderAppAt(CODES)
 
-    await user.click(await screen.findByRole('button', { name: 'Issue a share code' }))
+    await pressIssue(user)
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       /^Only an admin of Smith Family may issue share codes\.$/,
@@ -381,6 +390,75 @@ describe('Share codes', () => {
     )
     await waitFor(() => expect(codes.calls).toBe(2))
     expect(screen.getByRole('status')).toBeEmptyDOMElement()
+  })
+
+  it('shouldWaitToIssueACodeWhenAWithdrawalOrTheReadAfterItIsOnItsWay', async () => {
+    const issuedLater = liveCode({ id: ANOTHER_CODE_ID, issuedByDisplayName: 'Ana' })
+    const afterWithdrawal = heldAnswer(codesData([]))
+    serve()
+    const codes = answersInTurn(
+      answerWith(codesData([liveCode()])),
+      afterWithdrawal.answer,
+      answerWith(codesData([issuedLater])),
+    )
+    server.use(graphql.query('HouseholdShareCodes', codes.resolver))
+    serveWithdraw()
+    serveIssue({ shareCode: issuedLater })
+    const { user } = renderAppAt(CODES)
+
+    await user.click(await screen.findByRole('button', { name: 'Withdraw' }))
+    await waitFor(() => expect(codes.calls).toBe(2))
+
+    const issueAction = screen.getByRole('button', { name: 'Issue a share code' })
+    expect(issueAction).toBeDisabled()
+    afterWithdrawal.release()
+    await waitFor(() => expect(issueAction).toBeEnabled())
+    await issue(user)
+    expect(await screen.findByText('Issued by Ana')).toBeVisible()
+  })
+
+  it('shouldWaitToWithdrawACodeWhenAnIssueOrTheReadAfterItIsOnItsWay', async () => {
+    const issuedNow = liveCode({ id: ANOTHER_CODE_ID, issuedByDisplayName: 'Ana' })
+    const afterIssue = heldAnswer(codesData([liveCode(), issuedNow]))
+    serve()
+    const codes = answersInTurn(
+      answerWith(codesData([liveCode()])),
+      afterIssue.answer,
+      answerWith(codesData([issuedNow])),
+    )
+    server.use(graphql.query('HouseholdShareCodes', codes.resolver))
+    serveIssue({ shareCode: issuedNow })
+    serveWithdraw()
+    const { user } = renderAppAt(CODES)
+
+    await issue(user)
+    await waitFor(() => expect(codes.calls).toBe(2))
+
+    const withdrawSamsCode = screen.getByRole('button', { name: 'Withdraw' })
+    expect(withdrawSamsCode).toBeDisabled()
+    afterIssue.release()
+    await waitFor(() => expect(withdrawSamsCode).toBeEnabled())
+    await user.click(withdrawSamsCode)
+    await waitFor(() => expect(screen.queryByText('Issued by Sam')).not.toBeInTheDocument())
+    expect(screen.getByText('Issued by Ana')).toBeVisible()
+  })
+
+  it('shouldWaitToIssueACodeWhenTheFirstReadOfTheCodesIsOnItsWay', async () => {
+    const issuedNow = liveCode({ id: ANOTHER_CODE_ID, issuedByDisplayName: 'Ana' })
+    const firstRead = heldAnswer(codesData([]))
+    serve()
+    const codes = answersInTurn(firstRead.answer, answerWith(codesData([issuedNow])))
+    server.use(graphql.query('HouseholdShareCodes', codes.resolver))
+    serveIssue({ shareCode: issuedNow })
+    const { user } = renderAppAt(CODES)
+
+    const issueAction = await screen.findByRole('button', { name: 'Issue a share code' })
+    await waitFor(() => expect(codes.calls).toBe(1))
+    expect(issueAction).toBeDisabled()
+    firstRead.release()
+    await waitFor(() => expect(issueAction).toBeEnabled())
+    await issue(user)
+    expect(await screen.findByText('Issued by Ana')).toBeVisible()
   })
 
   it('shouldListACodeIssuedWhileTheAdminWasAwayWhenTheyReturn', async () => {

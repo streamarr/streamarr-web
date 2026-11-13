@@ -27,6 +27,8 @@ type ShareCode = HouseholdShareCodesQuery['householdShareCodes']['edges'][number
 type Issued = NonNullable<NonNullable<IssueShareCodeMutation['issueShareCode']>['issued']>
 type Household = MeQuery['me']['household']
 type Announce = ReturnType<typeof usePageNotice>['announce']
+/** A change to the Household's codes: issuing a code, or withdrawing the code that `codeId` names. */
+type Change = { kind: 'issue' } | { kind: 'withdraw'; codeId: string }
 
 const ISSUE_FAILED = "Couldn't issue a share code."
 const WITHDRAW_FAILED = "Couldn't withdraw the share code."
@@ -102,18 +104,21 @@ function HouseholdShareCodes({
   const [issueCode] = useMutation(IssueShareCodeDocument, { fetchPolicy: 'no-cache' })
   const [withdraw] = useMutation(WithdrawShareCodeDocument)
   const [issued, setIssued] = useState<Issued | null>(null)
-  const [issuing, setIssuing] = useState(false)
   const [refusal, setRefusal] = useState<string | null>(null)
-  /** The code whose withdrawal is on its way; no other starts until it lands. */
-  const [withdrawing, setWithdrawing] = useState<string | null>(null)
   const [withdrawRefusal, setWithdrawRefusal] = useState<string | null>(null)
+  /** The change on its way. A change stays on its way until the read after the change lands. */
+  const [change, setChange] = useState<Change | null>(null)
+  // Apollo answers a read sent while the same read is on its way with the earlier read's answer,
+  // and that answer can predate a change. So no change starts while another change, or the first
+  // read of the codes, is on its way.
+  const waiting = change !== null || (query.loading && !query.data)
   const issueAction = useRef<HTMLButtonElement>(null)
   // A failed read keeps the list that is on screen; the query's own error state reports it.
   const readAgain = () => query.refetch().catch(() => undefined)
 
   async function issue() {
     setRefusal(null)
-    setIssuing(true)
+    setChange({ kind: 'issue' })
     try {
       const { data } = await issueCode({ variables: { input: { householdId: household.id } } })
       const errors = data?.issueShareCode?.userErrors ?? []
@@ -131,14 +136,14 @@ function HouseholdShareCodes({
     } catch (error) {
       setRefusal(requestFailureMessage(error, ISSUE_FAILED))
     } finally {
-      setIssuing(false)
+      setChange(null)
     }
   }
 
   // Issuing another code is cheap, so withdrawing one asks nothing.
   async function withdrawNow(code: ShareCode) {
     setWithdrawRefusal(null)
-    setWithdrawing(code.id)
+    setChange({ kind: 'withdraw', codeId: code.id })
     try {
       const { data } = await withdraw({ variables: { input: { shareCodeId: code.id } } })
       const errors = data?.withdrawShareCode?.userErrors ?? []
@@ -149,7 +154,7 @@ function HouseholdShareCodes({
     } catch (error) {
       setWithdrawRefusal(requestFailureMessage(error, WITHDRAW_FAILED))
     } finally {
-      setWithdrawing(null)
+      setChange(null)
     }
   }
 
@@ -167,7 +172,8 @@ function HouseholdShareCodes({
       <Button
         ref={issueAction}
         leftSection={<Icon name="plus" />}
-        loading={issuing}
+        loading={change?.kind === 'issue'}
+        disabled={waiting}
         onClick={() => void issue()}
       >
         Issue a share code
@@ -191,7 +197,8 @@ function HouseholdShareCodes({
         loading={query.loading}
         error={query.error}
         readAgain={readAgain}
-        withdrawing={withdrawing}
+        withdrawing={change?.kind === 'withdraw' ? change.codeId : null}
+        waiting={waiting}
         refusal={withdrawRefusal}
         onWithdraw={(code) => void withdrawNow(code)}
       />
@@ -205,6 +212,7 @@ function LiveShareCodes({
   error,
   readAgain,
   withdrawing,
+  waiting,
   refusal,
   onWithdraw,
 }: Readonly<{
@@ -215,6 +223,8 @@ function LiveShareCodes({
   readAgain: () => Promise<unknown>
   /** The code whose withdrawal is on its way, if any. */
   withdrawing: string | null
+  /** True while another change is on its way, so that no withdrawal may start. */
+  waiting: boolean
   /** Why the server refused the last withdrawal, if it did. */
   refusal: string | null
   onWithdraw: (code: ShareCode) => void
@@ -236,7 +246,8 @@ function LiveShareCodes({
           <LiveShareCodeRow
             key={code.id}
             code={code}
-            withdrawing={withdrawing}
+            withdrawing={withdrawing === code.id}
+            disabled={waiting}
             onWithdraw={() => onWithdraw(code)}
           />
         ))}
@@ -248,8 +259,14 @@ function LiveShareCodes({
 function LiveShareCodeRow({
   code,
   withdrawing,
+  disabled,
   onWithdraw,
-}: Readonly<{ code: ShareCode; withdrawing: string | null; onWithdraw: () => void }>) {
+}: Readonly<{
+  code: ShareCode
+  withdrawing: boolean
+  disabled: boolean
+  onWithdraw: () => void
+}>) {
   const facts = useId()
   // The spaces keep the facts apart where Withdraw's description reads them as one sentence.
   return (
@@ -264,8 +281,8 @@ function LiveShareCodeRow({
       <Button
         variant="default"
         aria-describedby={facts}
-        loading={withdrawing === code.id}
-        disabled={withdrawing !== null}
+        loading={withdrawing}
+        disabled={disabled}
         onClick={onWithdraw}
       >
         Withdraw
