@@ -490,6 +490,46 @@ describe('Older Notifications', () => {
       '“Cabin” accepted the Profile “Leo”.',
     ])
   })
+
+  it('shouldShowAnOlderNotificationInItsPlaceWhenItChangesAfterEveryLoadedOneLeft', async () => {
+    const { socket } = serve()
+    servePages(NEWEST, OLDER)
+    renderAppAt(NOTIFICATIONS)
+    await screen.findByText('“Cabin” accepted the Profile “Alex”.')
+    await followingNotificationChanges(socket)
+    socket.publish(
+      'NotificationsChanged',
+      notificationsChanged([
+        notificationChange(answerAbout('Alex').id, null),
+        notificationChange(answerAbout('Sam').id, null),
+      ]),
+    )
+    await waitFor(() =>
+      expect(screen.queryByRole('list', { name: 'Notifications' })).not.toBeInTheDocument(),
+    )
+
+    // Another device marks Leo's news read, on the page after the loaded one. Nora's news arrives
+    // next, so its row shows that the page has taken Leo's change.
+    const leo = answerAbout('Leo')
+    socket.publish(
+      'NotificationsChanged',
+      notificationsChanged([notificationChange(leo.id, notificationEdge(leo, 4))]),
+    )
+    const nora = { ...answerAbout('Nora'), unread: true }
+    socket.publish(
+      'NotificationsChanged',
+      notificationsChanged([notificationChange(nora.id, notificationEdge(nora, 0))]),
+    )
+    await screen.findByText('“Cabin” accepted the Profile “Nora”.')
+    await reachTheEndOfTheList()
+
+    await screen.findByText('“Cabin” accepted the Profile “Mara”.')
+    expect(lines()).toEqual([
+      '“Cabin” accepted the Profile “Nora”.',
+      '“Cabin” accepted the Profile “Mara”.',
+      '“Cabin” accepted the Profile “Leo”.',
+    ])
+  })
 })
 
 describe('Notifications as they change elsewhere', () => {
@@ -606,6 +646,36 @@ describe('Notifications as they change elsewhere', () => {
     )
 
     await waitFor(() => expect(lines()).toEqual([ANSWER_LINE, OFFER_LINE]))
+  })
+
+  it('shouldListANotificationInsideTheLoadedPagesWhenItArrivesAfterTheLastLoadedOneMoved', async () => {
+    const [alex, sam, mara] = ['Alex', 'Sam', 'Mara'].map(answerAbout)
+    const { notifications } = notificationsPage([alex, sam], { hasNextPage: true })
+    const { socket } = serve({
+      notifications: {
+        ...notifications,
+        edges: [notificationEdge(alex, 1), notificationEdge(sam, 3)],
+        pageInfo: { ...notifications.pageInfo, endCursor: 'cursor-003' },
+      },
+    })
+    renderAppAt(NOTIFICATIONS)
+    await screen.findByText(sam.message)
+    await followingNotificationChanges(socket)
+    // Sam's news is updated in place, so it moves to the top. The next page still starts after
+    // where it was.
+    socket.publish(
+      'NotificationsChanged',
+      notificationsChanged([notificationChange(sam.id, notificationEdge(sam, 0))]),
+    )
+    await waitFor(() => expect(lines()).toEqual([sam.message, alex.message]))
+
+    // Mara's news commits after the list was read, with a time between Alex's and Sam's old one.
+    socket.publish(
+      'NotificationsChanged',
+      notificationsChanged([notificationChange(mara.id, notificationEdge(mara, 2))]),
+    )
+
+    await waitFor(() => expect(lines()).toEqual([sam.message, alex.message, mara.message]))
   })
 
   it('shouldReadTheListAgainOnceItFollowsChanges', async () => {

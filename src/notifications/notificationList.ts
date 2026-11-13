@@ -20,21 +20,35 @@ export interface NotificationEntry {
 
 /** The pages of the Account's list of Notifications that one visit loads, as changes reach them. */
 export function createLoadedPages() {
+  // The order key of the row at each end cursor that the visit has held. The next page starts after
+  // that row's place, also once a change has moved the row up or taken it out.
+  const endKeys = new Map<string, string>()
+
+  function endOf(list: NotificationList) {
+    const last = definedEdges(list.edges).at(-1)?.orderKey
+    const { endCursor } = list.pageInfo
+    if (!endCursor) return last
+    const atEnd = list.edges.find((stored) => stored?.cursor === endCursor)
+    if (atEnd) endKeys.set(endCursor, atEnd.orderKey)
+    return endKeys.get(endCursor) ?? last
+  }
+
   return {
     /**
      * The list once one Notification's change applies, by its id: its edge takes its place by
      * order key, and a null edge takes it out. While older pages are still to load, an edge that
-     * sorts below the loaded list belongs to one of them, so the list lets the Notification go and
-     * that page brings it.
+     * sorts below the loaded pages belongs to one of them, so the list lets the Notification go
+     * and that page brings it. The loaded pages end where the next page starts, at the place of
+     * the row their end cursor names.
      */
     withChange(
       list: NotificationList,
       { notificationId, edge }: NotificationEntry,
     ): NotificationList {
       const edges = definedEdges(list.edges)
-      const last = edges.at(-1)
+      const end = endOf(list)
       const below =
-        edge !== null && list.pageInfo.hasNextPage && !!last && edge.orderKey > last.orderKey
+        edge !== null && list.pageInfo.hasNextPage && end !== undefined && edge.orderKey > end
       return {
         ...list,
         edges: placeOrderedEdge(edges, { itemId: notificationId, edge: below ? null : edge }),
