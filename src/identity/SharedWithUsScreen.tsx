@@ -12,6 +12,7 @@ import {
   type SharedWithHouseholdQuery,
   type VisitorDevicesQuery,
 } from '../graphql/generated/graphql'
+import { isReading } from '../graphql/readAgain'
 import { requestFailureMessage } from '../graphql/requestErrors'
 import { userErrorMessage, type UserErrorLike } from '../graphql/userErrors'
 import settingsStyles from '../styles/settings.module.css'
@@ -299,10 +300,17 @@ function useConfirmedChange<Row>({
   }
 }
 
-// A failed read keeps the list on screen, and the list's own query reports the failure.
+// A read sent before the change can answer as if the change never happened, and a refetch now
+// would join that read. The app reads every active query again when the page comes back into view
+// or online. So a read already on its way settles first, and a fresh read follows. A failed read
+// keeps the list on screen, and the list's own query reports the failure.
 function readListsAgain(client: ApolloClient, lists: DocumentNode[]): Promise<unknown> {
   return Promise.all(
-    [...client.getObservableQueries(lists)].map((query) => query.refetch().catch(() => undefined)),
+    [...client.getObservableQueries(lists)].map(async (query) => {
+      const refetch = () => query.refetch().catch(() => undefined)
+      if (isReading(query)) await refetch()
+      await refetch()
+    }),
   )
 }
 
