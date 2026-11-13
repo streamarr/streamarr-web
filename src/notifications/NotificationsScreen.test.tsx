@@ -145,14 +145,18 @@ type NotificationNode = Parameters<typeof notificationEdge>[0] & object
 
 /**
  * Serves the list as the server holds `nodes`, newest first: `first` rows, or 20 when a read does
- * not ask, after the place that `after` names. Each Notification keeps its place in the list. A
- * test takes one out, or changes it, where the server would, and tells the page nothing.
+ * not ask, after the place that `after` names. Like the server, it refuses a read of more than 500
+ * rows. Each Notification keeps its place in the list. A test takes one out, changes it or puts
+ * news first, where the server would, and tells the page nothing.
  */
 function serveTheHeldList(nodes: NotificationNode[]) {
   const held = new Map(nodes.map((node, index) => [node.id, notificationEdge(node, index + 1)!]))
   server.use(
     graphql.query('Notifications', ({ variables }) => {
       const { first, after } = variables as { first?: number | null; after?: string | null }
+      if (first && first > 500) {
+        return HttpResponse.json({ errors: [{ message: 'first must not exceed 500.' }] })
+      }
       const edges = [...held.values()].filter((edge) => !after || edge.cursor > after)
       const page = edges.slice(0, first ?? 20)
       return HttpResponse.json({
@@ -175,6 +179,12 @@ function serveTheHeldList(nodes: NotificationNode[]) {
     replace: (node: NotificationNode) => {
       const at = Number(held.get(node.id)!.cursor.slice('cursor-'.length))
       held.set(node.id, notificationEdge(node, at)!)
+    },
+    arrive: (node: NotificationNode) => {
+      const before = [...held]
+      held.clear()
+      held.set(node.id, notificationEdge(node, 0)!)
+      for (const [id, edge] of before) held.set(id, edge)
     },
   }
 }
@@ -839,6 +849,72 @@ describe('Older Notifications', () => {
     expect(await within(rows()[20]).findByText('Withdrawn')).toBeVisible()
     expect(screen.queryByRole('link', { name: 'Review' })).not.toBeInTheDocument()
   })
+
+  // More than the newest page holds, so that 5 rows stay on the older page.
+  const TWENTY_FIVE = Array.from({ length: 25 }, (_, index) => answerAbout(`Profile ${index + 1}`))
+
+  it('shouldDropTheLastNotificationShownWhenItWasDeletedWhileNewsArrivedUnseen', async () => {
+    serve()
+    const held = serveTheHeldList(TWENTY_FIVE)
+    renderAppAt(NOTIFICATIONS)
+    await screen.findByText('The offer of “Profile 20” was accepted.')
+
+    // While the page misses changes, Tom's news arrives and the news about Profile 20 is deleted.
+    held.arrive(answerAbout('Tom'))
+    held.remove('answer-for-Profile 20')
+    comeBackOnline()
+
+    await screen.findByText('The offer of “Tom” was accepted.')
+    expect(lines()).toEqual([
+      'The offer of “Tom” was accepted.',
+      ...TWENTY_FIVE.slice(0, 19).map(({ message }) => message),
+    ])
+  })
+
+  it('shouldLoadAgainTheNotificationThatNewsPushedPastTheReadWhenTheEndOfTheListComesIntoView', async () => {
+    serve()
+    const held = serveTheHeldList(TWENTY_FIVE)
+    renderAppAt(NOTIFICATIONS)
+    await screen.findByText('The offer of “Profile 20” was accepted.')
+    // Tom's news arrives while the page misses changes, so the read again ends at Profile 19.
+    held.arrive(answerAbout('Tom'))
+    comeBackOnline()
+    await screen.findByText('The offer of “Tom” was accepted.')
+
+    await reachTheEndOfTheList()
+
+    await screen.findByText('The offer of “Profile 25” was accepted.')
+    expect(lines()).toEqual([
+      'The offer of “Tom” was accepted.',
+      ...TWENTY_FIVE.map(({ message }) => message),
+    ])
+  })
+
+  // Loading 520 rows, 20 at a time, takes about 4 s with coverage, near the default limit of 5 s.
+  it('shouldDropANotificationBeyondTheFiveHundredthWhenTheListReadAgainNoLongerHasIt', async () => {
+    serve()
+    const many = Array.from({ length: 520 }, (_, index) => answerAbout(`Profile ${index + 1}`))
+    const held = serveTheHeldList(many)
+    renderAppAt(NOTIFICATIONS)
+    await screen.findByText('The offer of “Profile 20” was accepted.')
+    for (let shown = 40; shown <= 520; shown += 20) {
+      await reachTheEndOfTheList()
+      await waitFor(() => expect(screen.getAllByTestId('notification-text')).toHaveLength(shown))
+    }
+
+    // Retention deletes the news about Profile 510, and Profile 1's line changes so the read shows.
+    held.remove('answer-for-Profile 510')
+    held.replace(
+      answerNotification({
+        id: 'answer-for-Profile 1',
+        message: 'The offer of “Profile 1” was declined.',
+      }),
+    )
+    comeBackOnline()
+
+    await screen.findByText('The offer of “Profile 1” was declined.')
+    expect(screen.queryByText('The offer of “Profile 510” was accepted.')).not.toBeInTheDocument()
+  }, 15_000)
 
   it('shouldAddNoOlderPageWhenTheListReadAgainEndsElsewhereBeforeItArrives', async () => {
     const { socket } = serve()
