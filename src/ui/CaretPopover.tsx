@@ -127,7 +127,7 @@ export function CaretPopover<Id>({
       alignToAnchor(surface, anchorRef.current)
       reservedRoom.current = placeExplanation({
         explanation: explanationRef.current,
-        row: explainedLine({
+        line: explainedLine({
           index: explainedIndex,
           messageIndex,
           heading: headingRef.current,
@@ -429,17 +429,17 @@ function longestOf(texts: readonly (string | undefined)[]): string | undefined {
   )
 }
 
-// Level with its row on the side away from the screen edge, beside the menu so it covers no
-// other row, or above the menu where the screen leaves no room beside it. Returns the room the
+// Level with the line it explains on the side away from the screen edge, beside the menu so it
+// covers no row, or above the menu where the screen leaves no room beside it. Returns the room the
 // menu keeps above itself for it, which only grows while it stays above.
 function placeExplanation({
   explanation,
-  row,
+  line,
   surface,
   reservedRoom,
 }: {
   explanation: HTMLElement | null
-  row: HTMLElement | undefined
+  line: HTMLElement | undefined
   surface: HTMLElement | null
   reservedRoom: number
 }): number {
@@ -452,7 +452,7 @@ function placeExplanation({
     return Math.max(reservedRoom, explanation.offsetHeight + EXPLANATION_GAP_PX)
   }
   explanation.dataset.side = 'start'
-  explanation.style.top = row ? `${row.offsetTop - (row.parentElement?.scrollTop ?? 0)}px` : ''
+  explanation.style.top = line ? `${line.offsetTop - (line.parentElement?.scrollTop ?? 0)}px` : ''
   return 0
 }
 
