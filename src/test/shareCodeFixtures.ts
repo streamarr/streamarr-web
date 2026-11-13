@@ -20,12 +20,14 @@ export function shareCodeLookUpFixture({
 export const SHARE_CODE_REFUSED = 'This share code does not work. Ask the Household for a new one.'
 
 /** The answer to looking up a code that does not work, which names no Household. */
-export function refusedShareCodeFixture() {
+export function refusedShareCodeFixture({
+  message = SHARE_CODE_REFUSED,
+}: { message?: string } = {}) {
   return {
     lookUpShareCode: {
       __typename: 'LookUpShareCodePayload',
       householdName: null,
-      userErrors: [{ __typename: 'ShareCodeRefusedError', message: SHARE_CODE_REFUSED }],
+      userErrors: [{ __typename: 'ShareCodeRefusedError', message }],
     },
   }
 }

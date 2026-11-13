@@ -58,6 +58,8 @@ const CABIN = { id: CABIN_ID, name: 'Cabin', membership: false }
 const DAY = 24 * 60 * 60 * 1000
 const ANSWER_LOST =
   "We couldn't tell whether your share invitation was sent. The list below shows every share."
+// Not the page's own sentence for a refused code, so the field can show only the server's words.
+const REWORDED_CODE_REFUSAL = 'This share code has expired. Ask the Household for a new one.'
 
 function share(overrides: Partial<ShareNode> = {}): ShareNode {
   return {
@@ -1430,9 +1432,11 @@ describe('Sharing', () => {
     )
   })
 
-  it('shouldSayTheCodeDoesNotWorkAndKeepItWhenTheServerRefusesIt', async () => {
+  it('shouldSayWhyInTheServersWordsAndKeepTheCodeWhenTheServerRefusesIt', async () => {
     serve()
-    const asked = serveShareCodeQuestions({ lookUp: refusedShareCodeFixture() })
+    const asked = serveShareCodeQuestions({
+      lookUp: refusedShareCodeFixture({ message: REWORDED_CODE_REFUSAL }),
+    })
     const { user } = renderWithProviders(<SharingScreen />)
 
     const field = await openShareForm(user)
@@ -1440,11 +1444,32 @@ describe('Sharing', () => {
     await user.click(screen.getByRole('button', { name: 'Continue' }))
 
     await waitFor(() => expect(field).toBeInvalid())
-    expect(field).toHaveAccessibleDescription(expect.stringContaining(SHARE_CODE_REFUSED))
+    expect(field).toHaveAccessibleDescription(expect.stringContaining(REWORDED_CODE_REFUSAL))
     expect(field).toHaveValue(SHARE_CODE)
     expect(field).toHaveFocus()
-    expectOnlyTheFieldsErrorAnnounced(field, SHARE_CODE_REFUSED)
+    expectOnlyTheFieldsErrorAnnounced(field, REWORDED_CODE_REFUSAL)
     expect(asked.previews).toEqual([])
+  })
+
+  it('shouldSayTheCodeDoesNotWorkWhenTheServerFindsNoHouseholdForItAndSaysNothing', async () => {
+    serve()
+    serveShareCodeQuestions({
+      lookUp: {
+        lookUpShareCode: {
+          __typename: 'LookUpShareCodePayload',
+          householdName: null,
+          userErrors: [],
+        },
+      },
+    })
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    const field = await openShareForm(user)
+    await user.type(field, SHARE_CODE)
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+
+    await waitFor(() => expect(field).toBeInvalid())
+    expectOnlyTheFieldsErrorAnnounced(field, SHARE_CODE_REFUSED)
   })
 
   it('shouldShowTheServersWordsWhenTheServerWillNotLookTheCodeUp', async () => {
@@ -1606,7 +1631,7 @@ describe('Sharing', () => {
     server.use(
       graphql.mutation('OfferProfileShare', () =>
         HttpResponse.json({
-          data: offerRefused('ShareCodeRefusedError', SHARE_CODE_REFUSED),
+          data: offerRefused('ShareCodeRefusedError', REWORDED_CODE_REFUSAL),
         }),
       ),
     )
@@ -1619,10 +1644,10 @@ describe('Sharing', () => {
       name: 'Share code from the other Household',
     })
     expect(field).toBeInvalid()
-    expect(field).toHaveAccessibleDescription(expect.stringContaining(SHARE_CODE_REFUSED))
+    expect(field).toHaveAccessibleDescription(expect.stringContaining(REWORDED_CODE_REFUSAL))
     expect(field).toHaveValue(SHARE_CODE)
     expect(field).toHaveFocus()
-    expectOnlyTheFieldsErrorAnnounced(field, SHARE_CODE_REFUSED)
+    expectOnlyTheFieldsErrorAnnounced(field, REWORDED_CODE_REFUSAL)
   })
 
   it('shouldShowTheServersWordsAndKeepTheReviewWhenTheOfferIsRefused', async () => {
