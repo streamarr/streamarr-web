@@ -576,6 +576,25 @@ describe('Share codes', () => {
     expect(screen.queryByRole('button', { name: 'Copy link' })).not.toBeInTheDocument()
   })
 
+  it('shouldTakeTheIssuedCodeAwayWhenTheReadAfterTheIssueDoesNotListThatCode', async () => {
+    // Someone offers a Profile with the code before the read after the issue, and the offer spends
+    // the code. So no list ever holds the code.
+    const afterIssue = heldAnswer(codesData([]))
+    serve()
+    const codes = answersInTurn(answerWith(codesData([])), afterIssue.answer)
+    server.use(graphql.query('HouseholdShareCodes', codes.resolver))
+    serveIssue()
+    const { user } = renderAppAt(CODES)
+    await issue(user)
+    await waitFor(() => expect(codes.calls).toBe(2))
+
+    afterIssue.release()
+
+    await waitForTheReadAfterTheIssue()
+    expect(screen.queryByText(SHARE_CODE)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Copy link' })).not.toBeInTheDocument()
+  })
+
   it('shouldReturnToTheIssueButtonWhenALaterReadTakesAwayTheIssuedCodeWhileFocusIsInItsPanel', async () => {
     serveInTurn([], [liveCode()], [])
     serveIssue()

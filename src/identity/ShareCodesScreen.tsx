@@ -30,12 +30,6 @@ type Household = MeQuery['me']['household']
 type Announce = ReturnType<typeof usePageNotice>['announce']
 /** A change to the Household's codes: issuing a code, or withdrawing the code that `codeId` names. */
 type Change = { kind: 'issue' } | { kind: 'withdraw'; codeId: string }
-/**
- * The code on show, and what the reads since the issue say about the code: `unlisted` until a list
- * holds the code, `listed` once a list does, and `readFailed` once a read that started after the
- * issue fails before any list held the code.
- */
-type Shown = { issued: Issued; reads: 'unlisted' | 'listed' | 'readFailed' }
 /** The latest read of the codes, as the query reports it. */
 type LatestRead = {
   /** The last list the server gave, if any. A failed read keeps that list. */
@@ -118,7 +112,7 @@ function HouseholdShareCodes({
   // The answer carries the code, which no cache may keep.
   const [issueCode] = useMutation(IssueShareCodeDocument, { fetchPolicy: 'no-cache' })
   const [withdraw] = useMutation(WithdrawShareCodeDocument)
-  const [shown, setShown] = useState<Shown | null>(null)
+  const [shown, setShown] = useState<Issued | null>(null)
   const [refusal, setRefusal] = useState<string | null>(null)
   const [withdrawRefusal, setWithdrawRefusal] = useState<string | null>(null)
   /** The change on its way. A change stays on its way until the read after the change lands. */
@@ -186,7 +180,7 @@ function HouseholdShareCodes({
         setRefusal(ISSUE_FAILED)
         return
       }
-      setShown({ issued: answer, reads: 'unlisted' })
+      setShown(answer)
       await readAfterChange()
     } catch (error) {
       setRefusal(requestFailureMessage(error, ISSUE_FAILED))
@@ -207,7 +201,7 @@ function HouseholdShareCodes({
       // The shown code no longer works after either answer. The server refuses the Account that
       // issued a code only once the code was spent, withdrawn or invalidated. So the panel stops
       // offering the code for copying.
-      setShown((current) => (current?.issued.shareCode.id === code.id ? null : current))
+      setShown((current) => (current?.shareCode.id === code.id ? null : current))
       // A refused code may have been spent or withdrawn elsewhere, so the list is read again.
       await readAfterChange()
       if (!refused) announce('Share code withdrawn.')
@@ -241,9 +235,9 @@ function HouseholdShareCodes({
       {shown && (
         <IssuedShareCode
           ref={holdsFocusAsItCloses}
-          key={shown.issued.shareCode.id}
-          code={shown.issued.code}
-          expiresAt={shown.issued.shareCode.expiresAt}
+          key={shown.shareCode.id}
+          code={shown.code}
+          expiresAt={shown.shareCode.expiresAt}
           clipboard={clipboard}
           origin={origin}
           onCopied={(notice) => announce(notice, { inPlace: true })}
@@ -268,20 +262,14 @@ function HouseholdShareCodes({
 }
 
 // The code on show after the latest read. The list read before the issue never holds the new code.
-// So a list without the code proves that the code stopped working in two cases only. In the first,
-// an earlier list held the code. In the second, a read failed after the read after the issue
-// settled, so the next read that succeeds started after the issue. The page then stops showing the
-// code. A failed read keeps the code on show.
-function afterLatestRead(shown: Shown | null, read: LatestRead): Shown | null {
-  if (!shown) return shown
-  if (read.failed) {
-    return shown.reads === 'unlisted' && read.afterIssue ? { ...shown, reads: 'readFailed' } : shown
-  }
-  if (!read.listed) return shown
-  const id = shown.issued.shareCode.id
+// The issue stays on its way until the read after the issue settles. So every list from then on
+// comes from a read that started after the issue. Such a list without the code proves that the code
+// stopped working, and the page then stops showing the code. A failed read keeps the code on show.
+function afterLatestRead(shown: Issued | null, read: LatestRead): Issued | null {
+  if (!shown || !read.afterIssue || read.failed || !read.listed) return shown
+  const id = shown.shareCode.id
   const holds = read.listed.householdShareCodes.edges.some((edge) => edge.node.id === id)
-  if (holds) return shown.reads === 'listed' ? shown : { ...shown, reads: 'listed' }
-  return shown.reads === 'unlisted' ? shown : null
+  return holds ? shown : null
 }
 
 function LiveShareCodes({
