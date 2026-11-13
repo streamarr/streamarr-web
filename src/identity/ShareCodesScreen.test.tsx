@@ -1,4 +1,5 @@
 import { screen, waitFor, within } from '@testing-library/react'
+import { parse, valueFromASTUntyped, visit } from 'graphql'
 import { delay, graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { HouseholdShareCodesQuery } from '../graphql/generated/graphql'
@@ -27,6 +28,10 @@ const DAY = 24 * HOUR
 // Local times, so that the page's dates read the same in every time zone.
 const ISSUED_AT = new Date(2026, 10, 11, 9, 15)
 const EXPIRES_AT = new Date(2026, 10, 18, 9, 15)
+// ADR 0024 lets a ServerAdmin set a Household's limit on live codes between 1 and 100.
+const MOST_LIVE_CODES = 100
+// The number of codes the server answers with when a read does not say how many it wants.
+const SERVER_PAGE_SIZE = 100
 
 function liveCode(overrides: Partial<ShareCodeNode> = {}): ShareCodeNode {
   return {
@@ -72,11 +77,11 @@ function issueRefused(message: string) {
   }
 }
 
-function withdrawn() {
+function withdrawn(shareCodeId = CODE_ID) {
   return {
     withdrawShareCode: {
       __typename: 'WithdrawShareCodePayload',
-      shareCode: { __typename: 'ShareCode', id: CODE_ID, status: 'WITHDRAWN' },
+      shareCode: { __typename: 'ShareCode', id: shareCodeId, status: 'WITHDRAWN' },
       userErrors: [],
     },
   }
@@ -105,6 +110,29 @@ function serveInTurn(...lists: ShareCodeNode[][]) {
   const handler = answersInTurn(...lists.map((codes) => answerWith(codesData(codes))))
   server.use(graphql.query('HouseholdShareCodes', handler.resolver))
   return handler
+}
+
+// Answers each read of the codes as the server does: the newest codes first, and only as many as
+// the read's `first` asks for. A withdrawal takes the code out of the codes the reads answer with.
+function serveHouseholdHolding(codes: ShareCodeNode[]) {
+  let live = codes
+  serve()
+  server.use(
+    graphql.query('HouseholdShareCodes', ({ query, variables }) => {
+      let pageSize = SERVER_PAGE_SIZE
+      visit(parse(query), {
+        Argument({ name, value }) {
+          if (name.value === 'first') pageSize = Number(valueFromASTUntyped(value, variables))
+        },
+      })
+      return HttpResponse.json({ data: codesData(live.slice(0, pageSize)) })
+    }),
+    graphql.mutation('WithdrawShareCode', ({ variables }) => {
+      const { shareCodeId } = (variables as { input: { shareCodeId: string } }).input
+      live = live.filter((code) => code.id !== shareCodeId)
+      return HttpResponse.json({ data: withdrawn(shareCodeId) })
+    }),
+  )
 }
 
 function serveIssue(answer: Parameters<typeof issued>[0] = {}) {
@@ -192,6 +220,26 @@ describe('Share codes', () => {
     expect(within(second).getByText('Issued by a deleted Account')).toBeVisible()
     expect(within(second).getByText('Expires in 2 hours')).toBeVisible()
     expect(within(live).queryByText(SHARE_CODE)).not.toBeInTheDocument()
+  })
+
+  it('shouldLetAnAdminWithdrawTheOldestCodeWhenTheHouseholdHoldsTheMostLiveCodesItMay', async () => {
+    const newer = Array.from({ length: MOST_LIVE_CODES - 1 }, (_, index) =>
+      liveCode({ id: `newer-${index}` }),
+    )
+    serveHouseholdHolding([...newer, liveCode({ id: 'oldest', issuedByDisplayName: 'Rae' })])
+    const { user } = renderAppAt(CODES)
+
+    const live = await screen.findByRole('region', { name: 'Live codes' })
+    expect(await within(live).findAllByRole('listitem')).toHaveLength(MOST_LIVE_CODES)
+    await user.click(
+      within(live).getByRole('button', { name: 'Withdraw', description: /^Issued by Rae / }),
+    )
+
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent('Share code withdrawn.'),
+    )
+    expect(within(live).queryByText('Issued by Rae')).not.toBeInTheDocument()
+    expect(within(live).getAllByRole('listitem')).toHaveLength(MOST_LIVE_CODES - 1)
   })
 
   it('shouldShowTheCodeOnceInThePageWhenAnAdminIssuesOne', async () => {

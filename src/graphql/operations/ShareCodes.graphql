@@ -1,5 +1,7 @@
+# A Household holds at most 100 live codes (ADR 0024), so one read of 100 lists every code an
+# admin may withdraw.
 query HouseholdShareCodes($householdId: ID!) {
-  householdShareCodes(householdId: $householdId, first: 50) {
+  householdShareCodes(householdId: $householdId, first: 100) {
     edges {
       node {
         ...ShareCodeFields
