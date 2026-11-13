@@ -1050,6 +1050,33 @@ test("the caution sits after the Quality menu's name, and its message shows besi
   expect(tooltip.y + tooltip.height).toBeGreaterThanOrEqual(heading.y + heading.height)
 })
 
+// WCAG 2.2 asks a pointer target for 24px. A touch screen gives the caution the 44px of the mark.
+async function headingCautionTarget(page: Page, request: APIRequestContext): Promise<Box> {
+  await openPlayerShowingMedia(page, request)
+  const chip = await startOriginalWithAnEncode(page)
+  await chip.click()
+  return (await headingCaution(page, ORIGINAL_EXPLANATION).boundingBox()) as Box
+}
+
+test("the caution in the Quality menu's heading takes a 24px target", async ({ page, request }) => {
+  const target = await headingCautionTarget(page, request)
+
+  expect([target.width, target.height]).toEqual([24, 24])
+})
+
+test.describe('with a touch screen', () => {
+  test.use({ hasTouch: true })
+
+  test("the caution in the Quality menu's heading takes a 44px target", async ({
+    page,
+    request,
+  }) => {
+    const target = await headingCautionTarget(page, request)
+
+    expect([target.width, target.height]).toEqual([44, 44])
+  })
+})
+
 test('on a phone the message of the caution shows above the menu, on screen', async ({
   page,
   request,
