@@ -11,10 +11,13 @@ import styles from './Sharing.module.css'
 export function ShareWithAnotherHousehold({
   profile,
   readAgain,
+  onSend,
   onChanged,
 }: Readonly<{
   profile: Readonly<{ id: string; name: string }>
   readAgain: () => Promise<unknown>
+  /** Called when the person sends the share, before the server answers. */
+  onSend: () => void
   onChanged: (notice: string) => void
 }>) {
   const [open, setOpen] = useState(false)
@@ -45,6 +48,7 @@ export function ShareWithAnotherHousehold({
   return (
     <ShareForm
       profile={profile}
+      onSend={onSend}
       onOffered={async () => {
         await readAgain()
         setOpen(false)

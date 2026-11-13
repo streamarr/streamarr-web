@@ -16,10 +16,13 @@ import styles from './Sharing.module.css'
  */
 export function ShareForm({
   profile,
+  onSend,
   onOffered,
   onCancel,
 }: Readonly<{
   profile: Readonly<{ id: string; name: string }>
+  /** Called when the person sends the share, before the server answers. */
+  onSend: () => void
   onOffered: () => Promise<void>
   onCancel: () => void
 }>) {
@@ -51,6 +54,7 @@ export function ShareForm({
       return
     }
     if (noSuchHousehold) return
+    onSend()
     setSending(true)
     try {
       await send(householdId)

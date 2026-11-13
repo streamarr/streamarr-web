@@ -70,7 +70,8 @@ function HouseholdOffers({
   const [deciding, setDeciding] = useState<string | null>(null)
   const [refusal, setRefusal] = useState<string | null>(null)
 
-  // A failed read keeps the list that is on screen; the query's own error state reports it.
+  // The query keeps a failed read, and the page shows it in place of the list. Rejecting here
+  // would report the decision that the read follows as failed.
   const readAgain = () => query.refetch().catch(() => undefined)
 
   /** Sends the decision and reads the offers again; resolves to whether the server took it. */

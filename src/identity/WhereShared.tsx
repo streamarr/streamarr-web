@@ -1,6 +1,6 @@
 import { Button } from '@mantine/core'
 import { useMutation } from '@apollo/client/react'
-import { useState } from 'react'
+import { useRef } from 'react'
 import {
   CancelProfileShareDocument,
   EndProfileShareDocument,
@@ -28,6 +28,12 @@ export function WhereShared({
   ownHouseholdName,
   readAgain,
   onChanged,
+  changing,
+  onChangingChange,
+  ending,
+  onEndingChange,
+  refusal,
+  onRefusalChange,
 }: Readonly<{
   profile: Readonly<{ id: string; name: string }>
   shares: readonly ProfileShareRow[]
@@ -36,35 +42,43 @@ export function WhereShared({
   ownHouseholdName: string
   readAgain: () => Promise<unknown>
   onChanged: (notice: string) => void
+  /** The share whose change is on its way; no other change starts until it lands. */
+  changing: string | null
+  onChangingChange: (shareId: string | null) => void
+  /** The share whose end waits for the person's confirmation. */
+  ending: ProfileShareRow | null
+  onEndingChange: (share: ProfileShareRow | null) => void
+  /** The server's words for a change that it refused. */
+  refusal: string | null
+  onRefusalChange: (refusal: string | null) => void
 }>) {
   const [cancel] = useMutation(CancelProfileShareDocument)
   const [end] = useMutation(EndProfileShareDocument)
-  /** The share whose end waits for the person's confirmation. */
-  const [ending, setEnding] = useState<ProfileShareRow | null>(null)
-  /** The share whose change is on its way; no other change starts until it lands. */
-  const [changing, setChanging] = useState<string | null>(null)
-  const [refusal, setRefusal] = useState<string | null>(null)
+  /** Each live share's End action, where focus returns when its confirmation closes. */
+  const endActions = useRef(new Map<string, HTMLButtonElement | null>())
+  /** Where focus goes when the confirmation closes after its share's End action is gone. */
+  const heading = useRef<HTMLHeadingElement>(null)
 
   const live = shares.filter(isLive)
   const earlier = shares.filter((share) => !isLive(share))
 
   /** Sends the change and reads the shares again; resolves to whether the server took it. */
   async function change(share: ProfileShareRow): Promise<boolean> {
-    setRefusal(null)
-    setChanging(share.id)
+    onRefusalChange(null)
+    onChangingChange(share.id)
     try {
       const errors = await send(share)
       if (errors?.length) {
-        setRefusal(errors.map(userErrorMessage).join(' '))
+        onRefusalChange(errors.map(userErrorMessage).join(' '))
       }
       // A refused share may have changed elsewhere, so the list is read again.
       await readAgain()
       return !errors?.length
     } catch (error) {
-      setRefusal(requestFailureMessage(error, UPDATE_FAILED_MESSAGE))
+      onRefusalChange(requestFailureMessage(error, UPDATE_FAILED_MESSAGE))
       return false
     } finally {
-      setChanging(null)
+      onChangingChange(null)
     }
   }
 
@@ -85,13 +99,17 @@ export function WhereShared({
 
   async function endShare(share: ProfileShareRow) {
     if (await change(share)) {
-      setEnding(null)
+      onEndingChange(null)
       onChanged(`Sharing with ${householdName(share.householdId)} ended.`)
     }
   }
 
   return (
-    <SharingSection title={`Where ${profile.name} is shared`} failure={ending ? null : refusal}>
+    <SharingSection
+      title={`Where ${profile.name} is shared`}
+      failure={ending ? null : refusal}
+      heading={heading}
+    >
       {live.length === 0 && (
         <p className={styles.note}>{profile.name} is not shared with another Household.</p>
       )}
@@ -120,12 +138,18 @@ export function WhereShared({
                 </Button>
               ) : (
                 <Button
+                  ref={(button) => {
+                    endActions.current.set(share.id, button)
+                    return () => {
+                      endActions.current.delete(share.id)
+                    }
+                  }}
                   variant="default"
                   aria-label={`End share with ${household}`}
                   disabled={changing !== null}
                   onClick={() => {
-                    setRefusal(null)
-                    setEnding(share)
+                    onRefusalChange(null)
+                    onEndingChange(share)
                   }}
                 >
                   End share
@@ -135,7 +159,12 @@ export function WhereShared({
           )
         })}
       </ul>
-      <ShareWithAnotherHousehold profile={profile} readAgain={readAgain} onChanged={onChanged} />
+      <ShareWithAnotherHousehold
+        profile={profile}
+        readAgain={readAgain}
+        onSend={() => onRefusalChange(null)}
+        onChanged={onChanged}
+      />
       <EarlierShares shares={earlier} householdName={householdName} />
       <ConfirmDialog
         opened={ending !== null}
@@ -151,8 +180,12 @@ export function WhereShared({
         pending={ending !== null && changing === ending.id}
         error={refusal}
         onClose={() => {
-          setEnding(null)
-          setRefusal(null)
+          // A confirmation that Retry brought back opened without the person's click, so the
+          // dialog knows nothing to return focus to. A share that ended meanwhile has no End
+          // action left to return to.
+          if (ending) (endActions.current.get(ending.id) ?? heading.current)?.focus()
+          onEndingChange(null)
+          onRefusalChange(null)
         }}
         onConfirm={() => {
           if (ending) void endShare(ending)
