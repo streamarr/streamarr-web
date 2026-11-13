@@ -96,7 +96,7 @@ export function ShareForm({
         {effects?.nameConflict && (
           <p>
             Another Profile there is already named {profile.name}. An admin there cannot accept the
-            offer until one of them is renamed.
+            share invitation until one of them is renamed.
           </p>
         )}
       </div>
@@ -107,7 +107,7 @@ export function ShareForm({
       )}
       <div className={styles.actions}>
         <Button type="submit" loading={sending} disabled={text.trim() === '' || noSuchHousehold}>
-          Offer share
+          Send invitation
         </Button>
         <Button variant="default" disabled={sending} onClick={onCancel}>
           Cancel

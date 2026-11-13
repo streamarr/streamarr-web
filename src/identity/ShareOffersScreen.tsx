@@ -32,7 +32,7 @@ export function ShareOffersScreen() {
     <>
       <div className={settingsStyles.pageHeading}>
         <h1 ref={heading} tabIndex={-1}>
-          Share offers
+          Share invitations
         </h1>
       </div>
       <PageNotice onDismiss={dismiss}>{notice}</PageNotice>
@@ -114,7 +114,7 @@ function HouseholdOffers({
 
   async function declineNow(offer: PendingOffer) {
     if (await decide(offer, 'decline')) {
-      onDecided(`Offer of ${offeredProfile(offer)} declined.`)
+      onDecided(`Share invitation for ${offeredProfile(offer)} declined.`)
     }
   }
 
@@ -135,9 +135,9 @@ function HouseholdOffers({
         </p>
       )}
       {offers.length === 0 ? (
-        <p className={styles.note}>No one has offered a Profile to {household.name}.</p>
+        <p className={styles.note}>No share invitations are waiting for {household.name}.</p>
       ) : (
-        <SharingSection title={`Profiles offered to ${household.name}`} failure={null}>
+        <SharingSection title={`Share invitations for ${household.name}`} failure={null}>
           <ul className={styles.rows}>
             {offers.map((offer) => (
               <li key={offer.id} className={styles.row}>
@@ -204,7 +204,7 @@ function offeredProfile(offer: PendingOffer): string {
 function ShareOffersLoading() {
   return (
     <Center h={200}>
-      <Loader role="status" aria-label="Loading share offers" />
+      <Loader role="status" aria-label="Loading share invitations" />
     </Center>
   )
 }
@@ -215,7 +215,7 @@ function ShareOffersUnavailable({
 }: Readonly<{ error: unknown; onRetry: () => unknown }>) {
   return (
     <FailurePanel onRetry={onRetry}>
-      {requestFailureMessage(error, "Couldn't load share offers.")}
+      {requestFailureMessage(error, "Couldn't load share invitations.")}
     </FailurePanel>
   )
 }

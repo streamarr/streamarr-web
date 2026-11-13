@@ -256,9 +256,9 @@ function ConnectReview({ preview }: Readonly<{ preview: InvitationPreview }>) {
         empty="It isn't visiting any other Household."
       />
       <ConsequenceList
-        title="These Households will be offered it afresh"
+        title="These Households get a new share invitation"
         items={preview.profileShareOfferTargets}
-        empty="No Household will be offered it again."
+        empty="No Household gets a new share invitation."
       />
     </section>
   )
