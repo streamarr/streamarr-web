@@ -100,9 +100,13 @@ function HouseholdShareCodes({
   })
   // The answer carries the code, which no cache may keep.
   const [issueCode] = useMutation(IssueShareCodeDocument, { fetchPolicy: 'no-cache' })
+  const [withdraw] = useMutation(WithdrawShareCodeDocument)
   const [issued, setIssued] = useState<Issued | null>(null)
   const [issuing, setIssuing] = useState(false)
   const [refusal, setRefusal] = useState<string | null>(null)
+  /** The code whose withdrawal is on its way; no other starts until it lands. */
+  const [withdrawing, setWithdrawing] = useState<string | null>(null)
+  const [withdrawRefusal, setWithdrawRefusal] = useState<string | null>(null)
   const issueAction = useRef<HTMLButtonElement>(null)
   // A failed read keeps the list that is on screen; the query's own error state reports it.
   const readAgain = () => query.refetch().catch(() => undefined)
@@ -128,6 +132,24 @@ function HouseholdShareCodes({
       setRefusal(requestFailureMessage(error, ISSUE_FAILED))
     } finally {
       setIssuing(false)
+    }
+  }
+
+  // Issuing another code is cheap, so withdrawing one asks nothing.
+  async function withdrawNow(code: ShareCode) {
+    setWithdrawRefusal(null)
+    setWithdrawing(code.id)
+    try {
+      const { data } = await withdraw({ variables: { input: { shareCodeId: code.id } } })
+      const errors = data?.withdrawShareCode?.userErrors ?? []
+      if (errors.length > 0) setWithdrawRefusal(errors.map(userErrorMessage).join(' '))
+      // A refused code may have been spent or withdrawn elsewhere, so the list is read again.
+      await readAgain()
+      if (errors.length === 0) announce('Share code withdrawn.')
+    } catch (error) {
+      setWithdrawRefusal(requestFailureMessage(error, WITHDRAW_FAILED))
+    } finally {
+      setWithdrawing(null)
     }
   }
 
@@ -169,7 +191,9 @@ function HouseholdShareCodes({
         loading={query.loading}
         error={query.error}
         readAgain={readAgain}
-        announce={announce}
+        withdrawing={withdrawing}
+        refusal={withdrawRefusal}
+        onWithdraw={(code) => void withdrawNow(code)}
       />
     </div>
   )
@@ -180,38 +204,21 @@ function LiveShareCodes({
   loading,
   error,
   readAgain,
-  announce,
+  withdrawing,
+  refusal,
+  onWithdraw,
 }: Readonly<{
   /** The last list the server gave, if any. */
   listed: HouseholdShareCodesQuery | undefined
   loading: boolean
   error: unknown
   readAgain: () => Promise<unknown>
-  announce: Announce
+  /** The code whose withdrawal is on its way, if any. */
+  withdrawing: string | null
+  /** Why the server refused the last withdrawal, if it did. */
+  refusal: string | null
+  onWithdraw: (code: ShareCode) => void
 }>) {
-  const [withdraw] = useMutation(WithdrawShareCodeDocument)
-  /** The code whose withdrawal is on its way; no other starts until it lands. */
-  const [withdrawing, setWithdrawing] = useState<string | null>(null)
-  const [refusal, setRefusal] = useState<string | null>(null)
-
-  // Issuing another code is cheap, so withdrawing one asks nothing.
-  async function withdrawNow(code: ShareCode) {
-    setRefusal(null)
-    setWithdrawing(code.id)
-    try {
-      const { data } = await withdraw({ variables: { input: { shareCodeId: code.id } } })
-      const errors = data?.withdrawShareCode?.userErrors ?? []
-      if (errors.length > 0) setRefusal(errors.map(userErrorMessage).join(' '))
-      // A refused code may have been spent or withdrawn elsewhere, so the list is read again.
-      await readAgain()
-      if (errors.length === 0) announce('Share code withdrawn.')
-    } catch (error) {
-      setRefusal(requestFailureMessage(error, WITHDRAW_FAILED))
-    } finally {
-      setWithdrawing(null)
-    }
-  }
-
   if (loading && !listed) {
     return <ShareCodesLoading />
   }
@@ -230,7 +237,7 @@ function LiveShareCodes({
             key={code.id}
             code={code}
             withdrawing={withdrawing}
-            onWithdraw={() => void withdrawNow(code)}
+            onWithdraw={() => onWithdraw(code)}
           />
         ))}
       </ul>
