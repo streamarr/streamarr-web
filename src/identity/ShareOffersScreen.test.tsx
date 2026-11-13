@@ -1013,7 +1013,7 @@ describe('Share offers as they change elsewhere', () => {
       const socket = serve()
       const reads = readsThatCanBeHeld(() => offersData(held.offers))
       server.use(graphql.query('ShareOffers', reads.resolver))
-      renderAppAt(OFFERS)
+      const { user } = renderAppAt(OFFERS)
       await screen.findByRole('button', { name: 'Accept Alex' })
       await followingShareChanges(socket)
       // Mara's offer shows that the held read has answered.
@@ -1021,7 +1021,7 @@ describe('Share offers as they change elsewhere', () => {
       const read = reads.holdNext()
       comeBackOnline()
       await read.arrived
-      return { held, socket, release: read.release }
+      return { held, socket, release: read.release, user }
     }
 
     it('shouldKeepAnOfferThatArrivedWhenAReadSentBeforeItAnswers', async () => {
@@ -1030,6 +1030,23 @@ describe('Share offers as they change elsewhere', () => {
       held.offers = [leo, ...held.offers]
       socket.publish('ProfileShareChanged', shareChanged(leo.id, leo))
       await screen.findByRole('button', { name: 'Accept Leo' })
+      release()
+
+      await screen.findByRole('button', { name: 'Accept Mara' })
+      expect(offeredNames()).toEqual(['Accept Leo', 'Accept Mara', 'Accept Alex'])
+    })
+
+    it('shouldKeepAnOfferThatArrivedAfterTheAdminReturnedWhenAReadSentBeforeTheyLeftAnswers', async () => {
+      const { held, socket, release, user } = await openWithAReadOnItsWay()
+      await leaveForHome(user, SHARE_OFFERS)
+      await waitFor(() => expect(socket.isLive('ProfileShareChanged')).toBe(false))
+      await returnThroughTheProfileMenu(user, SHARE_OFFERS)
+      await followingShareChanges(socket)
+
+      held.offers = [leo, ...held.offers]
+      socket.publish('ProfileShareChanged', shareChanged(leo.id, leo))
+      // Every read after Leo's offer arrived fails, so the list comes from the held read's answer.
+      server.use(graphql.query('ShareOffers', () => HttpResponse.error()))
       release()
 
       await screen.findByRole('button', { name: 'Accept Mara' })
