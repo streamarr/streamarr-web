@@ -577,6 +577,36 @@ describe('Share codes', () => {
     expect(screen.queryByRole('button', { name: 'Copy link' })).not.toBeInTheDocument()
   })
 
+  it('shouldReturnToTheIssueButtonWhenALaterReadTakesAwayTheIssuedCodeWhileFocusIsInItsPanel', async () => {
+    serveInTurn([], [liveCode()], [])
+    serveIssue()
+    const { user } = renderAppAt(CODES)
+    const code = await issue(user)
+    await waitForTheReadAfterTheIssue()
+    expect(code).toHaveFocus()
+
+    comeBackOnline()
+
+    await waitFor(() => expect(screen.queryByText(SHARE_CODE)).not.toBeInTheDocument())
+    const issueAction = screen.getByRole('button', { name: 'Issue a share code' })
+    await waitFor(() => expect(issueAction).toHaveFocus())
+  })
+
+  it('shouldLeaveFocusAloneWhenALaterReadTakesAwayTheIssuedCodeWhileFocusIsOutsideItsPanel', async () => {
+    serveInTurn([], [liveCode()], [])
+    serveIssue()
+    const { user } = renderAppAt(CODES)
+    const code = await issue(user)
+    await waitForTheReadAfterTheIssue()
+    // A click on the page outside the panel leaves focus on the page body.
+    act(() => code.blur())
+
+    comeBackOnline()
+
+    await waitFor(() => expect(screen.queryByText(SHARE_CODE)).not.toBeInTheDocument())
+    expect(document.body).toHaveFocus()
+  })
+
   it('shouldKeepTheIssuedCodeWhenTheReadAfterTheIssueFails', async () => {
     serve()
     const codes = answersInTurn(answerWith(codesData([])), networkFailure)

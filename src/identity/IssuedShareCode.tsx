@@ -1,5 +1,5 @@
 import { Button } from '@mantine/core'
-import { useEffect, useId, useRef, useState } from 'react'
+import { type Ref, useEffect, useId, useRef, useState } from 'react'
 import { shareCodeLink } from './shareCode'
 import styles from './ShareCodes.module.css'
 
@@ -20,6 +20,7 @@ export function IssuedShareCode({
   origin,
   onCopied,
   onDone,
+  ref,
 }: Readonly<{
   code: string
   expiresAt: string
@@ -28,6 +29,8 @@ export function IssuedShareCode({
   origin: string
   onCopied: (notice: string) => void
   onDone: () => void
+  /** The panel's outer element. */
+  ref?: Ref<HTMLDivElement>
 }>) {
   const [failure, setFailure] = useState<string | null>(null)
   const shown = useRef<HTMLParagraphElement>(null)
@@ -50,7 +53,7 @@ export function IssuedShareCode({
   }
 
   return (
-    <div className={styles.issued}>
+    <div ref={ref} className={styles.issued}>
       <p ref={shown} className={styles.code} tabIndex={-1} aria-describedby={sentence}>
         {code}
       </p>

@@ -1,6 +1,6 @@
 import { Button, Center, Loader } from '@mantine/core'
 import { useApolloClient, useMutation, useQuery } from '@apollo/client/react'
-import { useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import {
   HouseholdShareCodesDocument,
   IssueShareCodeDocument,
@@ -118,9 +118,21 @@ function HouseholdShareCodes({
   // read of the codes, is on its way.
   const waiting = change !== null || (query.loading && !query.data)
   const issueAction = useRef<HTMLButtonElement>(null)
-  /** Set when the admin closes the issued panel, so that focus returns to the issue button. */
+  /**
+   * Set when the admin closes the issued panel, or when the panel closes while it holds focus, so
+   * that focus returns to the issue button.
+   */
   const returnFocus = useRef(false)
   const client = useApolloClient()
+  // React detaches the panel's ref before React takes the panel out of the page. So at that moment
+  // the panel still holds any focus that the closing then drops on the page body. The callback
+  // stays one function, so that React detaches the ref only when the panel closes.
+  const holdsFocusAsItCloses = useCallback(
+    (panel: HTMLDivElement | null) => () => {
+      if (panel?.contains(document.activeElement)) returnFocus.current = true
+    },
+    [],
+  )
 
   // A disabled button takes no focus. So focus returns to the issue button once the button is
   // enabled, unless the admin has moved focus away from the page body since the panel closed.
@@ -212,6 +224,7 @@ function HouseholdShareCodes({
       </Button>
       {shown && (
         <IssuedShareCode
+          ref={holdsFocusAsItCloses}
           key={shown.issued.shareCode.id}
           code={shown.issued.code}
           expiresAt={shown.issued.shareCode.expiresAt}
