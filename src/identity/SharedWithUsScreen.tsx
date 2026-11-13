@@ -225,6 +225,7 @@ function SharedProfiles({
         destructive
         icon={null}
         pending={ending.sending}
+        disabled={ending.changing}
         error={ending.refusal}
         onClose={ending.close}
         onConfirm={ending.confirmPending}
@@ -329,6 +330,7 @@ function VisitorTvs({
         destructive
         icon={null}
         pending={unlinking.sending}
+        disabled={unlinking.changing}
         error={unlinking.refusal}
         onClose={unlinking.close}
         onConfirm={unlinking.confirmPending}

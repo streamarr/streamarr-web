@@ -31,6 +31,8 @@ export function WhereShared({
   onChanged,
   changing,
   onChangingChange,
+  rereading,
+  onRereadingChange,
   ending,
   onEndingChange,
   canceling,
@@ -53,6 +55,13 @@ export function WhereShared({
   /** The share whose change is on its way; no other change starts until it lands. */
   changing: string | null
   onChangingChange: (shareId: string | null) => void
+  /**
+   * Whether a change, or the read of the shares that follows it, is on its way. No confirmation
+   * confirms until that read answers: a read sent before one change could otherwise answer after a
+   * second change and bring back the second share.
+   */
+  rereading: boolean
+  onRereadingChange: (rereading: boolean) => void
   /** The share whose end waits for the person's confirmation. */
   ending: ProfileShareRow | null
   onEndingChange: (share: ProfileShareRow | null) => void
@@ -114,23 +123,37 @@ export function WhereShared({
     if (canceledElsewhere) sayNoLongerWaiting()
   }, [canceledElsewhere])
 
-  /** Sends the change and reads the shares again; resolves to whether the server took it. */
-  async function change(share: ProfileShareRow): Promise<boolean> {
+  /**
+   * Sends the change and calls `onTaken` once the server takes it; a refusal keeps the
+   * confirmation open with the server's words. Either way the shares are then read again.
+   */
+  async function change(share: ProfileShareRow, onTaken: () => void) {
     onRefusalChange(null)
     onChangingChange(share.id)
+    onRereadingChange(true)
+    try {
+      const answered = await sendAndSettle(share, onTaken)
+      onChangingChange(null)
+      // A refused share may have changed elsewhere, so the list is read again.
+      if (answered) await readAgain()
+    } finally {
+      onRereadingChange(false)
+    }
+  }
+
+  /** Settles the change by the server's answer; false when the request got no answer. */
+  async function sendAndSettle(share: ProfileShareRow, onTaken: () => void): Promise<boolean> {
     try {
       const errors = await send(share)
       if (errors?.length) {
         onRefusalChange(errors.map(userErrorMessage).join(' '))
+        return true
       }
-      // A refused share may have changed elsewhere, so the list is read again.
-      await readAgain()
-      return !errors?.length
+      onTaken()
+      return true
     } catch (error) {
       onRefusalChange(requestFailureMessage(error, UPDATE_FAILED_MESSAGE))
       return false
-    } finally {
-      onChangingChange(null)
     }
   }
 
@@ -142,11 +165,11 @@ export function WhereShared({
     return (await end({ variables })).data?.endProfileShare?.userErrors
   }
 
-  async function cancelOffer(share: ProfileShareRow) {
-    if (await change(share)) {
+  function cancelOffer(share: ProfileShareRow) {
+    return change(share, () => {
       onCancelingChange(null)
       onChanged(`Invitation to ${householdName(share.householdId)} canceled.`)
-    }
+    })
   }
 
   function ask(share: ProfileShareRow, confirm: (share: ProfileShareRow) => void) {
@@ -163,11 +186,11 @@ export function WhereShared({
     }
   }
 
-  async function endShare(share: ProfileShareRow) {
-    if (await change(share)) {
+  function endShare(share: ProfileShareRow) {
+    return change(share, () => {
       onEndingChange(null)
       onChanged(`Sharing with ${householdName(share.householdId)} ended.`)
-    }
+    })
   }
 
   return (
@@ -237,6 +260,7 @@ export function WhereShared({
         destructive
         icon={null}
         pending={ending !== null && changing === ending.id}
+        disabled={rereading}
         error={refusal}
         onClose={() => {
           // A confirmation that Retry brought back opened without the person's click, so the
@@ -263,6 +287,7 @@ export function WhereShared({
         destructive
         icon={null}
         pending={canceling !== null && changing === canceling.id}
+        disabled={rereading}
         error={refusal}
         onClose={() => {
           if (canceling) (rowActions.current.get(canceling.id) ?? heading.current)?.focus()
