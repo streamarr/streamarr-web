@@ -408,6 +408,36 @@ describe('Shared with us', () => {
     expect(await screen.findByText('No visitor has linked a TV here.')).toBeVisible()
   })
 
+  it('shouldTakeTheShareOutAndCloseTheConfirmationWhenTheSharesAreStillBeingReadAgain', async () => {
+    const shares = [share()]
+    serveLists(shares, [])
+    const reads = readsThatCanBeHeld(() => sharesData(shares))
+    server.use(
+      graphql.query('SharedWithHousehold', reads.resolver),
+      graphql.mutation('EndProfileShare', () => {
+        shares.splice(0)
+        return HttpResponse.json({ data: { endProfileShare: endedPayload() } })
+      }),
+    )
+    const { user } = renderAppAt(VISITORS)
+    const end = await screen.findByRole('button', { name: 'End share of Alex' })
+    await user.click(end)
+    const focuses = focusesOf(end)
+    const reread = reads.holdNext()
+
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'End share' }))
+    await reread.arrived
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await noticed('Sharing of Alex ended.')
+    expect(
+      screen.getByText('No Profile from another Household is shared with Smith Family.'),
+    ).toBeVisible()
+    expect(screen.getByRole('heading', { level: 1, name: 'Shared with us' })).toHaveFocus()
+    expect(focuses.count).toBe(0)
+    reread.release()
+  })
+
   it('shouldHoldBackConfirmingAnotherEndShareWhenTheSharesAreStillBeingReadAgain', async () => {
     const mara = share({
       id: '77777777-7777-7777-7777-777777777778',
