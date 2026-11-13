@@ -686,6 +686,103 @@ describe('Sharing', () => {
     expect(within(dialog).getByRole('button', { name: 'Cancel invitation' })).toBeEnabled()
   })
 
+  it('shouldCloseTheCancelConfirmationAndSaySoWhenTheSharesAreStillBeingReadAgain', async () => {
+    const held = { shares: [share()] }
+    serve([], me([SMITH_FAMILY, CABIN]))
+    const reads = readsThatCanBeHeld(() => sharesData(held.shares))
+    server.use(
+      graphql.query('ProfileShares', reads.resolver),
+      graphql.mutation('CancelProfileShare', () => {
+        held.shares = []
+        return HttpResponse.json({ data: { cancelProfileShare: canceledPayload() } })
+      }),
+    )
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.click(await screen.findByRole('button', { name: 'Cancel invitation to Cabin' }))
+    const reread = reads.holdNext()
+
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel invitation' }),
+    )
+    await reread.arrived
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await noticed('Invitation to Cabin canceled.')
+    expect(
+      screen.queryByRole('button', { name: 'Cancel invitation to Cabin' }),
+    ).not.toBeInTheDocument()
+    reread.release()
+  })
+
+  it.each<[ShareChange, ShareChange]>([
+    ['Cancel invitation', 'End share'],
+    ['End share', 'Cancel invitation'],
+  ])(
+    'shouldHoldBackConfirmingAnotherChangeWhenTheSharesAreStillBeingReadAgain(%s, then %s)',
+    async (first, then) => {
+      const change = SHARE_CHANGES[first]
+      const next = SHARE_CHANGES[then]
+      const lakeHouseId = '44444444-4444-4444-4444-444444444444'
+      const lakeHouse = share({
+        id: '77777777-7777-7777-7777-777777777778',
+        householdId: lakeHouseId,
+        status: next.status,
+        household: { __typename: 'HouseholdSummary', id: lakeHouseId, name: 'Lake House' },
+      })
+      const held = { shares: [share({ status: change.status }), lakeHouse] }
+      serve([], me([SMITH_FAMILY, CABIN]))
+      const reads = readsThatCanBeHeld(() => sharesData(held.shares))
+      server.use(
+        graphql.query('ProfileShares', reads.resolver),
+        graphql.mutation(change.mutation, () => {
+          held.shares = [lakeHouse]
+          return HttpResponse.json({ data: change.answer() })
+        }),
+      )
+      const { user } = renderWithProviders(<SharingScreen />)
+      await user.click(await screen.findByRole('button', { name: change.button('Cabin') }))
+      const reread = reads.holdNext()
+      await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: first }))
+      await reread.arrived
+      await noticed(change.notice)
+
+      await user.click(screen.getByRole('button', { name: next.button('Lake House') }))
+      const confirm = within(screen.getByRole('dialog')).getByRole('button', { name: then })
+      expect(confirm).toBeDisabled()
+      reread.release()
+      await waitFor(() => expect(confirm).toBeEnabled())
+    },
+  )
+
+  it.each<WayOut>(['Cancel', 'Escape'])(
+    'shouldReturnFocusToCancelInvitationWhenThePersonLeavesARefusedConfirmationWhileTheSharesAreReadAgain(%s)',
+    async (way) => {
+      serve([], me([SMITH_FAMILY, CABIN]))
+      const reads = readsThatCanBeHeld(() => sharesData([share()]))
+      server.use(
+        graphql.query('ProfileShares', reads.resolver),
+        graphql.mutation('CancelProfileShare', () =>
+          HttpResponse.json({ data: { cancelProfileShare: notPendingPayload() } }),
+        ),
+      )
+      const { user } = renderWithProviders(<SharingScreen />)
+      const cancel = await screen.findByRole('button', { name: 'Cancel invitation to Cabin' })
+      await user.click(cancel)
+      const dialog = screen.getByRole('dialog')
+      const reread = reads.holdNext()
+      await user.click(within(dialog).getByRole('button', { name: 'Cancel invitation' }))
+      await reread.arrived
+      expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+        /^That offer is not pending\.$/,
+      )
+
+      await leaveTheConfirmation(user, way)
+
+      await waitFor(() => expect(cancel).toHaveFocus())
+      reread.release()
+    },
+  )
+
   it('shouldNotSayTheOfferWasCanceledWhenCancelingIsRefused', async () => {
     serveInTurn([share()])
     refuseToCancel()
@@ -1859,6 +1956,25 @@ describe('Sharing', () => {
     expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
   })
 })
+
+// The two changes that Where Alex's Profile is shared confirms, by the confirm button's label.
+const SHARE_CHANGES = {
+  'Cancel invitation': {
+    status: 'PENDING',
+    button: (household: string) => `Cancel invitation to ${household}`,
+    mutation: 'CancelProfileShare',
+    answer: () => ({ cancelProfileShare: canceledPayload() }),
+    notice: 'Invitation to Cabin canceled.',
+  },
+  'End share': {
+    status: 'ACTIVE',
+    button: (household: string) => `End share with ${household}`,
+    mutation: 'EndProfileShare',
+    answer: () => ({ endProfileShare: endedPayload() }),
+    notice: 'Sharing with Cabin ended.',
+  },
+} as const
+type ShareChange = keyof typeof SHARE_CHANGES
 
 function canceledPayload() {
   return {

@@ -127,29 +127,54 @@ function HouseholdOffers({
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null)
   /** The offer whose decision is on its way; no other decision starts until it lands. */
   const [deciding, setDeciding] = useState<string | null>(null)
+  /**
+   * Whether a decision, or the read of the offers that follows it, is on its way. No confirmation
+   * confirms until that read answers: a read sent before one decision could otherwise answer after a
+   * second decision and bring back the second offer.
+   */
+  const [changing, setChanging] = useState(false)
   const [refusal, setRefusal] = useState<string | null>(null)
 
   // The query keeps a failed read, and the page shows it in place of the list. Rejecting here
   // would report the decision that the read follows as failed.
   const readAgain = () => query.refetch().catch(() => undefined)
 
-  /** Sends the decision and reads the offers again; resolves to whether the server took it. */
-  async function decide(offer: PendingOffer, decision: Decision): Promise<boolean> {
+  /**
+   * Sends the decision and closes its confirmation once the server takes it; a refusal keeps the
+   * confirmation open with the server's words. Either way the offers are then read again.
+   */
+  async function decide(offer: PendingOffer, decision: Decision) {
     setRefusal(null)
     setDeciding(offer.id)
+    setChanging(true)
+    try {
+      const answered = await sendAndSettle(offer, decision)
+      setDeciding(null)
+      // A refused offer may have been decided or withdrawn elsewhere, so the list is read again.
+      if (answered) await readAgain()
+    } finally {
+      setChanging(false)
+    }
+  }
+
+  /** Settles the decision by the server's answer; false when the request got no answer. */
+  async function sendAndSettle(offer: PendingOffer, decision: Decision): Promise<boolean> {
     try {
       const errors = await send(offer, decision)
       if (errors?.length) {
         setRefusal(errors.map(userErrorMessage).join(' '))
+        return true
       }
-      // A refused offer may have been decided or withdrawn elsewhere, so the list is read again.
-      await readAgain()
-      return !errors?.length
+      setConfirmation(null)
+      onDecided(
+        decision === 'accept'
+          ? `${offeredProfile(offer)} accepted into ${household.name}.`
+          : `Share invitation for ${offeredProfile(offer)} declined.`,
+      )
+      return true
     } catch (error) {
       setRefusal(requestFailureMessage(error, UPDATE_FAILED_MESSAGE))
       return false
-    } finally {
-      setDeciding(null)
     }
   }
 
@@ -162,16 +187,6 @@ function HouseholdOffers({
       return (await accept({ variables })).data?.acceptProfileShare?.userErrors
     }
     return (await decline({ variables })).data?.rejectProfileShare?.userErrors
-  }
-
-  async function confirmDecision(offer: PendingOffer, decision: Decision) {
-    if (!(await decide(offer, decision))) return
-    setConfirmation(null)
-    onDecided(
-      decision === 'accept'
-        ? `${offeredProfile(offer)} accepted into ${household.name}.`
-        : `Share invitation for ${offeredProfile(offer)} declined.`,
-    )
   }
 
   function ask(offer: PendingOffer, decision: Decision) {
@@ -283,13 +298,14 @@ function HouseholdOffers({
         destructive={confirmation?.decision === 'decline'}
         icon={null}
         pending={confirming !== null && deciding === confirming.id}
+        disabled={changing}
         error={refusal}
         onClose={() => {
           setConfirmation(null)
           setRefusal(null)
         }}
         onConfirm={() => {
-          if (confirming && confirmation) void confirmDecision(confirming, confirmation.decision)
+          if (confirming && confirmation) void decide(confirming, confirmation.decision)
         }}
       />
     </>

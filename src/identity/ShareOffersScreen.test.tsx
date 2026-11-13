@@ -149,6 +149,21 @@ function refuseToAccept() {
   )
 }
 
+// The two decisions on an offer, by the confirm button's label.
+const DECISIONS = {
+  Accept: {
+    mutation: 'AcceptProfileShare',
+    answer: () => ({ acceptProfileShare: acceptedPayload() }),
+    notice: 'Alex accepted into Smith Family.',
+  },
+  Decline: {
+    mutation: 'RejectProfileShare',
+    answer: () => ({ rejectProfileShare: declinedPayload() }),
+    notice: 'Share invitation for Alex declined.',
+  },
+}
+type DecisionLabel = keyof typeof DECISIONS
+
 function declinedPayload() {
   return {
     __typename: 'RejectProfileSharePayload',
@@ -735,6 +750,68 @@ describe('Share invitations', () => {
     await waitFor(() => expect(held.reads).toBeGreaterThan(readsWhenRefused))
     expect(within(dialog).getByRole('button', { name: 'Decline' })).toBeEnabled()
   })
+  it('shouldCloseTheDeclineConfirmationAndSaySoWhenTheOffersAreStillBeingReadAgain', async () => {
+    const held = { offers: [offer()] }
+    const socket = serve()
+    const reads = readsThatCanBeHeld(() => offersData(held.offers))
+    server.use(
+      graphql.query('ShareOffers', reads.resolver),
+      graphql.mutation('RejectProfileShare', () => {
+        held.offers = []
+        return HttpResponse.json({ data: { rejectProfileShare: declinedPayload() } })
+      }),
+    )
+    const { user } = renderAppAt(OFFERS)
+    await user.click(await screen.findByRole('button', { name: 'Decline Alex' }))
+    await followingShareChanges(socket)
+    const reread = reads.holdNext()
+
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Decline' }))
+    await reread.arrived
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await noticed('Share invitation for Alex declined.')
+    expect(screen.queryByRole('button', { name: 'Decline Alex' })).not.toBeInTheDocument()
+    reread.release()
+  })
+
+  it.each<[DecisionLabel, DecisionLabel]>([
+    ['Accept', 'Decline'],
+    ['Decline', 'Accept'],
+  ])(
+    'shouldHoldBackConfirmingAnotherDecisionWhenTheOffersAreStillBeingReadAgain(%s, then %s)',
+    async (first, then) => {
+      const decision = DECISIONS[first]
+      const mara = offer({
+        id: '77777777-7777-7777-7777-777777777778',
+        profile: offeredProfile({ id: '22222222-2222-2222-2222-222222222223', name: 'Mara' }),
+      })
+      const held = { offers: [offer(), mara] }
+      const socket = serve()
+      const reads = readsThatCanBeHeld(() => offersData(held.offers))
+      server.use(
+        graphql.query('ShareOffers', reads.resolver),
+        graphql.mutation(decision.mutation, () => {
+          held.offers = [mara]
+          return HttpResponse.json({ data: decision.answer() })
+        }),
+      )
+      const { user } = renderAppAt(OFFERS)
+      await user.click(await screen.findByRole('button', { name: `${first} Alex` }))
+      await followingShareChanges(socket)
+      const reread = reads.holdNext()
+      await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: first }))
+      await reread.arrived
+      await noticed(decision.notice)
+
+      await user.click(screen.getByRole('button', { name: `${then} Mara` }))
+      const confirm = within(screen.getByRole('dialog')).getByRole('button', { name: then })
+      expect(confirm).toBeDisabled()
+      reread.release()
+      await waitFor(() => expect(confirm).toBeEnabled())
+    },
+  )
+
   it('shouldNotSayTheOfferWasDeclinedWhenDecliningIsRefused', async () => {
     serve([offer()])
     refuseToDecline()

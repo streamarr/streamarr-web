@@ -408,6 +408,35 @@ describe('Shared with us', () => {
     expect(await screen.findByText('No visitor has linked a TV here.')).toBeVisible()
   })
 
+  it('shouldHoldBackConfirmingAnotherEndShareWhenTheSharesAreStillBeingReadAgain', async () => {
+    const mara = share({
+      id: '77777777-7777-7777-7777-777777777778',
+      profile: sharedProfile({ id: '22222222-2222-2222-2222-222222222223', name: 'Mara' }),
+    })
+    const shares = [share(), mara]
+    serveLists(shares, [])
+    const reads = readsThatCanBeHeld(() => sharesData(shares))
+    server.use(
+      graphql.query('SharedWithHousehold', reads.resolver),
+      graphql.mutation('EndProfileShare', () => {
+        shares.splice(0, 1)
+        return HttpResponse.json({ data: { endProfileShare: endedPayload() } })
+      }),
+    )
+    const { user } = renderAppAt(VISITORS)
+    await user.click(await screen.findByRole('button', { name: 'End share of Alex' }))
+    const reread = reads.holdNext()
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'End share' }))
+    await reread.arrived
+    await noticed('Sharing of Alex ended.')
+
+    await user.click(screen.getByRole('button', { name: 'End share of Mara' }))
+    const confirm = within(screen.getByRole('dialog')).getByRole('button', { name: 'End share' })
+    expect(confirm).toBeDisabled()
+    reread.release()
+    await waitFor(() => expect(confirm).toBeEnabled())
+  })
+
   it('shouldKeepTheConfirmationOpenWithTheServersWordsWhenEndingIsRefused', async () => {
     serve([share()])
     server.use(
@@ -522,6 +551,35 @@ describe('Shared with us', () => {
 
     expect(await screen.findByText('No visitor has linked a TV here.')).toBeVisible()
     expect(devices.calls).toBe(3)
+  })
+
+  it('shouldHoldBackConfirmingAnotherUnlinkWhenTheTvsAreStillBeingReadAgain', async () => {
+    const bedroom = device({
+      id: '66666666-6666-6666-6666-666666666667',
+      displayName: 'Bedroom TV',
+    })
+    const tvs = [device(), bedroom]
+    serveLists([], tvs)
+    const reads = readsThatCanBeHeld(() => devicesData(tvs))
+    server.use(
+      graphql.query('VisitorDevices', reads.resolver),
+      graphql.mutation('RevokeDeviceRegistration', () => {
+        tvs.splice(0, 1)
+        return HttpResponse.json({ data: revokedPayload() })
+      }),
+    )
+    const { user } = renderAppAt(VISITORS)
+    await user.click(await screen.findByRole('button', { name: 'Unlink Living room TV' }))
+    const reread = reads.holdNext()
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Unlink' }))
+    await reread.arrived
+    await noticed('Living room TV unlinked.')
+
+    await user.click(screen.getByRole('button', { name: 'Unlink Bedroom TV' }))
+    const confirm = within(screen.getByRole('dialog')).getByRole('button', { name: 'Unlink' })
+    expect(confirm).toBeDisabled()
+    reread.release()
+    await waitFor(() => expect(confirm).toBeEnabled())
   })
 
   it('shouldKeepTheConfirmationOpenWithTheServersWordsWhenUnlinkingIsRefused', async () => {

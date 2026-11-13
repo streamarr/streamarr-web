@@ -139,6 +139,7 @@ function ProfileSharing({
   // A change on its way, its refusal, and the confirmation that it belongs to outlast the list
   // that a failed read takes off the page, so they are held here and not in the list.
   const [changing, setChanging] = useState<string | null>(null)
+  const [rereading, setRereading] = useState(false)
   const [ending, setEnding] = useState<ProfileShareRow | null>(null)
   const [canceling, setCanceling] = useState<ProfileShareRow | null>(null)
   const [refusal, setRefusal] = useState<string | null>(null)
@@ -171,6 +172,8 @@ function ProfileSharing({
       onChanged={onChanged}
       changing={changing}
       onChangingChange={setChanging}
+      rereading={rereading}
+      onRereadingChange={setRereading}
       ending={ending}
       onEndingChange={setEnding}
       canceling={canceling}
