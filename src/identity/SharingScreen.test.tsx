@@ -10,6 +10,7 @@ import {
   comeBackOnlineUntil,
   failsOnceThen,
   heldAnswer,
+  networkFailure,
   refusedWith,
   serverFailure,
 } from '../test/graphqlResponses'
@@ -1081,6 +1082,207 @@ describe('Sharing', () => {
     expect(screen.getByRole('heading', { name: 'Offer Alex to Cabin?' })).toBeVisible()
   })
 
+  it('shouldSayTheShareInvitationWasSentWhenItsAnswerIsLostAndTheSharesThenListIt', async () => {
+    serve([], me([SMITH_FAMILY, CABIN]))
+    const onServer = { shares: [] as ShareNode[] }
+    server.use(
+      graphql.query('ProfileShares', () =>
+        HttpResponse.json({ data: sharesData(onServer.shares) }),
+      ),
+      graphql.mutation('OfferProfileShare', () => {
+        onServer.shares = [share()]
+        return networkFailure()
+      }),
+    )
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
+    await user.click(await screen.findByRole('button', { name: 'Send invitation' }))
+
+    await noticed('Invitation sent to Cabin. An admin there must accept it.')
+    expect(screen.queryByRole('heading', { name: 'Offer Alex to Cabin?' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cancel invitation to Cabin' })).toBeVisible()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('shouldSayTheShareInvitationWasSentWhenItsAnswerIsLostAndItPushesTheOldestShareOutOfAFullList', async () => {
+    serve([], me([SMITH_FAMILY, CABIN]))
+    const earlier = Array.from({ length: 50 }, (_, index) => endedShare(index))
+    const onServer = { shares: earlier }
+    server.use(
+      graphql.query('ProfileShares', () =>
+        HttpResponse.json({ data: sharesData(onServer.shares) }),
+      ),
+      graphql.mutation('OfferProfileShare', () => {
+        // The server lists 50 shares, newest first, so the invitation takes the oldest one's place.
+        onServer.shares = [share(), ...earlier.slice(0, 49)]
+        return networkFailure()
+      }),
+    )
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
+    await user.click(await screen.findByRole('button', { name: 'Send invitation' }))
+
+    await noticed('Invitation sent to Cabin. An admin there must accept it.')
+    expect(screen.getByRole('button', { name: 'Cancel invitation to Cabin' })).toBeVisible()
+  })
+
+  it('shouldSayTheShareInvitationWasNotSentWhenItsAnswerIsLostAndTheSharesDoNotListIt', async () => {
+    // The server lists the share into the Account's own Household, which the page leaves out.
+    const shares = serveInTurn([membershipShare()])
+    server.use(graphql.mutation('OfferProfileShare', networkFailure))
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
+    await user.click(await screen.findByRole('button', { name: 'Send invitation' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /^Couldn't send the share invitation\. Try again\.$/,
+    )
+    expect(shares.calls).toBe(2)
+    expect(screen.getByRole('heading', { name: 'Offer Alex to Cabin?' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Send invitation' })).toBeEnabled()
+  })
+
+  it('shouldSayTheShareInvitationWasNotSentWhenTheOnlyNewShareIsOneSentEarlierInTheVisit', async () => {
+    serveInTurn([], [share()])
+    server.use(
+      graphql.mutation(
+        'LookUpShareCode',
+        answersInTurn(
+          answerWith(shareCodeLookUpFixture()),
+          answerWith(shareCodeLookUpFixture({ householdName: 'Lake House' })),
+        ).resolver,
+      ),
+      graphql.mutation(
+        'OfferProfileShare',
+        answersInTurn(answerWith(offered()), networkFailure).resolver,
+      ),
+    )
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
+    await user.click(await screen.findByRole('button', { name: 'Send invitation' }))
+    await noticed('Invitation sent to Cabin. An admin there must accept it.')
+    await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
+    await screen.findByRole('heading', { name: 'Offer Alex to Lake House?' })
+
+    await user.click(screen.getByRole('button', { name: 'Send invitation' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /^Couldn't send the share invitation\. Try again\.$/,
+    )
+    expect(screen.getByRole('heading', { name: 'Offer Alex to Lake House?' })).toBeVisible()
+  })
+
+  it('shouldSayItCannotTellWhetherTheShareInvitationWasSentWhenTheSharesCannotBeReadEither', async () => {
+    serve([], me([SMITH_FAMILY, CABIN]))
+    const shares = answersInTurn(answerWith(sharesData()), serverFailure)
+    server.use(
+      graphql.query('ProfileShares', shares.resolver),
+      graphql.mutation('OfferProfileShare', networkFailure),
+    )
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
+    await user.click(await screen.findByRole('button', { name: 'Send invitation' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /^Couldn't tell whether the share invitation was sent\. Try again\.$/,
+    )
+    expect(shares.calls).toBe(2)
+    expect(screen.getByRole('heading', { name: 'Offer Alex to Cabin?' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Send invitation' })).toBeEnabled()
+  })
+
+  it('shouldSayTheShareInvitationWasSentWhenTheRetryIsRefusedBecauseTheLostOneSpentTheCode', async () => {
+    serveAnOfferThatSpendsTheCodeWhileItsAnswerIsLost()
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
+    await user.click(await screen.findByRole('button', { name: 'Send invitation' }))
+    await screen.findByRole('alert')
+
+    await user.click(screen.getByRole('button', { name: 'Send invitation' }))
+
+    await noticed('Invitation sent to Cabin. An admin there must accept it.')
+    expect(screen.getByRole('button', { name: 'Cancel invitation to Cabin' })).toBeVisible()
+    expect(screen.queryByRole('textbox', { name: 'Share code' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('shouldSayTheShareInvitationWasSentWhenThePageListedItBeforeTheRefusedRetry', async () => {
+    const shares = serveAnOfferThatSpendsTheCodeWhileItsAnswerIsLost()
+    // Only the routed app reads its queries again when the browser comes back online.
+    const { user } = renderAppAt(SHARING)
+    await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
+    await user.click(await screen.findByRole('button', { name: 'Send invitation' }))
+    await screen.findByRole('alert')
+    await comeBackOnlineUntil(shares, 3)
+    await screen.findByRole('button', { name: 'Cancel invitation to Cabin' })
+
+    await user.click(screen.getByRole('button', { name: 'Send invitation' }))
+
+    await noticed('Invitation sent to Cabin. An admin there must accept it.')
+    expect(screen.queryByRole('textbox', { name: 'Share code' })).not.toBeInTheDocument()
+  })
+
+  it('shouldSayTheCodeDoesNotWorkWhenTheRetryAfterALostAnswerIsRefusedAndTheSharesListNothingNew', async () => {
+    const shares = serveInTurn([])
+    server.use(
+      graphql.mutation('OfferProfileShare', answersInTurn(networkFailure, codeSpent()).resolver),
+    )
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
+    await user.click(await screen.findByRole('button', { name: 'Send invitation' }))
+    await screen.findByRole('alert')
+
+    await user.click(screen.getByRole('button', { name: 'Send invitation' }))
+
+    const field = await screen.findByRole('textbox', { name: 'Share code' })
+    expect(field).toHaveAccessibleDescription(
+      expect.stringContaining('That code does not work. Ask an admin there for a new one.'),
+    )
+    expect(shares.calls).toBe(3)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('shouldSayItCannotTellWhetherTheShareInvitationWasSentWhenTheRetryIsRefusedAndTheSharesStillCannotBeRead', async () => {
+    serve([], me([SMITH_FAMILY, CABIN]))
+    const shares = answersInTurn(answerWith(sharesData()), serverFailure)
+    server.use(
+      graphql.query('ProfileShares', shares.resolver),
+      graphql.mutation('OfferProfileShare', answersInTurn(networkFailure, codeSpent()).resolver),
+    )
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
+    await user.click(await screen.findByRole('button', { name: 'Send invitation' }))
+    await screen.findByRole('alert')
+
+    await user.click(screen.getByRole('button', { name: 'Send invitation' }))
+
+    await waitFor(() => expect(shares.calls).toBe(3))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /^Couldn't tell whether the share invitation was sent\. Try again\.$/,
+    )
+    expect(screen.getByRole('heading', { name: 'Offer Alex to Cabin?' })).toBeVisible()
+    expect(screen.queryByRole('textbox', { name: 'Share code' })).not.toBeInTheDocument()
+  })
+
+  it('shouldNotReadTheSharesAgainWhenTheOfferIsRefusedAndNoAnswerWasLostBefore', async () => {
+    const shares = serveInTurn([])
+    server.use(graphql.mutation('OfferProfileShare', codeSpent()))
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
+
+    await user.click(await screen.findByRole('button', { name: 'Send invitation' }))
+
+    const field = await screen.findByRole('textbox', { name: 'Share code' })
+    expect(field).toHaveAccessibleDescription(
+      expect.stringContaining('That code does not work. Ask an admin there for a new one.'),
+    )
+    expect(shares.calls).toBe(1)
+  })
+
   it('shouldNotAskAboutTheCodeAgainWhenSharingIsReadAgainDuringTheReview', async () => {
     const shares = serveInTurn([])
     const asked = serveShareCodeQuestions()
@@ -1321,6 +1523,36 @@ function offerRefused(typename: string, message: string) {
       userErrors: [{ __typename: typename, message }],
     },
   }
+}
+
+// A share into another Household that ended, the `index`th from the newest.
+function endedShare(index: number): ShareNode {
+  return share({
+    id: `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+    status: 'ENDED',
+    endedAt: '2026-11-01T12:00:00Z',
+  })
+}
+
+// The server takes the first offer but its answer is lost, and the shares cannot be read while the
+// connection is down. Once it is back, the shares list that offer, and a retry finds its code spent.
+function serveAnOfferThatSpendsTheCodeWhileItsAnswerIsLost() {
+  serve([], me([SMITH_FAMILY, CABIN]))
+  const shares = answersInTurn(
+    answerWith(sharesData()),
+    serverFailure,
+    answerWith(sharesData([share()])),
+  )
+  server.use(
+    graphql.query('ProfileShares', shares.resolver),
+    graphql.mutation('OfferProfileShare', answersInTurn(networkFailure, codeSpent()).resolver),
+  )
+  return shares
+}
+
+// The server's refusal of an offer whose code an earlier offer spent.
+function codeSpent() {
+  return answerWith(offerRefused('ShareCodeRefusedError', 'That share code does not work.'))
 }
 
 function endedPayload() {

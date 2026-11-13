@@ -27,6 +27,7 @@ export function WhereShared({
   householdName,
   ownHouseholdName,
   readAgain,
+  readShares,
   onChanged,
   changing,
   onChangingChange,
@@ -41,6 +42,8 @@ export function WhereShared({
   /** The Household that the Account is a member of, where its sessions return. */
   ownHouseholdName: string
   readAgain: () => Promise<unknown>
+  /** Reads the shares that the page lists, or gives nothing when the read fails. */
+  readShares: () => Promise<readonly ProfileShareRow[] | undefined>
   onChanged: (notice: string) => void
   /** The share whose change is on its way; no other change starts until it lands. */
   changing: string | null
@@ -161,8 +164,10 @@ export function WhereShared({
       </ul>
       <ShareWithAnotherHousehold
         profile={profile}
+        shares={shares}
         readAgain={readAgain}
         onSend={() => onRefusalChange(null)}
+        readShares={readShares}
         onChanged={onChanged}
       />
       <EarlierShares shares={earlier} householdName={householdName} />
