@@ -8837,6 +8837,24 @@ describe('Player', () => {
         expectMessageOutOfSight(AUDIO_SWITCH_REFUSED)
       })
 
+      it('shouldHideTheMessageUnderThePointerWhenTheViewerMovesFocusAfterTheFocusedTrackWent', async () => {
+        const { user, menu } = await openTheAudioPickerWithACautionOverHls([
+          { name: 'English' },
+          { name: 'French' },
+          { name: 'German' },
+        ])
+        await user.keyboard('{ArrowDown}{ArrowDown}')
+        await user.hover(headingCaution(AUDIO_SWITCH_REFUSED))
+        offerHlsTracks({ audio: [{ name: 'English' }, { name: 'French' }], audioTrack: 0 })
+        expect(within(menu).getByRole('menuitemradio', { name: 'English' })).toHaveFocus()
+        expect(messageTooltip(AUDIO_SWITCH_REFUSED)).toBeVisible()
+
+        await user.keyboard('{ArrowDown}')
+
+        expect(within(menu).getByRole('menuitemradio', { name: 'French' })).toHaveFocus()
+        expectMessageOutOfSight(AUDIO_SWITCH_REFUSED)
+      })
+
       it('shouldOpenNoMenuWhenTheAudioChipCarriesACautionWhileTheNextStreamStarts', async () => {
         serveDirectPlay({ audioTracks: TWO_TRACKS })
         serveAudioTrackSwitch({ answer: refusedSwitch })

@@ -108,6 +108,8 @@ export function CaretPopover<Id>({
   const headingCautionRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const focusedRow = useRef<{ row: HTMLElement; index: number } | null>(null)
+  // Set while the menu moves focus itself, because the focused row went.
+  const movingFocusItself = useRef(false)
   const explanationRef = useRef<HTMLDivElement>(null)
   const pressedByTouch = useRef(false)
   const [explainedRows, setExplainedRows] = useState(NO_EXPLAINED_ROWS)
@@ -155,16 +157,14 @@ export function CaretPopover<Id>({
   }, [])
 
   // Removing the focused row drops focus to the body without a focusin, so nothing else notices.
-  // The viewer did not move focus, so the pointer on the heading's caution keeps its message.
   useEffect(() => {
     const lost = focusedRow.current
     if (!lost || lost.row.isConnected) {
       return
     }
+    movingFocusItself.current = true
     focusCheckedOrNearestRow(menuRef.current, lost.index)
-    if (explainedRows.hovered === HEADING) {
-      explainHovered(HEADING)
-    }
+    movingFocusItself.current = false
   })
 
   useEffect(() => {
@@ -215,6 +215,10 @@ export function CaretPopover<Id>({
 
   function focusRow(row: HTMLElement, index: number) {
     focusedRow.current = { row, index }
+    if (movingFocusItself.current) {
+      keepExplainingTheHeading(index)
+      return
+    }
     explainFocused(index)
   }
 
@@ -225,6 +229,16 @@ export function CaretPopover<Id>({
 
   function explainHovered(index: Explained) {
     setExplainedRows((rows) => ({ ...rows, hovered: index }))
+  }
+
+  // The viewer did not move focus, so the pointer on the heading's caution keeps its message. A
+  // row's index moves as rows go, so a row's explanation does not stay.
+  function keepExplainingTheHeading(focused: number) {
+    setExplainedRows(({ hovered }) => ({
+      hovered: hovered === HEADING ? HEADING : null,
+      tapped: null,
+      focused,
+    }))
   }
 
   function stopHovering(index: Explained) {
