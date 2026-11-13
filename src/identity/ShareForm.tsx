@@ -21,7 +21,7 @@ export function ShareForm({
   onCancel,
 }: Readonly<{
   profile: Readonly<{ id: string; name: string }>
-  /** Called when the person sends the form, before the server answers. */
+  /** Called when the person sends the share, before the server answers. */
   onSend: () => void
   onOffered: () => Promise<void>
   onCancel: () => void
@@ -48,13 +48,13 @@ export function ShareForm({
 
   async function submit(event: FormEvent) {
     event.preventDefault()
-    onSend()
     setRefusal(null)
     if (householdId === null) {
       setNotAnId(true)
       return
     }
     if (noSuchHousehold) return
+    onSend()
     setSending(true)
     try {
       await send(householdId)

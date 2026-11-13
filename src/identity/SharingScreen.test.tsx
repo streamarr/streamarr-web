@@ -411,6 +411,20 @@ describe('Sharing', () => {
     await noticed('Offer sent. An admin there must accept it.')
   })
 
+  it('shouldKeepTheServersWordsWhenTheTextThePersonSendsHoldsNoHouseholdId', async () => {
+    serveInTurn([share()])
+    refuseToCancel()
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.click(await screen.findByRole('button', { name: 'Cancel offer to Cabin' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('That offer is not pending.')
+    await user.type(await openShareForm(user), 'the Smiths')
+
+    await user.click(screen.getByRole('button', { name: 'Offer share' }))
+
+    expect(await screen.findByText('That is not a Household ID.')).toBeVisible()
+    expect(screen.getByRole('alert')).toHaveTextContent('That offer is not pending.')
+  })
+
   it('shouldStartNoOtherChangeUntilACancelOnItsWayLandsWhenRetryBringsTheSharesBack', async () => {
     const elsewhere = share({ id: 'elsewhere', householdId: LAKE_HOUSE_ID, status: 'ACTIVE' })
     serveSecondReadFailing([share(), elsewhere])
