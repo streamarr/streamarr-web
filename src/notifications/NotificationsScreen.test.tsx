@@ -572,22 +572,86 @@ describe('Reading Notifications', () => {
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
   })
 
-  it('shouldClearTheUnreadMarksWhenTheServerSaysTheMarkReadThem', async () => {
-    const held = {
-      page: notificationsPage([offerNotification(), answerNotification({ unread: true })]),
-    }
-    const { socket, marks } = serve()
-    server.use(graphql.query('Notifications', () => HttpResponse.json({ data: held.page })))
+  /**
+   * Serves `nodes` as the list, and holds each of them as read once a mark goes out, as the server
+   * does. A test publishes no change, so the page hears of the mark only in its answer.
+   */
+  function serveAMarkThatNoChangeTells(nodes: NotificationNode[]) {
+    const held = { page: notificationsPage(nodes) }
+    server.use(
+      graphql.query('Notifications', () => HttpResponse.json({ data: held.page })),
+      graphql.mutation('MarkNotificationsRead', () => {
+        held.page = notificationsPage(nodes.map((node) => ({ ...node, unread: false })))
+      }),
+    )
+  }
+
+  it('shouldShowTheNotificationsReadWhenTheMarkSucceedsAndNoChangeSaysSo', async () => {
+    const { marks } = serve()
+    serveAMarkThatNoChangeTells([offerNotification(), answerNotification({ unread: true })])
     const { user } = renderAppAt(NOTIFICATIONS)
     await screen.findByText(OFFER_LINE)
-    await followingNotificationChanges(socket)
-    await markAllRead(user)
-    await waitFor(() => expect(marks).toHaveLength(1))
 
-    // The server tells every socket, this page's too, that the mark read them.
+    await markAllRead(user)
+
+    await waitFor(() => expect(marks).toHaveLength(1))
+    await waitFor(() => expect(screen.queryByTestId('unread-mark')).not.toBeInTheDocument())
+    expect(screen.queryByText('Unread')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Mark all as read' })).not.toBeInTheDocument()
+  })
+
+  it('shouldMoveFocusToTheHeadingWhenMarkingAllLeavesNothingUnread', async () => {
+    serve()
+    serveAMarkThatNoChangeTells([answerNotification({ unread: true })])
+    const { user } = renderAppAt(NOTIFICATIONS)
+    await screen.findByText(ANSWER_LINE)
+
+    await markAllRead(user)
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: 'Notifications' })).toHaveFocus(),
+    )
+  })
+
+  it('shouldLeaveUnreadTheNotificationsOfACallThatFailedWhenTheNextCallOfMarkingAllSucceeds', async () => {
+    const unread = Array.from({ length: 101 }, (_, index) =>
+      answerNotification({
+        id: `answer-${index}`,
+        message: `The offer of “Profile ${index}” was accepted.`,
+        unread: true,
+      }),
+    )
+    const { marks } = serve(notificationsPage(unread))
+    const calls = { count: 0 }
+    server.use(
+      graphql.mutation('MarkNotificationsRead', () => {
+        calls.count += 1
+        // The first call, of the first 100, never reaches the server.
+        return calls.count === 1 ? HttpResponse.error() : undefined
+      }),
+    )
+    const { user } = renderAppAt(NOTIFICATIONS)
+    await screen.findByText('The offer of “Profile 100” was accepted.')
+
+    await markAllRead(user)
+
+    await waitFor(() => expect(marks).toEqual([{ notificationIds: ['answer-100'], visit: 1 }]))
+    const last = rows().at(-1)!
+    await waitFor(() => expect(within(last).queryByTestId('unread-mark')).not.toBeInTheDocument())
+    expect(screen.getAllByTestId('unread-mark')).toHaveLength(100)
+  })
+
+  it('shouldClearTheUnreadMarksWhenAMarkMadeElsewhereReadsThem', async () => {
+    const { socket } = serve(
+      notificationsPage([offerNotification(), answerNotification({ unread: true })]),
+    )
+    renderAppAt(NOTIFICATIONS)
+    await screen.findByText(OFFER_LINE)
+    await followingNotificationChanges(socket)
+
+    // The server tells every socket of the Account that a mark another session sent read them.
     const offer = offerNotification({ unread: false })
     const leo = answerNotification({ unread: false })
-    held.page = notificationsPage([offer, leo])
     socket.publish(
       'NotificationsChanged',
       notificationsChanged([
@@ -599,9 +663,6 @@ describe('Reading Notifications', () => {
     await waitFor(() => expect(screen.queryByTestId('unread-mark')).not.toBeInTheDocument())
     expect(screen.queryByText('Unread')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Mark all as read' })).not.toBeInTheDocument()
-    await waitFor(() =>
-      expect(screen.getByRole('heading', { level: 1, name: 'Notifications' })).toHaveFocus(),
-    )
   })
 
   it('shouldMarkARequestReadWhenThePersonOpensItToReview', async () => {
