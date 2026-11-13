@@ -1,24 +1,13 @@
-import { createFileRoute, useLocation, useNavigate } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
-import { codeInFragment } from '../../identity/fragmentCode'
+import { createFileRoute } from '@tanstack/react-router'
 import { SharingScreen } from '../../identity/SharingScreen'
+import { useLinkCode } from '../../identity/useLinkCode'
 
 export const Route = createFileRoute('/_authenticated/settings/profile/sharing')({
   component: SharingPage,
 })
 
+// A share code link opens the form once. A reload, the address bar and the history keep no code.
 function SharingPage() {
-  const fragment = useLocation({ select: (location) => location.hash })
-  const navigate = useNavigate()
-  // Read once: taking the code out of the address below would otherwise take it from the form.
-  const [arrivingCode] = useState(() => codeInFragment(fragment))
-
-  // A share code link opens the form once. A reload, the address bar and the history keep no code.
-  useEffect(() => {
-    if (codeInFragment(fragment) !== null) {
-      void navigate({ to: '/settings/profile/sharing', replace: true })
-    }
-  }, [fragment, navigate])
-
-  return <SharingScreen arrivingCode={arrivingCode} />
+  const code = useLinkCode()
+  return <SharingScreen arrivingCode={code} />
 }
