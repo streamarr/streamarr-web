@@ -265,6 +265,49 @@ describe('Shared with us', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Shared with us' })).toHaveFocus()
   })
 
+  it('shouldTakeThePersonsTvsOffTheListWhenTheShareOfTheirPersonalProfileEnds', async () => {
+    const alexsTv = device({ authorizingAccountDisplayName: 'Alex' })
+    const robinsTv = device({
+      id: 'b',
+      displayName: 'Den TV',
+      authorizingAccountDisplayName: 'Robin',
+    })
+    // The server unlinks the TVs that Alex linked here when the share of Alex's Personal Profile
+    // ends (ADR 0024), and leaves the TVs of other visitors linked.
+    let ended = false
+    serve()
+    server.use(
+      graphql.query('SharedWithHousehold', () =>
+        HttpResponse.json({
+          data: sharesData(
+            ended ? [] : [share({ profile: sharedProfile({ personalProfile: true }) })],
+          ),
+        }),
+      ),
+      graphql.query('VisitorDevices', () =>
+        HttpResponse.json({ data: devicesData(ended ? [robinsTv] : [alexsTv, robinsTv]) }),
+      ),
+      graphql.mutation('EndProfileShare', () => {
+        ended = true
+        return HttpResponse.json({ data: { endProfileShare: endedPayload() } })
+      }),
+    )
+    const { user } = renderAppAt(VISITORS)
+    const tvs = await devicesRegion()
+    await within(tvs).findByRole('button', { name: 'Unlink Living room TV' })
+
+    await user.click(await screen.findByRole('button', { name: 'End share of Alex' }))
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'End share' }))
+    await noticed('Sharing of Alex ended.')
+
+    await waitFor(() =>
+      expect(
+        within(tvs).queryByRole('button', { name: 'Unlink Living room TV' }),
+      ).not.toBeInTheDocument(),
+    )
+    expect(within(tvs).getByRole('button', { name: 'Unlink Den TV' })).toBeEnabled()
+  })
+
   it('shouldKeepTheConfirmationOpenWithTheServersWordsWhenEndingIsRefused', async () => {
     serve([share()])
     server.use(
