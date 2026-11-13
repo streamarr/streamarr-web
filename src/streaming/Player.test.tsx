@@ -907,12 +907,13 @@ function tap(target: Element, { mouseTarget = target, clientX = 0 } = {}) {
 
 // A screen that takes touch and a mouse gives each pointer its own id. A finger that lifts leaves
 // what it touched for no element, and the browser then clicks it.
+const SECOND_FINGER = { pointerType: 'touch', pointerId: 2 }
+
 function tapWithASecondFinger(target: Element) {
-  const finger = { pointerType: 'touch', pointerId: 2 }
-  fireEvent.pointerOver(target, finger)
-  fireEvent.pointerDown(target, finger)
-  fireEvent.pointerUp(target, finger)
-  fireEvent.pointerOut(target, finger)
+  fireEvent.pointerOver(target, SECOND_FINGER)
+  fireEvent.pointerDown(target, SECOND_FINGER)
+  fireEvent.pointerUp(target, SECOND_FINGER)
+  fireEvent.pointerOut(target, SECOND_FINGER)
   fireEvent.click(target)
 }
 
@@ -7780,13 +7781,11 @@ describe('Player', () => {
       it.each([
         {
           touch: 'moves off the way',
-          send: (auto: Element) =>
-            fireEvent.pointerMove(auto, { pointerType: 'touch', pointerId: 2, clientY: 100 }),
+          send: (auto: Element) => fireEvent.pointerMove(auto, { ...SECOND_FINGER, clientY: 100 }),
         },
         {
           touch: 'leaves the page',
-          send: (auto: Element) =>
-            fireEvent.pointerOut(auto, { pointerType: 'touch', pointerId: 2 }),
+          send: (auto: Element) => fireEvent.pointerOut(auto, SECOND_FINGER),
         },
         {
           touch: 'taps the explanation',
