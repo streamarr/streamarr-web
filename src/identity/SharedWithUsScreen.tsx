@@ -159,11 +159,7 @@ function SharedProfiles({
     onGone: (share) => announce(`${share.profile.name} is no longer shared here.`),
   })
 
-  useEffect(() => {
-    for (const { node } of listed ?? []) {
-      if (node.profile?.personalProfile) personalShares.current.add(node.id)
-    }
-  }, [listed])
+  useEffect(() => rememberPersonalShares(personalShares.current, listed), [listed])
 
   if (query.loading && !query.data) {
     return <ListLoading label="Loading shared Profiles" />
@@ -319,6 +315,15 @@ function endConsequence(profile: SharedProfileFieldsFragment, household: string)
   const stops = `${profile.name} stops being available in ${household}, and anyone using it here returns to the Profile picker.`
   if (!profile.personalProfile) return stops
   return `${stops} This is someone's Personal Profile, so that person can no longer use ${household}, and the TVs they linked here are unlinked.`
+}
+
+function rememberPersonalShares(
+  remembered: Set<string>,
+  edges: readonly { node: ListedShare }[] = [],
+): void {
+  for (const { node } of edges) {
+    if (node.profile?.personalProfile) remembered.add(node.id)
+  }
 }
 
 function namesItsProfile(share: ListedShare): share is VisitorShare {
