@@ -1,6 +1,6 @@
 import { Button, Center, Loader } from '@mantine/core'
 import { useApolloClient, useMutation, useQuery } from '@apollo/client/react'
-import { useEffect, useRef, type Ref } from 'react'
+import { useEffect, useRef, useState, type Ref } from 'react'
 import {
   EndProfileShareDocument,
   RevokeDeviceRegistrationDocument,
@@ -243,21 +243,29 @@ function VisitorTvs({
     fetchPolicy: 'network-only',
   })
   const [revoke] = useMutation(RevokeDeviceRegistrationDocument)
+  // The answer to Unlink names only the TV, so the page itself leaves out each TV that it unlinked.
+  const [unlinked, setUnlinked] = useState<ReadonlySet<string>>(() => new Set())
   const readAgain = () => query.refetch().catch(() => undefined)
+  const tvs = query.data?.householdDevices.edges
+    .map((edge) => edge.node)
+    .filter((tv) => !unlinked.has(tv.id))
   const unlinking = useConfirmedChange<VisitorTv>({
     send: async (tv) =>
       (await revoke({ variables: { input: { registrationId: tv.id } } })).data
         ?.revokeDeviceRegistration?.userErrors ?? [],
     listsToReadAgain: [VisitorDevicesDocument],
-    onDone: (tv) => announce(`${tv.displayName} unlinked.`),
-    listed: query.error ? undefined : query.data?.householdDevices.edges.map((edge) => edge.node),
+    onDone: (tv) => {
+      setUnlinked((ids) => new Set(ids).add(tv.id))
+      announce(`${tv.displayName} unlinked.`)
+    },
+    listed: query.error ? undefined : tvs,
     onGone: (tv) => announce(`${tv.displayName} is no longer linked here.`),
   })
 
   if (query.loading && !query.data) {
     return <ListLoading label="Loading linked TVs" />
   }
-  if (query.error || !query.data) {
+  if (query.error || !tvs) {
     return (
       <SharingSection title="TVs linked by visitors" failure={null}>
         <FailureRow onRetry={readAgain}>
@@ -266,8 +274,6 @@ function VisitorTvs({
       </SharingSection>
     )
   }
-
-  const tvs = query.data.householdDevices.edges.map((edge) => edge.node)
 
   return (
     <SharingSection

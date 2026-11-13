@@ -553,6 +553,34 @@ describe('Shared with us', () => {
     expect(devices.calls).toBe(3)
   })
 
+  it('shouldTakeTheTvOutAndCloseTheConfirmationWhenTheTvsAreStillBeingReadAgain', async () => {
+    const tvs = [device()]
+    serveLists([], tvs)
+    const reads = readsThatCanBeHeld(() => devicesData(tvs))
+    server.use(
+      graphql.query('VisitorDevices', reads.resolver),
+      graphql.mutation('RevokeDeviceRegistration', () => {
+        tvs.splice(0)
+        return HttpResponse.json({ data: revokedPayload() })
+      }),
+    )
+    const { user } = renderAppAt(VISITORS)
+    const unlink = await screen.findByRole('button', { name: 'Unlink Living room TV' })
+    await user.click(unlink)
+    const focuses = focusesOf(unlink)
+    const reread = reads.holdNext()
+
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Unlink' }))
+    await reread.arrived
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await noticed('Living room TV unlinked.')
+    expect(screen.getByText('No visitor has linked a TV here.')).toBeVisible()
+    expect(screen.getByRole('heading', { level: 1, name: 'Shared with us' })).toHaveFocus()
+    expect(focuses.count).toBe(0)
+    reread.release()
+  })
+
   it('shouldHoldBackConfirmingAnotherUnlinkWhenTheTvsAreStillBeingReadAgain', async () => {
     const bedroom = device({
       id: '66666666-6666-6666-6666-666666666667',
