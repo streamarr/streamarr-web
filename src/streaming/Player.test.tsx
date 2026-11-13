@@ -7765,6 +7765,29 @@ describe('Player', () => {
         expect(screen.getByText(ORIGINAL_EXPLANATION)).not.toBeVisible()
       })
 
+      // A screen that takes touch and a mouse sends both pointers' events, each with its own id.
+      it.each([
+        {
+          touch: 'moves off the way',
+          send: (auto: Element) =>
+            fireEvent.pointerMove(auto, { pointerType: 'touch', pointerId: 2, clientY: 100 }),
+        },
+        {
+          touch: 'leaves the page',
+          send: (auto: Element) =>
+            fireEvent.pointerOut(auto, { pointerType: 'touch', pointerId: 2 }),
+        },
+      ])(
+        'shouldKeepTheMarksExplanationWhileTheMouseIsOnItsWayAndATouch(touch: $touch)',
+        async ({ send }) => {
+          const auto = await leaveOriginalForAuto()
+
+          send(auto)
+
+          expect(screen.getByText(ORIGINAL_EXPLANATION)).toBeVisible()
+        },
+      )
+
       it('shouldHideTheMarksExplanationWhenThePointerLeavesThePageOnItsWayOntoTheExplanation', async () => {
         const auto = await leaveOriginalForAuto()
 

@@ -69,8 +69,10 @@ interface ExplainedRows {
 
 const NO_EXPLAINED_ROWS: ExplainedRows = { hovered: null, tapped: null, focused: null }
 
-// The pointer left the line that it explained, and moves along this path onto the explanation.
+// The pointer left the line that it explained, and moves along this path onto the explanation. A
+// screen that takes touch and a mouse sends both pointers' events, so only this pointer's count.
 interface PointerOnItsWay {
+  pointerId: number
   from: Explained
   onThePath: PointerPath
 }
@@ -220,7 +222,7 @@ export function CaretPopover<Id>({
   useEffect(() => {
     function followThePointer(event: PointerEvent) {
       const onItsWay = pointerOnItsWay.current
-      if (!onItsWay) {
+      if (onItsWay?.pointerId !== event.pointerId) {
         return
       }
       const line = explainedLine({
@@ -247,7 +249,7 @@ export function CaretPopover<Id>({
     // no move follows to end its way.
     function endTheWayOffThePage(event: PointerEvent) {
       const onItsWay = pointerOnItsWay.current
-      if (event.relatedTarget !== null || !onItsWay) {
+      if (event.relatedTarget !== null || onItsWay?.pointerId !== event.pointerId) {
         return
       }
       pointerOnItsWay.current = null
@@ -334,7 +336,7 @@ export function CaretPopover<Id>({
     }
     const onThePath = pathOntoTheExplanation(explained, event)
     if (onThePath) {
-      pointerOnItsWay.current = { from: explained, onThePath }
+      pointerOnItsWay.current = { pointerId: event.pointerId, from: explained, onThePath }
       return
     }
     stopHovering(explained)
