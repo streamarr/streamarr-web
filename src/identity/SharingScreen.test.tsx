@@ -192,6 +192,20 @@ function authorizationUnavailable(): Response {
   })
 }
 
+// The shares the server holds, answered to each read in the statuses it asks for: a test changes
+// them where the server would.
+function serveHeldShares(shares: ShareNode[]) {
+  const held = { shares }
+  serve()
+  server.use(
+    graphql.query<ProfileSharesQuery, ProfileSharesQueryVariables>(
+      'ProfileShares',
+      ({ variables }) => HttpResponse.json({ data: listedShares(held.shares, variables) }),
+    ),
+  )
+  return held
+}
+
 // A return goes through the Profile menu, which offers Profile settings only with a Profile
 // selected, and through Languages, where Profile settings open. A selected Profile also opens the
 // socket of live changes.
@@ -512,6 +526,24 @@ describe('Sharing', () => {
     await waitFor(() => expect(status).toHaveTextContent(/^Invitation to Cabin canceled\.$/))
   })
 
+  it('shouldListAnOfferThePersonCancelsUnderEarlierOffersAndSharesWhenTheyAreOpen', async () => {
+    const held = serveHeldShares([share()])
+    server.use(
+      graphql.mutation('CancelProfileShare', () => {
+        held.shares = [share({ status: 'CANCELED' })]
+        return HttpResponse.json({ data: { cancelProfileShare: canceledPayload() } })
+      }),
+    )
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.click(await screen.findByRole('button', { name: 'Earlier invitations and shares' }))
+    await screen.findByText('No earlier offers or shares.')
+
+    await user.click(screen.getByRole('button', { name: 'Cancel invitation to Cabin' }))
+
+    await noticed('Invitation to Cabin canceled.')
+    expect(screen.getAllByRole('listitem').map((row) => row.textContent)).toEqual(['CabinCanceled'])
+  })
+
   it('shouldShowTheServersWordsAndReadTheSharesAgainWhenCancelingIsRefused', async () => {
     const shares = serveInTurn([share()], [share()])
     refuseToCancel()
@@ -792,6 +824,27 @@ describe('Sharing', () => {
     await noticed('Sharing with Cabin ended.')
     expect(screen.getByRole('alert')).toHaveTextContent("Couldn't load sharing.")
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('shouldListAShareThePersonEndsUnderEarlierOffersAndSharesWhenTheyAreOpen', async () => {
+    const held = serveHeldShares([share({ status: 'ACTIVE' })])
+    server.use(
+      graphql.mutation('EndProfileShare', () => {
+        held.shares = [share({ status: 'ENDED', endedAt: '2026-11-10T12:00:00Z' })]
+        return HttpResponse.json({ data: { endProfileShare: endedPayload() } })
+      }),
+    )
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.click(await screen.findByRole('button', { name: 'Earlier invitations and shares' }))
+    await screen.findByText('No earlier offers or shares.')
+
+    await user.click(screen.getByRole('button', { name: 'End share with Cabin' }))
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'End share' }))
+
+    await noticed('Sharing with Cabin ended.')
+    expect(screen.getAllByRole('listitem').map((row) => row.textContent)).toEqual([
+      'CabinEnded Nov 10, 2026',
+    ])
   })
 
   it('shouldKeepTheConfirmationOpenWithTheServersWordsWhenEndingIsRefused', async () => {

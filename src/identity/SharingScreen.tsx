@@ -125,8 +125,14 @@ function ProfileSharing({
   })
   const query = live.query
   // A failed read reports through the query's own error. Rejecting here would report the change
-  // that the read follows as failed.
-  const readAgain = () => query.refetch().catch(() => undefined)
+  // that the read follows as failed. An offer the person cancels and a share they end move to the
+  // earlier ones, so those are read again too once the person has asked for them.
+  const readAgain = () =>
+    Promise.all(
+      [query, ...(earlierAsked ? [over.query] : [])].map((each) =>
+        each.refetch().catch(() => undefined),
+      ),
+    )
   // A failed read empties `data`, so the last list read stays on screen with the form inside it.
   const data = query.data ?? query.previousData
   // A change on its way, its refusal, and the confirmation that it belongs to outlast the list
