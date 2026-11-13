@@ -7501,6 +7501,45 @@ describe('Player', () => {
       expect(qualityChip()).toHaveAttribute('aria-expanded', 'false')
     })
 
+    // WCAG 2.2 asks for a way to hide what hover or focus shows without moving either (1.4.13).
+    it.each([
+      {
+        shownBy: 'focus',
+        showTheMessage: (user: UserEvent) => user.tab({ shift: true }),
+      },
+      {
+        shownBy: 'hover',
+        showTheMessage: (user: UserEvent) => user.hover(headingCaution(ORIGINAL_EXPLANATION)),
+      },
+    ])(
+      'shouldHideTheMessageAndKeepTheMenuOpenWhenTheViewerPressesEscapeWhileItShows(shown by: $shownBy)',
+      async ({ showTheMessage }) => {
+        const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+        const menu = await openQualityMenu(user)
+        await showTheMessage(user)
+        const focused = document.activeElement
+        expect(messageTooltip(ORIGINAL_EXPLANATION)).toBeVisible()
+
+        await user.keyboard('{Escape}')
+
+        expectMessageOutOfSight(ORIGINAL_EXPLANATION)
+        expect(screen.getByRole('menu')).toBe(menu)
+        expect(document.activeElement).toBe(focused)
+      },
+    )
+
+    it('shouldCloseTheMenuWhenTheViewerPressesEscapeAgainAfterEscapeHidTheMessage', async () => {
+      const { user } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
+      await openQualityMenu(user)
+      await user.tab({ shift: true })
+      await user.keyboard('{Escape}')
+
+      await user.keyboard('{Escape}')
+
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+      expect(qualityChip()).toHaveFocus()
+    })
+
     it('shouldShowTheMessageWithoutPickingAChoiceWhenTheViewerTapsTheCautionInTheHeading', async () => {
       const { user, log } = await watchAFallback('Original', ORIGINAL_CHANGED_TO_AUTO)
       const menu = await openQualityMenu(user)
@@ -7616,6 +7655,42 @@ describe('Player', () => {
 
       await user.unhover(row)
       expect(screen.getByText(ORIGINAL_EXPLANATION)).not.toBeVisible()
+    })
+
+    // WCAG 2.2 asks for a way to hide what hover or focus shows without moving either (1.4.13).
+    it.each([
+      { shownBy: 'focus', showTheExplanation: (user: UserEvent) => user.keyboard('{Home}') },
+      {
+        shownBy: 'hover',
+        showTheExplanation: (user: UserEvent) =>
+          user.hover(screen.getByRole('menuitemradio', { name: /^Original/ })),
+      },
+    ])(
+      'shouldHideTheMarksExplanationAndKeepTheMenuOpenWhenTheViewerPressesEscapeWhileItShows(shown by: $shownBy)',
+      async ({ showTheExplanation }) => {
+        const { user } = await markOriginalThenPlay720p()
+        const menu = await openQualityMenu(user)
+        await showTheExplanation(user)
+        const focused = document.activeElement
+        expect(screen.getByText(ORIGINAL_EXPLANATION)).toBeVisible()
+
+        await user.keyboard('{Escape}')
+
+        expect(screen.getByText(ORIGINAL_EXPLANATION)).not.toBeVisible()
+        expect(screen.getByRole('menu')).toBe(menu)
+        expect(document.activeElement).toBe(focused)
+      },
+    )
+
+    it('shouldCloseTheMenuWhenTheViewerPressesEscapeAgainAfterEscapeHidTheMarksExplanation', async () => {
+      const { user } = await markOriginalThenPlay720p()
+      await openQualityMenu(user)
+      await user.keyboard('{Home}{Escape}')
+
+      await user.keyboard('{Escape}')
+
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+      expect(qualityChip()).toHaveFocus()
     })
 
     it('shouldExplainTheMarkOnATapWithoutPickingItsChoice', async () => {
@@ -7811,7 +7886,8 @@ describe('Player', () => {
       await pickQuality(user, 'Original')
       const video = await attachedVideo(choiceStreamUrl(3))
       expect(marksIn(await openQualityMenu(user))).toEqual([`Original: ${ORIGINAL_EXPLANATION}`])
-      await user.keyboard('{Escape}')
+      // Focus starts on the picked Original, whose explanation shows, so the first Escape hides it.
+      await user.keyboard('{Escape}{Escape}')
 
       loadFirstFrame(video)
 

@@ -77,7 +77,8 @@ type Side = 'above' | 'below'
  * row's explanation does: while the pointer hovers the symbol, while focus is on it, or after a tap
  * on it. Focus starts on the chosen row, and moves there, or else to the nearest row, when the
  * focused row goes. Shift+Tab from a row moves focus to the heading's symbol, and Tab moves it back.
- * Choosing, Escape, or Shift+Tab from the heading's symbol or else from a row, returns focus to the
+ * Escape hides an explanation that shows and keeps focus where it is. Choosing, Escape while no
+ * explanation shows, or Shift+Tab from the heading's symbol or else from a row, returns focus to the
  * anchor. A press or focus outside the menu and its anchor dismisses it.
  */
 export function CaretPopover<Id>({
@@ -116,6 +117,7 @@ export function CaretPopover<Id>({
   const explainedIndex = explainedRows.hovered ?? explainedRows.tapped ?? explainedRows.focused
   const explanations = [...options.map(ownExplanation), toggle?.unavailable]
   const explanation = explanationOf({ explained: explainedIndex, explanations, message })
+  const explanationShows = Boolean(explanation)
   // The menu keeps room for its longest explanation from the start, so no explanation that
   // shows or goes moves a row: a row moving under the pointer would end its own hover.
   const longestCaution = longestOf([...explanations, message])
@@ -176,22 +178,31 @@ export function CaretPopover<Id>({
         onDismiss()
       }
     }
-    function dismissOnEscape(event: KeyboardEvent) {
+    document.addEventListener('pointerdown', dismissFromOutside)
+    document.addEventListener('focusin', dismissFromOutside)
+    return () => {
+      document.removeEventListener('pointerdown', dismissFromOutside)
+      document.removeEventListener('focusin', dismissFromOutside)
+    }
+  }, [anchorRef, onDismiss])
+
+  // WCAG 2.2 asks for a way to hide what hover or focus shows without moving either (1.4.13), so a
+  // first Escape hides the explanation and a second one closes the menu.
+  useEffect(() => {
+    function hideOrDismissOnEscape(event: KeyboardEvent) {
       if (event.key !== 'Escape') {
+        return
+      }
+      if (explanationShows) {
+        setExplainedRows(NO_EXPLAINED_ROWS)
         return
       }
       anchorRef.current?.focus()
       onDismiss()
     }
-    document.addEventListener('pointerdown', dismissFromOutside)
-    document.addEventListener('focusin', dismissFromOutside)
-    document.addEventListener('keydown', dismissOnEscape)
-    return () => {
-      document.removeEventListener('pointerdown', dismissFromOutside)
-      document.removeEventListener('focusin', dismissFromOutside)
-      document.removeEventListener('keydown', dismissOnEscape)
-    }
-  }, [anchorRef, onDismiss])
+    document.addEventListener('keydown', hideOrDismissOnEscape)
+    return () => document.removeEventListener('keydown', hideOrDismissOnEscape)
+  }, [anchorRef, onDismiss, explanationShows])
 
   function choose(option: Id) {
     anchorRef.current?.focus()
