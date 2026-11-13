@@ -640,6 +640,79 @@ test('the player opened from its address waits on Play when the browser refuses 
   expect(await video.evaluate((element: HTMLVideoElement) => element.muted)).toBe(false)
 })
 
+// A copy whose audio ends at 2 s and whose video runs to 4 s, as the server and the worker deliver
+// it: the audio muxed into the variant, and two segments of two seconds, the second without audio.
+// e2e/fixtures/audio-ends-at-a-segment-boundary/generate.sh writes the segments.
+async function serveACopyWhoseAudioEndsEarly(page: Page): Promise<void> {
+  await page.route('**/api/stream/**/multivariant.m3u8*', (route) =>
+    route.fulfill({
+      contentType: 'application/vnd.apple.mpegurl',
+      body: MULTIVARIANT.replace('CHANNELS="2"', 'CHANNELS="1"')
+        .replace('RESOLUTION=1280x720', 'RESOLUTION=320x180')
+        .replace('CODECS="avc1.64001f,mp4a.40.2"', 'CODECS="avc1.64000d,fLaC"'),
+    }),
+  )
+  await page.route('**/api/stream/**/stream.m3u8*', (route) =>
+    route.fulfill({
+      contentType: 'application/vnd.apple.mpegurl',
+      body: [
+        '#EXTM3U',
+        '#EXT-X-VERSION:7',
+        '#EXT-X-TARGETDURATION:2',
+        '#EXT-X-PLAYLIST-TYPE:VOD',
+        '#EXT-X-MAP:URI="init.mp4"',
+        '#EXTINF:2.0,',
+        'segment0.m4s',
+        '#EXTINF:2.0,',
+        'segment1.m4s',
+        '#EXT-X-ENDLIST',
+        '',
+      ].join('\n'),
+    }),
+  )
+  for (const [segment, fixture] of [
+    ['init.mp4', 'initialization-segment.mp4'],
+    ['segment0.m4s', 'media-segment-0.m4s'],
+    ['segment1.m4s', 'media-segment-1.m4s'],
+  ]) {
+    const path = fileURLToPath(
+      new URL(`fixtures/audio-ends-at-a-segment-boundary/${fixture}`, import.meta.url),
+    )
+    await page.route(`**/api/stream/**/${segment}*`, (route) =>
+      route.fulfill({ contentType: 'video/mp4', path }),
+    )
+  }
+}
+
+test('a copy whose audio ends on a segment boundary before its video plays the rest of the video and stops at its end', async ({
+  page,
+  request,
+}) => {
+  await routePlayer(page, request)
+  await serveACopyWhoseAudioEndsEarly(page)
+  const stoppedAt: number[] = []
+  await page.route('**/graphql', (route) => {
+    const body = route.request().postDataJSON() as {
+      operationName?: string
+      variables?: { state?: string; positionSeconds?: number }
+    } | null
+    if (
+      body?.operationName === 'ReportStreamSessionTimeline' &&
+      body.variables?.state === 'STOPPED'
+    ) {
+      stoppedAt.push(body.variables.positionSeconds ?? Number.NaN)
+    }
+    return route.fallback()
+  })
+  await page.goto(PLAYER_PATH)
+
+  await page.getByRole('button', { name: 'Play', exact: true }).click()
+
+  // The element would otherwise wait at 2 s, where the audio ends, and never report a stop.
+  await expect.poll(() => stoppedAt).toEqual([4])
+  expect(await page.locator('video').evaluate((video: HTMLVideoElement) => video.ended)).toBe(true)
+})
+
 const DESTROYED_PLAYBACK_SESSIONS = `${STUB_URL}/__test/destroyed-playback-sessions`
 
 // Playwright does not report the keepalive request a page sends while it unloads, so the stub API

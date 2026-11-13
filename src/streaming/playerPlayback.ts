@@ -3,6 +3,7 @@ import Hls, {
   type ErrorData,
   type Level,
   type MediaPlaylist,
+  PlaylistLevelType,
   type VideoSelectionOption,
 } from 'hls.js'
 import {
@@ -1437,6 +1438,7 @@ function attach(video: HTMLVideoElement, url: string, options: StreamSourceOptio
     }
     options.onFatal()
   })
+  endTheStreamAtALastSegmentMarkedAsAGap(hls)
   const onVideoError = () => handleVideoError(video, options)
   video.addEventListener('error', onVideoError)
   video.addEventListener('loadedmetadata', options.startupDeadline.end)
@@ -1455,6 +1457,19 @@ function attach(video: HTMLVideoElement, url: string, options: StreamSourceOptio
     segmentSeconds: () => hls.latestLevelDetails?.targetduration,
     sourceStats: () => hlsSourceStats(hls),
   }
+}
+
+// A variant's segments carry its audio, so one SourceBuffer holds both tracks, and until the stream
+// ends its buffered range covers only the time both tracks have media. A last segment whose video
+// outlasts the audio leaves that range as it was, and hls.js marks it a gap. Since 1.7.2
+// (video-dev/hls.js#8027), hls.js never ends a stream whose last segment is a gap, so playback
+// would wait where the audio ends. Ending it shows the video that remains.
+function endTheStreamAtALastSegmentMarkedAsAGap(hls: Hls) {
+  hls.on(Hls.Events.FRAG_BUFFERED, (_event, { frag }) => {
+    if (frag.type === PlaylistLevelType.MAIN && frag.endList && frag.gap) {
+      hls.trigger(Hls.Events.BUFFER_EOS, { type: null })
+    }
+  })
 }
 
 function hlsSourceStats(hls: Hls): SourceStats {

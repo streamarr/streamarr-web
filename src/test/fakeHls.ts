@@ -34,7 +34,13 @@ export const hls = {
   off: vi.fn((event: string, listener: HlsListener) => {
     listeners.get(event)?.delete(listener)
   }),
-  emit: (event: string) => listeners.get(event)?.forEach((listener) => listener(event, {})),
+  emit: (event: string, data: unknown = {}) =>
+    listeners.get(event)?.forEach((listener) => listener(event, data)),
+  /** Like hls.js, hands the event to its listeners. */
+  trigger: vi.fn((event: string, data: unknown) => {
+    hls.emit(event, data)
+    return true
+  }),
   supported: true,
   audioTracks: [] as FakeHlsTrack[],
   audioTrack: -1,
@@ -79,6 +85,8 @@ class FakeHls {
     AUDIO_TRACK_SWITCHING: 'hlsAudioTrackSwitching',
     SUBTITLE_TRACKS_UPDATED: 'hlsSubtitleTracksUpdated',
     SUBTITLE_TRACK_SWITCH: 'hlsSubtitleTrackSwitch',
+    FRAG_BUFFERED: 'hlsFragBuffered',
+    BUFFER_EOS: 'hlsBufferEos',
   }
   static isSupported() {
     return hls.supported
@@ -91,6 +99,7 @@ class FakeHls {
   destroy = hls.destroy
   on = hls.on
   off = hls.off
+  trigger = hls.trigger
   get audioTracks() {
     return hls.audioTracks
   }
@@ -132,4 +141,7 @@ class FakeHls {
 }
 
 /** Mock hls.js with it: `vi.mock('hls.js', async () => (await import(…)).hlsModule)`. */
-export const hlsModule = { default: FakeHls }
+export const hlsModule = {
+  default: FakeHls,
+  PlaylistLevelType: { MAIN: 'main', AUDIO: 'audio', SUBTITLE: 'subtitle' },
+}

@@ -383,6 +383,13 @@ async function playingVideo(): Promise<HTMLVideoElement> {
   return video
 }
 
+// hls.js appended one of the playlist's segments. It marks the segment a gap when the append left
+// the buffered range as it was, as a segment with video and no audio leaves a SourceBuffer that
+// holds both. `endList` marks the last segment of a playlist that ends.
+function bufferSegment(frag: { type: 'main' | 'audio'; endList: boolean; gap: boolean }) {
+  act(() => hls.emit('hlsFragBuffered', { frag }))
+}
+
 // The stall's first status read names no real end for the attached stream, and later reads do.
 function serveTheRealEndFromTheSecondStatusRead() {
   let reads = 0
@@ -6645,6 +6652,40 @@ describe('Player', () => {
       stallAt(video, REAL_END_SECONDS - 5)
 
       expect(video.paused).toBe(true)
+    })
+  })
+
+  describe('end of the stream', () => {
+    it('shouldTellHlsJsTheStreamEndedWhenTheLastSegmentBuffersAsAGap', async () => {
+      await playingVideo()
+
+      bufferSegment({ type: 'main', endList: true, gap: true })
+
+      expect(hls.trigger).toHaveBeenCalledWith('hlsBufferEos', { type: null })
+    })
+
+    it('shouldLeaveTheEndToHlsJsWhenASegmentBeforeTheLastBuffersAsAGap', async () => {
+      await playingVideo()
+
+      bufferSegment({ type: 'main', endList: false, gap: true })
+
+      expect(hls.trigger).not.toHaveBeenCalledWith('hlsBufferEos', expect.anything())
+    })
+
+    it('shouldLeaveTheEndToHlsJsWhenTheLastSegmentBuffersMedia', async () => {
+      await playingVideo()
+
+      bufferSegment({ type: 'main', endList: true, gap: false })
+
+      expect(hls.trigger).not.toHaveBeenCalledWith('hlsBufferEos', expect.anything())
+    })
+
+    it('shouldLeaveTheEndToHlsJsWhenTheLastSegmentOfAnAudioRenditionBuffersAsAGap', async () => {
+      await playingVideo()
+
+      bufferSegment({ type: 'audio', endList: true, gap: true })
+
+      expect(hls.trigger).not.toHaveBeenCalledWith('hlsBufferEos', expect.anything())
     })
   })
 
