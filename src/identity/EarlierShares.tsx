@@ -95,6 +95,18 @@ function EarlierList({
       </p>
     )
   }
+  return <EarlierRows id={id} shares={shares} householdName={householdName} />
+}
+
+function EarlierRows({
+  id,
+  shares,
+  householdName,
+}: Readonly<{
+  id?: string
+  shares: readonly ProfileShareRow[]
+  householdName: (householdId: string) => string
+}>) {
   return (
     <ul id={id} className={styles.rows}>
       {shares.map((share) => (
