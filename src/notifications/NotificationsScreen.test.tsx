@@ -477,6 +477,15 @@ describe('Older Notifications', () => {
 
       await expectMarasNewsAsThisVisitMarkedIt()
     })
+
+    it('shouldShowOlderNotificationsAsThisVisitReadsThemWhenThisVisitAsksBeforeAnEarlierVisitsReadAnswers', async () => {
+      const firstVisitsRead = await returnWhileTheFirstVisitsReadIsHeld()
+
+      await reachTheEndOfTheList()
+      firstVisitsRead.release()
+
+      await expectMarasNewsAsThisVisitMarkedIt()
+    })
   })
 
   it('shouldLoadOlderNotificationsWhenEveryLoadedOneLeavesTheList', async () => {
