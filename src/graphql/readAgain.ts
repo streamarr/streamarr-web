@@ -1,11 +1,16 @@
-import type { ApolloClient, DocumentNode, ObservableQuery } from '@apollo/client'
+import type {
+  ApolloClient,
+  DocumentNode,
+  ObservableQuery,
+  OperationVariables,
+} from '@apollo/client'
 import { isForbidden } from './errorRouting'
 
 // A read beside a query leaves the query's own status alone, so the reads in flight are counted
 // here for callers that must wait for them.
-const readsInFlight = new WeakMap<ObservableQuery, { count: number }>()
+const readsInFlight = new WeakMap<object, { count: number }>()
 
-function readsOf(query: ObservableQuery): { count: number } {
+function readsOf(query: object): { count: number } {
   let reads = readsInFlight.get(query)
   if (!reads) {
     reads = { count: 0 }
@@ -39,12 +44,14 @@ function readEachAgain(client: ApolloClient, queries: Set<ObservableQuery>): Pro
 }
 
 // Whether `readActiveQueriesAgain` or `readQueriesAgain` is reading `query` now.
-function isReadingAgain(query: ObservableQuery): boolean {
+function isReadingAgain(query: object): boolean {
   return readsOf(query).count > 0
 }
 
 /** Whether `query` has a read in flight, its own or one beside it. A refetch would join that read. */
-export function isReading(query: ObservableQuery): boolean {
+export function isReading<TData, TVariables extends OperationVariables>(
+  query: ObservableQuery<TData, TVariables>,
+): boolean {
   return query.getCurrentResult().loading || isReadingAgain(query)
 }
 
