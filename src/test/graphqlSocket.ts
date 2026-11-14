@@ -19,11 +19,11 @@ interface Operation {
 const graphqlSocket = ws.link(GRAPHQL_SOCKET_URL)
 
 /**
- * Plays the server's half of graphql-transport-ws for one test: it acknowledges every
- * connection and keeps each subscribe by id, so a test can publish a change to every live
- * operation of a name. `documents` holds the query text each operation name subscribed with.
+ * Plays the server's half of graphql-transport-ws for one test. Connections are acknowledged
+ * unless `acknowledge: false` leaves the handshake pending. Each subscribe is kept by id, so a
+ * test can publish a change to every live operation of a name. `documents` holds its query text.
  */
-export function serveGraphqlSocket() {
+export function serveGraphqlSocket({ acknowledge = true } = {}) {
   const operations = new Map<string, Operation>()
   const clients = new Set<SocketClient>()
   const state = {
@@ -48,7 +48,10 @@ export function serveGraphqlSocket() {
       state.connections++
       clients.add(client)
       client.addEventListener('close', () => forget(client))
-      client.addEventListener('message', ({ data }) => {
+      client.addEventListener('message', (event) => {
+        // A test's handler replaces the quiet default installed by the shared setup.
+        event.stopPropagation()
+        const { data } = event
         // graphql-ws sends every frame as text.
         if (typeof data !== 'string') return
         const frame = JSON.parse(data) as {
@@ -56,7 +59,8 @@ export function serveGraphqlSocket() {
           id?: string
           payload?: { operationName?: string; query?: string; variables?: Record<string, unknown> }
         }
-        if (frame.type === 'connection_init') send(client, { type: 'connection_ack' })
+        if (frame.type === 'connection_init' && acknowledge)
+          send(client, { type: 'connection_ack' })
         if (frame.type === 'ping') send(client, { type: 'pong' })
         if (frame.type === 'complete') operations.delete(frame.id!)
         if (frame.type === 'subscribe') {

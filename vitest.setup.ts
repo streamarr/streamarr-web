@@ -1,6 +1,7 @@
 import '@testing-library/jest-dom/vitest'
 import { MotionGlobalConfig } from 'motion'
-import { afterAll, afterEach, beforeAll, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, vi } from 'vitest'
+import { serveGraphqlSocket } from './src/test/graphqlSocket'
 import { server } from './src/test/server'
 
 // Motion completes every animation at once, so choreography that waits on one settles in a test.
@@ -22,6 +23,10 @@ Object.defineProperty(window, 'matchMedia', {
 })
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeEach(() => {
+  // Keep unrelated subscriptions pending; live-update tests explicitly acknowledge their socket.
+  serveGraphqlSocket({ acknowledge: false })
+})
 afterEach(() => {
   server.resetHandlers()
   // A wait that a test abandoned would otherwise hear the next test's responses.
