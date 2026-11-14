@@ -12,6 +12,7 @@ import { useNow } from '../identity/useNow'
 import { definedEdges } from '../media/edges'
 import settingsStyles from '../styles/settings.module.css'
 import { FailurePanel, FailureRow } from '../ui/Failure'
+import { useMenuCounts } from '../ui/MenuCountsProvider'
 import { useIntersectionObserver } from '../media/useIntersectionObserver'
 import styles from './Notifications.module.css'
 import { createLoadedPages, type NotificationEntry } from './notificationList'
@@ -63,7 +64,8 @@ function NotificationsList() {
       ? { ...node, unread: false }
       : node,
   )
-  const markRead = useMarkShownRead()
+  const { receiveUnreadCount } = useMenuCounts()
+  const markRead = useMarkShownRead(receiveUnreadCount)
   const pageInfo = query.data?.notifications.pageInfo
   const older = useOlderNotifications(pageInfo, live.context)
 
