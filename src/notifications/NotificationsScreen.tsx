@@ -126,14 +126,14 @@ function NotificationsList() {
 
   // Changes can take out every loaded row while older pages remain, so only the end of the list
   // can say there are none.
-  if (shown.length === 0 && !pageInfo?.hasNextPage) {
-    return <p className={styles.empty}>No notifications.</p>
-  }
+  const empty = shown.length === 0 && !pageInfo?.hasNextPage
   return (
     <>
-      {notifications.some(({ unread }) => unread) && (
-        <MarkAllRead onMark={() => markRead(notifications)} />
-      )}
+      <MarkAllRead
+        disabled={!notifications.some(({ unread }) => unread)}
+        onMark={() => markRead(notifications)}
+      />
+      {empty && <p className={styles.empty}>No notifications.</p>}
       {shown.length > 0 && (
         <NotificationRows
           notifications={notifications}
@@ -154,7 +154,10 @@ function NotificationsList() {
   )
 }
 
-function MarkAllRead({ onMark }: Readonly<{ onMark: () => Promise<string | null> }>) {
+function MarkAllRead({
+  disabled,
+  onMark,
+}: Readonly<{ disabled: boolean; onMark: () => Promise<string | null> }>) {
   const [refusal, setRefusal] = useState<string | null>(null)
   const refusalId = useId()
   const mark = () => {
@@ -163,7 +166,12 @@ function MarkAllRead({ onMark }: Readonly<{ onMark: () => Promise<string | null>
   }
   return (
     <div className={styles.listActions}>
-      <Button variant="default" aria-describedby={refusal ? refusalId : undefined} onClick={mark}>
+      <Button
+        variant="default"
+        disabled={disabled}
+        aria-describedby={refusal ? refusalId : undefined}
+        onClick={mark}
+      >
         Mark all as read
       </Button>
       {refusal && (

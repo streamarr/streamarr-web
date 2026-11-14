@@ -369,7 +369,7 @@ describe('Requests in Notifications', () => {
     expect(await within(rows()[0]).findByText('Expired')).toBeVisible()
     expect(screen.queryByRole('link', { name: 'Review' })).not.toBeInTheDocument()
     expect(screen.queryByText('Unread')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Mark all as read' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Mark all as read' })).toBeDisabled()
   })
   it('shouldMoveFocusToTheHeadingWhenTheOfferThePersonIsOnExpiresWithThePageOpen', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'], shouldAdvanceTime: true })
@@ -416,6 +416,23 @@ describe('Requests in Notifications', () => {
 })
 
 describe('Reading Notifications', () => {
+  it.each(['empty', 'already read'])(
+    'shouldKeepMarkAllVisibleAndDisabledWhenTheListIs %s',
+    async (state) => {
+      const notifications = state === 'empty' ? [] : [answerNotification()]
+      const { marks } = serve(notificationsPage(notifications))
+      const { user } = renderAppAt(NOTIFICATIONS)
+      if (state === 'empty') await screen.findByText('No notifications.')
+      if (state === 'already read') await screen.findByText(ANSWER_LINE)
+
+      const markAll = screen.getByRole('button', { name: 'Mark all as read' })
+      expect(markAll).toBeVisible()
+      expect(markAll).toBeDisabled()
+      await user.click(markAll)
+      expect(marks).toEqual([])
+    },
+  )
+
   it('shouldKeepTheNotificationsReadWhenAReadSentBeforeTheMarkAnswersAfterIt', async () => {
     const { socket, marks } = serve()
     const unread = [offerNotification(), answerNotification({ unread: true })]
@@ -446,7 +463,7 @@ describe('Reading Notifications', () => {
 
     await screen.findByText('The offer of “Mara” was accepted.')
     expect(screen.queryAllByTestId('unread-mark')).toHaveLength(0)
-    expect(screen.queryByRole('button', { name: 'Mark all as read' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Mark all as read' })).toBeDisabled()
   })
 
   it('shouldSendTheNextCallOfMarkingAllWhenAnEarlierOneFails', async () => {
@@ -564,7 +581,7 @@ describe('Reading Notifications', () => {
     await user.click(screen.getByRole('button', { name: 'Mark all as read' }))
 
     await waitFor(() => expect(screen.queryAllByText('Unread')).toHaveLength(0))
-    expect(screen.queryByRole('button', { name: 'Mark all as read' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Mark all as read' })).toBeDisabled()
     expect(lines()).toEqual([OFFER_LINE, ANSWER_LINE])
   })
 

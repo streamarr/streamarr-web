@@ -106,6 +106,8 @@ test('the unread count and the dot clear when shown notifications are explicitly
   const chip = page.getByRole('button', { name: 'Profile menu (Alex)', exact: true })
   await expect(chip).toBeVisible()
   await expect(chip.getByTestId('unread-dot')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Mark all as read' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Mark all as read' })).toBeDisabled()
   await chip.click()
   await expect(page.getByRole('button', { name: 'Notifications', exact: true })).toHaveText(
     'Notifications',
