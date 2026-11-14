@@ -55,25 +55,24 @@ export function keepsInHouseholdShares(
 }
 
 /**
- * Applies server-ordered changes within the loaded pages. The last loaded order key survives a
- * change removing that row; a new query or continuation supplies the next page boundary.
+ * Applies server-ordered changes within the loaded pages. Each page boundary survives removal
+ * of its last row and replay against other pages whose reads are still in flight.
  */
 export function createShareListUpdater() {
-  let endCursor: string | null | undefined
-  let lastOrderKey: string | null = null
+  const boundaries = new Map<string, string>()
 
   return function apply<TEdge extends OrderedEdgeFieldsFragment & { node: { id: string } }>(
     list: { edges: TEdge[]; pageInfo: { endCursor: string | null; hasNextPage: boolean } },
     change: { shareId: string; edge: TEdge | null },
   ): TEdge[] {
-    if (list.pageInfo.endCursor !== endCursor) {
-      endCursor = list.pageInfo.endCursor
-      lastOrderKey = list.edges.find((edge) => edge.cursor === endCursor)?.orderKey ?? null
-    }
+    const endCursor = list.pageInfo.endCursor
+    const tail = list.edges.find((edge) => edge.cursor === endCursor)
+    if (endCursor !== null && tail) boundaries.set(endCursor, tail.orderKey)
+    const lastOrderKey = endCursor === null ? undefined : boundaries.get(endCursor)
     const beyondLoaded =
       change.edge !== null &&
       list.pageInfo.hasNextPage &&
-      (lastOrderKey === null || change.edge.orderKey > lastOrderKey)
+      (lastOrderKey === undefined || change.edge.orderKey > lastOrderKey)
     return placeOrderedEdge(list.edges, {
       itemId: change.shareId,
       edge: beyondLoaded ? null : change.edge,

@@ -774,6 +774,50 @@ describe('Shared with us as shares change elsewhere', () => {
     }
   }
 
+  it('shouldKeepTheCurrentPageBoundaryWhenAnEarlierVisitsContinuationReplaysAChange', async () => {
+    const tail = share({ id: 'tail', profile: sharedProfile({ id: 'tail', name: 'Tail' }) })
+    const middle = share({ id: 'middle', profile: sharedProfile({ id: 'middle', name: 'Middle' }) })
+    const late = share({ id: 'late', profile: sharedProfile({ id: 'late', name: 'Late' }) })
+    const firstPage = sharesData([share(), tail])
+    firstPage.householdShares.pageInfo.hasNextPage = true
+    const nextPage = sharesData([middle], 2)
+    nextPage.householdShares.pageInfo.hasNextPage = true
+    const continuation = heldAnswer(sharesData([late], 3))
+    let waiting = false
+    const socket = serve()
+    server.use(
+      graphql.query('SharedWithHousehold', ({ variables }) => {
+        if (variables.after === middle.id) {
+          waiting = true
+          return continuation.answer()
+        }
+        return HttpResponse.json({ data: variables.after ? nextPage : firstPage })
+      }),
+    )
+    const { user } = renderAppAt(VISITORS)
+    await user.click(await screen.findByRole('button', { name: 'Load more Profiles' }))
+    await screen.findByRole('button', { name: 'End share of Middle' })
+    await user.click(screen.getByRole('button', { name: 'Load more Profiles' }))
+    await waitFor(() => expect(waiting).toBe(true))
+    await leaveForHomeAndReturn(user, SHARED_WITH_US)
+    await screen.findByRole('button', { name: 'End share of Tail' })
+    await followingShareChanges(socket)
+    socket.publish('ProfileShareChanged', shareChanged(tail.id, null))
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'End share of Tail' })).not.toBeInTheDocument(),
+    )
+    const delivered = answerDelivered('SharedWithHousehold')
+    await act(async () => {
+      continuation.release()
+      await delivered
+    })
+    socket.publish('ProfileShareChanged', positionedShareChanged(robin, 'm0000005'))
+
+    expect(await screen.findByRole('button', { name: 'End share of Robin' })).toBeEnabled()
+    expect(sharedNames()).toEqual(['End share of Alex', 'End share of Robin'])
+    expect(screen.getByRole('button', { name: 'Load more Profiles' })).toBeEnabled()
+  })
+
   it('shouldPlaceAnOlderShareAfterTheNewerShareWhenItsOfferIsAcceptedElsewhere', async () => {
     const { socket } = await openWithAShareOfAlex()
 
