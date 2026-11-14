@@ -1,0 +1,52 @@
+# A Household holds at most 100 live codes (ADR 0024), so one read of 100 lists every code an
+# admin may withdraw.
+query HouseholdShareCodes($householdId: ID!) {
+  householdShareCodes(householdId: $householdId, first: 100) {
+    edges {
+      node {
+        ...ShareCodeFields
+      }
+    }
+  }
+}
+
+mutation IssueShareCode($input: IssueShareCodeInput!) {
+  issueShareCode(input: $input) {
+    issued {
+      code
+      shareCode {
+        ...ShareCodeFields
+      }
+    }
+    userErrors {
+      __typename
+      ... on MutationError {
+        message
+      }
+    }
+  }
+}
+
+mutation WithdrawShareCode($input: WithdrawShareCodeInput!) {
+  withdrawShareCode(input: $input) {
+    shareCode {
+      id
+      status
+    }
+    userErrors {
+      __typename
+      ... on MutationError {
+        message
+      }
+    }
+  }
+}
+
+fragment ShareCodeFields on ShareCode {
+  id
+  householdId
+  status
+  issuedAt
+  expiresAt
+  issuedByDisplayName
+}

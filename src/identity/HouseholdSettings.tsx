@@ -14,6 +14,12 @@ const SECTIONS = [
     label: 'Share invitations',
     region: 'Share invitations',
   },
+  {
+    to: '/settings/household/codes',
+    icon: 'sharing',
+    label: 'Share codes',
+    region: 'Share codes',
+  },
 ] as const satisfies readonly SettingsSection[]
 
 /**
