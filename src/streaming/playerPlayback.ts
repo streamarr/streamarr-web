@@ -253,7 +253,8 @@ function startSessionPlayback({
   let unacknowledgedEndPosition: number | null = null
   // Where the attached stream's media really ends, when its copy ran short of the advertised end.
   let realEnd: number | null = null
-  let endedAtRealEnd = false
+  // The player, not the element, ended playback as at the end of the media title.
+  let playerEndedPlayback = false
   // Where the playhead stopped when playback ended; a viewer's seek after the end moves it away.
   let endedPosition = 0
   // hls.js stops loading after a fatal error, which a stream with a known real end may survive.
@@ -378,7 +379,7 @@ function startSessionPlayback({
       onPlay: (element) => {
         if (resume) resume.playing = true
         playRequested = true
-        if (!endedAtRealEnd) return
+        if (!playerEndedPlayback) return
         // As the element does after its own end, playing where playback ended starts from the top.
         if (element.currentTime === endedPosition) element.currentTime = 0
         // A failure can be what ended playback, and hls.js stops loading after one.
@@ -386,7 +387,7 @@ function startSessionPlayback({
       },
       // The pause that ends playback reports its events after the end; the end stays the last word.
       onTimeUpdate: (element) => {
-        if (endedAtRealEnd) return
+        if (playerEndedPlayback) return
         lastKnownPosition = element.currentTime
         if (realEnd !== null && element.currentTime >= realEnd) {
           endAtRealEnd()
@@ -402,7 +403,7 @@ function startSessionPlayback({
       },
       onPause: (element) => {
         clearStallLimit()
-        if (endedAtRealEnd) return
+        if (playerEndedPlayback) return
         if (resume) resume.playing = false
         lastKnownPosition = element.currentTime
         report('PAUSED', element.currentTime)
@@ -437,9 +438,9 @@ function startSessionPlayback({
         startStallLimit()
         if (sourceStopped) restartStoppedSource()
       },
-      // An element that also ends where playback ended at the real end has nothing new to report.
+      // An element that also ends after the player ended playback has nothing new to report.
       onEnded: (element) => {
-        if (!endedAtRealEnd) reportEnd(element.currentTime)
+        if (!playerEndedPlayback) reportEnd(element.currentTime)
       },
     })
   }
@@ -461,25 +462,30 @@ function startSessionPlayback({
     return firstFrameShown && video.currentTime >= realEnd - segmentSeconds
   }
 
-  // Ends playback as at the end of the media title. Callers end it only while it has not ended.
   function endAtRealEnd() {
     if (realEnd === null) {
       return
     }
-    endedAtRealEnd = true
+    endAsAtTheEndOfTheTitle(realEnd)
+  }
+
+  // Ends playback as at the end of the media title, stopped at `stoppedAt`. Callers end it only
+  // while it has not ended.
+  function endAsAtTheEndOfTheTitle(stoppedAt: number) {
+    playerEndedPlayback = true
     // Playback that ended has started; only attaching the stream again starts it anew.
     startupDeadline.end()
     stopStatusCheck()
     video.pause()
     endedPosition = video.currentTime
-    reportEnd(realEnd)
+    reportEnd(stoppedAt)
   }
 
-  // Playback that ended at the real end attaches the stream again when the viewer plays on.
+  // Playback that the player ended attaches the stream again when the viewer plays on.
   function chooseDynamicRange(choice: DynamicRangeChoice) {
     if (choice === dynamicRange) return
     dynamicRange = choice
-    if (!source?.followsVideoPreference || endedAtRealEnd) return
+    if (!source?.followsVideoPreference || playerEndedPlayback) return
     resume = resumePoint()
     stopStatusCheck()
     detachSource()
@@ -504,7 +510,7 @@ function startSessionPlayback({
   // Nothing past the real end can arrive, so a stall or a failure close to it is the end. A
   // failure after the end, even once the viewer has sought back, belongs to the ended playback.
   function tryEndAtRealEnd(): boolean {
-    if (endedAtRealEnd) {
+    if (playerEndedPlayback) {
       return true
     }
     if (!withinASegmentOfRealEnd()) {
@@ -599,7 +605,7 @@ function startSessionPlayback({
     }
     const seconds = mediaEndOf(attachedStream)
     if (typeof seconds === 'number') learnRealEnd(seconds)
-    if (!endedAtRealEnd) failStalledStream()
+    if (!playerEndedPlayback) failStalledStream()
   }
 
   // The media element can resume, pause or seek before it fires the event that stops the limit.
@@ -704,7 +710,7 @@ function startSessionPlayback({
     sessionId = attempt.streamSession.id
     attachedPlayback = playback
     realEnd = mediaEndOf(attempt.streamSession) ?? (sameStream ? realEnd : null)
-    endedAtRealEnd = false
+    playerEndedPlayback = false
     sourceStopped = false
     firstFrameShown = false
     const generation = sourceGeneration
@@ -943,7 +949,7 @@ function startSessionPlayback({
     if (
       video.ended ||
       (realEnd !== null && video.currentTime >= realEnd) ||
-      (endedAtRealEnd && video.currentTime === endedPosition)
+      (playerEndedPlayback && video.currentTime === endedPosition)
     ) {
       return { position: 0, playing }
     }
@@ -993,7 +999,7 @@ function startSessionPlayback({
       generation !== sourceGeneration ||
       reportingFormat ||
       !playbackSessionId ||
-      endedAtRealEnd
+      playerEndedPlayback
     )
       return Promise.resolve()
     if (statusCheck?.generation === generation) {
@@ -1072,7 +1078,7 @@ function startSessionPlayback({
 
   function playOnToTheRealEnd(seconds: number, sourceFailed: boolean) {
     learnRealEnd(seconds)
-    if (sourceFailed && !endedAtRealEnd) keepPlayingFromAStoppedSource()
+    if (sourceFailed && !playerEndedPlayback) keepPlayingFromAStoppedSource()
   }
 
   // Buffered media plays on to the real end; a stall short of it needs the stream attached again.
