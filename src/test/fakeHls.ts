@@ -36,11 +36,6 @@ export const hls = {
   }),
   emit: (event: string, data: unknown = {}) =>
     listeners.get(event)?.forEach((listener) => listener(event, data)),
-  /** Like hls.js, hands the event to its listeners. */
-  trigger: vi.fn((event: string, data: unknown) => {
-    hls.emit(event, data)
-    return true
-  }),
   supported: true,
   audioTracks: [] as FakeHlsTrack[],
   audioTrack: -1,
@@ -86,7 +81,6 @@ class FakeHls {
     SUBTITLE_TRACKS_UPDATED: 'hlsSubtitleTracksUpdated',
     SUBTITLE_TRACK_SWITCH: 'hlsSubtitleTrackSwitch',
     FRAG_BUFFERED: 'hlsFragBuffered',
-    BUFFER_EOS: 'hlsBufferEos',
   }
   static isSupported() {
     return hls.supported
@@ -99,7 +93,6 @@ class FakeHls {
   destroy = hls.destroy
   on = hls.on
   off = hls.off
-  trigger = hls.trigger
   get audioTracks() {
     return hls.audioTracks
   }

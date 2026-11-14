@@ -42,6 +42,8 @@ const PLAYBACK_START_TIMEOUT_MS = 30_000
 const PLAYBACK_STATUS_INTERVAL_MS = 500
 // The server's default target segment duration, for a player that keeps the playlist to itself.
 const DEFAULT_SEGMENT_SECONDS = 6
+// How close to the end of its buffered media a waiting element has run out of it.
+const PLAYABLE_MEDIA_END_TOLERANCE_SECONDS = 0.5
 // By the server's defaults, it replaces a job attempt that stores nothing for 10 s and gives the
 // replacement up to 22 s to store its first segment, so a stall it can still end ends within about
 // 32 s and one segment's transfer. Once the buffer is empty, hls.js abandons a segment request
@@ -738,6 +740,9 @@ function startSessionPlayback({
       onFormatFailure: (reason) => {
         void reportFormatFailure(reason, generation)
       },
+      // A copy whose audio ends before its video plays no further than its audio, so playback ends
+      // where it stops.
+      onPlayableMediaEnded: () => endAsAtTheEndOfTheTitle(video.currentTime),
       onStatusRequired: (fatal) => {
         // A stream that stops for good within one segment of the real end has ended there.
         if (fatal && tryEndAtRealEnd()) return
@@ -1410,6 +1415,8 @@ interface StreamSourceOptions {
   onFatal: () => void
   onFirstFrame: () => void
   onFormatFailure: (reason: PlaybackFormatFailure) => void
+  /** The element can play no more of the stream, though its playlist runs on. */
+  onPlayableMediaEnded: () => void
   onStatusRequired: (fatal: boolean) => void
   startupDeadline: StartupDeadline
   videoPreference: VideoSelectionOption
@@ -1444,7 +1451,7 @@ function attach(video: HTMLVideoElement, url: string, options: StreamSourceOptio
     }
     options.onFatal()
   })
-  endTheStreamAtALastSegmentMarkedAsAGap(hls)
+  const stopWatchingTheEnd = watchForTheEndOfPlayableMedia(hls, video, options.onPlayableMediaEnded)
   const onVideoError = () => handleVideoError(video, options)
   video.addEventListener('error', onVideoError)
   video.addEventListener('loadedmetadata', options.startupDeadline.end)
@@ -1453,6 +1460,7 @@ function attach(video: HTMLVideoElement, url: string, options: StreamSourceOptio
   hls.attachMedia(video)
   return {
     detach: () => {
+      stopWatchingTheEnd()
       video.removeEventListener('loadeddata', options.onFirstFrame)
       video.removeEventListener('loadedmetadata', options.startupDeadline.end)
       video.removeEventListener('error', onVideoError)
@@ -1465,17 +1473,53 @@ function attach(video: HTMLVideoElement, url: string, options: StreamSourceOptio
   }
 }
 
-// A variant's segments carry its audio, so one SourceBuffer holds both tracks, and until the stream
-// ends its buffered range covers only the time both tracks have media. A last segment whose video
-// outlasts the audio leaves that range as it was, and hls.js marks it a gap. Since 1.7.2
-// (video-dev/hls.js#8027), hls.js never ends a stream whose last segment is a gap, so playback
-// would wait where the audio ends. Ending it shows the video that remains.
-function endTheStreamAtALastSegmentMarkedAsAGap(hls: Hls) {
+// A variant's segments carry its audio, so one SourceBuffer holds both tracks, and the element
+// plays only the time both have media. A copy whose audio ends before its video stops where the
+// audio ends, and since 1.7.2 hls.js never ends such a stream. hls.js loads forward from the
+// playhead, so once it has buffered the playlist's last segment since the playhead last left the
+// buffered media, a playing element that waits with no media ahead will get no more.
+function watchForTheEndOfPlayableMedia(
+  hls: Hls,
+  video: HTMLVideoElement,
+  onEnded: () => void,
+): () => void {
+  let lastSegmentBuffered = false
+  const endWhenNoMediaComes = () => {
+    if (lastSegmentBuffered && waitsWithNoMediaAhead(video)) onEnded()
+  }
   hls.on(Hls.Events.FRAG_BUFFERED, (_event, { frag }) => {
-    if (frag.type === PlaylistLevelType.MAIN && frag.endList && frag.gap) {
-      hls.trigger(Hls.Events.BUFFER_EOS, { type: null })
-    }
+    if (frag.type !== PlaylistLevelType.MAIN || !frag.endList) return
+    lastSegmentBuffered = true
+    endWhenNoMediaComes()
   })
+  // hls.js loads again from a seek that leaves the buffered media.
+  const onSeeking = () => {
+    if (!holdsMediaAt(video, video.currentTime)) lastSegmentBuffered = false
+  }
+  video.addEventListener('seeking', onSeeking)
+  video.addEventListener('waiting', endWhenNoMediaComes)
+  return () => {
+    video.removeEventListener('seeking', onSeeking)
+    video.removeEventListener('waiting', endWhenNoMediaComes)
+  }
+}
+
+// A paused element waits for nothing, and Chromium stops about 0.1 s short of its buffered media.
+function waitsWithNoMediaAhead(video: HTMLVideoElement): boolean {
+  if (video.paused || video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) return false
+  for (let index = 0; index < video.buffered.length; index++) {
+    if (video.buffered.end(index) > video.currentTime + PLAYABLE_MEDIA_END_TOLERANCE_SECONDS) {
+      return false
+    }
+  }
+  return true
+}
+
+function holdsMediaAt(video: HTMLVideoElement, seconds: number): boolean {
+  for (let index = 0; index < video.buffered.length; index++) {
+    if (video.buffered.start(index) <= seconds && seconds <= video.buffered.end(index)) return true
+  }
+  return false
 }
 
 function hlsSourceStats(hls: Hls): SourceStats {
