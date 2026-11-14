@@ -16,6 +16,7 @@ import { serveGraphqlSocket } from '../test/graphqlSocket'
 import { meFixture } from '../test/meFixture'
 import {
   answerNotification,
+  followingNotificationChanges,
   hoursAgo,
   notificationChange,
   notificationEdge,
@@ -68,11 +69,6 @@ function serve(page: NotificationsQuery = notificationsPage([]), me = meFixture(
 
 function rows() {
   return within(screen.getByRole('list', { name: 'Notifications' })).getAllByRole('listitem')
-}
-
-/** Waits until the page follows changes, so that a change published next reaches it. */
-async function followingNotificationChanges(socket: ReturnType<typeof serveGraphqlSocket>) {
-  await waitFor(() => expect(socket.isLive('NotificationsChanged')).toBe(true))
 }
 
 function lines() {
@@ -258,6 +254,24 @@ describe('Requests in Notifications', () => {
     },
   )
 
+  it('shouldSayHowLongAgoAsTimePassesWithThePageOpen', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'], shouldAdvanceTime: true })
+    onTestFinished(() => void vi.useRealTimers())
+    serve(
+      notificationsPage([
+        answerNotification({ latestEventAt: new Date(Date.now() - 10_000).toISOString() }),
+      ]),
+    )
+    renderAppAt(NOTIFICATIONS)
+    expect(await within(await screen.findByRole('listitem')).findByText('Just now')).toBeVisible()
+
+    await act(() => vi.advanceTimersByTimeAsync(60_000))
+    expect(await within(rows()[0]).findByText('1 minute ago')).toBeVisible()
+    await act(() => vi.advanceTimersByTimeAsync(HOUR))
+
+    expect(await within(rows()[0]).findByText('1 hour ago')).toBeVisible()
+  })
+
   it('shouldSayAnOfferExpiredWhenItsTimeRunsOutWithThePageOpen', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'], shouldAdvanceTime: true })
     onTestFinished(() => void vi.useRealTimers())
@@ -346,6 +360,24 @@ describe('Older Notifications', () => {
     ])
     expect(reads).toContain('cursor-002')
     expect(screen.queryByTestId('older-notifications')).not.toBeInTheDocument()
+  })
+
+  it('shouldLoadOlderNotificationsWhenTheNewestPageHasNoneToShow', async () => {
+    serve()
+    servePages(
+      notificationsPage([null], { hasNextPage: true }),
+      notificationsPage([answerAbout('Mara'), answerAbout('Leo')], { from: 2 }),
+    )
+    renderAppAt(NOTIFICATIONS)
+
+    await reachTheEndOfTheList()
+
+    await screen.findByText('“Cabin” accepted the Profile “Leo”.')
+    expect(lines()).toEqual([
+      '“Cabin” accepted the Profile “Mara”.',
+      '“Cabin” accepted the Profile “Leo”.',
+    ])
+    expect(screen.queryByText('No notifications.')).not.toBeInTheDocument()
   })
 
   it('shouldShowANotificationOnceWhenTheOlderPageRepeatsOneItShows', async () => {

@@ -15,7 +15,7 @@ import { FailurePanel, FailureRow } from '../ui/Failure'
 import { useIntersectionObserver } from '../media/useIntersectionObserver'
 import styles from './Notifications.module.css'
 import { createLoadedPages, type NotificationEntry } from './notificationList'
-import { fullTime, whenLabel } from './notificationTime'
+import { fullTime, nextLabelChange, whenLabel } from './notificationTime'
 import { expiryOfWaiting, isOfferRequest, offerRequestState } from './requestState'
 import { useMarkShownRead } from './useMarkShownRead'
 import { useNotificationChanges } from './useNotificationChanges'
@@ -110,8 +110,14 @@ function EndOfTheList({ onReached }: Readonly<{ onReached: () => void }>) {
 function NotificationRows({
   notifications,
 }: Readonly<{ notifications: NotificationFieldsFragment[] }>) {
-  // A waiting Request turns into an expired one when its time runs out, as the server reads it.
-  const now = useNow(notifications.map(expiryOfWaiting))
+  // A waiting Request turns into an expired one when its time runs out, as the server reads it,
+  // and each row says how long ago as each whole minute, hour or day passes.
+  const now = useNow((last) =>
+    notifications.flatMap((notification) => [
+      expiryOfWaiting(notification),
+      nextLabelChange(notification.latestEventAt, last),
+    ]),
+  )
   return (
     <ul className={`${settingsStyles.formPanel} ${styles.rows}`} aria-label="Notifications">
       {notifications.map((notification) => (

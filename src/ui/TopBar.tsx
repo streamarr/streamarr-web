@@ -1,10 +1,14 @@
 import { Link, useLocation, useNavigate, useRouteContext } from '@tanstack/react-router'
 import { useSignOut } from '../auth/useSignOut'
+import type { MeQuery } from '../graphql/generated/graphql'
 import { useMe } from '../identity/useMe'
 import { useLibraries } from '../media/useLibraries'
 import { Lockup } from './Lockup'
+import { useMenuCounts } from './MenuCountsProvider'
 import { ProfileMenu } from './ProfileMenu'
 import styles from './TopBar.module.css'
+
+type Me = MeQuery['me']
 
 export function TopBar() {
   // A library fetch failure degrades to Home-only chrome rather than an error banner: browsing
@@ -46,29 +50,12 @@ export function TopBar() {
 // leave a way out.
 function AccountTrail() {
   const { data, error } = useMe()
-  const { session } = useRouteContext({ from: '__root__' })
   const navigate = useNavigate()
   const toSignIn = () => void navigate({ to: '/login' })
   const signOut = useSignOut(toSignIn)
 
   if (data) {
-    return (
-      <ProfileMenu
-        me={data.me}
-        onServerSettings={() => navigate({ to: '/settings/server/libraries' })}
-        onProfileSettings={() => navigate({ to: '/settings/profile/languages' })}
-        onHouseholdSettings={() => navigate({ to: '/settings/household/offers' })}
-        onNotifications={() => navigate({ to: '/notifications' })}
-        onPinRequired={(profileId) =>
-          navigate({ to: '/select-profile', search: { profile: profileId } })
-        }
-        onSignedOut={toSignIn}
-        onUnauthenticated={() => {
-          session.markAnonymous()
-          toSignIn()
-        }}
-      />
-    )
+    return <AccountMenu me={data.me} toSignIn={toSignIn} />
   }
 
   if (error) {
@@ -80,6 +67,33 @@ function AccountTrail() {
   }
 
   return null
+}
+
+/** The Profile menu of a known identity, with the places it opens. */
+function AccountMenu({ me, toSignIn }: Readonly<{ me: Me; toSignIn: () => void }>) {
+  const { session } = useRouteContext({ from: '__root__' })
+  const navigate = useNavigate()
+  const { unreadNotifications, waitingOffers } = useMenuCounts()
+
+  return (
+    <ProfileMenu
+      me={me}
+      unreadNotifications={unreadNotifications}
+      waitingOffers={waitingOffers}
+      onServerSettings={() => navigate({ to: '/settings/server/libraries' })}
+      onProfileSettings={() => navigate({ to: '/settings/profile/languages' })}
+      onHouseholdSettings={() => navigate({ to: '/settings/household/offers' })}
+      onNotifications={() => navigate({ to: '/notifications' })}
+      onPinRequired={(profileId) =>
+        navigate({ to: '/select-profile', search: { profile: profileId } })
+      }
+      onSignedOut={toSignIn}
+      onUnauthenticated={() => {
+        session.markAnonymous()
+        toSignIn()
+      }}
+    />
+  )
 }
 
 function pillClassName(active: boolean) {
