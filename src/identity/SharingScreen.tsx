@@ -2,11 +2,16 @@ import { Center, Loader } from '@mantine/core'
 import { useQuery } from '@apollo/client/react'
 import { useState } from 'react'
 import settingsStyles from '../styles/settings.module.css'
-import { ProfileSharesDocument, type MeQuery } from '../graphql/generated/graphql'
+import {
+  ProfileSharesDocument,
+  type MeQuery,
+  type ProfileSharesQuery,
+} from '../graphql/generated/graphql'
 import { requestFailureMessage } from '../graphql/requestErrors'
 import { FailurePanel } from '../ui/Failure'
 import { PageNotice } from '../ui/PageNotice'
 import { usePageNotice } from '../ui/usePageNotice'
+import { ArrivingShareCodeContext } from './arrivingShareCode'
 import { shortId } from './shareText'
 import styles from './Sharing.module.css'
 import { useMe } from './useMe'
@@ -15,9 +20,13 @@ import { WhereShared, type ProfileShareRow } from './WhereShared'
 type Me = MeQuery['me']
 type PersonalProfile = Readonly<{ id: string; name: string }>
 
-/** Where the Account's Personal Profile is shared, and the way to share it with another Household. */
-export function SharingScreen() {
+/**
+ * Where the Account's Personal Profile is shared, and the way to share it with another Household.
+ * A share code that the page's link carried opens the share form with it, once.
+ */
+export function SharingScreen({ arrivingCode = null }: Readonly<{ arrivingCode?: string | null }>) {
   const { notice, count, heading, announce, dismiss } = usePageNotice()
+  const [code, setCode] = useState(arrivingCode)
 
   return (
     <>
@@ -29,7 +38,9 @@ export function SharingScreen() {
       <PageNotice count={count} onDismiss={dismiss}>
         {notice}
       </PageNotice>
-      <SharingContent onChanged={announce} />
+      <ArrivingShareCodeContext value={{ code, take: () => setCode(null) }}>
+        <SharingContent onChanged={announce} />
+      </ArrivingShareCodeContext>
     </>
   )
 }
@@ -97,35 +108,32 @@ function ProfileSharing({
     variables: { profileId: profile.id },
     fetchPolicy: 'network-only',
   })
-  // The query keeps a failed read, and the page shows it in place of the list. Rejecting here
-  // would report the change that the read follows as failed.
+  // A failed read reports through the query's own error. Rejecting here would report the change
+  // that the read follows as failed.
   const readAgain = () => query.refetch().catch(() => undefined)
+  // A failed read empties `data`, so the last list read stays on screen with the form inside it.
+  const data = query.data ?? query.previousData
   // A change on its way, its refusal, and the confirmation that it belongs to outlast the list
   // that a failed read takes off the page, so they are held here and not in the list.
   const [changing, setChanging] = useState<string | null>(null)
   const [ending, setEnding] = useState<ProfileShareRow | null>(null)
   const [refusal, setRefusal] = useState<string | null>(null)
 
-  if (query.loading && !query.data) {
+  if (query.loading && !data) {
     return <SharingLoading />
   }
 
-  if (query.error || !query.data) {
+  if (!data) {
     return <SharingUnavailable error={query.error} onRetry={readAgain} />
   }
-
-  // Every Personal Profile is shared with its Account's own Household, and that share cannot
-  // end, so it is no news here.
-  const shares = query.data.profileShares.edges
-    .map((edge) => edge.node)
-    .filter((share) => !share.requiredByAccountMembership)
 
   return (
     <WhereShared
       profile={profile}
-      shares={shares}
+      shares={listedShares(data)}
       householdName={householdName}
       ownHouseholdName={ownHouseholdName}
+      readFailure={query.error ? sharingFailureMessage(query.error) : null}
       readAgain={readAgain}
       onChanged={onChanged}
       changing={changing}
@@ -136,6 +144,14 @@ function ProfileSharing({
       onRefusalChange={setRefusal}
     />
   )
+}
+
+// Every Personal Profile is shared with its Account's own Household, and that share cannot end,
+// so it is no news here.
+function listedShares(data: ProfileSharesQuery): ProfileShareRow[] {
+  return data.profileShares.edges
+    .map((edge) => edge.node)
+    .filter((share) => !share.requiredByAccountMembership)
 }
 
 function SharingLoading() {
@@ -150,9 +166,9 @@ function SharingUnavailable({
   error,
   onRetry,
 }: Readonly<{ error: unknown; onRetry: () => unknown }>) {
-  return (
-    <FailurePanel onRetry={onRetry}>
-      {requestFailureMessage(error, "Couldn't load sharing.")}
-    </FailurePanel>
-  )
+  return <FailurePanel onRetry={onRetry}>{sharingFailureMessage(error)}</FailurePanel>
+}
+
+function sharingFailureMessage(error: unknown): string {
+  return requestFailureMessage(error, "Couldn't load sharing.")
 }

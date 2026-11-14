@@ -2,7 +2,7 @@ import styles from '../styles/settings.module.css'
 import { Icon } from './Icon'
 
 /**
- * What a settings page says after a change took, under its heading until dismissed. The status is
+ * What a settings page says about a change, under its heading until dismissed. The status is
  * always in the page, empty between notices, because a screen reader hears a status whose text
  * changes rather than one that arrives with its text. Each `count` writes its notice anew, so the
  * same words a second time are heard a second time.

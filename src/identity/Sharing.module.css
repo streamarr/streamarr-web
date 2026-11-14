@@ -70,7 +70,7 @@
   max-width: 480px;
 }
 
-.effects {
+.review {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-8);
@@ -78,12 +78,14 @@
   line-height: var(--line-height-prose);
 }
 
-.effects:empty {
-  display: none;
+.review p {
+  margin: 0;
 }
 
-.effects p {
+.review .question {
   margin: 0;
+  font-size: var(--font-size-emphasis);
+  font-weight: var(--font-weight-semibold);
 }
 
 .earlier {
