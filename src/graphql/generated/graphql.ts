@@ -102,9 +102,7 @@ export type ChangeInvitationLifetimeInput = {
   hours: number;
 };
 
-/** A ServerAdmin's new retention for Notifications. */
 export type ChangeNotificationRetentionInput = {
-  /** Between minimumDays and maximumDays of the setting, inclusive. */
   days: number;
 };
 
