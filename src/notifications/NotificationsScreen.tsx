@@ -12,6 +12,7 @@ import { useNow } from '../identity/useNow'
 import { definedEdges } from '../media/edges'
 import settingsStyles from '../styles/settings.module.css'
 import { FailurePanel, FailureRow } from '../ui/Failure'
+import { useMenuCounts } from '../ui/MenuCountsProvider'
 import { useIntersectionObserver } from '../media/useIntersectionObserver'
 import styles from './Notifications.module.css'
 import { createLoadedPages, type NotificationEntry } from './notificationList'
@@ -55,8 +56,10 @@ function NotificationsList() {
   // A failed read reports through the query's own error state.
   const readAgain = () => query.refetch().catch(() => undefined)
   const shown = query.error ? [] : definedEdges(query.data?.notifications.edges)
+  const { receiveUnreadCount } = useMenuCounts()
   const markRead = useMarkShownRead(
     query.data && !query.error ? shown.map((edge) => edge.node) : null,
+    receiveUnreadCount,
   )
   const pageInfo = query.data?.notifications.pageInfo
   const older = useOlderNotifications(pageInfo, live.context, markRead)

@@ -1,4 +1,5 @@
 import { useQuery } from '@apollo/client/react'
+import { useCallback } from 'react'
 import {
   NotificationsChangedDocument,
   UnreadNotificationCountDocument,
@@ -13,9 +14,13 @@ import { useLiveChanges } from '../graphql/useLiveChanges'
  * last count, as does a read again that fails. Each change carries the whole count, so the menu
  * shows a change's count even when no read of the count has succeeded. Zero until a read or a
  * change first gives the count, and while neither can: the count is a hint, never a failure of its
- * own. `skip` reads nothing and follows nothing.
+ * own. `skip` reads nothing and follows nothing. `receive` takes a count the server answered
+ * outside a change, such as a mark's.
  */
-export function useUnreadNotificationCount({ skip }: { skip: boolean }): number {
+export function useUnreadNotificationCount({ skip }: { skip: boolean }): {
+  count: number
+  receive: (count: number) => void
+} {
   const live = useLiveList({
     query: UnreadNotificationCountDocument,
     variables: {},
@@ -24,11 +29,18 @@ export function useUnreadNotificationCount({ skip }: { skip: boolean }): number 
     apply: (data, count: number) => ({ ...data, unreadNotificationCount: count }),
     wholeAnswerFrom: (count) => ({ unreadNotificationCount: count }),
   })
+  const receive = useCallback(
+    (count: number) => {
+      if (skip) return
+      live.receive(count)
+    },
+    [skip, live],
+  )
   useLiveChanges(
     NotificationsChangedDocument,
     ({ data }) => {
       const count = data?.notificationsChanged?.unreadNotificationCount
-      if (typeof count === 'number') live.receive(count)
+      if (typeof count === 'number') receive(count)
     },
     { skip },
   )
@@ -39,5 +51,5 @@ export function useUnreadNotificationCount({ skip }: { skip: boolean }): number 
     // way. When that read then fails, the menu still leaves the count out.
     fetchPolicy: 'cache-and-network',
   })
-  return data?.unreadNotificationCount ?? 0
+  return { count: data?.unreadNotificationCount ?? 0, receive }
 }

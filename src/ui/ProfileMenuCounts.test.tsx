@@ -233,6 +233,48 @@ describe('The unread count in the Profile menu', () => {
     expect(menu.getByRole('button', { name: 'Notifications, 5 unread' })).toBeVisible()
   })
 
+  it('shouldTakeTheCountAMarkAnswersWhenNoChangeFollowsIt', async () => {
+    serveHome()
+    // Every count read after the first answers late, with the count as the server read it, so
+    // that only the mark's answer can clear the count until they do.
+    const held = { unread: 1, reads: 0, answered: 0 }
+    let release = () => undefined as void
+    const released = new Promise<void>((resolve) => (release = resolve))
+    onTestFinished(release)
+    server.use(
+      graphql.query('UnreadNotificationCount', async () => {
+        held.reads += 1
+        const unreadNotificationCount = held.unread
+        if (held.reads > 1) {
+          await released
+          held.answered += 1
+        }
+        return HttpResponse.json({ data: { unreadNotificationCount } })
+      }),
+      graphql.query('Notifications', () =>
+        HttpResponse.json({
+          data: notificationsPage([answerNotification({ message: MARA_LINE, unread: true })]),
+        }),
+      ),
+      graphql.mutation('MarkNotificationRead', () => {
+        held.unread = 0
+        return HttpResponse.json({
+          data: { markNotificationRead: { unreadNotificationCount: 0, userErrors: [] } },
+        })
+      }),
+    )
+    const { user } = renderAppAt('/notifications')
+    await screen.findByText(MARA_LINE)
+
+    const chip = await screen.findByRole('button', { name: 'Profile menu (Owner)' })
+    release()
+    await waitFor(() => expect(held.answered).toBe(held.reads - 1))
+    await user.click(chip)
+
+    const menu = within(await screen.findByTestId('profile-menu'))
+    expect(menu.getByRole('button', { name: 'Notifications' })).toBeVisible()
+  })
+
   it('shouldReadNoCountWhenTheSessionIsBoundToATV', async () => {
     const { socket, reads } = serveHome(meFixture({ deviceBound: true }), 3)
 
