@@ -1072,7 +1072,7 @@ describe('library administration', () => {
         'LibraryRemoved',
         'LibraryStatusChanged',
         'NotificationsChanged',
-        'ProfileShareChanged',
+        'PendingOfferCountChanged',
       ]),
     )
     expect(state.socket.state.connections).toBe(1)

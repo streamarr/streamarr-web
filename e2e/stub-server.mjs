@@ -221,9 +221,22 @@ function route(request, response, raw) {
     if (operationName === 'UnreadNotificationCount') {
       return json(response, 200, { data: { unreadNotificationCount: 0 } })
     }
+    if (operationName === 'PendingOfferCount') {
+      return json(response, 200, {
+        data: {
+          householdAdministration: { __typename: 'HouseholdAdministration', pendingOfferCount: 0 },
+        },
+      })
+    }
     if (operationName === 'ShareOffers') {
       return json(response, 200, {
-        data: { householdShares: { __typename: 'ProfileShareConnection', edges: [] } },
+        data: {
+          householdShares: {
+            __typename: 'ProfileShareConnection',
+            edges: [],
+            pageInfo: { hasNextPage: false, endCursor: null },
+          },
+        },
       })
     }
     if (operationName === 'Notifications') {

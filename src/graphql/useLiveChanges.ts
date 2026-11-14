@@ -1,4 +1,4 @@
-import type { ErrorLike, TypedDocumentNode } from '@apollo/client'
+import type { ErrorLike, OperationVariables, TypedDocumentNode } from '@apollo/client'
 import { useApolloClient } from '@apollo/client/react'
 import { useRouter } from '@tanstack/react-router'
 import { useEffect, useEffectEvent } from 'react'
@@ -17,10 +17,23 @@ export interface LiveResult<TData> {
  * changes; the page keeps what it last read and reads again on its next visit. While `skip` holds,
  * as for a session that may not read the changes, it does not subscribe.
  */
+export function useLiveChanges<TData, TVariables extends OperationVariables>(
+  document: TypedDocumentNode<TData, TVariables>,
+  onResult: (result: LiveResult<TData>) => void,
+  options: { skip?: boolean; variables: TVariables },
+): void
 export function useLiveChanges<TData>(
   document: TypedDocumentNode<TData, Record<string, never>>,
   onResult: (result: LiveResult<TData>) => void,
-  { skip = false }: { skip?: boolean } = {},
+  options?: { skip?: boolean },
+): void
+export function useLiveChanges<
+  TData,
+  TVariables extends OperationVariables = Record<string, never>,
+>(
+  document: TypedDocumentNode<TData, TVariables>,
+  onResult: (result: LiveResult<TData>) => void,
+  { skip = false, variables }: { skip?: boolean; variables?: TVariables } = {},
 ) {
   const client = useApolloClient()
   // The router's own context, which a page reaches before its route has matched.
@@ -32,7 +45,12 @@ export function useLiveChanges<TData>(
     let stopped = false
     // Each page applies the change to its own list, so no cache write of Apollo's comes first.
     const subscription = client
-      .subscribe({ query: document, fetchPolicy: 'no-cache', errorPolicy: 'all' })
+      .subscribe<TData, OperationVariables>({
+        query: document,
+        variables,
+        fetchPolicy: 'no-cache',
+        errorPolicy: 'all',
+      })
       .subscribe(({ data, error }) => {
         if (stopped) return
         deliver({ data, error })
@@ -44,5 +62,5 @@ export function useLiveChanges<TData>(
       // A remount that subscribes before this task runs joins the same operation.
       setTimeout(() => subscription.unsubscribe())
     }
-  }, [client, subscriptions, document, skip])
+  }, [client, subscriptions, document, skip, variables])
 }

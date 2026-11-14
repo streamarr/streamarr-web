@@ -24,7 +24,7 @@ import {
 import { renderAppAt } from '../test/render'
 import { leaveForHome, returnThroughTheProfileMenu, type SettingsPage } from '../test/returnVisits'
 import { server } from '../test/server'
-import { followingShareChanges, liveShare, shareChanged } from '../test/shareChangeFixtures'
+import { liveShare, shareChanged } from '../test/shareChangeFixtures'
 import {
   offer,
   OFFER_ID,
@@ -261,7 +261,51 @@ describe('The unread count in the Profile menu', () => {
   })
 })
 
+function pendingCountData(pendingOfferCount: number) {
+  return { householdAdministration: { __typename: 'HouseholdAdministration', pendingOfferCount } }
+}
+
+function pendingCountChanged(pendingOfferCount: number) {
+  return { data: { profileShareChanged: { __typename: 'ProfileShareChange', pendingOfferCount } } }
+}
+
+async function followingPendingCount(socket: ReturnType<typeof serveGraphqlSocket>) {
+  await waitFor(() => expect(socket.isLive('PendingOfferCountChanged')).toBe(true))
+  expect(socket.state.variables.get('PendingOfferCountChanged')).toEqual({
+    householdId: HOUSEHOLD_ID,
+  })
+}
+
 describe('The count of offers waiting in the Profile menu', () => {
+  it('shouldCountEveryWaitingOfferWithoutReadingTheFirstPage', async () => {
+    serveHome()
+    let offerReads = 0
+    server.use(
+      graphql.query('PendingOfferCount', ({ variables }) => {
+        expect(variables).toEqual({ householdId: HOUSEHOLD_ID })
+        return HttpResponse.json({
+          data: {
+            householdAdministration: {
+              __typename: 'HouseholdAdministration',
+              pendingOfferCount: 120,
+            },
+          },
+        })
+      }),
+      graphql.query('ShareOffers', () => {
+        offerReads += 1
+        return HttpResponse.json({ data: offersData([offer()]) })
+      }),
+    )
+
+    const menu = await openTheProfileMenu()
+
+    expect(
+      await menu.findByRole('button', { name: 'Household settings, 99+ offers waiting' }),
+    ).toBeVisible()
+    expect(offerReads).toBe(0)
+  })
+
   const LEO_OFFER = '88888888-8888-8888-8888-888888888888'
   const LEO = '99999999-9999-9999-9999-999999999999'
   const offerOfLeo = () =>
@@ -271,14 +315,89 @@ describe('The count of offers waiting in the Profile menu', () => {
   function serveWaitingOffers(offers: OfferNode[]) {
     const held = { offers, reads: 0 }
     server.use(
-      graphql.query('ShareOffers', ({ variables }) => {
+      graphql.query('PendingOfferCount', ({ variables }) => {
         expect(variables).toEqual({ householdId: HOUSEHOLD_ID })
         held.reads += 1
-        return HttpResponse.json({ data: offersData(held.offers) })
+        return HttpResponse.json({ data: pendingCountData(held.offers.length) })
       }),
+      graphql.query('ShareOffers', () => HttpResponse.json({ data: offersData(held.offers) })),
     )
     return held
   }
+
+  it('shouldUseTheWholeCountFromChangesBeyondAnyLoadedOfferPage', async () => {
+    const { socket } = serveHome()
+    serveWaitingOffers([offer()])
+    const menu = await openTheProfileMenu()
+    await menu.findByRole('button', { name: 'Household settings, 1 offer waiting' })
+    await followingPendingCount(socket)
+
+    socket.publish('PendingOfferCountChanged', pendingCountChanged(120))
+    await menu.findByRole('button', { name: 'Household settings, 99+ offers waiting' })
+    socket.publish('PendingOfferCountChanged', pendingCountChanged(51))
+    await menu.findByRole('button', { name: 'Household settings, 51 offers waiting' })
+    socket.publish('PendingOfferCountChanged', pendingCountChanged(0))
+
+    expect(await menu.findByRole('button', { name: 'Household settings' })).toHaveTextContent(
+      /^Household settings$/,
+    )
+  })
+
+  it.each([
+    ['answers with an older count', answerWith(pendingCountData(2))],
+    ['fails', countNotRead],
+  ])('shouldKeepTheLiveWaitingCountAfterAnInitialFailureWhenTheNextRead %s', async (_, answer) => {
+    const { socket } = serveHome()
+    const onItsWay = deferred()
+    onTestFinished(onItsWay.resolve)
+    const after = heldAnswer(pendingCountData(0))
+    onTestFinished(after.release)
+    const reads = answersInTurn(
+      countNotRead,
+      async () => {
+        await onItsWay.promise
+        return answer()
+      },
+      after.answer,
+    )
+    server.use(graphql.query('PendingOfferCount', reads.resolver))
+    const menu = await openTheProfileMenu()
+    await followingPendingCount(socket)
+    await comeBackOnlineUntil(reads, 2)
+
+    socket.publish('PendingOfferCountChanged', pendingCountChanged(51))
+    await menu.findByRole('button', { name: 'Household settings, 51 offers waiting' })
+    onItsWay.resolve()
+    await comeBackOnlineUntil(reads, 3)
+
+    expect(
+      menu.getByRole('button', { name: 'Household settings, 51 offers waiting' }),
+    ).toBeVisible()
+  })
+
+  it('shouldKeepTheLastWaitingCountWhenTheChangedCountHasAnError', async () => {
+    const { socket } = serveHome()
+    const reads = readsThatCanBeHeld(() => pendingCountData(1))
+    server.use(graphql.query('PendingOfferCount', reads.resolver))
+    const menu = await openTheProfileMenu()
+    await menu.findByRole('button', { name: 'Household settings, 1 offer waiting' })
+    await followingPendingCount(socket)
+    const read = reads.holdNext()
+    onTestFinished(read.release)
+
+    socket.publish('PendingOfferCountChanged', {
+      ...pendingCountChanged(51),
+      errors: [
+        { message: 'Count unavailable', path: ['profileShareChanged', 'pendingOfferCount'] },
+      ],
+    })
+    await read.arrived
+
+    expect(menu.getByRole('button', { name: 'Household settings, 1 offer waiting' })).toBeVisible()
+    expect(
+      menu.queryByRole('button', { name: 'Household settings, 51 offers waiting' }),
+    ).not.toBeInTheDocument()
+  })
 
   it('shouldCountTheOffersWaitingAfterHouseholdSettingsWhenTheAdminHasSome', async () => {
     serveHome()
@@ -319,13 +438,15 @@ describe('The count of offers waiting in the Profile menu', () => {
     const held = serveWaitingOffers([offer()])
     const menu = await openTheProfileMenu()
     await menu.findByRole('button', { name: 'Household settings, 1 offer waiting' })
-    await followingShareChanges(socket)
+    await followingPendingCount(socket)
 
     held.offers = [offerOfLeo(), offer()]
     socket.publish('ProfileShareChanged', shareChanged(LEO_OFFER, liveShare(offerOfLeo())))
+    socket.publish('PendingOfferCountChanged', pendingCountChanged(held.offers.length))
     await menu.findByRole('button', { name: 'Household settings, 2 offers waiting' })
     held.offers = [offerOfLeo()]
     socket.publish('ProfileShareChanged', shareChanged(OFFER_ID, liveShare({ status: 'ACTIVE' })))
+    socket.publish('PendingOfferCountChanged', pendingCountChanged(held.offers.length))
 
     await menu.findByRole('button', { name: 'Household settings, 1 offer waiting' })
   })
@@ -335,11 +456,12 @@ describe('The count of offers waiting in the Profile menu', () => {
     const held = serveWaitingOffers([offer()])
     const { user } = renderAppAt('/settings/household/offers')
     await screen.findByRole('button', { name: 'Accept Alex' })
-    await followingShareChanges(socket)
+    await followingPendingCount(socket)
     await leaveForHome(user, { area: 'Household settings', heading: 'Share invitations' })
 
     held.offers = []
     socket.publish('ProfileShareChanged', shareChanged(OFFER_ID, liveShare({ status: 'ACTIVE' })))
+    socket.publish('PendingOfferCountChanged', pendingCountChanged(held.offers.length))
     await user.click(screen.getByRole('button', { name: /^Profile menu/ }))
 
     const menu = within(await screen.findByTestId('profile-menu'))
@@ -348,22 +470,24 @@ describe('The count of offers waiting in the Profile menu', () => {
     )
   })
 
-  it('shouldLeaveAnAcceptedOfferUncountedWhenAReadFromShareOffersAnswersAfterTheAdminLeft', async () => {
+  it('shouldKeepTheNewCountWhenAnOlderCountReadAnswersAfterTheAdminLeft', async () => {
     const { socket } = serveHome()
-    const held = { offers: [offer()] }
-    const reads = readsThatCanBeHeld(() => offersData(held.offers))
+    const held = serveWaitingOffers([offer()])
+    const reads = readsThatCanBeHeld(() => pendingCountData(held.offers.length))
     const counted = { calls: 0 }
     server.use(
-      graphql.query('ShareOffers', () => {
+      graphql.query('PendingOfferCount', () => {
         counted.calls += 1
         return reads.resolver()
       }),
     )
     const { user } = renderAppAt('/')
     await screen.findByRole('button', { name: 'Profile menu (Owner), has notifications' })
-    await followingShareChanges(socket)
+    await followingPendingCount(socket)
     const pageRead = reads.holdNext()
+    onTestFinished(pageRead.release)
     await returnThroughTheProfileMenu(user, SHARE_OFFERS)
+    comeBackOnline()
     await pageRead.arrived
     // The reads beside every active query join the page's read, which the server still holds.
     comeBackOnline()
@@ -371,6 +495,7 @@ describe('The count of offers waiting in the Profile menu', () => {
 
     held.offers = []
     socket.publish('ProfileShareChanged', shareChanged(OFFER_ID, liveShare({ status: 'ACTIVE' })))
+    socket.publish('PendingOfferCountChanged', pendingCountChanged(held.offers.length))
     await screen.findByRole('button', { name: 'Profile menu (Owner)' })
     // Holding the next read keeps it from bringing the answer without the offer on its own.
     const next = reads.holdNext()
@@ -388,13 +513,13 @@ describe('The count of offers waiting in the Profile menu', () => {
 
   it('shouldShowNoWaitingCountAndNoErrorWhenTheOffersCannotBeRead', async () => {
     serveHome()
-    const later = heldAnswer(offersData([offer()]))
+    const later = heldAnswer(pendingCountData(1))
     onTestFinished(later.release)
     const reads = answersInTurn(
       () => HttpResponse.json({ errors: [{ message: 'The offers could not be read.' }] }),
       later.answer,
     )
-    server.use(graphql.query('ShareOffers', reads.resolver))
+    server.use(graphql.query('PendingOfferCount', reads.resolver))
     const menu = await openTheProfileMenu()
 
     // The next read goes out only once the failed one has settled.
@@ -422,6 +547,7 @@ describe('The count of offers waiting in the Profile menu', () => {
 
     expect(menu.queryByRole('button', { name: /^Household settings/ })).not.toBeInTheDocument()
     expect(held.reads).toBe(0)
+    expect(socket.isLive('PendingOfferCountChanged')).toBe(false)
     expect(socket.isLive('ProfileShareChanged')).toBe(false)
   })
 })
@@ -442,7 +568,7 @@ describe('The dot on the Profile menu', () => {
   it('shouldMarkTheAvatarWhenOffersWait', async () => {
     serveHome()
     server.use(
-      graphql.query('ShareOffers', () => HttpResponse.json({ data: offersData([offer()]) })),
+      graphql.query('PendingOfferCount', () => HttpResponse.json({ data: pendingCountData(1) })),
     )
 
     renderAppAt('/')

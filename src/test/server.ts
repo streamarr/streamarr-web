@@ -10,9 +10,11 @@ export const menuCountReads = [
   graphql.query('UnreadNotificationCount', () =>
     HttpResponse.json({ data: { unreadNotificationCount: 0 } }),
   ),
-  graphql.query('ShareOffers', () =>
+  graphql.query('PendingOfferCount', () =>
     HttpResponse.json({
-      data: { householdShares: { __typename: 'ProfileShareConnection', edges: [] } },
+      data: {
+        householdAdministration: { __typename: 'HouseholdAdministration', pendingOfferCount: 0 },
+      },
     }),
   ),
 ]

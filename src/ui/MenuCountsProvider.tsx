@@ -1,7 +1,7 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react'
 import type { MeQuery } from '../graphql/generated/graphql'
 import { canManageHousehold } from '../identity/householdAccess'
-import { useWaitingOffers } from '../identity/useWaitingOffers'
+import { usePendingOfferCount } from '../identity/usePendingOfferCount'
 import { canReadNotifications } from '../notifications/notificationAccess'
 import { useUnreadNotificationCount } from '../notifications/useUnreadNotificationCount'
 
@@ -28,25 +28,15 @@ export function MenuCountsProvider({
   children,
 }: Readonly<{ me: Me | undefined; children: ReactNode }>) {
   const unreadNotifications = useUnreadNotificationCount({ skip: !canReadNotifications(me) })
-  const waitingOffers = useWaitingOfferCount(me)
+  const waitingOffers = usePendingOfferCount({
+    householdId: me?.household.id ?? '',
+    skip: !canManageHousehold(me),
+  })
   const counts = useMemo(
     () => ({ unreadNotifications, waitingOffers }),
     [unreadNotifications, waitingOffers],
   )
   return <MenuCountsContext value={counts}>{children}</MenuCountsContext>
-}
-
-/**
- * How many offers wait for the decision of the Household's admins, taken from the offers
- * themselves as Share offers lists them, so that an admin promoted since they arrived sees them
- * too. Zero for anyone else, who reads nothing.
- */
-function useWaitingOfferCount(me: Me | undefined): number {
-  const { offers } = useWaitingOffers(
-    { householdId: me?.household.id ?? '' },
-    { skip: !canManageHousehold(me) },
-  )
-  return offers.length
 }
 
 export function useMenuCounts(): MenuCounts {
