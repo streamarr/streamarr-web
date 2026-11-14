@@ -84,6 +84,7 @@ function renderUnderProviders({
   subscriptions: SubscriptionTransport
   ui: ReactElement
 }): Rendered {
+  onTestFinished(() => subscriptions.stop())
   const user = userEvent.setup()
   const result = render(
     <ApolloProvider client={client}>

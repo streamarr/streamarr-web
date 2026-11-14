@@ -1,4 +1,5 @@
 import { ws, type WebSocketHandlerConnection } from 'msw'
+import { onTestFinished } from 'vitest'
 import { server } from './server'
 
 /** The socket URL the app derives from the jsdom origin. */
@@ -74,7 +75,7 @@ export function serveGraphqlSocket({ acknowledge = true } = {}) {
     }),
   )
 
-  return {
+  const socket = {
     state,
     isLive: (operationName: string) => live(operationName).length > 0,
     publish(operationName: string, payload: Payload) {
@@ -97,4 +98,6 @@ export function serveGraphqlSocket({ acknowledge = true } = {}) {
     },
     openSockets: () => clients.size,
   }
+  onTestFinished(() => socket.closeAll(1000))
+  return socket
 }
