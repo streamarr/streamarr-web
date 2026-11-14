@@ -640,6 +640,128 @@ test('the player opened from its address waits on Play when the browser refuses 
   expect(await video.evaluate((element: HTMLVideoElement) => element.muted)).toBe(false)
 })
 
+// A copy whose video runs to 4 s and whose audio ends earlier, as the server and the worker deliver
+// it: the audio muxed into the variant, and two segments of two seconds, the second without audio.
+// Each fixture's generate.sh writes its segments. The media playlist waits for the returned answer,
+// so the viewer's Play comes first, as for a viewer who pressed Play to open the title: without
+// a gesture before it, the browser can refuse the player's own start.
+async function serveACopyWhoseAudioEndsEarly(
+  page: Page,
+  { fixtures, startPositionSeconds }: { fixtures: string; startPositionSeconds?: number },
+): Promise<() => void> {
+  let answerThePlaylist: () => void = () => undefined
+  const playlistAnswered = new Promise<void>((resolve) => (answerThePlaylist = resolve))
+  await page.route('**/api/stream/**/multivariant.m3u8*', (route) =>
+    route.fulfill({
+      contentType: 'application/vnd.apple.mpegurl',
+      body: multivariantStartingAt(startPositionSeconds)
+        .replace('CHANNELS="2"', 'CHANNELS="1"')
+        .replace('RESOLUTION=1280x720', 'RESOLUTION=320x180')
+        .replace('CODECS="avc1.64001f,mp4a.40.2"', 'CODECS="avc1.64000d,fLaC"'),
+    }),
+  )
+  await page.route('**/api/stream/**/stream.m3u8*', async (route) => {
+    await playlistAnswered
+    return route.fulfill({
+      contentType: 'application/vnd.apple.mpegurl',
+      body: [
+        '#EXTM3U',
+        '#EXT-X-VERSION:7',
+        '#EXT-X-TARGETDURATION:2',
+        '#EXT-X-PLAYLIST-TYPE:VOD',
+        '#EXT-X-MAP:URI="init.mp4"',
+        '#EXTINF:2.0,',
+        'segment0.m4s',
+        '#EXTINF:2.0,',
+        'segment1.m4s',
+        '#EXT-X-ENDLIST',
+        '',
+      ].join('\n'),
+    })
+  })
+  for (const [segment, fixture] of [
+    ['init.mp4', 'initialization-segment.mp4'],
+    ['segment0.m4s', 'media-segment-0.m4s'],
+    ['segment1.m4s', 'media-segment-1.m4s'],
+  ]) {
+    const path = fileURLToPath(new URL(`fixtures/${fixtures}/${fixture}`, import.meta.url))
+    await page.route(`**/api/stream/**/${segment}*`, (route) =>
+      route.fulfill({ contentType: 'video/mp4', path }),
+    )
+  }
+  return answerThePlaylist
+}
+
+async function pressPlayAndAnswer(page: Page, answerThePlaylist: () => void): Promise<void> {
+  await page.getByRole('button', { name: 'Play', exact: true }).click()
+  answerThePlaylist()
+}
+
+// The position of each STOPPED report, in the order the player sends them.
+async function recordStoppedPositions(page: Page): Promise<number[]> {
+  const stoppedAt: number[] = []
+  await page.route('**/graphql', (route) => {
+    const body = route.request().postDataJSON() as {
+      operationName?: string
+      variables?: { state?: string; positionSeconds?: number }
+    } | null
+    if (
+      body?.operationName === 'ReportStreamSessionTimeline' &&
+      body.variables?.state === 'STOPPED'
+    ) {
+      stoppedAt.push(body.variables.positionSeconds ?? Number.NaN)
+    }
+    return route.fallback()
+  })
+  return stoppedAt
+}
+
+async function playheadOf(page: Page): Promise<{ paused: boolean; currentTime: number }> {
+  return page.locator('video').evaluate((video: HTMLVideoElement) => ({
+    paused: video.paused,
+    currentTime: video.currentTime,
+  }))
+}
+
+// Without the end, the element would wait where the audio ends and never report a stop.
+for (const { fixtures, audioEndsAt, where } of [
+  { fixtures: 'audio-ends-at-a-segment-boundary', audioEndsAt: 2, where: 'on a segment boundary' },
+  { fixtures: 'audio-ends-inside-a-segment', audioEndsAt: 1.5, where: 'inside a segment' },
+]) {
+  test(`a copy whose audio ends ${where} before its video ends where its audio ends`, async ({
+    page,
+    request,
+  }) => {
+    await routePlayer(page, request)
+    const answerThePlaylist = await serveACopyWhoseAudioEndsEarly(page, { fixtures })
+    const stoppedAt = await recordStoppedPositions(page)
+    await page.goto(PLAYER_PATH)
+
+    await pressPlayAndAnswer(page, answerThePlaylist)
+
+    await expect.poll(() => stoppedAt).toHaveLength(1)
+    const playhead = await playheadOf(page)
+    expect(playhead.paused).toBe(true)
+    expect(playhead.currentTime).toBeCloseTo(audioEndsAt, 0)
+    expect(stoppedAt).toEqual([Math.floor(playhead.currentTime)])
+  })
+}
+
+test('a copy started past the end of its audio ends where it starts', async ({ page, request }) => {
+  await routePlayer(page, request)
+  const answerThePlaylist = await serveACopyWhoseAudioEndsEarly(page, {
+    fixtures: 'audio-ends-at-a-segment-boundary',
+    startPositionSeconds: 3,
+  })
+  const stoppedAt = await recordStoppedPositions(page)
+  await page.goto('/play/file-1?episode=e1&position=3')
+
+  await pressPlayAndAnswer(page, answerThePlaylist)
+
+  await expect.poll(() => stoppedAt).toEqual([3])
+  expect(await playheadOf(page)).toEqual({ paused: true, currentTime: 3 })
+})
+
 const DESTROYED_PLAYBACK_SESSIONS = `${STUB_URL}/__test/destroyed-playback-sessions`
 
 // Playwright does not report the keepalive request a page sends while it unloads, so the stub API
