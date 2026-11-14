@@ -334,7 +334,7 @@ describe('Share codes', () => {
     expect(copy).toHaveFocus()
   })
 
-  it('shouldCopyALinkThatOpensTheShareFormWithTheCode', async () => {
+  it('shouldCopyALinkThatCarriesTheCodeInItsFragmentWhenThePersonCopiesTheLink', async () => {
     serveHouseholdHolding([])
     const { user } = renderAppAt(CODES)
     await issue(user)
@@ -343,7 +343,7 @@ describe('Share codes', () => {
 
     expect(await screen.findByRole('status')).toHaveTextContent('Link copied.')
     expect(await navigator.clipboard.readText()).toBe(
-      `https://streamarr.test/settings/profile/sharing?code=${SHARE_CODE}`,
+      `https://streamarr.test/settings/profile/sharing#code=${SHARE_CODE}`,
     )
   })
 
