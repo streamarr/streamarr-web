@@ -114,6 +114,12 @@
     "ChangeIdleSegmentRetentionError": [
       "IdleSegmentRetentionOutOfRangeError"
     ],
+    "ChangeInvitationLifetimeError": [
+      "LifetimeOutOfRangeError"
+    ],
+    "ChangeNotificationRetentionError": [
+      "NotificationRetentionOutOfRangeError"
+    ],
     "ChangeProfileKindError": [
       "MaximumAllowedRatingAgeInvalidError",
       "ProfileNotFoundError",
@@ -121,6 +127,12 @@
       "ReauthenticationRequiredError",
       "RestrictedAccountCannotAdministerError",
       "RestrictedProfileRequiresHouseholdAdminError"
+    ],
+    "ChangeShareCodeLifetimeError": [
+      "LifetimeOutOfRangeError"
+    ],
+    "ChangeShareCodeLimitError": [
+      "ShareCodeLimitOutOfRangeError"
     ],
     "ClearLanguageOverrideError": [
       "InvalidIdError",
@@ -260,6 +272,7 @@
       "HouseholdNameRequiredError",
       "HouseholdNotFoundError",
       "IdleSegmentRetentionOutOfRangeError",
+      "InvalidCursorError",
       "InvalidIdError",
       "InvalidProfilePinError",
       "InvitationNotPendingError",
@@ -274,11 +287,14 @@
       "LibraryPathOverlapError",
       "LibraryPathRequiredError",
       "LibraryPathThroughSoftLinkError",
+      "LifetimeOutOfRangeError",
       "LinkProfileNotFoundError",
       "ManagerInvitationNotFoundError",
       "MaximumAllowedRatingAgeInvalidError",
       "MediaFileNotFoundError",
       "NotAManagerError",
+      "NotificationNotFoundError",
+      "NotificationRetentionOutOfRangeError",
       "OfferInvalidatedError",
       "ProfileAlreadyLinkedError",
       "ProfileAlreadySharedError",
@@ -296,6 +312,7 @@
       "RestrictedAccountCannotAdministerError",
       "RestrictedHouseholdAdminError",
       "SameHouseholdError",
+      "ShareCodeLimitOutOfRangeError",
       "ShareCodeNotFoundError",
       "ShareCodeNotLiveError",
       "ShareCodeRefusedError",
@@ -344,7 +361,8 @@
       "ReauthenticationRequiredError"
     ],
     "IssueShareCodeError": [
-      "HouseholdNotFoundError"
+      "HouseholdNotFoundError",
+      "ShareCodeLimitReachedError"
     ],
     "LanguagePreferenceItem": [
       "Episode",
@@ -354,6 +372,13 @@
     ],
     "LookUpShareCodeError": [
       "ShareCodeRefusedError"
+    ],
+    "MarkAllNotificationsReadError": [
+      "InvalidCursorError"
+    ],
+    "MarkNotificationReadError": [
+      "InvalidIdError",
+      "NotificationNotFoundError"
     ],
     "MarkUnwatchedError": [
       "InvalidIdError",
@@ -392,6 +417,7 @@
       "HouseholdNameRequiredError",
       "HouseholdNotFoundError",
       "IdleSegmentRetentionOutOfRangeError",
+      "InvalidCursorError",
       "InvalidIdError",
       "InvalidMediaFileError",
       "InvalidProfilePinError",
@@ -414,6 +440,7 @@
       "LibraryPathThroughSoftLinkError",
       "LibraryRefreshNotInProgressError",
       "LibraryScanNotInProgressError",
+      "LifetimeOutOfRangeError",
       "LinkProfileNotFoundError",
       "ManagementAlreadyRemovedError",
       "ManagerInvitationNotFoundError",
@@ -425,6 +452,8 @@
       "MembershipShareCannotEndError",
       "NoEligibleVideoFormatError",
       "NotAManagerError",
+      "NotificationNotFoundError",
+      "NotificationRetentionOutOfRangeError",
       "OfferInvalidatedError",
       "PlaybackFormatAttemptsExhaustedError",
       "PlaybackFormatRejectedError",
@@ -455,6 +484,8 @@
       "RestrictedHouseholdAdminError",
       "RestrictedProfileRequiresHouseholdAdminError",
       "SameHouseholdError",
+      "ShareCodeLimitOutOfRangeError",
+      "ShareCodeLimitReachedError",
       "ShareCodeNotFoundError",
       "ShareCodeNotLiveError",
       "ShareCodeRefusedError",
@@ -468,6 +499,11 @@
       "UnknownEncoderPresetError",
       "VideoCodecTierInvalidError"
     ],
+    "Notification": [
+      "ProfileShareAnsweredNotification",
+      "ProfileShareEndedNotification",
+      "ProfileShareOfferedNotification"
+    ],
     "OfferProfileShareError": [
       "ProfileAlreadySharedError",
       "ProfileNotFoundError",
@@ -476,6 +512,7 @@
     "OrderedEdge": [
       "ContinueWatchingEdge",
       "MediaEdge",
+      "NotificationEdge",
       "ProfileShareEdge"
     ],
     "PlaybackFormatAttempt": [
@@ -547,6 +584,9 @@
     "ReportPlaybackFormatFailureError": [
       "InvalidIdError",
       "PlaybackSessionClosedError"
+    ],
+    "RequestNotification": [
+      "ProfileShareOfferedNotification"
     ],
     "RevokeDeviceRegistrationError": [
       "RegistrationNotActiveError",

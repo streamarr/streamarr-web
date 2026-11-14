@@ -9,14 +9,14 @@
   align-self: stretch;
 }
 
-/* The code just issued, in the page rather than over it, until the person is done with it. */
+/* The code just issued, in the page rather than over it, until the person is done with it. It
+   takes the settings panel's padding, so its content lines up with Live codes below it. */
 .issued {
-  composes: panel from '../styles/panel.module.css';
+  composes: formPanel from '../styles/settings.module.css';
   display: flex;
   flex-direction: column;
   gap: var(--spacing-14);
   align-self: stretch;
-  padding: var(--spacing-24);
 }
 
 .code {

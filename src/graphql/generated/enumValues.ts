@@ -862,6 +862,26 @@ export const ProfileManagerInvitationStatus = {
 } as const;
 
 export type ProfileManagerInvitationStatus = typeof ProfileManagerInvitationStatus[keyof typeof ProfileManagerInvitationStatus];
+/** How a Household answered an offer of a Profile. */
+export const ProfileShareAnswer = {
+  /** The Household accepted the offer, and the share became active. */
+  Accepted: 'ACCEPTED',
+  /** The Household declined the offer. */
+  Rejected: 'REJECTED'
+} as const;
+
+export type ProfileShareAnswer = typeof ProfileShareAnswer[keyof typeof ProfileShareAnswer];
+/** Which side ended a share. */
+export const ProfileShareEndedBy = {
+  /** A HouseholdAdmin of the Household ended the share. */
+  HouseholdSide: 'HOUSEHOLD_SIDE',
+  /** A ProfileManager of the Profile ended the share. The Profile's own Account counts as one. */
+  OfferingSide: 'OFFERING_SIDE',
+  /** A ServerAdmin ended the share, or another operation ended it, such as an Account transfer. */
+  Server: 'SERVER'
+} as const;
+
+export type ProfileShareEndedBy = typeof ProfileShareEndedBy[keyof typeof ProfileShareEndedBy];
 export const ProfileShareStatus = {
   /** The Profile is available in the Household. */
   Active: 'ACTIVE',
@@ -880,6 +900,17 @@ export const ProfileShareStatus = {
 } as const;
 
 export type ProfileShareStatus = typeof ProfileShareStatus[keyof typeof ProfileShareStatus];
+/** How a request resolved. */
+export const RequestResolution = {
+  /** Someone with the authority accepted or declined the subject. */
+  Decided: 'DECIDED',
+  /** The subject's expiry passed with no decision. */
+  Expired: 'EXPIRED',
+  /** The proposer canceled the subject, a newer proposal replaced it, or the server invalidated it. */
+  Withdrawn: 'WITHDRAWN'
+} as const;
+
+export type RequestResolution = typeof RequestResolution[keyof typeof RequestResolution];
 export const ShareCodeStatus = {
   /** Timed out before an offer presented it. */
   Expired: 'EXPIRED',

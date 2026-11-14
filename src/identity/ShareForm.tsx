@@ -233,7 +233,7 @@ export function ShareForm({
   }
 
   return (
-    <form className={styles.shareForm} noValidate onSubmit={submit}>
+    <form className={styles.shareForm} noValidate onSubmit={submit} data-testid="share-form">
       {review ? (
         <ShareReview profileName={profile.name} review={review} questionRef={question} />
       ) : (
@@ -259,7 +259,7 @@ export function ShareForm({
           {refusal}
         </p>
       )}
-      <div className={styles.actions}>
+      <div className={review ? `${styles.actions} ${styles.reviewActions}` : styles.actions}>
         <Button type="submit" loading={sending}>
           {review ? 'Send invitation' : 'Continue'}
         </Button>

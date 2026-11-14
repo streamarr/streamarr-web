@@ -2,7 +2,7 @@ import { act, screen, waitFor, within } from '@testing-library/react'
 import { parse, valueFromASTUntyped, visit } from 'graphql'
 import { delay, graphql, HttpResponse } from 'msw'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
-import type { HouseholdShareCodesQuery } from '../graphql/generated/graphql'
+import type { HouseholdShareCodesQuery, IssueShareCodeMutation } from '../graphql/generated/graphql'
 import {
   answersInTurn,
   answerWith,
@@ -21,6 +21,7 @@ import { ShareCodesScreen } from './ShareCodesScreen'
 type ShareCodeNode = HouseholdShareCodesQuery['householdShareCodes']['edges'][number]['node'] & {
   __typename: 'ShareCode'
 }
+type IssueRefusal = NonNullable<IssueShareCodeMutation['issueShareCode']>['userErrors'][number]
 
 const CODES = '/settings/household/codes'
 const SHARE_CODES: SettingsPage = {
@@ -74,15 +75,9 @@ function issued({
   }
 }
 
-// The pinned schema's one IssueShareCodeError member carries any refusal: the page shows a refusal
-// in the server's words whatever its type, including the limit refusal the server adds next.
-function issueRefused(message: string) {
+function issueRefused(refusal: IssueRefusal) {
   return {
-    issueShareCode: {
-      __typename: 'IssueShareCodePayload',
-      issued: null,
-      userErrors: [{ __typename: 'HouseholdNotFoundError', message }],
-    },
+    issueShareCode: { __typename: 'IssueShareCodePayload', issued: null, userErrors: [refusal] },
   }
 }
 
@@ -469,11 +464,16 @@ describe('Share codes', () => {
     expect(JSON.stringify({ ...sessionStorage })).not.toContain(letters)
   })
 
-  it('shouldShowTheServersWordsAndKeepIssueAvailableWhenIssuingIsRefused', async () => {
+  it('shouldShowTheServersWordsAndKeepIssueAvailableWhenTheHouseholdIsAtItsLiveCodeLimit', async () => {
     serve()
     server.use(
       graphql.mutation('IssueShareCode', () =>
-        HttpResponse.json({ data: issueRefused('Withdraw a code before issuing another.') }),
+        HttpResponse.json({
+          data: issueRefused({
+            __typename: 'ShareCodeLimitReachedError',
+            message: 'Withdraw a code before issuing another.',
+          }),
+        }),
       ),
     )
     const { user } = renderAppAt(CODES)
