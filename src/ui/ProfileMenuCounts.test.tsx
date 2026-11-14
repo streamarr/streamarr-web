@@ -80,6 +80,51 @@ const SHARE_OFFERS: SettingsPage = { area: 'Household settings', heading: 'Share
 const NOTIFICATIONS_PAGE: SettingsPage = { area: 'Notifications', heading: 'Notifications' }
 
 describe('The unread count in the Profile menu', () => {
+  it('shouldFinishAnEarlierMarkBeforeApplyingALaterOneWhenMarkAllIsChosenTwice', async () => {
+    serveHome(meFixture(), 2)
+    const notifications = [
+      answerNotification({ id: 'answer-for-mara', message: MARA_LINE, unread: true }),
+      answerNotification({ unread: true }),
+    ]
+    const firstAnswer = deferred()
+    onTestFinished(firstAnswer.resolve)
+    const marks = { calls: 0 }
+    server.use(
+      graphql.query('Notifications', () =>
+        HttpResponse.json({ data: notificationsPage(notifications) }),
+      ),
+      graphql.mutation('MarkNotificationsRead', async () => {
+        marks.calls += 1
+        if (marks.calls === 1) {
+          await firstAnswer.promise
+          return HttpResponse.json({ errors: [{ message: 'The Notifications were not marked.' }] })
+        }
+        return HttpResponse.json({
+          data: { markNotificationsRead: { unreadNotificationCount: 0, userErrors: [] } },
+        })
+      }),
+    )
+    const { user } = renderAppAt('/notifications')
+    await screen.findByText(MARA_LINE)
+    const markAll = screen.getByRole('button', { name: 'Mark all as read' })
+    await user.click(markAll)
+    await waitFor(() => expect(marks.calls).toBe(1))
+    await user.click(markAll)
+    await user.click(screen.getByRole('button', { name: /^Profile menu/ }))
+    const menu = within(await screen.findByTestId('profile-menu'))
+
+    const delivered = answerDelivered('MarkNotificationsRead')
+    await act(async () => {
+      firstAnswer.resolve()
+      await delivered
+    })
+    await menu.findByRole('button', { name: 'Notifications' })
+    await waitFor(() => expect(markAll).toBeDisabled())
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryAllByText('Unread')).toHaveLength(0)
+  })
+
   it('shouldKeepTheCountAndMarkThemAgainWhenAMarkFails', async () => {
     serveHome(meFixture(), 2)
     const unread = [
