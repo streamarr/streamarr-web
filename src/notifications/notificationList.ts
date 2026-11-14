@@ -74,10 +74,8 @@ export function withOlderPage(
   return { ...list, edges: [...list.edges, ...older], pageInfo: page.pageInfo }
 }
 
-/** The rows of the newest page: the server's own page size. */
 const NEWEST_PAGE = 20
 
-/** The most rows the server reads in one page. */
 const MOST_ROWS_IN_A_READ = 500
 
 /**
