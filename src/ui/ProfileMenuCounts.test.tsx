@@ -20,7 +20,7 @@ import {
   notificationsPage,
 } from '../test/notificationFixtures'
 import { renderAppAt } from '../test/render'
-import { leaveForHome } from '../test/returnVisits'
+import { leaveForHome, returnThroughTheProfileMenu, type SettingsPage } from '../test/returnVisits'
 import { server } from '../test/server'
 import { followingShareChanges, liveShare, shareChanged } from '../test/shareChangeFixtures'
 import {
@@ -68,6 +68,7 @@ async function openTheProfileMenu() {
 }
 
 const MARA_LINE = '“Cabin” accepted the Profile “Mara”.'
+const SHARE_OFFERS: SettingsPage = { area: 'Household settings', heading: 'Share invitations' }
 
 describe('The unread count in the Profile menu', () => {
   it('shouldCountTheUnreadNotificationsAfterTheirEntryWhenSomeAreUnread', async () => {
@@ -289,6 +290,44 @@ describe('The count of offers waiting in the Profile menu', () => {
 
     const menu = within(await screen.findByTestId('profile-menu'))
     expect(await menu.findByRole('button', { name: 'Household settings' })).toHaveTextContent(
+      /^Household settings$/,
+    )
+  })
+
+  it('shouldLeaveAnAcceptedOfferUncountedWhenAReadFromShareOffersAnswersAfterTheAdminLeft', async () => {
+    const { socket } = serveHome()
+    const held = { offers: [offer()] }
+    const reads = readsThatCanBeHeld(() => offersData(held.offers))
+    const counted = { calls: 0 }
+    server.use(
+      graphql.query('ShareOffers', () => {
+        counted.calls += 1
+        return reads.resolver()
+      }),
+    )
+    const { user } = renderAppAt('/')
+    await screen.findByRole('button', { name: 'Profile menu (Owner), has notifications' })
+    await followingShareChanges(socket)
+    const pageRead = reads.holdNext()
+    await returnThroughTheProfileMenu(user, SHARE_OFFERS)
+    await pageRead.arrived
+    // The reads beside every active query join the page's read, which the server still holds.
+    comeBackOnline()
+    await leaveForHome(user, SHARE_OFFERS)
+
+    held.offers = []
+    socket.publish('ProfileShareChanged', shareChanged(OFFER_ID, liveShare({ status: 'ACTIVE' })))
+    await screen.findByRole('button', { name: 'Profile menu (Owner)' })
+    // Holding the next read keeps it from bringing the answer without the offer on its own.
+    const next = reads.holdNext()
+    onTestFinished(next.release)
+    const sent = counted.calls
+    pageRead.release()
+    await comeBackOnlineUntil(counted, sent + 1)
+
+    await user.click(screen.getByRole('button', { name: /^Profile menu/ }))
+    const menu = within(await screen.findByTestId('profile-menu'))
+    expect(menu.getByRole('button', { name: 'Household settings' })).toHaveTextContent(
       /^Household settings$/,
     )
   })
