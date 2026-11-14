@@ -18,7 +18,7 @@ import { useFocusFallback } from '../ui/useFocusFallback'
 import { usePageNotice } from '../ui/usePageNotice'
 import styles from './Sharing.module.css'
 import { SharedProfileText } from './SharedProfileText'
-import { keepsInHouseholdShares, withShareChange } from './shareLists'
+import { createShareListUpdater } from './shareLists'
 import { SharingSection } from './SharingSection'
 import { expiryLabel, UPDATE_FAILED_MESSAGE } from './shareText'
 import { useMe } from './useMe'
@@ -60,34 +60,27 @@ function ShareOffersContent({ onDecided }: Readonly<{ onDecided: (notice: string
   if (me.error || !me.data) {
     return <ShareOffersUnavailable error={me.error} onRetry={me.refetch} />
   }
-  return (
-    <HouseholdOffers
-      household={me.data.me.household}
-      serverAdmin={me.data.me.serverAdmin}
-      onDecided={onDecided}
-    />
-  )
+  return <HouseholdOffers household={me.data.me.household} onDecided={onDecided} />
 }
 
 function HouseholdOffers({
   household,
-  serverAdmin,
   onDecided,
 }: Readonly<{
   household: Household
-  serverAdmin: boolean
   onDecided: (notice: string) => void
 }>) {
   const { cache } = useApolloClient()
   const variables = { householdId: household.id }
-  // The offers that the query asks for.
-  const list = { householdId: household.id, statuses: ['PENDING'] as const, serverAdmin }
+  const [applyChange] = useState(createShareListUpdater)
   useShareChanges((change) =>
     cache.updateQuery({ query: ShareOffersDocument, variables }, (data) => {
       if (!data) return undefined
-      const edges = withShareChange(data.householdShares.edges, change, (share) =>
-        keepsInHouseholdShares(share, list, new Date()),
-      )
+      const edge =
+        change.offersEdge && change.share?.householdId === household.id
+          ? { ...change.offersEdge, node: change.share }
+          : null
+      const edges = applyChange(data.householdShares, { shareId: change.shareId, edge })
       return { ...data, householdShares: { ...data.householdShares, edges } }
     }),
   )

@@ -56,7 +56,25 @@ export const HIDDEN_ONCE_OVER = {
 /** The change the server sends for a share, or for a share that no longer exists. */
 export function shareChanged(shareId: string, share: LiveShare | null) {
   return {
-    data: { profileShareChanged: { __typename: 'ProfileShareChange', shareId, share } },
+    data: {
+      profileShareChanged: {
+        __typename: 'ProfileShareChange',
+        shareId,
+        share,
+        offersEdge:
+          share?.status === 'PENDING' &&
+          (share.expiresAt === null || Date.parse(share.expiresAt) > Date.now())
+            ? { __typename: 'ProfileShareEdge', cursor: shareId, orderKey: 'a' }
+            : null,
+        visitorsEdge:
+          share?.status === 'ACTIVE' && share.visitor
+            ? { __typename: 'ProfileShareEdge', cursor: shareId, orderKey: 'a' }
+            : null,
+        profileEdge: share
+          ? { __typename: 'ProfileShareEdge', cursor: shareId, orderKey: 'a' }
+          : null,
+      },
+    },
   }
 }
 

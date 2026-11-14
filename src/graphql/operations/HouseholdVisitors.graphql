@@ -8,6 +8,7 @@ query SharedWithHousehold($householdId: ID!, $after: String) {
   ) {
     edges {
       cursor
+      orderKey
       node {
         ...VisitorShareFields
       }

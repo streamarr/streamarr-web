@@ -73,7 +73,13 @@ function offersData(offers: OfferNode[] = []) {
   return {
     householdShares: {
       __typename: 'ProfileShareConnection',
-      edges: offers.map((node) => ({ __typename: 'ProfileShareEdge', node })),
+      edges: offers.map((node, index) => ({
+        __typename: 'ProfileShareEdge',
+        cursor: node.id,
+        orderKey: `m${String(index).padStart(6, '0')}`,
+        node,
+      })),
+      pageInfo: { hasNextPage: false, endCursor: offers.at(-1)?.id ?? null },
     },
   }
 }
@@ -101,14 +107,7 @@ function serveOffers(offers: OfferNode[]) {
     graphql.query('ShareOffers', () => {
       held.reads += 1
       if (held.failing) return serverFailure()
-      return HttpResponse.json({
-        data: {
-          householdShares: {
-            __typename: 'ProfileShareConnection',
-            edges: held.offers.map((node) => ({ __typename: 'ProfileShareEdge', node })),
-          },
-        },
-      })
+      return HttpResponse.json({ data: offersData(held.offers) })
     }),
   )
   return held

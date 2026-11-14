@@ -91,11 +91,16 @@ function device(overrides: Partial<DeviceNode> = {}): DeviceNode {
   }
 }
 
-function sharesData(shares: ShareNode[] = []) {
+function sharesData(shares: ShareNode[] = [], firstIndex = 0) {
   return {
     householdShares: {
       __typename: 'ProfileShareConnection',
-      edges: shares.map((node) => ({ __typename: 'ProfileShareEdge', cursor: node.id, node })),
+      edges: shares.map((node, index) => ({
+        __typename: 'ProfileShareEdge',
+        cursor: node.id,
+        orderKey: `m${String(firstIndex + index).padStart(6, '0')}`,
+        node,
+      })),
       pageInfo: { hasNextPage: false, endCursor: shares.at(-1)?.id ?? null },
     },
   }
@@ -225,14 +230,14 @@ describe('Shared with us', () => {
     server.use(
       graphql.query('SharedWithHousehold', ({ variables }) => {
         if (variables.after) {
-          expect(variables.after).toBe('shares-next')
-          return HttpResponse.json({ data: sharesData([last]) })
+          expect(variables.after).toBe('share-49')
+          return HttpResponse.json({ data: sharesData([last], 50) })
         }
         return HttpResponse.json({
           data: {
             householdShares: {
               ...sharesData(first).householdShares,
-              pageInfo: { hasNextPage: true, endCursor: 'shares-next' },
+              pageInfo: { hasNextPage: true, endCursor: 'share-49' },
             },
           },
         })
@@ -702,6 +707,87 @@ describe('Shared with us as shares change elsewhere', () => {
       .getAllByRole('button', { name: /^End share of / })
       .map((end) => end.getAttribute('aria-label'))
   }
+
+  function positionedShareChanged(changed: ReturnType<typeof liveShare>, orderKey: string) {
+    const event = shareChanged(changed.id, changed)
+    return {
+      data: {
+        profileShareChanged: {
+          ...event.data.profileShareChanged,
+          visitorsEdge: { __typename: 'ProfileShareEdge', cursor: changed.id, orderKey },
+        },
+      },
+    }
+  }
+
+  it('shouldPlaceAnOlderShareAfterTheNewerShareWhenItsOfferIsAcceptedElsewhere', async () => {
+    const { socket } = await openWithAShareOfAlex()
+
+    socket.publish('ProfileShareChanged', positionedShareChanged(robin, 'z'))
+
+    await waitFor(() => expect(sharedNames()).toEqual(['End share of Alex', 'End share of Robin']))
+  })
+
+  it('shouldKeepAnUpdateBeyondTheLoadedPageOutsideTheListWhenMoreSharesRemain', async () => {
+    const socket = serve([share()])
+    const data = sharesData([share()])
+    data.householdShares.pageInfo.hasNextPage = true
+    server.use(graphql.query('SharedWithHousehold', () => HttpResponse.json({ data })))
+    renderAppAt(VISITORS)
+    await screen.findByRole('button', { name: 'End share of Alex' })
+    await followingShareChanges(socket)
+
+    socket.publish('ProfileShareChanged', positionedShareChanged(robin, 'z'))
+    socket.publish(
+      'ProfileShareChanged',
+      positionedShareChanged(
+        liveShare({
+          status: 'ACTIVE',
+          profile: sharedProfile({ name: 'Alex updated' }),
+        }),
+        'm000000',
+      ),
+    )
+
+    await screen.findByRole('button', { name: 'End share of Alex updated' })
+    expect(screen.queryByRole('button', { name: 'End share of Robin' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Load more Profiles' })).toBeEnabled()
+  })
+
+  it.each(['not loaded', 'failed'] as const)(
+    'shouldRefreshVisitorTvsWhenAnUnseenShareEndsAndTheShareReadWas%s',
+    async (read) => {
+      const tvs = [device()]
+      const reads = { count: 0 }
+      const socket = serve([], tvs)
+      server.use(
+        graphql.query('VisitorDevices', () => {
+          reads.count += 1
+          return HttpResponse.json({ data: devicesData(tvs) })
+        }),
+      )
+      if (read === 'failed') server.use(graphql.query('SharedWithHousehold', serverFailure))
+      renderAppAt(VISITORS)
+      await screen.findByRole('button', { name: 'Unlink Living room TV' })
+      await followingShareChanges(socket)
+      await waitFor(() => expect(reads.count).toBeGreaterThanOrEqual(2))
+      tvs.splice(0)
+
+      socket.publish(
+        'ProfileShareChanged',
+        shareChanged(
+          'unseen',
+          liveShare({
+            id: 'unseen',
+            status: 'ENDED',
+            ...HIDDEN_ONCE_OVER,
+          }),
+        ),
+      )
+
+      expect(await screen.findByText('No visitor has linked a TV here.')).toBeVisible()
+    },
+  )
 
   it('shouldListFirstAProfileThatIsAcceptedElsewhereWhileThePageIsOpen', async () => {
     const { socket } = await openWithAShareOfAlex()

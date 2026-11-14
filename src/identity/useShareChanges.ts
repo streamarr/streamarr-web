@@ -11,7 +11,7 @@ import type { ShareChange } from './shareLists'
  * subscribes first, and the active queries read again once its subscribe frame is on the socket,
  * so the list misses no change that committed between its read and the subscription.
  *
- * A change whose share arrives with errors is no change to apply, not even a removal: the
+ * A change whose share or list position arrives with errors is no change to apply, not even a removal: the
  * transport reports it missed, and the active queries read again. A refusal or a normal end stops
  * the changes; the page keeps what it last read and reads again on its next visit.
  */
@@ -33,7 +33,7 @@ export function useShareChanges(onChange: (change: ShareChange) => void) {
       .subscribe(({ data, error }) => {
         const change = data?.profileShareChanged
         if (stopped || !change) return
-        if (responsePathHasError(error, ['profileShareChanged', 'share'])) return
+        if (responsePathHasError(error, ['profileShareChanged'])) return
         apply(change)
       })
     // An open socket reports nothing for a new operation on its own.

@@ -10,7 +10,7 @@ import { useFocusFallback } from '../ui/useFocusFallback'
 import { usePageNotice } from '../ui/usePageNotice'
 import { ArrivingShareCodeContext } from './arrivingShareCode'
 import styles from './Sharing.module.css'
-import { keepsInProfileShares, withShareChange } from './shareLists'
+import { createShareListUpdater } from './shareLists'
 import { useMe } from './useMe'
 import { useShareChanges } from './useShareChanges'
 import { WhereShared, type ProfileShareRow } from './WhereShared'
@@ -82,13 +82,16 @@ function ProfileSharing({
 }>) {
   const { cache } = useApolloClient()
   const variables = { profileId: profile.id }
+  const [applyChange] = useState(createShareListUpdater)
   // The query asks for the Profile's shares at every status.
   useShareChanges((change) =>
     cache.updateQuery({ query: ProfileSharesDocument, variables }, (data) => {
       if (!data) return undefined
-      const edges = withShareChange(data.profileShares.edges, change, (share) =>
-        keepsInProfileShares(share, variables, new Date()),
-      )
+      const edge =
+        change.profileEdge && change.share?.profileId === profile.id
+          ? { ...change.profileEdge, node: change.share }
+          : null
+      const edges = applyChange(data.profileShares, { shareId: change.shareId, edge })
       return { ...data, profileShares: { ...data.profileShares, edges } }
     }),
   )

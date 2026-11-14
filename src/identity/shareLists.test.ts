@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   keepsInHouseholdShares,
   keepsInProfileShares,
-  withShareChange,
+  createShareListUpdater,
   type HouseholdShareList,
   type LiveShare,
 } from './shareLists'
@@ -87,54 +87,96 @@ describe('keepsInProfileShares', () => {
   })
 })
 
-describe('withShareChange', () => {
-  const alex = share({ id: 'share-alex' })
-  const robin = share({ id: 'share-robin', profileId: 'robin' })
-  const keepsAll = () => true
+describe('createShareListUpdater', () => {
+  const alex = { cursor: 'alex', orderKey: 'm', node: share({ id: 'share-alex' }) }
+  const robin = {
+    cursor: 'robin',
+    orderKey: 'z',
+    node: share({ id: 'share-robin', profileId: 'robin' }),
+  }
+  const middle = { cursor: 'middle', orderKey: 't', node: share({ id: 'share-middle' }) }
+  function page(edges: (typeof alex)[], hasNextPage = false) {
+    return { edges, pageInfo: { hasNextPage, endCursor: edges.at(-1)?.cursor ?? null } }
+  }
 
-  it('shouldPutAShareTheListDidNotHoldFirstWhenItKeepsIt', () => {
-    const edges = withShareChange([{ node: alex }], { shareId: robin.id, share: robin }, keepsAll)
+  it('shouldPlaceAnOlderShareAfterTheLoadedShareWhenTheServerOrdersItLater', () => {
+    const apply = createShareListUpdater()
 
-    expect(edges.map((edge) => edge.node.id)).toEqual(['share-robin', 'share-alex'])
+    const edges = apply(page([alex]), { shareId: robin.node.id, edge: robin })
+
+    expect(edges.map((edge) => edge.node.id)).toEqual(['share-alex', 'share-robin'])
+    expect(edges[1]).toEqual(robin)
   })
 
-  it('shouldReplaceAListedShareInItsPlaceWhenItChanges', () => {
-    const accepted = share({ id: 'share-alex', status: 'ACTIVE' })
+  it('shouldReplaceAListedShareAtItsServerPositionWhenItsOrderChanges', () => {
+    const apply = createShareListUpdater()
+    const changed = { ...robin, orderKey: 'a', node: { ...robin.node, status: 'ACTIVE' as const } }
 
-    const edges = withShareChange(
-      [{ node: robin }, { node: alex }],
-      { shareId: alex.id, share: accepted },
-      keepsAll,
-    )
+    const edges = apply(page([alex, robin]), { shareId: robin.node.id, edge: changed })
 
-    expect(edges.map((edge) => edge.node)).toEqual([robin, accepted])
+    expect(edges).toEqual([changed, alex])
   })
 
-  it('shouldTakeOutAListedShareWhenTheListNoLongerKeepsIt', () => {
-    const edges = withShareChange(
-      [{ node: robin }, { node: alex }],
-      { shareId: alex.id, share: share({ id: alex.id, status: 'ENDED', ...OVER }) },
-      () => false,
-    )
+  it('shouldRemoveTheShareWhenTheServerSaysItIsInNoList', () => {
+    const apply = createShareListUpdater()
 
-    expect(edges.map((edge) => edge.node.id)).toEqual(['share-robin'])
+    const edges = apply(page([alex, robin]), { shareId: alex.node.id, edge: null })
+
+    expect(edges).toEqual([robin])
   })
 
-  it('shouldTakeOutAListedShareWhenItNoLongerExists', () => {
-    const edges = withShareChange(
-      [{ node: robin }, { node: alex }],
-      { shareId: alex.id, share: null },
-      keepsAll,
-    )
+  it('shouldKeepTheListWhenTheChangeConcernsNoListedShare', () => {
+    const apply = createShareListUpdater()
 
-    expect(edges.map((edge) => edge.node.id)).toEqual(['share-robin'])
+    const edges = apply(page([alex]), { shareId: robin.node.id, edge: null })
+
+    expect(edges).toEqual([alex])
   })
 
-  it('shouldLeaveTheListAsItWasWhenTheChangeIsNoneOfItsConcern', () => {
-    const listed = [{ node: alex }]
+  it('shouldWaitForTheNextPageWhenAChangedShareIsBeyondTheLoadedBoundary', () => {
+    const apply = createShareListUpdater()
 
-    expect(withShareChange(listed, { shareId: robin.id, share: robin }, () => false)).toEqual(
-      listed,
-    )
+    const edges = apply(page([alex], true), { shareId: robin.node.id, edge: robin })
+
+    expect(edges).toEqual([alex])
+  })
+
+  it('shouldKeepTheLoadedBoundaryWhenALiveChangeRemovedItsLastRow', () => {
+    const apply = createShareListUpdater()
+    const listed = page([alex, robin], true)
+    const withoutLast = {
+      ...listed,
+      edges: apply(listed, { shareId: robin.node.id, edge: null }),
+    }
+
+    const edges = apply(withoutLast, { shareId: middle.node.id, edge: middle })
+
+    expect(edges).toEqual([alex, middle])
+  })
+
+  it('shouldExpandTheBoundaryWhenTheNextPageLoads', () => {
+    const apply = createShareListUpdater()
+    expect(apply(page([alex], true), { shareId: middle.node.id, edge: middle })).toEqual([alex])
+
+    const edges = apply(page([alex, robin], true), { shareId: middle.node.id, edge: middle })
+
+    expect(edges).toEqual([alex, middle, robin])
+  })
+
+  it('shouldAllowEveryServerPositionWhenTheFinalPageHasLoaded', () => {
+    const apply = createShareListUpdater()
+    expect(apply(page([alex], true), { shareId: robin.node.id, edge: robin })).toEqual([alex])
+
+    const edges = apply(page([alex]), { shareId: robin.node.id, edge: robin })
+
+    expect(edges).toEqual([alex, robin])
+  })
+
+  it('shouldWaitForAPageBoundaryWhenNoLoadedRowSuppliesOne', () => {
+    const apply = createShareListUpdater()
+
+    const edges = apply(page([], true), { shareId: robin.node.id, edge: robin })
+
+    expect(edges).toEqual([])
   })
 })

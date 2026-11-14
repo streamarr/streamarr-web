@@ -111,7 +111,13 @@ function serve(codes: ShareCodeNode[] = []) {
     // Household settings open on Share offers, the way back to this page.
     graphql.query('ShareOffers', () =>
       HttpResponse.json({
-        data: { householdShares: { __typename: 'ProfileShareConnection', edges: [] } },
+        data: {
+          householdShares: {
+            __typename: 'ProfileShareConnection',
+            edges: [],
+            pageInfo: { endCursor: null, hasNextPage: false },
+          },
+        },
       }),
     ),
     graphql.query('IssuedShareCodeStatus', ({ variables }) =>

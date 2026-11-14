@@ -1,9 +1,15 @@
 query ShareOffers($householdId: ID!) {
   householdShares(householdId: $householdId, statuses: [PENDING], first: 50) {
     edges {
+      cursor
+      orderKey
       node {
         ...ShareOfferFields
       }
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
     }
   }
 }
@@ -11,9 +17,15 @@ query ShareOffers($householdId: ID!) {
 query ProfileShares($profileId: ID!) {
   profileShares(profileId: $profileId, first: 50) {
     edges {
+      cursor
+      orderKey
       node {
         ...ProfileShareFields
       }
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
     }
   }
 }
@@ -154,6 +166,18 @@ fragment ProfileShareFields on ProfileShare {
 subscription ProfileShareChanged {
   profileShareChanged {
     shareId
+    offersEdge: householdSharesEdge(statuses: [PENDING]) {
+      cursor
+      orderKey
+    }
+    visitorsEdge: householdSharesEdge(statuses: [ACTIVE], visitorsOnly: true) {
+      cursor
+      orderKey
+    }
+    profileEdge: profileSharesEdge {
+      cursor
+      orderKey
+    }
     share {
       ...ShareOfferFields
       ...ProfileShareFields

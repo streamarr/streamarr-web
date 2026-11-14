@@ -23,7 +23,7 @@ import { useFocusFallback } from '../ui/useFocusFallback'
 import { usePageNotice } from '../ui/usePageNotice'
 import styles from './Sharing.module.css'
 import { SharedProfileText } from './SharedProfileText'
-import { keepsInHouseholdShares, withShareChange, type ShareChange } from './shareLists'
+import { createShareListUpdater } from './shareLists'
 import { SharingSection } from './SharingSection'
 import { UPDATE_FAILED_MESSAGE } from './shareText'
 import { useMe } from './useMe'
@@ -74,10 +74,10 @@ function SharedWithUsContent({ announce }: Readonly<{ announce: Announce }>) {
       />
     )
   }
-  const { household, serverAdmin } = me.data.me
+  const { household } = me.data.me
   return (
     <div className={styles.sections}>
-      <SharedProfiles household={household} serverAdmin={serverAdmin} announce={announce} />
+      <SharedProfiles household={household} announce={announce} />
       <VisitorTvs household={household} announce={announce} />
     </div>
   )
@@ -85,35 +85,31 @@ function SharedWithUsContent({ announce }: Readonly<{ announce: Announce }>) {
 
 function SharedProfiles({
   household,
-  serverAdmin,
   announce,
-}: Readonly<{ household: Household; serverAdmin: boolean; announce: Announce }>) {
+}: Readonly<{ household: Household; announce: Announce }>) {
   const client = useApolloClient()
   const variables = { householdId: household.id }
-  // The shares that the query asks for.
-  const list = {
-    householdId: household.id,
-    statuses: ['ACTIVE'] as const,
-    visitorsOnly: true,
-    serverAdmin,
-  }
+  const [applyChange] = useState(createShareListUpdater)
   useShareChanges((change) => {
     const { cache } = client
     const data = cache.readQuery({ query: SharedWithHouseholdDocument, variables })
+    const prior = data?.householdShares.edges.find((edge) => edge.node.id === change.shareId)?.node
+    const relevant = change.share === null || change.share.householdId === household.id
+    // An ended share hides its Profile facts, so an unseen one may have unlinked visitor TVs too.
+    if (relevant && !change.visitorsEdge && prior?.profile?.personalProfile !== false) {
+      void readQueriesAgain(client, [VisitorDevicesDocument])
+    }
     if (!data) return
-    const listed = data.householdShares.edges
-    const edges = withShareChange(listed, change, (share) =>
-      keepsInHouseholdShares(share, list, new Date()),
-    )
+    const edge =
+      change.visitorsEdge && change.share?.householdId === household.id
+        ? { ...change.visitorsEdge, node: change.share }
+        : null
+    const edges = applyChange(data.householdShares, { shareId: change.shareId, edge })
     cache.writeQuery({
       query: SharedWithHouseholdDocument,
       variables,
       data: { ...data, householdShares: { ...data.householdShares, edges } },
     })
-    // The end of someone's Personal Profile's share unlinks the TVs that person linked here.
-    if (leaving(listed, edges, change)?.profile.personalProfile) {
-      void readQueriesAgain(client, [VisitorDevicesDocument])
-    }
   })
   // Shares start and end elsewhere, so a visit shows only the server's answer.
   const query = useQuery(SharedWithHouseholdDocument, { variables, fetchPolicy: 'network-only' })
@@ -436,17 +432,6 @@ function endConsequence(profile: SharedProfileFieldsFragment, household: string)
   const stops = `${profile.name} stops being available in ${household}, and anyone using it here returns to the Profile picker.`
   if (!profile.personalProfile) return stops
   return `${stops} This is someone's Personal Profile, so that person can no longer use ${household}, and the TVs they linked here are unlinked.`
-}
-
-/** The listed share that the change takes out of the list, if any. */
-function leaving(
-  listed: readonly { node: ListedShare }[],
-  edges: readonly { node: ListedShare }[],
-  change: ShareChange,
-): VisitorShare | null {
-  if (edges.some((edge) => edge.node.id === change.shareId)) return null
-  const share = listed.find((edge) => edge.node.id === change.shareId)?.node
-  return share && namesItsProfile(share) ? share : null
 }
 
 function namesItsProfile(share: ListedShare): share is VisitorShare {

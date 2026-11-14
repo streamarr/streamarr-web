@@ -92,7 +92,13 @@ function sharesData(shares: ShareNode[] = []) {
   return {
     profileShares: {
       __typename: 'ProfileShareConnection',
-      edges: shares.map((node) => ({ __typename: 'ProfileShareEdge', node })),
+      edges: shares.map((node, index) => ({
+        __typename: 'ProfileShareEdge',
+        cursor: node.id,
+        orderKey: `m${String(index).padStart(6, '0')}`,
+        node,
+      })),
+      pageInfo: { hasNextPage: false, endCursor: shares.at(-1)?.id ?? null },
     },
   }
 }
@@ -1640,33 +1646,36 @@ describe('Sharing as shares change elsewhere', () => {
     expect(screen.queryByRole('button', { name: 'End share with Cabin' })).not.toBeInTheDocument()
   })
 
-  it('shouldKeepAShareWhenItsChangeArrivesWithErrors', async () => {
-    const { socket } = await openWith([share({ status: 'ACTIVE' })])
-    // The change is reported missed, so the shares read again; held, that read cannot hide what
-    // the change did to the list.
-    server.use(graphql.query('ProfileShares', () => delay('infinite')))
+  it.each(['share', 'profileEdge'])(
+    'shouldKeepAShareWhenIts%sArrivesWithErrors',
+    async (failedField) => {
+      const { socket } = await openWith([share({ status: 'ACTIVE' })])
+      // The change is reported missed, so the shares read again; held, that read cannot hide what
+      // the change did to the list.
+      server.use(graphql.query('ProfileShares', () => delay('infinite')))
 
-    socket.publish('ProfileShareChanged', {
-      data: {
-        profileShareChanged: { __typename: 'ProfileShareChange', shareId: SHARE_ID, share: null },
-      },
-      errors: [{ message: 'boom', path: ['profileShareChanged', 'share'] }],
-    })
-    socket.publish(
-      'ProfileShareChanged',
-      shareChanged(
-        'lake-house',
-        changedShare({
-          id: 'lake-house',
-          householdId: 'lake-house',
-          household: { __typename: 'HouseholdSummary', id: 'lake-house', name: 'Lake House' },
-        }),
-      ),
-    )
+      socket.publish('ProfileShareChanged', {
+        data: {
+          profileShareChanged: { __typename: 'ProfileShareChange', shareId: SHARE_ID, share: null },
+        },
+        errors: [{ message: 'boom', path: ['profileShareChanged', failedField] }],
+      })
+      socket.publish(
+        'ProfileShareChanged',
+        shareChanged(
+          'lake-house',
+          changedShare({
+            id: 'lake-house',
+            householdId: 'lake-house',
+            household: { __typename: 'HouseholdSummary', id: 'lake-house', name: 'Lake House' },
+          }),
+        ),
+      )
 
-    await screen.findByRole('button', { name: 'Cancel invitation to Lake House' })
-    expect(screen.getByRole('button', { name: 'End share with Cabin' })).toBeEnabled()
-  })
+      await screen.findByRole('button', { name: 'Cancel invitation to Lake House' })
+      expect(screen.getByRole('button', { name: 'End share with Cabin' })).toBeEnabled()
+    },
+  )
 
   it('shouldLeaveOutAShareOfAnotherProfileWhenItsChangeArrives', async () => {
     const { socket } = await openWith([])
