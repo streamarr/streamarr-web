@@ -510,7 +510,10 @@ describe('Reading Notifications', () => {
     serve()
     servePages(
       notificationsPage(firstPage, { hasNextPage: true }),
-      notificationsPage([answerNotification({ id: 'news-101', message: 'News 101', unread: true })], { from: 101 }),
+      notificationsPage(
+        [answerNotification({ id: 'news-101', message: 'News 101', unread: true })],
+        { from: 101 },
+      ),
     )
     const session = { signedIn: true }
     const marks: { notificationIds: string[]; signedIn: boolean }[] = []
@@ -548,7 +551,9 @@ describe('Reading Notifications', () => {
     await reachTheEndOfTheList()
     await screen.findByText('News 101')
     await user.click(screen.getByRole('button', { name: 'Mark all as read' }))
-    await waitFor(() => expect(marks).toEqual([{ notificationIds: firstPage.map(({ id }) => id), signedIn: true }]))
+    await waitFor(() =>
+      expect(marks).toEqual([{ notificationIds: firstPage.map(({ id }) => id), signedIn: true }]),
+    )
 
     await user.click(screen.getByRole('button', { name: /^Profile menu/ }))
     await user.click(await screen.findByRole('button', { name: 'Sign out' }))
@@ -910,7 +915,7 @@ describe('Notifications as they change elsewhere', () => {
     const accepted = offerNotification({
       unread: false,
       resolution: 'DECIDED',
-      share: { __typename: 'ProfileShare', id: 'share-of-alex', status: 'ACTIVE' },
+      answer: 'ACCEPTED',
     })
 
     socket.publish(

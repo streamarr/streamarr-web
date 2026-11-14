@@ -1,9 +1,10 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import { graphql, HttpResponse } from 'msw'
 import { describe, expect, it, onTestFinished } from 'vitest'
 import { watchingConnection } from '../test/continueWatchingFixtures'
 import { deferred } from '../test/deferred'
 import {
+  answerDelivered,
   answersInTurn,
   answerWith,
   comeBackOnline,
@@ -311,7 +312,7 @@ describe('The unread count in the Profile menu', () => {
     socket.publish('NotificationsChanged', notificationsChanged([], 0))
     const chip = await screen.findByRole('button', { name: 'Profile menu (Owner)' })
     markAnswer.resolve()
-    await waitFor(() => expect(screen.queryByText('Unread')).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.queryAllByText('Unread')).toHaveLength(0))
     await user.click(chip)
 
     const menu = within(await screen.findByTestId('profile-menu'))
@@ -320,19 +321,14 @@ describe('The unread count in the Profile menu', () => {
 
   it('shouldKeepTheCountOfALaterVisitsMarkWhenAnEarlierVisitsMarkAnswersAfterIt', async () => {
     serveHome()
-    const leo = answerNotification({ id: 'answer-for-leo' })
-    const mara = answerNotification({ id: 'answer-for-mara', message: MARA_LINE })
-    // The server marks a Notification read as its mark arrives, and answers how many stay unread.
-    // The first visit's mark of Leo answers late, with the count as it stood then: Mara unread.
+    const leo = answerNotification({ id: 'answer-for-leo', unread: true })
+    const mara = answerNotification({ id: 'answer-for-mara', message: MARA_LINE, unread: true })
     const unread = new Set([leo.id, mara.id])
-    const marks: string[] = []
+    const shown = { notifications: [leo] }
+    const marks: string[][] = []
     const leosAnswer = deferred()
-    // Once Leo's mark has answered, the first visit marks Mara too; that answer waits for the end.
-    const firstVisitsMarkOfMara = deferred()
-    // Every count read after the first waits for the end too, so only the marks move the count.
     const laterCountReads = deferred()
     onTestFinished(leosAnswer.resolve)
-    onTestFinished(firstVisitsMarkOfMara.resolve)
     onTestFinished(laterCountReads.resolve)
     const countReads = { calls: 0 }
     server.use(
@@ -345,34 +341,38 @@ describe('The unread count in the Profile menu', () => {
       graphql.query('Notifications', () =>
         HttpResponse.json({
           data: notificationsPage(
-            [leo, mara].map((news) => ({ ...news, unread: unread.has(news.id) })),
+            shown.notifications.map((news) => ({ ...news, unread: unread.has(news.id) })),
           ),
         }),
       ),
-      graphql.mutation('MarkNotificationRead', async ({ variables }) => {
-        const { notificationId } = (variables as { input: { notificationId: string } }).input
-        marks.push(notificationId)
-        unread.delete(notificationId)
+      graphql.mutation('MarkNotificationsRead', async ({ variables }) => {
+        const { notificationIds } = (variables as { input: { notificationIds: string[] } }).input
+        marks.push(notificationIds)
+        notificationIds.forEach((id) => unread.delete(id))
         const unreadNotificationCount = unread.size
-        if (notificationId === leo.id) await leosAnswer.promise
-        if (marks.length === 3) await firstVisitsMarkOfMara.promise
+        if (notificationIds.includes(leo.id)) await leosAnswer.promise
         return HttpResponse.json({
-          data: { markNotificationRead: { unreadNotificationCount, userErrors: [] } },
+          data: { markNotificationsRead: { unreadNotificationCount, userErrors: [] } },
         })
       }),
     )
     const { user } = renderAppAt('/notifications')
-    await screen.findByText(MARA_LINE)
-    await waitFor(() => expect(marks).toEqual([leo.id]))
+    await screen.findByText(leo.message)
+    await user.click(screen.getByRole('button', { name: 'Mark all as read' }))
+    await waitFor(() => expect(marks).toEqual([[leo.id]]))
     await leaveForHome(user, NOTIFICATIONS_PAGE)
+    shown.notifications = [leo, mara]
     await returnThroughTheProfileMenu(user, NOTIFICATIONS_PAGE)
-    await waitFor(() => expect(marks).toEqual([leo.id, mara.id]))
-    // The second visit's mark of Mara answers that nothing is unread, and the dot clears.
+    await screen.findByText(MARA_LINE)
+    await user.click(screen.getByRole('button', { name: 'Mark all as read' }))
+    await waitFor(() => expect(marks).toEqual([[leo.id], [mara.id]]))
     const chip = await screen.findByRole('button', { name: 'Profile menu (Owner)' })
 
-    leosAnswer.resolve()
-    // The first visit marks Mara only once Leo's mark has answered.
-    await waitFor(() => expect(marks).toEqual([leo.id, mara.id, mara.id]))
+    const delivered = answerDelivered('MarkNotificationsRead')
+    await act(async () => {
+      leosAnswer.resolve()
+      await delivered
+    })
     await user.click(chip)
 
     const menu = within(await screen.findByTestId('profile-menu'))
@@ -380,12 +380,8 @@ describe('The unread count in the Profile menu', () => {
       'Notifications',
     )
 
-    // The held count read began before the second visit's socket subscribed, so its answer brings
-    // one more read. Both answer before the test ends: a read sent after it would reach the next
-    // test's server.
     const readsBefore = countReads.calls
     laterCountReads.resolve()
-    firstVisitsMarkOfMara.resolve()
     await waitFor(() => expect(countReads.calls).toBe(readsBefore + 1))
   })
 

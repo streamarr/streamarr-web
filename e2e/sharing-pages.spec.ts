@@ -3,8 +3,7 @@ import {
   alexsShares,
   BOTH_WARNINGS,
   CODE_FOUND,
-  ISSUED,
-  NO_CODES,
+  codeIssueAnswers,
   serveSharingPages,
   SHARE_CODE,
   SHARED_WITH_US,
@@ -187,11 +186,7 @@ test('an issued code puts Copy code on a line of its own, then Copy link and Don
   page,
   request,
 }) => {
-  await serveSharingPages(page, request, {
-    HouseholdShareCodes: NO_CODES,
-    IssueShareCode: ISSUED,
-    IssuedShareCodeStatus: { shareCode: ISSUED.issueShareCode.issued.shareCode },
-  })
+  await serveSharingPages(page, request, codeIssueAnswers())
   await page.goto('/settings/household/codes')
   await page.getByRole('button', { name: 'Issue a share code' }).click()
 
@@ -215,7 +210,7 @@ test('an issued code shares its content edges with Live codes below it at phone 
   page,
   request,
 }) => {
-  await serveSharingPages(page, request, { HouseholdShareCodes: NO_CODES, IssueShareCode: ISSUED })
+  await serveSharingPages(page, request, codeIssueAnswers())
   await page.goto('/settings/household/codes')
   await page.getByRole('button', { name: 'Issue a share code' }).click()
   const code = page.getByText(SHARE_CODE, { exact: true })

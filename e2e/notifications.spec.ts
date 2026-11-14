@@ -158,13 +158,20 @@ test('a count after a menu entry is a plain number in the primary text colour', 
   await expect(count).toHaveCSS('border-radius', '0px')
 })
 
-/** A Request of an offer at position `at`: waiting, or over as `resolution` and `status` say. */
-function offerRequest(
-  id: string,
-  message: string,
-  at: number,
-  over?: { resolution: string; status: string },
-) {
+/** A Request of an offer, waiting or carrying the server's recorded answer. */
+function offerRequest({
+  id,
+  message,
+  at,
+  resolution = null,
+  answer = null,
+}: {
+  id: string
+  message: string
+  at: number
+  resolution?: string | null
+  answer?: string | null
+}) {
   const position = String(at).padStart(3, '0')
   return {
     __typename: 'NotificationEdge',
@@ -177,17 +184,24 @@ function offerRequest(
       latestEventAt: new Date(Date.now() - at * HOUR).toISOString(),
       unread: false,
       expiresAt: new Date(Date.now() + 72 * HOUR).toISOString(),
-      resolution: over?.resolution ?? null,
-      share: { __typename: 'ProfileShare', id: `share-${id}`, status: over?.status ?? 'PENDING' },
+      resolution,
+      answer,
     },
   }
 }
 
 const REQUESTS = [
-  offerRequest('offer-of-mara', '“Sam” offered the Profile “Mara” to your Household.', 1),
-  offerRequest('offer-of-leo', '“Alex” offered the Profile “Leo” to your Household.', 2, {
+  offerRequest({
+    id: 'offer-of-mara',
+    message: '“Sam” offered the Profile “Mara” to your Household.',
+    at: 1,
+  }),
+  offerRequest({
+    id: 'offer-of-leo',
+    message: '“Alex” offered the Profile “Leo” to your Household.',
+    at: 2,
     resolution: 'DECIDED',
-    status: 'ACTIVE',
+    answer: 'ACCEPTED',
   }),
 ]
 
