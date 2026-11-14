@@ -1,8 +1,9 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import { delay, graphql, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import type { SharedWithHouseholdQuery, VisitorDevicesQuery } from '../graphql/generated/graphql'
 import {
+  answerDelivered,
   answersInTurn,
   answerWith,
   comeBackOnline,
@@ -79,16 +80,22 @@ function sharesData(shares: ShareNode[] = []) {
   return {
     householdShares: {
       __typename: 'ProfileShareConnection',
-      edges: shares.map((node) => ({ __typename: 'ProfileShareEdge', node })),
+      edges: shares.map((node) => ({ __typename: 'ProfileShareEdge', cursor: node.id, node })),
+      pageInfo: { hasNextPage: false, endCursor: shares.at(-1)?.id ?? null },
     },
   }
 }
 
-function devicesData(devices: DeviceNode[] = []) {
+function devicesData(devices: DeviceNode[] = [], hasNextPage = false) {
   return {
     householdDevices: {
       __typename: 'DeviceRegistrationConnection',
-      edges: devices.map((node) => ({ __typename: 'DeviceRegistrationEdge', node })),
+      edges: devices.map((node) => ({
+        __typename: 'DeviceRegistrationEdge',
+        cursor: node.id,
+        node,
+      })),
+      pageInfo: { hasNextPage, endCursor: devices.at(-1)?.id ?? null },
     },
   }
 }
@@ -154,6 +161,135 @@ function unlinkRefused(typename: string, message: string) {
 }
 
 describe('Shared with us', () => {
+  it('shouldKeepEveryPageReachableWhenAnEarlierVisitReturnsItsContinuationAfterTheListRestarts', async () => {
+    const first = device({ id: 'first-tv', displayName: 'First TV' })
+    const middle = device({ id: 'middle-tv', displayName: 'Middle TV' })
+    const last = device({ id: 'last-tv', displayName: 'Last TV' })
+    const fromEarlierVisit = heldAnswer(devicesData([last]))
+    let continuations = 0
+    serve()
+    server.use(
+      graphql.query('VisitorDevices', ({ variables }) => {
+        if (variables.after === middle.id) {
+          continuations += 1
+          return fromEarlierVisit.answer()
+        }
+        if (variables.after === first.id) {
+          return HttpResponse.json({ data: devicesData([middle], true) })
+        }
+        return HttpResponse.json({ data: devicesData([first], true) })
+      }),
+    )
+    const { user } = renderAppAt(VISITORS)
+    await user.click(await screen.findByRole('button', { name: 'Load more TVs' }))
+    await screen.findByRole('button', { name: 'Unlink Middle TV' })
+    await user.click(screen.getByRole('button', { name: 'Load more TVs' }))
+    await waitFor(() => expect(continuations).toBe(1))
+
+    await leaveForHomeAndReturn(user, SHARED_WITH_US)
+    await screen.findByRole('button', { name: 'Unlink First TV' })
+    expect(screen.queryByRole('button', { name: 'Unlink Middle TV' })).not.toBeInTheDocument()
+    const delivered = answerDelivered('VisitorDevices')
+    await act(async () => {
+      fromEarlierVisit.release()
+      await delivered
+    })
+    await user.click(screen.getByRole('button', { name: 'Load more TVs' }))
+
+    expect(await screen.findByRole('button', { name: 'Unlink Middle TV' })).toBeEnabled()
+    await user.click(screen.getByRole('button', { name: 'Load more TVs' }))
+    expect(await screen.findByRole('button', { name: 'Unlink Last TV' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Unlink First TV' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Unlink Middle TV' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: 'Load more TVs' })).not.toBeInTheDocument()
+  })
+
+  it('shouldReachEverySharedProfileWhenTheServerHasAnotherPage', async () => {
+    const first = Array.from({ length: 50 }, (_, index) =>
+      share({
+        id: `share-${index}`,
+        profileId: `profile-${index}`,
+        profile: sharedProfile({ id: `profile-${index}`, name: `Visitor ${index + 1}` }),
+      }),
+    )
+    const last = share({
+      id: 'share-last',
+      profileId: 'profile-last',
+      profile: sharedProfile({ id: 'profile-last', name: 'Visitor 51' }),
+    })
+    serve()
+    server.use(
+      graphql.query('SharedWithHousehold', ({ variables }) => {
+        if (variables.after) {
+          expect(variables.after).toBe('shares-next')
+          return HttpResponse.json({ data: sharesData([last]) })
+        }
+        return HttpResponse.json({
+          data: {
+            householdShares: {
+              ...sharesData(first).householdShares,
+              pageInfo: { hasNextPage: true, endCursor: 'shares-next' },
+            },
+          },
+        })
+      }),
+    )
+    const { user } = renderAppAt(VISITORS)
+    const profiles = await sharesRegion()
+
+    await user.click(await within(profiles).findByRole('button', { name: 'Load more Profiles' }))
+
+    expect(
+      await within(profiles).findByRole('button', { name: 'End share of Visitor 51' }),
+    ).toBeEnabled()
+    expect(within(profiles).getByRole('button', { name: 'End share of Visitor 1' })).toBeEnabled()
+    expect(
+      within(profiles).queryByRole('button', { name: 'Load more Profiles' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('shouldKeepTheVisitorTvsAndRetryTheirNextPageWhenContinuationFails', async () => {
+    const first = Array.from({ length: 50 }, (_, index) =>
+      device({ id: `device-${index}`, displayName: `Visitor TV ${index + 1}` }),
+    )
+    const last = device({ id: 'device-last', displayName: 'Visitor TV 51' })
+    let failNextPage = true
+    serve()
+    server.use(
+      graphql.query('VisitorDevices', ({ variables }) => {
+        if (!variables.after) {
+          return HttpResponse.json({
+            data: {
+              householdDevices: {
+                ...devicesData(first).householdDevices,
+                pageInfo: { hasNextPage: true, endCursor: 'devices-next' },
+              },
+            },
+          })
+        }
+        expect(variables.after).toBe('devices-next')
+        if (failNextPage) {
+          failNextPage = false
+          return HttpResponse.error()
+        }
+        return HttpResponse.json({ data: devicesData([last]) })
+      }),
+    )
+    const { user } = renderAppAt(VISITORS)
+    const tvs = await devicesRegion()
+
+    await user.click(await within(tvs).findByRole('button', { name: 'Load more TVs' }))
+
+    expect(await within(tvs).findByRole('alert')).toHaveTextContent("Couldn't load more TVs.")
+    expect(within(tvs).getByRole('button', { name: 'Unlink Visitor TV 1' })).toBeEnabled()
+    await user.click(within(tvs).getByRole('button', { name: 'Load more TVs' }))
+
+    expect(await within(tvs).findByRole('button', { name: 'Unlink Visitor TV 51' })).toBeEnabled()
+    expect(within(tvs).getByRole('button', { name: 'Unlink Visitor TV 1' })).toBeEnabled()
+    expect(within(tvs).queryByRole('button', { name: 'Load more TVs' })).not.toBeInTheDocument()
+    expect(within(tvs).queryByRole('alert')).not.toBeInTheDocument()
+  })
+
   it('shouldOpenSharedWithUsAsASectionOfHouseholdSettingsAfterShareCodes', async () => {
     serve()
     renderAppAt(VISITORS)

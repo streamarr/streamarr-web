@@ -1,6 +1,13 @@
-query SharedWithHousehold($householdId: ID!) {
-  householdShares(householdId: $householdId, statuses: [ACTIVE], visitorsOnly: true, first: 50) {
+query SharedWithHousehold($householdId: ID!, $after: String) {
+  householdShares(
+    householdId: $householdId
+    statuses: [ACTIVE]
+    visitorsOnly: true
+    first: 50
+    after: $after
+  ) {
     edges {
+      cursor
       node {
         id
         profileId
@@ -14,12 +21,17 @@ query SharedWithHousehold($householdId: ID!) {
         visitor
       }
     }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
   }
 }
 
-query VisitorDevices($householdId: ID!) {
-  householdDevices(householdId: $householdId, visitorsOnly: true, first: 50) {
+query VisitorDevices($householdId: ID!, $after: String) {
+  householdDevices(householdId: $householdId, visitorsOnly: true, first: 50, after: $after) {
     edges {
+      cursor
       node {
         id
         householdId
@@ -28,6 +40,10 @@ query VisitorDevices($householdId: ID!) {
         status
         pairedAt
       }
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
     }
   }
 }

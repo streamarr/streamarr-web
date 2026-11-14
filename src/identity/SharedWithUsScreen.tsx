@@ -146,6 +146,24 @@ function SharedProfiles({
           </li>
         ))}
       </ul>
+      <MoreRows
+        pageInfo={query.data.householdShares.pageInfo}
+        label="Load more Profiles"
+        failureMessage="Couldn't load more Profiles."
+        disabled={query.loading || ending.sending}
+        read={(after) =>
+          query.fetchMore({
+            variables: { after },
+            updateQuery: (previous, { fetchMoreResult }) => ({
+              ...previous,
+              householdShares: appendPage(previous.householdShares, {
+                after,
+                page: fetchMoreResult.householdShares,
+              }),
+            }),
+          })
+        }
+      />
       <ConfirmDialog
         opened={ending.pending !== null}
         title={ending.pending ? `End the share of ${ending.pending.profile.name}?` : ''}
@@ -225,6 +243,24 @@ function VisitorTvs({
           </li>
         ))}
       </ul>
+      <MoreRows
+        pageInfo={query.data.householdDevices.pageInfo}
+        label="Load more TVs"
+        failureMessage="Couldn't load more TVs."
+        disabled={query.loading || unlinking.sending}
+        read={(after) =>
+          query.fetchMore({
+            variables: { after },
+            updateQuery: (previous, { fetchMoreResult }) => ({
+              ...previous,
+              householdDevices: appendPage(previous.householdDevices, {
+                after,
+                page: fetchMoreResult.householdDevices,
+              }),
+            }),
+          })
+        }
+      />
       <ConfirmDialog
         opened={unlinking.pending !== null}
         title={unlinking.pending ? `Unlink ${unlinking.pending.displayName}?` : ''}
@@ -242,6 +278,58 @@ function VisitorTvs({
         onConfirm={unlinking.confirmPending}
       />
     </SharingSection>
+  )
+}
+
+function appendPage<
+  Connection extends {
+    edges: { node: { id: string } }[]
+    pageInfo: { endCursor?: string | null }
+  },
+>(previous: Connection, { after, page }: { after: string; page: Connection }): Connection {
+  if (previous.pageInfo.endCursor !== after) return previous
+  const edges = new Map(previous.edges.map((edge) => [edge.node.id, edge]))
+  for (const edge of page.edges) edges.set(edge.node.id, edge)
+  return { ...page, edges: [...edges.values()] }
+}
+
+function MoreRows({
+  pageInfo,
+  label,
+  failureMessage,
+  disabled,
+  read,
+}: Readonly<{
+  pageInfo: { hasNextPage: boolean; endCursor?: string | null }
+  label: string
+  failureMessage: string
+  disabled: boolean
+  read: (after: string) => Promise<unknown>
+}>) {
+  const [sending, setSending] = useState(false)
+  const [failure, setFailure] = useState<string | null>(null)
+  const after = pageInfo.endCursor
+  if (!pageInfo.hasNextPage || !after) return null
+
+  async function load() {
+    setSending(true)
+    setFailure(null)
+    try {
+      await read(after!)
+    } catch (error) {
+      setFailure(requestFailureMessage(error, failureMessage))
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <>
+      {failure && <p role="alert">{failure}</p>}
+      <Button variant="default" disabled={disabled} loading={sending} onClick={() => void load()}>
+        {label}
+      </Button>
+    </>
   )
 }
 
