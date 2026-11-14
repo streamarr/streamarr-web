@@ -183,7 +183,7 @@ test('the share form sits under the list a full-width hairline apart, as each ro
   expect(await form.evaluate(divider)).toBe(await lastRow.evaluate(divider))
 })
 
-test('an issued code leaves no action alone on a line at phone width', async ({
+test('an issued code puts Copy code on a line of its own, then Copy link and Done together, each whole, at phone width', async ({
   page,
   request,
 }) => {
@@ -194,14 +194,17 @@ test('an issued code leaves no action alone on a line at phone width', async ({
   const actions = ['Copy code', 'Copy link', 'Done'].map((name) =>
     page.getByRole('button', { name, exact: true }),
   )
-  const tops = await Promise.all(
-    actions.map(async (action) => (await action.boundingBox())?.y ?? Number.NaN),
-  )
-  const lines = new Set(tops.map(Math.round))
-  // On one line together, or one to a line, but never two on a line and one left over.
-  expect([1, 3]).toContain(lines.size)
   for (const action of actions) await expectWhole(action)
   await expectNoSidewaysScroll(page)
+  const code = await boxOf(page.getByText(SHARE_CODE, { exact: true }))
+  const [copyCode, copyLink, done] = await Promise.all(actions.map(boxOf))
+  // As in the review of an offer: the first action spans the panel, the other two share a line.
+  expect(copyCode.x).toBeCloseTo(code.x, 0)
+  expect(copyCode.x + copyCode.width).toBeCloseTo(code.x + code.width, 0)
+  expect(copyLink.y).toBeGreaterThanOrEqual(copyCode.y + copyCode.height)
+  expect(Math.round(done.y)).toBe(Math.round(copyLink.y))
+  expect(copyLink.x).toBeCloseTo(code.x, 0)
+  expect(done.x + done.width).toBeCloseTo(code.x + code.width, 0)
 })
 
 test('an issued code shares its content edges with Live codes below it at phone and desktop width', async ({
@@ -224,4 +227,46 @@ test('an issued code shares its content edges with Live codes below it at phone 
       0,
     )
   }
+})
+
+test('a refused issue leaves Issue a share code where the person clicked it', async ({
+  page,
+  request,
+}) => {
+  await serveSharingPages(page, request, {
+    HouseholdShareCodes: THREE_CODES,
+    IssueShareCode: {
+      issueShareCode: {
+        __typename: 'IssueShareCodePayload',
+        issued: null,
+        userErrors: [
+          {
+            __typename: 'ShareCodeLimitReachedError',
+            message: 'Withdraw a code before issuing another.',
+          },
+        ],
+      },
+    },
+  })
+  await page.goto('/settings/household/codes')
+  const issue = page.getByRole('button', { name: 'Issue a share code' })
+  await expect(page.getByRole('heading', { name: 'Live codes' })).toBeVisible()
+  const before = await boxOf(issue)
+
+  await issue.click()
+
+  await expect(page.getByRole('alert')).toHaveText('Withdraw a code before issuing another.')
+  expect((await boxOf(issue)).y).toBeCloseTo(before.y, 0)
+})
+
+test('a confirmation in the settings titles itself at 17px semibold', async ({ page, request }) => {
+  await page.setViewportSize(DESKTOP)
+  await serveSharingPages(page, request, { ProfileShares: alexsShares })
+  await page.goto('/settings/profile/sharing')
+
+  await page.getByRole('button', { name: 'Cancel invitation to Lake House' }).click()
+
+  const title = page.getByRole('dialog').getByRole('heading')
+  await expect(title).toHaveCSS('font-size', '17px')
+  await expect(title).toHaveCSS('font-weight', '600')
 })

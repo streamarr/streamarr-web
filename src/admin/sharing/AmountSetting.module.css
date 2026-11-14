@@ -1,3 +1,8 @@
+/* A number of one to three digits keeps the reading width the share form keeps. */
+.form {
+  max-width: 480px;
+}
+
 /* The unit follows the number on its line, as the setting reads: "A share code lasts 7 days". */
 .amount {
   display: flex;

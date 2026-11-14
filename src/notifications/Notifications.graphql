@@ -37,8 +37,8 @@ query Notifications($after: String) {
   }
 }
 
-mutation MarkAllNotificationsRead($input: MarkAllNotificationsReadInput!) {
-  markAllNotificationsRead(input: $input) {
+mutation MarkNotificationRead($input: MarkNotificationReadInput!) {
+  markNotificationRead(input: $input) {
     unreadNotificationCount
     userErrors {
       __typename

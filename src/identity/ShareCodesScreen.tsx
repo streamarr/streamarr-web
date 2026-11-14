@@ -155,6 +155,7 @@ function HouseholdShareCodes({
     if (document.activeElement === document.body) issueAction.current?.focus()
   }, [shown, waiting])
 
+  const refusalId = useId()
   // A failed read keeps the list that is on screen; the query's own error state reports it.
   const readAgain = () => query.refetch().catch(() => undefined)
 
@@ -217,11 +218,6 @@ function HouseholdShareCodes({
 
   return (
     <div className={styles.page}>
-      {refusal && (
-        <p className={sharingStyles.refusal} role="alert">
-          {refusal}
-        </p>
-      )}
       {/* The code takes the button's place until the admin is done with it. */}
       {shown ? (
         <IssuedShareCode
@@ -238,15 +234,25 @@ function HouseholdShareCodes({
           }}
         />
       ) : (
-        <Button
-          ref={issueAction}
-          leftSection={<Icon name="plus" />}
-          loading={change?.kind === 'issue'}
-          disabled={waiting}
-          onClick={() => void issue()}
-        >
-          Issue a share code
-        </Button>
+        // A refusal follows the button, so the button stays where it was clicked, and it stays
+        // the retry.
+        <div className={styles.issue}>
+          <Button
+            ref={issueAction}
+            leftSection={<Icon name="plus" />}
+            loading={change?.kind === 'issue'}
+            disabled={waiting}
+            aria-describedby={refusal ? refusalId : undefined}
+            onClick={() => void issue()}
+          >
+            Issue a share code
+          </Button>
+          {refusal && (
+            <p id={refusalId} className={sharingStyles.refusal} role="alert">
+              {refusal}
+            </p>
+          )}
+        </div>
       )}
       <LiveShareCodes
         householdName={household.name}

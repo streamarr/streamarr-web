@@ -14,7 +14,7 @@ export function HomeShell({
 }>) {
   return (
     <div className={styles.homeShell} data-testid="home-shell">
-      {ambient && <div className={styles.homeAmbient} aria-hidden />}
+      {ambient && <div className={styles.homeAmbient} data-testid="browsing-wash" aria-hidden />}
       {chrome}
       <main className={styles.homeContent}>{children}</main>
     </div>

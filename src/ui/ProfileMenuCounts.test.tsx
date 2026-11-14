@@ -55,11 +55,6 @@ function serveHome(me: MeFixture = meFixture(), unread = 0) {
 function serveNotifications() {
   server.use(
     graphql.query('Notifications', () => HttpResponse.json({ data: notificationsPage([]) })),
-    graphql.mutation('MarkAllNotificationsRead', () =>
-      HttpResponse.json({
-        data: { markAllNotificationsRead: { unreadNotificationCount: 0, userErrors: [] } },
-      }),
-    ),
   )
 }
 
@@ -75,6 +70,7 @@ async function openTheProfileMenu() {
 
 const MARA_LINE = '“Cabin” accepted the Profile “Mara”.'
 const SHARE_OFFERS: SettingsPage = { area: 'Household settings', heading: 'Share invitations' }
+const NOTIFICATIONS_PAGE: SettingsPage = { area: 'Notifications', heading: 'Notifications' }
 
 describe('The unread count in the Profile menu', () => {
   it('shouldCountTheUnreadNotificationsAfterTheirEntryWhenSomeAreUnread', async () => {
@@ -104,7 +100,7 @@ describe('The unread count in the Profile menu', () => {
     expect(within(entry).getByText('99+')).toBeVisible()
   })
 
-  it('shouldKeepTheCountCurrentAsNotificationsChangeOnAnyPage', async () => {
+  it('shouldKeepTheCountCurrentWhenNotificationsChangeOnAnyPage', async () => {
     const { socket } = serveHome(meFixture(), 3)
     const menu = await openTheProfileMenu()
     await menu.findByRole('button', { name: 'Notifications, 3 unread' })
@@ -238,6 +234,161 @@ describe('The unread count in the Profile menu', () => {
     expect(menu.getByRole('button', { name: 'Notifications, 5 unread' })).toBeVisible()
   })
 
+  it('shouldTakeTheCountAMarkAnswersWhenNoChangeFollowsIt', async () => {
+    serveHome()
+    // Every count read after the first answers late, with the count as the server read it, so
+    // that only the mark's answer can clear the count until they do.
+    const held = { unread: 1, reads: 0, answered: 0 }
+    const later = deferred()
+    onTestFinished(later.resolve)
+    server.use(
+      graphql.query('UnreadNotificationCount', async () => {
+        held.reads += 1
+        const unreadNotificationCount = held.unread
+        if (held.reads > 1) {
+          await later.promise
+          held.answered += 1
+        }
+        return HttpResponse.json({ data: { unreadNotificationCount } })
+      }),
+      graphql.query('Notifications', () =>
+        HttpResponse.json({
+          data: notificationsPage([answerNotification({ message: MARA_LINE, unread: true })]),
+        }),
+      ),
+      graphql.mutation('MarkNotificationRead', () => {
+        held.unread = 0
+        return HttpResponse.json({
+          data: { markNotificationRead: { unreadNotificationCount: 0, userErrors: [] } },
+        })
+      }),
+    )
+    const { user } = renderAppAt('/notifications')
+    await screen.findByText(MARA_LINE)
+
+    const chip = await screen.findByRole('button', { name: 'Profile menu (Owner)' })
+    later.resolve()
+    await waitFor(() => expect(held.answered).toBe(held.reads - 1))
+    await user.click(chip)
+
+    const menu = within(await screen.findByTestId('profile-menu'))
+    expect(menu.getByRole('button', { name: 'Notifications' })).toBeVisible()
+  })
+
+  it('shouldKeepTheCountOfALaterChangeWhenAMarkSentBeforeItAnswersAfterIt', async () => {
+    const { socket } = serveHome(meFixture(), 2)
+    const leo = answerNotification({ id: 'answer-for-leo', unread: true })
+    const mara = answerNotification({ id: 'answer-for-mara', message: MARA_LINE, unread: true })
+    // Leo's mark answers late, with the count as it stood after it: Mara is still unread. Mara's
+    // mark answers only once the test has looked.
+    const leosAnswer = deferred()
+    const marasAnswer = deferred()
+    onTestFinished(leosAnswer.resolve)
+    onTestFinished(marasAnswer.resolve)
+    const marks: string[] = []
+    server.use(
+      graphql.query('Notifications', () =>
+        HttpResponse.json({ data: notificationsPage([leo, mara]) }),
+      ),
+      graphql.mutation('MarkNotificationRead', async ({ variables }) => {
+        const { notificationId } = (variables as { input: { notificationId: string } }).input
+        marks.push(notificationId)
+        await (notificationId === leo.id ? leosAnswer : marasAnswer).promise
+        const unreadNotificationCount = notificationId === leo.id ? 1 : 0
+        return HttpResponse.json({
+          data: { markNotificationRead: { unreadNotificationCount, userErrors: [] } },
+        })
+      }),
+    )
+    const { user } = renderAppAt('/notifications')
+    await screen.findByText(MARA_LINE)
+    await followingNotificationChanges(socket)
+    await waitFor(() => expect(marks).toEqual([leo.id]))
+
+    // Another session marks Mara read: the server tells this one, before Leo's mark answers.
+    socket.publish('NotificationsChanged', notificationsChanged([], 1))
+    socket.publish('NotificationsChanged', notificationsChanged([], 0))
+    const chip = await screen.findByRole('button', { name: 'Profile menu (Owner)' })
+    leosAnswer.resolve()
+    // The page marks Mara only once Leo's mark has answered.
+    await waitFor(() => expect(marks).toEqual([leo.id, mara.id]))
+    await user.click(chip)
+
+    const menu = within(await screen.findByTestId('profile-menu'))
+    expect(menu.getByRole('button', { name: 'Notifications' })).toBeVisible()
+  })
+
+  it('shouldKeepTheCountOfALaterVisitsMarkWhenAnEarlierVisitsMarkAnswersAfterIt', async () => {
+    serveHome()
+    const leo = answerNotification({ id: 'answer-for-leo' })
+    const mara = answerNotification({ id: 'answer-for-mara', message: MARA_LINE })
+    // The server marks a Notification read as its mark arrives, and answers how many stay unread.
+    // The first visit's mark of Leo answers late, with the count as it stood then: Mara unread.
+    const unread = new Set([leo.id, mara.id])
+    const marks: string[] = []
+    const leosAnswer = deferred()
+    // Once Leo's mark has answered, the first visit marks Mara too; that answer waits for the end.
+    const firstVisitsMarkOfMara = deferred()
+    // Every count read after the first waits for the end too, so only the marks move the count.
+    const laterCountReads = deferred()
+    onTestFinished(leosAnswer.resolve)
+    onTestFinished(firstVisitsMarkOfMara.resolve)
+    onTestFinished(laterCountReads.resolve)
+    const countReads = { calls: 0 }
+    server.use(
+      graphql.query('UnreadNotificationCount', async () => {
+        countReads.calls += 1
+        const unreadNotificationCount = unread.size
+        if (countReads.calls > 1) await laterCountReads.promise
+        return HttpResponse.json({ data: { unreadNotificationCount } })
+      }),
+      graphql.query('Notifications', () =>
+        HttpResponse.json({
+          data: notificationsPage(
+            [leo, mara].map((news) => ({ ...news, unread: unread.has(news.id) })),
+          ),
+        }),
+      ),
+      graphql.mutation('MarkNotificationRead', async ({ variables }) => {
+        const { notificationId } = (variables as { input: { notificationId: string } }).input
+        marks.push(notificationId)
+        unread.delete(notificationId)
+        const unreadNotificationCount = unread.size
+        if (notificationId === leo.id) await leosAnswer.promise
+        if (marks.length === 3) await firstVisitsMarkOfMara.promise
+        return HttpResponse.json({
+          data: { markNotificationRead: { unreadNotificationCount, userErrors: [] } },
+        })
+      }),
+    )
+    const { user } = renderAppAt('/notifications')
+    await screen.findByText(MARA_LINE)
+    await waitFor(() => expect(marks).toEqual([leo.id]))
+    await leaveForHome(user, NOTIFICATIONS_PAGE)
+    await returnThroughTheProfileMenu(user, NOTIFICATIONS_PAGE)
+    await waitFor(() => expect(marks).toEqual([leo.id, mara.id]))
+    // The second visit's mark of Mara answers that nothing is unread, and the dot clears.
+    const chip = await screen.findByRole('button', { name: 'Profile menu (Owner)' })
+
+    leosAnswer.resolve()
+    // The first visit marks Mara only once Leo's mark has answered.
+    await waitFor(() => expect(marks).toEqual([leo.id, mara.id, mara.id]))
+    await user.click(chip)
+
+    const menu = within(await screen.findByTestId('profile-menu'))
+    expect(menu.getByRole('button', { name: /^Notifications/ })).toHaveAccessibleName(
+      'Notifications',
+    )
+
+    // The held count read began before the second visit's socket subscribed, so its answer brings
+    // one more read. Both answer before the test ends: a read sent after it would reach the next
+    // test's server.
+    const readsBefore = countReads.calls
+    laterCountReads.resolve()
+    firstVisitsMarkOfMara.resolve()
+    await waitFor(() => expect(countReads.calls).toBe(readsBefore + 1))
+  })
+
   it('shouldReadNoCountWhenTheSessionIsBoundToATV', async () => {
     const { socket, reads } = serveHome(meFixture({ deviceBound: true }), 3)
 
@@ -248,7 +399,7 @@ describe('The unread count in the Profile menu', () => {
     expect(socket.isLive('NotificationsChanged')).toBe(false)
   })
 
-  it('shouldReadNoCountOnTheProfilePicker', async () => {
+  it('shouldReadNoCountWhenTheProfilePickerIsOpen', async () => {
     const { socket, reads } = serveHome(meFixture(), 3)
 
     renderAppAt('/select-profile')
@@ -257,6 +408,26 @@ describe('The unread count in the Profile menu', () => {
     // The picker reads the Profiles from the same identity the count would wait for.
     await screen.findByRole('button', { name: 'Alex' })
     expect(reads.unread).toBe(0)
+    expect(socket.isLive('NotificationsChanged')).toBe(false)
+  })
+  it('shouldReadNoCountWhenSignedOut', async () => {
+    const socket = serveGraphqlSocket()
+    const reads = { unread: 0, offers: 0 }
+    server.use(
+      graphql.query('UnreadNotificationCount', () => {
+        reads.unread += 1
+        return HttpResponse.json({ data: { unreadNotificationCount: 3 } })
+      }),
+      graphql.query('ShareOffers', () => {
+        reads.offers += 1
+        return HttpResponse.json({ data: offersData([offer()]) })
+      }),
+    )
+
+    renderAppAt('/login')
+
+    await screen.findByRole('button', { name: /sign in/i })
+    expect(reads).toEqual({ unread: 0, offers: 0 })
     expect(socket.isLive('NotificationsChanged')).toBe(false)
   })
 })
@@ -314,7 +485,7 @@ describe('The count of offers waiting in the Profile menu', () => {
     )
   })
 
-  it('shouldKeepTheWaitingCountCurrentAsSharesChangeOnAnyPage', async () => {
+  it('shouldKeepTheWaitingCountCurrentWhenSharesChangeOnAnyPage', async () => {
     const { socket } = serveHome()
     const held = serveWaitingOffers([offer()])
     const menu = await openTheProfileMenu()
@@ -330,7 +501,7 @@ describe('The count of offers waiting in the Profile menu', () => {
     await menu.findByRole('button', { name: 'Household settings, 1 offer waiting' })
   })
 
-  it('shouldKeepTheWaitingCountCurrentAfterTheAdminLeavesShareOffers', async () => {
+  it('shouldKeepTheWaitingCountCurrentWhenTheAdminHasLeftShareOffers', async () => {
     const { socket } = serveHome()
     const held = serveWaitingOffers([offer()])
     const { user } = renderAppAt('/settings/household/offers')

@@ -1,5 +1,5 @@
-/* selection.active, or the title's selected slot on an ambient page, as the open chip uses. It sits
-   on the chip's corner and never animates. */
+/* A mark needs 3:1 against the top bar on every page, so it takes indicator.activeTrack until the
+   dot has a token of its own. It sits on the chip's corner and never animates. */
 .dot {
   position: absolute;
   top: -2px;
@@ -7,5 +7,5 @@
   width: 8px;
   height: 8px;
   border-radius: var(--radius-sm);
-  background: var(--ambient-selected, var(--selection-active));
+  background: var(--indicator-active-track);
 }
