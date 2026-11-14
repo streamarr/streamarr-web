@@ -8,8 +8,8 @@ query ShareOffers($householdId: ID!) {
   }
 }
 
-query ProfileShares($profileId: ID!) {
-  profileShares(profileId: $profileId, first: 50) {
+query ProfileShares($profileId: ID!, $statuses: [ProfileShareStatus!]!) {
+  profileShares(profileId: $profileId, statuses: $statuses, first: 50) {
     edges {
       node {
         ...ProfileShareFields

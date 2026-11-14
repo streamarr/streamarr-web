@@ -1,12 +1,15 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import { delay, graphql, HttpResponse } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import type { ShareOffersQuery } from '../graphql/generated/graphql'
+import { focusesOf, leaveTheConfirmation, type WayOut } from '../test/focus'
 import {
   answersInTurn,
   answerWith,
+  comeBackOnline,
   comeBackOnlineUntil,
   heldAnswer,
+  readsThatCanBeHeld,
   refusedWith,
   serverFailure,
 } from '../test/graphqlResponses'
@@ -40,6 +43,7 @@ const OFFERS = '/settings/household/offers'
 const SHARE_OFFERS: SettingsPage = { area: 'Household settings', heading: 'Share invitations' }
 const OFFER_ID = '77777777-7777-7777-7777-777777777777'
 const CABIN_ID = '55555555-5555-5555-5555-555555555555'
+const HOUR = 60 * 60 * 1000
 
 function offeredProfile(overrides: Partial<OfferedProfile> = {}): OfferedProfile {
   return {
@@ -61,7 +65,8 @@ function offer(overrides: Partial<OfferNode> = {}): OfferNode {
     profileId: PROFILE_ID,
     householdId: HOUSEHOLD_ID,
     status: 'PENDING',
-    expiresAt: '2026-08-27T12:00:00Z',
+    // A week ahead, since the server lists an offer as waiting only before its expiry.
+    expiresAt: IN_A_WEEK,
     profile: offeredProfile(),
     offeredByDisplayName: 'Sam',
     visitor: true,
@@ -101,14 +106,7 @@ function serveOffers(offers: OfferNode[]) {
     graphql.query('ShareOffers', () => {
       held.reads += 1
       if (held.failing) return serverFailure()
-      return HttpResponse.json({
-        data: {
-          householdShares: {
-            __typename: 'ProfileShareConnection',
-            edges: held.offers.map((node) => ({ __typename: 'ProfileShareEdge', node })),
-          },
-        },
-      })
+      return HttpResponse.json({ data: offersData(held.offers) })
     }),
   )
   return held
@@ -425,6 +423,24 @@ describe('Share invitations', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(accepted).toBe(false)
   })
+
+  it.each<WayOut>(['Cancel', 'Escape'])(
+    'shouldReturnFocusToAcceptWhenTheAdminLeavesItsConfirmation(%s)',
+    async (way) => {
+      serve([offer({ expiresAt: IN_A_WEEK })])
+      const { user } = renderAppAt(OFFERS)
+      const accept = await screen.findByRole('button', { name: 'Accept Alex' })
+      const heading = focusesOf(
+        screen.getByRole('heading', { level: 1, name: 'Share invitations' }),
+      )
+
+      await user.click(accept)
+      await leaveTheConfirmation(user, way)
+
+      await waitFor(() => expect(accept).toHaveFocus())
+      expect(heading.count).toBe(0)
+    },
+  )
 
   it('shouldAcceptTheOfferAndSaySoWhenTheAdminConfirms', async () => {
     const held = serveOffers([offer()])
@@ -825,6 +841,35 @@ describe('Share invitations', () => {
     expect(within(offered).getByRole('button', { name: 'Accept Sam' })).toBeEnabled()
   })
 
+  it('shouldTakeOutAnOfferWhenItsTimeRunsOutWithThePageOpen', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'], shouldAdvanceTime: true })
+    onTestFinished(() => void vi.useRealTimers())
+    serve([
+      offer({ expiresAt: new Date(Date.now() + HOUR).toISOString() }),
+      offer({
+        id: 'mara',
+        profileId: 'mara',
+        expiresAt: new Date(Date.now() + 2 * HOUR).toISOString(),
+        profile: offeredProfile({ id: 'mara', name: 'Mara' }),
+      }),
+    ])
+    renderAppAt(OFFERS)
+    await screen.findByRole('button', { name: 'Accept Alex' })
+
+    await act(() => vi.advanceTimersByTimeAsync(HOUR))
+
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Accept Alex' })).not.toBeInTheDocument(),
+    )
+    expect(screen.getByRole('button', { name: 'Accept Mara' })).toBeEnabled()
+
+    await act(() => vi.advanceTimersByTimeAsync(HOUR))
+
+    expect(
+      await screen.findByText('No share invitations are waiting for Smith Family.'),
+    ).toBeVisible()
+  })
+
   it('shouldSayHowLongAnOfferHasLeftWhenItIsListed', async () => {
     const inSixDays = new Date(Date.now() + 6 * 24 * 60 * 60 * 1000 + 60 * 60 * 1000)
     serve([offer({ expiresAt: inSixDays.toISOString() })])
@@ -926,6 +971,17 @@ describe('Share offers as they change elsewhere', () => {
     expect(decline).toHaveFocus()
   })
 
+  it('shouldCloseTheConfirmationAndSaySoWhenTheOfferIsAcceptedElsewhereMeanwhile', async () => {
+    const { socket, user } = await openWithAnOfferOfAlex()
+    await user.click(screen.getByRole('button', { name: 'Accept Alex' }))
+
+    socket.publish('ProfileShareChanged', shareChanged(OFFER_ID, liveShare({ status: 'ACTIVE' })))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await noticed('That offer is no longer waiting.')
+    expect(screen.getByRole('heading', { level: 1, name: 'Share invitations' })).toHaveFocus()
+  })
+
   it('shouldMoveFocusToTheHeadingWhenTheOfferThePersonIsOnLeaves', async () => {
     const { socket } = await openWithAnOfferOfAlex()
     act(() => screen.getByRole('button', { name: 'Accept Alex' }).focus())
@@ -936,6 +992,80 @@ describe('Share offers as they change elsewhere', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { level: 1, name: 'Share invitations' })).toHaveFocus(),
     )
+  })
+
+  describe('while a read of the offers is on its way', () => {
+    const mara = offer({
+      id: 'mara',
+      profileId: 'mara',
+      expiresAt: IN_A_WEEK,
+      profile: offeredProfile({ id: 'mara', name: 'Mara' }),
+    })
+    const leo = liveShare({
+      id: 'leo',
+      profileId: 'leo',
+      profile: offeredProfile({ id: 'leo', name: 'Leo' }),
+    })
+
+    // The offers the server holds; each read answers with them as they stood when it arrived.
+    async function openWithAReadOnItsWay() {
+      const held = { offers: [offer({ expiresAt: IN_A_WEEK })] }
+      const socket = serve()
+      const reads = readsThatCanBeHeld(() => offersData(held.offers))
+      server.use(graphql.query('ShareOffers', reads.resolver))
+      const { user } = renderAppAt(OFFERS)
+      await screen.findByRole('button', { name: 'Accept Alex' })
+      await followingShareChanges(socket)
+      // Mara's offer shows that the held read has answered.
+      held.offers = [mara, ...held.offers]
+      const read = reads.holdNext()
+      comeBackOnline()
+      await read.arrived
+      return { held, socket, release: read.release, user }
+    }
+
+    it('shouldKeepAnOfferThatArrivedWhenAReadSentBeforeItAnswers', async () => {
+      const { held, socket, release } = await openWithAReadOnItsWay()
+
+      held.offers = [leo, ...held.offers]
+      socket.publish('ProfileShareChanged', shareChanged(leo.id, leo))
+      await screen.findByRole('button', { name: 'Accept Leo' })
+      release()
+
+      await screen.findByRole('button', { name: 'Accept Mara' })
+      expect(offeredNames()).toEqual(['Accept Leo', 'Accept Mara', 'Accept Alex'])
+    })
+
+    it('shouldKeepAnOfferThatArrivedAfterTheAdminReturnedWhenAReadSentBeforeTheyLeftAnswers', async () => {
+      const { held, socket, release, user } = await openWithAReadOnItsWay()
+      await leaveForHome(user, SHARE_OFFERS)
+      await waitFor(() => expect(socket.isLive('ProfileShareChanged')).toBe(false))
+      await returnThroughTheProfileMenu(user, SHARE_OFFERS)
+      await followingShareChanges(socket)
+
+      held.offers = [leo, ...held.offers]
+      socket.publish('ProfileShareChanged', shareChanged(leo.id, leo))
+      // Every read after Leo's offer arrived fails, so the list comes from the held read's answer.
+      server.use(graphql.query('ShareOffers', () => HttpResponse.error()))
+      release()
+
+      await screen.findByRole('button', { name: 'Accept Mara' })
+      expect(offeredNames()).toEqual(['Accept Leo', 'Accept Mara', 'Accept Alex'])
+    })
+
+    it('shouldLeaveOutAnOfferAcceptedElsewhereWhenAReadSentBeforeTheAcceptanceAnswers', async () => {
+      const { held, socket, release } = await openWithAReadOnItsWay()
+
+      held.offers = [mara]
+      socket.publish('ProfileShareChanged', shareChanged(OFFER_ID, liveShare({ status: 'ACTIVE' })))
+      await waitFor(() =>
+        expect(screen.queryByRole('button', { name: 'Accept Alex' })).not.toBeInTheDocument(),
+      )
+      release()
+
+      await screen.findByRole('button', { name: 'Accept Mara' })
+      expect(offeredNames()).toEqual(['Accept Mara'])
+    })
   })
 
   it('shouldStopFollowingShareChangesWhenTheAdminLeavesThePage', async () => {

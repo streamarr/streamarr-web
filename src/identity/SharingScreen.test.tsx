@@ -1,7 +1,11 @@
-import { screen, waitFor, within } from '@testing-library/react'
-import { delay, graphql, HttpResponse } from 'msw'
-import { describe, expect, it } from 'vitest'
-import type { ProfileSharesQuery } from '../graphql/generated/graphql'
+import { act, screen, waitFor, within } from '@testing-library/react'
+import { delay, graphql, HttpResponse, type GraphQLQuery } from 'msw'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
+import type {
+  ProfileShareStatus,
+  ProfileSharesQuery,
+  ProfileSharesQueryVariables,
+} from '../graphql/generated/graphql'
 import {
   answersInTurn,
   answersThenHolds,
@@ -11,9 +15,11 @@ import {
   failsOnceThen,
   heldAnswer,
   networkFailure,
+  readsThatCanBeHeld,
   refusedWith,
   serverFailure,
 } from '../test/graphqlResponses'
+import { focusesOf, leaveTheConfirmation, type WayOut } from '../test/focus'
 import { serveGraphqlSocket } from '../test/graphqlSocket'
 import { profileLanguagesFixture } from '../test/languageFixtures'
 import { HOUSEHOLD_ID, meFixture, PROFILE_ID, profileFixture } from '../test/meFixture'
@@ -101,15 +107,40 @@ function me(usableHouseholds = [SMITH_FAMILY]) {
   return meFixture({ profiles: [profileFixture()], usableHouseholds })
 }
 
+const LIVE: readonly ProfileShareStatus[] = ['PENDING', 'ACTIVE']
+const OVER: readonly ProfileShareStatus[] = [
+  'REJECTED',
+  'CANCELED',
+  'EXPIRED',
+  'INVALIDATED',
+  'ENDED',
+]
+// The page size of the page's reads of shares.
+const PAGE = 50
+
+// Every status when the read asks for none, as the server answers.
+function asksFor(statuses: ProfileSharesQueryVariables['statuses'], status: ProfileShareStatus) {
+  const asked = [statuses].flat()
+  return asked.length === 0 || asked.includes(status)
+}
+
+// A Profile's shares as the server lists them: in the statuses asked for, a page at a time.
+function listedShares(shares: ShareNode[], variables: ProfileSharesQueryVariables) {
+  expect(variables.profileId).toBe(PROFILE_ID)
+  return sharesData(
+    shares.filter((share) => asksFor(variables.statuses, share.status)).slice(0, PAGE),
+  )
+}
+
 function serve(shares: ShareNode[] = [], account = me()) {
   const socket = serveGraphqlSocket()
   server.use(
     graphql.query('Me', () => HttpResponse.json({ data: { me: account } })),
     graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
-    graphql.query('ProfileShares', ({ variables }) => {
-      expect(variables).toEqual({ profileId: PROFILE_ID })
-      return HttpResponse.json({ data: sharesData(shares) })
-    }),
+    graphql.query<ProfileSharesQuery, ProfileSharesQueryVariables>(
+      'ProfileShares',
+      ({ variables }) => HttpResponse.json({ data: listedShares(shares, variables) }),
+    ),
   )
   serveShareCodeQuestions()
   return socket
@@ -159,6 +190,20 @@ function authorizationUnavailable(): Response {
     ],
     data: null,
   })
+}
+
+// The shares the server holds, answered to each read in the statuses it asks for: a test changes
+// them where the server would.
+function serveHeldShares(shares: ShareNode[]) {
+  const held = { shares }
+  serve()
+  server.use(
+    graphql.query<ProfileSharesQuery, ProfileSharesQueryVariables>(
+      'ProfileShares',
+      ({ variables }) => HttpResponse.json({ data: listedShares(held.shares, variables) }),
+    ),
+  )
+  return held
 }
 
 // A return goes through the Profile menu, which offers Profile settings only with a Profile
@@ -269,6 +314,25 @@ describe('Sharing', () => {
     expect(within(row).getByRole('button', { name: 'Cancel invitation to Cabin' })).toBeEnabled()
   })
 
+  it('shouldMoveAnOfferToEarlierOffersWhenItsTimeRunsOutWithThePageOpen', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'], shouldAdvanceTime: true })
+    onTestFinished(() => void vi.useRealTimers())
+    serve([share({ expiresAt: new Date(Date.now() + DAY / 24).toISOString() })])
+    const { user } = renderWithProviders(<SharingScreen />)
+    await screen.findByRole('button', { name: 'Cancel invitation to Cabin' })
+
+    await act(() => vi.advanceTimersByTimeAsync(DAY / 24))
+
+    expect(
+      await screen.findByText("Alex's Profile isn't shared with another Household."),
+    ).toBeVisible()
+    expect(
+      screen.queryByRole('button', { name: 'Cancel invitation to Cabin' }),
+    ).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Earlier invitations and shares' }))
+    expect(screen.getByRole('listitem')).toHaveTextContent('CabinExpired')
+  })
+
   it('shouldKeepEarlierOffersAndSharesOutOfTheListUntilAsked', async () => {
     serve([
       share({ id: 'a', status: 'REJECTED' }),
@@ -295,6 +359,135 @@ describe('Sharing', () => {
       'CabinWithdrawn: Its offerer left.',
     ])
     expect(screen.queryByRole('button', { name: /^End share|^Cancel invitation/ })).toBeNull()
+  })
+
+  it('shouldListALiveShareWhenAPageOfEarlierSharesIsNewer', async () => {
+    const earlier = Array.from({ length: PAGE }, (_, at) =>
+      share({ id: `ended-${at}`, status: 'ENDED', endedAt: '2026-08-20T12:00:00Z' }),
+    )
+    serve([...earlier, share({ status: 'ACTIVE' })])
+    renderWithProviders(<SharingScreen />)
+
+    expect(await screen.findByRole('button', { name: 'End share with Cabin' })).toBeEnabled()
+  })
+
+  it('shouldReadEarlierOffersAndSharesOnlyWhenThePersonOpensThem', async () => {
+    const asked: ProfileSharesQueryVariables[] = []
+    const shares = [share({ status: 'ACTIVE' }), share({ id: 'declined', status: 'REJECTED' })]
+    serve()
+    server.use(
+      graphql.query<ProfileSharesQuery, ProfileSharesQueryVariables>(
+        'ProfileShares',
+        ({ variables }) => {
+          asked.push(variables)
+          return HttpResponse.json({ data: listedShares(shares, variables) })
+        },
+      ),
+    )
+    const { user } = renderWithProviders(<SharingScreen />)
+    await screen.findByRole('button', { name: 'End share with Cabin' })
+    expect(asked.map(({ statuses }) => statuses)).toEqual([LIVE])
+
+    await user.click(screen.getByRole('button', { name: 'Earlier invitations and shares' }))
+
+    expect(await screen.findByText('Declined')).toBeVisible()
+    expect(asked.map(({ statuses }) => statuses)).toEqual([LIVE, OVER])
+  })
+
+  it('shouldSayThereAreNoEarlierOffersOrSharesWhenThereAreNone', async () => {
+    serve([share({ status: 'ACTIVE' })])
+    const { user } = renderWithProviders(<SharingScreen />)
+
+    await user.click(await screen.findByRole('button', { name: 'Earlier invitations and shares' }))
+
+    expect(await screen.findByText('No earlier offers or shares.')).toBeVisible()
+  })
+
+  it('shouldRetryEarlierOffersAndSharesInTheirPlaceWhenTheyFailToLoad', async () => {
+    serve([share({ status: 'ACTIVE' })])
+    const over = failsOnceThen(sharesData([share({ id: 'declined', status: 'REJECTED' })]))
+    const live = sharesData([share({ status: 'ACTIVE' })])
+    server.use(
+      graphql.query<GraphQLQuery, ProfileSharesQueryVariables>('ProfileShares', ({ variables }) =>
+        asksFor(variables.statuses, 'ACTIVE') ? HttpResponse.json({ data: live }) : over.resolver(),
+      ),
+    )
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.click(await screen.findByRole('button', { name: 'Earlier invitations and shares' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "Couldn't load earlier offers and shares.",
+    )
+    expect(screen.getByRole('button', { name: 'End share with Cabin' })).toBeEnabled()
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByText('Declined')).toBeVisible()
+  })
+
+  it('shouldOfferToRetryEarlierOffersAndSharesBesideAnOfferWhoseTimeRanOutWhenTheirReadFails', async () => {
+    const anHourAgo = new Date(Date.now() - DAY / 24).toISOString()
+    // The server still lists the offer as waiting until it marks it expired.
+    const live = sharesData([share({ expiresAt: anHourAgo })])
+    const over = failsOnceThen(sharesData([share({ id: 'declined', status: 'REJECTED' })]))
+    serve()
+    server.use(
+      graphql.query<GraphQLQuery, ProfileSharesQueryVariables>('ProfileShares', ({ variables }) =>
+        asksFor(variables.statuses, 'PENDING')
+          ? HttpResponse.json({ data: live })
+          : over.resolver(),
+      ),
+    )
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.click(await screen.findByRole('button', { name: 'Earlier invitations and shares' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "Couldn't load earlier offers and shares.",
+    )
+    expect(screen.getAllByRole('listitem').map((row) => row.textContent)).toEqual(['CabinExpired'])
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByText('Declined')).toBeVisible()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('shouldOfferToRetryEarlierOffersAndSharesAndKeepTheirRowsWhenTheirReadAfterACancelFails', async () => {
+    const declined = share({ id: 'declined', status: 'REJECTED' })
+    const held = serveHeldShares([share(), declined])
+    const earlierReads = { count: 0 }
+    server.use(
+      graphql.query<ProfileSharesQuery, ProfileSharesQueryVariables>(
+        'ProfileShares',
+        ({ variables }) => {
+          const earlier = asksFor(variables.statuses, 'CANCELED')
+          if (earlier) earlierReads.count += 1
+          // The read of the earlier ones after the cancel fails.
+          if (earlier && earlierReads.count === 2) return serverFailure()
+          return HttpResponse.json({ data: listedShares(held.shares, variables) })
+        },
+      ),
+      graphql.mutation('CancelProfileShare', () => {
+        held.shares = [declined, share({ status: 'CANCELED' })]
+        return HttpResponse.json({ data: { cancelProfileShare: canceledPayload() } })
+      }),
+    )
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.click(await screen.findByRole('button', { name: 'Earlier invitations and shares' }))
+    await screen.findByText('Declined')
+
+    await user.click(screen.getByRole('button', { name: 'Cancel invitation to Cabin' }))
+
+    await noticed('Invitation to Cabin canceled.')
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "Couldn't load earlier offers and shares.",
+    )
+    expect(screen.getAllByRole('listitem').map((row) => row.textContent)).toEqual(['CabinDeclined'])
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByText('Canceled')).toBeVisible()
+    expect(screen.getAllByRole('listitem').map((row) => row.textContent)).toEqual([
+      'CabinDeclined',
+      'CabinCanceled',
+    ])
   })
 
   it('shouldCancelAPendingOfferAndSaySo', async () => {
@@ -397,6 +590,57 @@ describe('Sharing', () => {
     cancel.release()
 
     await waitFor(() => expect(status).toHaveTextContent(/^Invitation to Cabin canceled\.$/))
+  })
+
+  it('shouldListAnOfferThePersonCancelsUnderEarlierOffersAndSharesWhenTheyAreOpen', async () => {
+    const held = serveHeldShares([share()])
+    server.use(
+      graphql.mutation('CancelProfileShare', () => {
+        held.shares = [share({ status: 'CANCELED' })]
+        return HttpResponse.json({ data: { cancelProfileShare: canceledPayload() } })
+      }),
+    )
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.click(await screen.findByRole('button', { name: 'Earlier invitations and shares' }))
+    await screen.findByText('No earlier offers or shares.')
+
+    await user.click(screen.getByRole('button', { name: 'Cancel invitation to Cabin' }))
+
+    await noticed('Invitation to Cabin canceled.')
+    expect(screen.getAllByRole('listitem').map((row) => row.textContent)).toEqual(['CabinCanceled'])
+  })
+
+  it('shouldListAnOfferThePersonCancelsUnderEarlierOffersAndSharesWhenTheirReadSentBeforeAnswersAfter', async () => {
+    const held = serveHeldShares([share()])
+    const earlierReads = readsThatCanBeHeld(() =>
+      sharesData(held.shares.filter((listed) => OVER.includes(listed.status))),
+    )
+    const liveReads = { count: 0 }
+    server.use(
+      graphql.query<GraphQLQuery, ProfileSharesQueryVariables>('ProfileShares', ({ variables }) => {
+        if (asksFor(variables.statuses, 'CANCELED')) return earlierReads.resolver()
+        liveReads.count += 1
+        return HttpResponse.json({ data: listedShares(held.shares, variables) })
+      }),
+      graphql.mutation('CancelProfileShare', () => {
+        held.shares = [share({ status: 'CANCELED' })]
+        return HttpResponse.json({ data: { cancelProfileShare: canceledPayload() } })
+      }),
+    )
+    const { user } = renderWithProviders(<SharingScreen />)
+    await screen.findByRole('button', { name: 'Cancel invitation to Cabin' })
+    const earlierRead = earlierReads.holdNext()
+    await user.click(screen.getByRole('button', { name: 'Earlier invitations and shares' }))
+    await earlierRead.arrived
+    const liveReadsBeforeTheCancel = liveReads.count
+
+    await user.click(screen.getByRole('button', { name: 'Cancel invitation to Cabin' }))
+    // The page reads the live shares and the earlier ones again together after the cancel.
+    await waitFor(() => expect(liveReads.count).toBeGreaterThan(liveReadsBeforeTheCancel))
+    earlierRead.release()
+
+    await noticed('Invitation to Cabin canceled.')
+    expect(screen.getAllByRole('listitem').map((row) => row.textContent)).toEqual(['CabinCanceled'])
   })
 
   it('shouldShowTheServersWordsAndReadTheSharesAgainWhenCancelingIsRefused', async () => {
@@ -629,6 +873,22 @@ describe('Sharing', () => {
     expect(ended).toBe(false)
   })
 
+  it.each<WayOut>(['Cancel', 'Escape'])(
+    'shouldReturnFocusToEndShareWhenThePersonLeavesItsConfirmation(%s)',
+    async (way) => {
+      serveInTurn([share({ status: 'ACTIVE' })])
+      const { user } = renderWithProviders(<SharingScreen />)
+      const end = await screen.findByRole('button', { name: 'End share with Cabin' })
+      const heading = focusesOf(screen.getByRole('heading', { level: 1, name: 'Sharing' }))
+
+      await user.click(end)
+      await leaveTheConfirmation(user, way)
+
+      await waitFor(() => expect(end).toHaveFocus())
+      expect(heading.count).toBe(0)
+    },
+  )
+
   it('shouldEndTheShareAndSaySoWhenThePersonConfirms', async () => {
     const shares = serveInTurn([share({ status: 'ACTIVE' })], [])
     server.use(
@@ -663,6 +923,27 @@ describe('Sharing', () => {
     await noticed('Sharing with Cabin ended.')
     expect(screen.getByRole('alert')).toHaveTextContent("Couldn't load sharing.")
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('shouldListAShareThePersonEndsUnderEarlierOffersAndSharesWhenTheyAreOpen', async () => {
+    const held = serveHeldShares([share({ status: 'ACTIVE' })])
+    server.use(
+      graphql.mutation('EndProfileShare', () => {
+        held.shares = [share({ status: 'ENDED', endedAt: '2026-11-10T12:00:00Z' })]
+        return HttpResponse.json({ data: { endProfileShare: endedPayload() } })
+      }),
+    )
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.click(await screen.findByRole('button', { name: 'Earlier invitations and shares' }))
+    await screen.findByText('No earlier offers or shares.')
+
+    await user.click(screen.getByRole('button', { name: 'End share with Cabin' }))
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'End share' }))
+
+    await noticed('Sharing with Cabin ended.')
+    expect(screen.getAllByRole('listitem').map((row) => row.textContent)).toEqual([
+      'CabinEnded Nov 10, 2026',
+    ])
   })
 
   it('shouldKeepTheConfirmationOpenWithTheServersWordsWhenEndingIsRefused', async () => {
@@ -952,17 +1233,25 @@ describe('Sharing', () => {
     ])
   })
 
-  it('shouldLookTheCodeUpAgainWhenThePersonContinuesWithACodeTheReviewFoundNoLongerWorks', async () => {
+  it('shouldLookTheCodeUpAgainWhenThePersonContinuesWithACodeThatSendingFoundNoLongerWorks', async () => {
     serve()
-    const asked = serveShareCodeQuestions({ preview: { profileSharePreview: null } })
+    const asked = serveShareCodeQuestions()
+    server.use(
+      graphql.mutation('OfferProfileShare', () =>
+        HttpResponse.json({
+          data: offerRefused('ShareCodeRefusedError', 'That share code does not work.'),
+        }),
+      ),
+    )
     const { user } = renderWithProviders(<SharingScreen />)
-    const field = await openShareForm(user)
-    await user.type(field, `${SHARE_CODE}{Enter}`)
+    await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
+    await user.click(await screen.findByRole('button', { name: 'Send invitation' }))
+    const field = await screen.findByRole('textbox', { name: 'Share code' })
     await waitFor(() => expect(field).toBeInvalid())
 
     await user.click(screen.getByRole('button', { name: 'Continue' }))
 
-    await waitFor(() => expect(field).toBeInvalid())
+    await waitFor(() => expect(asked.lookUps).toHaveLength(2))
     expect(asked.lookUps).toEqual([
       { input: { code: SENT_SHARE_CODE } },
       { input: { code: SENT_SHARE_CODE } },
@@ -976,6 +1265,18 @@ describe('Sharing', () => {
     await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
 
     expect(await screen.findByRole('heading', { name: 'Offer Alex to Cabin?' })).toBeVisible()
+  })
+
+  it('shouldMoveFocusFromTheFieldToTheReviewWithoutThePageHeadingWhenEnterIsPressed', async () => {
+    serve()
+    const { user } = renderWithProviders(<SharingScreen />)
+    const field = await openShareForm(user)
+    const heading = focusesOf(screen.getByRole('heading', { level: 1, name: 'Sharing' }))
+
+    await user.type(field, `${SHARE_CODE}{Enter}`)
+
+    expect(await screen.findByRole('heading', { name: 'Offer Alex to Cabin?' })).toHaveFocus()
+    expect(heading.count).toBe(0)
   })
 
   it('shouldTakeTheCodeOutOfALinkPastedIntoTheField', async () => {
@@ -1144,6 +1445,23 @@ describe('Sharing', () => {
     expect(asked.lookUps).toHaveLength(1)
   })
 
+  it('shouldShowTheSameReviewWithoutAskingAgainWhenThePersonGoesBackAndContinuesWithTheSameCode', async () => {
+    serve()
+    const asked = serveShareCodeQuestions({ preview: sharePreviewFixture({ wouldLock: true }) })
+    const { user } = renderWithProviders(<SharingScreen />)
+    await user.type(await openShareForm(user), `${SHARE_CODE}{Enter}`)
+    await user.click(await screen.findByRole('button', { name: 'Back' }))
+
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+
+    expect(await screen.findByRole('heading', { name: 'Offer Alex to Cabin?' })).toHaveFocus()
+    expect(
+      screen.getByText("Alex's Profile would be locked there until it has a PIN."),
+    ).toBeVisible()
+    expect(asked.lookUps).toHaveLength(1)
+    expect(asked.previews).toHaveLength(1)
+  })
+
   it('shouldCloseTheFormFromTheReviewWhenThePersonCancels', async () => {
     serve()
     const { user } = renderWithProviders(<SharingScreen />)
@@ -1177,20 +1495,28 @@ describe('Sharing', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Sharing' })).toHaveFocus()
   })
 
-  it('shouldReturnToTheCodeWithTheRefusalWhenTheReviewFindsTheCodeNoLongerWorks', async () => {
+  it('shouldSayTheOfferCannotBeMadeWithoutAskingAgainWhenThePreviewAnswersNothing', async () => {
     serve()
-    serveShareCodeQuestions({ preview: { profileSharePreview: null } })
+    // The server answers no preview for a code that stopped working, and for a Profile that the
+    // Account may not offer.
+    const asked = serveShareCodeQuestions({ preview: { profileSharePreview: null } })
     const { user } = renderWithProviders(<SharingScreen />)
 
     const field = await openShareForm(user)
     await user.type(field, `${SHARE_CODE}{Enter}`)
 
-    await waitFor(() => expect(field).toBeInvalid())
-    expect(field).toHaveAccessibleDescription(
-      expect.stringContaining('That code does not work. Ask an admin there for a new one.'),
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /^This offer cannot be made\. The code may have stopped working, or you may not be able to share Alex\.$/,
     )
     expect(field).toHaveValue(SHARE_CODE)
+    expect(field).toBeValid()
     expect(screen.queryByRole('heading', { name: 'Offer Alex to Cabin?' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/^This offer cannot be made\./)
+    expect(asked.lookUps).toHaveLength(1)
+    expect(asked.previews).toHaveLength(1)
   })
 
   it('shouldReturnToTheCodeWithTheRefusalWhenTheOfferIsRefusedForItsCode', async () => {
@@ -1751,5 +2077,105 @@ describe('Sharing as shares change elsewhere', () => {
     await screen.findByRole('button', { name: 'End share with Cabin' })
     expect(screen.getByRole('textbox', { name: 'Share code' })).toHaveValue('BCDF')
     expect(screen.getByRole('textbox', { name: 'Share code' })).toHaveFocus()
+  })
+
+  it('shouldCloseTheConfirmationAndSaySoWhenTheShareEndsElsewhereMeanwhile', async () => {
+    const { socket, user } = await openWith([share({ status: 'ACTIVE' })])
+    await user.click(screen.getByRole('button', { name: 'End share with Cabin' }))
+
+    socket.publish('ProfileShareChanged', shareChanged(SHARE_ID, changedShare({ status: 'ENDED' })))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await noticed('Sharing with Cabin has already ended.')
+    expect(screen.getByRole('heading', { level: 1, name: 'Sharing' })).toHaveFocus()
+  })
+
+  it('shouldMoveAShareToEarlierOffersAndSharesWhenItEndsElsewhere', async () => {
+    const { socket, user } = await openWith([
+      share({ status: 'ACTIVE' }),
+      share({ id: 'declined', status: 'REJECTED' }),
+    ])
+    await user.click(screen.getByRole('button', { name: 'Earlier invitations and shares' }))
+    await screen.findByText('Declined')
+
+    socket.publish(
+      'ProfileShareChanged',
+      shareChanged(SHARE_ID, changedShare({ status: 'ENDED', endedAt: '2026-11-10T12:00:00Z' })),
+    )
+
+    await screen.findByText("Alex's Profile isn't shared with another Household.")
+    expect(screen.getAllByRole('listitem').map((row) => row.textContent)).toEqual([
+      'CabinEnded Nov 10, 2026',
+      'CabinDeclined',
+    ])
+  })
+
+  it('shouldMoveFocusToTheHeadingWhenTheShareThePersonIsOnEndsElsewhere', async () => {
+    const { socket } = await openWith([share({ status: 'ACTIVE' })])
+    act(() => screen.getByRole('button', { name: 'End share with Cabin' }).focus())
+
+    socket.publish('ProfileShareChanged', shareChanged(SHARE_ID, changedShare({ status: 'ENDED' })))
+
+    await screen.findByText("Alex's Profile isn't shared with another Household.")
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: 'Sharing' })).toHaveFocus(),
+    )
+  })
+
+  describe('while a read of the shares is on its way', () => {
+    const LAKE_HOUSE_ID = '44444444-4444-4444-4444-444444444444'
+    const lakeHouse = share({
+      id: 'lake-house',
+      householdId: LAKE_HOUSE_ID,
+      status: 'ACTIVE',
+      household: { __typename: 'HouseholdSummary', id: LAKE_HOUSE_ID, name: 'Lake House' },
+    })
+
+    // The shares the server holds; each read answers with them as they stood when it arrived.
+    async function openWithAReadOnItsWay(shares: ShareNode[]) {
+      const held = { shares: [membershipShare(), ...shares] }
+      const socket = serve([], me([SMITH_FAMILY, CABIN]))
+      const reads = readsThatCanBeHeld(() => sharesData(held.shares))
+      server.use(graphql.query('ProfileShares', reads.resolver))
+      renderAppAt(SHARING)
+      await screen.findByRole('region', { name: "Where Alex's Profile is shared" })
+      await followingShareChanges(socket)
+      // The share with Lake House shows that the held read has answered.
+      held.shares = [lakeHouse, ...held.shares]
+      const read = reads.holdNext()
+      comeBackOnline()
+      await read.arrived
+      return { held, socket, release: read.release }
+    }
+
+    it('shouldKeepAnOfferMadeElsewhereWhenAReadSentBeforeItAnswers', async () => {
+      const { held, socket, release } = await openWithAReadOnItsWay([])
+
+      held.shares = [share(), ...held.shares]
+      socket.publish('ProfileShareChanged', shareChanged(SHARE_ID, changedShare()))
+      await screen.findByRole('button', { name: 'Cancel invitation to Cabin' })
+      release()
+
+      await screen.findByRole('button', { name: 'End share with Lake House' })
+      expect(screen.getByRole('button', { name: 'Cancel invitation to Cabin' })).toBeEnabled()
+    })
+
+    it('shouldShowAnOfferAsSharedWhenAReadSentBeforeItsAcceptanceAnswers', async () => {
+      const { held, socket, release } = await openWithAReadOnItsWay([share()])
+
+      held.shares = held.shares.map((listed) =>
+        listed.id === SHARE_ID ? share({ status: 'ACTIVE' }) : listed,
+      )
+      socket.publish(
+        'ProfileShareChanged',
+        shareChanged(SHARE_ID, changedShare({ status: 'ACTIVE' })),
+      )
+      await screen.findByRole('button', { name: 'End share with Cabin' })
+      release()
+
+      await screen.findByRole('button', { name: 'End share with Lake House' })
+      expect(screen.getByRole('button', { name: 'End share with Cabin' })).toBeEnabled()
+      expect(screen.queryByRole('button', { name: 'Cancel invitation to Cabin' })).toBeNull()
+    })
   })
 })

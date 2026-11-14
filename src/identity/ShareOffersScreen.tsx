@@ -1,6 +1,6 @@
 import { Button, Center, Loader } from '@mantine/core'
-import { useApolloClient, useMutation, useQuery } from '@apollo/client/react'
-import { useState } from 'react'
+import { useMutation, useQuery } from '@apollo/client/react'
+import { useEffect, useEffectEvent, useState, type Ref } from 'react'
 import {
   AcceptProfileShareDocument,
   RejectProfileShareDocument,
@@ -8,6 +8,7 @@ import {
   type MeQuery,
   type ShareOffersQuery,
 } from '../graphql/generated/graphql'
+import { useLiveList } from '../graphql/liveList'
 import { requestFailureMessage } from '../graphql/requestErrors'
 import { userErrorMessage, type UserErrorLike } from '../graphql/userErrors'
 import settingsStyles from '../styles/settings.module.css'
@@ -18,10 +19,17 @@ import { useFocusFallback } from '../ui/useFocusFallback'
 import { usePageNotice } from '../ui/usePageNotice'
 import styles from './Sharing.module.css'
 import { SharedProfileText } from './SharedProfileText'
-import { keepsInHouseholdShares, withShareChange } from './shareLists'
+import {
+  keepsInHouseholdShares,
+  shareIdOf,
+  statusAt,
+  withShareChange,
+  type ShareChange,
+} from './shareLists'
 import { SharingSection } from './SharingSection'
 import { expiryLabel, UPDATE_FAILED_MESSAGE } from './shareText'
 import { useMe } from './useMe'
+import { useNow } from './useNow'
 import { useShareChanges } from './useShareChanges'
 
 type ListedOffer = ShareOffersQuery['householdShares']['edges'][number]['node']
@@ -31,10 +39,12 @@ type PendingOffer = ListedOffer & { profile: OfferedProfile }
 type Household = MeQuery['me']['household']
 type Decision = 'accept' | 'decline'
 
+const NO_LONGER_WAITING = 'That offer is no longer waiting.'
+
 /** The offers of Profiles to the Account's Household, which its admins accept or decline. */
 export function ShareOffersScreen() {
   const { notice, count, heading, announce, dismiss } = usePageNotice()
-  useFocusFallback(heading)
+  const liveList = useFocusFallback(heading)
 
   return (
     <>
@@ -46,12 +56,15 @@ export function ShareOffersScreen() {
       <PageNotice count={count} onDismiss={dismiss}>
         {notice}
       </PageNotice>
-      <ShareOffersContent onDecided={announce} />
+      <ShareOffersContent onDecided={announce} liveList={liveList} />
     </>
   )
 }
 
-function ShareOffersContent({ onDecided }: Readonly<{ onDecided: (notice: string) => void }>) {
+function ShareOffersContent({
+  onDecided,
+  liveList,
+}: Readonly<{ onDecided: (notice: string) => void; liveList: Ref<HTMLDivElement> }>) {
   const me = useMe()
 
   if (me.loading && !me.data) {
@@ -65,6 +78,7 @@ function ShareOffersContent({ onDecided }: Readonly<{ onDecided: (notice: string
       household={me.data.me.household}
       serverAdmin={me.data.me.serverAdmin}
       onDecided={onDecided}
+      liveList={liveList}
     />
   )
 }
@@ -73,26 +87,35 @@ function HouseholdOffers({
   household,
   serverAdmin,
   onDecided,
+  liveList,
 }: Readonly<{
   household: Household
   serverAdmin: boolean
   onDecided: (notice: string) => void
+  /** The container of the offers, where focus that a change takes away returns to the heading. */
+  liveList: Ref<HTMLDivElement>
 }>) {
-  const { cache } = useApolloClient()
   const variables = { householdId: household.id }
   // The offers that the query asks for.
   const list = { householdId: household.id, statuses: ['PENDING'] as const, serverAdmin }
-  useShareChanges((change) =>
-    cache.updateQuery({ query: ShareOffersDocument, variables }, (data) => {
-      if (!data) return undefined
+  const liveOffers = useLiveList({
+    query: ShareOffersDocument,
+    variables,
+    keyOf: shareIdOf,
+    apply: (data, change: ShareChange) => {
       const edges = withShareChange(data.householdShares.edges, change, (share) =>
         keepsInHouseholdShares(share, list, new Date()),
       )
       return { ...data, householdShares: { ...data.householdShares, edges } }
-    }),
-  )
+    },
+  })
+  useShareChanges(liveOffers.receive)
   // Offers arrive, expire and are withdrawn elsewhere, so a visit shows only the server's answer.
-  const query = useQuery(ShareOffersDocument, { variables, fetchPolicy: 'network-only' })
+  const query = useQuery(ShareOffersDocument, {
+    variables,
+    fetchPolicy: 'network-only',
+    context: liveOffers.context,
+  })
   const [accept] = useMutation(AcceptProfileShareDocument)
   const [decline] = useMutation(RejectProfileShareDocument)
   /**
@@ -152,15 +175,42 @@ function HouseholdOffers({
     }
   }
 
+  const listed = query.data?.householdShares.edges.map((edge) => edge.node) ?? []
+  // An offer leaves the list when its time runs out, as the query would leave it out.
+  const now = useNow(listed.map((offer) => offer.expiresAt))
+  const offers = listed
+    .filter((offer) => statusAt(offer, now) === 'PENDING')
+    .filter(namesItsProfile)
+  const confirming = offers.find((offer) => offer.id === confirmingId) ?? null
+  // An offer that a read or a change made elsewhere takes out of the list while its confirmation is
+  // open was decided or withdrawn elsewhere, so the confirmation closes and the page says so. An
+  // offer that leaves while the admin's own decision is on its way, or after the server refused it,
+  // is that decision's to report.
+  const goneElsewhere =
+    confirmingId !== null &&
+    confirming === null &&
+    deciding === null &&
+    refusal === null &&
+    query.data !== undefined &&
+    !query.error
+  /** The last offer whose confirmation closed because it left the list, until the page says so. */
+  const [gone, setGone] = useState<{ offerId: string } | null>(null)
+  if (goneElsewhere) {
+    setGone({ offerId: confirmingId })
+    setConfirmingId(null)
+  }
+  const sayGone = useEffectEvent(() => onDecided(NO_LONGER_WAITING))
+
+  useEffect(() => {
+    if (gone) sayGone()
+  }, [gone])
+
   if (query.loading && !query.data) {
     return <ShareOffersLoading />
   }
   if (query.error || !query.data) {
     return <ShareOffersUnavailable error={query.error} onRetry={readAgain} />
   }
-
-  const offers = query.data.householdShares.edges.map((edge) => edge.node).filter(namesItsProfile)
-  const confirming = offers.find((offer) => offer.id === confirmingId) ?? null
 
   return (
     <>
@@ -169,51 +219,55 @@ function HouseholdOffers({
           {refusal}
         </p>
       )}
-      {offers.length === 0 ? (
-        <p className={styles.note}>No share invitations are waiting for {household.name}.</p>
-      ) : (
-        <SharingSection title={`Share invitations for ${household.name}`} failure={null}>
-          <ul className={styles.rows}>
-            {offers.map((offer, index) => (
-              <li key={offer.id} className={styles.row}>
-                <SharedProfileText
-                  profile={offer.profile}
-                  byline={offer.offeredByDisplayName && `Offered by ${offer.offeredByDisplayName}`}
-                  paletteIndex={index}
-                >
-                  {offer.expiresAt && (
-                    <span className={styles.status}>
-                      {expiryLabel(offer.expiresAt, new Date())}
-                    </span>
-                  )}
-                </SharedProfileText>
-                <span className={styles.actions}>
-                  <Button
-                    variant="filled"
-                    aria-label={`Accept ${offeredProfile(offer)}`}
-                    disabled={deciding !== null}
-                    onClick={() => {
-                      setRefusal(null)
-                      setConfirmingId(offer.id)
-                    }}
+      <div ref={liveList}>
+        {offers.length === 0 ? (
+          <p className={styles.note}>No share invitations are waiting for {household.name}.</p>
+        ) : (
+          <SharingSection title={`Share invitations for ${household.name}`} failure={null}>
+            <ul className={styles.rows}>
+              {offers.map((offer, index) => (
+                <li key={offer.id} className={styles.row}>
+                  <SharedProfileText
+                    profile={offer.profile}
+                    byline={
+                      offer.offeredByDisplayName && `Offered by ${offer.offeredByDisplayName}`
+                    }
+                    paletteIndex={index}
                   >
-                    Accept
-                  </Button>
-                  <Button
-                    variant="default"
-                    aria-label={`Decline ${offeredProfile(offer)}`}
-                    loading={deciding === offer.id && !confirming}
-                    disabled={deciding !== null}
-                    onClick={() => void declineNow(offer)}
-                  >
-                    Decline
-                  </Button>
-                </span>
-              </li>
-            ))}
-          </ul>
-        </SharingSection>
-      )}
+                    {offer.expiresAt && (
+                      <span className={styles.status}>
+                        {expiryLabel(offer.expiresAt, new Date())}
+                      </span>
+                    )}
+                  </SharedProfileText>
+                  <span className={styles.actions}>
+                    <Button
+                      variant="filled"
+                      aria-label={`Accept ${offeredProfile(offer)}`}
+                      disabled={deciding !== null}
+                      onClick={() => {
+                        setRefusal(null)
+                        setConfirmingId(offer.id)
+                      }}
+                    >
+                      Accept
+                    </Button>
+                    <Button
+                      variant="default"
+                      aria-label={`Decline ${offeredProfile(offer)}`}
+                      loading={deciding === offer.id && !confirming}
+                      disabled={deciding !== null}
+                      onClick={() => void declineNow(offer)}
+                    >
+                      Decline
+                    </Button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </SharingSection>
+        )}
+      </div>
       <ConfirmDialog
         opened={confirming !== null}
         title={confirming ? `Accept ${offeredProfile(confirming)} into ${household.name}?` : ''}

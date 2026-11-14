@@ -27,15 +27,23 @@ interface Review {
 
 /** What the server said of a code: an offer to review, a code that does not work, or its words. */
 type Answer =
-  { kind: 'review'; review: Review } | { kind: 'refused' } | { kind: 'failed'; message: string }
+  | { kind: 'review'; review: Review }
+  | { kind: 'refused' }
+  | { kind: 'cannot-offer' }
+  | { kind: 'failed'; message: string }
 
 /** A code that a lookup found, with the name of the Household it names. */
 interface LookedUp {
   code: string
   householdName: string
+  /** What the server's preview of the offer with this code said, once it has answered. */
+  previewed?: Answer
 }
 
 const REFUSED: Answer = { kind: 'refused' }
+// The server answers no preview for a code that stopped working and for a Profile that the
+// Account may not offer, and does not say which.
+const CANNOT_OFFER: Answer = { kind: 'cannot-offer' }
 
 /**
  * Offers a Profile to the Household that a share code names, in two steps: the code, then a review
@@ -71,7 +79,7 @@ export function ShareForm({
   const [lookUp] = useMutation(LookUpShareCodeDocument)
   const [offer] = useMutation(OfferProfileShareDocument)
   const [text, setText] = useState(codeFromLink ?? '')
-  /** The last code the server found, so that asking about it again costs no second lookup. */
+  /** The last code the server found, so that asking about it again costs no second attempt. */
   const lookedUp = useRef<LookedUp | null>(null)
   const [fieldError, setFieldError] = useState<string | null>(null)
   const [refusal, setRefusal] = useState<string | null>(null)
@@ -113,18 +121,24 @@ export function ShareForm({
     }
   }
 
-  // The preview is asked here, and never as a watched query: every request is an attempt.
+  // The preview is asked here, and never as a watched query: every request is an attempt. A code
+  // the server has previewed gets the same answer again without asking.
   async function askAbout(code: string): Promise<Answer> {
     const found = await lookUpOnce(code)
     if ('kind' in found) return found
+    if (found.previewed) return found.previewed
     const previewed = await client.query({
       query: ProfileSharePreviewDocument,
       variables: { profileId: profile.id, shareCode: code },
       fetchPolicy: 'no-cache',
     })
     const effects = previewed.data?.profileSharePreview
-    if (!effects) return REFUSED
-    return { kind: 'review', review: { code, householdName: found.householdName, effects } }
+    const answer: Answer = effects
+      ? { kind: 'review', review: { code, householdName: found.householdName, effects } }
+      : CANNOT_OFFER
+    if (lookedUp.current?.code === code)
+      lookedUp.current = { ...lookedUp.current, previewed: answer }
+    return answer
   }
 
   /** Looks a code up, unless the server already found it: a preview that failed asks only again. */
@@ -179,6 +193,11 @@ export function ShareForm({
         return
       case 'failed':
         setRefusal(answer.message)
+        return
+      case 'cannot-offer':
+        setRefusal(
+          `This offer cannot be made. The code may have stopped working, or you may not be able to share ${profile.name}.`,
+        )
         return
       case 'review':
         setReview(answer.review)

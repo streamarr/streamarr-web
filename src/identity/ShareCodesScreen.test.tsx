@@ -1,7 +1,7 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import { parse, valueFromASTUntyped, visit } from 'graphql'
 import { delay, graphql, HttpResponse } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import type { HouseholdShareCodesQuery } from '../graphql/generated/graphql'
 import {
   answersInTurn,
@@ -464,6 +464,19 @@ describe('Share codes', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       /^Only an admin of Smith Family may issue share codes\.$/,
     )
+  })
+
+  it('shouldTakeOutACodeWhenItsTimeRunsOutWithThePageOpen', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'], shouldAdvanceTime: true })
+    onTestFinished(() => void vi.useRealTimers())
+    serve([liveCode({ expiresAt: new Date(Date.now() + HOUR).toISOString() })])
+    renderAppAt(CODES)
+    await screen.findByRole('button', { name: 'Withdraw' })
+
+    await act(() => vi.advanceTimersByTimeAsync(HOUR))
+
+    expect(await screen.findByText('No live share codes.')).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Withdraw' })).not.toBeInTheDocument()
   })
 
   it('shouldWithdrawACodeAtOnceAndSaySo', async () => {
