@@ -1,3 +1,9 @@
+.sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-24);
+}
+
 .section {
   display: flex;
   flex-direction: column;

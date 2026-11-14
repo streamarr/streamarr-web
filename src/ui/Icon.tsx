@@ -12,6 +12,7 @@ import {
   CircleCheck,
   CircleStop,
   Clapperboard,
+  DoorOpen,
   Eye,
   EyeOff,
   Folder,
@@ -78,6 +79,7 @@ const icons = {
   languages: Languages,
   sharing: Share2,
   people: UsersRound,
+  visitors: DoorOpen,
   close: X,
   'ends-at': Clock,
 } as const
