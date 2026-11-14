@@ -28,7 +28,7 @@ const UNREAD = [
   news('answer-for-mara', '“Lake House” accepted the Profile “Mara”.', 2),
 ]
 
-test('the unread count and the dot clear once the Notifications page has been opened', async ({
+test('the unread count and the dot clear when shown notifications are explicitly marked read', async ({
   page,
   request,
 }) => {
@@ -43,11 +43,11 @@ test('the unread count and the dot clear once the Notifications page has been op
         pageInfo: { __typename: 'PageInfo', hasNextPage: false, endCursor: 'cursor-002' },
       },
     },
-    MarkAllNotificationsRead: () => {
+    MarkNotificationsRead: () => {
       server.unread = 0
       return {
-        markAllNotificationsRead: {
-          __typename: 'MarkAllNotificationsReadPayload',
+        markNotificationsRead: {
+          __typename: 'MarkNotificationsReadPayload',
           unreadNotificationCount: 0,
           userErrors: [],
         },
@@ -61,14 +61,22 @@ test('the unread count and the dot clear once the Notifications page has been op
   await marked.click()
   const entry = page.getByRole('button', { name: 'Notifications, 2 unread' })
   await expect(entry).toHaveText('Notifications2')
+  await entry.click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Notifications' })).toBeVisible()
+  await expect(page.getByText('“Cabin” accepted the Profile “Leo”.', { exact: true })).toBeVisible()
+  await expect(marked.getByTestId('unread-dot')).toBeVisible()
+  expect(server.unread).toBe(2)
+
   const markedRead = page.waitForRequest(
     (sent) =>
       (sent.postDataJSON() as { operationName?: string } | null)?.operationName ===
-      'MarkAllNotificationsRead',
+      'MarkNotificationsRead',
   )
-  await entry.click()
-  await expect(page.getByRole('heading', { level: 1, name: 'Notifications' })).toBeVisible()
-  await markedRead
+  await page.getByRole('button', { name: 'Mark all as read' }).click()
+  const sent = (await markedRead).postDataJSON() as {
+    variables: { input: { notificationIds: string[] } }
+  }
+  expect(sent.variables.input.notificationIds).toEqual(['answer-for-leo', 'answer-for-mara'])
   // The server tells every session of the Account its count after the mark.
   await expect.poll(() => socket.isLive('NotificationsChanged')).toBe(true)
   socket.publish('NotificationsChanged', {

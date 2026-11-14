@@ -56,10 +56,7 @@ function NotificationsList() {
   const readAgain = () => query.refetch().catch(() => undefined)
   const shown = query.error ? [] : definedEdges(query.data?.notifications.edges)
   const now = useNow((last) =>
-    shown.flatMap(({ node }) => [
-      expiryOfWaiting(node),
-      nextLabelChange(node.latestEventAt, last),
-    ]),
+    shown.flatMap(({ node }) => [expiryOfWaiting(node), nextLabelChange(node.latestEventAt, last)]),
   )
   const notifications = shown.map(({ node }) =>
     isOfferRequest(node) && offerRequestState(node, now).at === 'over'
