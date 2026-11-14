@@ -26,7 +26,6 @@ import {
 import { renderAppAt } from '../test/render'
 import { leaveForHome, returnThroughTheProfileMenu, type SettingsPage } from '../test/returnVisits'
 import { server } from '../test/server'
-import homeShellStyles from '../ui/HomeShell.module.css'
 import { intersectionObserverInstances } from '../../vitest.setup'
 
 const NOTIFICATIONS = '/notifications'
@@ -145,7 +144,7 @@ describe('Notifications', () => {
     await screen.findByRole('heading', { level: 1, name: 'Notifications' })
 
     expect(screen.getByRole('banner')).toBeInTheDocument()
-    expect(document.querySelector(`.${homeShellStyles.homeAmbient}`)).toBeNull()
+    expect(screen.queryByTestId('home-ambient')).not.toBeInTheDocument()
   })
 
   it('shouldListEachNotificationInTheServersOrderAndWordsWhenTheyLoad', async () => {
