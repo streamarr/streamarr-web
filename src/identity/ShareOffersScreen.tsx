@@ -14,13 +14,17 @@ import settingsStyles from '../styles/settings.module.css'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { FailurePanel } from '../ui/Failure'
 import { PageNotice } from '../ui/PageNotice'
+import { RowAvatar } from '../ui/ProfileTile'
 import { usePageNotice } from '../ui/usePageNotice'
 import styles from './Sharing.module.css'
 import { SharingSection } from './SharingSection'
-import { expiryLabel, shortId, UPDATE_FAILED_MESSAGE } from './shareText'
+import { expiryLabel, UPDATE_FAILED_MESSAGE } from './shareText'
 import { useMe } from './useMe'
 
-type PendingOffer = ShareOffersQuery['householdShares']['edges'][number]['node']
+type ListedOffer = ShareOffersQuery['householdShares']['edges'][number]['node']
+type OfferedProfile = NonNullable<ListedOffer['profile']>
+/** An offer as the page lists it: one whose Profile the server names. */
+type PendingOffer = ListedOffer & { profile: OfferedProfile }
 type Household = MeQuery['me']['household']
 type Decision = 'accept' | 'decline'
 
@@ -66,8 +70,11 @@ function HouseholdOffers({
   })
   const [accept] = useMutation(AcceptProfileShareDocument)
   const [decline] = useMutation(RejectProfileShareDocument)
-  /** The offer whose acceptance waits for the admin's confirmation. */
-  const [confirming, setConfirming] = useState<PendingOffer | null>(null)
+  /**
+   * The id of the offer whose acceptance waits for the admin's confirmation. The confirmation shows
+   * the offer as the latest read lists it, and closes when that read no longer lists the offer.
+   */
+  const [confirmingId, setConfirmingId] = useState<string | null>(null)
   /** The offer whose decision is on its way; no other decision starts until it lands. */
   const [deciding, setDeciding] = useState<string | null>(null)
   const [refusal, setRefusal] = useState<string | null>(null)
@@ -109,7 +116,7 @@ function HouseholdOffers({
 
   async function confirmAccept(offer: PendingOffer) {
     if (await decide(offer, 'accept')) {
-      setConfirming(null)
+      setConfirmingId(null)
       onDecided(`${offeredProfile(offer)} accepted into ${household.name}.`)
     }
   }
@@ -127,7 +134,8 @@ function HouseholdOffers({
     return <ShareOffersUnavailable error={query.error} onRetry={readAgain} />
   }
 
-  const offers = query.data.householdShares.edges.map((edge) => edge.node)
+  const offers = query.data.householdShares.edges.map((edge) => edge.node).filter(namesItsProfile)
+  const confirming = offers.find((offer) => offer.id === confirmingId) ?? null
 
   return (
     <>
@@ -141,16 +149,9 @@ function HouseholdOffers({
       ) : (
         <SharingSection title={`Share invitations for ${household.name}`} failure={null}>
           <ul className={styles.rows}>
-            {offers.map((offer) => (
+            {offers.map((offer, index) => (
               <li key={offer.id} className={styles.row}>
-                <span className={styles.rowText}>
-                  {offeredProfile(offer)}
-                  {offer.expiresAt && (
-                    <span className={styles.status}>
-                      {expiryLabel(offer.expiresAt, new Date())}
-                    </span>
-                  )}
-                </span>
+                <OfferedProfileText offer={offer} paletteIndex={index} />
                 <span className={styles.actions}>
                   <Button
                     variant="filled"
@@ -158,7 +159,7 @@ function HouseholdOffers({
                     disabled={deciding !== null}
                     onClick={() => {
                       setRefusal(null)
-                      setConfirming(offer)
+                      setConfirmingId(offer.id)
                     }}
                   >
                     Accept
@@ -180,14 +181,14 @@ function HouseholdOffers({
       )}
       <ConfirmDialog
         opened={confirming !== null}
-        title={`Accept this Profile into ${household.name}?`}
-        body={`If this is someone's Personal Profile, accepting admits that person to ${household.name}. They can select any Profile available here, browse its libraries and link a TV to it.`}
+        title={confirming ? `Accept ${offeredProfile(confirming)} into ${household.name}?` : ''}
+        body={confirming ? acceptance(confirming.profile, household.name) : ''}
         confirmLabel="Accept"
         icon={null}
         pending={confirming !== null && deciding === confirming.id}
         error={refusal}
         onClose={() => {
-          setConfirming(null)
+          setConfirmingId(null)
           setRefusal(null)
         }}
         onConfirm={() => {
@@ -198,9 +199,45 @@ function HouseholdOffers({
   )
 }
 
-// The server gives a share no name for its Profile yet, so the start of its id stands for it.
+function namesItsProfile(offer: ListedOffer): offer is PendingOffer {
+  return offer.profile !== null
+}
+
 function offeredProfile(offer: PendingOffer): string {
-  return `Profile ${shortId(offer.profileId)}`
+  return offer.profile.name
+}
+
+/** What accepting the offer does, as is true of this Profile. */
+function acceptance(profile: OfferedProfile, household: string): string {
+  const arrives = profile.personalProfile
+    ? `This is someone's Personal Profile. Accepting admits that person to ${household}: they can select any Profile available here, browse its libraries and link a TV to it.`
+    : `${profile.name} becomes available in ${household}.`
+  if (!profile.restricted) return arrives
+  return `${arrives} It is restricted, so admins of ${household} supervise it here.`
+}
+
+/** The offered Profile as a row shows it: its mark, its name, who offered it and its facts. */
+function OfferedProfileText({
+  offer,
+  paletteIndex,
+}: Readonly<{ offer: PendingOffer; paletteIndex: number }>) {
+  const { profile } = offer
+  return (
+    <span className={styles.rowProfile}>
+      <RowAvatar name={profile.name} paletteIndex={paletteIndex} />
+      <span className={styles.rowText}>
+        {profile.name}
+        {offer.offeredByDisplayName && (
+          <span className={styles.status}>Offered by {offer.offeredByDisplayName}</span>
+        )}
+        {profile.personalProfile && <span className={styles.status}>Personal Profile</span>}
+        {profile.restricted && <span className={styles.status}>Restricted</span>}
+        {offer.expiresAt && (
+          <span className={styles.status}>{expiryLabel(offer.expiresAt, new Date())}</span>
+        )}
+      </span>
+    </span>
+  )
 }
 
 function ShareOffersLoading() {
