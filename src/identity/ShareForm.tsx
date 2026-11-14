@@ -83,7 +83,7 @@ export function ShareForm({
   const [text, setText] = useState(codeFromLink ?? '')
   // The last code the server found, so that asking about it again costs no second attempt.
   const lookedUp = useRef<LookedUp | null>(null)
-  /** Why the text cannot go on, and which refusal this is: each is written anew, to be heard. */
+  // Why the text cannot go on, and which refusal this is: each is written anew, to be heard.
   const [fieldError, setFieldError] = useState<{ reason: string; count: number } | null>(null)
   const refusals = useRef(0)
   const [refusal, setRefusal] = useState<string | null>(null)

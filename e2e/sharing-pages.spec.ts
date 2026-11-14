@@ -127,7 +127,11 @@ test('an issued code leaves no action alone on a line at phone width', async ({
   page,
   request,
 }) => {
-  await serveSharingPages(page, request, { HouseholdShareCodes: NO_CODES, IssueShareCode: ISSUED })
+  await serveSharingPages(page, request, {
+    HouseholdShareCodes: NO_CODES,
+    IssueShareCode: ISSUED,
+    IssuedShareCodeStatus: { shareCode: ISSUED.issueShareCode.issued.shareCode },
+  })
   await page.goto('/settings/household/codes')
   await page.getByRole('button', { name: 'Issue a share code' }).click()
 

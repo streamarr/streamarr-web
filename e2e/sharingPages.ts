@@ -25,11 +25,30 @@ function sharedProfile(id: string, name: string, overrides: object = {}) {
   }
 }
 
-function connection(typename: string, nodes: object[]) {
-  return { __typename: typename, edges: nodes.map((node) => ({ __typename: 'Edge', node })) }
+function connection<Node extends { id: string }>(typename: string, nodes: Node[]) {
+  return {
+    __typename: typename,
+    edges: nodes.map((node, index) => ({
+      __typename: typename.replace(/Connection$/, 'Edge'),
+      cursor: node.id,
+      orderKey: String(index).padStart(6, '0'),
+      node,
+    })),
+    pageInfo: { hasNextPage: false, endCursor: nodes.at(-1)?.id ?? null },
+  }
 }
 
-function offer(id: string, name: string, offeredBy: string, overrides: object = {}) {
+function offer({
+  id,
+  name,
+  offeredBy,
+  overrides = {},
+}: {
+  id: string
+  name: string
+  offeredBy: string
+  overrides?: object
+}) {
   return {
     __typename: 'ProfileShare',
     id,
@@ -46,14 +65,24 @@ function offer(id: string, name: string, offeredBy: string, overrides: object = 
 
 export const THREE_OFFERS = {
   householdShares: connection('ProfileShareConnection', [
-    offer('mara', 'Mara', 'Sam', {
-      profile: sharedProfile('profile-mara', 'Mara', { personalProfile: true }),
+    offer({
+      id: 'mara',
+      name: 'Mara',
+      offeredBy: 'Sam',
+      overrides: {
+        profile: sharedProfile('profile-mara', 'Mara', { personalProfile: true }),
+      },
     }),
-    offer('leo', 'Leo', 'Mara', {
-      expiresAt: inDays(3),
-      profile: sharedProfile('profile-leo', 'Leo', { kind: 'CHILD', restricted: true }),
+    offer({
+      id: 'leo',
+      name: 'Leo',
+      offeredBy: 'Mara',
+      overrides: {
+        expiresAt: inDays(3),
+        profile: sharedProfile('profile-leo', 'Leo', { kind: 'CHILD', restricted: true }),
+      },
     }),
-    offer('alex', 'Alex', 'Leo', { expiresAt: inDays(1) }),
+    offer({ id: 'alex', name: 'Alex', offeredBy: 'Leo', overrides: { expiresAt: inDays(1) } }),
   ]),
 }
 
@@ -91,7 +120,17 @@ export const ISSUED = {
   },
 }
 
-function visitorShare(id: string, name: string, offeredBy: string, overrides: object = {}) {
+function visitorShare({
+  id,
+  name,
+  offeredBy,
+  overrides = {},
+}: {
+  id: string
+  name: string
+  offeredBy: string
+  overrides?: object
+}) {
   return {
     __typename: 'ProfileShare',
     id,
@@ -108,11 +147,21 @@ function visitorShare(id: string, name: string, offeredBy: string, overrides: ob
 
 export const SHARED_WITH_US = {
   householdShares: connection('ProfileShareConnection', [
-    visitorShare('mara', 'Mara', 'Sam', {
-      profile: sharedProfile('profile-mara', 'Mara', { personalProfile: true }),
+    visitorShare({
+      id: 'mara',
+      name: 'Mara',
+      offeredBy: 'Sam',
+      overrides: {
+        profile: sharedProfile('profile-mara', 'Mara', { personalProfile: true }),
+      },
     }),
-    visitorShare('leo', 'Leo', 'Mara', {
-      profile: sharedProfile('profile-leo', 'Leo', { kind: 'CHILD', restricted: true }),
+    visitorShare({
+      id: 'leo',
+      name: 'Leo',
+      offeredBy: 'Mara',
+      overrides: {
+        profile: sharedProfile('profile-leo', 'Leo', { kind: 'CHILD', restricted: true }),
+      },
     }),
   ]),
 }
@@ -131,7 +180,17 @@ export const VISITOR_TVS = {
   ]),
 }
 
-function profileShare(id: string, household: string, status: string, overrides: object = {}) {
+function profileShare({
+  id,
+  household,
+  status,
+  overrides = {},
+}: {
+  id: string
+  household: string
+  status: string
+  overrides?: object
+}) {
   return {
     __typename: 'ProfileShare',
     id,
@@ -150,8 +209,8 @@ function profileShare(id: string, household: string, status: string, overrides: 
 export function alexsShares(variables: Record<string, unknown>) {
   const statuses = [variables.statuses].flat()
   const shares = [
-    profileShare('cabin', 'Cabin', 'ACTIVE'),
-    profileShare('lake-house', 'Lake House', 'PENDING'),
+    profileShare({ id: 'cabin', household: 'Cabin', status: 'ACTIVE' }),
+    profileShare({ id: 'lake-house', household: 'Lake House', status: 'PENDING' }),
   ].filter((share) => statuses.includes(share.status))
   return { profileShares: connection('ProfileShareConnection', shares) }
 }

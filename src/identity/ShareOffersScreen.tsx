@@ -108,18 +108,14 @@ function HouseholdOffers({
   })
   const [accept] = useMutation(AcceptProfileShareDocument)
   const [decline] = useMutation(RejectProfileShareDocument)
-  /**
-   * The offer whose acceptance or decline waits for the admin's confirmation. The confirmation shows
-   * the offer as the latest read lists it, and closes when that read no longer lists the offer.
-   */
+  // The offer whose acceptance or decline waits for the admin's confirmation. The confirmation shows
+  // the offer as the latest read lists it, and closes when that read no longer lists the offer.
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null)
-  /** The offer whose decision is on its way; no other decision starts until it lands. */
+  // The offer whose decision is on its way; no other decision starts until it lands.
   const [deciding, setDeciding] = useState<string | null>(null)
-  /**
-   * Whether a decision, or the read of the offers that follows it, is on its way. No confirmation
-   * confirms until that read answers: a read sent before one decision could otherwise answer after a
-   * second decision and bring back the second offer.
-   */
+  // Whether a decision, or the read of the offers that follows it, is on its way. No confirmation
+  // confirms until that read answers: a read sent before one decision could otherwise answer after a
+  // second decision and bring back the second offer.
   const [changing, setChanging] = useState(false)
   const [refusal, setRefusal] = useState<string | null>(null)
 
