@@ -3,7 +3,7 @@ import { graphql, HttpResponse } from 'msw'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import type {
   NotificationsQuery,
-  ProfileShareStatus,
+  ProfileShareAnswer,
   RequestResolution,
 } from '../graphql/generated/graphql'
 import {
@@ -34,9 +34,8 @@ const HOUR = 60 * 60 * 1000
 const OFFER_LINE = '“Sam” offered the Profile “Alex” to your Household.'
 const ANSWER_LINE = '“Cabin” accepted the Profile “Leo”.'
 
-/** Each time the page marked the list read: through which cursor, and on which visit. */
 interface Mark {
-  through: string
+  notificationIds: string[]
   visit: number
 }
 
@@ -48,13 +47,13 @@ function serve(page: NotificationsQuery = notificationsPage([]), me = meFixture(
     graphql.query('Me', () => HttpResponse.json({ data: { me } })),
     graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
     graphql.query('Notifications', () => HttpResponse.json({ data: page })),
-    graphql.mutation('MarkAllNotificationsRead', ({ variables }) => {
-      const { through } = (variables as { input: { through: string } }).input
-      marks.push({ through, visit: visits.count })
+    graphql.mutation('MarkNotificationsRead', ({ variables }) => {
+      const { notificationIds } = (variables as { input: { notificationIds: string[] } }).input
+      marks.push({ notificationIds, visit: visits.count })
       return HttpResponse.json({
         data: {
-          markAllNotificationsRead: {
-            __typename: 'MarkAllNotificationsReadPayload',
+          markNotificationsRead: {
+            __typename: 'MarkNotificationsReadPayload',
             unreadNotificationCount: 0,
             userErrors: [],
           },
@@ -229,22 +228,20 @@ describe('Requests in Notifications', () => {
     expect(screen.getAllByRole('link', { name: 'Review' })).toHaveLength(1)
   })
 
-  it.each<[RequestResolution, ProfileShareStatus, string]>([
-    ['DECIDED', 'ACTIVE', 'Accepted'],
-    ['DECIDED', 'ENDED', 'Accepted'],
+  it.each<[RequestResolution, ProfileShareAnswer | null, string]>([
+    ['DECIDED', 'ACCEPTED', 'Accepted'],
     ['DECIDED', 'REJECTED', 'Declined'],
-    ['WITHDRAWN', 'CANCELED', 'Withdrawn'],
-    ['WITHDRAWN', 'INVALIDATED', 'Withdrawn'],
-    ['EXPIRED', 'EXPIRED', 'Expired'],
+    ['WITHDRAWN', null, 'Withdrawn'],
+    ['EXPIRED', null, 'Expired'],
   ])(
-    'shouldSayHowAnOfferEndedInPlaceOfReviewWhenItResolved: %s with the share %s',
-    async (resolution, status, ending) => {
+    'shouldSayHowAnOfferEndedInPlaceOfReviewWhenItResolved: %s with answer %s',
+    async (resolution, answer, ending) => {
       serve(
         notificationsPage([
           offerNotification({
             unread: false,
             resolution,
-            share: { __typename: 'ProfileShare', id: 'share-of-alex', status },
+            answer,
           }),
         ]),
       )
@@ -272,6 +269,8 @@ describe('Requests in Notifications', () => {
 
     expect(await within(rows()[0]).findByText('Expired')).toBeVisible()
     expect(screen.queryByRole('link', { name: 'Review' })).not.toBeInTheDocument()
+    expect(screen.queryByText('Unread')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Mark all as read' })).not.toBeInTheDocument()
   })
 })
 
@@ -289,38 +288,159 @@ describe('Reading Notifications', () => {
     expect(within(read).queryByTestId('unread-mark')).not.toBeInTheDocument()
   })
 
-  it('shouldMarkWhatThePageShowsAsReadOnceTheListHasRendered', async () => {
-    const { marks } = serve(notificationsPage([offerNotification(), answerNotification()]))
+  it('shouldMarkNothingReadWhenTheListOpens', async () => {
+    const page = notificationsPage([offerNotification(), answerNotification({ unread: true })])
+    const { socket, marks } = serve(page)
+    let reads = 0
+    server.use(
+      graphql.query('Notifications', () => {
+        reads += 1
+        return HttpResponse.json({ data: page })
+      }),
+    )
     renderAppAt(NOTIFICATIONS)
-
     await screen.findByText(OFFER_LINE)
+    await followingNotificationChanges(socket)
 
-    await waitFor(() => expect(marks).toEqual([{ through: 'cursor-001', visit: 1 }]))
+    await waitFor(() => expect(reads).toBe(2))
+
+    expect(marks).toEqual([])
+    expect(rows().every((row) => within(row).queryByTestId('unread-mark') !== null)).toBe(true)
   })
 
-  it('shouldLeaveANotificationThatArrivesAfterOpeningUnreadUntilTheNextVisit', async () => {
-    const held = { page: notificationsPage([offerNotification({ unread: false })]) }
-    const { marks, visits } = serve()
-    server.use(graphql.query('Notifications', () => HttpResponse.json({ data: held.page })))
+  it('shouldMarkOnlyTheOpenedRequestReadWhenTheReaderChoosesReview', async () => {
+    server.use(
+      graphql.query('ShareOffers', () =>
+        HttpResponse.json({ data: { householdShares: { edges: [] } } }),
+      ),
+    )
+    const { marks } = serve(
+      notificationsPage([offerNotification(), answerNotification({ unread: true })]),
+    )
+    const { user, router } = renderAppAt(NOTIFICATIONS)
+
+    await user.click(await screen.findByRole('link', { name: 'Review' }))
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/settings/household/offers'))
+    await waitFor(() => expect(marks).toEqual([{ notificationIds: ['offer-of-alex'], visit: 1 }]))
+  })
+
+  it('shouldMarkOnlyShownUnreadNotificationsWhenThePersonMarksThemAll', async () => {
+    const page = notificationsPage(
+      [
+        offerNotification(),
+        answerNotification(),
+        answerNotification({ id: 'answer-for-mara', unread: true }),
+      ],
+      { hasNextPage: true },
+    )
+    serve(page)
+    const marked: string[][] = []
+    server.use(
+      graphql.mutation('MarkNotificationsRead', ({ variables }) => {
+        marked.push((variables as { input: { notificationIds: string[] } }).input.notificationIds)
+        return HttpResponse.json({
+          data: {
+            markNotificationsRead: {
+              __typename: 'MarkNotificationsReadPayload',
+              unreadNotificationCount: 0,
+              userErrors: [],
+            },
+          },
+        })
+      }),
+    )
     const { user } = renderAppAt(NOTIFICATIONS)
     await screen.findByText(OFFER_LINE)
-    await waitFor(() => expect(marks).toHaveLength(1))
 
-    held.page = notificationsPage(
-      [answerNotification({ unread: true }), offerNotification({ unread: false })],
-      { from: 0 },
+    await user.click(screen.getByRole('button', { name: 'Mark all as read' }))
+
+    await waitFor(() => expect(marked).toEqual([['offer-of-alex', 'answer-for-mara']]))
+  })
+  it('shouldShowNotificationsReadWhenTheMarkSucceedsWithoutASocketChange', async () => {
+    serve(notificationsPage([offerNotification(), answerNotification({ unread: true })]))
+    const { user } = renderAppAt(NOTIFICATIONS)
+    await screen.findByText(OFFER_LINE)
+
+    await user.click(screen.getByRole('button', { name: 'Mark all as read' }))
+
+    await waitFor(() => expect(screen.queryAllByText('Unread')).toHaveLength(0))
+    expect(screen.queryByRole('button', { name: 'Mark all as read' })).not.toBeInTheDocument()
+    expect(lines()).toEqual([OFFER_LINE, ANSWER_LINE])
+  })
+
+  it.each([
+    {
+      failure: 'a refusal',
+      answer: () =>
+        HttpResponse.json({
+          data: {
+            markNotificationsRead: {
+              __typename: 'MarkNotificationsReadPayload',
+              unreadNotificationCount: 2,
+              userErrors: [
+                {
+                  __typename: 'NotificationIdCountOutOfRangeError',
+                  message: 'Choose fewer notifications.',
+                  inputPath: ['notificationIds'],
+                },
+              ],
+            },
+          },
+        }),
+      message: 'Choose fewer notifications.',
+    },
+    {
+      failure: 'a network failure',
+      answer: () => HttpResponse.error(),
+      message: "Couldn't mark notifications as read.",
+    },
+  ])(
+    'shouldKeepNotificationsUnreadAndAllowAnotherMarkWhenThereIs $failure',
+    async ({ answer, message }) => {
+      serve(notificationsPage([offerNotification(), answerNotification({ unread: true })]))
+      server.use(graphql.mutation('MarkNotificationsRead', answer, { once: true }))
+      const { user } = renderAppAt(NOTIFICATIONS)
+      await screen.findByText(OFFER_LINE)
+
+      await user.click(screen.getByRole('button', { name: 'Mark all as read' }))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(message)
+      expect(screen.getAllByText('Unread')).toHaveLength(2)
+
+      await user.click(screen.getByRole('button', { name: 'Mark all as read' }))
+
+      await waitFor(() => expect(screen.queryAllByText('Unread')).toHaveLength(0))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    },
+  )
+
+  it('shouldMarkEveryLoadedNotificationInBatchesOfAtMostOneHundredWhenTheReaderMarksAll', async () => {
+    const firstPage = Array.from({ length: 100 }, (_, index) =>
+      answerNotification({ id: `news-${index + 1}`, message: `News ${index + 1}`, unread: true }),
     )
-    comeBackOnline()
-    await screen.findByText(ANSWER_LINE)
-    await leaveForHome(user, NOTIFICATIONS_PAGE)
-    visits.count = 2
-    await returnThroughTheProfileMenu(user, NOTIFICATIONS_PAGE)
+    const { marks } = serve()
+    servePages(
+      notificationsPage(firstPage, { hasNextPage: true }),
+      notificationsPage(
+        [answerNotification({ id: 'news-101', message: 'News 101', unread: true })],
+        { from: 101 },
+      ),
+    )
+    const { user } = renderAppAt(NOTIFICATIONS)
+    await screen.findByText('News 100')
+    await reachTheEndOfTheList()
+    await screen.findByText('News 101')
 
-    await waitFor(() => expect(marks.filter((mark) => mark.visit === 2)).toHaveLength(1))
-    expect(marks).toEqual([
-      { through: 'cursor-001', visit: 1 },
-      { through: 'cursor-000', visit: 2 },
-    ])
+    await user.click(screen.getByRole('button', { name: 'Mark all as read' }))
+
+    await waitFor(() =>
+      expect(marks.map(({ notificationIds }) => notificationIds.length)).toEqual([100, 1]),
+    )
+    expect(new Set(marks.flatMap(({ notificationIds }) => notificationIds)).size).toBe(101)
+    expect(marks[0].notificationIds[0]).toBe('news-1')
+    expect(marks[0].notificationIds[99]).toBe('news-100')
+    expect(marks[1].notificationIds).toEqual(['news-101'])
   })
 })
 
@@ -428,7 +548,7 @@ describe('Older Notifications', () => {
   describe('while a read of an earlier visit is on its way', () => {
     /**
      * Opens the page and asks for the older page while Mara's news is unread, and holds that read
-     * at the server. The person then leaves and opens the page again, which marks Mara's news read.
+     * at the server. Mara's news is read elsewhere before the person returns to this page.
      * Returns the held read of the first visit.
      */
     async function returnWhileTheFirstVisitsReadIsHeld() {
@@ -460,7 +580,7 @@ describe('Older Notifications', () => {
       return firstVisitsRead
     }
 
-    /** Mara's news, on the older page, is read, as the second visit made it. */
+    // The current visit sees the stored read state of the older page.
     async function expectMarasNewsAsThisVisitMarkedIt() {
       await screen.findByText('“Cabin” accepted the Profile “Leo”.')
       const mara = rows()[2]
@@ -598,7 +718,7 @@ describe('Notifications as they change elsewhere', () => {
     const accepted = offerNotification({
       unread: false,
       resolution: 'DECIDED',
-      share: { __typename: 'ProfileShare', id: 'share-of-alex', status: 'ACTIVE' },
+      answer: 'ACCEPTED',
     })
 
     socket.publish(

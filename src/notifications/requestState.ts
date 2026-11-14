@@ -1,6 +1,6 @@
 import type {
   NotificationFieldsFragment,
-  ProfileShareStatus,
+  ProfileShareAnswer,
   RequestResolution,
 } from '../graphql/generated/graphql'
 
@@ -30,7 +30,7 @@ export function isOfferRequest(
 export function offerRequestState(request: OfferRequest, now: Date): RequestState {
   const resolution = request.resolution ?? (hasExpired(request.expiresAt, now) ? 'EXPIRED' : null)
   if (resolution === null) return { at: 'waiting' }
-  return { at: 'over', ending: endingOf(resolution, request.share.status) }
+  return { at: 'over', ending: endingOf(resolution, request.answer) }
 }
 
 /** The moment a waiting Request of an offer expires, when it has one. */
@@ -43,10 +43,10 @@ function hasExpired(expiresAt: string | null, now: Date): boolean {
   return expiresAt !== null && Date.parse(expiresAt) <= now.getTime()
 }
 
-function endingOf(resolution: RequestResolution, status: ProfileShareStatus): string | null {
+function endingOf(resolution: RequestResolution, answer: ProfileShareAnswer | null): string | null {
   switch (resolution) {
     case 'DECIDED':
-      return decisionOf(status)
+      return decisionOf(answer)
     case 'WITHDRAWN':
       return 'Withdrawn'
     case 'EXPIRED':
@@ -56,9 +56,14 @@ function endingOf(resolution: RequestResolution, status: ProfileShareStatus): st
   }
 }
 
-// A decided offer was accepted when its share went on to be active, and later perhaps ended.
-function decisionOf(status: ProfileShareStatus): string | null {
-  if (status === 'ACTIVE' || status === 'ENDED') return 'Accepted'
-  if (status === 'REJECTED') return 'Declined'
-  return null
+// A Household declines an offer that it rejects, as the server's line says.
+function decisionOf(answer: ProfileShareAnswer | null): string | null {
+  switch (answer) {
+    case 'ACCEPTED':
+      return 'Accepted'
+    case 'REJECTED':
+      return 'Declined'
+    default:
+      return null
+  }
 }

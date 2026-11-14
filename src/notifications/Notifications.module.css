@@ -77,3 +77,12 @@
 .olderFailure {
   margin-top: var(--spacing-16);
 }
+
+.listActions {
+  margin-bottom: var(--spacing-16);
+}
+
+.refusal {
+  margin-top: var(--spacing-8);
+  color: var(--text-primary);
+}

@@ -55,7 +55,13 @@ function NotificationsList() {
   // A failed read reports through the query's own error state.
   const readAgain = () => query.refetch().catch(() => undefined)
   const shown = query.error ? [] : definedEdges(query.data?.notifications.edges)
-  useMarkShownRead(shown[0]?.cursor ?? null)
+  const now = useNow(shown.map(({ node }) => expiryOfWaiting(node)))
+  const notifications = shown.map(({ node }) =>
+    isOfferRequest(node) && offerRequestState(node, now).at === 'over'
+      ? { ...node, unread: false }
+      : node,
+  )
+  const markRead = useMarkShownRead()
   const pageInfo = query.data?.notifications.pageInfo
   const older = useOlderNotifications(pageInfo, live.context)
 
@@ -81,7 +87,18 @@ function NotificationsList() {
   }
   return (
     <>
-      {shown.length > 0 && <NotificationRows notifications={shown.map((edge) => edge.node)} />}
+      {notifications.some(({ unread }) => unread) && (
+        <MarkAllRead onMark={() => markRead(notifications)} />
+      )}
+      {shown.length > 0 && (
+        <NotificationRows
+          notifications={notifications}
+          now={now}
+          onOpen={(notification) => {
+            void markRead([notification])
+          }}
+        />
+      )}
       {older.failure ? (
         <FailureRow className={styles.olderFailure} onRetry={older.load}>
           {requestFailureMessage(older.failure, "Couldn't load older notifications.")}
@@ -90,6 +107,27 @@ function NotificationsList() {
         pageInfo?.hasNextPage && <EndOfTheList key={pageInfo.endCursor} onReached={older.load} />
       )}
     </>
+  )
+}
+
+function MarkAllRead({ onMark }: Readonly<{ onMark: () => Promise<string | null> }>) {
+  const [refusal, setRefusal] = useState<string | null>(null)
+  const refusalId = useId()
+  const mark = () => {
+    setRefusal(null)
+    void onMark().then(setRefusal)
+  }
+  return (
+    <div className={styles.listActions}>
+      <Button variant="default" aria-describedby={refusal ? refusalId : undefined} onClick={mark}>
+        Mark all as read
+      </Button>
+      {refusal && (
+        <p id={refusalId} className={styles.refusal} role="alert">
+          {refusal}
+        </p>
+      )}
+    </div>
   )
 }
 
@@ -109,13 +147,22 @@ function EndOfTheList({ onReached }: Readonly<{ onReached: () => void }>) {
 
 function NotificationRows({
   notifications,
-}: Readonly<{ notifications: NotificationFieldsFragment[] }>) {
-  // A waiting Request turns into an expired one when its time runs out, as the server reads it.
-  const now = useNow(notifications.map(expiryOfWaiting))
+  now,
+  onOpen,
+}: Readonly<{
+  notifications: NotificationFieldsFragment[]
+  now: Date
+  onOpen: (notification: NotificationFieldsFragment) => void
+}>) {
   return (
     <ul className={`${settingsStyles.formPanel} ${styles.rows}`} aria-label="Notifications">
       {notifications.map((notification) => (
-        <NotificationRow key={notification.id} notification={notification} now={now} />
+        <NotificationRow
+          key={notification.id}
+          notification={notification}
+          now={now}
+          onOpen={() => onOpen(notification)}
+        />
       ))}
     </ul>
   )
@@ -124,7 +171,8 @@ function NotificationRows({
 function NotificationRow({
   notification,
   now,
-}: Readonly<{ notification: NotificationFieldsFragment; now: Date }>) {
+  onOpen,
+}: Readonly<{ notification: NotificationFieldsFragment; now: Date; onOpen: () => void }>) {
   const lineId = useId()
   return (
     <li className={styles.row}>
@@ -142,7 +190,7 @@ function NotificationRow({
         </p>
         <WhenItHappened at={notification.latestEventAt} now={now} />
       </div>
-      <RequestAction notification={notification} now={now} lineId={lineId} />
+      <RequestAction notification={notification} now={now} lineId={lineId} onOpen={onOpen} />
     </li>
   )
 }
@@ -155,7 +203,13 @@ function RequestAction({
   notification,
   now,
   lineId,
-}: Readonly<{ notification: NotificationFieldsFragment; now: Date; lineId: string }>) {
+  onOpen,
+}: Readonly<{
+  notification: NotificationFieldsFragment
+  now: Date
+  lineId: string
+  onOpen: () => void
+}>) {
   if (!isOfferRequest(notification)) return null
   const state = offerRequestState(notification, now)
   if (state.at === 'waiting') {
@@ -163,6 +217,7 @@ function RequestAction({
       <Button
         component={Link}
         to="/settings/household/offers"
+        onClick={onOpen}
         variant="default"
         aria-describedby={lineId}
       >
