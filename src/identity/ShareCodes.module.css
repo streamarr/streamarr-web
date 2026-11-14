@@ -5,14 +5,6 @@
   gap: var(--spacing-20);
 }
 
-.intro {
-  margin: 0;
-  max-width: 640px;
-  color: var(--text-secondary);
-  font-size: var(--font-size-body);
-  line-height: var(--line-height-prose);
-}
-
 .page > section {
   align-self: stretch;
 }
@@ -53,4 +45,12 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--spacing-8);
+}
+
+/* Too narrow for the three on one line, they stack, so that no one is left alone on a line. */
+@media (max-width: 760px) {
+  .actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }

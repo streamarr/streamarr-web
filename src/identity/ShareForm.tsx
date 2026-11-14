@@ -1,6 +1,6 @@
 import { Button, TextInput } from '@mantine/core'
 import { useApolloClient, useMutation } from '@apollo/client/react'
-import { useEffect, useRef, useState, type Ref, type SubmitEvent } from 'react'
+import { useEffect, useRef, useState, type ReactNode, type Ref, type SubmitEvent } from 'react'
 import {
   LookUpShareCodeDocument,
   OfferProfileShareDocument,
@@ -8,12 +8,14 @@ import {
   type ProfileSharePreviewQuery,
 } from '../graphql/generated/graphql'
 import { requestFailureMessage, serverFailureSentence } from '../graphql/requestErrors'
-import { userErrorMessage, type UserErrorLike } from '../graphql/userErrors'
+import { userErrorMessage, userErrorMessageOr, type UserErrorLike } from '../graphql/userErrors'
+import { Icon } from '../ui/Icon'
 import { shareCodeIn } from './shareCode'
 import styles from './Sharing.module.css'
 
 const NOT_A_CODE = 'A share code is 8 letters, like BCDF-GHJK.'
-const CODE_REFUSED = 'That code does not work. Ask an admin there for a new one.'
+// The server's own words, for an answer that refuses the code without any.
+const CODE_REFUSED = 'This share code does not work. Ask the Household for a new one.'
 const LOOK_UP_FAILED = "Couldn't check that code."
 
 type Effects = NonNullable<ProfileSharePreviewQuery['profileSharePreview']>
@@ -28,7 +30,7 @@ interface Review {
 /** What the server said of a code: an offer to review, a code that does not work, or its words. */
 type Answer =
   | { kind: 'review'; review: Review }
-  | { kind: 'refused' }
+  | { kind: 'refused'; message: string }
   | { kind: 'cannot-offer' }
   | { kind: 'failed'; message: string }
 
@@ -40,7 +42,7 @@ interface LookedUp {
   previewed?: Answer
 }
 
-const REFUSED: Answer = { kind: 'refused' }
+const REFUSED: Answer = { kind: 'refused', message: CODE_REFUSED }
 // The server answers no preview for a code that stopped working and for a Profile that the
 // Account may not offer, and does not say which.
 const CANNOT_OFFER: Answer = { kind: 'cannot-offer' }
@@ -81,7 +83,9 @@ export function ShareForm({
   const [text, setText] = useState(codeFromLink ?? '')
   /** The last code the server found, so that asking about it again costs no second attempt. */
   const lookedUp = useRef<LookedUp | null>(null)
-  const [fieldError, setFieldError] = useState<string | null>(null)
+  /** Why the text cannot go on, and which refusal this is: each is written anew, to be heard. */
+  const [fieldError, setFieldError] = useState<{ reason: string; count: number } | null>(null)
+  const refusals = useRef(0)
   const [refusal, setRefusal] = useState<string | null>(null)
   const [review, setReview] = useState<Review | null>(null)
   const [sending, setSending] = useState(false)
@@ -189,7 +193,7 @@ export function ShareForm({
       case 'refused':
         // A code that no longer works is looked up afresh, should the person try it again.
         lookedUp.current = null
-        refuseText(CODE_REFUSED)
+        refuseText(answer.message)
         return
       case 'failed':
         setRefusal(answer.message)
@@ -208,7 +212,8 @@ export function ShareForm({
   /** Back to the code step, the text kept, with the reason it cannot go on. */
   function refuseText(reason: string) {
     setReview(null)
-    setFieldError(reason)
+    refusals.current += 1
+    setFieldError({ reason, count: refusals.current })
     field.current?.focus()
   }
 
@@ -234,11 +239,12 @@ export function ShareForm({
       ) : (
         <TextInput
           ref={field}
-          label="Share code"
-          description="An admin of the other Household gives you this code."
+          label="Share code from the other Household"
           value={text}
           readOnly={sending}
-          error={fieldError}
+          // Announced as it arrives: Enter leaves focus in the field, whose description is not read.
+          error={fieldError && <span key={fieldError.count}>{fieldError.reason}</span>}
+          errorProps={{ role: 'alert' }}
           autoComplete="off"
           autoCapitalize="characters"
           spellCheck={false}
@@ -281,20 +287,33 @@ function ShareReview({
         Offer {profileName} to {householdName}?
       </h3>
       {effects.wouldLock && (
-        <p>{profileName}'s Profile would be locked there until it has a PIN.</p>
+        <ReviewWarning>
+          {profileName}'s Profile would be locked there until it has a PIN.
+        </ReviewWarning>
       )}
       {effects.nameConflict && (
-        <p>
+        <ReviewWarning>
           Another Profile there is already named {profileName}. An admin there cannot accept the
           share invitation until one of them is renamed.
-        </p>
+        </ReviewWarning>
       )}
       <p>An admin of {householdName} must accept it. The code works once.</p>
     </div>
   )
 }
 
+/** What the offer would do that the person may not expect, marked as a caution, not a fault. */
+function ReviewWarning({ children }: Readonly<{ children: ReactNode }>) {
+  return (
+    <p className={styles.warning}>
+      <Icon name="alert" size={16} />
+      <span>{children}</span>
+    </p>
+  )
+}
+
 function refusalOf(errors: readonly UserErrorLike[]): Answer {
-  if (errors.some((error) => error.__typename === 'ShareCodeRefusedError')) return REFUSED
+  const refused = errors.find((error) => error.__typename === 'ShareCodeRefusedError')
+  if (refused) return { kind: 'refused', message: userErrorMessageOr(refused, CODE_REFUSED) }
   return { kind: 'failed', message: errors.map(userErrorMessage).join(' ') }
 }

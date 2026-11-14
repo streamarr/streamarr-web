@@ -169,7 +169,7 @@ function unlinkRefused(typename: string, message: string) {
 }
 
 describe('Shared with us', () => {
-  it('shouldOpenSharedWithUsAsASectionOfHouseholdSettingsAfterShareCodes', async () => {
+  it('shouldListSharedWithUsAfterShareCodesWhenHouseholdSettingsOpen', async () => {
     serve()
     renderAppAt(VISITORS)
 
@@ -205,7 +205,7 @@ describe('Shared with us', () => {
     ).toBeVisible()
   })
 
-  it('shouldListEachProfileSharedHereWithWhoSharedItAndWhatItIs', async () => {
+  it('shouldShowWhoSharedEachProfileAndWhatItIsWhenProfilesAreSharedHere', async () => {
     serve([
       share({ profile: sharedProfile({ personalProfile: true, restricted: true }) }),
       share({
@@ -228,7 +228,7 @@ describe('Shared with us', () => {
     expect(within(robin).queryByText('Personal Profile')).not.toBeInTheDocument()
   })
 
-  it('shouldSayWhatStopsBeforeItEndsTheShareOfAProfile', async () => {
+  it('shouldSayWhatStopsBeforeEndingTheShareWhenTheAdminEndsTheShareOfAProfile', async () => {
     serve([share()])
     let ended = false
     server.use(
@@ -408,6 +408,65 @@ describe('Shared with us', () => {
     expect(await screen.findByText('No visitor has linked a TV here.')).toBeVisible()
   })
 
+  it('shouldTakeTheShareOutAndCloseTheConfirmationWhenTheSharesAreStillBeingReadAgain', async () => {
+    const shares = [share()]
+    serveLists(shares, [])
+    const reads = readsThatCanBeHeld(() => sharesData(shares))
+    server.use(
+      graphql.query('SharedWithHousehold', reads.resolver),
+      graphql.mutation('EndProfileShare', () => {
+        shares.splice(0)
+        return HttpResponse.json({ data: { endProfileShare: endedPayload() } })
+      }),
+    )
+    const { user } = renderAppAt(VISITORS)
+    const end = await screen.findByRole('button', { name: 'End share of Alex' })
+    await user.click(end)
+    const focuses = focusesOf(end)
+    const reread = reads.holdNext()
+
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'End share' }))
+    await reread.arrived
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await noticed('Sharing of Alex ended.')
+    expect(
+      screen.getByText('No Profile from another Household is shared with Smith Family.'),
+    ).toBeVisible()
+    expect(screen.getByRole('heading', { level: 1, name: 'Shared with us' })).toHaveFocus()
+    expect(focuses.count).toBe(0)
+    reread.release()
+  })
+
+  it('shouldHoldBackConfirmingAnotherEndShareWhenTheSharesAreStillBeingReadAgain', async () => {
+    const mara = share({
+      id: '77777777-7777-7777-7777-777777777778',
+      profile: sharedProfile({ id: '22222222-2222-2222-2222-222222222223', name: 'Mara' }),
+    })
+    const shares = [share(), mara]
+    serveLists(shares, [])
+    const reads = readsThatCanBeHeld(() => sharesData(shares))
+    server.use(
+      graphql.query('SharedWithHousehold', reads.resolver),
+      graphql.mutation('EndProfileShare', () => {
+        shares.splice(0, 1)
+        return HttpResponse.json({ data: { endProfileShare: endedPayload() } })
+      }),
+    )
+    const { user } = renderAppAt(VISITORS)
+    await user.click(await screen.findByRole('button', { name: 'End share of Alex' }))
+    const reread = reads.holdNext()
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'End share' }))
+    await reread.arrived
+    await noticed('Sharing of Alex ended.')
+
+    await user.click(screen.getByRole('button', { name: 'End share of Mara' }))
+    const confirm = within(screen.getByRole('dialog')).getByRole('button', { name: 'End share' })
+    expect(confirm).toBeDisabled()
+    reread.release()
+    await waitFor(() => expect(confirm).toBeEnabled())
+  })
+
   it('shouldKeepTheConfirmationOpenWithTheServersWordsWhenEndingIsRefused', async () => {
     serve([share()])
     server.use(
@@ -429,7 +488,7 @@ describe('Shared with us', () => {
     expect(within(dialog).getByRole('button', { name: 'End share' })).toBeEnabled()
   })
 
-  it('shouldOfferNoEndForAShareThatAccountMembershipRequires', async () => {
+  it('shouldOfferNoEndWhenAccountMembershipRequiresTheShare', async () => {
     serve([share({ requiredByAccountMembership: true })])
     renderAppAt(VISITORS)
 
@@ -451,7 +510,7 @@ describe('Shared with us', () => {
     expect(within(den).getByText('Linked by a deleted Account')).toBeVisible()
   })
 
-  it('shouldSayWhatUnlinkingDoesBeforeItUnlinksATv', async () => {
+  it('shouldSayWhatUnlinkingDoesBeforeUnlinkingWhenTheAdminUnlinksATv', async () => {
     serve([], [device()])
     let revoked = false
     server.use(
@@ -524,6 +583,63 @@ describe('Shared with us', () => {
     expect(devices.calls).toBe(3)
   })
 
+  it('shouldTakeTheTvOutAndCloseTheConfirmationWhenTheTvsAreStillBeingReadAgain', async () => {
+    const tvs = [device()]
+    serveLists([], tvs)
+    const reads = readsThatCanBeHeld(() => devicesData(tvs))
+    server.use(
+      graphql.query('VisitorDevices', reads.resolver),
+      graphql.mutation('RevokeDeviceRegistration', () => {
+        tvs.splice(0)
+        return HttpResponse.json({ data: revokedPayload() })
+      }),
+    )
+    const { user } = renderAppAt(VISITORS)
+    const unlink = await screen.findByRole('button', { name: 'Unlink Living room TV' })
+    await user.click(unlink)
+    const focuses = focusesOf(unlink)
+    const reread = reads.holdNext()
+
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Unlink' }))
+    await reread.arrived
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await noticed('Living room TV unlinked.')
+    expect(screen.getByText('No visitor has linked a TV here.')).toBeVisible()
+    expect(screen.getByRole('heading', { level: 1, name: 'Shared with us' })).toHaveFocus()
+    expect(focuses.count).toBe(0)
+    reread.release()
+  })
+
+  it('shouldHoldBackConfirmingAnotherUnlinkWhenTheTvsAreStillBeingReadAgain', async () => {
+    const bedroom = device({
+      id: '66666666-6666-6666-6666-666666666667',
+      displayName: 'Bedroom TV',
+    })
+    const tvs = [device(), bedroom]
+    serveLists([], tvs)
+    const reads = readsThatCanBeHeld(() => devicesData(tvs))
+    server.use(
+      graphql.query('VisitorDevices', reads.resolver),
+      graphql.mutation('RevokeDeviceRegistration', () => {
+        tvs.splice(0, 1)
+        return HttpResponse.json({ data: revokedPayload() })
+      }),
+    )
+    const { user } = renderAppAt(VISITORS)
+    await user.click(await screen.findByRole('button', { name: 'Unlink Living room TV' }))
+    const reread = reads.holdNext()
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Unlink' }))
+    await reread.arrived
+    await noticed('Living room TV unlinked.')
+
+    await user.click(screen.getByRole('button', { name: 'Unlink Bedroom TV' }))
+    const confirm = within(screen.getByRole('dialog')).getByRole('button', { name: 'Unlink' })
+    expect(confirm).toBeDisabled()
+    reread.release()
+    await waitFor(() => expect(confirm).toBeEnabled())
+  })
+
   it('shouldKeepTheConfirmationOpenWithTheServersWordsWhenUnlinkingIsRefused', async () => {
     serve([], [device()])
     server.use(
@@ -576,26 +692,36 @@ describe('Shared with us', () => {
   })
 
   it.each([
-    ['SharedWithHousehold', "Couldn't load the Profiles shared here."],
-    ['VisitorDevices', "Couldn't load the TVs linked here."],
-  ])('shouldRetryWhenAListFailsToLoad(%s)', async (operationName, failure) => {
-    serve([share()], [device()])
-    const data =
-      operationName === 'VisitorDevices' ? devicesData([device()]) : sharesData([share()])
-    const list = failsOnceThen(data)
-    server.use(graphql.query(operationName, list.resolver))
-    // Rendered alone, so that only Retry reads the list again.
-    const { user } = renderWithProviders(<SharedWithUsScreen />)
+    [
+      'SharedWithHousehold',
+      "Couldn't load the Profiles shared here.",
+      'Profiles shared with Smith Family',
+    ],
+    ['VisitorDevices', "Couldn't load the TVs linked here.", 'TVs linked by visitors'],
+  ])(
+    'shouldSayWhyInItsSectionAndRetryWhenAListFailsToLoad(%s)',
+    async (operationName, failure, title) => {
+      serve([share()], [device()])
+      const data =
+        operationName === 'VisitorDevices' ? devicesData([device()]) : sharesData([share()])
+      const list = failsOnceThen(data)
+      server.use(graphql.query(operationName, list.resolver))
+      // Rendered alone, so that only Retry reads the list again.
+      const { user } = renderWithProviders(<SharedWithUsScreen />)
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(failure)
+      const section = await screen.findByRole('region', { name: title })
+      expect(await within(section).findByRole('alert')).toHaveTextContent(failure)
+      // The page loaded, so only the section offers a way back: Retry, and no way out.
+      expect(screen.queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Retry' }))
+      await user.click(within(section).getByRole('button', { name: 'Retry' }))
 
-    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
-    expect(list.calls).toBe(2)
-    expect(screen.getByRole('button', { name: 'End share of Alex' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Unlink Living room TV' })).toBeEnabled()
-  })
+      await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
+      expect(list.calls).toBe(2)
+      expect(screen.getByRole('button', { name: 'End share of Alex' })).toBeEnabled()
+      expect(screen.getByRole('button', { name: 'Unlink Living room TV' })).toBeEnabled()
+    },
+  )
 })
 
 describe('Shared with us as shares change elsewhere', () => {
@@ -621,7 +747,7 @@ describe('Shared with us as shares change elsewhere', () => {
       .map((end) => end.getAttribute('aria-label'))
   }
 
-  it('shouldListFirstAProfileThatIsAcceptedElsewhereWhileThePageIsOpen', async () => {
+  it('shouldListAProfileFirstWhenItIsAcceptedElsewhereWhileThePageIsOpen', async () => {
     const { socket } = await openWithAShareOfAlex()
 
     socket.publish('ProfileShareChanged', shareChanged(robin.id, robin))
@@ -629,7 +755,7 @@ describe('Shared with us as shares change elsewhere', () => {
     await waitFor(() => expect(sharedNames()).toEqual(['End share of Robin', 'End share of Alex']))
   })
 
-  it('shouldTakeOutAShareThatEndsElsewhere', async () => {
+  it('shouldTakeAShareOutWhenItEndsElsewhere', async () => {
     const { socket } = await openWithAShareOfAlex()
 
     socket.publish(
@@ -905,7 +1031,7 @@ describe('Shared with us as shares change elsewhere', () => {
     })
   })
 
-  it('shouldLeaveAnOfferOutOfSharedWithUsUntilItIsAccepted', async () => {
+  it('shouldLeaveAnOfferOutOfSharedWithUsWhenItIsNotYetAccepted', async () => {
     const { socket } = await openWithAShareOfAlex()
 
     socket.publish('ProfileShareChanged', shareChanged(robin.id, { ...robin, status: 'PENDING' }))

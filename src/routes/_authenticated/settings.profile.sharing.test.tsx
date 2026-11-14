@@ -64,7 +64,8 @@ describe('/settings/profile/sharing', () => {
     const { router } = renderAppAt(ARRIVAL)
 
     const question = await screen.findByRole('heading', { name: 'Offer Alex to Cabin?' })
-    expect(question).toHaveFocus()
+    // The review takes focus once it has rendered, which a loaded machine can show a moment apart.
+    await waitFor(() => expect(question).toHaveFocus())
     expect(asked.lookUps).toEqual([{ input: { code: SENT_SHARE_CODE } }])
     // Taken out through the router, so the history entry keeps its index and key.
     await waitFor(() => expect(router.state.location.hash).toBe(''))
@@ -135,7 +136,9 @@ describe('/settings/profile/sharing', () => {
     expect(
       await screen.findByRole('button', { name: 'Share with another Household' }),
     ).toBeVisible()
-    expect(screen.queryByRole('textbox', { name: 'Share code' })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('textbox', { name: 'Share code from the other Household' }),
+    ).not.toBeInTheDocument()
     expect(asked.lookUps).toHaveLength(1)
   })
 
@@ -144,11 +147,15 @@ describe('/settings/profile/sharing', () => {
     const { user } = renderAppAt(ARRIVAL)
 
     await user.click(await screen.findByRole('button', { name: 'Back' }))
-    expect(screen.getByRole('textbox', { name: 'Share code' })).toHaveValue(SHARE_CODE)
+    expect(
+      screen.getByRole('textbox', { name: 'Share code from the other Household' }),
+    ).toHaveValue(SHARE_CODE)
     await user.click(screen.getByRole('button', { name: 'Cancel' }))
     await user.click(screen.getByRole('button', { name: 'Share with another Household' }))
 
-    expect(screen.getByRole('textbox', { name: 'Share code' })).toHaveValue('')
+    expect(
+      screen.getByRole('textbox', { name: 'Share code from the other Household' }),
+    ).toHaveValue('')
     expect(asked.lookUps).toHaveLength(1)
   })
 
@@ -156,7 +163,9 @@ describe('/settings/profile/sharing', () => {
     const asked = serveSharing()
     renderAppAt(`${SHARING}#code=hello`)
 
-    const field = await screen.findByRole('textbox', { name: 'Share code' })
+    const field = await screen.findByRole('textbox', {
+      name: 'Share code from the other Household',
+    })
     await waitFor(() => expect(field).toBeInvalid())
     expect(field).toHaveValue('hello')
     expect(field).toHaveAccessibleDescription(

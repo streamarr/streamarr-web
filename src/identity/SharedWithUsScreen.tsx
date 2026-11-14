@@ -1,6 +1,6 @@
 import { Button, Center, Loader } from '@mantine/core'
 import { useApolloClient, useMutation, useQuery } from '@apollo/client/react'
-import { useEffect, useRef, type Ref } from 'react'
+import { useEffect, useRef, useState, type Ref } from 'react'
 import {
   EndProfileShareDocument,
   RevokeDeviceRegistrationDocument,
@@ -16,7 +16,7 @@ import { readQueriesAgain } from '../graphql/readAgain'
 import { requestFailureMessage } from '../graphql/requestErrors'
 import settingsStyles from '../styles/settings.module.css'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
-import { FailurePanel } from '../ui/Failure'
+import { FailurePanel, FailureRow } from '../ui/Failure'
 import { PageNotice } from '../ui/PageNotice'
 import { useFocusFallback } from '../ui/useFocusFallback'
 import { usePageNotice } from '../ui/usePageNotice'
@@ -50,7 +50,7 @@ const DAY = new Intl.DateTimeFormat('en', { dateStyle: 'medium' })
  * admins may stop sharing, and the TVs that visitors linked here, which its admins may unlink.
  */
 export function SharedWithUsScreen() {
-  const { notice, heading, announce, dismiss } = usePageNotice()
+  const { notice, count, heading, announce, dismiss } = usePageNotice()
   const liveList = useFocusFallback(heading)
 
   return (
@@ -60,7 +60,9 @@ export function SharedWithUsScreen() {
           Shared with us
         </h1>
       </div>
-      <PageNotice onDismiss={dismiss}>{notice}</PageNotice>
+      <PageNotice count={count} onDismiss={dismiss}>
+        {notice}
+      </PageNotice>
       <SharedWithUsContent announce={announce} liveList={liveList} />
     </>
   )
@@ -154,6 +156,8 @@ function SharedProfiles({
   const [end] = useMutation(EndProfileShareDocument)
   const readAgain = () => query.refetch().catch(() => undefined)
   const listed = query.data?.householdShares.edges
+  // A share leaves the list with the answer that ends it, as the query would leave it out.
+  const active = listed?.map((edge) => edge.node).filter((share) => share.status === 'ACTIVE')
   const ending = useConfirmedChange<VisitorShare>({
     send: async (share) =>
       (await end({ variables: { input: { shareId: share.id } } })).data?.endProfileShare
@@ -161,7 +165,7 @@ function SharedProfiles({
     // Ending the share of someone's Personal Profile also unlinks the TVs that person linked here.
     listsToReadAgain: [SharedWithHouseholdDocument, VisitorDevicesDocument],
     onDone: (share) => announce(`Sharing of ${share.profile.name} ended.`),
-    listed: query.error ? undefined : listed?.map((edge) => edge.node),
+    listed: query.error ? undefined : active,
     onGone: (share) => announce(`${share.profile.name} is no longer shared here.`),
   })
 
@@ -170,17 +174,17 @@ function SharedProfiles({
   if (query.loading && !query.data) {
     return <ListLoading label="Loading shared Profiles" />
   }
-  if (query.error || !query.data) {
+  if (query.error || !active) {
     return (
-      <ListUnavailable
-        error={query.error}
-        onRetry={readAgain}
-        fallback="Couldn't load the Profiles shared here."
-      />
+      <SharingSection title={`Profiles shared with ${household.name}`} failure={null}>
+        <FailureRow onRetry={readAgain}>
+          {requestFailureMessage(query.error, "Couldn't load the Profiles shared here.")}
+        </FailureRow>
+      </SharingSection>
     )
   }
 
-  const shares = query.data.householdShares.edges.map((edge) => edge.node).filter(namesItsProfile)
+  const shares = active.filter(namesItsProfile)
 
   return (
     <SharingSection
@@ -193,12 +197,11 @@ function SharedProfiles({
         </p>
       )}
       <ul ref={liveList} className={styles.rows}>
-        {shares.map((share, index) => (
+        {shares.map((share) => (
           <li key={share.id} className={styles.row}>
             <SharedProfileText
               profile={share.profile}
               byline={share.offeredByDisplayName && `Shared by ${share.offeredByDisplayName}`}
-              paletteIndex={index}
             />
             {/* Account membership keeps this share, and the server refuses to end it. */}
             {!share.requiredByAccountMembership && (
@@ -222,6 +225,7 @@ function SharedProfiles({
         destructive
         icon={null}
         pending={ending.sending}
+        disabled={ending.changing}
         error={ending.refusal}
         onClose={ending.close}
         onConfirm={ending.confirmPending}
@@ -241,31 +245,37 @@ function VisitorTvs({
     fetchPolicy: 'network-only',
   })
   const [revoke] = useMutation(RevokeDeviceRegistrationDocument)
+  // The answer to Unlink names only the TV, so the page itself leaves out each TV that it unlinked.
+  const [unlinked, setUnlinked] = useState<ReadonlySet<string>>(() => new Set())
   const readAgain = () => query.refetch().catch(() => undefined)
+  const tvs = query.data?.householdDevices.edges
+    .map((edge) => edge.node)
+    .filter((tv) => !unlinked.has(tv.id))
   const unlinking = useConfirmedChange<VisitorTv>({
     send: async (tv) =>
       (await revoke({ variables: { input: { registrationId: tv.id } } })).data
         ?.revokeDeviceRegistration?.userErrors ?? [],
     listsToReadAgain: [VisitorDevicesDocument],
-    onDone: (tv) => announce(`${tv.displayName} unlinked.`),
-    listed: query.error ? undefined : query.data?.householdDevices.edges.map((edge) => edge.node),
+    onDone: (tv) => {
+      setUnlinked((ids) => new Set(ids).add(tv.id))
+      announce(`${tv.displayName} unlinked.`)
+    },
+    listed: query.error ? undefined : tvs,
     onGone: (tv) => announce(`${tv.displayName} is no longer linked here.`),
   })
 
   if (query.loading && !query.data) {
     return <ListLoading label="Loading linked TVs" />
   }
-  if (query.error || !query.data) {
+  if (query.error || !tvs) {
     return (
-      <ListUnavailable
-        error={query.error}
-        onRetry={readAgain}
-        fallback="Couldn't load the TVs linked here."
-      />
+      <SharingSection title="TVs linked by visitors" failure={null}>
+        <FailureRow onRetry={readAgain}>
+          {requestFailureMessage(query.error, "Couldn't load the TVs linked here.")}
+        </FailureRow>
+      </SharingSection>
     )
   }
-
-  const tvs = query.data.householdDevices.edges.map((edge) => edge.node)
 
   return (
     <SharingSection
@@ -308,6 +318,7 @@ function VisitorTvs({
         destructive
         icon={null}
         pending={unlinking.sending}
+        disabled={unlinking.changing}
         error={unlinking.refusal}
         onClose={unlinking.close}
         onConfirm={unlinking.confirmPending}

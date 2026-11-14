@@ -45,6 +45,14 @@
   border-top: var(--border-width-hairline) solid var(--border-hairline);
 }
 
+/* At phone width a row's actions go under its text, so the text keeps the row's width. */
+@media (max-width: 760px) {
+  .row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
 .rowProfile {
   display: flex;
   align-items: center;
@@ -67,8 +75,10 @@
   font-weight: var(--font-weight-medium);
 }
 
+/* A group of actions wraps before any of them is squeezed narrower than its label. */
 .actions {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--spacing-8);
 }
 
@@ -76,11 +86,14 @@
   align-self: flex-start;
 }
 
+/* Below the list it follows, a hairline apart, as each row is from the one above it. */
 .shareForm {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-14);
   max-width: 480px;
+  padding-top: var(--spacing-14);
+  border-top: var(--border-width-hairline) solid var(--border-hairline);
 }
 
 .review {
@@ -93,6 +106,18 @@
 
 .review p {
   margin: 0;
+}
+
+/* The caution mark: the triangle in the secondary ink, never the error red, beside its words. */
+.review .warning {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-8);
+}
+
+.warning > svg {
+  margin-top: calc((var(--font-size-body) * var(--line-height-prose) - 16px) / 2);
+  color: var(--text-secondary);
 }
 
 .review .question {

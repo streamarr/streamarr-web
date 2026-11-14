@@ -74,12 +74,14 @@ function issued({
   }
 }
 
+// The pinned schema's one IssueShareCodeError member carries any refusal: the page shows a refusal
+// in the server's words whatever its type, including the limit refusal the server adds next.
 function issueRefused(message: string) {
   return {
     issueShareCode: {
       __typename: 'IssueShareCodePayload',
       issued: null,
-      userErrors: [{ __typename: 'ShareCodeLimitReachedError', message }],
+      userErrors: [{ __typename: 'HouseholdNotFoundError', message }],
     },
   }
 }
@@ -214,10 +216,12 @@ async function issueAndHoldTheReadAfterTheIssue() {
   return { user, release: afterIssue.release }
 }
 
-// The issue button stays disabled until the read after the change on its way lands.
-async function waitForTheReadAfterTheIssue() {
-  const issueAction = screen.getByRole('button', { name: 'Issue a share code' })
-  await waitFor(() => expect(issueAction).toBeEnabled())
+// The issued code takes the issue button's place, and the code's Withdraw button stays disabled
+// until the read after the issue lands.
+async function waitForTheReadAfterTheIssueToListTheCode() {
+  const live = screen.getByRole('region', { name: 'Live codes' })
+  const withdraw = await within(live).findByRole('button', { name: 'Withdraw' })
+  await waitFor(() => expect(withdraw).toBeEnabled())
 }
 
 function failingClipboard() {
@@ -225,7 +229,7 @@ function failingClipboard() {
 }
 
 describe('Share codes', () => {
-  it('shouldOpenShareCodesAsASectionOfHouseholdSettingsUnderShareOffers', async () => {
+  it('shouldListShareCodesUnderShareOffersWhenHouseholdSettingsOpen', async () => {
     serve()
     renderAppAt(CODES)
 
@@ -242,25 +246,33 @@ describe('Share codes', () => {
     expect(
       await within(page).findByRole('heading', { level: 1, name: 'Share codes' }),
     ).toBeVisible()
-    expect(
-      within(page).getByText(
-        'Give a code to someone in another Household so they can offer a Profile to Smith Family. A code works once, and an admin here still decides on every offer.',
-      ),
-    ).toBeVisible()
   })
 
-  it('shouldSayThereAreNoLiveCodesWhenTheHouseholdHasNone', async () => {
+  it('shouldSayWhatACodeIsForWhenTheHouseholdHasNoLiveCodes', async () => {
     serve()
     renderAppAt(CODES)
 
     const live = await screen.findByRole('region', { name: 'Live codes' })
-    expect(within(live).getByText('No live share codes.')).toBeVisible()
+    expect(
+      within(live).getByText(
+        /^No live share codes\. Give one to someone in another Household so they can offer a Profile to Smith Family\.$/,
+      ),
+    ).toBeVisible()
     expect(within(live).queryByRole('listitem')).not.toBeInTheDocument()
   })
 
-  it('shouldListEachLiveCodeWithWhoIssuedItWhenAndTheTimeItHasLeft', async () => {
+  it('shouldSayNothingOfWhatACodeIsForWhenTheHouseholdHasLiveCodes', async () => {
+    serve([liveCode()])
+    renderAppAt(CODES)
+
+    await screen.findByRole('listitem')
+    expect(screen.queryByText(/so they can offer a Profile/)).not.toBeInTheDocument()
+  })
+
+  it('shouldListEachLiveCodeWithWhenAndByWhomItWasIssuedThenTheTimeItHasLeftWhenCodesAreLive', async () => {
     serve([
-      liveCode(),
+      // Issued a moment ago, so a little under its seven days are left.
+      liveCode({ expiresAt: new Date(Date.now() + 7 * DAY - 5000).toISOString() }),
       liveCode({
         id: 'b',
         issuedByDisplayName: null,
@@ -271,14 +283,13 @@ describe('Share codes', () => {
 
     const live = await screen.findByRole('region', { name: 'Live codes' })
     const [first, second] = await within(live).findAllByRole('listitem')
-    expect(within(first).getByText('Issued by Sam')).toBeVisible()
-    expect(within(first).getByText('Nov 11, 2026')).toBeVisible()
-    expect(within(first).getByText('Expires in 6 days')).toBeVisible()
+    expect(within(first).getByText('Issued Nov 11, 2026 by Sam')).toBeVisible()
+    expect(within(first).getByText('Expires in 7 days')).toBeVisible()
     expect(within(first).getByRole('button', { name: 'Withdraw' })).toHaveAccessibleDescription(
-      'Issued by Sam Nov 11, 2026 Expires in 6 days',
+      'Issued Nov 11, 2026 by Sam Expires in 7 days',
     )
-    expect(within(second).getByText('Issued by a deleted Account')).toBeVisible()
-    expect(within(second).getByText('Expires in 2 hours')).toBeVisible()
+    expect(within(second).getByText('Issued Nov 11, 2026 by a deleted Account')).toBeVisible()
+    expect(within(second).getByText('Expires in 3 hours')).toBeVisible()
     expect(within(live).queryByText(SHARE_CODE)).not.toBeInTheDocument()
   })
 
@@ -292,17 +303,20 @@ describe('Share codes', () => {
     const live = await screen.findByRole('region', { name: 'Live codes' })
     expect(await within(live).findAllByRole('listitem')).toHaveLength(MOST_LIVE_CODES)
     await user.click(
-      within(live).getByRole('button', { name: 'Withdraw', description: /^Issued by Rae / }),
+      within(live).getByRole('button', {
+        name: 'Withdraw',
+        description: /^Issued Nov 11, 2026 by Rae /,
+      }),
     )
 
     await waitFor(() =>
       expect(screen.getByRole('status')).toHaveTextContent('Share code withdrawn.'),
     )
-    expect(within(live).queryByText('Issued by Rae')).not.toBeInTheDocument()
+    expect(within(live).queryByText('Issued Nov 11, 2026 by Rae')).not.toBeInTheDocument()
     expect(within(live).getAllByRole('listitem')).toHaveLength(MOST_LIVE_CODES - 1)
   })
 
-  it('shouldShowTheCodeOnceInThePageWhenAnAdminIssuesOne', async () => {
+  it('shouldShowTheCodeOnceInPlaceOfTheIssueButtonWhenAnAdminIssuesOne', async () => {
     const codes = serveInTurn([], [liveCode()])
     serveIssue()
     const { user } = renderAppAt(CODES)
@@ -310,6 +324,7 @@ describe('Share codes', () => {
     const code = await issue(user)
 
     expect(code).toHaveFocus()
+    expect(screen.queryByRole('button', { name: 'Issue a share code' })).not.toBeInTheDocument()
     expect(code).toHaveAccessibleDescription(
       'This is the only time the code is shown. It works until Nov 18, 2026, 9:15 AM.',
     )
@@ -318,10 +333,10 @@ describe('Share codes', () => {
     expect(screen.getByRole('button', { name: 'Done' })).toBeEnabled()
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     await waitFor(() => expect(codes.calls).toBe(2))
-    expect(await screen.findByText('Issued by Sam')).toBeVisible()
+    expect(await screen.findByText('Issued Nov 11, 2026 by Sam')).toBeVisible()
   })
 
-  it('shouldCopyTheCodeAndSaySoWithoutMovingFocus', async () => {
+  it('shouldCopyTheCodeAndSaySoWithoutMovingFocusWhenThePersonCopiesIt', async () => {
     serveHouseholdHolding([])
     const { user } = renderAppAt(CODES)
     await issue(user)
@@ -332,6 +347,34 @@ describe('Share codes', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Code copied.')
     expect(await navigator.clipboard.readText()).toBe(SHARE_CODE)
     expect(copy).toHaveFocus()
+  })
+
+  it('shouldSayTheCopyInAStatusThatWasThereBeforeWhenThePersonCopiesTheCode', async () => {
+    serveHouseholdHolding([])
+    const { user } = renderAppAt(CODES)
+    await issue(user)
+    // A screen reader hears a status whose text changes, not one that arrives with its text.
+    const status = screen.getByRole('status')
+    expect(status).toBeEmptyDOMElement()
+
+    await user.click(screen.getByRole('button', { name: 'Copy code' }))
+
+    await waitFor(() => expect(status).toHaveTextContent(/^Code copied\.$/))
+  })
+
+  it('shouldSayTheCopyAgainWhenThePersonCopiesTheCodeTwice', async () => {
+    serveHouseholdHolding([])
+    const { user } = renderAppAt(CODES)
+    await issue(user)
+    const copy = screen.getByRole('button', { name: 'Copy code' })
+    await user.click(copy)
+    const status = screen.getByRole('status')
+    const first = await within(status).findByText('Code copied.')
+
+    await user.click(copy)
+
+    // The same words, written anew, so a screen reader says them again.
+    await waitFor(() => expect(within(status).getByText('Code copied.')).not.toBe(first))
   })
 
   it('shouldCopyALinkThatCarriesTheCodeInItsFragmentWhenThePersonCopiesTheLink', async () => {
@@ -391,10 +434,10 @@ describe('Share codes', () => {
 
   it('shouldReturnToTheIssueButtonWhenTheAdminIsDoneBeforeTheReadAfterTheIssueArrives', async () => {
     const { user, release } = await issueAndHoldTheReadAfterTheIssue()
-    const issueAction = screen.getByRole('button', { name: 'Issue a share code' })
-    expect(issueAction).toBeDisabled()
 
     await user.click(screen.getByRole('button', { name: 'Done' }))
+    const issueAction = screen.getByRole('button', { name: 'Issue a share code' })
+    expect(issueAction).toBeDisabled()
     release()
 
     await waitFor(() => expect(issueAction).toHaveFocus())
@@ -413,7 +456,7 @@ describe('Share codes', () => {
     expect(shareOffers).toHaveFocus()
   })
 
-  it('shouldKeepTheCodeOutOfTheCacheTheAddressAndTheBrowsersStorage', async () => {
+  it('shouldKeepTheCodeOutOfTheCacheTheAddressAndTheBrowsersStorageWhenACodeIsIssued', async () => {
     serveHouseholdHolding([])
     const { user, router, apolloClient } = renderAppAt(CODES)
 
@@ -426,11 +469,11 @@ describe('Share codes', () => {
     expect(JSON.stringify({ ...sessionStorage })).not.toContain(letters)
   })
 
-  it('shouldShowTheServersWordsWhenIssuingIsRefused', async () => {
+  it('shouldShowTheServersWordsAndKeepIssueAvailableWhenIssuingIsRefused', async () => {
     serve()
     server.use(
       graphql.mutation('IssueShareCode', () =>
-        HttpResponse.json({ data: issueRefused('Smith Family already has 10 live share codes.') }),
+        HttpResponse.json({ data: issueRefused('Withdraw a code before issuing another.') }),
       ),
     )
     const { user } = renderAppAt(CODES)
@@ -438,9 +481,10 @@ describe('Share codes', () => {
     await pressIssue(user)
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      /^Smith Family already has 10 live share codes\.$/,
+      /^Withdraw a code before issuing another\.$/,
     )
     expect(screen.queryByRole('button', { name: 'Copy code' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Issue a share code' })).toBeEnabled()
   })
 
   it('shouldShowTheServersWordsWhenTheServerRejectsTheIssue', async () => {
@@ -475,11 +519,11 @@ describe('Share codes', () => {
 
     await act(() => vi.advanceTimersByTimeAsync(HOUR))
 
-    expect(await screen.findByText('No live share codes.')).toBeVisible()
+    expect(await screen.findByText(/^No live share codes\./)).toBeVisible()
     expect(screen.queryByRole('button', { name: 'Withdraw' })).not.toBeInTheDocument()
   })
 
-  it('shouldWithdrawACodeAtOnceAndSaySo', async () => {
+  it('shouldWithdrawTheCodeAtOnceAndSaySoWhenThePersonWithdrawsIt', async () => {
     const codes = serveInTurn([liveCode()], [])
     server.use(
       graphql.mutation('WithdrawShareCode', ({ variables }) => {
@@ -495,7 +539,7 @@ describe('Share codes', () => {
       expect(screen.getByRole('status')).toHaveTextContent('Share code withdrawn.'),
     )
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(await screen.findByText('No live share codes.')).toBeVisible()
+    expect(await screen.findByText(/^No live share codes\./)).toBeVisible()
     expect(codes.calls).toBe(2)
     expect(screen.getByRole('heading', { level: 1, name: 'Share codes' })).toHaveFocus()
   })
@@ -525,7 +569,7 @@ describe('Share codes', () => {
     const { user } = renderAppAt(CODES)
     await issue(user)
 
-    await withdrawWhenAllowed(user, /^Issued by Sam /)
+    await withdrawWhenAllowed(user, /^Issued Nov 11, 2026 by Sam /)
 
     await waitFor(() =>
       expect(screen.getByRole('status')).toHaveTextContent('Share code withdrawn.'),
@@ -546,7 +590,7 @@ describe('Share codes', () => {
     const { user } = renderAppAt(CODES)
     await issue(user)
 
-    await withdrawWhenAllowed(user, /^Issued by Sam /)
+    await withdrawWhenAllowed(user, /^Issued Nov 11, 2026 by Sam /)
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       /^That share code no longer works\.$/,
@@ -563,7 +607,7 @@ describe('Share codes', () => {
     const { user } = renderAppAt(CODES)
     await issue(user)
 
-    await withdrawWhenAllowed(user, /^Issued by Ana /)
+    await withdrawWhenAllowed(user, /^Issued Nov 11, 2026 by Ana /)
 
     await waitFor(() =>
       expect(screen.getByRole('status')).toHaveTextContent('Share code withdrawn.'),
@@ -578,11 +622,11 @@ describe('Share codes', () => {
     serveIssue()
     const { user } = renderAppAt(CODES)
     await issue(user)
-    await waitForTheReadAfterTheIssue()
+    await waitForTheReadAfterTheIssueToListTheCode()
 
     comeBackOnline()
 
-    expect(await screen.findByText('No live share codes.')).toBeVisible()
+    expect(await screen.findByText(/^No live share codes\./)).toBeVisible()
     expect(codes.calls).toBe(3)
     expect(screen.queryByText(SHARE_CODE)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Copy link' })).not.toBeInTheDocument()
@@ -602,7 +646,8 @@ describe('Share codes', () => {
 
     afterIssue.release()
 
-    await waitForTheReadAfterTheIssue()
+    const issueAction = await screen.findByRole('button', { name: 'Issue a share code' })
+    await waitFor(() => expect(issueAction).toBeEnabled())
     expect(screen.queryByText(SHARE_CODE)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Copy link' })).not.toBeInTheDocument()
   })
@@ -612,7 +657,7 @@ describe('Share codes', () => {
     serveIssue()
     const { user } = renderAppAt(CODES)
     const code = await issue(user)
-    await waitForTheReadAfterTheIssue()
+    await waitForTheReadAfterTheIssueToListTheCode()
     expect(code).toHaveFocus()
 
     comeBackOnline()
@@ -627,7 +672,7 @@ describe('Share codes', () => {
     serveIssue()
     const { user } = renderAppAt(CODES)
     const code = await issue(user)
-    await waitForTheReadAfterTheIssue()
+    await waitForTheReadAfterTheIssueToListTheCode()
     // A click on the page outside the panel leaves focus on the page body.
     act(() => code.blur())
 
@@ -645,10 +690,8 @@ describe('Share codes', () => {
     const { user } = renderAppAt(CODES)
     await issue(user)
 
-    await waitForTheReadAfterTheIssue()
-
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load share codes.")
     expect(codes.calls).toBe(2)
-    expect(screen.getByRole('alert')).toHaveTextContent("Couldn't load share codes.")
     expect(screen.getByText(SHARE_CODE)).toBeVisible()
     expect(screen.getByRole('button', { name: 'Copy link' })).toBeEnabled()
   })
@@ -665,11 +708,11 @@ describe('Share codes', () => {
     serveIssue()
     const { user } = renderAppAt(CODES)
     await issue(user)
-    await waitForTheReadAfterTheIssue()
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load share codes.")
 
     await user.click(screen.getByRole('button', { name: 'Retry' }))
 
-    expect(await screen.findByText('No live share codes.')).toBeVisible()
+    expect(await screen.findByText(/^No live share codes\./)).toBeVisible()
     expect(codes.calls).toBe(3)
     expect(screen.queryByText(SHARE_CODE)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Copy link' })).not.toBeInTheDocument()
@@ -700,7 +743,7 @@ describe('Share codes', () => {
     await screen.findByText(SHARE_CODE)
     fromBefore.release()
 
-    expect(await screen.findByText('Issued by Ana')).toBeVisible()
+    expect(await screen.findByText('Issued Nov 11, 2026 by Ana')).toBeVisible()
     expect(codes.calls).toBe(4)
     expect(screen.getByText(SHARE_CODE)).toBeVisible()
   })
@@ -727,7 +770,7 @@ describe('Share codes', () => {
     afterWithdrawal.release()
     await waitFor(() => expect(issueAction).toBeEnabled())
     await issue(user)
-    expect(await screen.findByText('Issued by Ana')).toBeVisible()
+    expect(await screen.findByText('Issued Nov 11, 2026 by Ana')).toBeVisible()
   })
 
   it('shouldWaitToWithdrawACodeWhenAnIssueOrTheReadAfterItIsOnItsWay', async () => {
@@ -752,8 +795,10 @@ describe('Share codes', () => {
     afterIssue.release()
     await waitFor(() => expect(withdrawSamsCode).toBeEnabled())
     await user.click(withdrawSamsCode)
-    await waitFor(() => expect(screen.queryByText('Issued by Sam')).not.toBeInTheDocument())
-    expect(screen.getByText('Issued by Ana')).toBeVisible()
+    await waitFor(() =>
+      expect(screen.queryByText('Issued Nov 11, 2026 by Sam')).not.toBeInTheDocument(),
+    )
+    expect(screen.getByText('Issued Nov 11, 2026 by Ana')).toBeVisible()
   })
 
   it('shouldWaitToIssueACodeWhenTheFirstReadOfTheCodesIsOnItsWay', async () => {
@@ -771,7 +816,7 @@ describe('Share codes', () => {
     firstRead.release()
     await waitFor(() => expect(issueAction).toBeEnabled())
     await issue(user)
-    expect(await screen.findByText('Issued by Ana')).toBeVisible()
+    expect(await screen.findByText('Issued Nov 11, 2026 by Ana')).toBeVisible()
   })
 
   it('shouldListTheIssuedCodeWhenAReadFromBeforeTheIssueIsOnItsWay', async () => {
@@ -785,7 +830,7 @@ describe('Share codes', () => {
     server.use(graphql.query('HouseholdShareCodes', codes.resolver))
     serveIssue()
     const { user } = renderAppAt(CODES)
-    await screen.findByText('No live share codes.')
+    await screen.findByText(/^No live share codes\./)
     comeBackOnline()
     await waitFor(() => expect(codes.calls).toBe(2))
 
@@ -793,7 +838,7 @@ describe('Share codes', () => {
     await issue(user)
     fromBefore.release()
 
-    expect(await screen.findByText('Issued by Sam')).toBeVisible()
+    expect(await screen.findByText('Issued Nov 11, 2026 by Sam')).toBeVisible()
   })
 
   it('shouldTakeTheWithdrawnCodeOffTheListWhenAReadFromBeforeTheWithdrawalIsOnItsWay', async () => {
@@ -810,52 +855,55 @@ describe('Share codes', () => {
     serveWithdraw()
     const { user } = renderAppAt(CODES)
     await issue(user)
-    await screen.findByText('Issued by Sam')
+    await screen.findByText('Issued Nov 11, 2026 by Sam')
     comeBackOnline()
     await waitFor(() => expect(codes.calls).toBe(3))
 
-    await withdrawWhenAllowed(user, /^Issued by Sam /)
+    await withdrawWhenAllowed(user, /^Issued Nov 11, 2026 by Sam /)
     // The panel closes once the server takes the withdrawal. By then the read after the withdrawal
     // has started.
     await waitFor(() => expect(screen.queryByText(SHARE_CODE)).not.toBeInTheDocument())
     fromBefore.release()
 
-    expect(await screen.findByText('No live share codes.')).toBeVisible()
+    expect(await screen.findByText(/^No live share codes\./)).toBeVisible()
   })
 
   it('shouldListACodeIssuedWhileTheAdminWasAwayWhenTheyReturn', async () => {
     serveInTurn([], [liveCode()])
     const { user } = renderAppAt(CODES)
-    await screen.findByText('No live share codes.')
+    await screen.findByText(/^No live share codes\./)
 
     await leaveForHomeAndReturn(user, SHARE_CODES)
 
-    expect(await screen.findByText('Issued by Sam')).toBeVisible()
+    expect(await screen.findByText('Issued Nov 11, 2026 by Sam')).toBeVisible()
   })
 
   it('shouldShowTheLiveCodesAsLoadingUntilTheServerAnswersWhenTheAdminReturns', async () => {
     serve()
     const { user } = renderAppAt(CODES)
-    await screen.findByText('No live share codes.')
+    await screen.findByText(/^No live share codes\./)
     server.use(graphql.query('HouseholdShareCodes', () => delay('infinite')))
 
     await leaveForHomeAndReturn(user, SHARE_CODES)
 
     expect(await screen.findByRole('status', { name: 'Loading share codes' })).toBeInTheDocument()
-    expect(screen.queryByText('No live share codes.')).not.toBeInTheDocument()
+    expect(screen.queryByText(/^No live share codes\./)).not.toBeInTheDocument()
   })
 
-  it('shouldRetryWhenTheLiveCodesFailToLoad', async () => {
+  it('shouldSayWhyInLiveCodesAndRetryWhenTheLiveCodesFailToLoad', async () => {
     serve()
     const codes = failsOnceThen(codesData([liveCode()]))
     server.use(graphql.query('HouseholdShareCodes', codes.resolver))
     const { user } = renderAppAt(CODES)
 
-    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load share codes.")
+    const live = await screen.findByRole('region', { name: 'Live codes' })
+    expect(await within(live).findByRole('alert')).toHaveTextContent("Couldn't load share codes.")
+    expect(screen.getByRole('button', { name: 'Issue a share code' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Retry' }))
+    await user.click(within(live).getByRole('button', { name: 'Retry' }))
 
-    expect(await screen.findByText('Issued by Sam')).toBeVisible()
+    expect(await screen.findByText('Issued Nov 11, 2026 by Sam')).toBeVisible()
     expect(codes.calls).toBe(2)
   })
 })

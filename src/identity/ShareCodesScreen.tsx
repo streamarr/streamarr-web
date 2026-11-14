@@ -13,7 +13,7 @@ import { isReading } from '../graphql/readAgain'
 import { requestFailureMessage } from '../graphql/requestErrors'
 import { userErrorMessage } from '../graphql/userErrors'
 import settingsStyles from '../styles/settings.module.css'
-import { FailurePanel } from '../ui/Failure'
+import { FailurePanel, FailureRow } from '../ui/Failure'
 import { Icon } from '../ui/Icon'
 import { PageNotice } from '../ui/PageNotice'
 import { usePageNotice } from '../ui/usePageNotice'
@@ -56,7 +56,7 @@ export function ShareCodesScreen({
   /** The client's origin, which a code's link opens the Sharing page on. */
   origin: string
 }>) {
-  const { notice, heading, announce, dismiss } = usePageNotice()
+  const { notice, count, heading, announce, dismiss } = usePageNotice()
 
   return (
     <>
@@ -65,7 +65,9 @@ export function ShareCodesScreen({
           Share codes
         </h1>
       </div>
-      <PageNotice onDismiss={dismiss}>{notice}</PageNotice>
+      <PageNotice count={count} onDismiss={dismiss}>
+        {notice}
+      </PageNotice>
       <ShareCodesContent clipboard={clipboard} origin={origin} announce={announce} />
     </>
   )
@@ -215,25 +217,13 @@ function HouseholdShareCodes({
 
   return (
     <div className={styles.page}>
-      <p className={styles.intro}>
-        Give a code to someone in another Household so they can offer a Profile to {household.name}.
-        A code works once, and an admin here still decides on every offer.
-      </p>
       {refusal && (
         <p className={sharingStyles.refusal} role="alert">
           {refusal}
         </p>
       )}
-      <Button
-        ref={issueAction}
-        leftSection={<Icon name="plus" />}
-        loading={change?.kind === 'issue'}
-        disabled={waiting}
-        onClick={() => void issue()}
-      >
-        Issue a share code
-      </Button>
-      {shown && (
+      {/* The code takes the button's place until the admin is done with it. */}
+      {shown ? (
         <IssuedShareCode
           ref={holdsFocusAsItCloses}
           key={shown.shareCode.id}
@@ -247,8 +237,19 @@ function HouseholdShareCodes({
             setShown(null)
           }}
         />
+      ) : (
+        <Button
+          ref={issueAction}
+          leftSection={<Icon name="plus" />}
+          loading={change?.kind === 'issue'}
+          disabled={waiting}
+          onClick={() => void issue()}
+        >
+          Issue a share code
+        </Button>
       )}
       <LiveShareCodes
+        householdName={household.name}
         listed={query.data}
         loading={query.loading}
         error={query.error}
@@ -274,6 +275,7 @@ function afterLatestRead(shown: Issued | null, read: LatestRead): Issued | null 
 }
 
 function LiveShareCodes({
+  householdName,
   listed,
   loading,
   error,
@@ -283,6 +285,7 @@ function LiveShareCodes({
   refusal,
   onWithdraw,
 }: Readonly<{
+  householdName: string
   /** The last list the server gave, if any. */
   listed: HouseholdShareCodesQuery | undefined
   loading: boolean
@@ -304,14 +307,25 @@ function LiveShareCodes({
     return <ShareCodesLoading />
   }
   if (error || !listed) {
-    return <ShareCodesUnavailable error={error} onRetry={readAgain} />
+    return (
+      <SharingSection title="Live codes" failure={null}>
+        <FailureRow onRetry={readAgain}>
+          {requestFailureMessage(error, "Couldn't load share codes.")}
+        </FailureRow>
+      </SharingSection>
+    )
   }
 
   const codes = listedCodes.filter((code) => Date.parse(code.expiresAt) > now.getTime())
 
   return (
     <SharingSection title="Live codes" failure={refusal}>
-      {codes.length === 0 && <p className={sharingStyles.note}>No live share codes.</p>}
+      {codes.length === 0 && (
+        <p className={sharingStyles.note}>
+          No live share codes. Give one to someone in another Household so they can offer a Profile
+          to {householdName}.
+        </p>
+      )}
       <ul className={sharingStyles.rows}>
         {codes.map((code) => (
           <LiveShareCodeRow
@@ -343,10 +357,9 @@ function LiveShareCodeRow({
   return (
     <li className={sharingStyles.row}>
       <span id={facts} className={sharingStyles.rowText}>
-        {code.issuedByDisplayName
-          ? `Issued by ${code.issuedByDisplayName}`
-          : 'Issued by a deleted Account'}{' '}
-        <span className={sharingStyles.status}>{ISSUED_ON.format(new Date(code.issuedAt))}</span>{' '}
+        <span>
+          {`Issued ${ISSUED_ON.format(new Date(code.issuedAt))} by ${code.issuedByDisplayName ?? 'a deleted Account'}`}
+        </span>{' '}
         <span className={sharingStyles.status}>{expiryLabel(code.expiresAt, new Date())}</span>
       </span>
       <Button
