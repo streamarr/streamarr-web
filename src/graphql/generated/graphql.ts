@@ -1459,6 +1459,7 @@ export type OfferProfileShareMutationVariables = Exact<{
 
 export type OfferProfileShareMutation = { offerProfileShare: { share: { id: string, status: ProfileShareStatus } | null, userErrors: Array<
       | { __typename: 'ProfileAlreadySharedError', message: string }
+      | { __typename: 'ProfileManagersOnlyError', message: string }
       | { __typename: 'ProfileNotFoundError', message: string }
       | { __typename: 'ShareCodeRefusedError', message: string }
     > } | null };
@@ -1805,6 +1806,12 @@ export type MovieDetailQueryVariables = Exact<{
 
 export type MovieDetailQuery = { movie: { id: string, title: string | null, tagline: string | null, summary: string | null, runtime: number | null, releaseDate: string | null, contentRating: { value: string } | null, genres: Array<{ id: string, name: string } | null>, directors: Array<{ id: string, name: string } | null>, cast: Array<{ id: string, name: string, images: Array<{ aspectRatio: number, blurHash: string | null, variants: Array<{ id: string, size: ImageSize, width: number, height: number, url: string } | null> } | null> } | null>, ratings: Array<{ id: string, source: string, value: string } | null>, files: Array<{ id: string } | null>, selectedProfileState: { watchState: { watchStatus: WatchStatus, watchProgress: { positionSeconds: number, percentComplete: number, durationSeconds: number } | null } } | null, backdropImages: Array<{ aspectRatio: number, blurHash: string | null, ambientColors: { topLeft: string, topRight: string, bottomRight: string, bottomLeft: string, primary: string, theme: { base: string, panel: string, selected: string, accent: string, onAccent: string, textPrimary: string, textSecondary: string } } | null, variants: Array<{ id: string, size: ImageSize, width: number, height: number, url: string } | null> } | null>, posterImages: Array<{ aspectRatio: number, blurHash: string | null, ambientColors: { topLeft: string, topRight: string, bottomRight: string, bottomLeft: string, primary: string, theme: { base: string, panel: string, selected: string, accent: string, onAccent: string, textPrimary: string, textSecondary: string } } | null, variants: Array<{ id: string, size: ImageSize, width: number, height: number, url: string } | null> } | null> } | null };
 
+type NotificationFields_ProfileManagementRemovedNotification_Fragment = { __typename: 'ProfileManagementRemovedNotification', id: string, message: string, latestEventAt: string, unread: boolean };
+
+type NotificationFields_ProfileManagerInvitationAnsweredNotification_Fragment = { __typename: 'ProfileManagerInvitationAnsweredNotification', id: string, message: string, latestEventAt: string, unread: boolean };
+
+type NotificationFields_ProfileManagerInvitationReceivedNotification_Fragment = { __typename: 'ProfileManagerInvitationReceivedNotification', expiresAt: string | null, resolution: RequestResolution | null, id: string, message: string, latestEventAt: string, unread: boolean };
+
 type NotificationFields_ProfileShareAnsweredNotification_Fragment = { __typename: 'ProfileShareAnsweredNotification', id: string, message: string, latestEventAt: string, unread: boolean };
 
 type NotificationFields_ProfileShareEndedNotification_Fragment = { __typename: 'ProfileShareEndedNotification', id: string, message: string, latestEventAt: string, unread: boolean };
@@ -1812,12 +1819,18 @@ type NotificationFields_ProfileShareEndedNotification_Fragment = { __typename: '
 type NotificationFields_ProfileShareOfferedNotification_Fragment = { __typename: 'ProfileShareOfferedNotification', expiresAt: string | null, resolution: RequestResolution | null, answer: ProfileShareAnswer | null, id: string, message: string, latestEventAt: string, unread: boolean };
 
 export type NotificationFieldsFragment =
+  | NotificationFields_ProfileManagementRemovedNotification_Fragment
+  | NotificationFields_ProfileManagerInvitationAnsweredNotification_Fragment
+  | NotificationFields_ProfileManagerInvitationReceivedNotification_Fragment
   | NotificationFields_ProfileShareAnsweredNotification_Fragment
   | NotificationFields_ProfileShareEndedNotification_Fragment
   | NotificationFields_ProfileShareOfferedNotification_Fragment
 ;
 
 export type NotificationEdgeFieldsFragment = { cursor: string, orderKey: string, node:
+    | { __typename: 'ProfileManagementRemovedNotification', id: string, message: string, latestEventAt: string, unread: boolean }
+    | { __typename: 'ProfileManagerInvitationAnsweredNotification', id: string, message: string, latestEventAt: string, unread: boolean }
+    | { __typename: 'ProfileManagerInvitationReceivedNotification', expiresAt: string | null, resolution: RequestResolution | null, id: string, message: string, latestEventAt: string, unread: boolean }
     | { __typename: 'ProfileShareAnsweredNotification', id: string, message: string, latestEventAt: string, unread: boolean }
     | { __typename: 'ProfileShareEndedNotification', id: string, message: string, latestEventAt: string, unread: boolean }
     | { __typename: 'ProfileShareOfferedNotification', expiresAt: string | null, resolution: RequestResolution | null, answer: ProfileShareAnswer | null, id: string, message: string, latestEventAt: string, unread: boolean }
@@ -1829,6 +1842,9 @@ export type NotificationsQueryVariables = Exact<{
 
 
 export type NotificationsQuery = { notifications: { edges: Array<{ cursor: string, orderKey: string, node:
+        | { __typename: 'ProfileManagementRemovedNotification', id: string, message: string, latestEventAt: string, unread: boolean }
+        | { __typename: 'ProfileManagerInvitationAnsweredNotification', id: string, message: string, latestEventAt: string, unread: boolean }
+        | { __typename: 'ProfileManagerInvitationReceivedNotification', expiresAt: string | null, resolution: RequestResolution | null, id: string, message: string, latestEventAt: string, unread: boolean }
         | { __typename: 'ProfileShareAnsweredNotification', id: string, message: string, latestEventAt: string, unread: boolean }
         | { __typename: 'ProfileShareEndedNotification', id: string, message: string, latestEventAt: string, unread: boolean }
         | { __typename: 'ProfileShareOfferedNotification', expiresAt: string | null, resolution: RequestResolution | null, answer: ProfileShareAnswer | null, id: string, message: string, latestEventAt: string, unread: boolean }
@@ -1848,6 +1864,9 @@ export type NotificationsChangedSubscriptionVariables = Exact<{ [key: string]: n
 
 
 export type NotificationsChangedSubscription = { notificationsChanged: { unreadNotificationCount: number | null, notifications: Array<{ notificationId: string, edge: { cursor: string, orderKey: string, node:
+          | { __typename: 'ProfileManagementRemovedNotification', id: string, message: string, latestEventAt: string, unread: boolean }
+          | { __typename: 'ProfileManagerInvitationAnsweredNotification', id: string, message: string, latestEventAt: string, unread: boolean }
+          | { __typename: 'ProfileManagerInvitationReceivedNotification', expiresAt: string | null, resolution: RequestResolution | null, id: string, message: string, latestEventAt: string, unread: boolean }
           | { __typename: 'ProfileShareAnsweredNotification', id: string, message: string, latestEventAt: string, unread: boolean }
           | { __typename: 'ProfileShareEndedNotification', id: string, message: string, latestEventAt: string, unread: boolean }
           | { __typename: 'ProfileShareOfferedNotification', expiresAt: string | null, resolution: RequestResolution | null, answer: ProfileShareAnswer | null, id: string, message: string, latestEventAt: string, unread: boolean }

@@ -9,7 +9,7 @@ import type { serveGraphqlSocket } from './graphqlSocket'
 
 export type NotificationFixture = NonNullable<NotificationEdgeFieldsFragment['node']>
 type OfferNode = Extract<NotificationFixture, { __typename: 'ProfileShareOfferedNotification' }>
-type NewsNode = Exclude<NotificationFixture, OfferNode>
+type NewsNode = Extract<NotificationFixture, { __typename: 'ProfileShareAnsweredNotification' }>
 
 const HOUR = 60 * 60 * 1000
 

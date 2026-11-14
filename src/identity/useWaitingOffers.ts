@@ -3,12 +3,7 @@ import { useQuery } from '@apollo/client/react'
 import { useState } from 'react'
 import { ShareOffersDocument, type ShareOffersQuery } from '../graphql/generated/graphql'
 import { useLiveList } from '../graphql/liveList'
-import {
-  shareIdOf,
-  statusAt,
-  createShareListUpdater,
-  type ShareChange,
-} from './shareLists'
+import { shareIdOf, statusAt, createShareListUpdater, type ShareChange } from './shareLists'
 import { useNow } from './useNow'
 import { useShareChanges } from './useShareChanges'
 
