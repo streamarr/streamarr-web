@@ -53,16 +53,14 @@ interface Journal {
   keep(key: string, change: (data: Data) => Data): void
 }
 
-/**
- * The server answers a read with the list as it read it, which can be from before a change that
- * has since arrived, so each answer takes again every change that arrived after its read was sent.
- * Only the last change for a key is kept, since it carries that key's latest state, and a change
- * older than every read on its way is forgotten, since every later read is sent after it.
- */
+// The server answers a read with the list as it read it, which can be from before a change that
+// has since arrived, so each answer takes again every change that arrived after its read was sent.
+// Only the last change for a key is kept, since it carries that key's latest state, and a change
+// older than every read on its way is forgotten, since every later read is sent after it.
 function createJournal(): Journal {
   let arrivals = 0
   const latest = new Map<string, { arrival: number; change: (data: Data) => Data }>()
-  /** The arrivals counted when each read on its way was sent. */
+  // The arrivals counted when each read on its way was sent.
   const sentAfter = new Map<symbol, number>()
 
   function forget() {
@@ -101,12 +99,10 @@ function createJournal(): Journal {
   }
 }
 
-/**
- * Each list's journal, by cache, query and variables. Apollo joins a read to one already on its
- * way with the same query and variables, under the context of the read it joins, and that read
- * may have been sent by a component that has since unmounted. So every component that follows a
- * list keeps its changes in the one journal. A journal holds no change once no read is on its way.
- */
+// Each list's journal, by cache, query and variables. Apollo joins a read to one already on its
+// way with the same query and variables, under the context of the read it joins, and that read
+// may have been sent by a component that has since unmounted. So every component that follows a
+// list keeps its changes in the one journal. A journal holds no change once no read is on its way.
 const journals = new WeakMap<ApolloCache, WeakMap<DocumentNode, Map<string, Journal>>>()
 
 function journalOf(cache: ApolloCache, query: DocumentNode, variables: OperationVariables) {

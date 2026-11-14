@@ -68,11 +68,7 @@ function ShareOffersContent({
     return <ShareOffersUnavailable error={me.error} onRetry={me.refetch} />
   }
   return (
-    <HouseholdOffers
-      household={me.data.me.household}
-      onDecided={onDecided}
-      liveList={liveList}
-    />
+    <HouseholdOffers household={me.data.me.household} onDecided={onDecided} liveList={liveList} />
   )
 }
 
@@ -185,7 +181,7 @@ function HouseholdOffers({
     refusal === null &&
     query.data !== undefined &&
     !query.error
-  /** The last offer whose confirmation closed because it left the list, until the page says so. */
+  // The last offer whose confirmation closed because it left the list, until the page says so.
   const [gone, setGone] = useState<{ offerId: string } | null>(null)
   if (goneElsewhere) {
     setGone({ offerId: confirmingId })

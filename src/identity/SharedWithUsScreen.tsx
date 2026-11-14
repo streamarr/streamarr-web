@@ -81,11 +81,7 @@ function SharedWithUsContent({
   const { household } = me.data.me
   return (
     <div className={styles.sections}>
-      <SharedProfiles
-        household={household}
-        announce={announce}
-        liveList={liveList}
-      />
+      <SharedProfiles household={household} announce={announce} liveList={liveList} />
       <VisitorTvs household={household} announce={announce} liveList={liveList} />
     </div>
   )

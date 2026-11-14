@@ -32,7 +32,7 @@ export function useConfirmedChange<Row extends { id: string }>({
   const [pending, setPending] = useState<Row | null>(null)
   const [sending, setSending] = useState(false)
   const [refusal, setRefusal] = useState<string | null>(null)
-  /** The last row whose confirmation closed because the row left, until the page says so. */
+  // The last row whose confirmation closed because the row left, until the page says so.
   const [left, setLeft] = useState<{ row: Row } | null>(null)
   if (
     pending !== null &&

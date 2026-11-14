@@ -79,7 +79,7 @@ export function ShareForm({
   const [lookUp] = useMutation(LookUpShareCodeDocument)
   const [offer] = useMutation(OfferProfileShareDocument)
   const [text, setText] = useState(codeFromLink ?? '')
-  /** The last code the server found, so that asking about it again costs no second attempt. */
+  // The last code the server found, so that asking about it again costs no second attempt.
   const lookedUp = useRef<LookedUp | null>(null)
   const [fieldError, setFieldError] = useState<string | null>(null)
   const [refusal, setRefusal] = useState<string | null>(null)
