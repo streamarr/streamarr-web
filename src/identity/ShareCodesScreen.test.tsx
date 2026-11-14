@@ -1,7 +1,7 @@
-import { act, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { parse, valueFromASTUntyped, visit } from 'graphql'
 import { delay, graphql, HttpResponse } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { HouseholdShareCodesQuery } from '../graphql/generated/graphql'
 import {
   answersInTurn,
@@ -114,6 +114,9 @@ function serve(codes: ShareCodeNode[] = []) {
         data: { householdShares: { __typename: 'ProfileShareConnection', edges: [] } },
       }),
     ),
+    graphql.query('IssuedShareCodeStatus', ({ variables }) =>
+      HttpResponse.json({ data: { shareCode: liveCode({ id: variables.shareCodeId as string }) } }),
+    ),
     graphql.query('HouseholdShareCodes', ({ variables }) => {
       expect(variables).toEqual({ householdId: HOUSEHOLD_ID })
       return HttpResponse.json({ data: codesData(codes) })
@@ -159,6 +162,9 @@ function serveHouseholdHolding(codes: ShareCodeNode[]) {
 
 function serveIssue(answer: Parameters<typeof issued>[0] = {}) {
   server.use(
+    graphql.query('IssuedShareCodeStatus', () =>
+      HttpResponse.json({ data: { shareCode: answer.shareCode ?? liveCode() } }),
+    ),
     graphql.mutation('IssueShareCode', ({ variables }) => {
       expect(variables).toEqual({ input: { householdId: HOUSEHOLD_ID } })
       return HttpResponse.json({ data: issued(answer) })
@@ -225,6 +231,50 @@ function failingClipboard() {
 }
 
 describe('Share codes', () => {
+  it.each([
+    [
+      'SPENT',
+      'Someone used this share code to offer a Profile. Check Share invitations for any offers waiting for your answer.',
+    ],
+    ['WITHDRAWN', 'This share code was withdrawn. To share again, issue a new share code.'],
+    ['EXPIRED', 'This share code expired. To share again, issue a new share code.'],
+    [
+      'INVALIDATED',
+      'This share code was withdrawn because its issuer can no longer issue codes for this Household. To share again, issue a new share code.',
+    ],
+  ] as const)(
+    'shouldKeepThePanelAndExplainItsEndWhenTheServerReports%s',
+    async (status, message) => {
+      const codes = serveInTurn([], [liveCode()], [])
+      serveIssue()
+      let currentStatus: ShareCodeNode['status'] = 'LIVE'
+      const requestedIds: unknown[] = []
+      server.use(
+        graphql.query('IssuedShareCodeStatus', ({ variables }) => {
+          requestedIds.push(variables.shareCodeId)
+          return HttpResponse.json({ data: { shareCode: liveCode({ status: currentStatus }) } })
+        }),
+      )
+      const { user } = renderAppAt(CODES)
+      await issue(user)
+      await waitFor(() => expect(codes.calls).toBe(2))
+      currentStatus = status
+
+      comeBackOnline()
+      await waitFor(() => expect(codes.calls).toBe(3))
+
+      expect(await screen.findByText(message)).toBeVisible()
+      expect(screen.queryByText(SHARE_CODE)).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Copy code' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Copy link' })).toBeDisabled()
+      await user.click(screen.getByRole('button', { name: 'Done' }))
+      expect(screen.queryByText(message)).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Issue a share code' })).toHaveFocus()
+      expect(requestedIds.length).toBeGreaterThan(0)
+      expect(requestedIds.every((id) => id === CODE_ID)).toBe(true)
+    },
+  )
+
   it('shouldOpenShareCodesAsASectionOfHouseholdSettingsUnderShareOffers', async () => {
     serve()
     renderAppAt(CODES)
@@ -506,7 +556,7 @@ describe('Share codes', () => {
     expect(screen.getByRole('status')).toBeEmptyDOMElement()
   })
 
-  it('shouldTakeTheIssuedCodeAwayWhenAnAdminWithdrawsThatCode', async () => {
+  it('shouldKeepThePanelWithTheWithdrawalReasonWhenAnAdminWithdrawsThatCode', async () => {
     serveInTurn([], [liveCode()], [])
     serveIssue()
     serveWithdraw()
@@ -515,11 +565,13 @@ describe('Share codes', () => {
 
     await withdrawWhenAllowed(user, /^Issued by Sam /)
 
-    await waitFor(() =>
-      expect(screen.getByRole('status')).toHaveTextContent('Share code withdrawn.'),
-    )
+    expect(
+      await screen.findByText(
+        'This share code was withdrawn. To share again, issue a new share code.',
+      ),
+    ).toBeVisible()
     expect(screen.queryByText(SHARE_CODE)).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Copy link' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Copy link' })).toBeDisabled()
   })
 
   it('shouldTakeTheIssuedCodeAwayWhenTheServerSaysThatCodeNoLongerWorks', async () => {
@@ -540,7 +592,8 @@ describe('Share codes', () => {
       /^That share code no longer works\.$/,
     )
     await waitFor(() => expect(screen.queryByText(SHARE_CODE)).not.toBeInTheDocument())
-    expect(screen.queryByRole('button', { name: 'Copy link' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Copy link' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Done' })).toBeEnabled()
   })
 
   it('shouldKeepTheIssuedCodeWhenAnAdminWithdrawsAnotherCode', async () => {
@@ -560,8 +613,7 @@ describe('Share codes', () => {
     expect(screen.getByRole('button', { name: 'Copy link' })).toBeEnabled()
   })
 
-  it('shouldTakeTheIssuedCodeAwayWhenALaterReadNoLongerListsThatCode', async () => {
-    // Someone offers a Profile with the code while the page is open, and the offer spends the code.
+  it('shouldKeepTheCodeWhenTheLiveListOmitsItButTheStatusStillSaysItWorks', async () => {
     const codes = serveInTurn([], [liveCode()], [])
     serveIssue()
     const { user } = renderAppAt(CODES)
@@ -572,57 +624,190 @@ describe('Share codes', () => {
 
     expect(await screen.findByText('No live share codes.')).toBeVisible()
     expect(codes.calls).toBe(3)
-    expect(screen.queryByText(SHARE_CODE)).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Copy link' })).not.toBeInTheDocument()
+    expect(screen.getByText(SHARE_CODE)).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Copy link' })).toBeEnabled()
   })
 
-  it('shouldTakeTheIssuedCodeAwayWhenTheReadAfterTheIssueDoesNotListThatCode', async () => {
-    // Someone offers a Profile with the code before the read after the issue, and the offer spends
-    // the code. So no list ever holds the code.
-    const afterIssue = heldAnswer(codesData([]))
+  it('shouldExplainAUsedCodeWhenNoLiveListEverContainedIt', async () => {
+    const status = heldAnswer({ shareCode: liveCode({ status: 'SPENT' }) })
     serve()
-    const codes = answersInTurn(answerWith(codesData([])), afterIssue.answer)
-    server.use(graphql.query('HouseholdShareCodes', codes.resolver))
     serveIssue()
+    server.use(graphql.query('IssuedShareCodeStatus', status.answer))
     const { user } = renderAppAt(CODES)
     await issue(user)
-    await waitFor(() => expect(codes.calls).toBe(2))
 
-    afterIssue.release()
+    status.release()
 
-    await waitForTheReadAfterTheIssue()
+    expect(await screen.findByText(/Someone used this share code/)).toBeVisible()
     expect(screen.queryByText(SHARE_CODE)).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Copy link' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Copy link' })).toBeDisabled()
   })
 
-  it('shouldReturnToTheIssueButtonWhenALaterReadTakesAwayTheIssuedCodeWhileFocusIsInItsPanel', async () => {
-    serveInTurn([], [liveCode()], [])
+  it.each(['inside', 'outside'] as const)(
+    'shouldKeepFocus%sThePanelWhenTheCodeEnds',
+    async (where) => {
+      serveInTurn([], [liveCode()], [])
+      serveIssue()
+      let status: ShareCodeNode['status'] = 'LIVE'
+      server.use(
+        graphql.query('IssuedShareCodeStatus', () =>
+          HttpResponse.json({ data: { shareCode: liveCode({ status }) } }),
+        ),
+      )
+      const { user } = renderAppAt(CODES)
+      const code = await issue(user)
+      await waitForTheReadAfterTheIssue()
+      if (where === 'outside') act(() => code.blur())
+      status = 'SPENT'
+
+      comeBackOnline()
+
+      const explanation = await screen.findByText(/Someone used this share code/)
+      expect(where === 'inside' ? explanation : document.body).toHaveFocus()
+    },
+  )
+
+  it('shouldKeepThePanelWithoutTheCodeWhenItsStatusIsNoLongerVisible', async () => {
+    const status = heldAnswer({ shareCode: null })
+    serve()
     serveIssue()
+    server.use(graphql.query('IssuedShareCodeStatus', status.answer))
     const { user } = renderAppAt(CODES)
-    const code = await issue(user)
-    await waitForTheReadAfterTheIssue()
-    expect(code).toHaveFocus()
+    await issue(user)
 
-    comeBackOnline()
+    status.release()
 
-    await waitFor(() => expect(screen.queryByText(SHARE_CODE)).not.toBeInTheDocument())
-    const issueAction = screen.getByRole('button', { name: 'Issue a share code' })
-    await waitFor(() => expect(issueAction).toHaveFocus())
+    expect(await screen.findByText(/This share code is no longer available/)).toBeVisible()
+    expect(screen.queryByText(SHARE_CODE)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Copy code' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Done' })).toBeEnabled()
   })
 
-  it('shouldLeaveFocusAloneWhenALaterReadTakesAwayTheIssuedCodeWhileFocusIsOutsideItsPanel', async () => {
+  it('shouldExplainTheEndedCodeWhenRetryingItsFailedStatusReadSucceeds', async () => {
+    serve()
+    serveIssue()
+    const status = answersInTurn(
+      networkFailure,
+      answerWith({ shareCode: liveCode({ status: 'SPENT' }) }),
+    )
+    server.use(graphql.query('IssuedShareCodeStatus', status.resolver))
+    const { user } = renderAppAt(CODES)
+    await issue(user)
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "Couldn't check the share code's status.",
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByText(/Someone used this share code/)).toBeVisible()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Copy code' })).toBeDisabled()
+  })
+
+  it('shouldCheckTheServerForTheRealReasonWhenTheShownCodeReachesItsDeadline', async () => {
+    const expiresAt = new Date(Date.now() + HOUR).toISOString()
+    serve()
+    serveIssue({ shareCode: liveCode({ expiresAt }) })
+    let status: ShareCodeNode['status'] = 'LIVE'
+    server.use(
+      graphql.query('IssuedShareCodeStatus', () =>
+        HttpResponse.json({ data: { shareCode: liveCode({ status, expiresAt }) } }),
+      ),
+    )
+    renderAppAt(CODES)
+    await screen.findByRole('region', { name: 'Live codes' })
+    vi.useFakeTimers()
+    try {
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Issue a share code' }))
+        await vi.advanceTimersByTimeAsync(100)
+      })
+      expect(screen.getByText(SHARE_CODE)).toBeVisible()
+      status = 'SPENT'
+
+      await act(async () => vi.advanceTimersByTimeAsync(HOUR))
+    } finally {
+      vi.useRealTimers()
+    }
+
+    expect(await screen.findByText(/Someone used this share code/)).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Copy code' })).toBeDisabled()
+    expect(screen.queryByText(/This share code expired/)).not.toBeInTheDocument()
+  })
+
+  it.each(['open', 'closed'] as const)(
+    'shouldReadAfterThePendingDeadlineCheckOnlyWhenThePanelIs%s',
+    async (panel) => {
+      const expiresAt = new Date(Date.now() + HOUR).toISOString()
+      const beforeExpiry = heldAnswer({ shareCode: liveCode({ expiresAt }) })
+      const status = answersInTurn(
+        beforeExpiry.answer,
+        answerWith({ shareCode: liveCode({ status: 'SPENT', expiresAt }) }),
+      )
+      serve()
+      serveIssue({ shareCode: liveCode({ expiresAt }) })
+      server.use(graphql.query('IssuedShareCodeStatus', status.resolver))
+      renderAppAt(CODES)
+      await screen.findByRole('region', { name: 'Live codes' })
+      vi.useFakeTimers()
+      try {
+        await act(async () => {
+          fireEvent.click(screen.getByRole('button', { name: 'Issue a share code' }))
+          await vi.advanceTimersByTimeAsync(100)
+        })
+        expect(screen.getByText(SHARE_CODE)).toBeVisible()
+        expect(status.calls).toBe(1)
+
+        await act(async () => vi.advanceTimersByTimeAsync(HOUR))
+        expect(status.calls).toBe(1)
+        if (panel === 'closed') {
+          act(() => fireEvent.click(screen.getByRole('button', { name: 'Done' })))
+        }
+        await act(async () => {
+          beforeExpiry.release()
+          await vi.advanceTimersByTimeAsync(100)
+        })
+      } finally {
+        vi.useRealTimers()
+      }
+
+      if (panel === 'closed') {
+        expect(screen.queryByRole('button', { name: 'Done' })).not.toBeInTheDocument()
+        expect(status.calls).toBe(1)
+        return
+      }
+      expect(await screen.findByText(/Someone used this share code/)).toBeVisible()
+      expect(status.calls).toBe(2)
+      expect(screen.getByRole('button', { name: 'Copy code' })).toBeDisabled()
+    },
+  )
+
+  it('shouldStopReadingTheCodeWhenDoneClosesThePanelDuringAWithdrawalRead', async () => {
+    const beforeWithdrawal = heldAnswer({ shareCode: liveCode() })
+    const requestedIds: unknown[] = []
     serveInTurn([], [liveCode()], [])
     serveIssue()
+    serveWithdraw()
+    server.use(
+      graphql.query('IssuedShareCodeStatus', ({ variables }) => {
+        requestedIds.push(variables.shareCodeId)
+        return beforeWithdrawal.answer()
+      }),
+    )
     const { user } = renderAppAt(CODES)
-    const code = await issue(user)
-    await waitForTheReadAfterTheIssue()
-    // A click on the page outside the panel leaves focus on the page body.
-    act(() => code.blur())
+    await issue(user)
+    await withdrawWhenAllowed(user, /^Issued by Sam /)
+    expect(await screen.findByText(/This share code was withdrawn/)).toBeVisible()
+    expect(requestedIds).toEqual([CODE_ID])
 
-    comeBackOnline()
+    await user.click(screen.getByRole('button', { name: 'Done' }))
+    beforeWithdrawal.release()
 
-    await waitFor(() => expect(screen.queryByText(SHARE_CODE)).not.toBeInTheDocument())
-    expect(document.body).toHaveFocus()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Issue a share code' })).toBeEnabled(),
+    )
+    expect(screen.queryByRole('button', { name: 'Done' })).not.toBeInTheDocument()
+    expect(requestedIds).toEqual([CODE_ID])
   })
 
   it('shouldKeepTheIssuedCodeWhenTheReadAfterTheIssueFails', async () => {
@@ -641,8 +826,7 @@ describe('Share codes', () => {
     expect(screen.getByRole('button', { name: 'Copy link' })).toBeEnabled()
   })
 
-  it('shouldTakeTheIssuedCodeAwayWhenARetryAfterAFailedReadNoLongerListsThatCode', async () => {
-    // Someone offers a Profile with the code before the admin retries, and the offer spends the code.
+  it('shouldKeepTheCodeWhenARetryOfTheLiveListDoesNotListIt', async () => {
     serve()
     const codes = answersInTurn(
       answerWith(codesData([])),
@@ -659,8 +843,8 @@ describe('Share codes', () => {
 
     expect(await screen.findByText('No live share codes.')).toBeVisible()
     expect(codes.calls).toBe(3)
-    expect(screen.queryByText(SHARE_CODE)).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Copy link' })).not.toBeInTheDocument()
+    expect(screen.getByText(SHARE_CODE)).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Copy link' })).toBeEnabled()
   })
 
   it('shouldKeepTheIssuedCodeWhenAReadFromBeforeTheIssueArrivesAfterAFailedRead', async () => {

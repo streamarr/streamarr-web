@@ -1,5 +1,7 @@
 import { Button } from '@mantine/core'
 import { type Ref, useEffect, useId, useRef, useState } from 'react'
+import type { ShareCodeStatus } from '../graphql/generated/graphql'
+import { requestFailureMessage } from '../graphql/requestErrors'
 import { shareCodeLink } from './shareCode'
 import styles from './ShareCodes.module.css'
 
@@ -16,14 +18,20 @@ export type CodeClipboard = Pick<Clipboard, 'writeText'> | null
 export function IssuedShareCode({
   code,
   expiresAt,
+  status,
+  statusError,
+  onStatusRetry,
   clipboard,
   origin,
   onCopied,
   onDone,
   ref,
 }: Readonly<{
-  code: string
+  code: string | null
   expiresAt: string
+  status: ShareCodeStatus | null
+  statusError: unknown
+  onStatusRetry: () => Promise<unknown>
   clipboard: CodeClipboard
   /** The client's origin, which the link opens the Sharing page on. */
   origin: string
@@ -35,6 +43,7 @@ export function IssuedShareCode({
   const [failure, setFailure] = useState<string | null>(null)
   const shown = useRef<HTMLParagraphElement>(null)
   const sentence = useId()
+  const live = status === 'LIVE' && code !== null
 
   // The code takes focus, so a reader hears it and the sentence that says it shows only now.
   useEffect(() => {
@@ -54,21 +63,41 @@ export function IssuedShareCode({
 
   return (
     <div ref={ref} className={styles.issued}>
-      <p ref={shown} className={styles.code} tabIndex={-1} aria-describedby={sentence}>
-        {code}
+      <p
+        ref={shown}
+        className={live ? styles.code : styles.once}
+        tabIndex={-1}
+        aria-describedby={live ? sentence : undefined}
+        role={live ? undefined : 'status'}
+      >
+        {live ? code : endedCodeMessage(status)}
       </p>
-      <p id={sentence} className={styles.once}>
-        {`This is the only time the code is shown. It works until ${UNTIL.format(new Date(expiresAt))}.`}
-      </p>
-      {failure && (
+      {live && (
+        <p id={sentence} className={styles.once}>
+          {`This is the only time the code is shown. It works until ${UNTIL.format(new Date(expiresAt))}.`}
+        </p>
+      )}
+      {live && failure && (
         <p className={styles.failure} role="alert">
           {failure}
         </p>
       )}
+      {statusError !== undefined && (
+        <div>
+          <p className={styles.failure} role="alert">
+            {requestFailureMessage(statusError, "Couldn't check the share code's status.")}
+          </p>
+          <Button variant="default" onClick={() => void onStatusRetry()}>
+            Retry
+          </Button>
+        </div>
+      )}
       <div className={styles.actions}>
         <Button
           variant="default"
+          disabled={!live}
           onClick={() =>
+            code !== null &&
             void copy(
               code,
               'Code copied.',
@@ -80,7 +109,9 @@ export function IssuedShareCode({
         </Button>
         <Button
           variant="default"
+          disabled={!live}
           onClick={() =>
+            code !== null &&
             void copy(
               shareCodeLink(code, origin),
               'Link copied.',
@@ -94,6 +125,21 @@ export function IssuedShareCode({
       </div>
     </div>
   )
+}
+
+function endedCodeMessage(status: ShareCodeStatus | null): string {
+  switch (status) {
+    case 'SPENT':
+      return 'Someone used this share code to offer a Profile. Check Share invitations for any offers waiting for your answer.'
+    case 'WITHDRAWN':
+      return 'This share code was withdrawn. To share again, issue a new share code.'
+    case 'EXPIRED':
+      return 'This share code expired. To share again, issue a new share code.'
+    case 'INVALIDATED':
+      return 'This share code was withdrawn because its issuer can no longer issue codes for this Household. To share again, issue a new share code.'
+    default:
+      return 'This share code is no longer available. To share again, issue a new share code.'
+  }
 }
 
 async function copied(clipboard: CodeClipboard, text: string): Promise<boolean> {

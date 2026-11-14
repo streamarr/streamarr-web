@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import {
   HouseholdShareCodesDocument,
   IssueShareCodeDocument,
+  IssuedShareCodeStatusDocument,
   WithdrawShareCodeDocument,
   type HouseholdShareCodesQuery,
   type IssueShareCodeMutation,
@@ -23,21 +24,17 @@ import sharingStyles from './Sharing.module.css'
 import { SharingSection } from './SharingSection'
 import { expiryLabel } from './shareText'
 import { useMe } from './useMe'
+import { useNow } from './useNow'
 
 type ShareCode = HouseholdShareCodesQuery['householdShareCodes']['edges'][number]['node']
-type Issued = NonNullable<NonNullable<IssueShareCodeMutation['issueShareCode']>['issued']>
+type Issued = Omit<
+  NonNullable<NonNullable<IssueShareCodeMutation['issueShareCode']>['issued']>,
+  'code'
+> & { code: string | null }
 type Household = MeQuery['me']['household']
 type Announce = ReturnType<typeof usePageNotice>['announce']
 /** A change to the Household's codes: issuing a code, or withdrawing the code that `codeId` names. */
 type Change = { kind: 'issue' } | { kind: 'withdraw'; codeId: string }
-/** The latest read of the codes, as the query reports it. */
-type LatestRead = {
-  /** The last list the server gave, if any. A failed read keeps that list. */
-  listed: HouseholdShareCodesQuery | undefined
-  failed: boolean
-  /** True once the read after the issue settled. Every read from then on started after the issue. */
-  afterIssue: boolean
-}
 
 const ISSUE_FAILED = "Couldn't issue a share code."
 const WITHDRAW_FAILED = "Couldn't withdraw the share code."
@@ -117,12 +114,44 @@ function HouseholdShareCodes({
   const [withdrawRefusal, setWithdrawRefusal] = useState<string | null>(null)
   /** The change on its way. A change stays on its way until the read after the change lands. */
   const [change, setChange] = useState<Change | null>(null)
-  const afterRead = afterLatestRead(shown, {
-    listed: query.data,
-    failed: query.error !== undefined,
-    afterIssue: change?.kind !== 'issue',
+  const statusRead = useQuery(IssuedShareCodeStatusDocument, {
+    variables: { shareCodeId: shown?.shareCode.id ?? '' },
+    skip: shown === null,
+    fetchPolicy: 'network-only',
   })
-  if (afterRead !== shown) setShown(afterRead)
+  const expiresAt = shown?.shareCode.expiresAt ?? null
+  const now = useNow([expiresAt])
+  const atDeadline = expiresAt !== null && Date.parse(expiresAt) <= now.getTime()
+  const codeId = shown?.shareCode.id
+  const codeStatus = shown?.shareCode.status
+  const readStatus = statusRead.refetch
+  const client = useApolloClient()
+  useEffect(() => {
+    if (!codeId || !atDeadline || codeStatus !== 'LIVE') return
+    let current = true
+    const pending = [...client.getObservableQueries([IssuedShareCodeStatusDocument])].filter(
+      (read) => read.variables.shareCodeId === codeId && isReading(read),
+    )
+    void Promise.all(pending.map((read) => read.refetch().catch(() => undefined))).then(() => {
+      if (current) void readStatus().catch(() => undefined)
+    })
+    return () => {
+      current = false
+    }
+  }, [client, codeId, codeStatus, atDeadline, readStatus])
+  const latest = statusRead.data?.shareCode
+  if (
+    shown &&
+    latest &&
+    latest.id === shown.shareCode.id &&
+    latest.status !== 'LIVE' &&
+    shown.shareCode.status === 'LIVE'
+  ) {
+    setShown({ ...shown, code: null, shareCode: latest })
+  }
+  if (shown && latest === null && shown.code !== null) {
+    setShown({ ...shown, code: null })
+  }
   // Apollo answers a read sent while the same read is on its way with the earlier read's answer,
   // and that answer can predate a change. So no change starts while another change, or the first
   // read of the codes, is on its way.
@@ -133,7 +162,6 @@ function HouseholdShareCodes({
    * that focus returns to the issue button.
    */
   const returnFocus = useRef(false)
-  const client = useApolloClient()
   // React detaches the panel's ref before React takes the panel out of the page. So at that moment
   // the panel still holds any focus that the closing then drops on the page body. The callback
   // stays one function, so that React detaches the ref only when the panel closes.
@@ -159,10 +187,17 @@ function HouseholdShareCodes({
   // would join that read. The app reads every active query again when the page comes back into
   // view or online. So a read already on its way settles first, and a fresh read follows.
   async function readAfterChange() {
-    if ([...client.getObservableQueries([HouseholdShareCodesDocument])].some(isReading)) {
-      await readAgain()
-    }
-    await readAgain()
+    const active = client.getObservableQueries('active')
+    const reads = [
+      ...client.getObservableQueries([HouseholdShareCodesDocument, IssuedShareCodeStatusDocument]),
+    ].filter((read) => active.has(read))
+    await Promise.all(reads.filter(isReading).map((read) => read.refetch().catch(() => undefined)))
+    const stillActive = client.getObservableQueries('active')
+    await Promise.all(
+      reads
+        .filter((read) => stillActive.has(read))
+        .map((read) => read.refetch().catch(() => undefined)),
+    )
   }
 
   async function issue() {
@@ -198,10 +233,15 @@ function HouseholdShareCodes({
       const errors = data?.withdrawShareCode?.userErrors ?? []
       const refused = errors.length > 0
       if (refused) setWithdrawRefusal(errors.map(userErrorMessage).join(' '))
-      // The shown code no longer works after either answer. The server refuses the Account that
-      // issued a code only once the code was spent, withdrawn or invalidated. So the panel stops
-      // offering the code for copying.
-      setShown((current) => (current?.shareCode.id === code.id ? null : current))
+      const status = data?.withdrawShareCode?.shareCode?.status
+      setShown((current) => {
+        if (!current || current.shareCode.id !== code.id) return current
+        return {
+          ...current,
+          code: null,
+          shareCode: { ...current.shareCode, status: status ?? current.shareCode.status },
+        }
+      })
       // A refused code may have been spent or withdrawn elsewhere, so the list is read again.
       await readAfterChange()
       if (!refused) announce('Share code withdrawn.')
@@ -238,6 +278,11 @@ function HouseholdShareCodes({
           key={shown.shareCode.id}
           code={shown.code}
           expiresAt={shown.shareCode.expiresAt}
+          status={
+            shown.code === null && shown.shareCode.status === 'LIVE' ? null : shown.shareCode.status
+          }
+          statusError={statusRead.error}
+          onStatusRetry={() => statusRead.refetch().catch(() => undefined)}
           clipboard={clipboard}
           origin={origin}
           onCopied={(notice) => announce(notice, { inPlace: true })}
@@ -259,17 +304,6 @@ function HouseholdShareCodes({
       />
     </div>
   )
-}
-
-// The code on show after the latest read. The list read before the issue never holds the new code.
-// The issue stays on its way until the read after the issue settles. So every list from then on
-// comes from a read that started after the issue. Such a list without the code proves that the code
-// stopped working, and the page then stops showing the code. A failed read keeps the code on show.
-function afterLatestRead(shown: Issued | null, read: LatestRead): Issued | null {
-  if (!shown || !read.afterIssue || read.failed || !read.listed) return shown
-  const id = shown.shareCode.id
-  const holds = read.listed.householdShareCodes.edges.some((edge) => edge.node.id === id)
-  return holds ? shown : null
 }
 
 function LiveShareCodes({
