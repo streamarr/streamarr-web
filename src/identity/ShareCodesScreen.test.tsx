@@ -761,7 +761,7 @@ describe('Share codes', () => {
         await act(async () => vi.advanceTimersByTimeAsync(HOUR))
         expect(status.calls).toBe(1)
         if (panel === 'closed') {
-          act(() => fireEvent.click(screen.getByRole('button', { name: 'Done' })))
+          await act(() => fireEvent.click(screen.getByRole('button', { name: 'Done' })))
         }
         await act(async () => {
           beforeExpiry.release()
