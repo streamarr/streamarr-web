@@ -42,11 +42,12 @@ const AMBIENT_ROUTES = new Set<FileRouteTypes['id']>([
   '/_authenticated/season/$seasonId',
 ])
 
-// Settings are neutral pages: the chrome stays, the browsing wash behind it does not.
-const SETTINGS_ROUTES = new Set<FileRouteTypes['id']>([
+// Neutral pages, such as settings: the chrome stays, the browsing wash behind it does not.
+const NEUTRAL_ROUTES = new Set<FileRouteTypes['id']>([
   '/_authenticated/settings/server',
   '/_authenticated/settings/profile',
   '/_authenticated/settings/household',
+  '/_authenticated/notifications',
 ])
 
 // The player fills the screen and carries its own Back.
@@ -88,8 +89,8 @@ function RootFrame() {
     select: (state) => state.matches.some((match) => AMBIENT_ROUTES.has(match.routeId)),
   })
   const theme = useAmbientTheme()
-  const settings = useRouterState({
-    select: (state) => state.matches.some((match) => SETTINGS_ROUTES.has(match.routeId)),
+  const neutral = useRouterState({
+    select: (state) => state.matches.some((match) => NEUTRAL_ROUTES.has(match.routeId)),
   })
   const player = useRouterState({
     select: (state) => state.matches.some((match) => PLAYER_ROUTES.has(match.routeId)),
@@ -109,7 +110,7 @@ function RootFrame() {
   }
 
   return (
-    <HomeShell chrome={signedIn && <TopBar />} ambient={!settings}>
+    <HomeShell chrome={signedIn && <TopBar />} ambient={!neutral}>
       <Outlet />
     </HomeShell>
   )

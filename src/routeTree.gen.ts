@@ -16,6 +16,7 @@ import { Route as ResetRouteImport } from './routes/reset'
 import { Route as SetupServerRouteImport } from './routes/setup-server'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedLinkRouteImport } from './routes/_authenticated/link'
+import { Route as AuthenticatedNotificationsRouteImport } from './routes/_authenticated/notifications'
 import { Route as AuthenticatedSelectProfileRouteImport } from './routes/_authenticated/select-profile'
 import { Route as AuthenticatedLibraryLibraryIdRouteImport } from './routes/_authenticated/library.$libraryId'
 import { Route as AuthenticatedMovieMovieIdRouteImport } from './routes/_authenticated/movie.$movieId'
@@ -72,6 +73,12 @@ const AuthenticatedLinkRoute = AuthenticatedLinkRouteImport.update({
   path: '/link',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedNotificationsRoute =
+  AuthenticatedNotificationsRouteImport.update({
+    id: '/notifications',
+    path: '/notifications',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedSelectProfileRoute =
   AuthenticatedSelectProfileRouteImport.update({
     id: '/select-profile',
@@ -206,6 +213,7 @@ export interface FileRoutesByFullPath {
   '/reset': typeof ResetRoute
   '/setup-server': typeof SetupServerRoute
   '/link': typeof AuthenticatedLinkRoute
+  '/notifications': typeof AuthenticatedNotificationsRoute
   '/select-profile': typeof AuthenticatedSelectProfileRoute
   '/library/$libraryId': typeof AuthenticatedLibraryLibraryIdRoute
   '/movie/$movieId': typeof AuthenticatedMovieMovieIdRoute
@@ -234,6 +242,7 @@ export interface FileRoutesByTo {
   '/reset': typeof ResetRoute
   '/setup-server': typeof SetupServerRoute
   '/link': typeof AuthenticatedLinkRoute
+  '/notifications': typeof AuthenticatedNotificationsRoute
   '/select-profile': typeof AuthenticatedSelectProfileRoute
   '/': typeof AuthenticatedIndexRoute
   '/library/$libraryId': typeof AuthenticatedLibraryLibraryIdRoute
@@ -262,6 +271,7 @@ export interface FileRoutesById {
   '/reset': typeof ResetRoute
   '/setup-server': typeof SetupServerRoute
   '/_authenticated/link': typeof AuthenticatedLinkRoute
+  '/_authenticated/notifications': typeof AuthenticatedNotificationsRoute
   '/_authenticated/select-profile': typeof AuthenticatedSelectProfileRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/library/$libraryId': typeof AuthenticatedLibraryLibraryIdRoute
@@ -294,6 +304,7 @@ export interface FileRouteTypes {
     | '/reset'
     | '/setup-server'
     | '/link'
+    | '/notifications'
     | '/select-profile'
     | '/library/$libraryId'
     | '/movie/$movieId'
@@ -322,6 +333,7 @@ export interface FileRouteTypes {
     | '/reset'
     | '/setup-server'
     | '/link'
+    | '/notifications'
     | '/select-profile'
     | '/'
     | '/library/$libraryId'
@@ -349,6 +361,7 @@ export interface FileRouteTypes {
     | '/reset'
     | '/setup-server'
     | '/_authenticated/link'
+    | '/_authenticated/notifications'
     | '/_authenticated/select-profile'
     | '/_authenticated/'
     | '/_authenticated/library/$libraryId'
@@ -430,6 +443,13 @@ declare module '@tanstack/react-router' {
       path: '/link'
       fullPath: '/link'
       preLoaderRoute: typeof AuthenticatedLinkRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/notifications': {
+      id: '/_authenticated/notifications'
+      path: '/notifications'
+      fullPath: '/notifications'
+      preLoaderRoute: typeof AuthenticatedNotificationsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/select-profile': {
@@ -656,6 +676,7 @@ const AuthenticatedSettingsServerRouteWithChildren =
 
 interface AuthenticatedRouteChildren {
   AuthenticatedLinkRoute: typeof AuthenticatedLinkRoute
+  AuthenticatedNotificationsRoute: typeof AuthenticatedNotificationsRoute
   AuthenticatedSelectProfileRoute: typeof AuthenticatedSelectProfileRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedLibraryLibraryIdRoute: typeof AuthenticatedLibraryLibraryIdRoute
@@ -670,6 +691,7 @@ interface AuthenticatedRouteChildren {
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedLinkRoute: AuthenticatedLinkRoute,
+  AuthenticatedNotificationsRoute: AuthenticatedNotificationsRoute,
   AuthenticatedSelectProfileRoute: AuthenticatedSelectProfileRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedLibraryLibraryIdRoute: AuthenticatedLibraryLibraryIdRoute,
