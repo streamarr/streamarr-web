@@ -44,6 +44,9 @@ const PLAYBACK_STATUS_INTERVAL_MS = 500
 const DEFAULT_SEGMENT_SECONDS = 6
 // How close to the end of its buffered media a waiting element has run out of it.
 const PLAYABLE_MEDIA_END_TOLERANCE_SECONDS = 0.5
+// hls.js moves a segment's start to the first frame of its media, so neighbouring segments it has
+// buffered can leave a hairline between them.
+const LOADED_RANGE_TOLERANCE_SECONDS = 0.25
 // By the server's defaults, it replaces a job attempt that stores nothing for 10 s and gives the
 // replacement up to 22 s to store its first segment, so a stall it can still end ends within about
 // 32 s and one segment's transfer. Once the buffer is empty, hls.js abandons a segment request
@@ -1475,26 +1478,34 @@ function attach(video: HTMLVideoElement, url: string, options: StreamSourceOptio
 
 // A variant's segments carry its audio, so one SourceBuffer holds both tracks, and the element
 // plays only the time both have media. A copy whose audio ends before its video stops where the
-// audio ends, and since 1.7.2 hls.js never ends such a stream. hls.js loads forward from the
-// playhead, so once it has buffered the playlist's last segment since the playhead last left the
-// buffered media, a playing element that waits with no media ahead will get no more.
+// audio ends, and since 1.7.2 hls.js never ends such a stream. Once hls.js has buffered every
+// segment from the playhead to the end of the playlist, a playing element that waits with no
+// media ahead will get no more.
 function watchForTheEndOfPlayableMedia(
   hls: Hls,
   video: HTMLVideoElement,
   onEnded: () => void,
 ): () => void {
-  let lastSegmentBuffered = false
+  // The parts of the playlist that hls.js has buffered since the playhead last left the buffered
+  // media, less any the buffer has dropped since. Only the last segment names the playlist's end.
+  let loaded: LoadedRange[] = []
+  let playlistEnd = Number.POSITIVE_INFINITY
   const endWhenNoMediaComes = () => {
-    if (lastSegmentBuffered && waitsWithNoMediaAhead(video)) onEnded()
+    if (covers(loaded, video.currentTime, playlistEnd) && waitsWithNoMediaAhead(video)) onEnded()
   }
   hls.on(Hls.Events.FRAG_BUFFERED, (_event, { frag }) => {
-    if (frag.type !== PlaylistLevelType.MAIN || !frag.endList) return
-    lastSegmentBuffered = true
+    if (frag.type !== PlaylistLevelType.MAIN) return
+    loaded = withRange(loaded, [frag.start, frag.end])
+    if (frag.endList) playlistEnd = frag.end
     endWhenNoMediaComes()
   })
-  // hls.js loads again from a seek that leaves the buffered media.
+  hls.on(Hls.Events.BUFFER_FLUSHED, (_event, { start, end }) => {
+    loaded = withoutRange(loaded, [start, end])
+  })
+  // hls.js loads again from a seek that leaves the buffered media, and can still finish a segment
+  // it loaded before the seek.
   const onSeeking = () => {
-    if (!holdsMediaAt(video, video.currentTime)) lastSegmentBuffered = false
+    if (!holdsMediaAt(video, video.currentTime)) loaded = []
   }
   video.addEventListener('seeking', onSeeking)
   video.addEventListener('waiting', endWhenNoMediaComes)
@@ -1520,6 +1531,42 @@ function holdsMediaAt(video: HTMLVideoElement, seconds: number): boolean {
     if (video.buffered.start(index) <= seconds && seconds <= video.buffered.end(index)) return true
   }
   return false
+}
+
+type LoadedRange = readonly [start: number, end: number]
+
+// The ranges stay apart from one another, so the added range joins every range it touches.
+function withRange(ranges: readonly LoadedRange[], added: LoadedRange): LoadedRange[] {
+  let joined = added
+  const apart: LoadedRange[] = []
+  for (const range of ranges) {
+    if (range[1] + LOADED_RANGE_TOLERANCE_SECONDS < joined[0]) {
+      apart.push(range)
+      continue
+    }
+    if (range[0] - LOADED_RANGE_TOLERANCE_SECONDS > joined[1]) {
+      apart.push(range)
+      continue
+    }
+    joined = [Math.min(range[0], joined[0]), Math.max(range[1], joined[1])]
+  }
+  return [...apart, joined]
+}
+
+function withoutRange(ranges: readonly LoadedRange[], [start, end]: LoadedRange): LoadedRange[] {
+  return ranges
+    .flatMap(([from, to]): LoadedRange[] => [
+      [from, Math.min(to, start)],
+      [Math.max(from, end), to],
+    ])
+    .filter(([from, to]) => to > from)
+}
+
+function covers(ranges: readonly LoadedRange[], from: number, to: number): boolean {
+  return ranges.some(
+    ([start, end]) =>
+      start <= from + LOADED_RANGE_TOLERANCE_SECONDS && end >= to - LOADED_RANGE_TOLERANCE_SECONDS,
+  )
 }
 
 function hlsSourceStats(hls: Hls): SourceStats {
