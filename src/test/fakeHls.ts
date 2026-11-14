@@ -81,7 +81,6 @@ class FakeHls {
     SUBTITLE_TRACKS_UPDATED: 'hlsSubtitleTracksUpdated',
     SUBTITLE_TRACK_SWITCH: 'hlsSubtitleTrackSwitch',
     FRAG_BUFFERED: 'hlsFragBuffered',
-    BUFFER_FLUSHED: 'hlsBufferFlushed',
   }
   static isSupported() {
     return hls.supported

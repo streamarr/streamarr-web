@@ -1478,20 +1478,23 @@ function attach(video: HTMLVideoElement, url: string, options: StreamSourceOptio
 
 // A variant's segments carry its audio, so one SourceBuffer holds both tracks, and the element
 // plays only the time both have media. A copy whose audio ends before its video stops where the
-// audio ends, and since 1.7.2 hls.js never ends such a stream. Once hls.js has buffered every
-// segment from the playhead to the end of the playlist, a playing element that waits with no
-// media ahead will get no more.
+// audio ends, and since 1.7.2 hls.js never ends such a stream. A browser can drop buffered media
+// and hls.js load it again, so playback ends only where the element waits at or past the
+// furthest playable media it has held, once hls.js has buffered every segment from the playhead
+// to the end of the playlist.
 function watchForTheEndOfPlayableMedia(
   hls: Hls,
   video: HTMLVideoElement,
   onEnded: () => void,
 ): () => void {
-  // The parts of the playlist that hls.js has buffered since the playhead last left the buffered
-  // media, less any the buffer has dropped since. Only the last segment names the playlist's end.
   let loaded: LoadedRange[] = []
+  // Only the last segment names the playlist's end.
   let playlistEnd = Number.POSITIVE_INFINITY
+  let playableEnd = 0
   const endWhenNoMediaComes = () => {
-    if (covers(loaded, video.currentTime, playlistEnd) && waitsWithNoMediaAhead(video)) onEnded()
+    playableEnd = Math.max(playableEnd, endOfBufferedMedia(video))
+    if (!waitsAt(video, playableEnd)) return
+    if (covers(loaded, video.currentTime, playlistEnd)) onEnded()
   }
   hls.on(Hls.Events.FRAG_BUFFERED, (_event, { frag }) => {
     if (frag.type !== PlaylistLevelType.MAIN) return
@@ -1499,38 +1502,25 @@ function watchForTheEndOfPlayableMedia(
     if (frag.endList) playlistEnd = frag.end
     endWhenNoMediaComes()
   })
-  hls.on(Hls.Events.BUFFER_FLUSHED, (_event, { start, end }) => {
-    loaded = withoutRange(loaded, [start, end])
-  })
-  // hls.js loads again from a seek that leaves the buffered media, and can still finish a segment
-  // it loaded before the seek.
-  const onSeeking = () => {
-    if (!holdsMediaAt(video, video.currentTime)) loaded = []
-  }
-  video.addEventListener('seeking', onSeeking)
   video.addEventListener('waiting', endWhenNoMediaComes)
-  return () => {
-    video.removeEventListener('seeking', onSeeking)
-    video.removeEventListener('waiting', endWhenNoMediaComes)
+  return () => video.removeEventListener('waiting', endWhenNoMediaComes)
+}
+
+function endOfBufferedMedia(video: HTMLVideoElement): number {
+  let end = 0
+  for (let index = 0; index < video.buffered.length; index++) {
+    end = Math.max(end, video.buffered.end(index))
   }
+  return end
 }
 
 // A paused element waits for nothing, and Chromium stops about 0.1 s short of its buffered media.
-function waitsWithNoMediaAhead(video: HTMLVideoElement): boolean {
-  if (video.paused || video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) return false
-  for (let index = 0; index < video.buffered.length; index++) {
-    if (video.buffered.end(index) > video.currentTime + PLAYABLE_MEDIA_END_TOLERANCE_SECONDS) {
-      return false
-    }
-  }
-  return true
-}
-
-function holdsMediaAt(video: HTMLVideoElement, seconds: number): boolean {
-  for (let index = 0; index < video.buffered.length; index++) {
-    if (video.buffered.start(index) <= seconds && seconds <= video.buffered.end(index)) return true
-  }
-  return false
+function waitsAt(video: HTMLVideoElement, seconds: number): boolean {
+  return (
+    !video.paused &&
+    video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA &&
+    video.currentTime >= seconds - PLAYABLE_MEDIA_END_TOLERANCE_SECONDS
+  )
 }
 
 type LoadedRange = readonly [start: number, end: number]
@@ -1551,15 +1541,6 @@ function withRange(ranges: readonly LoadedRange[], added: LoadedRange): LoadedRa
     joined = [Math.min(range[0], joined[0]), Math.max(range[1], joined[1])]
   }
   return [...apart, joined]
-}
-
-function withoutRange(ranges: readonly LoadedRange[], [start, end]: LoadedRange): LoadedRange[] {
-  return ranges
-    .flatMap(([from, to]): LoadedRange[] => [
-      [from, Math.min(to, start)],
-      [Math.max(from, end), to],
-    ])
-    .filter(([from, to]) => to > from)
 }
 
 function covers(ranges: readonly LoadedRange[], from: number, to: number): boolean {

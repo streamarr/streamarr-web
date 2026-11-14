@@ -6751,7 +6751,7 @@ describe('Player', () => {
       expect(video.paused).toBe(false)
     })
 
-    it('shouldWaitForTheRestToBufferAgainWhenTheViewerSeeksPastTheBufferedMedia', async () => {
+    it('shouldEndPlaybackWhereTheViewerSeeksPastTheAudioOnceTheRestHasBuffered', async () => {
       const video = await playingVideo()
       const reports = recordTimelineReports()
       bufferMedia(video, [[0, 1200]])
@@ -6759,20 +6759,24 @@ describe('Player', () => {
 
       seekTo(video, 1218)
       stallAt(video, 1218)
-      expect(video.paused).toBe(false)
-      bufferSegments({ from: 1212 })
 
       expect(video.paused).toBe(true)
       await waitFor(() => expect(reports.at(-1)).toEqual(stoppedAt(1218)))
     })
 
-    it('shouldEndPlaybackWhereTheAudioEndsWhenTheViewerSoughtWithinTheBufferedMedia', async () => {
+    // hls.js loads again only the segments past the audio that follow the first seek, and skips
+    // the rest, which it still holds.
+    it('shouldEndPlaybackWhereTheAudioEndsAfterThePausedViewerSoughtPastItAndBack', async () => {
       const video = await playingVideo()
       bufferMedia(video, [[0, 1200]])
       bufferSegments({ from: 1188 })
+      act(() => video.pause())
+      seekTo(video, 1218)
+      bufferSegments({ from: 1218 })
       seekTo(video, 600)
       fireEvent(video, new Event('seeked'))
 
+      await act(() => video.play())
       stallAt(video, 1199.9)
 
       expect(video.paused).toBe(true)
@@ -6798,17 +6802,16 @@ describe('Player', () => {
       expect(video.paused).toBe(false)
     })
 
-    it('shouldKeepWaitingWhenTheBufferDropsMediaAheadUntilItBuffersAgain', async () => {
+    // A browser can drop buffered media ahead of the playhead to free memory, without an event.
+    it('shouldKeepWaitingWhenMediaTheElementHeldAheadLeavesTheBufferUntilItBuffersAgain', async () => {
       const video = await playingVideo()
       bufferMedia(video, [[0, 1200]])
       bufferSegments({ from: 1086 })
 
-      // A managed buffer can drop media ahead of the playhead to free memory.
-      act(() => hls.emit('hlsBufferFlushed', { type: 'audiovideo', start: 1100, end: 1236 }))
       bufferMedia(video, [[0, 1100]])
       stallAt(video, 1099.9)
       expect(video.paused).toBe(false)
-      bufferSegments({ from: 1098 })
+      bufferSegments({ from: 1098, to: 1200 })
       bufferMedia(video, [[0, 1200]])
       stallAt(video, 1199.9)
 
