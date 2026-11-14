@@ -120,7 +120,7 @@ test('a ServerAdmin counts how long a share code lasts in hours, and a reload sh
   const state = await fixture(page)
   await page.goto('/settings/server/libraries')
   const rail = page.getByRole('navigation', { name: 'Server settings' })
-  await rail.getByRole('link', { name: 'Sharing and invitations' }).click()
+  await rail.getByRole('link', { name: 'Sharing' }).click()
   await expect(page).toHaveURL(PAGE)
 
   const lasts = page.getByRole('textbox', { name: 'A share code lasts' })

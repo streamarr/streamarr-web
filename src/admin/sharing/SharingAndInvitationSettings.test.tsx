@@ -300,7 +300,7 @@ async function returnToSharing(user: UserEvent) {
   const rail = screen.getByRole('navigation', { name: 'Server settings' })
   await user.click(within(rail).getByRole('link', { name: 'Libraries' }))
   await screen.findByRole('region', { name: 'Library administration' })
-  await user.click(within(rail).getByRole('link', { name: 'Sharing and invitations' }))
+  await user.click(within(rail).getByRole('link', { name: 'Sharing' }))
 }
 
 describe('sharing and invitation settings', () => {
@@ -308,10 +308,10 @@ describe('sharing and invitation settings', () => {
     serve()
     const { user, router } = renderAppAt('/settings/server/libraries')
     const rail = await screen.findByRole('navigation', { name: 'Server settings' })
-    await user.click(within(rail).getByRole('link', { name: 'Sharing and invitations' }))
+    await user.click(within(rail).getByRole('link', { name: 'Sharing' }))
     expect(await limitField()).toHaveValue('10')
     expect(router.state.location.pathname).toBe(SHARING)
-    expect(within(rail).getByRole('link', { name: 'Sharing and invitations' })).toHaveAttribute(
+    expect(within(rail).getByRole('link', { name: 'Sharing' })).toHaveAttribute(
       'aria-current',
       'page',
     )

@@ -24,7 +24,7 @@ const SECTIONS = [
   {
     to: '/settings/server/sharing',
     icon: 'sharing',
-    label: 'Sharing and invitations',
+    label: 'Sharing',
     region: 'Sharing and invitations',
   },
 ] as const satisfies readonly SettingsSection[]
