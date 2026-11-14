@@ -22,8 +22,8 @@ fragment NotificationEdgeFields on NotificationEdge {
   }
 }
 
-query Notifications($after: String) {
-  notifications(after: $after) {
+query Notifications($first: Int, $after: String) {
+  notifications(first: $first, after: $after) {
     edges {
       ...NotificationEdgeFields
     }

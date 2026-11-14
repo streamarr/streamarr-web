@@ -1,4 +1,4 @@
-import type { FieldPolicy, Reference } from '@apollo/client'
+import type { FieldPolicy } from '@apollo/client'
 import type {
   NotificationEdgeFieldsFragment,
   NotificationsQuery,
@@ -12,7 +12,7 @@ type ShownEdge = NotificationEdgeFieldsFragment & {
   node: NonNullable<NotificationEdgeFieldsFragment['node']>
 }
 
-/** One Notification that a change touched: its edge in the list, or null once it left the list. */
+/** One Notification that a change touched: its edge in the list, or null once it is dismissed. */
 export interface NotificationEntry {
   notificationId: string
   edge: ShownEdge | null
@@ -74,39 +74,33 @@ export function withOlderPage(
   return { ...list, edges: [...list.edges, ...older], pageInfo: page.pageInfo }
 }
 
-/** A list as the cache stores it, whatever its edges point to. */
-interface StoredList<TEdge extends { orderKey: string }> {
-  edges: readonly (TEdge | null)[]
-  pageInfo: { hasNextPage: boolean; endCursor?: string | null }
+const NEWEST_PAGE = 20
+
+const MOST_ROWS_IN_A_READ = 500
+
+/**
+ * How many rows a read of the list from its start asks for: every row the list holds, older pages
+ * included, never fewer than the newest page and never more than the server reads at once. The
+ * answer takes the place of the whole list, so the list drops what the server no longer has, such
+ * as what retention deleted, and shows how each request stands now. A row past the answer's end,
+ * such as a row that news pushed down or a row past the 500th, loads again as the end of the list
+ * comes into view.
+ */
+export function rowsToRead(list: NotificationList | undefined): number {
+  return Math.min(Math.max(list?.edges.length ?? 0, NEWEST_PAGE), MOST_ROWS_IN_A_READ)
 }
 
 /**
- * What the cache keeps when a list is written over the list it holds. A read of the newest page
- * that ends above the older pages the list has loaded refreshes the newest page and keeps the
- * older ones after it, so a list read again keeps everything the reader has scrolled through. Any
- * other write, such as a change applied to the list, holds the whole list and takes its place.
+ * The Account's one list of Notifications in the cache, however many pages it has loaded. Each
+ * write holds a whole list and takes the place of the list that the cache holds.
  */
-export function keepOlderPages<TEdge extends { orderKey: string }>(
-  existing: StoredList<TEdge> | undefined,
-  incoming: StoredList<TEdge>,
-  idOf: (edge: TEdge) => unknown,
-): StoredList<TEdge> {
-  const last = incoming.edges.findLast((edge) => edge !== null)
-  if (!existing || !last || !incoming.pageInfo.hasNextPage) return incoming
-  if (existing.pageInfo.endCursor === incoming.pageInfo.endCursor) return incoming
-  const held = new Set(incoming.edges.map((edge) => edge && idOf(edge)))
-  const older = existing.edges.filter(
-    (edge) => edge !== null && edge.orderKey > last.orderKey && !held.has(idOf(edge)),
-  )
-  if (older.length === 0) return incoming
-  return { ...incoming, edges: [...incoming.edges, ...older], pageInfo: existing.pageInfo }
-}
+export const notificationsField: FieldPolicy = { keyArgs: false, merge: false }
 
-type StoredEdge = { orderKey: string; node: Reference | null }
-
-/** The Account's one list of Notifications in the cache, however many pages it has loaded. */
-export const notificationsField: FieldPolicy<StoredList<StoredEdge>> = {
-  keyArgs: false,
-  merge: (existing, incoming, { readField }) =>
-    keepOlderPages(existing, incoming, (edge) => edge.node && readField('id', edge.node)),
+/**
+ * Whether a Notification in the cache is unread. A read Notification never becomes unread again
+ * (ADR 0063). An answer that calls a read Notification unread was read by the server before the
+ * mark that read it, so the Notification stays read.
+ */
+export const notificationUnreadField: FieldPolicy<boolean> = {
+  merge: (existing, incoming) => (existing === false ? false : incoming),
 }

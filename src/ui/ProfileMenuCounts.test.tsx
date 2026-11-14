@@ -21,6 +21,7 @@ import {
   followingNotificationChanges,
   notificationsChanged,
   notificationsPage,
+  offerNotification,
 } from '../test/notificationFixtures'
 import { renderAppAt } from '../test/render'
 import { leaveForHome, returnThroughTheProfileMenu, type SettingsPage } from '../test/returnVisits'
@@ -74,11 +75,95 @@ async function openTheProfileMenu() {
   return within(await screen.findByTestId('profile-menu'))
 }
 
-const MARA_LINE = '“Cabin” accepted the Profile “Mara”.'
+const MARA_LINE = 'The offer of “Mara” was accepted.'
 const SHARE_OFFERS: SettingsPage = { area: 'Household settings', heading: 'Share invitations' }
 const NOTIFICATIONS_PAGE: SettingsPage = { area: 'Notifications', heading: 'Notifications' }
 
 describe('The unread count in the Profile menu', () => {
+  it('shouldFinishAnEarlierMarkBeforeApplyingALaterOneWhenMarkAllIsChosenTwice', async () => {
+    serveHome(meFixture(), 2)
+    const notifications = [
+      answerNotification({ id: 'answer-for-mara', message: MARA_LINE, unread: true }),
+      answerNotification({ unread: true }),
+    ]
+    const firstAnswer = deferred()
+    onTestFinished(firstAnswer.resolve)
+    const marks = { calls: 0 }
+    server.use(
+      graphql.query('Notifications', () =>
+        HttpResponse.json({ data: notificationsPage(notifications) }),
+      ),
+      graphql.mutation('MarkNotificationsRead', async () => {
+        marks.calls += 1
+        if (marks.calls === 1) {
+          await firstAnswer.promise
+          return HttpResponse.json({ errors: [{ message: 'The Notifications were not marked.' }] })
+        }
+        return HttpResponse.json({
+          data: { markNotificationsRead: { unreadNotificationCount: 0, userErrors: [] } },
+        })
+      }),
+    )
+    const { user } = renderAppAt('/notifications')
+    await screen.findByText(MARA_LINE)
+    const markAll = screen.getByRole('button', { name: 'Mark all as read' })
+    await user.click(markAll)
+    await waitFor(() => expect(marks.calls).toBe(1))
+    await user.click(markAll)
+    await user.click(screen.getByRole('button', { name: /^Profile menu/ }))
+    const menu = within(await screen.findByTestId('profile-menu'))
+
+    const delivered = answerDelivered('MarkNotificationsRead')
+    await act(async () => {
+      firstAnswer.resolve()
+      await delivered
+    })
+    await menu.findByRole('button', { name: 'Notifications' })
+    await waitFor(() => expect(markAll).toBeDisabled())
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryAllByText('Unread')).toHaveLength(0)
+  })
+
+  it('shouldKeepTheCountAndMarkThemAgainWhenAMarkFails', async () => {
+    serveHome(meFixture(), 2)
+    const unread = [
+      answerNotification({ id: 'answer-for-mara', message: MARA_LINE, unread: true }),
+      answerNotification({ unread: true }),
+    ]
+    // The second mark answers only once the test has looked.
+    const secondAnswer = deferred()
+    onTestFinished(secondAnswer.resolve)
+    const marks: string[][] = []
+    server.use(
+      graphql.query('Notifications', () => HttpResponse.json({ data: notificationsPage(unread) })),
+      graphql.mutation('MarkNotificationsRead', async ({ variables }) => {
+        marks.push((variables as { input: { notificationIds: string[] } }).input.notificationIds)
+        if (marks.length === 1) {
+          return HttpResponse.json({ errors: [{ message: 'The Notifications were not marked.' }] })
+        }
+        await secondAnswer.promise
+        return HttpResponse.json({
+          data: { markNotificationsRead: { unreadNotificationCount: 0, userErrors: [] } },
+        })
+      }),
+    )
+    const { user } = renderAppAt('/notifications')
+    await screen.findByText(MARA_LINE)
+    const markAll = screen.getByRole('button', { name: 'Mark all as read' })
+
+    await user.click(markAll)
+    await user.click(markAll)
+
+    // The second mark goes out only once the failed one has settled.
+    await waitFor(() => expect(marks).toHaveLength(2))
+    expect(marks[1]).toEqual(['answer-for-mara', 'answer-for-leo'])
+    expect(marks[0]).toEqual(marks[1])
+    await user.click(screen.getByRole('button', { name: /^Profile menu/ }))
+    const menu = within(await screen.findByTestId('profile-menu'))
+    expect(menu.getByRole('button', { name: 'Notifications, 2 unread' })).toBeVisible()
+  })
+
   it('shouldCountTheUnreadNotificationsAfterTheirEntryWhenSomeAreUnread', async () => {
     serveHome(meFixture(), 3)
 
@@ -753,5 +838,42 @@ describe('The dot on the Profile menu', () => {
 
     const chip = await screen.findByRole('button', { name: 'Profile menu (Owner)' })
     expect(within(chip).queryByTestId('unread-dot')).not.toBeInTheDocument()
+  })
+
+  it('shouldTakeADismissedRequestOutOfTheListTheCountAndTheDotInOneChange', async () => {
+    const { socket } = serveHome(meFixture(), 1)
+    const waiting = offerNotification()
+    // The page's mark of the offer answers only once the test has looked, so that only the
+    // dismissal can clear the count.
+    const markAnswer = deferred()
+    onTestFinished(markAnswer.resolve)
+    server.use(
+      graphql.query('Notifications', () =>
+        HttpResponse.json({ data: notificationsPage([waiting]) }),
+      ),
+      graphql.mutation('MarkNotificationsRead', async () => {
+        await markAnswer.promise
+        return HttpResponse.json({
+          data: { markNotificationsRead: { unreadNotificationCount: 0, userErrors: [] } },
+        })
+      }),
+    )
+    const { user } = renderAppAt('/notifications')
+    await screen.findByText(waiting.message)
+    await screen.findByRole('button', { name: MARKED })
+    await followingNotificationChanges(socket)
+
+    // The Account is no longer the Household's admin: its request about the offer is dismissed.
+    socket.publish(
+      'NotificationsChanged',
+      notificationsChanged([notificationChange(waiting.id, null)], 0),
+    )
+
+    expect(await screen.findByText('No notifications.')).toBeVisible()
+    const chip = await screen.findByRole('button', { name: 'Profile menu (Owner)' })
+    expect(within(chip).queryByTestId('unread-dot')).not.toBeInTheDocument()
+    await user.click(chip)
+    const menu = within(await screen.findByTestId('profile-menu'))
+    expect(menu.getByRole('button', { name: 'Notifications' })).toHaveTextContent(/^Notifications$/)
   })
 })
