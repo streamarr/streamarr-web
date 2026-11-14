@@ -475,7 +475,8 @@
     ],
     "OrderedEdge": [
       "ContinueWatchingEdge",
-      "MediaEdge"
+      "MediaEdge",
+      "ProfileShareEdge"
     ],
     "PlaybackFormatAttempt": [
       "FailedPlaybackFormatAttempt",

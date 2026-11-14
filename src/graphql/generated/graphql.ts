@@ -1616,9 +1616,12 @@ type OrderedEdgeFields_ContinueWatchingEdge_Fragment = { cursor: string, orderKe
 
 type OrderedEdgeFields_MediaEdge_Fragment = { cursor: string, orderKey: string };
 
+type OrderedEdgeFields_ProfileShareEdge_Fragment = { cursor: string, orderKey: string };
+
 export type OrderedEdgeFieldsFragment =
   | OrderedEdgeFields_ContinueWatchingEdge_Fragment
   | OrderedEdgeFields_MediaEdge_Fragment
+  | OrderedEdgeFields_ProfileShareEdge_Fragment
 ;
 
 export type WatchStateChangedSubscriptionVariables = Exact<{ [key: string]: never; }>;
