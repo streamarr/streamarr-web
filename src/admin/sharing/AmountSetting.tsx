@@ -7,6 +7,15 @@ import { FailureRow } from '../../ui/Failure'
 import styles from './AmountSetting.module.css'
 import { rangeRefusal, wholeCount, type StoredAmount, type Unit, type Units } from './amounts'
 
+/** How a setting is read: each visit shows what is cached at once and reads the server again. */
+export const SETTING_READ = {
+  fetchPolicy: 'cache-and-network',
+  notifyOnNetworkStatusChange: true,
+} as const
+
+/** What a setting does once the server confirms a save: it hands the page notice its words. */
+export type OnSaved = (notice: string) => void
+
 const UNCONFIRMED =
   "Couldn't confirm the change. Refresh the page to check the saved setting before trying again."
 
@@ -192,7 +201,11 @@ function AmountForm({
   }
 
   return (
-    <form ref={form} className={settingsStyles.form} onSubmit={(event) => void submit(event)}>
+    <form
+      ref={form}
+      className={`${settingsStyles.form} ${styles.form}`}
+      onSubmit={(event) => void submit(event)}
+    >
       <NumberInput
         ref={field}
         size="md"
@@ -215,6 +228,8 @@ function AmountForm({
         }
         rightSectionWidth={80}
         error={[refusal, unconfirmed && UNCONFIRMED].filter(Boolean).join(' ') || null}
+        // A refusal after Enter leaves focus in the field, so nothing would read it out.
+        errorProps={{ role: 'alert' }}
         inputContainer={(input) =>
           units.length > 1 ? (
             <div className={styles.amount}>

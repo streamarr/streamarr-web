@@ -4,6 +4,7 @@ import type { ShareCodeStatus } from '../graphql/generated/graphql'
 import { requestFailureMessage } from '../graphql/requestErrors'
 import { shareCodeLink } from './shareCode'
 import styles from './ShareCodes.module.css'
+import sharingStyles from './Sharing.module.css'
 
 const UNTIL = new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' })
 
@@ -92,7 +93,8 @@ export function IssuedShareCode({
           </Button>
         </div>
       )}
-      <div className={styles.actions}>
+      {/* At phone width, as in the review of an offer: Copy code across a line, the others under it. */}
+      <div className={`${sharingStyles.actions} ${sharingStyles.leadingActions}`}>
         <Button
           disabled={!live}
           onClick={() =>

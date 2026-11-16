@@ -1,19 +1,23 @@
 import { useApolloClient, useQuery } from '@apollo/client/react'
-import { Button, Center, Loader, VisuallyHidden } from '@mantine/core'
+import { Alert, Button, Center, Loader, VisuallyHidden } from '@mantine/core'
 import { Link } from '@tanstack/react-router'
-import { useId, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import {
   NotificationsDocument,
   type NotificationFieldsFragment,
 } from '../graphql/generated/graphql'
 import { useLiveList } from '../graphql/liveList'
 import { requestFailureMessage } from '../graphql/requestErrors'
+import { useMe } from '../identity/useMe'
 import { useNow } from '../identity/useNow'
 import { definedEdges } from '../media/edges'
 import settingsStyles from '../styles/settings.module.css'
 import { FailurePanel, FailureRow } from '../ui/Failure'
+import { useMenuCounts } from '../ui/MenuCountsProvider'
+import { useFocusFallback } from '../ui/useFocusFallback'
 import { useIntersectionObserver } from '../media/useIntersectionObserver'
 import styles from './Notifications.module.css'
+import { canReadNotifications } from './notificationAccess'
 import { createLoadedPages, type NotificationEntry } from './notificationList'
 import { fullTime, nextLabelChange, whenLabel } from './notificationTime'
 import { expiryOfWaiting, isOfferRequest, offerRequestState } from './requestState'
@@ -23,13 +27,49 @@ import { useOlderNotifications } from './useOlderNotifications'
 
 /** The Account's Notifications, newest first, each in the server's words. */
 export function NotificationsScreen() {
+  const heading = useRef<HTMLHeadingElement>(null)
+  // A change can take away the row, or the Review, that has focus; focus then goes to the heading.
+  const liveList = useFocusFallback(heading)
   return (
     <div className={`${settingsStyles.settings} ${styles.page}`}>
       <div className={settingsStyles.pageHeading}>
-        <h1>Notifications</h1>
+        <h1 ref={heading} tabIndex={-1}>
+          Notifications
+        </h1>
       </div>
-      <NotificationsList />
+      {/* Holds every state of the list, so that focus in a row that leaves is never lost. */}
+      <div ref={liveList}>
+        <NotificationsForSession />
+      </div>
     </div>
+  )
+}
+
+/** The list, for a session that may read it. A session bound to a TV reads and follows nothing. */
+function NotificationsForSession() {
+  const me = useMe()
+
+  if (me.error)
+    return (
+      <FailurePanel onRetry={() => me.refetch().catch(() => undefined)}>
+        {requestFailureMessage(me.error, "Couldn't load notifications.")}
+      </FailurePanel>
+    )
+  if (!me.data) return <ListLoading />
+  if (!canReadNotifications(me.data.me))
+    return (
+      <Alert role="alert">
+        Notifications are available using an account session. <Link to="/">Back to Home</Link>
+      </Alert>
+    )
+  return <NotificationsList />
+}
+
+function ListLoading() {
+  return (
+    <Center h={200}>
+      <Loader role="status" aria-label="Loading notifications" />
+    </Center>
   )
 }
 
@@ -63,17 +103,12 @@ function NotificationsList() {
       ? { ...node, unread: false }
       : node,
   )
-  const markRead = useMarkShownRead()
+  const { markSent } = useMenuCounts()
+  const markRead = useMarkShownRead(markSent)
   const pageInfo = query.data?.notifications.pageInfo
   const older = useOlderNotifications(pageInfo, live.context)
 
-  if (query.loading && !query.data) {
-    return (
-      <Center h={200}>
-        <Loader role="status" aria-label="Loading notifications" />
-      </Center>
-    )
-  }
+  if (query.loading && !query.data) return <ListLoading />
   if (query.error || !query.data) {
     return (
       <FailurePanel onRetry={readAgain}>
@@ -184,7 +219,7 @@ function NotificationRow({
       ) : (
         <span className={styles.markSpace} aria-hidden />
       )}
-      <div className={styles.text}>
+      <div className={styles.text} data-testid="notification-text">
         {notification.unread && <VisuallyHidden>Unread</VisuallyHidden>}
         {/* The server's line is plain text, so React writes it as text, never as markup. */}
         <p id={lineId} className={styles.line}>
@@ -221,13 +256,14 @@ function RequestAction({
         to="/settings/household/offers"
         onClick={onOpen}
         variant="default"
+        className={styles.action}
         aria-describedby={lineId}
       >
         Review
       </Button>
     )
   }
-  return state.ending && <span className={styles.ending}>{state.ending}</span>
+  return state.ending && <span className={`${styles.ending} ${styles.action}`}>{state.ending}</span>
 }
 
 /** How long ago for the eye, and the whole time for a screen reader. */

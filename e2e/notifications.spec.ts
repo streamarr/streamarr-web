@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 import { routeGraphqlSocket } from './graphqlSocket'
 import { serveSharingPages } from './sharingPages'
 
@@ -6,6 +6,8 @@ import { serveSharingPages } from './sharingPages'
 test.use({ serviceWorkers: 'block' })
 
 const HOUR = 60 * 60 * 1000
+const PHONE = { width: 390, height: 844 }
+const DESKTOP = { width: 1440, height: 900 }
 
 function news(id: string, message: string, at: number) {
   const position = String(at).padStart(3, '0')
@@ -21,6 +23,18 @@ function news(id: string, message: string, at: number) {
       unread: true,
     },
   }
+}
+
+/** The colour a design token resolves to in the page, as computed styles report it. */
+function tokenColour(page: Page, token: string) {
+  return page.evaluate((name) => {
+    const probe = document.createElement('span')
+    probe.style.color = `var(${name})`
+    document.body.append(probe)
+    const colour = getComputedStyle(probe).color
+    probe.remove()
+    return colour
+  }, token)
 }
 
 const UNREAD = [
@@ -96,4 +110,168 @@ test('the unread count and the dot clear when shown notifications are explicitly
   await expect(page.getByRole('button', { name: 'Notifications', exact: true })).toHaveText(
     'Notifications',
   )
+})
+
+// The dot and the row's mark are marks, which need 3:1 against what they sit on; the brief gives
+// them indicator.activeTrack until the dot has a token of its own.
+test('the avatar dot and each unread row mark take the indicator colour', async ({
+  page,
+  request,
+}) => {
+  await serveSharingPages(page, request, {
+    UnreadNotificationCount: { unreadNotificationCount: 2 },
+    Notifications: {
+      notifications: {
+        __typename: 'NotificationConnection',
+        edges: UNREAD,
+        pageInfo: { __typename: 'PageInfo', hasNextPage: false, endCursor: 'cursor-002' },
+      },
+    },
+  })
+  await page.goto('/')
+  const indicator = await tokenColour(page, '--indicator-active-track')
+
+  const chip = page.getByRole('button', { name: 'Profile menu (Alex), has notifications' })
+  await expect(chip.getByTestId('unread-dot')).toHaveCSS('background-color', indicator)
+  await page.goto('/notifications')
+  const rows = page.getByRole('list', { name: 'Notifications' }).getByRole('listitem')
+  await expect(rows.first().getByTestId('unread-mark')).toHaveCSS('background-color', indicator)
+})
+
+// A count is text, so it takes text.primary, which reaches 4.5:1 against the menu, and it draws
+// no badge around itself.
+test('a count after a menu entry is a plain number in the primary text colour', async ({
+  page,
+  request,
+}) => {
+  await serveSharingPages(page, request, {
+    UnreadNotificationCount: { unreadNotificationCount: 3 },
+  })
+  await page.goto('/')
+  const primary = await tokenColour(page, '--text-primary')
+
+  await page.getByRole('button', { name: 'Profile menu (Alex), has notifications' }).click()
+  const count = page.getByRole('button', { name: 'Notifications, 3 unread' }).getByText('3')
+
+  await expect(count).toHaveCSS('color', primary)
+  await expect(count).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  await expect(count).toHaveCSS('border-radius', '0px')
+})
+
+/** A Request of an offer, waiting or carrying the server's recorded answer. */
+function offerRequest({
+  id,
+  message,
+  at,
+  resolution = null,
+  answer = null,
+}: {
+  id: string
+  message: string
+  at: number
+  resolution?: string | null
+  answer?: string | null
+}) {
+  const position = String(at).padStart(3, '0')
+  return {
+    __typename: 'NotificationEdge',
+    cursor: `cursor-${position}`,
+    orderKey: `key-${position}`,
+    node: {
+      __typename: 'ProfileShareOfferedNotification',
+      id,
+      message,
+      latestEventAt: new Date(Date.now() - at * HOUR).toISOString(),
+      unread: false,
+      expiresAt: new Date(Date.now() + 72 * HOUR).toISOString(),
+      resolution,
+      answer,
+    },
+  }
+}
+
+const REQUESTS = [
+  offerRequest({
+    id: 'offer-of-mara',
+    message: '“Sam” offered the Profile “Mara” to your Household.',
+    at: 1,
+  }),
+  offerRequest({
+    id: 'offer-of-leo',
+    message: '“Alex” offered the Profile “Leo” to your Household.',
+    at: 2,
+    resolution: 'DECIDED',
+    answer: 'ACCEPTED',
+  }),
+]
+
+async function openRequests(page: Page, request: Parameters<typeof serveSharingPages>[1]) {
+  await serveSharingPages(page, request, {
+    Notifications: {
+      notifications: {
+        __typename: 'NotificationConnection',
+        edges: REQUESTS,
+        pageInfo: { __typename: 'PageInfo', hasNextPage: false, endCursor: 'cursor-002' },
+      },
+    },
+  })
+  await page.goto('/notifications')
+  const rows = page.getByRole('list', { name: 'Notifications' }).getByRole('listitem')
+  await expect(rows).toHaveCount(2)
+  return rows
+}
+
+/** Each row's text and its action, Review or how the Request ended, as the page lays them out. */
+async function actionPlacements(rows: Locator) {
+  const placements = []
+  for (const row of await rows.all()) {
+    const text = (await row.getByTestId('notification-text').boundingBox())!
+    const action = (await row
+      .getByRole('link', { name: 'Review' })
+      .or(row.getByText('Accepted', { exact: true }))
+      .boundingBox())!
+    placements.push({
+      text: { left: text.x, right: text.x + text.width, bottom: text.y + text.height },
+      action: { left: action.x, top: action.y },
+    })
+  }
+  return placements
+}
+
+test('each Request puts Review or how it ended under its line at phone width', async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize(PHONE)
+  const rows = await openRequests(page, request)
+
+  for (const { text, action } of await actionPlacements(rows)) {
+    expect(action.top).toBeGreaterThanOrEqual(text.bottom)
+    expect(action.left).toBeCloseTo(text.left, 0)
+  }
+  const sideways = await page.evaluate(
+    () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+  )
+  expect(sideways).toBe(false)
+  await page.setViewportSize(DESKTOP)
+  for (const { text, action } of await actionPlacements(rows)) {
+    expect(action.left).toBeGreaterThanOrEqual(text.right)
+  }
+})
+
+test('how a Request ended sits on the line of its first row of text', async ({ page, request }) => {
+  await page.setViewportSize(DESKTOP)
+  const rows = await openRequests(page, request)
+
+  const ended = rows.nth(1)
+  const label = ended.getByText('Accepted', { exact: true })
+  const line = ended.getByText('“Alex” offered the Profile “Leo” to your Household.')
+  await expect(label).toBeVisible()
+  const lineHeight = await line.evaluate((text) =>
+    Number.parseFloat(getComputedStyle(text).lineHeight),
+  )
+  const [labelBox, lineBox] = [(await label.boundingBox())!, (await line.boundingBox())!]
+  const ending = labelBox.y + labelBox.height / 2
+  const firstRow = lineBox.y + lineHeight / 2
+  expect(ending).toBeCloseTo(firstRow, 0)
 })

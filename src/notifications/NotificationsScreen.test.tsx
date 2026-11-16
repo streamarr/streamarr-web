@@ -1,5 +1,5 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
-import { graphql, HttpResponse } from 'msw'
+import { graphql, http, HttpResponse } from 'msw'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import type {
   NotificationsQuery,
@@ -7,11 +7,14 @@ import type {
   RequestResolution,
 } from '../graphql/generated/graphql'
 import {
+  answerDelivered,
   answersInTurn,
   answerWith,
   comeBackOnline,
+  heldAnswer,
   readsThatCanBeHeld,
 } from '../test/graphqlResponses'
+import { deferred } from '../test/deferred'
 import { serveGraphqlSocket } from '../test/graphqlSocket'
 import { meFixture } from '../test/meFixture'
 import {
@@ -27,6 +30,7 @@ import {
 import { renderAppAt } from '../test/render'
 import { leaveForHome, returnThroughTheProfileMenu, type SettingsPage } from '../test/returnVisits'
 import { server } from '../test/server'
+import { signIn } from '../test/signIn'
 import { intersectionObserverInstances } from '../../vitest.setup'
 
 const NOTIFICATIONS = '/notifications'
@@ -116,7 +120,7 @@ function servePages(...pages: NotificationsQuery[]) {
 }
 
 describe('Notifications', () => {
-  it('shouldOpenNotificationsFromTheProfileMenu', async () => {
+  it('shouldOpenNotificationsWhenTheAccountChoosesThemInTheProfileMenu', async () => {
     serve(notificationsPage([offerNotification()]))
     server.use(
       graphql.query('Home', () =>
@@ -139,6 +143,7 @@ describe('Notifications', () => {
     await screen.findByRole('heading', { level: 1, name: 'Notifications' })
 
     expect(screen.getByRole('banner')).toBeInTheDocument()
+    expect(screen.getByTestId('home-shell')).toBeInTheDocument()
     expect(screen.queryByTestId('home-ambient')).not.toBeInTheDocument()
   })
 
@@ -185,6 +190,28 @@ describe('Notifications', () => {
 
     expect(await screen.findByText('No notifications.')).toBeVisible()
     expect(screen.queryByRole('list', { name: 'Notifications' })).not.toBeInTheDocument()
+  })
+
+  it('shouldReadNoNotificationsWhenTheSessionIsBoundToATV', async () => {
+    const { socket } = serve(
+      notificationsPage([offerNotification()]),
+      meFixture({ deviceBound: true }),
+    )
+    const list = { reads: 0 }
+    server.use(
+      graphql.query('Notifications', () => {
+        list.reads += 1
+        return HttpResponse.json({ data: notificationsPage([offerNotification()]) })
+      }),
+    )
+    renderAppAt(NOTIFICATIONS)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Notifications are available using an account session.',
+    )
+    expect(screen.getByRole('link', { name: 'Back to Home' })).toHaveAttribute('href', '/')
+    expect(list.reads).toBe(0)
+    expect(socket.isLive('NotificationsChanged')).toBe(false)
   })
 
   it('shouldOfferRetryWhenTheListCannotLoad', async () => {
@@ -250,7 +277,7 @@ describe('Requests in Notifications', () => {
     },
   )
 
-  it('shouldSayHowLongAgoAsTimePassesWithThePageOpen', async () => {
+  it('shouldSayHowLongAgoAgainWhenTimePassesWithThePageOpen', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'], shouldAdvanceTime: true })
     onTestFinished(() => void vi.useRealTimers())
     serve(
@@ -285,6 +312,25 @@ describe('Requests in Notifications', () => {
     expect(screen.queryByRole('link', { name: 'Review' })).not.toBeInTheDocument()
     expect(screen.queryByText('Unread')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Mark all as read' })).not.toBeInTheDocument()
+  })
+  it('shouldMoveFocusToTheHeadingWhenTheOfferThePersonIsOnExpiresWithThePageOpen', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'], shouldAdvanceTime: true })
+    onTestFinished(() => void vi.useRealTimers())
+    serve(
+      notificationsPage([
+        offerNotification({ expiresAt: new Date(Date.now() + HOUR).toISOString() }),
+      ]),
+    )
+    renderAppAt(NOTIFICATIONS)
+    const review = await screen.findByRole('link', { name: 'Review' })
+    act(() => review.focus())
+
+    await act(() => vi.advanceTimersByTimeAsync(HOUR))
+
+    expect(await within(rows()[0]).findByText('Expired')).toBeVisible()
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: 'Notifications' })).toHaveFocus(),
+    )
   })
 })
 
@@ -456,6 +502,72 @@ describe('Reading Notifications', () => {
     expect(marks[0].notificationIds[99]).toBe('news-100')
     expect(marks[1].notificationIds).toEqual(['news-101'])
   })
+
+  it('shouldSendNoMarkOnceThePersonHasSignedOutWhenTheVisitStillHadMarksToSend', async () => {
+    const firstPage = Array.from({ length: 100 }, (_, index) =>
+      answerNotification({ id: `news-${index + 1}`, message: `News ${index + 1}`, unread: true }),
+    )
+    serve()
+    servePages(
+      notificationsPage(firstPage, { hasNextPage: true }),
+      notificationsPage(
+        [answerNotification({ id: 'news-101', message: 'News 101', unread: true })],
+        { from: 101 },
+      ),
+    )
+    const session = { signedIn: true }
+    const marks: { notificationIds: string[]; signedIn: boolean }[] = []
+    // Hold the first batch until sign-out, leaving the second batch queued.
+    const firstAnswer = deferred()
+    onTestFinished(firstAnswer.resolve)
+    const signedOut = deferred()
+    server.use(
+      http.post('/api/auth/refresh/revoke', () => {
+        session.signedIn = false
+        signedOut.resolve()
+        return new HttpResponse(null, { status: 204 })
+      }),
+      http.post('/api/auth/login', () => {
+        session.signedIn = true
+        return HttpResponse.json({ accessTokenExpiresAt: '2026-08-06T12:10:00Z', scope: 'account' })
+      }),
+      graphql.mutation('MarkNotificationsRead', async ({ variables }) => {
+        const { notificationIds } = (variables as { input: { notificationIds: string[] } }).input
+        const { signedIn } = session
+        marks.push({ notificationIds, signedIn })
+        if (notificationIds.includes('news-1')) await firstAnswer.promise
+        // The server refuses a mark sent while signed out. If that refusal arrives after the person
+        // has signed in again, the app sends the person back to the sign-in page.
+        if (!signedIn) {
+          return Response.json({ code: 'AUTHENTICATION_REQUIRED' }, { status: 401 })
+        }
+        return HttpResponse.json({
+          data: { markNotificationsRead: { unreadNotificationCount: 1, userErrors: [] } },
+        })
+      }),
+    )
+    const { user, router } = renderAppAt(NOTIFICATIONS)
+    await screen.findByText('News 100')
+    await reachTheEndOfTheList()
+    await screen.findByText('News 101')
+    await user.click(screen.getByRole('button', { name: 'Mark all as read' }))
+    await waitFor(() =>
+      expect(marks).toEqual([{ notificationIds: firstPage.map(({ id }) => id), signedIn: true }]),
+    )
+
+    await user.click(screen.getByRole('button', { name: /^Profile menu/ }))
+    await user.click(await screen.findByRole('button', { name: 'Sign out' }))
+    await signedOut.promise
+    firstAnswer.resolve()
+    // The second batch would go out as soon as the first settles.
+    await signIn(user)
+    await waitFor(() => {
+      expect(router.state.location.pathname).not.toBe('/login')
+      expect(router.state.status).toBe('idle')
+    })
+
+    expect(marks).toEqual([{ notificationIds: firstPage.map(({ id }) => id), signedIn: true }])
+  })
 })
 
 describe('Older Notifications', () => {
@@ -557,6 +669,52 @@ describe('Older Notifications', () => {
         '“Cabin” accepted the Profile “Leo”.',
       ]),
     )
+  })
+
+  it('shouldAddNoOlderPageWhenTheListReadAgainEndsElsewhereBeforeItArrives', async () => {
+    const { socket } = serve()
+    const late = heldAnswer(OLDER)
+    onTestFinished(late.release)
+    const older = { calls: 0 }
+    const newest = { page: NEWEST }
+    server.use(
+      graphql.query('Notifications', ({ variables }) => {
+        if (!(variables as { after?: string | null }).after) {
+          return HttpResponse.json({ data: newest.page })
+        }
+        older.calls += 1
+        return late.answer()
+      }),
+    )
+    renderAppAt(NOTIFICATIONS)
+    await screen.findByText('“Cabin” accepted the Profile “Alex”.')
+    await followingNotificationChanges(socket)
+    await reachTheEndOfTheList()
+    await waitFor(() => expect(older.calls).toBe(1))
+
+    // Sam's news and everything older were deleted, which no change says: the list read again ends
+    // at Alex, and only then does the older page asked for after Sam answer.
+    newest.page = notificationsPage([answerAbout('Alex')])
+    comeBackOnline()
+    await waitFor(() => expect(lines()).toEqual(['“Cabin” accepted the Profile “Alex”.']))
+    const answered = answerDelivered('Notifications')
+    late.release()
+    await answered
+    // News that arrives after the older page answered: once it shows, that answer was handled.
+    const sentinel = answerNotification({
+      id: 'answer-for-sam',
+      message: '“Lake House” accepted the Profile “Sam”.',
+    })
+    socket.publish(
+      'NotificationsChanged',
+      notificationsChanged([notificationChange(sentinel.id, notificationEdge(sentinel, 0))]),
+    )
+    await screen.findByText('“Lake House” accepted the Profile “Sam”.')
+
+    expect(lines()).toEqual([
+      '“Lake House” accepted the Profile “Sam”.',
+      '“Cabin” accepted the Profile “Alex”.',
+    ])
   })
 
   it('shouldShowOnlyTheNewestPageWhenThePersonReturns', async () => {
@@ -745,6 +903,43 @@ describe('Notifications as they change elsewhere', () => {
     expect(review).toHaveFocus()
   })
 
+  function expectFocusOnTheHeading() {
+    return waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: 'Notifications' })).toHaveFocus(),
+    )
+  }
+
+  it('shouldMoveFocusToTheHeadingWhenTheReviewThePersonIsOnIsDecidedElsewhere', async () => {
+    const { socket } = await openWithAnOffer()
+    act(() => screen.getByRole('link', { name: 'Review' }).focus())
+    const accepted = offerNotification({
+      unread: false,
+      resolution: 'DECIDED',
+      answer: 'ACCEPTED',
+    })
+
+    socket.publish(
+      'NotificationsChanged',
+      notificationsChanged([notificationChange(accepted.id, notificationEdge(accepted, 1))]),
+    )
+
+    await within(rows()[0]).findByText('Accepted')
+    await expectFocusOnTheHeading()
+  })
+
+  it('shouldMoveFocusToTheHeadingWhenTheNotificationThePersonIsOnLeavesTheList', async () => {
+    const { socket } = await openWithAnOffer()
+    act(() => screen.getByRole('link', { name: 'Review' }).focus())
+
+    socket.publish(
+      'NotificationsChanged',
+      notificationsChanged([notificationChange(offerNotification().id, null)]),
+    )
+
+    await screen.findByText('No notifications.')
+    await expectFocusOnTheHeading()
+  })
+
   it('shouldSayHowARequestEndedWhenItIsDecidedElsewhere', async () => {
     const { socket } = await openWithAnOffer()
     const accepted = offerNotification({
@@ -776,7 +971,7 @@ describe('Notifications as they change elsewhere', () => {
     await waitFor(() => expect(lines()).toEqual([ANSWER_LINE]))
   })
 
-  it('shouldKeepANotificationWhoseChangeCameWithAnError', async () => {
+  it('shouldKeepANotificationWhenItsChangeCameWithAnError', async () => {
     const { socket } = serve()
     const reads = readsThatCanBeHeld(() => notificationsPage([offerNotification()]))
     server.use(graphql.query('Notifications', reads.resolver))
@@ -804,7 +999,7 @@ describe('Notifications as they change elsewhere', () => {
     expect(lines()).toEqual([ANSWER_LINE, OFFER_LINE])
   })
 
-  it('shouldLeaveOutAChangeBelowTheLoadedPages', async () => {
+  it('shouldLeaveOutAChangeWhenItSortsBelowTheLoadedPages', async () => {
     const { socket } = await openWithAnOffer(
       notificationsPage([offerNotification()], { hasNextPage: true }),
     )
@@ -854,7 +1049,7 @@ describe('Notifications as they change elsewhere', () => {
     await waitFor(() => expect(lines()).toEqual([sam.message, alex.message, mara.message]))
   })
 
-  it('shouldReadTheListAgainOnceItFollowsChanges', async () => {
+  it('shouldReadTheListAgainWhenItStartsFollowingChanges', async () => {
     const { socket } = serve()
     // Leo's news commits between the first read and the subscription, which misses it.
     const reads = answersInTurn(
