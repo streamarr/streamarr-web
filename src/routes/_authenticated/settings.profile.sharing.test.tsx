@@ -20,7 +20,13 @@ function serveSharing() {
     graphql.query('Libraries', () => HttpResponse.json({ data: { libraries: [] } })),
     graphql.query('ProfileShares', () =>
       HttpResponse.json({
-        data: { profileShares: { __typename: 'ProfileShareConnection', edges: [] } },
+        data: {
+          profileShares: {
+            __typename: 'ProfileShareConnection',
+            edges: [],
+            pageInfo: { endCursor: null, hasNextPage: false },
+          },
+        },
       }),
     ),
   )
