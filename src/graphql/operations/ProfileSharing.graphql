@@ -1,5 +1,5 @@
 query ShareOffers($householdId: ID!) {
-  pendingShareOffers(householdId: $householdId, first: 50) {
+  householdShares(householdId: $householdId, statuses: [PENDING], first: 50) {
     edges {
       node {
         id
@@ -28,10 +28,22 @@ query ProfileShares($profileId: ID!) {
   }
 }
 
-query ProfileSharePreview($profileId: ID!, $householdId: ID!) {
-  profileSharePreview(profileId: $profileId, householdId: $householdId) {
+query ProfileSharePreview($profileId: ID!, $shareCode: String!) {
+  profileSharePreview(profileId: $profileId, shareCode: $shareCode) {
     wouldLock
     nameConflict
+  }
+}
+
+mutation LookUpShareCode($input: LookUpShareCodeInput!) {
+  lookUpShareCode(input: $input) {
+    householdName
+    userErrors {
+      __typename
+      ... on MutationError {
+        message
+      }
+    }
   }
 }
 

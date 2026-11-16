@@ -871,7 +871,7 @@ export const ProfileShareStatus = {
   Ended: 'ENDED',
   /** Timed out before a decision. */
   Expired: 'EXPIRED',
-  /** Withdrawn by the system because its offerer lost authority; invalidationReason says why. */
+  /** Withdrawn by the system because the offer could no longer stand, as when its offerer lost authority or its Profile was transferred; invalidationReason says why. */
   Invalidated: 'INVALIDATED',
   /** Offered and awaiting the target Household's decision. */
   Pending: 'PENDING',
@@ -880,6 +880,23 @@ export const ProfileShareStatus = {
 } as const;
 
 export type ProfileShareStatus = typeof ProfileShareStatus[keyof typeof ProfileShareStatus];
+export const ShareCodeStatus = {
+  /** Timed out before an offer presented it. */
+  Expired: 'EXPIRED',
+  /**
+   * Withdrawn by the system because the Account that issued it may no longer issue a share code for
+   * the Household, as a HouseholdAdmin of it or as ServerAdmin, or was disabled or deleted.
+   */
+  Invalidated: 'INVALIDATED',
+  /** The code still works: an offer may present it until it expires. */
+  Live: 'LIVE',
+  /** An offer presented the code. A code admits one offer. */
+  Spent: 'SPENT',
+  /** Withdrawn by a HouseholdAdmin of the Household or by a ServerAdmin. */
+  Withdrawn: 'WITHDRAWN'
+} as const;
+
+export type ShareCodeStatus = typeof ShareCodeStatus[keyof typeof ShareCodeStatus];
 export const SkippedFileReason = {
   /** The file is a soft link. Streamarr never follows a soft link; a hard link is an ordinary file. */
   SoftLink: 'SOFT_LINK',

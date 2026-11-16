@@ -9,6 +9,7 @@ import {
 import { requestFailureMessage } from '../graphql/requestErrors'
 import { userErrorMessage, type UserErrorLike } from '../graphql/userErrors'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
+import { FailureRow } from '../ui/Failure'
 import { EarlierShares } from './EarlierShares'
 import { ShareWithAnotherHousehold } from './ShareWithAnotherHousehold'
 import { SharingSection } from './SharingSection'
@@ -26,6 +27,7 @@ export function WhereShared({
   shares,
   householdName,
   ownHouseholdName,
+  readFailure,
   readAgain,
   onChanged,
   changing,
@@ -40,6 +42,8 @@ export function WhereShared({
   householdName: (householdId: string) => string
   /** The Household that the Account is a member of, where its sessions return. */
   ownHouseholdName: string
+  /** Why the latest read of `shares` failed, or null when it did not. */
+  readFailure: string | null
   readAgain: () => Promise<unknown>
   onChanged: (notice: string) => void
   /** The share whose change is on its way; no other change starts until it lands. */
@@ -110,6 +114,7 @@ export function WhereShared({
       failure={ending ? null : refusal}
       heading={heading}
     >
+      {readFailure && <FailureRow onRetry={readAgain}>{readFailure}</FailureRow>}
       {live.length === 0 && (
         <p className={styles.note}>{profile.name}'s Profile isn't shared with another Household.</p>
       )}
