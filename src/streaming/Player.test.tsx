@@ -383,6 +383,43 @@ async function playingVideo(): Promise<HTMLVideoElement> {
   return video
 }
 
+// The copy of the tests that end playback where its audio ends: six-second segments to 1236 s.
+const PLAYLIST_END_SECONDS = 1236
+
+// hls.js appended each segment of the playlist from the one that starts at `from` up to `to`.
+function bufferSegments({
+  from,
+  to = PLAYLIST_END_SECONDS,
+  type = 'main',
+}: {
+  from: number
+  to?: number
+  type?: 'main' | 'audio'
+}) {
+  for (let start = from; start < to; start += 6) {
+    const end = Math.min(start + 6, PLAYLIST_END_SECONDS)
+    const frag = { type, start, end, endList: end === PLAYLIST_END_SECONDS }
+    act(() => hls.emit('hlsFragBuffered', { frag }))
+  }
+}
+
+// The element holds playable media in each [start, end] range.
+function bufferMedia(video: HTMLVideoElement, ranges: [start: number, end: number][]) {
+  Object.defineProperty(video, 'buffered', {
+    configurable: true,
+    value: {
+      length: ranges.length,
+      start: (index: number) => ranges[index][0],
+      end: (index: number) => ranges[index][1],
+    },
+  })
+}
+
+function seekTo(video: HTMLVideoElement, seconds: number) {
+  playheadAt(video, seconds)
+  fireEvent(video, new Event('seeking'))
+}
+
 // The stall's first status read names no real end for the attached stream, and later reads do.
 function serveTheRealEndFromTheSecondStatusRead() {
   let reads = 0
@@ -6645,6 +6682,167 @@ describe('Player', () => {
       stallAt(video, REAL_END_SECONDS - 5)
 
       expect(video.paused).toBe(true)
+    })
+  })
+
+  // A variant's segments carry its audio, and the element plays only the time both tracks have
+  // media. Here the audio ends at 1200 s and the video runs on to 1236 s.
+  describe('a copy whose audio ends before its video', () => {
+    function stoppedAt(positionSeconds: number) {
+      return { sessionId: 'sess-1', positionSeconds, state: 'STOPPED' }
+    }
+
+    it('shouldEndPlaybackWhereTheAudioEndsWhenTheElementWaitsThereOnceTheRestHasBuffered', async () => {
+      const video = await playingVideo()
+      const reports = recordTimelineReports()
+      bufferMedia(video, [[0, 1200]])
+      bufferSegments({ from: 1188 })
+
+      stallAt(video, 1199.9)
+
+      expect(video.paused).toBe(true)
+      await waitFor(() => expect(reports.at(-1)).toEqual(stoppedAt(1199)))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('shouldEndPlaybackWhereTheElementWaitsPastTheAudioOnceTheRestBuffersDuringTheWait', async () => {
+      const video = await playingVideo()
+      const reports = recordTimelineReports()
+      bufferMedia(video, [])
+      stallAt(video, 1218)
+
+      bufferSegments({ from: 1212 })
+
+      expect(video.paused).toBe(true)
+      await waitFor(() => expect(reports.at(-1)).toEqual(stoppedAt(1218)))
+    })
+
+    it('shouldKeepWaitingWhenTheElementWaitsAtTheEndOfItsMediaBeforeTheRestHasBuffered', async () => {
+      const video = await playingVideo()
+      bufferMedia(video, [[0, 600]])
+      bufferSegments({ from: 588, to: 600 })
+
+      stallAt(video, 599.9)
+
+      expect(video.paused).toBe(false)
+    })
+
+    it('shouldKeepWaitingWhenTheElementHoldsMediaPastTheWait', async () => {
+      const video = await playingVideo()
+      bufferMedia(video, [
+        [0, 1200],
+        [1212, 1236],
+      ])
+      bufferSegments({ from: 1188 })
+
+      stallAt(video, 1199.9)
+
+      expect(video.paused).toBe(false)
+    })
+
+    it('shouldPlayOnWhenTheRestBuffersWhileTheElementStillPlays', async () => {
+      const video = await playingVideo()
+      bufferMedia(video, [[0, 1200]])
+      playheadAt(video, 1199.8)
+      setReadyState(video, HTMLMediaElement.HAVE_ENOUGH_DATA)
+
+      bufferSegments({ from: 1188 })
+
+      expect(video.paused).toBe(false)
+    })
+
+    it('shouldEndPlaybackWhereTheViewerSeeksPastTheAudioOnceTheRestHasBuffered', async () => {
+      const video = await playingVideo()
+      const reports = recordTimelineReports()
+      bufferMedia(video, [[0, 1200]])
+      bufferSegments({ from: 1188 })
+
+      seekTo(video, 1218)
+      stallAt(video, 1218)
+
+      expect(video.paused).toBe(true)
+      await waitFor(() => expect(reports.at(-1)).toEqual(stoppedAt(1218)))
+    })
+
+    // hls.js loads again only the segments past the audio that follow the first seek, and skips
+    // the rest, which it still holds.
+    it('shouldEndPlaybackWhereTheAudioEndsAfterThePausedViewerSoughtPastItAndBack', async () => {
+      const video = await playingVideo()
+      bufferMedia(video, [[0, 1200]])
+      bufferSegments({ from: 1188 })
+      act(() => video.pause())
+      seekTo(video, 1218)
+      bufferSegments({ from: 1218 })
+      seekTo(video, 600)
+      fireEvent(video, new Event('seeked'))
+
+      await act(() => video.play())
+      stallAt(video, 1199.9)
+
+      expect(video.paused).toBe(true)
+    })
+
+    // hls.js can finish a segment it had nearly loaded when the viewer sought away, between the
+    // segments it loads for the new position.
+    it('shouldKeepWaitingWhenTheLastSegmentOfAnEarlierSeekBuffersAfterTheViewerSoughtBack', async () => {
+      const video = await playingVideo()
+      bufferMedia(video, [[0, 600]])
+      seekTo(video, 1230)
+      seekTo(video, 900)
+
+      bufferSegments({ from: 900, to: 906 })
+      bufferSegments({ from: 1230 })
+      bufferSegments({ from: 906, to: 912 })
+      bufferMedia(video, [
+        [0, 600],
+        [900, 912],
+      ])
+      stallAt(video, 911.9)
+
+      expect(video.paused).toBe(false)
+    })
+
+    // A browser can drop buffered media ahead of the playhead to free memory, without an event.
+    it('shouldKeepWaitingWhenMediaTheElementHeldAheadLeavesTheBufferUntilItBuffersAgain', async () => {
+      const video = await playingVideo()
+      bufferMedia(video, [[0, 1200]])
+      bufferSegments({ from: 1086 })
+
+      bufferMedia(video, [[0, 1100]])
+      stallAt(video, 1099.9)
+      expect(video.paused).toBe(false)
+      bufferSegments({ from: 1098, to: 1200 })
+      bufferMedia(video, [[0, 1200]])
+      stallAt(video, 1199.9)
+
+      expect(video.paused).toBe(true)
+    })
+
+    it('shouldEndPlaybackOnlyWhenThePausedViewerPlaysPastTheAudio', async () => {
+      const video = await playingVideo()
+      const reports = recordTimelineReports()
+      act(() => video.pause())
+      bufferMedia(video, [[0, 1200]])
+      seekTo(video, 1218)
+      bufferSegments({ from: 1212 })
+
+      // Playing after the end would start from the top.
+      await act(() => video.play())
+      expect(video.currentTime).toBe(1218)
+      stallAt(video, 1218)
+
+      expect(video.paused).toBe(true)
+      await waitFor(() => expect(reports.at(-1)).toEqual(stoppedAt(1218)))
+    })
+
+    it('shouldKeepWaitingWhenOnlyTheSegmentsOfAnAudioRenditionBuffered', async () => {
+      const video = await playingVideo()
+      bufferMedia(video, [[0, 1200]])
+      bufferSegments({ from: 1188, type: 'audio' })
+
+      stallAt(video, 1199.9)
+
+      expect(video.paused).toBe(false)
     })
   })
 
