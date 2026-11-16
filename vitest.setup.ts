@@ -57,6 +57,7 @@ Element.prototype.getBoundingClientRect = function getBoundingClientRect(this: E
 // tests that care about scrolling assert against the mocked IntersectionObserver instead.
 // eslint-disable-next-line @typescript-eslint/unbound-method -- a polyfill check reads the method without calling it
 Element.prototype.scrollIntoView ??= function scrollIntoView() {}
+window.scrollTo = function scrollTo() {}
 
 // jsdom has no ResizeObserver. Mantine's SegmentedControl positions its indicator with one, and
 // the library grid re-lays its rows from one, so each instance is kept reachable through
