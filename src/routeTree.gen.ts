@@ -36,6 +36,7 @@ import { Route as AuthenticatedSettingsProfileSharingRouteImport } from './route
 import { Route as AuthenticatedSettingsServerIndexRouteImport } from './routes/_authenticated/settings.server.index'
 import { Route as AuthenticatedSettingsServerEncodingRouteImport } from './routes/_authenticated/settings.server.encoding'
 import { Route as AuthenticatedSettingsServerLibrariesRouteImport } from './routes/_authenticated/settings.server.libraries'
+import { Route as AuthenticatedSettingsServerSharingRouteImport } from './routes/_authenticated/settings.server.sharing'
 import { Route as AuthenticatedSettingsServerStreamsRouteImport } from './routes/_authenticated/settings.server.streams'
 import { Route as AuthenticatedSettingsServerLibrariesNewRouteImport } from './routes/_authenticated/settings.server.libraries_.new'
 
@@ -193,6 +194,12 @@ const AuthenticatedSettingsServerLibrariesRoute =
     path: '/libraries',
     getParentRoute: () => AuthenticatedSettingsServerRoute,
   } as any)
+const AuthenticatedSettingsServerSharingRoute =
+  AuthenticatedSettingsServerSharingRouteImport.update({
+    id: '/sharing',
+    path: '/sharing',
+    getParentRoute: () => AuthenticatedSettingsServerRoute,
+  } as any)
 const AuthenticatedSettingsServerStreamsRoute =
   AuthenticatedSettingsServerStreamsRouteImport.update({
     id: '/streams',
@@ -230,6 +237,7 @@ export interface FileRoutesByFullPath {
   '/settings/profile/sharing': typeof AuthenticatedSettingsProfileSharingRoute
   '/settings/server/encoding': typeof AuthenticatedSettingsServerEncodingRoute
   '/settings/server/libraries': typeof AuthenticatedSettingsServerLibrariesRoute
+  '/settings/server/sharing': typeof AuthenticatedSettingsServerSharingRoute
   '/settings/server/streams': typeof AuthenticatedSettingsServerStreamsRoute
   '/settings/household/': typeof AuthenticatedSettingsHouseholdIndexRoute
   '/settings/profile/': typeof AuthenticatedSettingsProfileIndexRoute
@@ -257,6 +265,7 @@ export interface FileRoutesByTo {
   '/settings/profile/sharing': typeof AuthenticatedSettingsProfileSharingRoute
   '/settings/server/encoding': typeof AuthenticatedSettingsServerEncodingRoute
   '/settings/server/libraries': typeof AuthenticatedSettingsServerLibrariesRoute
+  '/settings/server/sharing': typeof AuthenticatedSettingsServerSharingRoute
   '/settings/server/streams': typeof AuthenticatedSettingsServerStreamsRoute
   '/settings/household': typeof AuthenticatedSettingsHouseholdIndexRoute
   '/settings/profile': typeof AuthenticatedSettingsProfileIndexRoute
@@ -289,6 +298,7 @@ export interface FileRoutesById {
   '/_authenticated/settings/profile/sharing': typeof AuthenticatedSettingsProfileSharingRoute
   '/_authenticated/settings/server/encoding': typeof AuthenticatedSettingsServerEncodingRoute
   '/_authenticated/settings/server/libraries': typeof AuthenticatedSettingsServerLibrariesRoute
+  '/_authenticated/settings/server/sharing': typeof AuthenticatedSettingsServerSharingRoute
   '/_authenticated/settings/server/streams': typeof AuthenticatedSettingsServerStreamsRoute
   '/_authenticated/settings/household/': typeof AuthenticatedSettingsHouseholdIndexRoute
   '/_authenticated/settings/profile/': typeof AuthenticatedSettingsProfileIndexRoute
@@ -321,6 +331,7 @@ export interface FileRouteTypes {
     | '/settings/profile/sharing'
     | '/settings/server/encoding'
     | '/settings/server/libraries'
+    | '/settings/server/sharing'
     | '/settings/server/streams'
     | '/settings/household/'
     | '/settings/profile/'
@@ -348,6 +359,7 @@ export interface FileRouteTypes {
     | '/settings/profile/sharing'
     | '/settings/server/encoding'
     | '/settings/server/libraries'
+    | '/settings/server/sharing'
     | '/settings/server/streams'
     | '/settings/household'
     | '/settings/profile'
@@ -379,6 +391,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/profile/sharing'
     | '/_authenticated/settings/server/encoding'
     | '/_authenticated/settings/server/libraries'
+    | '/_authenticated/settings/server/sharing'
     | '/_authenticated/settings/server/streams'
     | '/_authenticated/settings/household/'
     | '/_authenticated/settings/profile/'
@@ -585,6 +598,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsServerLibrariesRouteImport
       parentRoute: typeof AuthenticatedSettingsServerRoute
     }
+    '/_authenticated/settings/server/sharing': {
+      id: '/_authenticated/settings/server/sharing'
+      path: '/sharing'
+      fullPath: '/settings/server/sharing'
+      preLoaderRoute: typeof AuthenticatedSettingsServerSharingRouteImport
+      parentRoute: typeof AuthenticatedSettingsServerRoute
+    }
     '/_authenticated/settings/server/streams': {
       id: '/_authenticated/settings/server/streams'
       path: '/streams'
@@ -650,6 +670,7 @@ const AuthenticatedSettingsProfileRouteWithChildren =
 interface AuthenticatedSettingsServerRouteChildren {
   AuthenticatedSettingsServerEncodingRoute: typeof AuthenticatedSettingsServerEncodingRoute
   AuthenticatedSettingsServerLibrariesRoute: typeof AuthenticatedSettingsServerLibrariesRoute
+  AuthenticatedSettingsServerSharingRoute: typeof AuthenticatedSettingsServerSharingRoute
   AuthenticatedSettingsServerStreamsRoute: typeof AuthenticatedSettingsServerStreamsRoute
   AuthenticatedSettingsServerIndexRoute: typeof AuthenticatedSettingsServerIndexRoute
   AuthenticatedSettingsServerLibrariesNewRoute: typeof AuthenticatedSettingsServerLibrariesNewRoute
@@ -661,6 +682,8 @@ const AuthenticatedSettingsServerRouteChildren: AuthenticatedSettingsServerRoute
       AuthenticatedSettingsServerEncodingRoute,
     AuthenticatedSettingsServerLibrariesRoute:
       AuthenticatedSettingsServerLibrariesRoute,
+    AuthenticatedSettingsServerSharingRoute:
+      AuthenticatedSettingsServerSharingRoute,
     AuthenticatedSettingsServerStreamsRoute:
       AuthenticatedSettingsServerStreamsRoute,
     AuthenticatedSettingsServerIndexRoute:
