@@ -31,8 +31,12 @@ export function WhereShared({
   onChanged,
   changing,
   onChangingChange,
+  rereading,
+  onRereadingChange,
   ending,
   onEndingChange,
+  canceling,
+  onCancelingChange,
   refusal,
   onRefusalChange,
   liveList,
@@ -51,9 +55,19 @@ export function WhereShared({
   /** The share whose change is on its way; no other change starts until it lands. */
   changing: string | null
   onChangingChange: (shareId: string | null) => void
+  /**
+   * Whether a change, or the read of the shares that follows it, is on its way. No confirmation
+   * confirms until that read answers: a read sent before one change could otherwise answer after a
+   * second change and bring back the second share.
+   */
+  rereading: boolean
+  onRereadingChange: (rereading: boolean) => void
   /** The share whose end waits for the person's confirmation. */
   ending: ProfileShareRow | null
   onEndingChange: (share: ProfileShareRow | null) => void
+  /** The offer whose cancel waits for the person's confirmation. */
+  canceling: ProfileShareRow | null
+  onCancelingChange: (share: ProfileShareRow | null) => void
   /** The server's words for a change that it refused. */
   refusal: string | null
   onRefusalChange: (refusal: string | null) => void
@@ -64,9 +78,9 @@ export function WhereShared({
 }>) {
   const [cancel] = useMutation(CancelProfileShareDocument)
   const [end] = useMutation(EndProfileShareDocument)
-  /** Each live share's End action, where focus returns when its confirmation closes. */
-  const endActions = useRef(new Map<string, HTMLButtonElement | null>())
-  /** Where focus goes when the confirmation closes after its share's End action is gone. */
+  /** Each live share's action, where focus returns when its confirmation closes. */
+  const rowActions = useRef(new Map<string, HTMLButtonElement | null>())
+  /** Where focus goes when the confirmation closes after its share's action is gone. */
   const heading = useRef<HTMLHeadingElement>(null)
 
   // A share that a read or a change made elsewhere takes out of the list while its confirmation is
@@ -90,23 +104,56 @@ export function WhereShared({
     if (endedElsewhere) sayEnded()
   }, [endedElsewhere])
 
-  /** Sends the change and reads the shares again; resolves to whether the server took it. */
-  async function change(share: ProfileShareRow): Promise<boolean> {
+  // An offer that is accepted, canceled or runs out elsewhere while its confirmation is open no
+  // longer waits, so the confirmation closes and the page says so.
+  const canceledElsewhere =
+    canceling !== null &&
+    changing === null &&
+    refusal === null &&
+    !shares.some((share) => share.id === canceling.id && share.status === 'PENDING')
+  const sayNoLongerWaiting = useEffectEvent(() => {
+    if (!canceling) return
+    onCancelingChange(null)
+    onChanged(
+      `The offer to ${canceling.household?.name ?? householdName(canceling.householdId)} is no longer waiting.`,
+    )
+  })
+
+  useEffect(() => {
+    if (canceledElsewhere) sayNoLongerWaiting()
+  }, [canceledElsewhere])
+
+  /**
+   * Sends the change and calls `onTaken` once the server takes it; a refusal keeps the
+   * confirmation open with the server's words. Either way the shares are then read again.
+   */
+  async function change(share: ProfileShareRow, onTaken: () => void) {
     onRefusalChange(null)
     onChangingChange(share.id)
+    onRereadingChange(true)
+    try {
+      const answered = await sendAndSettle(share, onTaken)
+      onChangingChange(null)
+      // A refused share may have changed elsewhere, so the list is read again.
+      if (answered) await readAgain()
+    } finally {
+      onRereadingChange(false)
+    }
+  }
+
+  /** Settles the change by the server's answer; false when the request got no answer. */
+  async function sendAndSettle(share: ProfileShareRow, onTaken: () => void): Promise<boolean> {
     try {
       const errors = await send(share)
       if (errors?.length) {
         onRefusalChange(errors.map(userErrorMessage).join(' '))
+        return true
       }
-      // A refused share may have changed elsewhere, so the list is read again.
-      await readAgain()
-      return !errors?.length
+      onTaken()
+      return true
     } catch (error) {
       onRefusalChange(requestFailureMessage(error, UPDATE_FAILED_MESSAGE))
       return false
-    } finally {
-      onChangingChange(null)
     }
   }
 
@@ -118,24 +165,38 @@ export function WhereShared({
     return (await end({ variables })).data?.endProfileShare?.userErrors
   }
 
-  // Canceling an offer loses nothing that a new offer cannot bring back, so it asks nothing.
-  async function cancelOffer(share: ProfileShareRow) {
-    if (await change(share)) {
+  function cancelOffer(share: ProfileShareRow) {
+    return change(share, () => {
+      onCancelingChange(null)
       onChanged(`Invitation to ${householdName(share.householdId)} canceled.`)
+    })
+  }
+
+  function ask(share: ProfileShareRow, confirm: (share: ProfileShareRow) => void) {
+    onRefusalChange(null)
+    confirm(share)
+  }
+
+  function rowAction(shareId: string) {
+    return (button: HTMLButtonElement | null) => {
+      rowActions.current.set(shareId, button)
+      return () => {
+        rowActions.current.delete(shareId)
+      }
     }
   }
 
-  async function endShare(share: ProfileShareRow) {
-    if (await change(share)) {
+  function endShare(share: ProfileShareRow) {
+    return change(share, () => {
       onEndingChange(null)
       onChanged(`Sharing with ${householdName(share.householdId)} ended.`)
-    }
+    })
   }
 
   return (
     <SharingSection
       title={`Where ${profile.name}'s Profile is shared`}
-      failure={ending ? null : refusal}
+      failure={ending || canceling ? null : refusal}
       heading={heading}
     >
       {readFailure && <FailureRow onRetry={readAgain}>{readFailure}</FailureRow>}
@@ -157,29 +218,21 @@ export function WhereShared({
               </span>
               {pending ? (
                 <Button
+                  ref={rowAction(share.id)}
                   variant="default"
                   aria-label={`Cancel invitation to ${household}`}
-                  loading={changing === share.id}
                   disabled={changing !== null}
-                  onClick={() => void cancelOffer(share)}
+                  onClick={() => ask(share, onCancelingChange)}
                 >
                   Cancel invitation
                 </Button>
               ) : (
                 <Button
-                  ref={(button) => {
-                    endActions.current.set(share.id, button)
-                    return () => {
-                      endActions.current.delete(share.id)
-                    }
-                  }}
+                  ref={rowAction(share.id)}
                   variant="default"
                   aria-label={`End share with ${household}`}
                   disabled={changing !== null}
-                  onClick={() => {
-                    onRefusalChange(null)
-                    onEndingChange(share)
-                  }}
+                  onClick={() => ask(share, onEndingChange)}
                 >
                   End share
                 </Button>
@@ -207,17 +260,42 @@ export function WhereShared({
         destructive
         icon={null}
         pending={ending !== null && changing === ending.id}
+        disabled={rereading}
         error={refusal}
         onClose={() => {
           // A confirmation that Retry brought back opened without the person's click, so the
-          // dialog knows nothing to return focus to. A share that ended meanwhile has no End
-          // action left to return to.
-          if (ending) (endActions.current.get(ending.id) ?? heading.current)?.focus()
+          // dialog knows nothing to return focus to. A share that ended meanwhile has no action
+          // left to return to.
+          if (ending) (rowActions.current.get(ending.id) ?? heading.current)?.focus()
           onEndingChange(null)
           onRefusalChange(null)
         }}
         onConfirm={() => {
           if (ending) void endShare(ending)
+        }}
+      />
+      {/* The offer spent its share code, which stays spent: offering again takes a new one. */}
+      <ConfirmDialog
+        opened={canceling !== null}
+        title={`Cancel the offer to ${canceling ? householdName(canceling.householdId) : ''}?`}
+        body={
+          canceling
+            ? `To offer ${profile.name} again you need a new share code from ${householdName(canceling.householdId)}.`
+            : ''
+        }
+        confirmLabel="Cancel invitation"
+        destructive
+        icon={null}
+        pending={canceling !== null && changing === canceling.id}
+        disabled={rereading}
+        error={refusal}
+        onClose={() => {
+          if (canceling) (rowActions.current.get(canceling.id) ?? heading.current)?.focus()
+          onCancelingChange(null)
+          onRefusalChange(null)
+        }}
+        onConfirm={() => {
+          if (canceling) void cancelOffer(canceling)
         }}
       />
     </SharingSection>
