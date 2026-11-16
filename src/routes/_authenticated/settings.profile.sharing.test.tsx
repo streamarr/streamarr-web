@@ -8,7 +8,7 @@ import type {
 import { shareCodeLink } from '../../identity/shareCode'
 import { meFixture, profileFixture } from '../../test/meFixture'
 import { renderAppAt } from '../../test/render'
-import { server } from '../../test/server'
+import { menuCountReads, server } from '../../test/server'
 import {
   SENT_SHARE_CODE,
   serveShareCodeQuestions,
@@ -41,6 +41,7 @@ function serveSharing() {
         },
       }),
     ),
+    ...menuCountReads,
   )
   return serveShareCodeQuestions()
 }

@@ -217,6 +217,50 @@ function route(request, response, raw) {
     if (operationName === 'LanguageTabs') {
       return json(response, 200, { data: languageTabs(variables) })
     }
+    // The Profile menu's counts, on every page: nothing unread and no offer waiting.
+    if (operationName === 'UnreadNotificationCount') {
+      return json(response, 200, { data: { unreadNotificationCount: 0 } })
+    }
+    if (operationName === 'PendingOfferCount') {
+      return json(response, 200, {
+        data: {
+          householdAdministration: { __typename: 'HouseholdAdministration', pendingOfferCount: 0 },
+        },
+      })
+    }
+    if (operationName === 'ShareOffers') {
+      return json(response, 200, {
+        data: {
+          householdShares: {
+            __typename: 'ProfileShareConnection',
+            edges: [],
+            pageInfo: { hasNextPage: false, endCursor: null },
+          },
+        },
+      })
+    }
+    if (operationName === 'Notifications') {
+      return json(response, 200, {
+        data: {
+          notifications: {
+            __typename: 'NotificationConnection',
+            edges: [],
+            pageInfo: { __typename: 'PageInfo', hasNextPage: false, endCursor: null },
+          },
+        },
+      })
+    }
+    if (operationName === 'MarkNotificationsRead') {
+      return json(response, 200, {
+        data: {
+          markNotificationsRead: {
+            __typename: 'MarkNotificationsReadPayload',
+            unreadNotificationCount: 0,
+            userErrors: [],
+          },
+        },
+      })
+    }
     if (operationName === 'Home') {
       return json(response, 200, {
         data: {

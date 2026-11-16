@@ -2,6 +2,7 @@
   "possibleTypes": {
     "AcceptManagerInvitationError": [
       "AlreadyManagerError",
+      "InvitationNotPendingError",
       "ManagerInvitationNotFoundError",
       "ProfileManagerNotEligibleError"
     ],
@@ -122,6 +123,7 @@
     ],
     "ChangeProfileKindError": [
       "MaximumAllowedRatingAgeInvalidError",
+      "ProfileManagersOnlyError",
       "ProfileNotFoundError",
       "ProfileRequiresEligibleManagerError",
       "ReauthenticationRequiredError",
@@ -174,6 +176,7 @@
       "ProfileRequiresEligibleManagerError"
     ],
     "DeclineManagerInvitationError": [
+      "InvitationNotPendingError",
       "ManagerInvitationNotFoundError"
     ],
     "DeleteEmptyHouseholdError": [
@@ -215,6 +218,7 @@
       "RestrictedProfileRequiresHouseholdAdminError"
     ],
     "DeleteProfileError": [
+      "ProfileManagersOnlyError",
       "ProfileNotDeletableError",
       "ProfileNotFoundError",
       "ReauthenticationRequiredError"
@@ -324,9 +328,10 @@
       "VideoCodecTierInvalidError"
     ],
     "InviteProfileManagerError": [
-      "AccountNotFoundError",
-      "AlreadyManagerError",
-      "ProfileManagerNotEligibleError",
+      "EmailInvalidError",
+      "EmailRequiredError",
+      "ManagerInvitationLimitReachedError",
+      "ProfileManagersOnlyError",
       "ProfileNotFoundError"
     ],
     "IssueAccountInvitationForExistingProfileError": [
@@ -368,6 +373,9 @@
       "Movie",
       "Season",
       "Series"
+    ],
+    "LookUpManagerInvitationCodeError": [
+      "ManagerInvitationNotFoundError"
     ],
     "LookUpShareCodeError": [
       "ShareCodeRefusedError"
@@ -438,6 +446,7 @@
       "LifetimeOutOfRangeError",
       "LinkProfileNotFoundError",
       "ManagementAlreadyRemovedError",
+      "ManagerInvitationLimitReachedError",
       "ManagerInvitationNotFoundError",
       "MaximumAllowedRatingAgeInvalidError",
       "MediaFileFrameRateUnknownError",
@@ -460,6 +469,7 @@
       "ProfileAlreadySharedError",
       "ProfileBelongsToAccountError",
       "ProfileManagerNotEligibleError",
+      "ProfileManagersOnlyError",
       "ProfileNameRequiredError",
       "ProfileNameTakenError",
       "ProfileNotDeletableError",
@@ -495,12 +505,16 @@
       "VideoCodecTierInvalidError"
     ],
     "Notification": [
+      "ProfileManagementRemovedNotification",
+      "ProfileManagerInvitationAnsweredNotification",
+      "ProfileManagerInvitationReceivedNotification",
       "ProfileShareAnsweredNotification",
       "ProfileShareEndedNotification",
       "ProfileShareOfferedNotification"
     ],
     "OfferProfileShareError": [
       "ProfileAlreadySharedError",
+      "ProfileManagersOnlyError",
       "ProfileNotFoundError",
       "ShareCodeRefusedError"
     ],
@@ -551,6 +565,7 @@
     ],
     "RemoveProfileMaximumAllowedRatingAgeError": [
       "MaximumAllowedRatingAgeInvalidError",
+      "ProfileManagersOnlyError",
       "ProfileNotFoundError",
       "ProfileRequiresEligibleManagerError",
       "ReauthenticationRequiredError",
@@ -558,6 +573,7 @@
       "RestrictedProfileRequiresHouseholdAdminError"
     ],
     "RemoveProfilePinError": [
+      "ProfileManagersOnlyError",
       "ProfileNotFoundError",
       "ProfilePinRequiredError"
     ],
@@ -572,6 +588,7 @@
       "InvalidIdError"
     ],
     "RenameProfileError": [
+      "ProfileManagersOnlyError",
       "ProfileNameRequiredError",
       "ProfileNameTakenError",
       "ProfileNotFoundError"
@@ -581,6 +598,7 @@
       "PlaybackSessionClosedError"
     ],
     "RequestNotification": [
+      "ProfileManagerInvitationReceivedNotification",
       "ProfileShareOfferedNotification"
     ],
     "RevokeDeviceRegistrationError": [
@@ -607,8 +625,15 @@
       "RepeatedAudioLanguageError",
       "TooManyAudioLanguagesError"
     ],
+    "SetProfileLanguagePreferencesError": [
+      "ProfileManagersOnlyError",
+      "ProfileNotFoundError",
+      "RepeatedAudioLanguageError",
+      "TooManyAudioLanguagesError"
+    ],
     "SetProfileMaximumAllowedRatingAgeError": [
       "MaximumAllowedRatingAgeInvalidError",
+      "ProfileManagersOnlyError",
       "ProfileNotFoundError",
       "ProfileRequiresEligibleManagerError",
       "ReauthenticationRequiredError",
@@ -616,10 +641,12 @@
       "RestrictedProfileRequiresHouseholdAdminError"
     ],
     "SetProfilePictureError": [
+      "ProfileManagersOnlyError",
       "ProfileNotFoundError"
     ],
     "SetProfilePinError": [
       "InvalidProfilePinError",
+      "ProfileManagersOnlyError",
       "ProfileNotFoundError"
     ],
     "StartLibraryRefreshError": [

@@ -26,7 +26,12 @@ const graphqlSocket = ws.link(GRAPHQL_SOCKET_URL)
 export function serveGraphqlSocket() {
   const operations = new Map<string, Operation>()
   const clients = new Set<SocketClient>()
-  const state = { connections: 0, subscribes: [] as string[], documents: new Map<string, string>() }
+  const state = {
+    connections: 0,
+    subscribes: [] as string[],
+    documents: new Map<string, string>(),
+    variables: new Map<string, Record<string, unknown>>(),
+  }
 
   const send = (client: SocketClient, frame: object) => client.send(JSON.stringify(frame))
   const live = (operationName: string) =>
@@ -49,7 +54,7 @@ export function serveGraphqlSocket() {
         const frame = JSON.parse(data) as {
           type: string
           id?: string
-          payload?: { operationName?: string; query?: string }
+          payload?: { operationName?: string; query?: string; variables?: Record<string, unknown> }
         }
         if (frame.type === 'connection_init') send(client, { type: 'connection_ack' })
         if (frame.type === 'ping') send(client, { type: 'pong' })
@@ -59,6 +64,7 @@ export function serveGraphqlSocket() {
           operations.set(frame.id!, { client, operationName })
           state.subscribes.push(operationName)
           state.documents.set(operationName, frame.payload?.query ?? '')
+          state.variables.set(operationName, frame.payload?.variables ?? {})
         }
       })
     }),
