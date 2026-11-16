@@ -26,6 +26,7 @@ import { Route as AuthenticatedSettingsHouseholdRouteImport } from './routes/_au
 import { Route as AuthenticatedSettingsProfileRouteImport } from './routes/_authenticated/settings.profile'
 import { Route as AuthenticatedSettingsServerRouteImport } from './routes/_authenticated/settings.server'
 import { Route as AuthenticatedSettingsHouseholdIndexRouteImport } from './routes/_authenticated/settings.household.index'
+import { Route as AuthenticatedSettingsHouseholdCodesRouteImport } from './routes/_authenticated/settings.household.codes'
 import { Route as AuthenticatedSettingsHouseholdOffersRouteImport } from './routes/_authenticated/settings.household.offers'
 import { Route as AuthenticatedSettingsProfileIndexRouteImport } from './routes/_authenticated/settings.profile.index'
 import { Route as AuthenticatedSettingsProfileLanguagesRouteImport } from './routes/_authenticated/settings.profile.languages'
@@ -130,6 +131,12 @@ const AuthenticatedSettingsHouseholdIndexRoute =
     path: '/',
     getParentRoute: () => AuthenticatedSettingsHouseholdRoute,
   } as any)
+const AuthenticatedSettingsHouseholdCodesRoute =
+  AuthenticatedSettingsHouseholdCodesRouteImport.update({
+    id: '/codes',
+    path: '/codes',
+    getParentRoute: () => AuthenticatedSettingsHouseholdRoute,
+  } as any)
 const AuthenticatedSettingsHouseholdOffersRoute =
   AuthenticatedSettingsHouseholdOffersRouteImport.update({
     id: '/offers',
@@ -201,6 +208,7 @@ export interface FileRoutesByFullPath {
   '/settings/household': typeof AuthenticatedSettingsHouseholdRouteWithChildren
   '/settings/profile': typeof AuthenticatedSettingsProfileRouteWithChildren
   '/settings/server': typeof AuthenticatedSettingsServerRouteWithChildren
+  '/settings/household/codes': typeof AuthenticatedSettingsHouseholdCodesRoute
   '/settings/household/offers': typeof AuthenticatedSettingsHouseholdOffersRoute
   '/settings/profile/languages': typeof AuthenticatedSettingsProfileLanguagesRoute
   '/settings/profile/sharing': typeof AuthenticatedSettingsProfileSharingRoute
@@ -225,6 +233,7 @@ export interface FileRoutesByTo {
   '/play/$mediaFileId': typeof AuthenticatedPlayMediaFileIdRoute
   '/season/$seasonId': typeof AuthenticatedSeasonSeasonIdRoute
   '/series/$seriesId': typeof AuthenticatedSeriesSeriesIdRoute
+  '/settings/household/codes': typeof AuthenticatedSettingsHouseholdCodesRoute
   '/settings/household/offers': typeof AuthenticatedSettingsHouseholdOffersRoute
   '/settings/profile/languages': typeof AuthenticatedSettingsProfileLanguagesRoute
   '/settings/profile/sharing': typeof AuthenticatedSettingsProfileSharingRoute
@@ -254,6 +263,7 @@ export interface FileRoutesById {
   '/_authenticated/settings/household': typeof AuthenticatedSettingsHouseholdRouteWithChildren
   '/_authenticated/settings/profile': typeof AuthenticatedSettingsProfileRouteWithChildren
   '/_authenticated/settings/server': typeof AuthenticatedSettingsServerRouteWithChildren
+  '/_authenticated/settings/household/codes': typeof AuthenticatedSettingsHouseholdCodesRoute
   '/_authenticated/settings/household/offers': typeof AuthenticatedSettingsHouseholdOffersRoute
   '/_authenticated/settings/profile/languages': typeof AuthenticatedSettingsProfileLanguagesRoute
   '/_authenticated/settings/profile/sharing': typeof AuthenticatedSettingsProfileSharingRoute
@@ -283,6 +293,7 @@ export interface FileRouteTypes {
     | '/settings/household'
     | '/settings/profile'
     | '/settings/server'
+    | '/settings/household/codes'
     | '/settings/household/offers'
     | '/settings/profile/languages'
     | '/settings/profile/sharing'
@@ -307,6 +318,7 @@ export interface FileRouteTypes {
     | '/play/$mediaFileId'
     | '/season/$seasonId'
     | '/series/$seriesId'
+    | '/settings/household/codes'
     | '/settings/household/offers'
     | '/settings/profile/languages'
     | '/settings/profile/sharing'
@@ -335,6 +347,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/household'
     | '/_authenticated/settings/profile'
     | '/_authenticated/settings/server'
+    | '/_authenticated/settings/household/codes'
     | '/_authenticated/settings/household/offers'
     | '/_authenticated/settings/profile/languages'
     | '/_authenticated/settings/profile/sharing'
@@ -476,6 +489,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsHouseholdIndexRouteImport
       parentRoute: typeof AuthenticatedSettingsHouseholdRoute
     }
+    '/_authenticated/settings/household/codes': {
+      id: '/_authenticated/settings/household/codes'
+      path: '/codes'
+      fullPath: '/settings/household/codes'
+      preLoaderRoute: typeof AuthenticatedSettingsHouseholdCodesRouteImport
+      parentRoute: typeof AuthenticatedSettingsHouseholdRoute
+    }
     '/_authenticated/settings/household/offers': {
       id: '/_authenticated/settings/household/offers'
       path: '/offers'
@@ -543,12 +563,15 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedSettingsHouseholdRouteChildren {
+  AuthenticatedSettingsHouseholdCodesRoute: typeof AuthenticatedSettingsHouseholdCodesRoute
   AuthenticatedSettingsHouseholdOffersRoute: typeof AuthenticatedSettingsHouseholdOffersRoute
   AuthenticatedSettingsHouseholdIndexRoute: typeof AuthenticatedSettingsHouseholdIndexRoute
 }
 
 const AuthenticatedSettingsHouseholdRouteChildren: AuthenticatedSettingsHouseholdRouteChildren =
   {
+    AuthenticatedSettingsHouseholdCodesRoute:
+      AuthenticatedSettingsHouseholdCodesRoute,
     AuthenticatedSettingsHouseholdOffersRoute:
       AuthenticatedSettingsHouseholdOffersRoute,
     AuthenticatedSettingsHouseholdIndexRoute:

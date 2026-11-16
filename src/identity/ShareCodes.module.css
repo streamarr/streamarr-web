@@ -1,0 +1,56 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-20);
+}
+
+.intro {
+  margin: 0;
+  max-width: 640px;
+  color: var(--text-secondary);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-prose);
+}
+
+.page > section {
+  align-self: stretch;
+}
+
+/* The code just issued, in the page rather than over it, until the person is done with it. */
+.issued {
+  composes: panel from '../styles/panel.module.css';
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-14);
+  align-self: stretch;
+  padding: var(--spacing-24);
+}
+
+.code {
+  margin: 0;
+  font-family: var(--font-family-system);
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--letter-spacing-system);
+  user-select: all;
+}
+
+.once {
+  margin: 0;
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-prose);
+}
+
+.failure {
+  margin: 0;
+  color: var(--semantic-error-text);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-prose);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-8);
+}
