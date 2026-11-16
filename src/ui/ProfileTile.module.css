@@ -74,3 +74,17 @@
   flex: none;
   color: var(--color-white);
 }
+
+/* A Profile's mark in a list row, rendered by RowAvatar. */
+.rowAvatar {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+  flex: none;
+  color: var(--color-white);
+}

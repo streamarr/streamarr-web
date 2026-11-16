@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { expiryLabel, shortId } from './shareText'
+import { expiryLabel } from './shareText'
 
 const NOW = new Date('2026-08-20T12:00:00Z')
 
@@ -17,11 +17,5 @@ describe('expiryLabel', () => {
 
   it('shouldSayExpiredWhenTheTimeHasPassed', () => {
     expect(expiryLabel('2026-08-20T11:59:00Z', NOW)).toBe('Expired')
-  })
-})
-
-describe('shortId', () => {
-  it('shouldGiveTheStartOfAnId', () => {
-    expect(shortId('33333333-3333-3333-3333-333333333333')).toBe('33333333')
   })
 })

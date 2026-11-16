@@ -59,6 +59,18 @@ export function PinGateAvatar({
   )
 }
 
+/** A Profile's mark beside its name in a list row; the name beside it says who it is. */
+export function RowAvatar({
+  name,
+  paletteIndex = 0,
+}: Readonly<{ name: string; paletteIndex?: number }>) {
+  return (
+    <span className={styles.rowAvatar} style={{ background: tileColor(paletteIndex) }} aria-hidden>
+      {initials(name)}
+    </span>
+  )
+}
+
 export function initials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean)
   const first = parts[0]?.[0] ?? '?'
