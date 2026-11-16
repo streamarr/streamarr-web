@@ -4,6 +4,7 @@ import { createFileRoute, Outlet, redirect, useRouter } from '@tanstack/react-ro
 import { useEffect, useRef } from 'react'
 import { getSetupStatus, ServerStatusUnavailableError } from '../auth/api'
 import { CSRF_REJECTION_CAUSE, isCsrfRejection } from '../auth/csrf'
+import { signInResuming } from '../auth/resume'
 import { SessionUnconfirmedError, type SessionStore } from '../auth/session'
 import { extractAuthContext } from '../graphql/errorRouting'
 import { requestFailureMessage } from '../graphql/requestErrors'
@@ -28,8 +29,8 @@ export const Route = createFileRoute('/_authenticated')({
     if (location.pathname === '/' && (await getSetupStatus()).setupComplete === false) {
       throw redirect({ to: '/setup-server' })
     }
-    // The full href, so search params like a pairing code survive the round trip.
-    throw redirect({ to: '/login', search: { redirect: location.href } })
+    // The full address, so search params like a pairing code survive the round trip.
+    throw redirect(signInResuming(location))
   },
   pendingMs: 0,
   pendingComponent: CheckingSession,
