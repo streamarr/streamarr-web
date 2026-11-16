@@ -82,18 +82,38 @@
   gap: var(--spacing-8);
 }
 
+/* At phone width the review's three actions take two lines and leave none alone on one: the offer
+   across the first, Back and Cancel sharing the second. Where the two no longer fit side by side,
+   they wrap rather than clip their labels. */
+@media (max-width: 760px) {
+  .reviewActions > * {
+    flex: 1 1 0;
+    /* A button hides what overflows it, so without this it shrinks past its label, never wraps. */
+    min-width: max-content;
+  }
+
+  .reviewActions > :first-child {
+    flex-basis: 100%;
+  }
+}
+
 .share {
   align-self: flex-start;
 }
 
-/* Below the list it follows, a hairline apart, as each row is from the one above it. */
+/* Below the list it follows, a hairline across the panel apart, as each row is from the one above
+   it, so the form reads as a block of its own. */
 .shareForm {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-14);
-  max-width: 480px;
   padding-top: var(--spacing-14);
   border-top: var(--border-width-hairline) solid var(--border-hairline);
+}
+
+/* The hairline spans the panel; what the form holds keeps its reading width. */
+.shareForm > * {
+  max-width: 480px;
 }
 
 .review {

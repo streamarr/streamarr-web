@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { renderWithProviders } from '../test/render'
@@ -41,6 +41,17 @@ describe('ConfirmDialog', () => {
   it('closes on Cancel without confirming', async () => {
     const { user, onConfirm, onClose } = renderDialog()
     await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(onClose).toHaveBeenCalledOnce()
+    expect(onConfirm).not.toHaveBeenCalled()
+  })
+
+  it('shouldDismissWithTheGivenLabelWhenTheCallerNamesTheDismissButton', async () => {
+    const { user, onConfirm, onClose } = renderDialog({ dismissLabel: 'Keep offer' })
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Keep offer' }))
+
     expect(onClose).toHaveBeenCalledOnce()
     expect(onConfirm).not.toHaveBeenCalled()
   })
