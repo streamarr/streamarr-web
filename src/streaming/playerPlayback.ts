@@ -39,6 +39,11 @@ const TIMELINE_REPORT_INTERVAL_SECONDS = 10
 const TIMELINE_CLEANUP_TIMEOUT_MS = 10_000
 const PLAYBACK_START_TIMEOUT_MS = 30_000
 const PLAYBACK_STATUS_INTERVAL_MS = 500
+// The server holds a segment request past a short copy's real end. Its status names that end only
+// once a job attempt has run past it, so a stream attached past the end never loads its metadata.
+// A startup that still waits for the metadata this long after the attach reads the status every
+// PLAYBACK_STATUS_INTERVAL_MS until the metadata loads.
+const SLOW_STARTUP_MS = 3_000
 // The server's default target segment duration, for a player that keeps the playlist to itself.
 const DEFAULT_SEGMENT_SECONDS = 6
 // By the server's defaults, it replaces a job attempt that stores nothing for 10 s and gives the
@@ -151,7 +156,22 @@ interface PlaybackStatusCheck {
   controller: AbortController
   generation: number
   fatal: boolean
+  // A slow startup's check ends once the element loads its metadata. A stream error that joins
+  // the check keeps it running past the metadata.
+  endsAtMetadata: boolean
+  // A slow startup reads through the check until the element loads its metadata, whoever else
+  // joins it.
+  readsForSlowStartup: boolean
   settled: Promise<void>
+  // Aborts the check PLAYBACK_START_TIMEOUT_MS after it starts, or after it hands over.
+  deadline?: ReturnType<typeof setTimeout>
+}
+
+// A running status check reads the status of playback session `id` for as long as it is current.
+interface StatusPoll {
+  check: PlaybackStatusCheck
+  current: () => boolean
+  id: string
 }
 
 /** What the player asks of a new playback session; no start position starts at the beginning. */
@@ -245,6 +265,10 @@ function startSessionPlayback({
   let sourceGeneration = 0
   let reportingFormat = false
   let statusCheck: PlaybackStatusCheck | undefined
+  // Settles once the status check that last moved playback to another stream session has attached
+  // it or has ended.
+  let statusHandover: Promise<void> = Promise.resolve()
+  let slowStartup: ReturnType<typeof setTimeout> | undefined
   let startAt = resumeFrom?.position ?? startPositionSeconds
   let resume: ResumePoint | undefined = resumeFrom && { ...resumeFrom }
   let lastReportedPosition = startAt ?? 0
@@ -357,6 +381,9 @@ function startSessionPlayback({
     return attachTimeline(video, {
       // Seeking before metadata is loaded is unreliable across browsers; the event is the safe point.
       onLoadedMetadata: (element) => {
+        stopSlowStartupReads()
+        // Playback that ended at the real end before its metadata loaded has no start left to make.
+        if (endedAtRealEnd) return
         if (resume) {
           const previous = resume
           resume = undefined
@@ -455,9 +482,24 @@ function startSessionPlayback({
   // waits for the media it starts with, which can still come.
   function withinASegmentOfRealEnd(): boolean {
     if (realEnd === null) return false
-    if (video.currentTime >= realEnd) return true
+    if (playhead() >= realEnd) return true
     const segmentSeconds = source?.segmentSeconds() ?? DEFAULT_SEGMENT_SECONDS
-    return firstFrameShown && video.currentTime >= realEnd - segmentSeconds
+    return firstFrameShown && playhead() >= realEnd - segmentSeconds
+  }
+
+  // Until the element loads its metadata, its currentTime reads 0. The playhead is then the start
+  // position that playback waits for, and hls.js asks first for the segment that holds that position.
+  function playhead(): number {
+    if (video.readyState >= HTMLMediaElement.HAVE_METADATA) return video.currentTime
+    return resume?.position ?? startAt ?? video.currentTime
+  }
+
+  // The server holds a request for a segment past the real end, so hls.js, started there, would
+  // never load the media that the element's metadata waits for. It starts where the playlist does
+  // instead, and the element still seeks to the position once its metadata has loaded.
+  function startPositionBeforeTheRealEnd(position: number | undefined): number | undefined {
+    if (position === undefined || realEnd === null || position < realEnd) return position
+    return undefined
   }
 
   // Ends playback as at the end of the media title. Callers end it only while it has not ended.
@@ -466,9 +508,14 @@ function startSessionPlayback({
       return
     }
     endedAtRealEnd = true
+    // A startup that ends here never reaches the start position it waited for, nor plays from it,
+    // so only the viewer's Play plays it again.
+    resume = undefined
+    playRequested = true
     // Playback that ended has started; only attaching the stream again starts it anew.
     startupDeadline.end()
     stopStatusCheck()
+    if (video.readyState < HTMLMediaElement.HAVE_METADATA) source?.stopLoading?.()
     video.pause()
     endedPosition = video.currentTime
     reportEnd(realEnd)
@@ -497,7 +544,7 @@ function startSessionPlayback({
 
   // A seek's wait for media before the real end is no stall, but media past it never comes.
   function seekingBeforeRealEnd(): boolean {
-    return (video.seeking || seekUnresumed) && realEnd !== null && video.currentTime < realEnd
+    return (video.seeking || seekUnresumed) && realEnd !== null && playhead() < realEnd
   }
 
   // Nothing past the real end can arrive, so a stall or a failure close to it is the end. A
@@ -532,7 +579,7 @@ function startSessionPlayback({
     if (seekingBeforeRealEnd()) {
       return
     }
-    if (video.currentTime >= seconds || video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
+    if (playhead() >= seconds || video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
       tryEndAtRealEnd()
     }
   }
@@ -723,6 +770,7 @@ function startSessionPlayback({
     }
     const options: StreamSourceOptions = {
       startupDeadline,
+      startPositionSeconds: startPositionBeforeTheRealEnd(resume?.position ?? startAt),
       videoPreference: hlsVideoPreference(declaration, dynamicRange),
       onFirstFrame: () => {
         firstFrameShown = true
@@ -757,6 +805,7 @@ function startSessionPlayback({
             onChooseAudio: (position) => switchAudioTrack(position, generation),
           })
         : attach(video, streamSession.streamUrl, options)
+    readTheStatusIfStartupIsSlow(generation)
     const { sourceStats } = source
     onSourcePhase({
       at: 'attached',
@@ -848,7 +897,13 @@ function startSessionPlayback({
       audioTrackPosition,
     })
     if (pendingSwitch === pending) pendingSwitch = null
-    if (cancelled || generation !== sourceGeneration) return false
+    if (cancelled) return false
+    // While the switch waits, only a status check that reads the switch's stream session moves
+    // playback, so the switch moved playback once that check has attached the stream session.
+    if (generation !== sourceGeneration) {
+      await statusHandover
+      return playsAnotherStreamThan(directPlayStreamSessionId)
+    }
     switch (answer.kind) {
       case 'started': {
         beginHandover()
@@ -978,14 +1033,31 @@ function startSessionPlayback({
     previous?.controller.abort()
   }
 
+  // The reads run as a status check. A real end at or before the start position ends playback
+  // there, and another stream that the status names replaces the attached one.
+  function readTheStatusIfStartupIsSlow(generation: number) {
+    slowStartup = setTimeout(() => {
+      void reconcilePlaybackStatus({ generation, fatal: false, forSlowStartup: true })
+    }, SLOW_STARTUP_MS)
+  }
+
+  function stopSlowStartupReads() {
+    clearTimeout(slowStartup)
+    if (!statusCheck) return
+    statusCheck.readsForSlowStartup = false
+    if (statusCheck.endsAtMetadata) stopStatusCheck()
+  }
+
   // A caller that joins a running check waits for that check to settle. A check begun for a stream
   // that has since been detached discards what it reads, so a new check replaces it.
   function reconcilePlaybackStatus({
     generation,
     fatal,
+    forSlowStartup = false,
   }: {
     generation: number
     fatal: boolean
+    forSlowStartup?: boolean
   }): Promise<void> {
     if (
       cancelled ||
@@ -997,6 +1069,8 @@ function startSessionPlayback({
       return Promise.resolve()
     if (statusCheck?.generation === generation) {
       statusCheck.fatal ||= fatal
+      statusCheck.endsAtMetadata &&= forSlowStartup
+      statusCheck.readsForSlowStartup ||= forSlowStartup
       return statusCheck.settled
     }
     stopStatusCheck()
@@ -1004,6 +1078,8 @@ function startSessionPlayback({
       controller: new AbortController(),
       generation,
       fatal,
+      endsAtMetadata: forSlowStartup,
+      readsForSlowStartup: forSlowStartup,
       settled: Promise.resolve(),
     }
     statusCheck = check
@@ -1014,30 +1090,33 @@ function startSessionPlayback({
   async function runStatusCheck(check: PlaybackStatusCheck, id: string) {
     const current = () =>
       !cancelled && statusCheck === check && check.generation === sourceGeneration
-    const deadline = setTimeout(() => check.controller.abort(), PLAYBACK_START_TIMEOUT_MS)
+    armCheckDeadline(check)
     try {
       await pollForReplacement({ check, current, id })
       if (current() && check.controller.signal.aborted && check.fatal) failSource()
     } catch {
       if (current() && check.fatal) failSource()
     } finally {
-      clearTimeout(deadline)
+      clearTimeout(check.deadline)
       if (statusCheck === check) statusCheck = undefined
     }
   }
 
-  async function pollForReplacement({
-    check,
-    current,
-    id,
-  }: {
-    check: PlaybackStatusCheck
-    current: () => boolean
-    id: string
-  }) {
+  function armCheckDeadline(check: PlaybackStatusCheck) {
+    clearTimeout(check.deadline)
+    check.deadline = setTimeout(() => check.controller.abort(), PLAYBACK_START_TIMEOUT_MS)
+  }
+
+  async function pollForReplacement(poll: StatusPoll) {
+    const { check, current, id } = poll
     while (current() && !check.controller.signal.aborted) {
-      const playback = await readPlaybackSession(id, check.controller.signal)
+      const status = await readTheStatus(id, check)
       if (!current()) return
+      if (!status.read) {
+        await waitForPlaybackStatus(check.controller.signal)
+        continue
+      }
+      const { playback } = status
       const attachedStream = attachedStreamIn(playback)
       const realEndOfStream = mediaEndOf(attachedStream)
       // The segments past a short copy's real end never come, and nothing replaces the stream.
@@ -1050,16 +1129,37 @@ function startSessionPlayback({
         await waitForPlaybackStatus(check.controller.signal)
         continue
       }
-      beginHandover()
-      check.generation = sourceGeneration
-      const resolved = playback
-        ? await awaitReadyPlayback(playback, check.controller.signal, current)
-        : undefined
-      if (!current()) return
-      if (check.controller.signal.aborted) break
-      adoptPlayback(resolved)
+      await replaceTheAttachedStream(playback, poll)
       return
     }
+  }
+
+  async function replaceTheAttachedStream(
+    playback: PlaybackSessionFieldsFragment | null | undefined,
+    poll: StatusPoll,
+  ) {
+    const { check, current } = poll
+    beginHandover()
+    // The replacement has as long to start as the handover gives it, however long the check read
+    // before it found the replacement.
+    armCheckDeadline(check)
+    check.generation = sourceGeneration
+    statusHandover = check.settled
+    const resolved = playback ? await awaitReadyPlayback(playback, poll) : undefined
+    if (!current() || check.controller.signal.aborted) return
+    adoptPlayback(resolved)
+  }
+
+  // A failed read rejects, except while a slow startup reads through a check that no fatal stream
+  // error joined: nothing else asks for that status again.
+  function readTheStatus(id: string, check?: PlaybackStatusCheck) {
+    return readPlaybackSession(id, check?.controller.signal ?? statusCancellation.signal).then(
+      (playback) => ({ read: true as const, playback }),
+      (error: unknown) => {
+        if (!check?.readsForSlowStartup || check.fatal) throw error
+        return { read: false as const }
+      },
+    )
   }
 
   // The stream this player has attached, when the playback session still names it.
@@ -1091,22 +1191,22 @@ function startSessionPlayback({
     showFailure(PLAYBACK_FAILURE_MESSAGE)
   }
 
-  async function awaitReadyPlayback(
-    initial: PlaybackSessionFieldsFragment,
-    signal = statusCancellation.signal,
-    current = () => !cancelled,
-  ) {
+  // A status check's poll waits with the check's own signal and reads, and only while the check is
+  // current, so a slow startup's check reads again after a read that failed.
+  async function awaitReadyPlayback(initial: PlaybackSessionFieldsFragment, poll?: StatusPoll) {
+    const signal = poll?.check.controller.signal ?? statusCancellation.signal
+    const current = poll?.current ?? (() => !cancelled)
     let playback: PlaybackSessionFieldsFragment | null | undefined = initial
     while (
       current() &&
       !signal.aborted &&
       playback?.currentFormatAttempt.__typename === 'PendingPlaybackFormatAttempt'
     ) {
-      const next = await readPlaybackSession(initial.id, signal)
+      const status = await readTheStatus(initial.id, poll?.check)
       if (!current()) {
         return undefined
       }
-      playback = next
+      if (status.read) playback = status.playback
       if (playback?.currentFormatAttempt.__typename === 'PendingPlaybackFormatAttempt') {
         await waitForPlaybackStatus(signal)
       }
@@ -1162,6 +1262,7 @@ function startSessionPlayback({
 
   function detachSource() {
     sourceGeneration += 1
+    clearTimeout(slowStartup)
     clearStallLimit()
     // Releasing the stream rewinds the element; the timeline must not record the rewind.
     timeline.detach()
@@ -1391,6 +1492,12 @@ function ignoreTimelineReportFailure() {
 
 interface StreamSource {
   detach: () => void
+  /**
+   * Stops loading the stream and lets go of the element, which then holds no media. Only hls.js
+   * needs the stop: hls.js moves the element to the start position once hls.js has buffered a
+   * segment there, even a segment that it had loaded before it stopped loading.
+   */
+  stopLoading?: () => void
   /** Whether attaching the stream again with another video preference can change its range. */
   followsVideoPreference: boolean
   tracks: TrackSource
@@ -1404,6 +1511,8 @@ interface StreamSourceOptions {
   onFirstFrame: () => void
   onFormatFailure: (reason: PlaybackFormatFailure) => void
   onStatusRequired: (fatal: boolean) => void
+  /** Where hls.js starts to load the stream. Without one, hls.js starts where the playlist does. */
+  startPositionSeconds?: number
   startupDeadline: StartupDeadline
   videoPreference: VideoSelectionOption
 }
@@ -1413,7 +1522,13 @@ function attach(video: HTMLVideoElement, url: string, options: StreamSourceOptio
   if (!Hls.isSupported()) {
     return attachNative(video, url, options)
   }
-  const hls: Hls = new Hls(hlsPlaybackConfig(() => hls, options.videoPreference))
+  // The element has its metadata only once hls.js has appended the first media segment it loads, so
+  // the seek to the start position comes too late to choose that segment. The server marks no
+  // EXT-X-START in a stream session that replaces another after playback moved from its start.
+  const hls: Hls = new Hls({
+    ...hlsPlaybackConfig(() => hls, options.videoPreference),
+    startPosition: options.startPositionSeconds ?? -1,
+  })
   hls.on(Hls.Events.ERROR, (_event, data) => {
     if (
       data.type === Hls.ErrorTypes.NETWORK_ERROR &&
@@ -1449,6 +1564,12 @@ function attach(video: HTMLVideoElement, url: string, options: StreamSourceOptio
       video.removeEventListener('loadedmetadata', options.startupDeadline.end)
       video.removeEventListener('error', onVideoError)
       hls.destroy()
+    },
+    // hls.js 1.7.4 still appends a segment that it loaded before stopLoad. It then skips the move
+    // to the start position after a main segment, but not after an alternate audio segment.
+    stopLoading: () => {
+      hls.stopLoad()
+      hls.detachMedia()
     },
     followsVideoPreference: true,
     tracks: hlsTrackSource(hls),

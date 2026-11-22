@@ -115,7 +115,7 @@ jobs:
       # The cache holds only the browser; the OS packages it needs are not cached.
       - if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: node_modules/.bin/playwright install-deps chromium
-      - name: Set up FFmpeg, which writes the 7.1 channel-order and quality-ladder streams
+      - name: Set up FFmpeg, which writes the 7.1 channel-order, quality-ladder and handover streams
         uses: streamarr/streamarr-workflows/.github/actions/setup-ffmpeg@76cd4dd76bce93283d0ccb7ba08429248b6f18f1
         with:
           release: ${{ env.FFMPEG_RELEASE }}
