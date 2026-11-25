@@ -3,6 +3,7 @@ import Hls, {
   type ErrorData,
   type Level,
   type MediaPlaylist,
+  PlaylistLevelType,
   type VideoSelectionOption,
 } from 'hls.js'
 import {
@@ -41,6 +42,11 @@ const PLAYBACK_START_TIMEOUT_MS = 30_000
 const PLAYBACK_STATUS_INTERVAL_MS = 500
 // The server's default target segment duration, for a player that keeps the playlist to itself.
 const DEFAULT_SEGMENT_SECONDS = 6
+// How close to the end of its buffered media a waiting element has run out of it.
+const PLAYABLE_MEDIA_END_TOLERANCE_SECONDS = 0.5
+// hls.js moves a segment's start to the first frame of its media, so neighbouring segments it has
+// buffered can leave a hairline between them.
+const LOADED_RANGE_TOLERANCE_SECONDS = 0.25
 // By the server's defaults, it replaces a job attempt that stores nothing for 10 s and gives the
 // replacement up to 22 s to store its first segment, so a stall it can still end ends within about
 // 32 s and one segment's transfer. Once the buffer is empty, hls.js abandons a segment request
@@ -252,7 +258,8 @@ function startSessionPlayback({
   let unacknowledgedEndPosition: number | null = null
   // Where the attached stream's media really ends, when its copy ran short of the advertised end.
   let realEnd: number | null = null
-  let endedAtRealEnd = false
+  // The player, not the element, ended playback as at the end of the media title.
+  let playerEndedPlayback = false
   // Where the playhead stopped when playback ended; a viewer's seek after the end moves it away.
   let endedPosition = 0
   // hls.js stops loading after a fatal error, which a stream with a known real end may survive.
@@ -377,7 +384,7 @@ function startSessionPlayback({
       onPlay: (element) => {
         if (resume) resume.playing = true
         playRequested = true
-        if (!endedAtRealEnd) return
+        if (!playerEndedPlayback) return
         // As the element does after its own end, playing where playback ended starts from the top.
         if (element.currentTime === endedPosition) element.currentTime = 0
         // A failure can be what ended playback, and hls.js stops loading after one.
@@ -385,7 +392,7 @@ function startSessionPlayback({
       },
       // The pause that ends playback reports its events after the end; the end stays the last word.
       onTimeUpdate: (element) => {
-        if (endedAtRealEnd) return
+        if (playerEndedPlayback) return
         lastKnownPosition = element.currentTime
         if (realEnd !== null && element.currentTime >= realEnd) {
           endAtRealEnd()
@@ -401,7 +408,7 @@ function startSessionPlayback({
       },
       onPause: (element) => {
         clearStallLimit()
-        if (endedAtRealEnd) return
+        if (playerEndedPlayback) return
         if (resume) resume.playing = false
         lastKnownPosition = element.currentTime
         report('PAUSED', element.currentTime)
@@ -436,9 +443,9 @@ function startSessionPlayback({
         startStallLimit()
         if (sourceStopped) restartStoppedSource()
       },
-      // An element that also ends where playback ended at the real end has nothing new to report.
+      // An element that also ends after the player ended playback has nothing new to report.
       onEnded: (element) => {
-        if (!endedAtRealEnd) reportEnd(element.currentTime)
+        if (!playerEndedPlayback) reportEnd(element.currentTime)
       },
     })
   }
@@ -460,25 +467,30 @@ function startSessionPlayback({
     return firstFrameShown && video.currentTime >= realEnd - segmentSeconds
   }
 
-  // Ends playback as at the end of the media title. Callers end it only while it has not ended.
   function endAtRealEnd() {
     if (realEnd === null) {
       return
     }
-    endedAtRealEnd = true
+    endAsAtTheEndOfTheTitle(realEnd)
+  }
+
+  // Ends playback as at the end of the media title, stopped at `stoppedAt`. Callers end it only
+  // while it has not ended.
+  function endAsAtTheEndOfTheTitle(stoppedAt: number) {
+    playerEndedPlayback = true
     // Playback that ended has started; only attaching the stream again starts it anew.
     startupDeadline.end()
     stopStatusCheck()
     video.pause()
     endedPosition = video.currentTime
-    reportEnd(realEnd)
+    reportEnd(stoppedAt)
   }
 
-  // Playback that ended at the real end attaches the stream again when the viewer plays on.
+  // Playback that the player ended attaches the stream again when the viewer plays on.
   function chooseDynamicRange(choice: DynamicRangeChoice) {
     if (choice === dynamicRange) return
     dynamicRange = choice
-    if (!source?.followsVideoPreference || endedAtRealEnd) return
+    if (!source?.followsVideoPreference || playerEndedPlayback) return
     resume = resumePoint()
     stopStatusCheck()
     detachSource()
@@ -503,7 +515,7 @@ function startSessionPlayback({
   // Nothing past the real end can arrive, so a stall or a failure close to it is the end. A
   // failure after the end, even once the viewer has sought back, belongs to the ended playback.
   function tryEndAtRealEnd(): boolean {
-    if (endedAtRealEnd) {
+    if (playerEndedPlayback) {
       return true
     }
     if (!withinASegmentOfRealEnd()) {
@@ -598,7 +610,7 @@ function startSessionPlayback({
     }
     const seconds = mediaEndOf(attachedStream)
     if (typeof seconds === 'number') learnRealEnd(seconds)
-    if (!endedAtRealEnd) failStalledStream()
+    if (!playerEndedPlayback) failStalledStream()
   }
 
   // The media element can resume, pause or seek before it fires the event that stops the limit.
@@ -703,7 +715,7 @@ function startSessionPlayback({
     sessionId = attempt.streamSession.id
     attachedPlayback = playback
     realEnd = mediaEndOf(attempt.streamSession) ?? (sameStream ? realEnd : null)
-    endedAtRealEnd = false
+    playerEndedPlayback = false
     sourceStopped = false
     firstFrameShown = false
     const generation = sourceGeneration
@@ -731,6 +743,9 @@ function startSessionPlayback({
       onFormatFailure: (reason) => {
         void reportFormatFailure(reason, generation)
       },
+      // A copy whose audio ends before its video plays no further than its audio, so playback ends
+      // where it stops.
+      onPlayableMediaEnded: () => endAsAtTheEndOfTheTitle(video.currentTime),
       onStatusRequired: (fatal) => {
         // A stream that stops for good within one segment of the real end has ended there.
         if (fatal && tryEndAtRealEnd()) return
@@ -942,7 +957,7 @@ function startSessionPlayback({
     if (
       video.ended ||
       (realEnd !== null && video.currentTime >= realEnd) ||
-      (endedAtRealEnd && video.currentTime === endedPosition)
+      (playerEndedPlayback && video.currentTime === endedPosition)
     ) {
       return { position: 0, playing }
     }
@@ -992,7 +1007,7 @@ function startSessionPlayback({
       generation !== sourceGeneration ||
       reportingFormat ||
       !playbackSessionId ||
-      endedAtRealEnd
+      playerEndedPlayback
     )
       return Promise.resolve()
     if (statusCheck?.generation === generation) {
@@ -1071,7 +1086,7 @@ function startSessionPlayback({
 
   function playOnToTheRealEnd(seconds: number, sourceFailed: boolean) {
     learnRealEnd(seconds)
-    if (sourceFailed && !endedAtRealEnd) keepPlayingFromAStoppedSource()
+    if (sourceFailed && !playerEndedPlayback) keepPlayingFromAStoppedSource()
   }
 
   // Buffered media plays on to the real end; a stall short of it needs the stream attached again.
@@ -1403,6 +1418,8 @@ interface StreamSourceOptions {
   onFatal: () => void
   onFirstFrame: () => void
   onFormatFailure: (reason: PlaybackFormatFailure) => void
+  /** The element can play no more of the stream, though its playlist runs on. */
+  onPlayableMediaEnded: () => void
   onStatusRequired: (fatal: boolean) => void
   startupDeadline: StartupDeadline
   videoPreference: VideoSelectionOption
@@ -1437,6 +1454,7 @@ function attach(video: HTMLVideoElement, url: string, options: StreamSourceOptio
     }
     options.onFatal()
   })
+  const stopWatchingTheEnd = watchForTheEndOfPlayableMedia(hls, video, options.onPlayableMediaEnded)
   const onVideoError = () => handleVideoError(video, options)
   video.addEventListener('error', onVideoError)
   video.addEventListener('loadedmetadata', options.startupDeadline.end)
@@ -1445,6 +1463,7 @@ function attach(video: HTMLVideoElement, url: string, options: StreamSourceOptio
   hls.attachMedia(video)
   return {
     detach: () => {
+      stopWatchingTheEnd()
       video.removeEventListener('loadeddata', options.onFirstFrame)
       video.removeEventListener('loadedmetadata', options.startupDeadline.end)
       video.removeEventListener('error', onVideoError)
@@ -1455,6 +1474,80 @@ function attach(video: HTMLVideoElement, url: string, options: StreamSourceOptio
     segmentSeconds: () => hls.latestLevelDetails?.targetduration,
     sourceStats: () => hlsSourceStats(hls),
   }
+}
+
+// A variant's segments carry its audio, so one SourceBuffer holds both tracks, and the element
+// plays only the time both have media. A copy whose audio ends before its video stops where the
+// audio ends, and since 1.7.2 hls.js never ends such a stream. A browser can drop buffered media
+// and hls.js load it again, so playback ends only where the element waits at or past the
+// furthest playable media it has held, once hls.js has buffered every segment from the playhead
+// to the end of the playlist.
+function watchForTheEndOfPlayableMedia(
+  hls: Hls,
+  video: HTMLVideoElement,
+  onEnded: () => void,
+): () => void {
+  let loaded: LoadedRange[] = []
+  // Only the last segment names the playlist's end.
+  let playlistEnd = Number.POSITIVE_INFINITY
+  let playableEnd = 0
+  const endWhenNoMediaComes = () => {
+    playableEnd = Math.max(playableEnd, endOfBufferedMedia(video))
+    if (!waitsAt(video, playableEnd)) return
+    if (covers(loaded, video.currentTime, playlistEnd)) onEnded()
+  }
+  hls.on(Hls.Events.FRAG_BUFFERED, (_event, { frag }) => {
+    if (frag.type !== PlaylistLevelType.MAIN) return
+    loaded = withRange(loaded, [frag.start, frag.end])
+    if (frag.endList) playlistEnd = frag.end
+    endWhenNoMediaComes()
+  })
+  video.addEventListener('waiting', endWhenNoMediaComes)
+  return () => video.removeEventListener('waiting', endWhenNoMediaComes)
+}
+
+function endOfBufferedMedia(video: HTMLVideoElement): number {
+  let end = 0
+  for (let index = 0; index < video.buffered.length; index++) {
+    end = Math.max(end, video.buffered.end(index))
+  }
+  return end
+}
+
+// A paused element waits for nothing, and Chromium stops about 0.1 s short of its buffered media.
+function waitsAt(video: HTMLVideoElement, seconds: number): boolean {
+  return (
+    !video.paused &&
+    video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA &&
+    video.currentTime >= seconds - PLAYABLE_MEDIA_END_TOLERANCE_SECONDS
+  )
+}
+
+type LoadedRange = readonly [start: number, end: number]
+
+// The ranges stay apart from one another, so the added range joins every range it touches.
+function withRange(ranges: readonly LoadedRange[], added: LoadedRange): LoadedRange[] {
+  let joined = added
+  const apart: LoadedRange[] = []
+  for (const range of ranges) {
+    if (range[1] + LOADED_RANGE_TOLERANCE_SECONDS < joined[0]) {
+      apart.push(range)
+      continue
+    }
+    if (range[0] - LOADED_RANGE_TOLERANCE_SECONDS > joined[1]) {
+      apart.push(range)
+      continue
+    }
+    joined = [Math.min(range[0], joined[0]), Math.max(range[1], joined[1])]
+  }
+  return [...apart, joined]
+}
+
+function covers(ranges: readonly LoadedRange[], from: number, to: number): boolean {
+  return ranges.some(
+    ([start, end]) =>
+      start <= from + LOADED_RANGE_TOLERANCE_SECONDS && end >= to - LOADED_RANGE_TOLERANCE_SECONDS,
+  )
 }
 
 function hlsSourceStats(hls: Hls): SourceStats {
