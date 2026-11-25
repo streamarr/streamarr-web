@@ -1,10 +1,10 @@
-import { expect, test, type APIRequestContext, type Page, type Request } from '@playwright/test'
+import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 import { execFile } from 'node:child_process'
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { STUB_URL } from './ports'
+import { routeLadderPlayback } from './ladderPlayback'
 
 // Auto lets hls.js adapt among the variants the server lists, while Original and a fixed quality
 // keep the one variant the server lists for them (streamarr/streamarr-web#29). These specs play a
@@ -88,34 +88,6 @@ test.afterAll(async () => {
   await rm(streams, { recursive: true, force: true })
 })
 
-function playbackSession(choice: string) {
-  return {
-    id: 'playback-1',
-    formatAttemptCount: 1,
-    maximumFormatAttempts: 4,
-    requestedChoice: choice,
-    playbackChoice: choice,
-    formatChange: null,
-    offeredChoices: ['ORIGINAL', 'AUTO', 'HIGH_720P', 'MEDIUM_480P', 'LOW_360P'],
-    currentFormatAttempt: {
-      __typename: 'ReadyPlaybackFormatAttempt',
-      streamSession: {
-        __typename: 'HlsStreamSession',
-        id: 'sess-1',
-        streamUrl: '/api/stream/ladder/multivariant.m3u8?t=playback-token',
-        transcodeMode: choice === 'ORIGINAL' ? 'REMUX' : 'VIDEO_TRANSCODE',
-        videoRange: 'SDR',
-        mediaEndSeconds: null,
-      },
-    },
-  }
-}
-
-function operationName(call: Request): string {
-  const body = call.postDataJSON() as { operationName?: string } | null
-  return body?.operationName ?? ''
-}
-
 /** One media segment that hls.js asked for. */
 interface SegmentRequest {
   variant: Variant['name']
@@ -146,26 +118,13 @@ async function serveLadder(
   request: APIRequestContext,
   { choice, variants, fastLargeSegments }: LadderRoutes,
 ): Promise<Ladder> {
-  const ladder: Ladder = { segments: [], mutations: [] }
-  await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
-  await request.post(`${STUB_URL}/api/auth/refresh`)
-  const operations: Record<string, unknown> = {
-    CreatePlaybackSession: {
-      createPlaybackSession: { playbackSession: playbackSession(choice), userErrors: [] },
-    },
-    PlaybackSession: { playbackSession: playbackSession(choice) },
-    PlayerMediaTitle: { movie: { __typename: 'Movie', id: 'm1', title: 'Everlight' } },
-    ReportStreamSessionTimeline: { reportStreamSessionTimeline: true },
-    DestroyPlaybackSession: {
-      destroyPlaybackSession: { playbackSessionId: 'playback-1', userErrors: [] },
-    },
+  const ladder: Ladder = {
+    segments: [],
+    mutations: await routeLadderPlayback(page, request, {
+      choice,
+      transcodeMode: choice === 'ORIGINAL' ? 'REMUX' : 'VIDEO_TRANSCODE',
+    }),
   }
-  await page.route('**/graphql', async (route) => {
-    const name = operationName(route.request())
-    if (name.includes('Playback') && name !== 'PlaybackSession') ladder.mutations.push(name)
-    const data = operations[name]
-    return data ? route.fulfill({ json: { data } }) : route.continue()
-  })
   await page.route('**/api/stream/ladder/multivariant.m3u8*', (route) =>
     route.fulfill({ contentType: 'application/vnd.apple.mpegurl', body: multivariant(variants) }),
   )
@@ -216,33 +175,37 @@ test('Auto stays on the large variant while its segments arrive fast', async ({
   expect(new Set(fromLarge)).toEqual(new Set(['large']))
 })
 
-test('Auto drops from the large variant to the small one once its segments arrive slower than they play', async ({
-  page,
-  request,
-}) => {
-  const ladder = await serveLadder(page, request, {
-    choice: 'AUTO',
-    variants: [LARGE, SMALL],
-    fastLargeSegments: 2,
+// hls.js would otherwise start below a first-listed variant that peaks above 5 Mb/s.
+for (const large of [LARGE, { ...LARGE, bandwidth: 20_000_000 }]) {
+  test(`Auto starts on the large variant listed at ${large.bandwidth} b/s, and drops to the small one once its segments arrive slower than they play`, async ({
+    page,
+    request,
+  }) => {
+    const ladder = await serveLadder(page, request, {
+      choice: 'AUTO',
+      variants: [large, SMALL],
+      fastLargeSegments: 2,
+    })
+
+    await page.goto('/play/file-1?movie=m1')
+
+    const firstSmallAfterASlowedLarge = () => {
+      const slowed = ladder.segments.findIndex((segment) => segment.slowed)
+      return ladder.segments.find(
+        (segment, position) => slowed !== -1 && position > slowed && segment.variant === 'small',
+      )
+    }
+    await expect.poll(firstSmallAfterASlowedLarge, { timeout: 30_000 }).toBeDefined()
+    const small = firstSmallAfterASlowedLarge()!
+    // The element plays into the small variant's first segment.
+    await expect
+      .poll(() => playedSeconds(page), { timeout: 30_000 })
+      .toBeGreaterThan(small.index * SEGMENT_SECONDS + 1)
+    await expect(page.getByRole('button', { name: 'Quality: Auto' })).toBeVisible()
+    expect(ladder.segments[0].variant).toBe('large')
+    expect(ladder.mutations).toEqual(['CreatePlaybackSession'])
   })
-
-  await page.goto('/play/file-1?movie=m1')
-
-  const firstSmallAfterASlowedLarge = () => {
-    const slowed = ladder.segments.findIndex((segment) => segment.slowed)
-    return ladder.segments.find(
-      (segment, position) => slowed !== -1 && position > slowed && segment.variant === 'small',
-    )
-  }
-  await expect.poll(firstSmallAfterASlowedLarge, { timeout: 30_000 }).toBeDefined()
-  const small = firstSmallAfterASlowedLarge()!
-  // The element plays into the small variant's first segment.
-  await expect
-    .poll(() => playedSeconds(page), { timeout: 30_000 })
-    .toBeGreaterThan(small.index * SEGMENT_SECONDS + 1)
-  await expect(page.getByRole('button', { name: 'Quality: Auto' })).toBeVisible()
-  expect(ladder.mutations).toEqual(['CreatePlaybackSession'])
-})
+}
 
 for (const { choice, label } of [
   { choice: 'ORIGINAL', label: 'Original' },

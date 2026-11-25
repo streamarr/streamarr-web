@@ -38,6 +38,11 @@ export function hlsPlaybackConfig(
   return {
     fLoader: segmentLoaderWithinForwardBuffer(player),
     errorPenaltyExpireMs: FAILED_VARIANT_PENALTY_MS,
+    // Until it measures a segment, hls.js takes the first-listed variant's BANDWIDTH as its
+    // bandwidth estimate, by default at most 5 Mb/s, and starts on the best variant within it. The
+    // server has started the first-listed variant already and starts any other on its first
+    // request, so the estimate takes that BANDWIDTH whole.
+    abrEwmaDefaultEstimateMax: Number.POSITIVE_INFINITY,
     videoPreference,
   }
 }
