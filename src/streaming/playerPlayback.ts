@@ -22,6 +22,7 @@ import {
 } from '../graphql/generated/graphql'
 import { userErrorMessage, userErrorMessageOr } from '../graphql/userErrors'
 import { discardWatchedState } from '../media/watchedState'
+import { stepDownFromASlowFirstSegment } from './firstSegmentStepDown'
 import { hlsPlaybackConfig } from './hlsPlaybackConfig'
 import { type DynamicRangeChoice, hlsVideoPreference } from './hlsVideoPreference'
 import { DECLARATION_REFUSAL_TYPENAMES } from './playbackCapabilities'
@@ -38,6 +39,11 @@ import {
 const TIMELINE_REPORT_INTERVAL_SECONDS = 10
 const TIMELINE_CLEANUP_TIMEOUT_MS = 10_000
 const PLAYBACK_START_TIMEOUT_MS = 30_000
+// While nothing has played, a first segment that receives no byte for a quarter of the startup
+// limit gives way to the lowest variant. That comes before hls.js gives up on the first byte after
+// 10 s and asks the same variant again, and leaves the lowest variant, which the server starts on
+// its first request for it, three quarters of the limit less the time to that first request.
+const FIRST_SEGMENT_SILENCE_LIMIT_MS = PLAYBACK_START_TIMEOUT_MS / 4
 const PLAYBACK_STATUS_INTERVAL_MS = 500
 // The server's default target segment duration, for a player that keeps the playlist to itself.
 const DEFAULT_SEGMENT_SECONDS = 6
@@ -1314,10 +1320,14 @@ interface StartupDeadline {
   end: () => void
   hold: () => void
   rearm: () => void
+  /** How long playback has left to start; unlimited while the deadline is held or has ended. */
+  remainingMs: () => number
 }
 
 type StartupPhase =
-  { at: 'armed'; timer: ReturnType<typeof setTimeout> } | { at: 'held' } | { at: 'ended' }
+  | { at: 'armed'; timer: ReturnType<typeof setTimeout>; expiresAt: number }
+  | { at: 'held' }
+  | { at: 'ended' }
 
 function createStartupDeadline(onExpired: () => void): StartupDeadline {
   let phase = arm()
@@ -1327,7 +1337,7 @@ function createStartupDeadline(onExpired: () => void): StartupDeadline {
       phase = { at: 'ended' }
       onExpired()
     }, PLAYBACK_START_TIMEOUT_MS)
-    return { at: 'armed', timer }
+    return { at: 'armed', timer, expiresAt: performance.now() + PLAYBACK_START_TIMEOUT_MS }
   }
 
   return {
@@ -1350,6 +1360,8 @@ function createStartupDeadline(onExpired: () => void): StartupDeadline {
       }
       phase = arm()
     },
+    remainingMs: () =>
+      phase.at === 'armed' ? phase.expiresAt - performance.now() : Number.POSITIVE_INFINITY,
   }
 }
 
@@ -1414,6 +1426,12 @@ function attach(video: HTMLVideoElement, url: string, options: StreamSourceOptio
     return attachNative(video, url, options)
   }
   const hls: Hls = new Hls(hlsPlaybackConfig(() => hls, options.videoPreference))
+  stepDownFromASlowFirstSegment({
+    hls,
+    video,
+    startupRemainingMs: options.startupDeadline.remainingMs,
+    silenceLimitMs: FIRST_SEGMENT_SILENCE_LIMIT_MS,
+  })
   hls.on(Hls.Events.ERROR, (_event, data) => {
     if (
       data.type === Hls.ErrorTypes.NETWORK_ERROR &&
