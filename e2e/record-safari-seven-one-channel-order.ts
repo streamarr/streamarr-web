@@ -6,11 +6,11 @@
 // Needs FFmpeg with libopus. It prints one row of seven-one-channel-order.md for each codec, and
 // exits 1 when a result differs from the last row recorded for Safari on macOS.
 import { execFile } from 'node:child_process'
-import { mkdir, mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { servePages, type PageAnswer } from './pageServer.ts'
+import { fileAnswers, servePages, type PageAnswer } from './pageServer.ts'
 import { withSafari } from './safariDriver.ts'
 import {
   CODEC_FIXTURES,
@@ -42,11 +42,8 @@ for (const codec of CODECS) {
     contentType: 'application/vnd.apple.mpegurl',
     body: sevenOneMultivariant(CODEC_FIXTURES[codec].codecs),
   })
-  for (const file of await readdir(directory)) {
-    answers.set(`${served}/${file}`, {
-      contentType: file.endsWith('.m3u8') ? 'application/vnd.apple.mpegurl' : 'video/mp4',
-      body: await readFile(join(directory, file)),
-    })
+  for (const [path, answer] of await fileAnswers(served, directory)) {
+    answers.set(path, answer)
   }
 }
 await rm(streams, { recursive: true, force: true })
