@@ -11,4 +11,4 @@ npx playwright test -c playwright.audio-end.config.ts --project chromium --proje
 
 Each source has 18 seconds of synthetic video and 15 seconds of audio. The generator copies it into three six-second HLS segments and verifies that the copied AAC or FLAC packet stream has the same SHA-256 as the source audio. The tests exercise normal playback, seeking to 16 seconds, and starting at 16 seconds. They also check that a resume at or beyond the terminal end finishes without requesting media and can replay from the beginning.
 
-The suite skips when these generated fixtures are absent. WebKit can be selected explicitly; its media support differs from actual Safari, so a WebKit result alone does not establish Safari behavior.
+The default Playwright run leaves this suite out, and the suite fails when these generated fixtures are absent. WebKit can be selected explicitly; its media support differs from actual Safari, so a WebKit result alone does not establish Safari behavior.

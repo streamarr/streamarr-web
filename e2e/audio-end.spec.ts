@@ -14,17 +14,22 @@ import { STUB_URL } from './ports'
 
 test.use({ serviceWorkers: 'block' })
 
+function fixtureDirectory(codec: string) {
+  const directory = fileURLToPath(new URL(`fixtures/audio-end/${codec}/`, import.meta.url))
+  expect(
+    existsSync(`${directory}/stream.m3u8`),
+    'Generate the synthetic audio-end fixtures with e2e/fixtures/audio-end/generate.sh',
+  ).toBe(true)
+  return directory
+}
+
 for (const codec of ['aac', 'flac']) {
   for (const scenario of ['play', 'seek16', 'start16']) {
     test(`${codec} ${scenario} ends the partly-audio final segment on the player`, async ({
       page,
       request,
     }, info) => {
-      const directory = fileURLToPath(new URL(`fixtures/audio-end/${codec}/`, import.meta.url))
-      test.skip(
-        !existsSync(`${directory}/stream.m3u8`),
-        'Generate the synthetic audio-end fixtures first',
-      )
+      const directory = fixtureDirectory(codec)
       const playlist = readFileSync(`${directory}/stream.m3u8`, 'utf8')
       const duration = [...playlist.matchAll(/#EXTINF:([\d.]+)/g)].reduce(
         (sum, match) => sum + Number(match[1]),
@@ -41,7 +46,7 @@ for (const codec of ['aac', 'flac']) {
         (type) => typeof MediaSource !== 'undefined' && MediaSource.isTypeSupported(type),
         `video/mp4; codecs="avc1.64001f,${audioCodec}"`,
       )
-      test.skip(!supported, `${codec} is unavailable in this engine's MediaSource`)
+      test.skip(!supported, `${codec} is unavailable in this engine's MediaSource`) // NOSONAR: the engine's MediaSource decides which codecs can run
       await request.post(`${STUB_URL}/__test/mode`, { data: { mode: 'renewable' } })
       await request.post(`${STUB_URL}/api/auth/refresh`)
       await page.route('**/graphql', (route) => {
@@ -182,11 +187,7 @@ for (const startPosition of [18, 21]) {
     page,
     request,
   }) => {
-    const directory = fileURLToPath(new URL('fixtures/audio-end/aac/', import.meta.url))
-    test.skip(
-      !existsSync(`${directory}/stream.m3u8`),
-      'Generate the synthetic audio-end fixtures first',
-    )
+    const directory = fixtureDirectory('aac')
     const starts: (number | null | undefined)[] = []
     const stopped: number[] = []
     const destroyed: string[] = []

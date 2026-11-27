@@ -16,6 +16,8 @@ export default defineConfig({
   testDir: './e2e',
   // The helpers' *.test.ts files are Vitest unit tests.
   testMatch: '**/*.spec.ts',
+  // Needs fixtures that e2e/fixtures/audio-end/generate.sh builds; playwright.audio-end.config.ts runs it.
+  testIgnore: 'audio-end.spec.ts',
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? [['github'], ['html', { open: 'never' }], ['list']] : 'list',

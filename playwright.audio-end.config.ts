@@ -4,6 +4,7 @@ import base from './playwright.config'
 export default defineConfig({
   ...base,
   testMatch: 'audio-end.spec.ts',
+  testIgnore: [],
   timeout: 60_000,
   retries: 0,
   reporter: [['list'], ['json', { outputFile: 'test-results/audio-end-results.json' }]],
