@@ -75,10 +75,10 @@
   color: var(--color-white);
 }
 
-/* A Profile's mark in a list row, rendered by RowAvatar. */
+/* A Profile's mark in a list row, rendered by RowAvatar: two spacing steps square. */
 .rowAvatar {
-  width: 32px;
-  height: 32px;
+  width: calc(2 * var(--spacing-16));
+  height: calc(2 * var(--spacing-16));
   border-radius: var(--radius-md);
   display: flex;
   align-items: center;

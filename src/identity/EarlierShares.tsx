@@ -78,7 +78,7 @@ function EarlierList({
   // page, or the list from before the read. So the failure and Retry show above them.
   if (failure) {
     return (
-      <div id={id}>
+      <div id={id} className={styles.earlier}>
         <FailureRow onRetry={onRetry}>{failure}</FailureRow>
         {shares.length > 0 && <EarlierRows shares={shares} householdName={householdName} />}
       </div>
