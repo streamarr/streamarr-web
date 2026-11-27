@@ -8,8 +8,9 @@ describe('shareCodeIn', () => {
     ' bcdf ghjk ',
     'Bcdf-Ghjk\n',
     'BC DF-GH JK',
+    'https://streamarr.example/settings/profile/sharing#code=BCDF-GHJK',
+    ' https://streamarr.example/settings/profile/sharing#code=bcdfghjk ',
     'https://streamarr.example/settings/profile/sharing?code=BCDF-GHJK',
-    ' https://streamarr.example/settings/profile/sharing?code=bcdfghjk ',
   ])('shouldReadTheCodeWhenTheTextCanBeOne(%j)', (text) => {
     expect(shareCodeIn(text)).toBe('BCDFGHJK')
   })
@@ -24,15 +25,16 @@ describe('shareCodeIn', () => {
     '55555555-5555-5555-5555-555555555555',
     'https://streamarr.example/settings/profile/sharing',
     'https://streamarr.example/settings/profile/sharing?code=BCDF',
+    'https://streamarr.example/settings/profile/sharing#code=BCDF',
   ])('shouldReadNoCodeWhenTheTextCannotBeOne(%j)', (text) => {
     expect(shareCodeIn(text)).toBeNull()
   })
 })
 
 describe('shareCodeLink', () => {
-  it('shouldLinkToTheSharingPageWithTheCodeWhenGivenACode', () => {
+  it('shouldLinkToTheSharingPageWithTheCodeInTheFragmentWhenGivenACode', () => {
     expect(shareCodeLink('BCDF-GHJK', 'https://streamarr.example')).toBe(
-      'https://streamarr.example/settings/profile/sharing?code=BCDF-GHJK',
+      'https://streamarr.example/settings/profile/sharing#code=BCDF-GHJK',
     )
   })
 

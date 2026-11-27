@@ -1,5 +1,6 @@
 import { AuthShell } from '../../ui/AuthShell'
 import { createFileRoute, useLocation, useNavigate } from '@tanstack/react-router'
+import { signInResuming } from '../../auth/resume'
 import { Picker } from '../../identity/Picker'
 
 // The PIN gate is a history entry (?profile=<id>), so deep links, refresh, and Back all just work.
@@ -13,7 +14,7 @@ function SelectProfile() {
   const navigate = useNavigate()
   const { profile } = Route.useSearch()
   const { session } = Route.useRouteContext()
-  const { href } = useLocation()
+  const location = useLocation()
   return (
     <AuthShell width={640}>
       <Picker
@@ -26,7 +27,7 @@ function SelectProfile() {
         onUnauthenticated={() => {
           // Record the eviction first, or /login's cached-session gate would bounce straight back.
           session.markAnonymous()
-          return navigate({ to: '/login', search: { redirect: href } })
+          return navigate(signInResuming(location))
         }}
       />
     </AuthShell>
