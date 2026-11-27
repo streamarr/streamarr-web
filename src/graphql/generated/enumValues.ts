@@ -838,6 +838,18 @@ export const PreferenceSource = {
 } as const;
 
 export type PreferenceSource = typeof PreferenceSource[keyof typeof PreferenceSource];
+/** What an Account is to a Profile (ADR 0024). */
+export const ProfileAuthority = {
+  /** A ProfileManager: edits the Profile and its policy, manages its PIN, invites managers and offers it to Households. */
+  Manages: 'MANAGES',
+  /**
+   * A HouseholdAdmin where the restricted Profile is available: edits its name, picture, Content
+   * Ceiling and PIN, never its kind, and never leaves it unrestricted.
+   */
+  Supervises: 'SUPERVISES'
+} as const;
+
+export type ProfileAuthority = typeof ProfileAuthority[keyof typeof ProfileAuthority];
 export const ProfileCleanup = {
   /** Delete the Account and Profile pair. */
   EraseProfile: 'ERASE_PROFILE',
@@ -852,16 +864,65 @@ export const ProfileKind = {
 } as const;
 
 export type ProfileKind = typeof ProfileKind[keyof typeof ProfileKind];
-export const ProfileManagerInvitationStatus = {
+export const ProfileManagerInvitationAnswer = {
   Accepted: 'ACCEPTED',
+  Declined: 'DECLINED'
+} as const;
+
+export type ProfileManagerInvitationAnswer = typeof ProfileManagerInvitationAnswer[keyof typeof ProfileManagerInvitationAnswer];
+/** Where an invitation to manage a Profile stands, as its reader reads it. */
+export const ProfileManagerInvitationStatus = {
+  /** The named Account accepted it and became one of the Profile's managers. */
+  Accepted: 'ACCEPTED',
+  /** The Account that sent it, or a ServerAdmin, withdrew it. */
   Canceled: 'CANCELED',
+  /** The named Account declined it. */
   Declined: 'DECLINED',
+  /** Its time ran out before the named Account answered it. */
   Expired: 'EXPIRED',
+  /**
+   * The server ended it: a newer invitation to the same address replaced it, or its Profile, its
+   * inviter or the inviter's management of the Profile is gone. Only the named Account and
+   * ServerAdmins read an invitation ended because of what became of the named Account as
+   * INVALIDATED; the Profile's managers read it as still waiting.
+   */
   Invalidated: 'INVALIDATED',
+  /** Waiting for the named Account to accept or decline it, until it expires. */
   Pending: 'PENDING'
 } as const;
 
 export type ProfileManagerInvitationStatus = typeof ProfileManagerInvitationStatus[keyof typeof ProfileManagerInvitationStatus];
+/** Where a manager's authority over a Profile comes from. */
+export const ProfileManagerSource = {
+  /** The Profile is the Account's own Personal Profile, an Adult with no Content Ceiling. */
+  Derived: 'DERIVED',
+  /** The Account was granted management, by an accepted invitation or by a ServerAdmin. */
+  Direct: 'DIRECT'
+} as const;
+
+export type ProfileManagerSource = typeof ProfileManagerSource[keyof typeof ProfileManagerSource];
+/** What a caller refused with ProfileManagersOnlyError is to the Profile now. */
+export const ProfileManagersOnlyReason = {
+  /**
+   * The caller is no longer a HouseholdAdmin of the Household where it read the Profile: it was
+   * demoted or moved after its session's token was issued. That token still reads the Profile there
+   * until it is renewed, within the access token's short lifetime; a renewed token gets
+   * ProfileNotFoundError, as for a Profile that does not exist.
+   */
+  NotHouseholdAdmin: 'NOT_HOUSEHOLD_ADMIN',
+  /**
+   * It supervises the restricted Profile as a HouseholdAdmin where it is available, and supervision
+   * covers only the Profile's name, picture, Content Ceiling and PIN.
+   */
+  NotManager: 'NOT_MANAGER',
+  /**
+   * The Profile is not restricted, so the caller administers it as a HouseholdAdmin where it is
+   * available without supervising it, which lets it change nothing about the Profile.
+   */
+  NotRestricted: 'NOT_RESTRICTED'
+} as const;
+
+export type ProfileManagersOnlyReason = typeof ProfileManagersOnlyReason[keyof typeof ProfileManagersOnlyReason];
 export const ProfileShareAnswer = {
   Accepted: 'ACCEPTED',
   Rejected: 'REJECTED'

@@ -1,0 +1,13 @@
+query PendingOfferCount($householdId: ID!) {
+  householdAdministration(householdId: $householdId) {
+    __typename
+    pendingOfferCount
+  }
+}
+
+subscription PendingOfferCountChanged($householdId: ID!) {
+  profileShareChanged {
+    __typename
+    pendingOfferCount(householdId: $householdId)
+  }
+}
