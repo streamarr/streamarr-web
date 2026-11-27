@@ -16,9 +16,24 @@
 }
 
 .row {
+  --mark-size: 8px;
   display: flex;
   align-items: flex-start;
   gap: var(--spacing-12);
+}
+
+/* At phone width a row's action goes under its text, lined up with it, so the line keeps the
+   row's width, as each sharing list does. */
+@media (max-width: 760px) {
+  .row {
+    display: grid;
+    grid-template-columns: var(--mark-size) minmax(0, 1fr);
+  }
+
+  .action {
+    grid-column: 2;
+    justify-self: start;
+  }
 }
 
 .row + .row {
@@ -30,7 +45,6 @@
 /* Every row keeps the mark's place, so a row read in place keeps its text where it was. */
 .markSpace,
 .unreadMark {
-  --mark-size: 8px;
   flex: none;
   width: var(--mark-size);
   height: var(--mark-size);
@@ -38,9 +52,10 @@
   margin-top: calc((var(--font-size-emphasis) * var(--line-height-prose) - var(--mark-size)) / 2);
 }
 
+/* The same mark as the avatar's dot, so that unread reads alike in the menu and on the page. */
 .unreadMark {
   border-radius: 50%;
-  background: var(--selection-active);
+  background: var(--indicator-active-track);
 }
 
 .text {
@@ -62,11 +77,13 @@
   font-size: var(--font-size-label);
 }
 
-/* How a Request ended, where its Review was: a quiet label in the content voice. */
+/* How a Request ended, where its Review was: a quiet label in the content voice. It takes the
+   line's line box, so that it centres on the line's first row as the unread mark does. */
 .ending {
   color: var(--text-secondary);
   font-size: var(--font-size-label);
   font-weight: var(--font-weight-medium);
+  line-height: calc(var(--font-size-emphasis) * var(--line-height-prose));
 }
 
 /* The end of the loaded list, which loads the next older page as it nears the view. */

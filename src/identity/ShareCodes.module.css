@@ -9,6 +9,13 @@
   align-self: stretch;
 }
 
+.issue {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-8);
+}
+
 /* The code just issued, in the page rather than over it, until the person is done with it. It
    takes the settings panel's padding, so its content lines up with Live codes below it. */
 .issued {
@@ -39,18 +46,4 @@
   color: var(--semantic-error-text);
   font-size: var(--font-size-body);
   line-height: var(--line-height-prose);
-}
-
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--spacing-8);
-}
-
-/* Too narrow for the three on one line, they stack, so that no one is left alone on a line. */
-@media (max-width: 760px) {
-  .actions {
-    flex-direction: column;
-    align-items: stretch;
-  }
 }

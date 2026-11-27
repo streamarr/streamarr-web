@@ -120,6 +120,24 @@ export const ISSUED = {
   },
 }
 
+/** Lists the new live code after a successful issue, as the server does. */
+export function codeIssueAnswers() {
+  let issued = false
+  return {
+    HouseholdShareCodes: () => ({
+      householdShareCodes: connection(
+        'ShareCodeConnection',
+        issued ? [ISSUED.issueShareCode.issued.shareCode] : [],
+      ),
+    }),
+    IssuedShareCodeStatus: { shareCode: ISSUED.issueShareCode.issued.shareCode },
+    IssueShareCode: () => {
+      issued = true
+      return ISSUED
+    },
+  }
+}
+
 function visitorShare({
   id,
   name,

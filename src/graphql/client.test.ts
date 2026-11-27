@@ -3,7 +3,7 @@ import { HttpResponse, graphql, http } from 'msw'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { server } from '../test/server'
 import { deferred } from '../test/deferred'
-import { beginIdentitySwitch, createApolloClient } from './client'
+import { beginIdentitySwitch, boundToCurrentIdentity, createApolloClient } from './client'
 import { MarkWatchedDocument, MeDocument } from './generated/graphql'
 import { meFixture } from '../test/meFixture'
 
@@ -109,6 +109,43 @@ describe('apollo client', () => {
 
     await expect(query).resolves.toMatchObject({ data: { me: ME } })
     expect(switchUnderwayAtSend).toEqual([false])
+  })
+
+  it('shouldSendAnOperationBoundToAnIdentityWhenThatIdentityIsStillCurrent', async () => {
+    const reads = { me: 0 }
+    server.use(
+      graphql.query('Me', () => {
+        reads.me += 1
+        return HttpResponse.json({ data: { me: ME } })
+      }),
+    )
+    const client = createApolloClient(vi.fn())
+
+    const identity = boundToCurrentIdentity(client)
+
+    await expect(client.query({ query: MeDocument, context: identity })).resolves.toMatchObject({
+      data: { me: ME },
+    })
+    expect(reads.me).toBe(1)
+  })
+
+  it('shouldSendNoOperationBoundToAnIdentityWhenASignInOrSignOutHasClearedTheStoreSince', async () => {
+    const reads = { me: 0 }
+    server.use(
+      graphql.query('Me', () => {
+        reads.me += 1
+        return HttpResponse.json({ data: { me: ME } })
+      }),
+    )
+    const client = createApolloClient(vi.fn())
+    const identity = boundToCurrentIdentity(client)
+
+    await client.clearStore()
+
+    await expect(client.query({ query: MeDocument, context: identity })).rejects.toMatchObject({
+      name: 'OperationOfEarlierIdentityError',
+    })
+    expect(reads.me).toBe(0)
   })
 
   it('shouldStopAfterOneRetryWhenCsrfIsRejectedAgain', async () => {

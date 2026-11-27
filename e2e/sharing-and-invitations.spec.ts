@@ -1,11 +1,9 @@
 import { expect, test, type Page } from '@playwright/test'
 import type {
   ChangeInvitationLifetimeInput,
-  ChangeNotificationRetentionInput,
   ChangeShareCodeLifetimeInput,
   ChangeShareCodeLimitInput,
   InvitationLifetimeSettingFieldsFragment,
-  NotificationRetentionSettingFieldsFragment,
   ShareCodeLifetimeSettingFieldsFragment,
   ShareCodeLimitSettingFieldsFragment,
 } from '../src/graphql/generated/graphql'
@@ -45,13 +43,6 @@ async function fixture(page: Page) {
       minimumHours: 1,
       maximumHours: 720,
     } as InvitationLifetimeSettingFieldsFragment,
-    retention: {
-      __typename: 'NotificationRetentionSetting',
-      id: SETTINGS_ID,
-      days: 90,
-      minimumDays: 1,
-      maximumDays: 365,
-    } as NotificationRetentionSettingFieldsFragment,
     socket: await routeGraphqlSocket(page),
   }
   await page.route('**/graphql', async (route) => {
@@ -93,18 +84,6 @@ async function fixture(page: Page) {
       return reply({
         changeInvitationLifetime: {
           invitationLifetimeSetting: state.invitationLifetime,
-          userErrors: [],
-        },
-      })
-    }
-    if (operationName === 'NotificationRetentionSetting')
-      return reply({ notificationRetentionSetting: state.retention })
-    if (operationName === 'ChangeNotificationRetention') {
-      const { days } = variables.input as ChangeNotificationRetentionInput
-      state.retention = { ...state.retention, days }
-      return reply({
-        changeNotificationRetention: {
-          notificationRetentionSetting: state.retention,
           userErrors: [],
         },
       })
@@ -167,3 +146,22 @@ for (const { width, height } of [
     await page.screenshot({ path: testInfo.outputPath(`sharing-${width}.png`), fullPage: true })
   })
 }
+
+// A number of one to three digits, so a setting's field and its unit keep the share form's reading
+// width, and "A share code lasts 7 days" reads as one phrase.
+test('each setting keeps its number and its unit within the reading width on a wide window', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await fixture(page)
+  await page.goto(PAGE)
+  const limit = page.getByRole('textbox', { name: 'Live share codes per Household' })
+  const lasts = page.getByRole('textbox', { name: 'A share code lasts' })
+  const unit = page.getByRole('combobox', { name: 'A share code lasts, unit' })
+  await expect(lasts).toHaveValue('7')
+
+  const number = (await lasts.boundingBox())!
+  const choice = (await unit.boundingBox())!
+  expect(choice.x + choice.width - number.x).toBeLessThanOrEqual(480)
+  expect((await limit.boundingBox())!.width).toBeLessThanOrEqual(480)
+})
