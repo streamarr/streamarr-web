@@ -1,5 +1,5 @@
 import { Button, Center, Loader } from '@mantine/core'
-import { useMutation, useQuery } from '@apollo/client/react'
+import { useApolloClient, useMutation, useQuery } from '@apollo/client/react'
 import { useState } from 'react'
 import {
   AcceptProfileShareDocument,
@@ -14,12 +14,15 @@ import settingsStyles from '../styles/settings.module.css'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { FailurePanel } from '../ui/Failure'
 import { PageNotice } from '../ui/PageNotice'
+import { useFocusFallback } from '../ui/useFocusFallback'
 import { usePageNotice } from '../ui/usePageNotice'
 import styles from './Sharing.module.css'
 import { SharedProfileText } from './SharedProfileText'
+import { createShareListUpdater } from './shareLists'
 import { SharingSection } from './SharingSection'
 import { expiryLabel, UPDATE_FAILED_MESSAGE } from './shareText'
 import { useMe } from './useMe'
+import { useShareChanges } from './useShareChanges'
 
 type ListedOffer = ShareOffersQuery['householdShares']['edges'][number]['node']
 type OfferedProfile = NonNullable<ListedOffer['profile']>
@@ -31,6 +34,7 @@ type Decision = 'accept' | 'decline'
 /** The offers of Profiles to the Account's Household, which its admins accept or decline. */
 export function ShareOffersScreen() {
   const { notice, count, heading, announce, dismiss } = usePageNotice()
+  useFocusFallback(heading)
 
   return (
     <>
@@ -62,12 +66,26 @@ function ShareOffersContent({ onDecided }: Readonly<{ onDecided: (notice: string
 function HouseholdOffers({
   household,
   onDecided,
-}: Readonly<{ household: Household; onDecided: (notice: string) => void }>) {
+}: Readonly<{
+  household: Household
+  onDecided: (notice: string) => void
+}>) {
+  const { cache } = useApolloClient()
+  const variables = { householdId: household.id }
+  const [applyChange] = useState(createShareListUpdater)
+  useShareChanges((change) =>
+    cache.updateQuery({ query: ShareOffersDocument, variables }, (data) => {
+      if (!data) return undefined
+      const edge =
+        change.offersEdge && change.share?.householdId === household.id
+          ? { ...change.offersEdge, node: change.share }
+          : null
+      const edges = applyChange(data.householdShares, { shareId: change.shareId, edge })
+      return { ...data, householdShares: { ...data.householdShares, edges } }
+    }),
+  )
   // Offers arrive, expire and are withdrawn elsewhere, so a visit shows only the server's answer.
-  const query = useQuery(ShareOffersDocument, {
-    variables: { householdId: household.id },
-    fetchPolicy: 'network-only',
-  })
+  const query = useQuery(ShareOffersDocument, { variables, fetchPolicy: 'network-only' })
   const [accept] = useMutation(AcceptProfileShareDocument)
   const [decline] = useMutation(RejectProfileShareDocument)
   /**

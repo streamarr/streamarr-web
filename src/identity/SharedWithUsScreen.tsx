@@ -12,19 +12,22 @@ import {
   type SharedWithHouseholdQuery,
   type VisitorDevicesQuery,
 } from '../graphql/generated/graphql'
-import { isReading } from '../graphql/readAgain'
+import { isReading, readQueriesAgain } from '../graphql/readAgain'
 import { requestFailureMessage } from '../graphql/requestErrors'
 import { userErrorMessage, type UserErrorLike } from '../graphql/userErrors'
 import settingsStyles from '../styles/settings.module.css'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { FailurePanel } from '../ui/Failure'
 import { PageNotice } from '../ui/PageNotice'
+import { useFocusFallback } from '../ui/useFocusFallback'
 import { usePageNotice } from '../ui/usePageNotice'
 import styles from './Sharing.module.css'
 import { SharedProfileText } from './SharedProfileText'
+import { createShareListUpdater } from './shareLists'
 import { SharingSection } from './SharingSection'
 import { UPDATE_FAILED_MESSAGE } from './shareText'
 import { useMe } from './useMe'
+import { useShareChanges } from './useShareChanges'
 
 type ListedShare = SharedWithHouseholdQuery['householdShares']['edges'][number]['node']
 /** A share as the page lists it: one whose Profile the server names. */
@@ -41,6 +44,7 @@ const DAY = new Intl.DateTimeFormat('en', { dateStyle: 'medium' })
  */
 export function SharedWithUsScreen() {
   const { notice, heading, announce, dismiss } = usePageNotice()
+  useFocusFallback(heading)
 
   return (
     <>
@@ -83,11 +87,32 @@ function SharedProfiles({
   household,
   announce,
 }: Readonly<{ household: Household; announce: Announce }>) {
-  // Shares start and end elsewhere, so a visit shows only the server's answer.
-  const query = useQuery(SharedWithHouseholdDocument, {
-    variables: { householdId: household.id },
-    fetchPolicy: 'network-only',
+  const client = useApolloClient()
+  const variables = { householdId: household.id }
+  const [applyChange] = useState(createShareListUpdater)
+  useShareChanges((change) => {
+    const { cache } = client
+    const data = cache.readQuery({ query: SharedWithHouseholdDocument, variables })
+    const prior = data?.householdShares.edges.find((edge) => edge.node.id === change.shareId)?.node
+    const relevant = change.share === null || change.share.householdId === household.id
+    // An ended share hides its Profile facts, so an unseen one may have unlinked visitor TVs too.
+    if (relevant && !change.visitorsEdge && prior?.profile?.personalProfile !== false) {
+      void readQueriesAgain(client, [VisitorDevicesDocument])
+    }
+    if (!data) return
+    const edge =
+      change.visitorsEdge && change.share?.householdId === household.id
+        ? { ...change.visitorsEdge, node: change.share }
+        : null
+    const edges = applyChange(data.householdShares, { shareId: change.shareId, edge })
+    cache.writeQuery({
+      query: SharedWithHouseholdDocument,
+      variables,
+      data: { ...data, householdShares: { ...data.householdShares, edges } },
+    })
   })
+  // Shares start and end elsewhere, so a visit shows only the server's answer.
+  const query = useQuery(SharedWithHouseholdDocument, { variables, fetchPolicy: 'network-only' })
   const [end] = useMutation(EndProfileShareDocument)
   const readAgain = () => query.refetch().catch(() => undefined)
   const ending = useConfirmedChange<VisitorShare>({
