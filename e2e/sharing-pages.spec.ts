@@ -36,13 +36,18 @@ async function expectNoSidewaysScroll(page: Page) {
 }
 
 // A button squeezed narrower than its label clips it; a whole one overflows nowhere that shows.
+// A button that was busy, as Continue is before it becomes Offer share, overflows by a pixel while
+// its spinner fades, so the check waits for the button to settle.
 async function expectWhole(action: Locator) {
-  const clipped = await action.evaluate((button) =>
-    [button, ...button.querySelectorAll('*')]
-      .filter((part) => part.checkVisibility({ opacityProperty: true }))
-      .some((part) => part.scrollWidth > part.clientWidth),
-  )
-  expect(clipped).toBe(false)
+  await expect
+    .poll(() =>
+      action.evaluate((button) =>
+        [button, ...button.querySelectorAll('*')]
+          .filter((part) => part.checkVisibility({ opacityProperty: true }))
+          .some((part) => part.scrollWidth > part.clientWidth),
+      ),
+    )
+    .toBe(false)
 }
 
 // Each row is its text, then its action.
