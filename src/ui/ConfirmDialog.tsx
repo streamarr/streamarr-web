@@ -13,6 +13,7 @@ export function ConfirmDialog({
   title,
   body,
   confirmLabel,
+  dismissLabel = 'Cancel',
   onConfirm,
   onClose,
   destructive = false,
@@ -25,6 +26,8 @@ export function ConfirmDialog({
   title: string
   body: string
   confirmLabel: string
+  /** Names the button that leaves without confirming: "Cancel", unless the action itself cancels. */
+  dismissLabel?: string
   onConfirm: () => void
   onClose: () => void
   /** Use the shared contained red action treatment. */
@@ -83,7 +86,7 @@ export function ConfirmDialog({
           disabled={pending}
           data-autofocus
         >
-          Cancel
+          {dismissLabel}
         </button>
         {destructive ? (
           <DestructiveButton onClick={onConfirm} disabled={pending || disabled} aria-busy={pending}>
