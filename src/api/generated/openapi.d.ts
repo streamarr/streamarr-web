@@ -1118,13 +1118,15 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description The image. Its media type is read from its bytes. Artwork is stored as JPEG or PNG. A file stored before that rule can hold other bytes, such as an empty file, and is answered as application/octet-stream. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
+                    "application/octet-stream": string;
                     "image/jpeg": string;
+                    "image/png": string;
                 };
             };
             /** @description Not modified */
@@ -1182,8 +1184,24 @@ export interface operations {
                     "video/mp4": string;
                 };
             };
+            /** @description The requested byte range */
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "video/mp4": string;
+                };
+            };
             /** @description Stream resource not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The requested range lies outside the segment */
+            416: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1413,6 +1431,15 @@ export interface operations {
                     "video/mp4": string;
                 };
             };
+            /** @description The requested byte range */
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "video/mp4": string;
+                };
+            };
             /** @description Invalid segment path */
             400: {
                 headers: {
@@ -1422,6 +1449,13 @@ export interface operations {
             };
             /** @description Stream resource not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The requested range lies outside the segment */
+            416: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1469,6 +1503,15 @@ export interface operations {
                     "video/mp4": string;
                 };
             };
+            /** @description The requested byte range */
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "video/mp4": string;
+                };
+            };
             /** @description Invalid segment path */
             400: {
                 headers: {
@@ -1478,6 +1521,13 @@ export interface operations {
             };
             /** @description Stream resource not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The requested range lies outside the segment */
+            416: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1575,6 +1625,15 @@ export interface operations {
                     "video/mp4": string;
                 };
             };
+            /** @description The requested byte range */
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "video/mp4": string;
+                };
+            };
             /** @description Invalid segment path */
             400: {
                 headers: {
@@ -1584,6 +1643,13 @@ export interface operations {
             };
             /** @description Stream resource not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The requested range lies outside the segment */
+            416: {
                 headers: {
                     [name: string]: unknown;
                 };

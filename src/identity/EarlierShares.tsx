@@ -32,7 +32,7 @@ export function EarlierShares({
         onClick={() => setOpen(!open)}
       >
         <Icon name={open ? 'chevron-up' : 'chevron-down'} size={16} />
-        Earlier offers and shares
+        Earlier invitations and shares
       </button>
       {open && (
         <ul id={listId} className={styles.rows}>

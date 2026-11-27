@@ -26,16 +26,18 @@ type Decision = 'accept' | 'decline'
 
 /** The offers of Profiles to the Account's Household, which its admins accept or decline. */
 export function ShareOffersScreen() {
-  const { notice, heading, announce, dismiss } = usePageNotice()
+  const { notice, count, heading, announce, dismiss } = usePageNotice()
 
   return (
     <>
       <div className={settingsStyles.pageHeading}>
         <h1 ref={heading} tabIndex={-1}>
-          Share offers
+          Share invitations
         </h1>
       </div>
-      <PageNotice onDismiss={dismiss}>{notice}</PageNotice>
+      <PageNotice count={count} onDismiss={dismiss}>
+        {notice}
+      </PageNotice>
       <ShareOffersContent onDecided={announce} />
     </>
   )
@@ -70,7 +72,8 @@ function HouseholdOffers({
   const [deciding, setDeciding] = useState<string | null>(null)
   const [refusal, setRefusal] = useState<string | null>(null)
 
-  // A failed read keeps the list that is on screen; the query's own error state reports it.
+  // The query keeps a failed read, and the page shows it in place of the list. Rejecting here
+  // would report the decision that the read follows as failed.
   const readAgain = () => query.refetch().catch(() => undefined)
 
   /** Sends the decision and reads the offers again; resolves to whether the server took it. */
@@ -113,7 +116,7 @@ function HouseholdOffers({
 
   async function declineNow(offer: PendingOffer) {
     if (await decide(offer, 'decline')) {
-      onDecided(`Offer of ${offeredProfile(offer)} declined.`)
+      onDecided(`Share invitation for ${offeredProfile(offer)} declined.`)
     }
   }
 
@@ -134,9 +137,9 @@ function HouseholdOffers({
         </p>
       )}
       {offers.length === 0 ? (
-        <p className={styles.note}>No one has offered a Profile to {household.name}.</p>
+        <p className={styles.note}>No share invitations are waiting for {household.name}.</p>
       ) : (
-        <SharingSection title={`Profiles offered to ${household.name}`} failure={null}>
+        <SharingSection title={`Share invitations for ${household.name}`} failure={null}>
           <ul className={styles.rows}>
             {offers.map((offer) => (
               <li key={offer.id} className={styles.row}>
@@ -203,7 +206,7 @@ function offeredProfile(offer: PendingOffer): string {
 function ShareOffersLoading() {
   return (
     <Center h={200}>
-      <Loader role="status" aria-label="Loading share offers" />
+      <Loader role="status" aria-label="Loading share invitations" />
     </Center>
   )
 }
@@ -214,7 +217,7 @@ function ShareOffersUnavailable({
 }: Readonly<{ error: unknown; onRetry: () => unknown }>) {
   return (
     <FailurePanel onRetry={onRetry}>
-      {requestFailureMessage(error, "Couldn't load share offers.")}
+      {requestFailureMessage(error, "Couldn't load share invitations.")}
     </FailurePanel>
   )
 }

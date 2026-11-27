@@ -89,6 +89,13 @@ export function serverFailure(): Response {
   return new HttpResponse('Internal Server Error', { status: 500 })
 }
 
+/** A request the server refuses with a code, and with `sentence` for the person to read. */
+export function refusedWith(sentence: string): Response {
+  return HttpResponse.json<GraphQLResponseBody<GraphQLQuery>>({
+    errors: [{ message: sentence, extensions: { code: 'FORBIDDEN' } }],
+  })
+}
+
 /** A resolver that gives each request the next of `answers`, then repeats the last. */
 export function answersInTurn(...answers: Answer[]) {
   const handler = {

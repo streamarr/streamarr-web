@@ -1,5 +1,6 @@
 import { Center, Loader } from '@mantine/core'
 import { useQuery } from '@apollo/client/react'
+import { useState } from 'react'
 import settingsStyles from '../styles/settings.module.css'
 import { ProfileSharesDocument, type MeQuery } from '../graphql/generated/graphql'
 import { requestFailureMessage } from '../graphql/requestErrors'
@@ -9,14 +10,14 @@ import { usePageNotice } from '../ui/usePageNotice'
 import { shortId } from './shareText'
 import styles from './Sharing.module.css'
 import { useMe } from './useMe'
-import { WhereShared } from './WhereShared'
+import { WhereShared, type ProfileShareRow } from './WhereShared'
 
 type Me = MeQuery['me']
 type PersonalProfile = Readonly<{ id: string; name: string }>
 
 /** Where the Account's Personal Profile is shared, and the way to share it with another Household. */
 export function SharingScreen() {
-  const { notice, heading, announce, dismiss } = usePageNotice()
+  const { notice, count, heading, announce, dismiss } = usePageNotice()
 
   return (
     <>
@@ -25,7 +26,9 @@ export function SharingScreen() {
           Sharing
         </h1>
       </div>
-      <PageNotice onDismiss={dismiss}>{notice}</PageNotice>
+      <PageNotice count={count} onDismiss={dismiss}>
+        {notice}
+      </PageNotice>
       <SharingContent onChanged={announce} />
     </>
   )
@@ -94,8 +97,14 @@ function ProfileSharing({
     variables: { profileId: profile.id },
     fetchPolicy: 'network-only',
   })
-  // A failed read keeps the list that is on screen.
+  // The query keeps a failed read, and the page shows it in place of the list. Rejecting here
+  // would report the change that the read follows as failed.
   const readAgain = () => query.refetch().catch(() => undefined)
+  // A change on its way, its refusal, and the confirmation that it belongs to outlast the list
+  // that a failed read takes off the page, so they are held here and not in the list.
+  const [changing, setChanging] = useState<string | null>(null)
+  const [ending, setEnding] = useState<ProfileShareRow | null>(null)
+  const [refusal, setRefusal] = useState<string | null>(null)
 
   if (query.loading && !query.data) {
     return <SharingLoading />
@@ -119,6 +128,12 @@ function ProfileSharing({
       ownHouseholdName={ownHouseholdName}
       readAgain={readAgain}
       onChanged={onChanged}
+      changing={changing}
+      onChangingChange={setChanging}
+      ending={ending}
+      onEndingChange={setEnding}
+      refusal={refusal}
+      onRefusalChange={setRefusal}
     />
   )
 }
