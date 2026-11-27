@@ -29,13 +29,19 @@ interface Review {
 type Answer =
   { kind: 'review'; review: Review } | { kind: 'refused' } | { kind: 'failed'; message: string }
 
+/** A code that a lookup found, with the name of the Household it names. */
+interface LookedUp {
+  code: string
+  householdName: string
+}
+
 const REFUSED: Answer = { kind: 'refused' }
 
 /**
  * Offers a Profile to the Household that a share code names, in two steps: the code, then a review
  * of the offer that names the Household and says what the offer would do to the Profile there.
  * Every lookup counts against the Account, so the server hears of a code only when the person
- * continues, and never of text that cannot be one.
+ * continues, never of text that cannot be one, and only once of a code that it found.
  */
 export function ShareForm({
   profile,
@@ -65,6 +71,8 @@ export function ShareForm({
   const [lookUp] = useMutation(LookUpShareCodeDocument)
   const [offer] = useMutation(OfferProfileShareDocument)
   const [text, setText] = useState(codeFromLink ?? '')
+  /** The last code the server found, so that asking about it again costs no second lookup. */
+  const lookedUp = useRef<LookedUp | null>(null)
   const [fieldError, setFieldError] = useState<string | null>(null)
   const [refusal, setRefusal] = useState<string | null>(null)
   const [review, setReview] = useState<Review | null>(null)
@@ -105,13 +113,10 @@ export function ShareForm({
     }
   }
 
-  // The preview is asked once, here, and never as a watched query: every request is an attempt.
+  // The preview is asked here, and never as a watched query: every request is an attempt.
   async function askAbout(code: string): Promise<Answer> {
-    const { data } = await lookUp({ variables: { input: { code } } })
-    const householdName = data?.lookUpShareCode?.householdName
-    const errors = data?.lookUpShareCode?.userErrors ?? []
-    if (errors.length > 0) return refusalOf(errors)
-    if (!householdName) return REFUSED
+    const found = await lookUpOnce(code)
+    if ('kind' in found) return found
     const previewed = await client.query({
       query: ProfileSharePreviewDocument,
       variables: { profileId: profile.id, shareCode: code },
@@ -119,7 +124,19 @@ export function ShareForm({
     })
     const effects = previewed.data?.profileSharePreview
     if (!effects) return REFUSED
-    return { kind: 'review', review: { code, householdName, effects } }
+    return { kind: 'review', review: { code, householdName: found.householdName, effects } }
+  }
+
+  /** Looks a code up, unless the server already found it: a preview that failed asks only again. */
+  async function lookUpOnce(code: string): Promise<LookedUp | Answer> {
+    if (lookedUp.current?.code === code) return lookedUp.current
+    const { data } = await lookUp({ variables: { input: { code } } })
+    const householdName = data?.lookUpShareCode?.householdName
+    const errors = data?.lookUpShareCode?.userErrors ?? []
+    if (errors.length > 0) return refusalOf(errors)
+    if (!householdName) return REFUSED
+    lookedUp.current = { code, householdName }
+    return lookedUp.current
   }
 
   async function send(offered: Review) {
@@ -154,15 +171,19 @@ export function ShareForm({
   }
 
   function show(answer: Answer) {
-    if (answer.kind === 'refused') {
-      refuseText(CODE_REFUSED)
-      return
+    switch (answer.kind) {
+      case 'refused':
+        // A code that no longer works is looked up afresh, should the person try it again.
+        lookedUp.current = null
+        refuseText(CODE_REFUSED)
+        return
+      case 'failed':
+        setRefusal(answer.message)
+        return
+      case 'review':
+        setReview(answer.review)
+        return
     }
-    if (answer.kind === 'failed') {
-      setRefusal(answer.message)
-      return
-    }
-    setReview(answer.review)
   }
 
   /** Back to the code step, the text kept, with the reason it cannot go on. */
