@@ -56,6 +56,7 @@ type PlaybackSessionPayload = CreatePlaybackSessionMutation['createPlaybackSessi
 
 export type SourcePhase =
   | { at: 'starting' }
+  | { at: 'ended' }
   | {
       at: 'attached'
       tracks: TrackSource
@@ -187,8 +188,13 @@ const pendingCleanups = new WeakMap<ApolloClient, () => Promise<void>>()
 // lifecycle, not the Player effect, has to end the session when the viewer leaves the page.
 export function startPlayerPlayback(options: PlayerPlaybackOptions): PlayerPlayback {
   let dynamicRange: DynamicRangeChoice = 'HDR'
-  let playback = startSessionPlayback({ ...options, dynamicRange })
+  let playback = startSessionPlayback({ ...options, dynamicRange, onReplay: replay })
   let left: ResumePoint | undefined
+  function replay(resumeFrom: ResumePoint) {
+    playback.stop()
+    options.onSourcePhase({ at: 'starting' })
+    playback = startSessionPlayback({ ...options, resumeFrom, dynamicRange, onReplay: replay })
+  }
   const onPageHide = () => {
     left = playback.leavePage()
   }
@@ -200,7 +206,7 @@ export function startPlayerPlayback(options: PlayerPlaybackOptions): PlayerPlayb
     const resumeFrom = left
     left = undefined
     options.onSourcePhase({ at: 'starting' })
-    playback = startSessionPlayback({ ...options, resumeFrom, dynamicRange })
+    playback = startSessionPlayback({ ...options, resumeFrom, dynamicRange, onReplay: replay })
   }
   window.addEventListener('pagehide', onPageHide)
   window.addEventListener('pageshow', onPageShow)
@@ -229,8 +235,12 @@ function startSessionPlayback({
   onOutputShown,
   onNotice,
   resumeFrom,
+  onReplay,
   dynamicRange: initialDynamicRange,
-}: PlayerPlaybackOptions & { dynamicRange: DynamicRangeChoice }): SessionPlayback {
+}: PlayerPlaybackOptions & {
+  dynamicRange: DynamicRangeChoice
+  onReplay: (resumeFrom: ResumePoint) => void
+}): SessionPlayback {
   let source: StreamSource | null = null
   let declaration: ClientCapabilityDeclarationInput = {
     video: [],
@@ -380,6 +390,11 @@ function startSessionPlayback({
         if (!endedAtRealEnd) return
         // As the element does after its own end, playing where playback ended starts from the top.
         if (element.currentTime === endedPosition) element.currentTime = 0
+        if (!source) {
+          onReplay({ position: element.currentTime, playing: true })
+          return
+        }
+
         // A failure can be what ended playback, and hls.js stops loading after one.
         restartStoppedSource()
       },
@@ -709,6 +724,13 @@ function startSessionPlayback({
     const generation = sourceGeneration
     timeline.detach()
     timeline = trackTimeline()
+    const startPosition = resume?.position ?? startAt ?? 0
+    if (realEnd !== null && startPosition >= realEnd) {
+      endAtRealEnd()
+      onSourcePhase({ at: 'ended' })
+      return
+    }
+
     const qualities: QualityChoices = {
       offered: playback.offeredChoices,
       requested: playback.requestedChoice,
