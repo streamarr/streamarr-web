@@ -154,6 +154,17 @@ describe('createShareListUpdater', () => {
     expect(edges).toEqual([alex, middle])
   })
 
+  it('shouldRetainEachPageBoundaryWhenChangesReplayAgainstAnotherPage', () => {
+    const apply = createShareListUpdater()
+    const listed = page([alex, robin], true)
+    const withoutLast = { ...listed, edges: apply(listed, { shareId: robin.node.id, edge: null }) }
+    apply(page([middle]), { shareId: robin.node.id, edge: null })
+
+    const edges = apply(withoutLast, { shareId: middle.node.id, edge: middle })
+
+    expect(edges).toEqual([alex, middle])
+  })
+
   it('shouldExpandTheBoundaryWhenTheNextPageLoads', () => {
     const apply = createShareListUpdater()
     expect(apply(page([alex], true), { shareId: middle.node.id, edge: middle })).toEqual([alex])

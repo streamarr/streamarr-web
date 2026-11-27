@@ -79,6 +79,34 @@ export function heldAnswer(data: GraphQLQuery) {
   }
 }
 
+/**
+ * A resolver that answers each read with `data()` as it stands when the read arrives. `holdNext`
+ * keeps the next read from answering until released, so that a test can change the server and
+ * publish that change while the answer is on its way.
+ */
+export function readsThatCanBeHeld(data: () => GraphQLQuery) {
+  let holding: { arrived: () => void; release: Promise<void> } | null = null
+  return {
+    resolver: async () => {
+      const answer = data()
+      const held = holding
+      holding = null
+      if (held) {
+        held.arrived()
+        await held.release
+      }
+      return HttpResponse.json<GraphQLResponseBody<GraphQLQuery>>({ data: answer })
+    },
+    /** Holds the next read; `arrived` settles once the server has read the list for it. */
+    holdNext() {
+      const arrived = deferred()
+      const release = deferred()
+      holding = { arrived: arrived.resolve, release: release.promise }
+      return { arrived: arrived.promise, release: release.resolve }
+    },
+  }
+}
+
 /** A request that never reaches the server, as during a flaky reconnect. */
 export function networkFailure(): Response {
   return HttpResponse.error()

@@ -10,6 +10,11 @@ export type ShareChange = NonNullable<ProfileShareChangedSubscription['profileSh
 /** A share as a change carries it: every field that any list of shares reads. */
 export type LiveShare = NonNullable<ShareChange['share']>
 
+/** The key a change applies by: a share's later change replaces its earlier one. */
+export function shareIdOf(change: ShareChange): string {
+  return change.shareId
+}
+
 /** A profileShares list: one Profile's shares, in the statuses it asks for. */
 export interface ProfileShareList {
   profileId: string
@@ -30,7 +35,7 @@ export interface HouseholdShareList {
 
 /** Whether a profileShares list holds the share: while its status is one the list asks for. */
 export function keepsInProfileShares(share: LiveShare, list: ProfileShareList, now: Date): boolean {
-  return share.profileId === list.profileId && asksFor(list.statuses, listedStatus(share, now))
+  return share.profileId === list.profileId && asksFor(list.statuses, statusAt(share, now))
 }
 
 /**
@@ -43,32 +48,31 @@ export function keepsInHouseholdShares(
   list: HouseholdShareList,
   now: Date,
 ): boolean {
-  const status = listedStatus(share, now)
+  const status = statusAt(share, now)
   if (share.householdId !== list.householdId || !asksFor(list.statuses, status)) return false
   if (list.visitorsOnly && share.visitor !== true) return false
   return list.serverAdmin || status === 'PENDING' || status === 'ACTIVE'
 }
 
 /**
- * Applies server-ordered changes within the loaded pages. The last loaded order key survives a
- * change removing that row; a new query or continuation supplies the next page boundary.
+ * Applies server-ordered changes within the loaded pages. Each page boundary survives removal
+ * of its last row and replay against other pages whose reads are still in flight.
  */
 export function createShareListUpdater() {
-  let endCursor: string | null | undefined
-  let lastOrderKey: string | null = null
+  const boundaries = new Map<string, string>()
 
   return function apply<TEdge extends OrderedEdgeFieldsFragment & { node: { id: string } }>(
     list: { edges: TEdge[]; pageInfo: { endCursor: string | null; hasNextPage: boolean } },
     change: { shareId: string; edge: TEdge | null },
   ): TEdge[] {
-    if (list.pageInfo.endCursor !== endCursor) {
-      endCursor = list.pageInfo.endCursor
-      lastOrderKey = list.edges.find((edge) => edge.cursor === endCursor)?.orderKey ?? null
-    }
+    const endCursor = list.pageInfo.endCursor
+    const tail = list.edges.find((edge) => edge.cursor === endCursor)
+    if (endCursor !== null && tail) boundaries.set(endCursor, tail.orderKey)
+    const lastOrderKey = endCursor === null ? undefined : boundaries.get(endCursor)
     const beyondLoaded =
       change.edge !== null &&
       list.pageInfo.hasNextPage &&
-      (lastOrderKey === null || change.edge.orderKey > lastOrderKey)
+      (lastOrderKey === undefined || change.edge.orderKey > lastOrderKey)
     return placeOrderedEdge(list.edges, {
       itemId: change.shareId,
       edge: beyondLoaded ? null : change.edge,
@@ -76,8 +80,14 @@ export function createShareListUpdater() {
   }
 }
 
-// The share queries count an offer past its expiry as EXPIRED before its change says so.
-function listedStatus(share: LiveShare, now: Date): ProfileShareStatus {
+/**
+ * A share's status as the share queries count it at `now`: an offer past its expiry is EXPIRED
+ * from then on, before its change says so.
+ */
+export function statusAt(
+  share: Pick<LiveShare, 'status' | 'expiresAt'>,
+  now: Date,
+): ProfileShareStatus {
   const expired =
     share.status === 'PENDING' &&
     share.expiresAt !== null &&
