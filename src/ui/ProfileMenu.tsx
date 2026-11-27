@@ -7,6 +7,7 @@ import { initials, tileColor } from './ProfileTile'
 import { Icon } from './Icon'
 import { canManageServer } from '../admin/access'
 import { canManageHousehold } from '../identity/householdAccess'
+import { canReadNotifications } from '../notifications/notificationAccess'
 import styles from './ProfileMenu.module.css'
 
 type Me = MeQuery['me']
@@ -27,6 +28,7 @@ export function ProfileMenu({
   onServerSettings,
   onProfileSettings,
   onHouseholdSettings,
+  onNotifications,
 }: Readonly<{
   me: Me
   onPinRequired: (profileId: string) => void
@@ -38,6 +40,8 @@ export function ProfileMenu({
   onProfileSettings?: () => void
   /** Opens the Household's settings; offered only to its admins in an account session. */
   onHouseholdSettings?: () => void
+  /** Opens the Account's Notifications; offered in any account session. */
+  onNotifications?: () => void
 }>) {
   const { selectProfile } = useAuth()
   const signOut = useSignOut(onSignedOut)
@@ -206,6 +210,19 @@ export function ProfileMenu({
             >
               <Icon name="settings" size={20} />
               <span>Server settings</span>
+            </button>
+          )}
+          {canReadNotifications(me) && onNotifications && (
+            <button
+              type="button"
+              className={styles.profileMenuRow}
+              onClick={() => {
+                close()
+                onNotifications()
+              }}
+            >
+              <Icon name="notifications" size={20} />
+              <span>Notifications</span>
             </button>
           )}
           <button type="button" className={styles.profileMenuRow} onClick={closeAndSignOut}>
