@@ -20,7 +20,7 @@ import { SharingSection } from './SharingSection'
 import { expiryLabel, shortId, UPDATE_FAILED_MESSAGE } from './shareText'
 import { useMe } from './useMe'
 
-type PendingOffer = ShareOffersQuery['pendingShareOffers']['edges'][number]['node']
+type PendingOffer = ShareOffersQuery['householdShares']['edges'][number]['node']
 type Household = MeQuery['me']['household']
 type Decision = 'accept' | 'decline'
 
@@ -127,7 +127,7 @@ function HouseholdOffers({
     return <ShareOffersUnavailable error={query.error} onRetry={readAgain} />
   }
 
-  const offers = query.data.pendingShareOffers.edges.map((edge) => edge.node)
+  const offers = query.data.householdShares.edges.map((edge) => edge.node)
 
   return (
     <>

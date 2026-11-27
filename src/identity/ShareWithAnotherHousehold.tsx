@@ -1,8 +1,13 @@
 import { Button } from '@mantine/core'
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from '../ui/Icon'
+import { useArrivingShareCode } from './arrivingShareCode'
 import { ShareForm } from './ShareForm'
 import styles from './Sharing.module.css'
+
+// The page's notice sits above the list it points at, and stays if reading the list fails.
+const ANSWER_LOST =
+  "We couldn't tell whether your share invitation was sent. The list below shows every share."
 
 /**
  * The action that shares a Profile with another Household. Its form opens in its place, so the
@@ -20,7 +25,8 @@ export function ShareWithAnotherHousehold({
   onSend: () => void
   onChanged: (notice: string) => void
 }>) {
-  const [open, setOpen] = useState(false)
+  const arriving = useArrivingShareCode()
+  const [open, setOpen] = useState(arriving.code !== null)
   const action = useRef<HTMLButtonElement>(null)
   /** Set when the person leaves the form, so that focus returns to the action they left. */
   const returnFocus = useRef(false)
@@ -49,10 +55,16 @@ export function ShareWithAnotherHousehold({
     <ShareForm
       profile={profile}
       onSend={onSend}
-      onOffered={async () => {
+      codeFromLink={arriving.code}
+      onCodeFromLinkTaken={arriving.take}
+      onOffered={async (householdName) => {
         await readAgain()
         setOpen(false)
-        onChanged('Invitation sent. An admin there must accept it.')
+        onChanged(`Invitation sent to ${householdName}. An admin there must accept it.`)
+      }}
+      onAnswerLost={async () => {
+        await readAgain()
+        onChanged(ANSWER_LOST)
       }}
       onCancel={() => {
         returnFocus.current = true

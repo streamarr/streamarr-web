@@ -9,10 +9,15 @@ const INVALID_INPUT_CODE = 'INVALID_INPUT'
 
 /** The server's sentence for a failed request when it sent one, otherwise the screen's own. */
 export function requestFailureMessage(error: unknown, fallback: string): string {
+  return serverFailureSentence(error) ?? fallback
+}
+
+/** The server's sentence for a failed request, or null when it sent none. */
+export function serverFailureSentence(error: unknown): string | null {
   if (!CombinedGraphQLErrors.is(error)) {
-    return fallback
+    return null
   }
-  return error.errors.map(serverSentence).find((sentence) => sentence !== null) ?? fallback
+  return error.errors.map(serverSentence).find((sentence) => sentence !== null) ?? null
 }
 
 function serverSentence(error: GraphQLFormattedError): string | null {
