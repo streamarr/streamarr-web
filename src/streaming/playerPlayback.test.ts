@@ -4,6 +4,8 @@ import type {
   ClientCapabilityDeclarationInput,
   CreatePlaybackSessionMutation,
   PlaybackSessionFieldsFragment,
+  ReportStreamSessionTimelineMutation,
+  ReportStreamSessionTimelineMutationVariables,
 } from '../graphql/generated/graphql'
 import { createApolloClient } from '../graphql/client'
 import { hls, resetFakeHls } from '../test/fakeHls'
@@ -128,13 +130,16 @@ describe('startPlayerPlayback', () => {
     video,
     declaration = PQ_DECLARATION,
     session = Promise.resolve(created(readyPlaybackSession({ streamSession: PQ_SESSION }))),
+    startPositionSeconds,
   }: {
     video: HTMLVideoElement
     declaration?: ClientCapabilityDeclarationInput
     session?: Promise<{ data: CreatePlaybackSessionMutation }>
+    startPositionSeconds?: number
   }): PlayerPlayback {
     playback = startPlayerPlayback({
       video,
+      startPositionSeconds,
       client: createApolloClient(vi.fn()),
       declareCapabilities: () => Promise.resolve(declaration),
       createPlaybackSession: () => {
@@ -177,6 +182,76 @@ describe('startPlayerPlayback', () => {
     playback?.stop()
     playback = undefined
     await vi.waitFor(() => expect(sessions.destroyed).toBe(sessions.created))
+  })
+
+  it.each([13, 20])(
+    'shouldFinishWithoutLoadingMediaWhenStartingAtOrPastTheKnownEnd (%s)',
+    async (startPositionSeconds) => {
+      const reports: { state: string; positionSeconds: number }[] = []
+      server.use(
+        graphql.mutation<
+          ReportStreamSessionTimelineMutation,
+          ReportStreamSessionTimelineMutationVariables
+        >('ReportStreamSessionTimeline', ({ variables }) => {
+          reports.push({ state: variables.state, positionSeconds: variables.positionSeconds })
+          return HttpResponse.json({ data: { reportStreamSessionTimeline: true } })
+        }),
+      )
+      const video = fakeMedia()
+      startPlaying({
+        video,
+        startPositionSeconds,
+        session: Promise.resolve(
+          created(
+            readyPlaybackSession({
+              streamSession: { ...PQ_SESSION, mediaEndSeconds: 13 },
+            }),
+          ),
+        ),
+      })
+
+      await vi.waitFor(() =>
+        expect(reports).toContainEqual({ state: 'STOPPED', positionSeconds: 13 }),
+      )
+      expect(video.paused).toBe(true)
+      expect(hls.loadSource).not.toHaveBeenCalled()
+    },
+  )
+
+  it('shouldCreatePlaybackFromTheBeginningWhenPlayingAfterACompletedResume', async () => {
+    const video = fakeMedia()
+    const starts: (number | undefined)[] = []
+    const onSourcePhase = vi.fn()
+    playback = startPlayerPlayback({
+      video,
+      client: createApolloClient(vi.fn()),
+      declareCapabilities: () => Promise.resolve(PQ_DECLARATION),
+      startPositionSeconds: 20,
+      createPlaybackSession: ({ startPositionSeconds }) => {
+        sessions.created += 1
+        starts.push(startPositionSeconds)
+        return Promise.resolve(
+          created(
+            readyPlaybackSession({
+              streamSession: {
+                ...PQ_SESSION,
+                mediaEndSeconds: 13,
+              },
+            }),
+          ),
+        )
+      },
+      onSourcePhase,
+      onOutputShown: vi.fn(),
+      onNotice: vi.fn(),
+    })
+    await vi.waitFor(() => expect(onSourcePhase).toHaveBeenCalledWith({ at: 'ended' }))
+
+    await video.play()
+
+    await vi.waitFor(() => expect(starts).toEqual([20, undefined]))
+    await playingFrom(video, 0)
+    expect(sessions.destroyed).toBe(1)
   })
 
   describe('videoPreference', () => {
