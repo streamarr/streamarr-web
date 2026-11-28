@@ -84,7 +84,7 @@ describe('playbackDecisionText', () => {
     [
       'VIDEO_CODEC_LEVEL_NOT_DECLARED',
       'video',
-      "This device plays HEVC, but not this video's level or tier.",
+      "This device plays HEVC, but not this video's level.",
     ],
     ['VIDEO_BIT_DEPTH_NOT_DECLARED', 'video', "This device can't play this video's bit depth."],
     [

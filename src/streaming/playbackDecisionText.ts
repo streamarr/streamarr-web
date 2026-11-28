@@ -76,7 +76,7 @@ const REASONS: Record<Known<DecisionReason>, Reason> = {
   ),
   VIDEO_CODEC_LEVEL_NOT_DECLARED: video(
     ({ video }) =>
-      `This device plays ${codecText(video.source.codec)}, but not this video's level or tier.`,
+      `This device plays ${codecText(video.source.codec)}, but not this video's level.`,
   ),
   VIDEO_BIT_DEPTH_NOT_DECLARED: video(() => "This device can't play this video's bit depth."),
   VIDEO_BIT_DEPTH_UNKNOWN: video(

@@ -11,8 +11,6 @@ import type {
   VideoCapabilityEntryInput,
   VideoCodecFamily,
   VideoCodecProfile,
-  VideoCodecProfileCapabilityInput,
-  VideoCodecTier,
   VideoSampleEntry,
 } from '../graphql/generated/graphql'
 
@@ -31,7 +29,6 @@ export const DECLARATION_REFUSAL_TYPENAMES: ReadonlySet<string> =
     'CapabilityListTooLongError',
     'CapabilityMaximumInvalidError',
     'CapabilityProfileMismatchError',
-    'VideoCodecTierInvalidError',
   ])
 
 /**
@@ -159,7 +156,6 @@ interface DolbyVisionProbe {
 
 interface VideoFamily {
   codecFamily: keyof FamilyLevels & VideoCodecFamily
-  maxTier?: VideoCodecTier
   eightBit: BitDepthProbe
   tenBit?: BitDepthProbe
   hdr?: HdrProbe
@@ -185,7 +181,6 @@ const H264: VideoFamily = {
 
 const HEVC: VideoFamily = {
   codecFamily: 'HEVC',
-  maxTier: 'MAIN',
   eightBit: { bitDepth: 8, profiles: ['HEVC_MAIN'], codec: (level) => `hvc1.1.6.L${level * 3}.B0` },
   tenBit: {
     bitDepth: 10,
@@ -209,7 +204,6 @@ const HEVC: VideoFamily = {
 // probe names no profile, and a tier declares 10-bit only beside an 8-bit answer that keeps up.
 const AV1: VideoFamily = {
   codecFamily: 'AV1',
-  maxTier: 'MAIN',
   eightBit: { bitDepth: 8, profiles: ['AV1_MAIN'], codec: (level) => av1Codec(level, 8) },
   tenBit: { bitDepth: 10, profiles: [], codec: (level) => av1Codec(level, 10) },
   hdr: {
@@ -900,7 +894,7 @@ function videoEntry({
   const maxLevel = tier.levels[family.codecFamily]
   return {
     codecFamily: family.codecFamily,
-    codecProfiles: profiles.map((profile) => codecProfile({ profile, maxLevel, family })),
+    codecProfiles: profiles.map((profile) => ({ profile, maxLevel })),
     maxBitDepth: bitDepth,
     maxWidth: tier.width,
     maxHeight: tier.height,
@@ -910,22 +904,6 @@ function videoEntry({
     hdr10Plus: false,
     hls,
   }
-}
-
-function codecProfile({
-  profile,
-  maxLevel,
-  family,
-}: {
-  profile: VideoCodecProfile
-  maxLevel: number
-  family: VideoFamily
-}): VideoCodecProfileCapabilityInput {
-  const capability: VideoCodecProfileCapabilityInput = { profile, maxLevel }
-  if (family.maxTier) {
-    capability.maxTier = family.maxTier
-  }
-  return capability
 }
 
 // No engine's decodingInfo answer depends on the channel count (e2e/decoding-info-channels.spec.ts),
